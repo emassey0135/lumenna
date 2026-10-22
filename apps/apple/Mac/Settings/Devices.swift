@@ -61,7 +61,7 @@ final class DevicesModel: ObservableObject {
     /// The device in hand's own action of `kind`, or the app says why it has none.
     func run(_ kind: LumennaApp.ActionKind) {
         guard let device = inHand else { return }
-        if let action = device.actions.first(where: { $0.kind == kind }) {
+        if let action = device.offered.first(where: { $0.kind == kind }) {
             core.app.run(action, on: device.nodeId, side: .devices)
         } else {
             core.app.refuse([kind], on: device.nodeId, side: .devices)
@@ -91,7 +91,7 @@ struct DevicesScreen: View {
             .frame(height: 200)
             .contextMenu(forSelectionType: String.self) { ids in
                 if let id = ids.first, let device = model.devices.first(where: { $0.device.nodeId == id })?.device {
-                    ForEach(device.actions, id: \.self) { action in
+                    ForEach(device.offered, id: \.self) { action in
                         Button(action.asksFirst ? action.title + "…" : action.title) {
                             model.core.app.run(action, on: device.nodeId, side: .devices)
                         }

@@ -50,7 +50,7 @@ final class SidebarViewController: AppListViewController {
         switch entry.kind {
         case .group:
             // A heading folds what is under it when chosen: its own Expand or Collapse.
-            if let fold = entry.actions.first(where: { [.expand, .collapse].contains($0.kind) }) { perform(fold, on: item) }
+            if let fold = entry.offered.first(where: { [.expand, .collapse].contains($0.kind) }) { perform(fold, on: item) }
         case let .place(place):
             chose(.place(place))
         }

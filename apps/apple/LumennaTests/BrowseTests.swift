@@ -67,7 +67,7 @@ final class BrowseTests: XCTestCase {
         return shown
     }
 
-    private func assertEachOnce(_ offered: Offered, _ actions: [LumennaApp.Action], file: StaticString = #filePath, line: UInt = #line) {
+    private func assertEachOnce(_ offered: Offered, _ actions: [LumennaApp.Offered], file: StaticString = #filePath, line: UInt = #line) {
         let names = actions.map(\.title)
         let listed = offered.listed
         XCTAssertEqual(listed.sorted(), names.sorted(), "each action listed once: \(offered)", file: file, line: line)

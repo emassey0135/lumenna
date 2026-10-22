@@ -52,7 +52,7 @@ final class DayTests: XCTestCase {
         (core.app.view.day?.items ?? []).filter { !$0.hidden && $0.kind != .summary }
     }
 
-    private func split(_ day: DayModel, _ index: Int) -> AppRowActions<LumennaApp.Action> {
+    private func split(_ day: DayModel, _ index: Int) -> AppRowActions<LumennaApp.Offered> {
         let item = day.shown[index].item
         return DayScreen.actions(of: item) { [weak day] action in day?.run(action, on: item) }
     }
@@ -78,8 +78,8 @@ final class DayTests: XCTestCase {
         let row = offered(day, index)
         XCTAssertEqual(row.trailing, ["Assign a Task", "Delete Block"])
         XCTAssertEqual(row.custom, ["Edit Block", "Cancel This Day", "Reminders", "Time Zone"])
-        XCTAssertEqual(row.listed.sorted(), shownItems[index].actions.map(\.title).sorted(), "each listed once")
-        XCTAssertEqual(row.menu, shownItems[index].actions.map(\.title), "the menu has every action, in the app's order")
+        XCTAssertEqual(row.listed.sorted(), shownItems[index].offered.map(\.title).sorted(), "each listed once")
+        XCTAssertEqual(row.menu, shownItems[index].offered.map(\.title), "the menu has every action, in the app's order")
         let split = split(day, index)
         split.run(try XCTUnwrap(split.others.first { $0.title == "Cancel This Day" }))
         settle()
@@ -103,7 +103,7 @@ final class DayTests: XCTestCase {
             title: "All day", at: "00:00", minutes: 1440, date: Clock.isoDay(.now), kind: "work", repeat: nil
         ))
         let day = shownDay()
-        let actions = try XCTUnwrap(core.app.view.day).actions.map(\.title)
+        let actions = try XCTUnwrap(core.app.view.day).offered.map(\.title)
         XCTAssertTrue(actions.contains("Plan the Day"), "\(actions)")
         XCTAssertTrue(actions.contains("Replan from Now"), "\(actions)")
         XCTAssertEqual(day.actions.map(\.title), actions, "the heading's and the menu's, in the core's order")

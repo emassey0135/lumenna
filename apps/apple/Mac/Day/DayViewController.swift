@@ -62,7 +62,7 @@ struct MacDayScreen: View {
             .focused($listFocused)
             .contextMenu(forSelectionType: String.self) { keys in
                 if let key = keys.first, let item = model.rows.first(where: { $0.id == key })?.item {
-                    ForEach(item.actions, id: \.self) { action in
+                    ForEach(item.offered, id: \.self) { action in
                         Button(action.asksFirst ? action.title + "…" : action.title) { model.run(action, on: item) }
                     }
                 }
@@ -149,7 +149,7 @@ struct MacDayScreen: View {
         case .free: model.run([.addBlock], on: item)
         case .cancelled:
             let line = model.rows.first { $0.id == item.key }?.line?.text ?? ""
-            choose(line, item.actions.map { action in (action.title, { model.run(action, on: item) }) })
+            choose(line, item.offered.map { action in (action.title, { model.run(action, on: item) }) })
         case .now, .summary: break
         }
     }

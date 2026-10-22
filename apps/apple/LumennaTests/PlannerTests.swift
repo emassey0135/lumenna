@@ -60,9 +60,9 @@ final class PlannerTests: XCTestCase {
         settle()
         core.app.send(.open(.today))
         core.app.send(.day(.next))
-        settle { core.app.view.day?.actions.contains { $0.kind == .planDay } == true }
-        let plan = try XCTUnwrap(core.app.view.day?.actions.first { $0.kind == .planDay })
-        core.app.send(.perform(plan))
+        settle { core.app.view.day?.offered.contains { $0.kind == .planDay } == true }
+        let plan = try XCTUnwrap(core.app.view.day?.offered.first { $0.kind == .planDay })
+        core.app.act(plan, on: .day)
         settle { core.app.view.proposal?.ready == true }
         let model = AppProposalModel(core: core)
         var closed = false

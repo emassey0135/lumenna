@@ -26,7 +26,7 @@ final class RemindersViewController: AppListViewController {
             let line = index < lines.count ? lines[index] : nil
             return AppItem(
                 key: reminder.id, title: line?.title ?? reminder.words,
-                detail: line.flatMap { $0.detail.isEmpty ? nil : $0.detail }, actions: reminder.actions
+                detail: line.flatMap { $0.detail.isEmpty ? nil : $0.detail }, actions: reminder.offered
             )
         }
         let off = silenced ? "Notifications for Lumenna are off in Settings, so these are not shown" : nil
@@ -37,8 +37,8 @@ final class RemindersViewController: AppListViewController {
 
     /// The list's Add Reminder, the app's: a phrase, asked by the window's questions.
     override func add() {
-        guard let adding = core.app.view.reminders?.actions.first else { return }
-        core.app.send(.perform(adding))
+        guard let adding = core.app.view.reminders?.offered.first else { return }
+        core.app.act(adding, on: .reminders)
     }
 
     /// A reminder of its own offers its actions when tapped too, as its swipe does.

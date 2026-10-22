@@ -15,8 +15,6 @@ final class RemindersModel: ObservableObject {
     /// The app's reason it refused the phrase, shown with the field.
     @Published var problem: String?
     @Published var failure: String?
-    /// An action asking to be confirmed first.
-    @Published var confirming: LumennaApp.Action?
     /// Whether the person turned Lumenna's notifications off, said under the list.
     @Published private(set) var silenced = false
     /// Closes the list's screen once the app has put it away; set by whoever shows it.
@@ -49,7 +47,7 @@ final class RemindersModel: ObservableObject {
         core.app.send(.closeReminders)
     }
 
-    /// Add Reminder, the list's own action.
+    /// Add Reminder, the list's own action, whole: its question's words are this list's field.
     var adding: LumennaApp.Action? { list?.actions.first }
 
     /// Add Reminder's line: its title, the field's name and hint, and its button.
@@ -62,8 +60,8 @@ final class RemindersModel: ObservableObject {
     /// to the list: `answersItself`): once the app is still, a phrase it refused stays in the
     /// field with why, the question put away again.
     func add() {
-        guard let adding else { return }
-        core.app.send(.perform(adding))
+        guard let adding = list?.offered.first else { return }
+        core.app.act(adding, on: .reminders)
         core.app.send(.answer(.text(text: typed)))
         core.app.whenStill { [weak self] in
             guard let self else { return }
@@ -83,21 +81,11 @@ final class RemindersModel: ObservableObject {
         asking.action?.subject == .reminder && asking.action?.kind == .new
     }
 
-    /// One of a reminder's actions, the app's: Remove Reminder, confirmed here first when it
-    /// asks to be.
-    func run(_ action: LumennaApp.Action, on reminder: String, confirmed: Bool = false) {
-        if case .confirm = action.question, !confirmed {
-            confirming = action
-            confirmingReminder = reminder
-            return
-        }
-        core.app.send(.hold(field0: .reminders, field1: reminder))
-        core.app.send(.perform(action))
-        if case .confirm = action.question { core.app.send(.answer(.yes)) }
+    /// One of a reminder's actions, the app's: Remove Reminder, or Deliver On, whose pick the
+    /// window asks.
+    func run(_ action: LumennaApp.Offered, on reminder: String) {
+        core.app.run(action, on: reminder, side: .reminders)
     }
-
-    /// The reminder `confirming` is for.
-    private(set) var confirmingReminder = ""
 }
 
 struct RemindersForm: View {
@@ -154,23 +142,9 @@ struct RemindersForm: View {
         .fixedSize(horizontal: false, vertical: true)
         #endif
         .onAppear { model.appeared() }
-        .confirmationDialog(
-            model.confirming.flatMap { if case let .confirm(title, _, _) = $0.question { title } else { nil } } ?? "",
-            isPresented: Binding(get: { model.confirming != nil }, set: { if !$0 { model.confirming = nil } }),
-            presenting: model.confirming
-        ) { action in
-            if case let .confirm(_, _, yes) = action.question {
-                Button(yes, role: action.destructive ? .destructive : nil) {
-                    model.run(action, on: model.confirmingReminder, confirmed: true)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { action in
-            if case let .confirm(_, message, _) = action.question { Text(message) }
-        }
         #if !os(macOS)
         .confirmationDialog(offered?.words ?? "", isPresented: Binding(get: { offered != nil }, set: { if !$0 { offered = nil } }), presenting: offered) { reminder in
-            ForEach(reminder.actions, id: \.self) { action in
+            ForEach(reminder.offered, id: \.self) { action in
                 Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: reminder.id) }
             }
         }
@@ -195,7 +169,7 @@ struct RemindersForm: View {
         #if os(macOS)
         // A Mac form's row: the words, "Default" beneath for a default, the buttons beside.
         LabeledContent {
-            ForEach(reminder.actions, id: \.self) { action in
+            ForEach(reminder.offered, id: \.self) { action in
                 Button(action.title) { model.run(action, on: reminder.id) }
                     .accessibilityLabel("\(action.title), \(reminder.words)")
             }
@@ -204,7 +178,7 @@ struct RemindersForm: View {
             if !reminder.own { Text("Default").foregroundStyle(Color.quietLabel) }
         }
         #else
-        if reminder.actions.isEmpty {
+        if reminder.offered.isEmpty {
             Text(spoken)
         } else {
             Button { offered = reminder } label: {

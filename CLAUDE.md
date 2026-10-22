@@ -1288,8 +1288,9 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
 - **The watch's lists and day follow the phone's models** (`TaskListModel`, `DayModel`): what
   is listed, the row in hand put back on returning, the filter, and VoiceOver taken to a row
   the app moved, its swipes split by the phone's `AppRowActions`.
-- **A row's actions are the app's, run once for every Apple app** (`AppModel.run`: the row in
-  hand, or held in a side list, then the action), their questions `AppQuestions`' (alerts and
+- **A row's actions are the app's, run once for every Apple app** (`AppModel.run`: `ActOn`
+  naming the row, or one held in a side list; `AppModel.act` for the day's own, the details'
+  task and a reminder list's own), their questions `AppQuestions`' (alerts and
   a `ChoicePicker` on iOS, sheets on the Mac and, one at a time, a `WatchAsker`'s on the
   watch, each sheet's closing without an answer its own cancel). Keys and menu commands run
   the row's action of that kind, and a row without one runs it and the app says why

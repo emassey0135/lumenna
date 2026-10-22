@@ -40,7 +40,7 @@ extension NSWindow {
 extension NSMenu {
     /// A menu of the app's actions, in its order: one that asks something ends in "…", as
     /// the Mac's menus say, and one that removes something comes after a separator.
-    func add(_ actions: [LumennaApp.Action], run: @escaping (LumennaApp.Action) -> Void) {
+    func add<A: RowAction>(_ actions: [A], run: @escaping (A) -> Void) {
         for action in actions {
             if action.destructive, !items.isEmpty, items.last?.isSeparatorItem == false { addItem(.separator()) }
             addItem(ClosureMenuItem(title: action.asksFirst ? action.title + "…" : action.title) { run(action) })

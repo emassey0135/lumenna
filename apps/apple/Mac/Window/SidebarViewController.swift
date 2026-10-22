@@ -55,14 +55,14 @@ final class SidebarModel: ObservableObject {
     }
 
     /// One of an entry's actions, the app's, held in the sidebar's hand first.
-    func run(_ action: LumennaApp.Action, on entry: LumennaApp.SidebarEntry) {
+    func run(_ action: LumennaApp.Offered, on entry: LumennaApp.SidebarEntry) {
         core.app.run(action, on: entry.key, side: .sidebar)
     }
 
     /// The heading's New, from the File menu.
     func runNew(under group: LumennaApp.SidebarGroup) {
         guard let heading = entries.first(where: { if case let .group(found) = $0.kind { found == group } else { false } }),
-              let action = heading.actions.first(where: { $0.kind == .new }) else { return }
+              let action = heading.offered.first(where: { $0.kind == .new }) else { return }
         run(action, on: heading)
     }
 }
@@ -121,7 +121,7 @@ struct SidebarScreen: View {
         private var group: some View {
             DisclosureGroup(isExpanded: Binding(get: { !model.folded.contains(node.id) }, set: { open in
                 let kind: LumennaApp.ActionKind = open ? .expand : .collapse
-                if let fold = node.row.actions.first(where: { $0.kind == kind }) { model.run(fold, on: node.row) }
+                if let fold = node.row.offered.first(where: { $0.kind == kind }) { model.run(fold, on: node.row) }
             })) {
                 ForEach(node.children) { child in
                     AnyView(NodeView(node: child, model: model))
@@ -162,7 +162,7 @@ struct SidebarScreen: View {
                 .accessibilityLabel(name)
                 .accessibilityIdentifier(entry.title)
                 .contextMenu {
-                    ForEach(entry.actions, id: \.self) { action in
+                    ForEach(entry.offered, id: \.self) { action in
                         Button(action.asksFirst ? action.title + "…" : action.title) { model.run(action, on: entry) }
                     }
                 }

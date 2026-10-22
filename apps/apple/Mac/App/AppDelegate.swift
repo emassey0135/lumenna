@@ -225,11 +225,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
            let item = list.items.first(where: { $0.row.id == focus }),
            let action = item.actions.lazy.compactMap({ Int($0) < list.offered.count ? list.offered[Int($0)] : nil })
                .first(where: { kinds.contains($0.kind) }) {
-            return (action.title, { app.act(action, on: item.row.id) })
+            return (action.title, { app.run(action, on: item.row.id) })
         }
-        if let details = view.details, let action = details.task.actions.first(where: { kinds.contains($0.kind) }) {
-            let key = view.focus ?? details.task.id
-            return (action.title, { app.run(action, on: key) })
+        if let details = view.details, let action = details.task.offered.first(where: { kinds.contains($0.kind) }) {
+            return (action.title, { app.act(action, on: .details) })
         }
         return nil
     }
@@ -260,13 +259,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// The day's own actions for the Day menu: the day shown's, else none until it is shown;
     /// their keys go to the day first (`DayMenu`).
-    var dayActions: [LumennaApp.Action] {
-        core.app.view.place == .today ? core.app.view.day?.actions ?? [] : []
+    var dayActions: [LumennaApp.Offered] {
+        core.app.view.place == .today ? core.app.view.day?.offered ?? [] : []
     }
 
     /// One of the day's actions, from the Day menu.
-    func performDay(_ action: LumennaApp.Action) {
-        core.app.send(.perform(action))
+    func performDay(_ action: LumennaApp.Offered) {
+        core.app.act(action, on: .day)
     }
 
     /// The day's action of `kind`, from its key with the menu closed: today first, from

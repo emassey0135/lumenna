@@ -121,7 +121,7 @@ private struct PlaceActions: View {
     var body: some View {
         if let entry {
             Section {
-                ForEach(entry.actions, id: \.self) { action in
+                ForEach(entry.offered, id: \.self) { action in
                     Button(action.title, role: action.destructive ? .destructive : nil) {
                         acted = true
                         core.app.run(action, on: entry.key, side: .sidebar)
@@ -134,7 +134,7 @@ private struct PlaceActions: View {
     }
 
     private var entry: LumennaApp.SidebarEntry? {
-        core.app.view.sidebar.first { $0.kind == .place(place) && !$0.actions.isEmpty }
+        core.app.view.sidebar.first { $0.kind == .place(place) && !$0.offered.isEmpty }
     }
 
     private var heading: String {

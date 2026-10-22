@@ -120,7 +120,7 @@ final class TaskListModel: ObservableObject {
     /// Runs one of a row's actions, the app's: the row in hand, then the action, whose question
     /// the window's `AppQuestions` asks.
     func run(_ action: LumennaApp.Offered, on row: LumennaApp.RowView) {
-        core.app.act(action, on: row.id)
+        core.app.run(action, on: row.id)
     }
 
     /// What can be done to the row listed as `row`, in short.

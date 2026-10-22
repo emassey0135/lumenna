@@ -114,19 +114,19 @@ final class TaskDetailModel: NSObject, ObservableObject {
     }
 
     /// Runs one of the task's actions, the app's: after Move to Trash the form leaves.
-    func run(_ action: LumennaApp.Action) {
+    func run(_ action: LumennaApp.Offered) {
         if action.kind == .delete { trashing = true }
-        core.app.send(.perform(action))
+        core.app.act(action, on: .details)
     }
 
     /// Mark Done or Mark Not Done, as a key asks.
     func toggleDone() {
-        if let action = task?.actions.first(where: { [.markDone, .markNotDone].contains($0.kind) }) { run(action) }
+        if let action = task?.offered.first(where: { [.markDone, .markNotDone].contains($0.kind) }) { run(action) }
     }
 
     /// Move to Trash, as a key asks.
     func trash() {
-        if let action = task?.actions.first(where: { $0.kind == .delete }) { run(action) }
+        if let action = task?.offered.first(where: { $0.kind == .delete }) { run(action) }
     }
 }
 
@@ -198,7 +198,7 @@ struct TaskDetailView: View {
                 Button("Save") { model.save() }
                 #endif
                 // What can be done to it, the core's, in its order.
-                ForEach(task.actions, id: \.self) { action in
+                ForEach(task.offered, id: \.self) { action in
                     if action.destructive {
                         WarningButton(Self.title(action)) { model.run(action) }
                     } else {
@@ -214,7 +214,7 @@ struct TaskDetailView: View {
     }
 
     /// An action's name on its button: on the Mac, one that asks something ends in "…".
-    private static func title(_ action: LumennaApp.Action) -> String {
+    private static func title(_ action: LumennaApp.Offered) -> String {
         #if os(macOS)
         action.asksFirst ? action.title + "…" : action.title
         #else

@@ -21,7 +21,7 @@ final class DevicesViewController: AppListViewController {
         let listed = (devices.list?.devices ?? []).enumerated().map { index, device in
             // How syncing with it is going, as the core words it for every app.
             let line = index < lines.count ? lines[index] : nil
-            return AppItem(key: device.nodeId, title: line?.title ?? device.name, detail: line.flatMap { $0.detail.isEmpty ? nil : $0.detail }, actions: device.actions)
+            return AppItem(key: device.nodeId, title: line?.title ?? device.name, detail: line.flatMap { $0.detail.isEmpty ? nil : $0.detail }, actions: device.offered)
         }
         // Sync Now as the first row: in the navigation bar beside Add it crowds the title
         // until it is clipped at large text sizes.

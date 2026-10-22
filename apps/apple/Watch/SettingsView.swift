@@ -53,7 +53,7 @@ struct DevicesView: View {
                 let title = line?.title ?? device.name
                 let detail = line?.detail ?? ""
                 Button {
-                    asker.offer(title, device.actions, on: device.nodeId, side: .devices)
+                    asker.offer(title, device.offered, on: device.nodeId, side: .devices)
                 } label: {
                     VStack(alignment: .leading) {
                         Text(title)

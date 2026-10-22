@@ -58,7 +58,7 @@ final class WatchAsker: ObservableObject {
     /// order, and whatever removes something last, never the first thing under a finger. Each
     /// runs on the row `key`, held where `side` says.
     func offer(
-        _ title: String, _ actions: [LumennaApp.Action], on key: String, side: LumennaApp.Side? = nil,
+        _ title: String, _ actions: [LumennaApp.Offered], on key: String, side: LumennaApp.Side? = nil,
         extra: [(String, () -> Void)] = []
     ) {
         let kept = actions.filter { !$0.destructive }

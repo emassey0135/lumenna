@@ -141,12 +141,12 @@ class AppListViewController: UIViewController {
     }
 
     /// Runs one of a row's actions, the app's: held where this list holds its rows, then run.
-    func perform(_ action: LumennaApp.Action, on item: AppItem) {
+    func perform(_ action: LumennaApp.Offered, on item: AppItem) {
         core.app.run(action, on: item.key, side: side)
     }
 
     /// The item's actions as the list offers them (`AppRowActions`), Expand or Collapse among them.
-    func rowActions(for item: AppItem) -> AppRowActions<LumennaApp.Action> {
+    func rowActions(for item: AppItem) -> AppRowActions<LumennaApp.Offered> {
         AppRowActions(actions: item.actions) { [weak self] action in self?.perform(action, on: item) }
     }
 
@@ -187,7 +187,7 @@ final class AppListState: ObservableObject {
 struct AppListScreen: View {
     @ObservedObject var state: AppListState
     let sidebar: Bool
-    let actions: (AppItem) -> AppRowActions<LumennaApp.Action>
+    let actions: (AppItem) -> AppRowActions<LumennaApp.Offered>
     let open: (AppItem) -> Void
     @AccessibilityFocusState private var spoken: String?
 

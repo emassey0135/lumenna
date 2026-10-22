@@ -99,7 +99,7 @@ final class PlacesViewController: AppListViewController {
     /// Adds one as the sidebar's heading over them does: its New action, the app's, so the add
     /// button asks what every app asks.
     override func add() {
-        guard let heading, let action = heading.actions.first(where: { $0.kind == .new }) else { return }
+        guard let heading, let action = heading.offered.first(where: { $0.kind == .new }) else { return }
         core.app.run(action, on: heading.key, side: .sidebar)
     }
 

@@ -33,7 +33,7 @@ struct DayScreen: View {
         .listStyle(.plain)
         .navigationTitle(model.title)
         .confirmationDialog(offering?.line?.text ?? "", isPresented: Binding(get: { offering != nil }, set: { if !$0 { offering = nil } }), presenting: offering) { row in
-            ForEach(row.item.actions, id: \.self) { action in
+            ForEach(row.item.offered, id: \.self) { action in
                 Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: row.item) }
             }
         }
@@ -103,7 +103,7 @@ struct DayScreen: View {
     private func rowView(_ row: DayModel.Row) -> some View {
         let item = row.item
         let split = DayScreen.actions(of: item) { _ in }
-        let folds = item.actions.filter { [.expand, .collapse].contains($0.kind) }
+        let folds = item.offered.filter { [.expand, .collapse].contains($0.kind) }
         let detail = row.line?.detail ?? ""
         return Button {
             tapped(row)
@@ -146,7 +146,7 @@ struct DayScreen: View {
             }
         }
         .contextMenu {
-            ForEach(item.actions, id: \.self) { action in
+            ForEach(item.offered, id: \.self) { action in
                 Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: item) }
             }
         }
@@ -172,8 +172,8 @@ struct DayScreen: View {
     /// A row's actions as the day offers them (`AppRowActions`): the primary ones and Expand or
     /// Collapse swiped from the trailing edge, the rest as accessibility actions, every one in
     /// the context menu.
-    static func actions(of item: LumennaApp.DayItem, run: @escaping (LumennaApp.Action) -> Void) -> AppRowActions<LumennaApp.Action> {
-        AppRowActions(actions: item.actions, run: run)
+    static func actions(of item: LumennaApp.DayItem, run: @escaping (LumennaApp.Offered) -> Void) -> AppRowActions<LumennaApp.Offered> {
+        AppRowActions(actions: item.offered, run: run)
     }
 
     private static func symbol(for item: LumennaApp.DayItem) -> (name: String, colour: Color)? {

@@ -26,7 +26,7 @@ final class DayModel: ObservableObject {
     /// "Today", "Tomorrow", or the date: what the screen is called.
     @Published private(set) var title = "Today"
     /// The day's own actions (`DayView.actions`): Plan the Day, Replan from Now, End the Day.
-    @Published private(set) var actions: [LumennaApp.Action] = []
+    @Published private(set) var actions: [LumennaApp.Offered] = []
     /// The row in hand, the app's.
     @Published private(set) var focus: String?
     /// The row the app moved focus to, each time it moves it: a new `count` is a new move.
@@ -76,7 +76,7 @@ final class DayModel: ObservableObject {
         if rows != self.rows { self.rows = rows }
         if heading != self.heading { self.heading = heading }
         if title != lines.dayTitle { title = lines.dayTitle }
-        if actions != day.actions { actions = day.actions }
+        if actions != day.offered { actions = day.offered }
         if date != day.date { date = day.date }
         if focus != view.focus { focus = view.focus }
         let moved = landing.map { view.landing > $0 } ?? false
@@ -98,21 +98,21 @@ final class DayModel: ObservableObject {
 
     /// Runs one of a row's actions, the app's: the row in hand, then the action, whose question
     /// and form the window asks and opens.
-    func run(_ action: LumennaApp.Action, on row: LumennaApp.DayItem) {
+    func run(_ action: LumennaApp.Offered, on row: LumennaApp.DayItem) {
         core.app.run(action, on: row.key)
     }
 
     /// The row's action of one of `kinds`; false if it has none.
     @discardableResult
     func run(_ kinds: [LumennaApp.ActionKind], on row: LumennaApp.DayItem) -> Bool {
-        guard let action = row.actions.first(where: { kinds.contains($0.kind) }) else { return false }
+        guard let action = row.offered.first(where: { kinds.contains($0.kind) }) else { return false }
         run(action, on: row)
         return true
     }
 
     /// One of the day's own actions.
-    func perform(_ action: LumennaApp.Action) {
-        core.app.send(.perform(action))
+    func perform(_ action: LumennaApp.Offered) {
+        core.app.act(action, on: .day)
     }
 
     /// Moves through the days: the app says the day newly shown, and puts now in hand for Now.

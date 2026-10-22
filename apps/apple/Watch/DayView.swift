@@ -93,7 +93,7 @@ struct DayView: View {
 
     /// A row's actions, offered when it is tapped: a sitting's Edit Task Details opens its task.
     private func offer(_ item: LumennaApp.DayItem, line: LumennaApp.Line?) {
-        asker.offer(line?.title ?? "", item.actions, on: item.key)
+        asker.offer(line?.title ?? "", item.offered, on: item.key)
     }
 
     static func date(_ iso: String) -> Date? {

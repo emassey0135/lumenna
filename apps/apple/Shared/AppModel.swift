@@ -192,23 +192,18 @@ extension LumennaApp.Offered: RowAction {
 }
 
 extension AppModel {
-    /// What running one of a row's actions sends: the row in hand, then the action. A row of a
-    /// list beside the main one (`side`: the places, a reminder list, the devices) is held
-    /// there instead, so the change lands back in that list.
-    func run(_ action: LumennaApp.Action, on key: String, side: LumennaApp.Side? = nil) {
-        if let side {
-            send(.hold(field0: side, field1: key))
-        } else {
-            send(.focus(key))
-        }
-        send(.perform(action))
+    /// Runs one of a row's actions, in short, on the row `key` names: a row of the place shown,
+    /// or of a list beside the main one (`side`: the places, a reminder list, the devices), so
+    /// the change lands back in that list. The app puts the row in hand and runs its action
+    /// whole as it has it now.
+    func run(_ action: LumennaApp.Offered, on key: String, side: LumennaApp.Side? = nil) {
+        act(action, on: side.map { .held(field0: $0, field1: key) } ?? .row(key))
     }
 
-    /// What running one of a list row's actions sends, in short: the row in hand, then the
-    /// action, which the app runs whole as it has it for that row.
-    func act(_ action: LumennaApp.Offered, on key: String) {
-        send(.focus(key))
-        send(.act(action))
+    /// Runs one of the actions offered on what `on` names: a row, the day, the details' task,
+    /// the reminder list.
+    func act(_ action: LumennaApp.Offered, on: LumennaApp.ActingOn) {
+        send(.actOn(field0: on, field1: action))
     }
 
     /// A key a row does not offer: the row in hand (or held in `side`), then the app runs the
@@ -282,7 +277,7 @@ struct AppItem: Hashable {
     var level: String?
     /// A heading over the items under it, as the sidebar's Projects and Labels are.
     var heading = false
-    var actions: [LumennaApp.Action] = []
+    var actions: [LumennaApp.Offered] = []
     /// Why it is offered, a line beneath and VoiceOver's hint, never its name.
     var reason: String?
     /// A project's, label's, saved filter's or colour's colour, drawn beside its name.
@@ -315,11 +310,11 @@ extension AppModel {
             }
             if folded.contains(entry.key) { hiddenBelow = entry.depth }
             let depth = group == nil ? entry.depth : entry.depth - 1
-            let expanded: Bool? = entry.actions.contains { $0.kind == .collapse } ? true
-                : entry.actions.contains { $0.kind == .expand } ? false : nil
+            let expanded: Bool? = entry.offered.contains { $0.kind == .collapse } ? true
+                : entry.offered.contains { $0.kind == .expand } ? false : nil
             let level = depth != previous ? "level \(depth + 1)" : nil
             previous = depth
-            var item = AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: depth, actions: entry.actions, swatch: entry.swatch)
+            var item = AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: depth, actions: entry.offered, swatch: entry.swatch)
             item.spoken = AppModel.spoken(detail: entry.detail, expanded: expanded, level: level)
             item.expanded = expanded
             item.level = level
