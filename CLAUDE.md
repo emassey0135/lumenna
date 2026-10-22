@@ -99,7 +99,12 @@ without the screens over BoltFFI. No JSON crosses the FFI.
   reminder list's own). The app puts the row in hand as `Focus` or `Hold` would, then runs that
   row's action whole as it has it now, or refuses one it no longer offers in `not_offered`'s
   words, and a row gone in `no_longer_here`'s. A `Form` one is opened by the shell for the row's
-  own record (its `id`). A list's rows decoded 3.6 times faster in BTSpeak's Python.
+  own record (its `id`). In a view no row carries its actions whole (`view::offer` takes them,
+  the app finding them again in `view::whole`), bar the reminder list's own Add Reminder, whose
+  question's words a shell draws as its field; `asking.action` is whole too. A shell can send
+  neither `Perform` nor `Act`: a whole action is the app's own (and its tests'), so nothing a
+  shell holds can run against a record as it was. A list's rows decoded 3.6 times faster in
+  BTSpeak's Python.
 - **What every client's forms share is here too**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, the block form's `block_fields`/`block_edit`/`new_block`,
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only
@@ -1497,8 +1502,8 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
 - **The details are the app's** (`view.details`): which task they show, the typing not yet
   saved (each field sent as `Details(Field)`, refilled from the app except where focus is) and
   what Save sends. Focus coming into them sends `Details(Show)`, so they keep their task while
-  the person works there. The Task menu runs the details' task's actions with `Perform` away
-  from a task list's row.
+  the person works there. The Task menu runs the details' task's actions with
+  `ActOn(Details, …)` away from a task list's row.
 - **The block form is a window the app opens and closes** (`view.block_form`): every field
   the core's form has for its purpose is made once, and shown or hidden as the app lists them
   (Until while it repeats); the kind's flags and a new block's start follow what the app

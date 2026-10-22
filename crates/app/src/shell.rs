@@ -11,7 +11,7 @@ use crate::{ActingOn, BlockEvent, Capitals, DayMove, DetailsEvent, DevicesEvent,
 use lumenna_records::places::Place;
 use lumenna_records::proposals::TimeStyle;
 use lumenna_records::Offered;
-use lumenna_records::{Action, ActionKind, Answer};
+use lumenna_records::{ActionKind, Answer};
 
 /// Something the person did, or the shell says of itself: as [`Event`], less what the app's
 /// own effects answer.
@@ -31,10 +31,6 @@ pub enum ShellEvent {
     Hold(Side, String),
     /// The filter typed above the list; empty for the place's own query again.
     Filter(String),
-    /// Run an action a row offered.
-    Perform(Action),
-    /// Run an action a list's row offered, in short (`ListView::offered`), on the row in hand.
-    Act(Offered),
     /// Run an action a row offered, in short as the view gave it, on the row it names.
     ActOn(ActingOn, Offered),
     /// Run the first of these kinds the row in hand offers.
@@ -102,8 +98,6 @@ impl From<ShellEvent> for Event {
             ShellEvent::Focus(key) => Event::Focus(key),
             ShellEvent::Hold(side, key) => Event::Hold(side, key),
             ShellEvent::Filter(text) => Event::Filter(text),
-            ShellEvent::Perform(action) => Event::Perform(action),
-            ShellEvent::Act(offered) => Event::Act(offered),
             ShellEvent::ActOn(on, offered) => Event::ActOn(on, offered),
             ShellEvent::Run(kinds) => Event::Run(kinds),
             ShellEvent::Answer(answer) => Event::Answer(answer),
@@ -141,8 +135,6 @@ impl TryFrom<Event> for ShellEvent {
             Event::Focus(key) => ShellEvent::Focus(key),
             Event::Hold(side, key) => ShellEvent::Hold(side, key),
             Event::Filter(text) => ShellEvent::Filter(text),
-            Event::Perform(action) => ShellEvent::Perform(action),
-            Event::Act(offered) => ShellEvent::Act(offered),
             Event::ActOn(on, offered) => ShellEvent::ActOn(on, offered),
             Event::Run(kinds) => ShellEvent::Run(kinds),
             Event::Answer(answer) => ShellEvent::Answer(answer),
@@ -173,7 +165,9 @@ impl TryFrom<Event> for ShellEvent {
             | Event::SyncStatus(_)
             | Event::Pairing(_)
             | Event::Arrived(_)
-            | Event::Answered(_) => return Err(event),
+            | Event::Answered(_)
+            // A whole action is the app's own to run; a shell names a row's in short.
+            | Event::Perform(_) => return Err(event),
         })
     }
 }

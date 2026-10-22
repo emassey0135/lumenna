@@ -170,12 +170,9 @@ pub enum Event {
     /// The filter typed above the list, in place of the place's own query; empty for the
     /// place's own again.
     Filter(String),
-    /// Run an action a row offered: from its menu, a button, a swipe.
+    /// Run an action whole: the app's own, and its tests'. A shell hands a row's back in short
+    /// with `ActOn`, never whole, so nothing it holds can run against a record as it was.
     Perform(Action),
-    /// Run an action a list's row offered, as the list gave it in short (`ListView::offered`),
-    /// on the row in hand (or held in a side list): its target and its question are the app's,
-    /// found again from that row's actions. One the row no longer offers says why.
-    Act(list::Offered),
     /// Run an action a row offered, in short as the view gave it, on the row it names: put in
     /// hand (as `Focus` or `Hold` would) and its action found again there, whole, as the app has
     /// it now. One the row no longer offers says why, and a row gone says so.
@@ -407,7 +404,7 @@ impl Lumenna {
             Event::Hold(side, _) | Event::ActOn(ActingOn::Held(side, _), _) => model.acting = Some(*side),
             Event::ActOn(ActingOn::Reminders, _) => model.acting = Some(Side::Reminders),
             Event::ActOn(ActingOn::Row(_), _) => {}
-            Event::Perform(_) | Event::Act(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) => {}
+            Event::Perform(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) => {}
             other if other.is_the_persons() => model.acting = None,
             _ => {}
         }
@@ -463,7 +460,6 @@ impl Lumenna {
             Event::Filter(text) => self.filter(text, model),
             Event::Perform(action) => self.perform(action, model),
             Event::Run(kinds) => self.run(kinds, model),
-            Event::Act(offered) => self.act(&offered, model),
             Event::ActOn(on, offered) => self.act_on(on, &offered, model),
             Event::Answer(answer) => self.answer(answer, model),
             Event::Cancel => {

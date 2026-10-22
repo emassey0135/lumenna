@@ -181,29 +181,39 @@ pub(crate) fn whole(model: &Screen) -> ViewModel {
 /// Every row's actions as the view offers them, in short (`Offered`): a shell hands one back
 /// with `Event::ActOn`, naming its row, and the app runs that row's action whole as it has it.
 /// A list's rows name theirs by place in the list (`ListView::offered`, made with the list).
+/// Every row's actions in short, and none carried whole: a shell hands one back with `ActOn`,
+/// and the app runs that row's own as it has it then (`whole`). The reminder list's own Add
+/// Reminder stays whole beside its short form, its question's words being the field a shell
+/// draws for it.
 fn offer(view: &mut ViewModel) {
-    let short = |actions: &[lumenna_records::Action]| actions.iter().map(Offered::of).collect::<Vec<_>>();
+    let short = |actions: &mut Vec<lumenna_records::Action>| std::mem::take(actions).iter().map(Offered::of).collect::<Vec<_>>();
     for entry in &mut view.sidebar {
-        entry.offered = short(&entry.actions);
+        entry.offered = short(&mut entry.actions);
     }
     if let Some(day) = &mut view.day {
-        day.offered = short(&day.actions);
+        day.offered = short(&mut day.actions);
         for item in &mut day.items {
-            item.offered = short(&item.actions);
+            item.offered = short(&mut item.actions);
+            if let Some(block) = &mut item.block {
+                block.actions.clear();
+            }
+            if let Some(sitting) = &mut item.sitting {
+                sitting.actions.clear();
+            }
         }
     }
     if let Some(details) = &mut view.details {
-        details.task.offered = short(&details.task.actions);
+        details.task.offered = short(&mut details.task.actions);
     }
     if let Some(reminders) = &mut view.reminders {
-        reminders.offered = short(&reminders.actions);
+        reminders.offered = reminders.actions.iter().map(Offered::of).collect();
         for reminder in &mut reminders.reminders {
-            reminder.offered = short(&reminder.actions);
+            reminder.offered = short(&mut reminder.actions);
         }
     }
     if let Some(list) = view.devices.as_mut().and_then(|devices| devices.list.as_mut()) {
         for device in &mut list.devices {
-            device.offered = short(&device.actions);
+            device.offered = short(&mut device.actions);
         }
     }
 }

@@ -422,18 +422,6 @@ impl Lumenna {
         }
     }
 
-    /// Runs the row in hand's action that `offered` names in short (a side list's row while the
-    /// person acts from it), whole: its target and question as the app has them now. A row that
-    /// no longer offers it is refused as a key it lacks would be.
-    pub(crate) fn act(&self, offered: &Offered, model: &mut Screen) -> Command<Effect, Event> {
-        let held = model.acting.and_then(|side| model.side_actions(side));
-        let actions = held.or_else(|| model.actions_in_hand()).unwrap_or_default();
-        match actions.iter().find(|action| offered.is(action)) {
-            Some(action) => self.perform(action.clone(), model),
-            None => refuse(offered.kind, &actions, model),
-        }
-    }
-
     /// Runs the action `offered` names in short on the row `on` names, which `turn` has put in
     /// hand: found again there, whole. A row gone since says so; one that no longer offers it is
     /// refused as a key it lacks would be.

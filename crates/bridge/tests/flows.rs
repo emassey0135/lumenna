@@ -252,15 +252,15 @@ fn an_action_handed_back_in_short_runs_on_the_row_in_hand_whole() {
     let list = app.view().list.unwrap();
     let row = &list.items[0];
     let short = |kind| row.actions.iter().map(|at| list.offered[*at as usize].clone()).find(|o| o.kind == kind).unwrap();
-    app.send(Event::Focus(row.row.id.clone()));
+    let on = || ActingOn::Row(row.row.id.clone());
 
-    app.send(Event::Act(short(ActionKind::MoveToProject)));
+    app.send(Event::ActOn(on(), short(ActionKind::MoveToProject)));
     let asking = app.view().asking.expect("its question is open");
     let Question::Pick { title, .. } = asking.question else { panic!("a pick: {:?}", asking.question) };
     assert!(title.contains("Buy milk"), "worded with the task's name, as the app has it: {title}");
     app.send(Event::Cancel);
 
-    app.send(Event::Act(short(ActionKind::MarkDone)));
+    app.send(Event::ActOn(on(), short(ActionKind::MarkDone)));
     assert!(app.titles().is_empty(), "done");
 }
 
@@ -272,7 +272,7 @@ fn an_action_the_row_in_hand_does_not_offer_handed_back_in_short_says_why() {
     let mut restore = list.offered[0].clone();
     restore.kind = ActionKind::Restore;
     restore.title = "Restore".to_owned();
-    let shell = app.send(Event::Act(restore));
+    let shell = app.send(Event::ActOn(ActingOn::Row(list.items[0].row.id.clone()), restore));
     assert_eq!(said(&shell), ["That does not apply here."]);
     assert_eq!(app.titles(), ["Buy milk"]);
 }
@@ -538,7 +538,7 @@ fn go_to_day_says_it_asks_for_a_day_and_which_a_calendar_opens_on() {
     assert_eq!(app.view().asking, None);
     // Any other question asks for no day.
     app.send(Event::Open(Place::Tasks));
-    app.send(Event::Perform(sidebar_action(&app, "Projects", ActionKind::New)));
+    app.send(sidebar_action(&app, "Projects", ActionKind::New));
     let asking = app.view().asking.expect("a new project's name");
     assert_eq!(asking.day, None);
 }
@@ -757,8 +757,7 @@ fn plan_the_day_proposes_each_task_checked_and_a_partial_apply_proposes_again() 
     app.add("Buy milk");
     app.send(Event::Open(Place::Today));
     app.send(Event::Day(DayMove::Next));
-    let plan_day = app.view().day.unwrap().actions.into_iter().find(|a| a.kind == ActionKind::PlanDay).expect("Plan the Day");
-    let shell = app.send(Event::Perform(plan_day));
+    let shell = app.send(day_action(&app, ActionKind::PlanDay));
     let proposal = app.view().proposal.expect("the screen is open");
     assert!(proposal.ready);
     assert_eq!(proposal.changes.len(), 2, "{proposal:?}");
@@ -794,32 +793,33 @@ fn a_sitting_moves_up_and_down_its_block_and_one_not_started_is_skipped_and_plan
     app.session.tick();
     app.send(Event::Open(Place::Today));
     app.send(Event::Day(DayMove::Next));
-    let sittings = |app: &App| -> Vec<lumenna_records::PlanAssignment> {
-        app.view().day.unwrap().items.into_iter().filter_map(|i| i.sitting).collect()
+    // Each sitting's row, its actions in short as the day offers them.
+    let sittings = |app: &App| -> Vec<lumenna_app::DayItem> {
+        app.view().day.unwrap().items.into_iter().filter(|i| i.sitting.is_some()).collect()
     };
-    let kinds = |s: &lumenna_records::PlanAssignment| s.actions.iter().map(|a| a.kind).collect::<Vec<_>>();
+    let title = |item: &lumenna_app::DayItem| item.sitting.as_ref().unwrap().title.clone();
+    let status = |item: &lumenna_app::DayItem| item.sitting.as_ref().unwrap().status.clone();
+    let kinds = |item: &lumenna_app::DayItem| item.offered.iter().map(|a| a.kind).collect::<Vec<_>>();
+    let act = |item: &lumenna_app::DayItem, kind| Event::ActOn(ActingOn::Row(item.key.clone()), short(&item.offered, kind));
     let [first, second] = <[_; 2]>::try_from(sittings(&app)).unwrap();
-    assert_eq!((first.title.as_str(), second.title.as_str()), ("Write report", "Buy milk"));
+    assert_eq!((title(&first).as_str(), title(&second).as_str()), ("Write report", "Buy milk"));
     assert!(kinds(&first).contains(&ActionKind::MoveDown) && !kinds(&first).contains(&ActionKind::MoveUp));
     assert!(kinds(&second).contains(&ActionKind::MoveUp) && !kinds(&second).contains(&ActionKind::MoveDown));
 
-    let up = second.actions.iter().find(|a| a.kind == ActionKind::MoveUp).unwrap().clone();
-    let shell = app.send(Event::Perform(up));
+    let shell = app.send(act(&second, ActionKind::MoveUp));
     assert!(said(&shell).contains(&"Moved Buy milk up"), "{shell:?}");
-    let titles: Vec<_> = sittings(&app).into_iter().map(|s| s.title).collect();
+    let titles: Vec<_> = sittings(&app).iter().map(title).collect();
     assert_eq!(titles, ["Buy milk", "Write report"]);
 
     let milk = sittings(&app).remove(0);
-    let skip = milk.actions.iter().find(|a| a.kind == ActionKind::Skip).expect("Skip, not yet started").clone();
-    let shell = app.send(Event::Perform(skip));
+    let shell = app.send(act(&milk, ActionKind::Skip));
     assert!(said(&shell).contains(&"Skipped Buy milk"), "{shell:?}");
     let milk = sittings(&app).remove(0);
-    assert_eq!(milk.status, "skipped");
+    assert_eq!(status(&milk), "skipped");
     assert!(!kinds(&milk).contains(&ActionKind::Skip));
-    let again = milk.actions.iter().find(|a| a.kind == ActionKind::Unskip).expect("Plan Again").clone();
-    assert_eq!(again.title, "Plan Again");
-    app.send(Event::Perform(again));
-    assert_eq!(sittings(&app).remove(0).status, "planned");
+    assert_eq!(short(&milk.offered, ActionKind::Unskip).title, "Plan Again");
+    app.send(act(&milk, ActionKind::Unskip));
+    assert_eq!(status(&sittings(&app).remove(0)), "planned");
 }
 
 #[test]
@@ -831,8 +831,7 @@ fn history_lists_what_was_done_newest_first_and_its_rows_are_tasks_with_details(
     let tasks = app.view().list.unwrap();
     let milk = tasks.items.iter().find(|i| i.row.title == "Buy milk").unwrap();
     let done = milk.actions.iter().map(|at| tasks.offered[*at as usize].clone()).find(|o| o.kind == ActionKind::MarkDone).unwrap();
-    app.send(Event::Focus(milk.row.id.clone()));
-    app.send(Event::Act(done));
+    app.send(Event::ActOn(ActingOn::Row(milk.row.id.clone()), done));
     app.send(Event::Open(Place::History));
     let view = app.view();
     let list = view.list.unwrap();
@@ -854,13 +853,12 @@ fn history_lists_what_was_done_newest_first_and_its_rows_are_tasks_with_details(
 #[test]
 fn a_saved_filters_query_is_asked_in_the_filter_language_and_its_name_is_not() {
     let mut app = App::new();
-    app.send(Event::Perform(sidebar_action(&app, "Saved Filters", ActionKind::New)));
+    app.send(sidebar_action(&app, "Saved Filters", ActionKind::New));
     assert_eq!(app.view().asking.unwrap().syntax, None, "its name first");
     app.send(Event::Answer(Answer::Text { text: "Urgent".to_owned() }));
     assert_eq!(app.view().asking.unwrap().syntax, Some(lumenna_records::Syntax::Filter), "then its query");
     app.send(Event::Answer(Answer::Text { text: "p1".to_owned() }));
-    let change = sidebar_action(&app, "Urgent", ActionKind::ChangeQuery);
-    app.send(Event::Perform(change));
+    app.send(sidebar_action(&app, "Urgent", ActionKind::ChangeQuery));
     assert_eq!(app.view().asking.unwrap().syntax, Some(lumenna_records::Syntax::Filter));
     let task_filter = lumenna_records::block_form().into_iter().find(|f| f.key == "task_filter").unwrap();
     assert_eq!(task_filter.syntax, Some(lumenna_records::Syntax::Filter), "a block's Tasks from");
@@ -873,20 +871,22 @@ fn closing_a_proposal_makes_nothing() {
     app.add("Write report");
     app.send(Event::Open(Place::Today));
     app.send(Event::Day(DayMove::Next));
-    let plan_day = app.view().day.unwrap().actions.into_iter().find(|a| a.kind == ActionKind::PlanDay).unwrap();
-    app.send(Event::Perform(plan_day));
+    app.send(day_action(&app, ActionKind::PlanDay));
     app.send(Event::Proposal(ProposalEvent::Close));
     assert!(app.view().proposal.is_none());
     assert!(app.view().day.unwrap().items.iter().all(|i| i.sitting.is_none()));
 }
 
-fn sidebar_action(app: &App, place: &str, kind: ActionKind) -> lumenna_records::Action {
-    app.view()
-        .sidebar
-        .into_iter()
-        .find(|e| e.text.starts_with(place))
-        .and_then(|e| e.actions.into_iter().find(|a| a.kind == kind))
-        .expect("the place's action")
+/// The sidebar row `place`'s action of `kind`, handed back in short on that row, as a shell does.
+fn sidebar_action(app: &App, place: &str, kind: ActionKind) -> Event {
+    let entry = app.view().sidebar.into_iter().find(|e| e.text.starts_with(place)).expect("the place");
+    let action = entry.offered.into_iter().find(|a| a.kind == kind).expect("the place's action");
+    Event::ActOn(ActingOn::Held(lumenna_app::Side::Sidebar, entry.key), action)
+}
+
+/// The day shown's own action of `kind`, handed back in short.
+fn day_action(app: &App, kind: ActionKind) -> Event {
+    Event::ActOn(ActingOn::Day, short(&app.view().day.unwrap().offered, kind))
 }
 
 #[test]
@@ -894,10 +894,10 @@ fn renaming_a_project_goes_to_it_and_deleting_it_goes_to_tasks() {
     let mut app = App::new();
     Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Work", None).unwrap();
     app.session.tick();
-    app.send(Event::Perform(sidebar_action(&app, "Work", ActionKind::Rename)));
+    app.send(sidebar_action(&app, "Work", ActionKind::Rename));
     app.send(Event::Answer(Answer::Text { text: "Office".to_owned() }));
     assert_eq!(app.view().place, Some(Place::Project("Office".to_owned())));
-    app.send(Event::Perform(sidebar_action(&app, "Office", ActionKind::Delete)));
+    app.send(sidebar_action(&app, "Office", ActionKind::Delete));
     app.send(Event::Answer(Answer::Picked { id: "keep".to_owned(), length: None }));
     assert_eq!(app.view().place, Some(Place::Tasks));
 }
@@ -914,7 +914,7 @@ fn a_change_made_from_the_sidebar_lands_there_on_the_row_now_in_its_place_not_in
     let at = keys.iter().position(|k| *k == garden.key).unwrap();
     app.send(Event::Hold(lumenna_app::Side::Sidebar, garden.key.clone()));
     let (main, side) = (app.view().landing, app.view().sidebar_held.landing);
-    app.send(Event::Perform(sidebar_action(&app, "Garden", ActionKind::Delete)));
+    app.send(sidebar_action(&app, "Garden", ActionKind::Delete));
     app.send(Event::Answer(Answer::Picked { id: "keep".to_owned(), length: None }));
     let view = app.view();
     assert!(view.sidebar.iter().all(|e| e.title != "Garden"));
@@ -941,7 +941,7 @@ fn a_shell_that_writes_sentence_case_gets_its_headings_buttons_and_answers_in_it
     // The question a delete asks, in the core's capitals and then the shell's: the same answers,
     // each in sentence case, and nothing the core marks as a name changed.
     app.send(Event::Capitals(lumenna_app::Capitals::Title));
-    app.send(Event::Perform(sidebar_action(&app, "Work", ActionKind::Delete)));
+    app.send(sidebar_action(&app, "Work", ActionKind::Delete));
     let Some(Question::Choose { answers: titled, .. }) = app.view().asking.map(|a| a.question) else { panic!("a choice of answers") };
     app.send(Event::Capitals(lumenna_app::Capitals::Sentence));
     let Some(Question::Choose { answers, .. }) = app.view().asking.map(|a| a.question) else { panic!("a choice of answers") };
@@ -957,10 +957,12 @@ fn a_new_saved_filter_asks_its_name_then_its_query_and_goes_to_it() {
         .view()
         .sidebar
         .into_iter()
-        .flat_map(|e| e.actions)
-        .find(|a| a.kind == ActionKind::New && a.subject == lumenna_records::Subject::Filter)
+        .find_map(|e| {
+            let key = e.key.clone();
+            e.offered.into_iter().find(|a| a.kind == ActionKind::New && a.subject == lumenna_records::Subject::Filter).map(|a| (key, a))
+        })
         .unwrap();
-    app.send(Event::Perform(new));
+    app.send(Event::ActOn(ActingOn::Held(lumenna_app::Side::Sidebar, new.0), new.1));
     let lumenna_records::Question::Text { label, .. } = app.view().asking.unwrap().question else { panic!() };
     assert_eq!(label, "Name");
     app.send(Event::Answer(Answer::Text { text: "Urgent".to_owned() }));
@@ -979,8 +981,7 @@ fn a_blocks_reminders_list_keeps_a_phrase_it_cannot_read_in_its_question() {
     app.send(Event::Run(vec![ActionKind::Reminders]));
     let list = app.view().reminders.expect("the list is open");
     assert_eq!(list.announcement, "1 reminder, the defaults");
-    let add = list.actions[0].clone();
-    app.send(Event::Perform(add));
+    app.send(Event::ActOn(ActingOn::Reminders, list.offered[0].clone()));
     app.send(Event::Answer(Answer::Text { text: "when it feels right".to_owned() }));
     assert!(app.view().asking.unwrap().refusal.unwrap().contains("is not a reminder"));
     app.send(Event::Answer(Answer::Text { text: "10m after end".to_owned() }));
@@ -1105,12 +1106,10 @@ fn a_reminder_due_is_listed_once_said_shown_and_dismissed() {
 #[test]
 fn a_sidebar_heading_folds_through_its_own_collapse_and_says_so() {
     let mut app = App::new();
-    let collapse = sidebar_action(&app, "Projects", ActionKind::Collapse);
-    let shell = app.send(Event::Perform(collapse));
+    let shell = app.send(sidebar_action(&app, "Projects", ActionKind::Collapse));
     assert_eq!(said(&shell), ["Collapsed"]);
     assert_eq!(app.view().sidebar_folded, ["group:Projects"]);
-    let expand = sidebar_action(&app, "Projects", ActionKind::Expand);
-    app.send(Event::Perform(expand));
+    app.send(sidebar_action(&app, "Projects", ActionKind::Expand));
     assert!(app.view().sidebar_folded.is_empty());
 }
 
@@ -1516,4 +1515,30 @@ fn an_action_on_the_reminder_list_runs_its_own() {
     app.send(Event::ActOn(ActingOn::Reminders, list.offered[0].clone()));
     app.send(Event::Answer(Answer::Text { text: "10m after end".to_owned() }));
     assert_eq!(app.view().reminders.unwrap().announcement, "1 reminder");
+}
+
+#[test]
+fn no_row_in_a_view_carries_its_actions_whole_only_in_short() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.add("Write the report");
+    let task = app.id_of("Write the report");
+    app.send(Event::Details(DetailsEvent::Show(task)));
+    let view = app.view();
+    assert!(view.sidebar.iter().all(|e| e.actions.is_empty()) && view.sidebar.iter().any(|e| !e.offered.is_empty()));
+    let details = view.details.unwrap().task;
+    assert!(details.actions.is_empty() && !details.offered.is_empty());
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    let day = app.view().day.unwrap();
+    assert!(day.actions.is_empty() && !day.offered.is_empty(), "the day's own");
+    for item in &day.items {
+        assert!(item.actions.is_empty(), "{item:?}");
+        assert!(item.block.as_ref().is_none_or(|b| b.actions.is_empty()) && item.sitting.as_ref().is_none_or(|s| s.actions.is_empty()));
+    }
+    let block = day.items.iter().find(|i| i.key.starts_with("block:")).unwrap();
+    app.send(Event::ActOn(ActingOn::Row(block.key.clone()), short(&block.offered, ActionKind::Reminders)));
+    let reminders = app.view().reminders.expect("the list is open");
+    assert!(reminders.reminders.iter().all(|r| r.actions.is_empty()));
+    assert_eq!(reminders.actions.len(), reminders.offered.len(), "Add Reminder, whole for its question's words, and in short");
 }
