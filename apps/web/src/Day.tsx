@@ -16,7 +16,7 @@ import { Button, Collection, Toolbar, Tree, TreeItem, TreeItemContent } from "re
 import type { Key, Selection } from "react-aria-components";
 import type { Screen, ShellEvent, ShownDayItem } from "./core";
 import { ActionKind, DayKind, DayMove } from "./core";
-import { byKind, REMOVING } from "./actions";
+import { actOn, byKind, rowShown, REMOVING } from "./actions";
 import { useCommand } from "./commands";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
@@ -95,8 +95,8 @@ export function Day(props: { screen: Screen }) {
   // Left and Right fold a block: its own Expand or Collapse, run through the app.
   const fold = (open: Set<Key>) => {
     const changed = items.find((item) => item.expanded != null && item.expanded !== open.has(item.key));
-    const action = changed && byKind(changed.actions, ActionKind.Expand, ActionKind.Collapse);
-    if (action) act({ tag: "Perform", value0: action });
+    const action = changed && byKind(changed.offered, ActionKind.Expand, ActionKind.Collapse);
+    if (action) act(actOn(rowShown(changed.key), action));
   };
 
   return (
@@ -116,12 +116,12 @@ export function Day(props: { screen: Screen }) {
         {/* The day's own actions, wherever focus is: its summary row offers them too. */}
         <RowMenu
           label="Day actions"
-          actions={day?.actions ?? []}
-          onAction={(action) => act({ tag: "Perform", value0: action })}
+          actions={day?.offered ?? []}
+          onAction={(action) => act(actOn({ tag: "Day" }, action))}
           isOpen={dayMenu}
           onOpenChange={setDayMenu}
         />
-        <RowMenu actions={inHand?.actions ?? []} onAction={(action) => act({ tag: "Perform", value0: action })} isOpen={menu} onOpenChange={setMenu} />
+        <RowMenu actions={inHand?.offered ?? []} onAction={(action) => inHand && act(actOn(rowShown(inHand.key), action))} isOpen={menu} onOpenChange={setMenu} />
       </Toolbar>
       {/* Space and Delete are caught on the way down, before the tree takes Space for selection. */}
       <div onKeyDownCapture={keysDown} onContextMenu={rightClick}>

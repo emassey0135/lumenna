@@ -9,9 +9,9 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { Button, Input, Label, ListBox, ListBoxItem, Text, TextField } from "react-aria-components";
 import type { Selection } from "react-aria-components";
-import type { Action, PairEvent, PairingView, PairingWords, Screen } from "./core";
+import type { PairEvent, PairingView, PairingWords, Screen, ShortAction } from "./core";
 import { ActionKind, Side } from "./core";
-import { byKind } from "./actions";
+import { actOn, byKind, rowHeld } from "./actions";
 import { ChooseDialog } from "./Questions";
 import { say } from "./say";
 import { send } from "./session";
@@ -65,13 +65,13 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
 
   const syncNow = () => void send({ tag: "Devices", value0: { tag: "SyncNow" } });
 
-  const run = async (action: Action) => {
-    await send({ tag: "Perform", value0: action });
+  const run = async (action: ShortAction) => {
+    if (chosen) await send(actOn(rowHeld(Side.Devices, chosen.nodeId), action));
   };
 
   const keys = (event: KeyboardEvent) => {
     // Delete unpairs, as it removes in every other list.
-    const action = event.key === "Delete" ? byKind(chosen?.actions, ActionKind.Unpair) : undefined;
+    const action = event.key === "Delete" ? byKind(chosen?.offered, ActionKind.Unpair) : undefined;
     if (action) {
       event.preventDefault();
       void run(action);
@@ -111,7 +111,7 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
             <Button isDisabled={!words} onPress={() => void send({ tag: "Devices", value0: { tag: "Pair", value0: { tag: "Open", value0: browserName() } } })}>
               {words?.title ?? "Pair a device"}
             </Button>
-            {chosen?.actions?.map((action) => (
+            {chosen?.offered?.map((action) => (
               <Button
                 key={action.kind}
                 className={action.destructive ? "react-aria-Button destructive" : "react-aria-Button"}

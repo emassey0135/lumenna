@@ -15,7 +15,7 @@ import type { Key, Selection } from "react-aria-components";
 import type { Screen, ShellEvent, ShortAction, ShownItem } from "./core";
 import { ActionKind, Syntax } from "./core";
 import { CompletingField } from "./Completing";
-import { byKind, REMOVING, shortActions } from "./actions";
+import { actOn, byKind, rowShown, REMOVING, shortActions } from "./actions";
 import { useCommand } from "./commands";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { rowKey } from "./landing";
@@ -109,7 +109,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   const fold = (keys: Set<Key>) => {
     const changed = items.find((item) => item.row.expanded != null && item.row.expanded !== keys.has(item.row.id));
     const action = changed && byKind(shortActions(list, changed), ActionKind.Expand, ActionKind.Collapse);
-    if (action) act({ tag: "Act", value0: action });
+    if (action) act(actOn(rowShown(changed.row.id), action));
   };
 
   return (
@@ -141,7 +141,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
       <div className="buttons">
         <RowMenu
           actions={shortActions(list, inHand)}
-          onAction={(action: ShortAction) => act({ tag: "Act", value0: action })}
+          onAction={(action: ShortAction) => inHand && act(actOn(rowShown(inHand.row.id), action))}
           isOpen={menu}
           onOpenChange={setMenu}
         />

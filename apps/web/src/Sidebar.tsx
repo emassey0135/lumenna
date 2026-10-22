@@ -9,9 +9,9 @@ import { useMemo, useRef, useState } from "react";
 import type { FocusEvent, KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import type { Action, SidebarEntry, Place } from "./core";
+import type { ShortAction, SidebarEntry, Place } from "./core";
 import { ActionKind, Side } from "./core";
-import { byKind } from "./actions";
+import { actOn, byKind, rowHeld } from "./actions";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
@@ -49,17 +49,17 @@ export function Sidebar(props: {
   const nodes = useMemo(() => nest(entries, key, (entry) => entry.depth), [entries]);
   // What is folded is the app's: a row is open while it offers Collapse.
   const shown = useMemo(
-    () => new Set<Key>(entries.filter((e) => e.actions?.some((a) => a.kind === ActionKind.Collapse)).map(key)),
+    () => new Set<Key>(entries.filter((e) => e.offered?.some((a) => a.kind === ActionKind.Collapse)).map(key)),
     [entries],
   );
   // Left and Right fold a row: its own Expand or Collapse, run through the app.
   const fold = (open: Set<Key>) => {
     const changed = entries.find((e) => {
-      const action = byKind(e.actions, ActionKind.Expand, ActionKind.Collapse);
+      const action = byKind(e.offered, ActionKind.Expand, ActionKind.Collapse);
       return action && (action.kind === ActionKind.Collapse) !== open.has(key(e));
     });
-    const action = changed && byKind(changed.actions, ActionKind.Expand, ActionKind.Collapse);
-    if (action) void send({ tag: "Perform", value0: action });
+    const action = changed && byKind(changed.offered, ActionKind.Expand, ActionKind.Collapse);
+    if (action) void send(actOn(rowHeld(Side.Sidebar, key(changed)), action));
   };
   const entry = (k: string | undefined) => entries.find((e) => key(e) === k);
 
@@ -71,8 +71,8 @@ export function Sidebar(props: {
   };
 
   /** Runs one of a row's actions through the app, which goes where it leads, and says what it did. */
-  const run = async (_at: SidebarEntry, action: Action) => {
-    await send({ tag: "Perform", value0: action });
+  const run = async (at: SidebarEntry, action: ShortAction) => {
+    await send(actOn(rowHeld(Side.Sidebar, key(at)), action));
   };
 
   const keys = (event: KeyboardEvent) => {
@@ -84,7 +84,7 @@ export function Sidebar(props: {
       setMenu(true);
     } else if (event.key === "Delete") {
       // Delete here does what it does in every other list, asking first as the menu's does.
-      const action = byKind(at.actions, ActionKind.Delete);
+      const action = byKind(at.offered, ActionKind.Delete);
       if (!action) return;
       event.preventDefault();
       event.stopPropagation();
@@ -148,7 +148,7 @@ export function Sidebar(props: {
       </div>
       <div className="buttons">
         <RowMenu
-          actions={entry(held)?.actions ?? []}
+          actions={entry(held)?.offered ?? []}
           onAction={(action) => {
             const at = entry(held);
             if (at) void run(at, action);

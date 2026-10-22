@@ -14,7 +14,8 @@
 import { useEffect, useRef } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { send } from "./session";
-import type { Action, Due, DueEvent, ShownReminders } from "./core";
+import type { ActingOn, Due, DueEvent, ShortAction, ShownReminders } from "./core";
+import { actOn, rowHeld } from "./actions";
 import { ActionKind, Side } from "./core";
 
 const ON = "lumenna:reminders";
@@ -152,8 +153,8 @@ function Reminders(props: { list: ShownReminders; close: () => void }) {
 
   // Where focus goes after a reminder is removed is the app's (`reminders_held`): the one now
   // in its place, else Add Reminder.
-  const act = async (action: Action) => {
-    await send({ tag: "Perform", value0: action });
+  const act = async (on: ActingOn, action: ShortAction) => {
+    await send(actOn(on, action));
     if (action.kind === ActionKind.New) void askToNotify();
   };
 
@@ -168,8 +169,8 @@ function Reminders(props: { list: ShownReminders; close: () => void }) {
           {list.reminders.map((reminder) => (
             <li key={reminder.id} data-key={reminder.id} onFocus={() => void send({ tag: "Hold", value0: Side.Reminders, value1: reminder.id })}>
               <span id={`reminder-${reminder.id}`}>{reminder.text}</span>
-              {(reminder.actions ?? []).map((action) => (
-                <Button key={action.kind} aria-describedby={`reminder-${reminder.id}`} onPress={() => void act(action)}>
+              {(reminder.offered ?? []).map((action) => (
+                <Button key={action.kind} aria-describedby={`reminder-${reminder.id}`} onPress={() => void act(rowHeld(Side.Reminders, reminder.id), action)}>
                   {action.sentence ?? action.title}
                 </Button>
               ))}
@@ -178,8 +179,8 @@ function Reminders(props: { list: ShownReminders; close: () => void }) {
         </ul>
       )}
       <div className="buttons" ref={adding} data-adding>
-        {(list.actions ?? []).map((action) => (
-          <Button key={action.kind} onPress={() => void act(action)}>
+        {(list.offered ?? []).map((action) => (
+          <Button key={action.kind} onPress={() => void act({ tag: "Reminders" }, action)}>
             {action.sentence ?? action.title}
           </Button>
         ))}

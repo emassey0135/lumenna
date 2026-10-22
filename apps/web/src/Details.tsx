@@ -20,7 +20,7 @@ import {
   TextArea,
   TextField,
 } from "react-aria-components";
-import { byKind } from "./actions";
+import { actOn, byKind } from "./actions";
 import { useCommand } from "./commands";
 import type { FormField, Screen, ShellEvent, TaskFields } from "./core";
 import { ActionKind, FieldKind } from "./core";
@@ -56,9 +56,9 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
   // The Task menu's commands on the task shown, wherever it was chosen: a list's own come
   // first (TaskList), so focus lands as its row's action does.
   const onTask = (...kinds: ActionKind[]) => () => {
-    const action = details && byKind(details.task.actions, ...kinds);
+    const action = details && byKind(details.task.offered, ...kinds);
     if (!action) return false;
-    void act({ tag: "Perform", value0: action });
+    void act(actOn({ tag: "Details" }, action));
   };
   useCommand("mark-done", onTask(ActionKind.MarkDone, ActionKind.MarkNotDone));
   useCommand("put-in-block", onTask(ActionKind.PutInBlock));
@@ -200,11 +200,11 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
       </TextField>
       <div className="buttons">
         <Button type="submit">Save</Button>
-        {(task.actions ?? []).map((action) => (
+        {(task.offered ?? []).map((action) => (
           <Button
             key={`${action.kind}:${action.other ?? ""}`}
             className={action.destructive ? "react-aria-Button destructive" : "react-aria-Button"}
-            onPress={() => void act({ tag: "Perform", value0: action })}
+            onPress={() => void act(actOn({ tag: "Details" }, action))}
           >
             {action.sentence ?? action.title}
           </Button>

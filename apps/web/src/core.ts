@@ -10,6 +10,7 @@ export const core: Comlink.Remote<Api> = Comlink.wrap<Api>(worker);
 export type { Offered, Said, Screen, Shown, ShownDay, ShownDayItem, ShownDetails, ShownAsking, ShownChoice, ShownDevice, ShownItem, ShownLine, ShownReminders } from "./worker";
 export type {
   Action,
+  ActingOn,
   // A list row's action in short (`ListView::offered`); the worker's own `Offered` is a completion.
   Offered as ShortAction,
   Swatch,

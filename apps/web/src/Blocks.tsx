@@ -7,7 +7,7 @@ import { Button, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import type { Screen, ShellEvent } from "./core";
 import { ActionKind } from "./core";
-import { REMOVING, shortActions } from "./actions";
+import { actOn, rowShown, REMOVING, shortActions } from "./actions";
 import { useCommand } from "./commands";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
@@ -70,7 +70,7 @@ export function Blocks(props: { screen: Screen }) {
       </p>
       <div className="buttons">
         <Button onPress={add}>Add block</Button>
-        <RowMenu actions={shortActions(list, inHand)} onAction={(action) => act({ tag: "Act", value0: action })} isOpen={menu} onOpenChange={setMenu} />
+        <RowMenu actions={shortActions(list, inHand)} onAction={(action) => inHand && act(actOn(rowShown(inHand.row.id), action))} isOpen={menu} onOpenChange={setMenu} />
       </div>
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>
         <Tree
