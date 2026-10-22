@@ -91,6 +91,7 @@ class SidebarTest(unittest.TestCase):
         # Down offers what fits at the cursor, as in the list's filter, and puts it in.
         self.session.press("Down", wait=1)
         self.assertEqual(self.session.focus(), "[menu item] ''")
+        self.assertEqual(self.session.menu_item(), "Work, project")
         self.session.press("Return", wait=1)
         self.assertEqual(self.session.focus(), "[text] 'Query'")
         self.session.press("Return", wait=1)
@@ -100,7 +101,7 @@ class SidebarTest(unittest.TestCase):
         self.go_to("calls")
         self.session.press("Menu")
         for _ in range(12):
-            if "Colour" in self.session.focus():
+            if self.session.menu_item().startswith("Colour"):
                 break
             self.session.press("Down", wait=0.2)
         self.session.press("Return")

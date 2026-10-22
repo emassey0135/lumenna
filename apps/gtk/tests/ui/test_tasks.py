@@ -196,6 +196,7 @@ class TaskListTest(unittest.TestCase):
         self.session.type("#")
         self.session.press("Down")
         self.assertEqual(self.session.focus(), "[menu item] ''")
+        self.assertEqual(self.session.menu_item(), "Inbox, project")
         self.session.press("Down", "Return")
         self.assertEqual(self.session.focus(), "[text] 'Filter'")
         self.assertEqual(Atspi.Text.get_text(self.session.focused(), 0, -1), "#Work")

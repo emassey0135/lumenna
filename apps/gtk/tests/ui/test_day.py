@@ -154,6 +154,7 @@ class DayTest(unittest.TestCase):
         # Down offers what fits at the cursor, as in the list's filter, and puts it in.
         self.session.press("Down", wait=1)
         self.assertEqual(self.session.focus(), "[menu item] ''")
+        self.assertEqual(self.session.menu_item(), "Work, project")
         self.session.press("Return", wait=1)
         self.assertEqual(self.session.focus(), "[text] 'Tasks from'")
         self.assertEqual(Atspi.Text.get_text(self.session.find("text", "Tasks from"), 0, -1), "#Work")

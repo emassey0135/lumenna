@@ -346,6 +346,17 @@ class Session:
         """What has focus, described."""
         return describe(self.focused())
 
+    def menu_item(self):
+        """The words of the popover menu item with focus: it has no name of its own, and Orca
+        reads the label it is labelled by."""
+        item = self.focused()
+        for relation in (item.get_relation_set() or []) if item else []:
+            if relation.get_relation_type() == Atspi.RelationType.LABELLED_BY:
+                label = relation.get_target(0)
+                if label and "Text" in label.get_interfaces():
+                    return Atspi.Text.get_text(label, 0, -1)
+        return ""
+
     def find(self, role, name=None):
         """The first accessible with this role, and name if given, anywhere in the app."""
         return _find(self.app, lambda a: a.get_role_name() == role and (name is None or a.get_name() == name))

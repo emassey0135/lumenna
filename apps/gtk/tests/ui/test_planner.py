@@ -8,16 +8,6 @@ import unittest
 from harness import Atspi, Notifications, Session, pump
 
 
-def menu_item_text(item):
-    """A popover menu item's words: the text of the label it is labelled by."""
-    for relation in item.get_relation_set() or []:
-        if relation.get_relation_type() == Atspi.RelationType.LABELLED_BY:
-            label = relation.get_target(0)
-            if label and "Text" in label.get_interfaces():
-                return Atspi.Text.get_text(label, 0, -1)
-    return ""
-
-
 class DayActions:
     """Runs one of the day's own actions from its heading row's menu, found by where the
     core's order puts it: the menu's items read as nameless to AT-SPI here."""
@@ -30,7 +20,7 @@ class DayActions:
         title = next(a["title"] for a in actions if a["kind"] == kind)
         self.session.press("Home", "Shift+F10")
         for _ in range(12):
-            if menu_item_text(self.session.focused()).startswith(title):
+            if self.session.menu_item().startswith(title):
                 break
             self.session.press("Down", wait=0.2)
         else:
