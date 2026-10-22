@@ -290,7 +290,13 @@ jobs:
             device=$(xcrun simctl create "CI Watch" "$type" "$runtime")
           fi
           echo "WATCH=$device" >> "$GITHUB_ENV"
-          xcrun simctl boot "$device" || true
+          # A runner can list a runtime it does not have ("simulator runtime is not available"):
+          # then the boot fails, and downloading watchOS once more is what makes it bootable.
+          if ! xcrun simctl boot "$device" 2>boot.log && ! grep -q "current state: Booted" boot.log; then
+            cat boot.log
+            xcodebuild -downloadPlatform watchOS
+            xcrun simctl boot "$device" || true
+          fi
           xcrun simctl bootstatus "$device" -b
       - name: Build
         working-directory: apps/apple
