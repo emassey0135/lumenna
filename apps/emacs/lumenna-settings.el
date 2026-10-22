@@ -129,7 +129,7 @@ core reads and checks it, asking again with why when it refuses."
                             (plist-get (plist-get devices :pairing) :problem))
           (cl-mapcar (lambda (device line)
                        (list :key (plist-get device :node_id) :text (plist-get line :text)
-                             :device device :actions (plist-get device :actions)))
+                             :device device :actions (plist-get device :offered)))
                      shown lines))))
 
 ;;;###autoload

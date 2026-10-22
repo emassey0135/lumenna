@@ -118,7 +118,7 @@ The other keys are the task's own actions, wherever point is.
 
 \\{lumenna-task-mode-map}"
   (setq-local lumenna--draw #'lumenna--task-rows)
-  (setq-local lumenna--actions-function (lambda () (plist-get (lumenna--details-task) :actions)))
+  (setq-local lumenna--actions-function (lambda () (plist-get (lumenna--details-task) :offered)))
   (setq-local lumenna--activate (lambda (row)
                                   (if (plist-get row :line)
                                       (message "%s" (plist-get row :text))

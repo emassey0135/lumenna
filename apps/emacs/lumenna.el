@@ -734,7 +734,7 @@ action's sentence unsaid when nothing came of it."
 ;;;; Actions: what can be done to a row, as the app offers it
 
 ;; Which actions a row has, what each is called and what it asks are the
-;; app's: every row carries its `:actions'.  A key runs "the action of this
+;; app's: every row carries its `:actions', in short.  A key runs "the action of this
 ;; kind on the row at point", so it does nothing the row does not offer, and
 ;; `.' offers them all by name.
 
@@ -762,15 +762,21 @@ One task's buffer offers the task's, whatever field point is on.")
 (defvar lumenna--acted-on nil
   "The row the last action was done to: what a buffer it opens is named after.")
 
-(defun lumenna-act (action &optional row)
-  "Do ACTION, offered on ROW, the app's way.
-ROW is put in hand, the action run, and what it asks asked."
+(defun lumenna--acting-on (row)
+  "Which row an action offered on ROW is for, as the app names it.
+A task's buffer offers its task's; a side list's row is named there."
+  (cond (lumenna--actions-function "Details")
+        ((null row) (user-error "Nothing to do that to here"))
+        (lumenna--held (list :Held (vector (lumenna--side) (lumenna--row-key row))))
+        (t (list :Row (lumenna--row-key row)))))
+
+(defun lumenna-act (action &optional row on)
+  "Do ACTION, offered in short on ROW (or on what ON names), the app's way.
+The app puts the row in hand and runs its action whole as it has it now; what
+it asks is asked."
   (setq lumenna--acted-on row)
-  (lumenna--hold row)
   (setq lumenna--acting (format "%s/%s" (plist-get action :subject) (plist-get action :kind)))
-  ;; A list's row offers its actions in short (they say what they `:asks'), which the app runs
-  ;; whole for the row in hand; every other row offers them whole.
-  (lumenna-send (if (plist-member action :asks) (list :Act action) (list :Perform action)))
+  (lumenna-send (list :ActOn (vector (or on (lumenna--acting-on row)) action)))
   (lumenna--follow))
 
 (defun lumenna--choose-action (prompt actions)
@@ -1133,7 +1139,7 @@ left out."
           (push (list :key (plist-get entry :key) :text (plist-get entry :text)
                       :title (plist-get entry :title)
                       :depth depth :place (plist-get entry :kind)
-                      :actions (plist-get entry :actions) :swatch (plist-get entry :swatch)
+                      :actions (plist-get entry :offered) :swatch (plist-get entry :swatch)
                       :role (if (plist-get (plist-get entry :kind) :Group) "heading" "place")
                       :state (and (lumenna--true (plist-get entry :archived)) ["archived"]))
                 rows)
@@ -1155,7 +1161,7 @@ left out."
   (with-current-buffer (lumenna--home-buffer)
     (let ((entry (seq-find (lambda (e) (equal (plist-get (plist-get e :kind) :Group) group))
                            (append (plist-get lumenna--view :sidebar) nil))))
-      (or (car (append (plist-get entry :actions) nil))
+      (or (car (append (plist-get entry :offered) nil))
           (user-error "Nothing adds one here")))))
 
 ;;;###autoload

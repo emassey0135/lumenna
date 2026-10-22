@@ -340,7 +340,7 @@ a adds one, by a phrase such as \"5m before start\"; d removes one of its own.
       (cons (plist-get list :announcement)
             (cl-mapcar (lambda (reminder line)
                          (list :key (plist-get reminder :id) :id (plist-get reminder :id) :role "reminder"
-                               :text (plist-get line :text) :actions (plist-get reminder :actions)))
+                               :text (plist-get line :text) :actions (plist-get reminder :offered)))
                        (append (plist-get list :reminders) nil) lines)))))
 
 (defun lumenna-reminders--open-list ()
@@ -374,8 +374,9 @@ a adds one, by a phrase such as \"5m before start\"; d removes one of its own.
   "Add a reminder of this task's or block's own, by a phrase the core reads.
 One the core cannot read is asked again, with the core's sentence first."
   (interactive)
-  (lumenna-act (or (car (append (plist-get (lumenna-reminders--list) :actions) nil))
-                   (user-error "Nothing adds a reminder here"))))
+  (lumenna-act (or (car (append (plist-get (lumenna-reminders--list) :offered) nil))
+                   (user-error "Nothing adds a reminder here"))
+               nil "Reminders"))
 
 ;;;; Menus
 

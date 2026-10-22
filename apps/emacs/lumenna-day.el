@@ -31,7 +31,7 @@ actions, then each row in the app's words and order."
                           (let ((kind (plist-get item :kind))
                                 (sitting (plist-get item :sitting)))
                             (list :key (plist-get item :key) :text (plist-get line :text) :title (plist-get line :title)
-                                  :depth (plist-get item :depth) :actions (plist-get item :actions)
+                                  :depth (plist-get item :depth) :actions (plist-get item :offered)
                                   :role (pcase kind ("sitting" "assignment") (_ kind))
                                   :when (plist-get (plist-get item :block) :when)
                                   :block (plist-get item :block) :sitting sitting

@@ -865,8 +865,8 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
   events (`lumenna-send`), waits until the app is still (`app.still`), then asks each question
   the screen has open in the minibuffer, a refusal asking again with why, fills in the block
   form, and opens what the app opened as a screen of its own (a proposal, a reminder list,
-  `lumenna-followed-hook`). The row is put in hand only as it is acted on (`Focus`, or `Hold`
-  for a side list), never as point moves. A form a question names (`lumenna-define-form`) is
+  `lumenna-followed-hook`). The row is put in hand only as it is acted on (`ActOn`, naming
+  it: `Row`, or `Held` in a side list), never as point moves. A form a question names (`lumenna-define-form`) is
   the client's: a task's details, a screen of its own holding the task (`Details(Show)`).
 - **Depth is an outline level**: `outline-level` reads the `lumenna-level` text property, for
   Emacspeak's level announcements; the folding is the app's (TAB runs Collapse or Expand).
