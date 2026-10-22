@@ -290,12 +290,22 @@ jobs:
             device=$(xcrun simctl create "CI Watch" "$type" "$runtime")
           fi
           echo "WATCH=$device" >> "$GITHUB_ENV"
-          # A runner can list a runtime it does not have ("simulator runtime is not available"):
-          # then the boot fails, and downloading watchOS once more is what makes it bootable.
+          # Some runners list a watchOS runtime whose files are gone ("cannot determine the
+          # runtime bundle", "simulator runtime is not available"). Xcode will not download what
+          # it believes it has, so the listed runtime is deleted first, then downloaded afresh,
+          # and the watch made again on it.
           if ! xcrun simctl boot "$device" 2>boot.log && ! grep -q "current state: Booted" boot.log; then
             cat boot.log
+            xcrun simctl runtime list || true
+            for image in $(xcrun simctl runtime list -j | jq -r 'to_entries[] | select((.value.platformIdentifier // "") | test("watch")) | .key'); do
+              xcrun simctl runtime delete "$image" || true
+            done
             xcodebuild -downloadPlatform watchOS
-            xcrun simctl boot "$device" || true
+            runtime=$(xcrun simctl list runtimes available | grep watchOS | tail -1 | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.watchOS-[0-9-]+')
+            type=$(xcrun simctl list devicetypes | grep -E 'Apple Watch Series [0-9]+ \(46mm\)' | tail -1 | grep -oE 'com\.apple\.CoreSimulator\.SimDeviceType\.[A-Za-z0-9-]+')
+            device=$(xcrun simctl create "CI Watch" "$type" "$runtime")
+            echo "WATCH=$device" >> "$GITHUB_ENV"
+            xcrun simctl boot "$device"
           fi
           xcrun simctl bootstatus "$device" -b
       - name: Build
