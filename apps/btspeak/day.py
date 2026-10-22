@@ -40,7 +40,7 @@ def day_rows(session: Session) -> list[Row]:
             continue
         line = lines.day[index] if index < len(lines.day) else None
         rows.append(Row(
-            item.key, line.text if line else "", item.actions, item, level=item.level, expanded=item.expanded,
+            item.key, line.text if line else "", item.offered, item, level=item.level, expanded=item.expanded,
             braille=line.braille if line else "",
         ))
     return rows
@@ -116,9 +116,9 @@ def day_commands(session: Session) -> list[Command]:
     Clear the rest of the day."""
     day = session.view().day
     return [
-        Command(actions.named(action), lambda _, action=action: actions.act(session, action),
+        Command(actions.named(action), lambda _, action=action: actions.act(session, action, on=L.ActingOnDay()),
                 key=actions.DAY_KEYS.get(action.kind, ""))
-        for action in (day.actions if day is not None else [])
+        for action in (day.offered if day is not None else [])
     ]
 
 

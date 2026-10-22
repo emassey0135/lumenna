@@ -171,7 +171,7 @@ def device_rows(session: Session) -> list[Row]:
     made = []
     for index, device in enumerate(listed):
         line = lines[index].text if index < len(lines) else device.name
-        row = Row(device.node_id, line, device.actions, device, title=device.name)
+        row = Row(device.node_id, line, device.offered, device, title=device.name)
         row.side = L.Side.DEVICES
         made.append(row)
     return made

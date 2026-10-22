@@ -103,16 +103,23 @@ def held(row):
     return L.ShellEventFocus(row.key)
 
 
-def act(session: Session, action, row=None) -> str:
-    """Runs `action` with `row` in hand, then answers whatever the app opens; what to say."""
+def acting_on(row):
+    """Which row an action is for, as the app names it: a side list's row by its key there,
+    else a row of the place shown."""
+    side = getattr(row, "side", None)
+    if side is not None:
+        return L.ActingOnHeld(side, row.key)
+    return L.ActingOnRow(row.key)
+
+
+def act(session: Session, action, row=None, on=None) -> str:
+    """Runs `action`, a row's in short, on `row` (or what `on` names: the day, the reminder
+    list), then answers whatever the app opens; what to say. The app puts the row in hand and
+    runs its action whole as it has it now."""
     import proposals  # here: proposals imports this module
 
     proposals.pin(session)
-    said = [session.send(held(row))] if row is not None and getattr(row, "key", None) else []
-    # A list's row offers its actions in short (`Offered`), which the app runs whole for the row
-    # in hand; every other row offers them whole.
-    run = L.ShellEventAct(action) if isinstance(action, L.Offered) else L.ShellEventPerform(action)
-    said.append(session.send(run))
+    said = [session.send(L.ShellEventActOn(on if on is not None else acting_on(row), action))]
     said.append(follow(session, row))
     return joined(*said)
 
@@ -284,17 +291,24 @@ def commands(session: Session, rows, before=(), after=()) -> list[Command]:
 
 
 def heading_action(session: Session, group):
-    """What the places' heading for `group` adds: New Project, New Label, New Saved Filter."""
+    """What the places' heading for `group` adds (New Project, New Label, New Saved Filter),
+    and the heading it is on; none if it offers none."""
     for entry in session.view().sidebar:
         if isinstance(entry.kind, L.SidebarKindGroup) and entry.kind.field_0 == group:
-            return next((a for a in entry.actions if a.kind == K.NEW), None)
+            action = next((a for a in entry.offered if a.kind == K.NEW), None)
+            return (action, L.ActingOnHeld(L.Side.SIDEBAR, entry.key)) if action is not None else None
     return None
 
 
 def heading_command(session: Session, group, key: str = "a") -> list[Command]:
     """The command adding a project, label or saved filter, under the core's name for it
     ("New project"), as a screen's main menu offers it; none if the heading offers none."""
-    action = heading_action(session, group)
-    if action is None:
+    found = heading_action(session, group)
+    if found is None:
         return []
-    return [Command(named(action), lambda _: act(session, heading_action(session, group) or action), key=key)]
+
+    def run(_row) -> str:
+        action, on = heading_action(session, group) or found
+        return act(session, action, on=on)
+
+    return [Command(named(found[0]), run, key=key)]

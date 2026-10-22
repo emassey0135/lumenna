@@ -787,11 +787,12 @@ tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on 
   thread (`core.py`) and queue; a menu wakes on them (`restless`), and what the app said that no
   action asked for is said as it settles. Seeing another process's writes is `tick`, every five
   seconds.
-- **A row's context menu is its `actions`** (`actions.py`): the rows' actions merged into
+- **A row's context menu is its actions in short** (`actions.py`): the rows' actions merged into
   one list of commands that keeps each row's order, each offered where its row has it, a
   letter per kind (`KEYS`), the delete keys for `Delete`/`Unassign`/`Unpair`; a letter the
-  row does not offer runs there and the app says why. Running one puts the row in hand (`Focus`,
-  or `Hold` for a side list's row) and performs it; `follow` then answers whatever the app
+  row does not offer runs there and the app says why. Running one is `ActOn`, naming the row
+  (`acting_on`: a side list's row `Held`, else `Row`; the day's own `Day`, the reminder list's
+  `Reminders`), which the app puts in hand; `follow` then answers whatever the app
   opens, one after another, with the device's dialogs: a question (a refusal staying in it), the
   block form, a proposal, a reminder list. The task form registers in `actions.FORMS`.
 - **Speech and braille come from one string**, but where the app shows a line apart in

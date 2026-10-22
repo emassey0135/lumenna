@@ -61,7 +61,7 @@ def reminder_rows(session: Session) -> list[Row]:
     rows = []
     for index, reminder in enumerate(listing.reminders):
         line = lines[index].text if index < len(lines) else reminder.words
-        row = Row(reminder.id, line, reminder.actions, reminder, title=reminder.words)
+        row = Row(reminder.id, line, reminder.offered, reminder, title=reminder.words)
         row.side = L.Side.REMINDERS
         rows.append(row)
     return rows
@@ -83,8 +83,8 @@ def reminders_of(session: Session, row=None) -> str:
 
     def adding(_row) -> str:
         listing = session.view().reminders
-        found = [action for action in (listing.actions if listing else []) if action.kind == K.NEW]
-        return actions.act(session, found[0]) if found else ""
+        found = [action for action in (listing.offered if listing else []) if action.kind == K.NEW]
+        return actions.act(session, found[0], on=L.ActingOnReminders()) if found else ""
 
     session.reminders_open = True
     try:

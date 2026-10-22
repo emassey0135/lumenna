@@ -357,8 +357,8 @@ class Menus(unittest.TestCase):
             self.session.show(L.PlaceToday())
             self.session.send(L.ShellEventDay(L.DayMove.ASK))
             self.session.send(L.ShellEventAnswer(L.AnswerText(date)))
-            action = next(a for a in self.session.view().day.actions if a.kind == L.ActionKind.PLAN_DAY)
-            self.session.send(L.ShellEventPerform(action))
+            action = next(a for a in self.session.view().day.offered if a.kind == L.ActionKind.PLAN_DAY)
+            self.session.send(L.ShellEventActOn(L.ActingOnDay(), action))
         return proposals.proposal_screen(self.session)
 
     def test_the_day_menu_offers_the_days_own_actions_and_what_to_work_on_says_why(self):

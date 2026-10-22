@@ -38,11 +38,11 @@ def group_rows(session: Session, group) -> list[Row]:
         if entry.key in folded:
             hidden_below = entry.depth
         depth = entry.depth - 1
-        kinds = {action.kind for action in entry.actions}
+        kinds = {action.kind for action in entry.offered}
         expanded = True if actions.K.COLLAPSE in kinds else False if actions.K.EXPAND in kinds else None
         level = f"level {depth + 1}" if depth != previous else None
         previous = depth
-        row = Row(entry.key, entry.text, entry.actions, entry, level=level, expanded=expanded, title=entry.title)
+        row = Row(entry.key, entry.text, entry.offered, entry, level=level, expanded=expanded, title=entry.title)
         row.side = L.Side.SIDEBAR
         rows.append(row)
     return rows
