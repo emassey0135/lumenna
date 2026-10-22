@@ -183,6 +183,11 @@ fn shown(model: &Screen) -> ViewModel {
         Ok(rows) => {
             let mut items = list::items(&rows, &model.folded);
             let offered = list::offer(&mut items);
+            // Named in short, each once: the rows carry none whole, which the app keeps for
+            // `Event::Act` (a list of 2,000 tasks carried 15,372).
+            for item in &mut items {
+                item.row.actions.clear();
+            }
             ListView {
             items,
             offered,

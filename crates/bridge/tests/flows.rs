@@ -230,9 +230,12 @@ fn a_lists_rows_name_their_actions_in_short_each_offered_once() {
     app.add("Write the report");
     app.add("Buy milk");
     let list = app.view().list.unwrap();
+    let listed = Lumenna::open(app.profile.to_str().unwrap()).unwrap().list_tasks("").unwrap();
     for item in &list.items {
+        assert!(item.row.actions.is_empty(), "none carried whole");
         let named: Vec<&str> = item.actions.iter().map(|at| list.offered[*at as usize].title.as_str()).collect();
-        let whole: Vec<&str> = item.row.actions.iter().map(|action| action.title.as_str()).collect();
+        let row = listed.rows.iter().find(|row| row.id == item.row.id).unwrap();
+        let whole: Vec<&str> = row.actions.iter().map(|action| action.title.as_str()).collect();
         assert_eq!(named, whole, "each row's own, in its order");
     }
     let every = list.items.iter().map(|item| item.actions.len()).sum::<usize>();
@@ -590,7 +593,8 @@ fn the_blocks_list_every_series_with_its_actions() {
     let items = app.items();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].row.title, "Gym");
-    assert!(items[0].row.actions.iter().any(|a| a.kind == ActionKind::Delete));
+    let list = app.view().list.unwrap();
+    assert!(items[0].actions.iter().any(|at| list.offered[*at as usize].kind == ActionKind::Delete));
     assert_eq!(app.view().focus, Some(items[0].row.id.clone()));
 }
 
@@ -824,9 +828,11 @@ fn history_lists_what_was_done_newest_first_and_its_rows_are_tasks_with_details(
     app.add("Buy milk");
     app.add("Call the bank");
     app.send(Event::Open(Place::Tasks));
-    let milk = app.view().list.unwrap().items.into_iter().find(|i| i.row.title == "Buy milk").unwrap().row;
-    let done = milk.actions.iter().find(|a| a.kind == ActionKind::MarkDone).unwrap().clone();
-    app.send(Event::Perform(done));
+    let tasks = app.view().list.unwrap();
+    let milk = tasks.items.iter().find(|i| i.row.title == "Buy milk").unwrap();
+    let done = milk.actions.iter().map(|at| tasks.offered[*at as usize].clone()).find(|o| o.kind == ActionKind::MarkDone).unwrap();
+    app.send(Event::Focus(milk.row.id.clone()));
+    app.send(Event::Act(done));
     app.send(Event::Open(Place::History));
     let view = app.view();
     let list = view.list.unwrap();
@@ -836,7 +842,8 @@ fn history_lists_what_was_done_newest_first_and_its_rows_are_tasks_with_details(
     assert_eq!(row.due.as_deref(), Some("completed today"));
     assert!(row.due_time.is_some());
     assert_eq!(row.checked, Some(true));
-    assert!(row.actions.iter().any(|a| a.kind == ActionKind::MarkNotDone), "a task's own actions");
+    let offered = |at: &u32| list.offered[*at as usize].kind;
+    assert!(list.items[0].actions.iter().any(|at| offered(at) == ActionKind::MarkNotDone), "a task's own actions");
     assert_eq!(view.details.map(|d| d.task.title), Some("Buy milk".to_owned()), "the details show it");
     let sidebar = app.view().sidebar;
     let at = |title: &str| sidebar.iter().position(|e| e.title == title).unwrap();

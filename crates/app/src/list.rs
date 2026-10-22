@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Item {
-    /// The row, its actions including Expand or Collapse when something is under it, and
-    /// `expanded` set when something is.
+    /// The row, `expanded` set when something is under it. In a view its `actions` are empty:
+    /// they are `actions`, in short.
     pub row: RowView,
     /// Folded away under a collapsed row. A tree control that folds by itself takes every row
     /// and the expanded states; a flat list shows only the rows not hidden.

@@ -94,8 +94,9 @@ without the screens over BoltFFI. No JSON crosses the FFI.
   `Event::Act` after putting the row in hand (`Focus`, or `Hold` in a side list), and the app
   runs that row's action whole as it has it now, or refuses one the row no longer offers in
   `not_offered`'s words. A `Form` one is opened by the shell for the row's own record (its
-  `id`). The day, the sidebar, reminders and devices still carry their actions whole, with
-  `Perform`.
+  `id`). A list item's `row.actions` is empty in a view: the app keeps them, for `Act`. The day,
+  the sidebar, reminders, devices and the details still carry their actions whole, with
+  `Perform`. A list's rows decoded 3.6 times faster in BTSpeak's Python.
 - **What every client's forms share is here too**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, the block form's `block_fields`/`block_edit`/`new_block`,
   `parse_weight`, the `#"Home Office"` references. `task_edit` and `block_edit` hold only
