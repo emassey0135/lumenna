@@ -827,6 +827,8 @@ opened from another — a proposal from a day, a reminder list from a list — d
 screen (`lumenna--attach`), and the places' buffer `*Lumenna*` is screen 0. Tests are ERT
 against a real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 `emacs --batch -Q -L apps/emacs -l apps/emacs/test/lumenna-test.el -f ert-run-tests-batch-and-exit`.
+CI byte-compiles every file first with warnings as errors (bar `lumenna-emacsvox.el`, which needs
+Emacsvox), so the tests run the compiled code, as `package.el` installs it.
 
 - **The socket, else a child.** `lumenna-profile-directory` repeats `lum`'s rule for the
   default profile, because the socket is found by path before there is anything to ask.

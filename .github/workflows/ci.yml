@@ -115,6 +115,10 @@ jobs:
       - name: BTSpeak app
         working-directory: apps/btspeak
         run: PATH="$GITHUB_WORKSPACE/target/debug:$PATH" python3 -m unittest discover -s tests
+      - name: Emacs client, byte-compiled
+        # As package.el installs it, with any warning an error; the tests then run the compiled
+        # code. The Emacsvox layer needs Emacsvox itself, which only a person's Emacs has.
+        run: emacs --batch -Q -L apps/emacs --eval '(setq byte-compile-error-on-warn t)' -f batch-byte-compile $(ls apps/emacs/*.el | grep -v emacsvox)
       - name: Emacs client
         run: emacs --batch -Q -L apps/emacs -l apps/emacs/test/lumenna-test.el -f ert-run-tests-batch-and-exit
 

@@ -789,7 +789,7 @@ where it offers none, the core's sentence says why."
           (t (lumenna--refuse row kinds)))))
 
 (defun lumenna--refuse (row kinds)
-  "Run KINDS on ROW, which offers none of them, and refuse with why: the app's words."
+  "Run KINDS on ROW, which offers none of them, and refuse in the app's words."
   (lumenna--hold row)
   (let ((lumenna--heard (list 'heard)))
     (lumenna-send (list :Run (vconcat kinds)))

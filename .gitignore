@@ -12,3 +12,6 @@ apps/apple/Lumenna.xcodeproj/
 
 # Xcode builds made outside Xcode
 apps/apple/build/
+
+# Byte-compiled Emacs Lisp, as CI and package.el make it.
+*.elc
