@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.app.ActingOn
 import io.github.emassey0135.lumenna.ShowingBlockForm
 import io.github.emassey0135.lumenna.text
 import io.github.emassey0135.lumenna.flag
@@ -179,8 +180,8 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
 
         // The app's, in the core's order: this screen is the task's form, so no Edit Details.
         item { Heading("Actions") }
-        current.actions.forEach { action ->
-            item { Button(onClick = { app.send(ShellEvent.Perform(action)) }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
+        current.offered.forEach { action ->
+            item { Button(onClick = { app.send(ShellEvent.ActOn(ActingOn.Details, action)) }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
         }
     }
 }

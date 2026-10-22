@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.ActingOn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -153,8 +154,8 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
 
             // The core's, in its order: this screen is the task's form, so no Edit Details.
             Heading("Actions")
-            current.actions.forEach { action ->
-                TextButton(modifier = Target, onClick = { app.send(ShellEvent.Perform(action)) }) {
+            current.offered.forEach { action ->
+                TextButton(modifier = Target, onClick = { app.send(ShellEvent.ActOn(ActingOn.Details, action)) }) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
                 }
             }

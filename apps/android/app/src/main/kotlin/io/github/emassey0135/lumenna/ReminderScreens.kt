@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.ActingOn
 import io.github.emassey0135.lumenna.app.Side
 import io.github.emassey0135.lumenna.app.ShellEvent
 import androidx.compose.material3.HorizontalDivider
@@ -47,12 +48,12 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
     ShowingReminders(app, navigator::back)
     val ask = rememberNotificationAsk()
     // Adding the first reminder is when notifications are asked for.
-    val add = list?.actions.orEmpty().firstOrNull()
+    val add = list?.offered.orEmpty().firstOrNull()
     ScreenFrame("Reminders", core, navigator, actions = {
         if (add != null) {
             IconButton(onClick = {
                 ask()
-                app.send(ShellEvent.Perform(add))
+                app.send(ShellEvent.ActOn(ActingOn.Reminders, add))
             }) { Icon(Icons.Filled.Add, contentDescription = add.name) }
         }
     }) {
@@ -75,7 +76,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
                     detail = detail,
                     speech = detail,
                     index = index,
-                    actions = app.rowActions(reminder.id, reminder.actions, side = Side.REMINDERS),
+                    actions = app.rowActions(reminder.id, reminder.offered, side = Side.REMINDERS),
                     refuse = app.refusal(reminder.id, Side.REMINDERS),
                     open = null,
                     openLabel = "Open",

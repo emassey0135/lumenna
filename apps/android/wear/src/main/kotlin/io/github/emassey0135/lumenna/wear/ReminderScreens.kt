@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.app.ActingOn
 import io.github.emassey0135.lumenna.rememberSideLanding
 import io.github.emassey0135.lumenna.app.Side
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
@@ -54,7 +55,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
                 val line = lines?.reminders?.getOrNull(index)
                 val words = line?.title ?: reminder.words
                 if (reminder.own) {
-                    val actions = app.rowActions(reminder.id, reminder.actions)
+                    val actions = app.rowActions(reminder.id, reminder.offered, side = Side.REMINDERS)
                     RowButton(words, actions = actions, onLongClick = { navigator.actions(words, actions) }, key = reminder.id, focus = focus) {
                         navigator.actions(words, actions)
                     }
@@ -64,13 +65,13 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
                 }
             }
         }
-        list?.actions.orEmpty().forEach { action ->
+        list?.offered.orEmpty().forEach { action ->
             item {
                 // Adding the first reminder is when notifications are asked for.
                 Button(
                     onClick = {
                         ask()
-                        app.send(ShellEvent.Perform(action))
+                        app.send(ShellEvent.ActOn(ActingOn.Reminders, action))
                     },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(action.name) },

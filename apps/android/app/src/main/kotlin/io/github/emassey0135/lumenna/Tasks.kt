@@ -208,7 +208,7 @@ fun AppTaskRows(
                 done = row.checked,
                 depth = row.depth.toInt(),
                 index = index,
-                actions = core.app.listRowActions(row.id, list?.offeredOf(item).orEmpty(), local),
+                actions = core.app.rowActions(row.id, list?.offeredOf(item).orEmpty(), local),
                 refuse = core.app.refusal(row.id),
                 open = open?.let { { it(row) } },
                 openLabel = openLabel,

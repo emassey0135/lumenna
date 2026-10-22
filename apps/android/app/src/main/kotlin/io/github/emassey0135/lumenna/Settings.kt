@@ -425,7 +425,7 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
                     speech = detail,
                     index = index,
                     // The core's: Rename, and Unpair on every row but this device's own.
-                    actions = app.rowActions(device.nodeId, device.actions, side = Side.DEVICES),
+                    actions = app.rowActions(device.nodeId, device.offered, side = Side.DEVICES),
                     refuse = app.refusal(device.nodeId, Side.DEVICES),
                     open = null,
                     openLabel = "Open",

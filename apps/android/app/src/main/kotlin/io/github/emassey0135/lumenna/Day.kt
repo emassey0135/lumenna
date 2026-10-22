@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.ActingOn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -117,7 +118,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     Offer(Command.NEW_BLOCK) { addBlock() }
 
     // The day's own actions, the app's, in the core's order.
-    val dayActions = day?.let { app.rowActions("summary", it.actions) }.orEmpty()
+    val dayActions = day?.let { app.actingOn(ActingOn.Day, it.offered) }.orEmpty()
 
     ScreenFrame(lines?.dayTitle?.ifEmpty { null } ?: "Today", core, navigator, actions = {
         IconButton(onClick = { addBlock() }) {
@@ -159,22 +160,21 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
             state = scroll,
         ) {
             itemsIndexed(shown, key = { _, (item, _) -> item.key }) { index, (item, line) ->
-                val edit = item.actions.firstOrNull { it.kind == ActionKind.EDIT }
+                val edit = item.offered.firstOrNull { it.kind == ActionKind.EDIT }
                 ListRow(
                     title = line?.title.orEmpty(),
                     detail = line?.detail.orEmpty(),
                     speech = spoken(line, item.expanded, item.level),
                     index = index,
                     depth = item.depth.toInt(),
-                    actions = app.rowActions(item.key, item.actions),
+                    actions = app.rowActions(item.key, item.offered),
                     refuse = app.refusal(item.key),
                     focus = focus.requester(item.key),
                     key = item.key,
                     say = core::say,
                     open = when {
                         item.kind == DayKind.BLOCK && edit != null -> ({
-                            app.send(ShellEvent.Focus(item.key))
-                            app.send(ShellEvent.Perform(edit))
+                            app.send(ShellEvent.ActOn(ActingOn.Row(item.key), edit))
                         })
                         item.kind == DayKind.SITTING -> item.sitting?.let { sitting -> { navigator.push(Screen.Task(sitting.task)) } }
                         else -> null

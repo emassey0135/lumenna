@@ -1,11 +1,11 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.app.ActingOn
 import io.github.emassey0135.lumenna.rememberLanding
 import io.github.emassey0135.lumenna.rememberSideLanding
 import io.github.emassey0135.lumenna.app.Side
 import androidx.wear.compose.foundation.lazy.ScalingLazyListState
 import io.github.emassey0135.lumenna.rowActions
-import io.github.emassey0135.lumenna.listRowActions
 import io.github.emassey0135.lumenna.offeredOf
 import io.github.emassey0135.lumenna.placeRows
 import io.github.emassey0135.lumenna.shownRows
@@ -78,7 +78,7 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
         rows.forEach { row ->
             add(row.key)
             if (row.entry.kind is SidebarKind.Group && row.expanded != false) {
-                row.entry.actions.filter { it.kind == ActionKind.NEW }.forEach { add("\u0000${it.name}") }
+                row.entry.offered.filter { it.kind == ActionKind.NEW }.forEach { add("\u0000${it.name}") }
             }
         }
     }
@@ -90,13 +90,13 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
             item {
                 val previous = if (index > 0) rows[index - 1].depth else 0
                 val level = if (row.depth != previous) "level ${row.depth + 1}" else null
-                val fold = row.entry.actions.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
+                val fold = row.entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
                 val state = listOfNotNull(row.expanded?.let { if (it) "expanded" else "collapsed" }, level).joinToString(", ").ifEmpty { null }
                 when (val kind = row.entry.kind) {
                     is SidebarKind.Place -> RowButton(
                         row.entry.text,
                         state = state,
-                        actions = listOfNotNull(fold).let { app.rowActions(row.key, it) },
+                        actions = listOfNotNull(fold).let { app.rowActions(row.key, it, side = Side.SIDEBAR) },
                         key = row.key,
                         focus = focus,
                         swatch = row.entry.swatch,
@@ -104,7 +104,7 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
                     )
                     // A heading folds what is under it when pressed.
                     is SidebarKind.Group -> Button(
-                        onClick = { fold?.let { app.send(ShellEvent.Perform(it)) } },
+                        onClick = { fold?.let { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, row.key), it)) } },
                         modifier = Modifier.fillMaxWidth().semantics {
                             heading()
                             if (state != null) stateDescription = state
@@ -116,8 +116,8 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
             }
             // What a heading adds under it, as every app's sidebar has it: the core's New Project and so on.
             if (row.entry.kind is SidebarKind.Group && row.expanded != false) {
-                row.entry.actions.filter { it.kind == ActionKind.NEW }.forEach { new ->
-                    item { Button(onClick = { app.send(ShellEvent.Perform(new)) }, modifier = Modifier.fillMaxWidth(), label = { Text(new.name) }) }
+                row.entry.offered.filter { it.kind == ActionKind.NEW }.forEach { new ->
+                    item { Button(onClick = { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, row.key), new)) }, modifier = Modifier.fillMaxWidth(), label = { Text(new.name) }) }
                 }
             }
         }
@@ -167,7 +167,7 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
         items.forEach { (shown, line) ->
             item {
                 val task = shown.row
-                val actions = app.listRowActions(task.id, list?.offeredOf(shown).orEmpty()).sortedByDescending { it.primary }
+                val actions = app.rowActions(task.id, list?.offeredOf(shown).orEmpty()).sortedByDescending { it.primary }
                 RowButton(
                     task.title,
                     detail = line?.detail?.ifEmpty { null },
@@ -194,10 +194,10 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
         val entry = view?.sidebar.orEmpty().firstOrNull { (it.kind as? SidebarKind.Place)?.field0 == place }
         if (heading != null && entry != null) {
             item { Heading(heading) }
-            entry.actions.filter { it.kind != ActionKind.EXPAND && it.kind != ActionKind.COLLAPSE }.forEach { action ->
+            entry.offered.filter { it.kind != ActionKind.EXPAND && it.kind != ActionKind.COLLAPSE }.forEach { action ->
                 item {
                     Button(onClick = {
-                        app.send(ShellEvent.Perform(action))
+                        app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, entry.key), action))
                         // After a rename, a merge or a delete, the list stands for something gone.
                         if (action.kind in leaving) navigator.back()
                     }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) })
@@ -233,7 +233,7 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
             item {
                 val row = shown.row
                 val line = lines?.list?.getOrNull(index)
-                val actions = app.listRowActions(row.id, list?.offeredOf(shown).orEmpty())
+                val actions = app.rowActions(row.id, list?.offeredOf(shown).orEmpty())
                 // Said as a task row is: when, in this watch's clock, then how long.
                 RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }, key = row.id, focus = focus, swatch = row.swatch) {
                     // Its own screen is its form, for every occurrence: its Edit, on the row in hand.

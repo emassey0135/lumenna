@@ -1,8 +1,10 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.app.ActingOn
 import io.github.emassey0135.lumenna.rememberLanding
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import io.github.emassey0135.lumenna.name
+import io.github.emassey0135.lumenna.actingOn
 import io.github.emassey0135.lumenna.rowActions
 import io.github.emassey0135.lumenna.LocalPlannerNow
 import io.github.emassey0135.lumenna.app.ShellEvent
@@ -48,7 +50,7 @@ fun DayScreen(core: Core, navigator: Navigator) {
     val heading = rows.firstOrNull { it.first.kind == DayKind.SUMMARY }?.second?.title
     val shown = rows.filter { !it.first.hidden && it.first.kind != DayKind.SUMMARY }
     // The day's own actions, the app's: on its heading, and as buttons after its rows.
-    val dayActions = day?.let { app.rowActions("summary", it.actions) }.orEmpty()
+    val dayActions = day?.let { app.actingOn(ActingOn.Day, it.offered) }.orEmpty()
     val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
     val keys = listOf("\u0000heading") + shown.map { it.first.key }
     val state = rememberScalingLazyListState()
@@ -65,7 +67,7 @@ fun DayScreen(core: Core, navigator: Navigator) {
         shown.forEach { (item, line) ->
             item {
                 val title = line?.title.orEmpty()
-                val actions = app.rowActions(item.key, item.actions).sortedByDescending { it.primary }
+                val actions = app.rowActions(item.key, item.offered).sortedByDescending { it.primary }
                 RowButton(
                     title,
                     detail = line?.detail.orEmpty(),

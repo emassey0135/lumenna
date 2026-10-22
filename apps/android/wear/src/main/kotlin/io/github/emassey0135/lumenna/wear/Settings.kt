@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna.wear
 
+import io.github.emassey0135.lumenna.app.Side
 import io.github.emassey0135.lumenna.deviceName
 import io.github.emassey0135.lumenna.rowActions
 import io.github.emassey0135.lumenna.app.ShellEvent
@@ -89,7 +90,7 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
             item {
                 // The core's: Rename, and Unpair on every row but this watch's own. Sync Now is
                 // with every device at once, so it is the screen's button above.
-                val actions = app.rowActions(device.nodeId, device.actions)
+                val actions = app.rowActions(device.nodeId, device.offered, side = Side.DEVICES)
                 RowButton(
                     device.name,
                     detail = (listOf(device.platform) + device.status).joinToString(", "),

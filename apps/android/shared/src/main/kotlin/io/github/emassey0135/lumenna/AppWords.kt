@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.ActingOn
 import io.github.emassey0135.lumenna.app.Action
 import io.github.emassey0135.lumenna.app.ActionKind
 import io.github.emassey0135.lumenna.app.Choice
@@ -28,39 +29,34 @@ fun option(choice: Choice, line: Line): Option =
 fun option(choice: Choice): Option =
     Option(choice.id, choice.title, choice.detail.orEmpty(), choice.depth.toInt(), choice.reason.orEmpty(), choice.swatch)
 
-/**
- * The app's actions as a row's: each puts its row in hand, then runs. A row of a list beside
- * the main one ([side]: the places, a reminder list, the devices) is held there instead, so the
- * change lands back in that list.
- */
-fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> Boolean = { false }, side: Side? = null): List<RowAction> = actions.map { action ->
-    RowAction(
-        action.name,
-        action.kind,
-        action.destructive,
-        action.subject,
-        action.primary,
-    ) {
-        send(if (side != null) ShellEvent.Hold(side, row) else ShellEvent.Focus(row))
-        if (!local(action)) send(ShellEvent.Perform(action))
-    }
-}
-
-/** An action a list's row offers in short: its name, in sentence case as the app words it here. */
+/** An action as a row offers it, in short: its name, in sentence case as the app words it here. */
 val Offered.name: String get() = sentence.ifEmpty { title }
 
 /** [item]'s actions in short: its places among the list's own ([ListView.offered]). */
 fun ListView.offeredOf(item: Item): List<Offered> = item.actions.mapNotNull { offered.getOrNull(it.toInt()) }
 
 /**
- * A list's row's actions, in short ([ListView.offered]): each puts its row in hand, then the app
- * runs that row's action whole, as it has it (`Act`).
+ * A row's actions, in short: each runs on [row] (a row of the place shown, or held in a list
+ * beside the main one, [side]: the places, a reminder list, the devices, so the change lands
+ * back there). The app puts the row in hand and runs its action whole as it has it now. One
+ * that is [local] (a form this app opens itself) only puts the row in hand.
  */
-fun AppModel.listRowActions(row: String, actions: List<Offered>, local: (Offered) -> Boolean = { false }): List<RowAction> =
+fun AppModel.rowActions(row: String, actions: List<Offered>, local: (Offered) -> Boolean = { false }, side: Side? = null): List<RowAction> =
+    actingOn(if (side != null) ActingOn.Held(side, row) else ActingOn.Row(row), actions, local)
+
+/** The actions offered on what [on] names, in short: a row, the day, the details' task, a reminder list. */
+fun AppModel.actingOn(on: ActingOn, actions: List<Offered>, local: (Offered) -> Boolean = { false }): List<RowAction> =
     actions.map { action ->
         RowAction(action.name, action.kind, action.destructive, action.subject, action.primary) {
-            send(ShellEvent.Focus(row))
-            if (!local(action)) send(ShellEvent.Act(action))
+            if (!local(action)) {
+                send(ShellEvent.ActOn(on, action))
+            } else {
+                when (on) {
+                    is ActingOn.Row -> send(ShellEvent.Focus(on.field0))
+                    is ActingOn.Held -> send(ShellEvent.Hold(on.field0, on.field1))
+                    else -> {}
+                }
+            }
         }
     }
 
@@ -111,7 +107,7 @@ fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> {
         val below = hiddenBelow
         if (below != null && entry.depth <= below) hiddenBelow = null
         val hidden = hiddenBelow != null
-        val expanded = entry.actions.firstNotNullOfOrNull {
+        val expanded = entry.offered.firstNotNullOfOrNull {
             when (it.kind) {
                 ActionKind.COLLAPSE -> true
                 ActionKind.EXPAND -> false

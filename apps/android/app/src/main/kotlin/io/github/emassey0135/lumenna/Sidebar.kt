@@ -1,5 +1,6 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.ActingOn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -78,7 +79,7 @@ fun PlaceRows(
                     .joinToString(", "),
                 index = index,
                 depth = row.depth,
-                actions = core.app.rowActions(row.key, row.entry.actions, side = Side.SIDEBAR),
+                actions = core.app.rowActions(row.key, row.entry.offered, side = Side.SIDEBAR),
                 refuse = core.app.refusal(row.key, Side.SIDEBAR),
                 open = open(row),
                 openLabel = openLabel(row),
@@ -131,8 +132,8 @@ fun Sidebar(core: Core, current: Destination, choose: (Destination) -> Unit, mod
             // A heading is not somewhere to go: choosing it folds or unfolds it.
             open = { row ->
                 when (val kind = row.entry.kind) {
-                    is SidebarKind.Group -> row.entry.actions.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
-                        ?.let { fold -> { core.app.send(ShellEvent.Perform(fold)) } }
+                    is SidebarKind.Group -> row.entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
+                        ?.let { fold -> { core.app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, row.key), fold)) } }
                     is SidebarKind.Place -> ({ choose(Destination.At(kind.field0)) })
                 }
             },

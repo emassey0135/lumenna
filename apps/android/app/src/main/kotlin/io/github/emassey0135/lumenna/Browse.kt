@@ -1,5 +1,7 @@
 package io.github.emassey0135.lumenna
 
+import io.github.emassey0135.lumenna.app.Side
+import io.github.emassey0135.lumenna.app.ActingOn
 import io.github.emassey0135.lumenna.app.SidebarKind
 import io.github.emassey0135.lumenna.app.SidebarGroup
 import io.github.emassey0135.lumenna.app.Place
@@ -118,8 +120,8 @@ private fun GroupScreen(core: Core, navigator: Navigator, group: SidebarGroup, t
     // Folded within the group as the app has it; the heading's own fold left out.
     val rows = placeRows(all.groupUnder(group).map { it.entry.copy(depth = it.entry.depth - 1u) })
     ScreenFrame(title, core, navigator, actions = {
-        heading?.entry?.actions?.firstOrNull { it.kind == ActionKind.NEW }?.let { new ->
-            IconButton(onClick = { app.send(ShellEvent.Perform(new)) }) { Icon(Icons.Filled.Add, contentDescription = addLabel) }
+        heading?.entry?.offered?.firstOrNull { it.kind == ActionKind.NEW }?.let { new ->
+            IconButton(onClick = { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, heading.key), new)) }) { Icon(Icons.Filled.Add, contentDescription = addLabel) }
         }
     }) {
         PlaceRows(
