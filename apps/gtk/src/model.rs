@@ -122,6 +122,12 @@ impl Model {
         self.send(ShellEvent::Focus(on.to_owned()));
         self.send(ShellEvent::Perform(action));
     }
+
+    /// The same for a list's row, its action in short: the app runs the row's own.
+    pub fn act(&self, offered: lumenna_app::Offered, on: &str) {
+        self.send(ShellEvent::Focus(on.to_owned()));
+        self.send(ShellEvent::Act(offered));
+    }
 }
 
 /// The app's turns, from its own thread onto GTK's main one, in order.

@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use gtk::gio;
 use gtk::prelude::*;
+use lumenna_app::{Asks, Offered};
 use lumenna_records::{Action, ActionKind, Question, Subject};
 
 use crate::window::{App, spawn};
@@ -32,19 +33,30 @@ pub fn find<'a>(actions: &'a [Action], kinds: &[ActionKind]) -> Option<&'a Actio
 /// A menu of `actions`, each handed to `run` when chosen: the app's rows hand theirs to the
 /// app. Those that remove something come last, apart.
 pub fn menu_running(actions: &[Action], run: Rc<dyn Fn(Action)>) -> (gio::Menu, gio::SimpleActionGroup) {
+    menu_of(actions.iter().map(|action| (action.title.as_str(), action.destructive, action.question != Question::Immediate, action.clone())), run)
+}
+
+/// The same of a list row's actions in short (`ListView::offered`), handed back with `Act`.
+pub fn menu_offering(offered: &[Offered], run: Rc<dyn Fn(Offered)>) -> (gio::Menu, gio::SimpleActionGroup) {
+    menu_of(offered.iter().map(|action| (action.title.as_str(), action.destructive, action.asks != Asks::Nothing, action.clone())), run)
+}
+
+/// A menu of entries, each its title, whether it removes something, whether it asks first, and
+/// what `run` is handed when it is chosen.
+fn menu_of<'a, T: Clone + 'static>(entries: impl Iterator<Item = (&'a str, bool, bool, T)>, run: Rc<dyn Fn(T)>) -> (gio::Menu, gio::SimpleActionGroup) {
     let menu = gio::Menu::new();
     let (keeping, removing) = (gio::Menu::new(), gio::Menu::new());
     let group = gio::SimpleActionGroup::new();
-    for (index, action) in actions.iter().enumerate() {
+    for (index, (title, destructive, asks, value)) in entries.enumerate() {
         let name = format!("a{index}");
         // The core's titles, as spoken; an underscore in one is the title's, not a mnemonic.
-        let title = action.title.replace('_', "__");
-        let title = if action.question == Question::Immediate { title } else { format!("{title}…") };
-        let section = if action.destructive { &removing } else { &keeping };
+        let title = title.replace('_', "__");
+        let title = if asks { format!("{title}…") } else { title };
+        let section = if destructive { &removing } else { &keeping };
         section.append(Some(&title), Some(&format!("row.{name}")));
         let simple = gio::SimpleAction::new(&name, None);
-        let (action, run) = (action.clone(), Rc::clone(&run));
-        simple.connect_activate(move |_, _| run(action.clone()));
+        let run = Rc::clone(&run);
+        simple.connect_activate(move |_, _| run(value.clone()));
         group.add_action(&simple);
     }
     menu.append_section(None, &keeping);

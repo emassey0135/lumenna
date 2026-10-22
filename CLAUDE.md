@@ -1555,7 +1555,9 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
 - **A row's actions are the core's, run by the app**: Space, Delete and Enter send a fixed
   set of kinds (`actions::SPACE`, `DELETE`, `ENTER`) as `Run`, so the row in hand runs its
   own; the Task menu's commands do the same, so Mark Done toggles; a menu's item is the row's
-  action, sent with `Perform`. The question it asks is asked over the window it came from.
+  action, sent with `Perform`, or on a task or Blocks list row with `Act`, from the list's short
+  actions (`ListView::offered`, each row's by place), which folding sends too. The question it
+  asks is asked over the window it came from.
 - **A dialog's buttons are GNOME's order**: Cancel first and the default, the answer last
   and a verb (`Question::Text.yes`, a pick's action title, a form's Save), never OK. A
   yes-or-no question puts the safe answer where Cancel would be (`prompts::yes_or_no`).

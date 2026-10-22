@@ -158,3 +158,12 @@ pub fn run(app: &Rc<App>, action: Action, on: &str) {
     }
     app.model.run(action, on);
 }
+
+/// The same for a list's row, its action in short (`ListView::offered`): the reminder list
+/// named after the row.
+pub fn act(app: &Rc<App>, offered: lumenna_app::Offered, row: &lumenna_records::RowView) {
+    if offered.kind == lumenna_records::ActionKind::Reminders {
+        crate::reminders::name(&offered.title, Some(&row.title));
+    }
+    app.model.act(offered, &row.id);
+}

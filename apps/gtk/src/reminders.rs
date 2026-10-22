@@ -211,9 +211,13 @@ fn send(event: ShellEvent) {
 /// Opens the Reminders list of a task or block series, from its Reminders action: the app's,
 /// named after what it is for.
 pub fn show(app: &App, action: &Action, on: &str) {
-    let name = name_of(app, &action.target);
-    TITLE.set(name.map_or_else(|| action.title.clone(), |name| format!("{} for {name}", action.title)));
+    name(&action.title, name_of(app, &action.target).as_deref());
     app.model.run(action.clone(), on);
+}
+
+/// Names the reminder list about to open: `title` ("Reminders"), for what it is for.
+pub fn name(title: &str, of: Option<&str>) {
+    TITLE.set(of.map_or_else(|| title.to_owned(), |name| format!("{title} for {name}")));
 }
 
 /// What a task or block series is called, from what the app shows of it.
@@ -223,7 +227,7 @@ fn name_of(app: &App, target: &str) -> Option<String> {
     let listed = view
         .list
         .as_ref()
-        .and_then(|list| list.items.iter().find(|item| item.row.id == target || item.row.actions.iter().any(|a| a.target == target)))
+        .and_then(|list| list.items.iter().find(|item| item.row.id == target))
         .map(|item| item.row.title.clone());
     let planned = view.day.as_ref().and_then(|day| {
         day.items

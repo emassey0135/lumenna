@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_app::Item as Row;
+use lumenna_app::{Item as Row, Offered};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::places::Place;
 use lumenna_records::{ActionKind, RowView};
@@ -32,6 +32,8 @@ pub struct TaskList {
     pub tree: Rc<Tree>,
     /// The rows as last drawn.
     rows: RefCell<Vec<Row>>,
+    /// What the rows offer, each once, in short: each row names its own by place here.
+    offered: RefCell<Vec<Offered>>,
     /// When focus goes to the row in hand.
     landing: Landing,
     /// Whether the filter's text is being put back from the app, not typed.
@@ -82,6 +84,7 @@ impl TaskList {
             readback,
             tree,
             rows: RefCell::new(Vec::new()),
+            offered: RefCell::new(Vec::new()),
             landing: Landing::default(),
             setting: Cell::new(false),
         });
@@ -149,13 +152,12 @@ impl TaskList {
         let weak = Rc::downgrade(self);
         self.tree.connect_menu(move |index, point| {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            let Some(row) = list.rows.borrow().get(index).map(|row| row.row.clone()) else { return };
-            let key = row.id.clone();
-            let (menu, group) = actions::menu_running(
-                &row.actions,
-                Rc::new(move |action| {
+            let Some((row, offered)) = list.offered(index) else { return };
+            let (menu, group) = actions::menu_offering(
+                &offered,
+                Rc::new(move |offered| {
                     if let Some(app) = crate::window::app() {
-                        crate::asking::run(&app, action, &key);
+                        crate::asking::act(&app, offered, &row);
                     }
                 }),
             );
@@ -165,15 +167,23 @@ impl TaskList {
         let weak = Rc::downgrade(self);
         self.tree.connect_fold(move |index, expand| {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
-            let Some(row) = list.rows.borrow().get(index).map(|row| row.row.clone()) else { return };
+            let Some((row, offered)) = list.offered(index) else { return };
             let kind = if expand { ActionKind::Expand } else { ActionKind::Collapse };
-            if let Some(action) = row.actions.iter().find(|action| action.kind == kind) {
+            if let Some(action) = offered.into_iter().find(|action| action.kind == kind) {
                 // The tree reports the row's new state itself, so the app's word for it would
                 // say it twice.
                 crate::window::QUIET_FOLD.set(true);
-                app.model.run(action.clone(), &row.id);
+                app.model.act(action, &row.id);
             }
         });
+    }
+
+    /// The row at `index` and what it offers, in short, as the list gives them.
+    fn offered(&self, index: usize) -> Option<(RowView, Vec<Offered>)> {
+        let row = self.rows.borrow().get(index)?.clone();
+        let offered = self.offered.borrow();
+        let actions = row.actions.iter().filter_map(|at| offered.get(*at as usize).cloned()).collect();
+        Some((row.row, actions))
     }
 
     /// The row selected, if any.
@@ -213,6 +223,7 @@ impl TaskList {
             })
             .collect();
         *self.rows.borrow_mut() = list.items.clone();
+        *self.offered.borrow_mut() = list.offered.clone();
         let rebuilt = self.tree.set(items);
         self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
     }
