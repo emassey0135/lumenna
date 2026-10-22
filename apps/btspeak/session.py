@@ -70,6 +70,10 @@ class Session:
             self.lumenna.ShellEventCapitals(self.lumenna.Capitals.SENTENCE),
             # What pairing's sentences call this device, which finds others on its network.
             self.lumenna.ShellEventPairingAs("this device", True),
+            # A place to show from the start: the main menu shows none, and without one the
+            # screen stood on every task, the whole list worked out and handed over for nothing
+            # (two seconds of a Pi's start on 2,000 tasks). Today is the cheapest, and first used.
+            self.lumenna.ShellEventOpen(self.lumenna.PlaceToday()),
         )
 
     # -- turns ------------------------------------------------------------------------
