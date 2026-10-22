@@ -216,7 +216,7 @@ struct TaskDetailView: View {
     /// An action's name on its button: on the Mac, one that asks something ends in "…".
     private static func title(_ action: LumennaApp.Action) -> String {
         #if os(macOS)
-        action.asks ? action.title + "…" : action.title
+        action.asksFirst ? action.title + "…" : action.title
         #else
         action.title
         #endif

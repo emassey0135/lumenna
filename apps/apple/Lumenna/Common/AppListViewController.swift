@@ -146,7 +146,7 @@ class AppListViewController: UIViewController {
     }
 
     /// The item's actions as the list offers them (`AppRowActions`), Expand or Collapse among them.
-    func rowActions(for item: AppItem) -> AppRowActions {
+    func rowActions(for item: AppItem) -> AppRowActions<LumennaApp.Action> {
         AppRowActions(actions: item.actions) { [weak self] action in self?.perform(action, on: item) }
     }
 
@@ -187,7 +187,7 @@ final class AppListState: ObservableObject {
 struct AppListScreen: View {
     @ObservedObject var state: AppListState
     let sidebar: Bool
-    let actions: (AppItem) -> AppRowActions
+    let actions: (AppItem) -> AppRowActions<LumennaApp.Action>
     let open: (AppItem) -> Void
     @AccessibilityFocusState private var spoken: String?
 

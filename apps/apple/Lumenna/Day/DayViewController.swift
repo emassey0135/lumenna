@@ -172,7 +172,7 @@ struct DayScreen: View {
     /// A row's actions as the day offers them (`AppRowActions`): the primary ones and Expand or
     /// Collapse swiped from the trailing edge, the rest as accessibility actions, every one in
     /// the context menu.
-    static func actions(of item: LumennaApp.DayItem, run: @escaping (LumennaApp.Action) -> Void) -> AppRowActions {
+    static func actions(of item: LumennaApp.DayItem, run: @escaping (LumennaApp.Action) -> Void) -> AppRowActions<LumennaApp.Action> {
         AppRowActions(actions: item.actions, run: run)
     }
 

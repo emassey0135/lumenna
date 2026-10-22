@@ -52,7 +52,7 @@ final class DayTests: XCTestCase {
         (core.app.view.day?.items ?? []).filter { !$0.hidden && $0.kind != .summary }
     }
 
-    private func split(_ day: DayModel, _ index: Int) -> AppRowActions {
+    private func split(_ day: DayModel, _ index: Int) -> AppRowActions<LumennaApp.Action> {
         let item = day.shown[index].item
         return DayScreen.actions(of: item) { [weak day] action in day?.run(action, on: item) }
     }

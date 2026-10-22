@@ -74,7 +74,7 @@ struct TaskListView: View {
         let row = shown.row
         // Split as the phone splits them (`AppRowActions`): Mark Done from the leading edge,
         // the rest and Expand or Collapse from the trailing; every one is on the task's screen.
-        let split = AppRowActions(actions: row.actions, doneLeads: true) { _ in }
+        let split = AppRowActions(actions: shown.actions, doneLeads: true) { _ in }
         return NavigationLink(value: TaskOpened(id: row.id)) {
             // The row owns what VoiceOver says: the title as its name, then the rest of its
             // line, whether it is folded and its level as its value, as on the phone.
@@ -185,7 +185,7 @@ struct BlockListView: View {
                 .accessibilityFocused($spoken, equals: row.id)
                 .swipeActions(edge: .trailing) {
                     // The primary ones and Reminders; Edit Block is the row's tap.
-                    ForEach(row.actions.filter { ($0.primary && $0.kind != .edit) || $0.kind == .reminders }, id: \.self) { action in
+                    ForEach(shown.actions.filter { ($0.primary && $0.kind != .edit) || $0.kind == .reminders }, id: \.self) { action in
                         Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: row) }
                     }
                 }

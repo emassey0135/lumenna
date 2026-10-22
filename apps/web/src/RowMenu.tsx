@@ -8,11 +8,11 @@
 
 import { Button, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import type { KeyboardEvent } from "react";
-import type { Action } from "./core";
+import type { Named } from "./actions";
 
-export function RowMenu(props: {
-  actions: Action[];
-  onAction: (action: Action) => void;
+export function RowMenu<A extends Named>(props: {
+  actions: A[];
+  onAction: (action: A) => void;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   label?: string;

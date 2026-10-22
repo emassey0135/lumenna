@@ -5,6 +5,8 @@ import io.github.emassey0135.lumenna.app.ActionKind
 import io.github.emassey0135.lumenna.app.Choice
 import io.github.emassey0135.lumenna.app.Item
 import io.github.emassey0135.lumenna.app.Line
+import io.github.emassey0135.lumenna.app.ListView
+import io.github.emassey0135.lumenna.app.Offered
 import io.github.emassey0135.lumenna.app.Place
 import io.github.emassey0135.lumenna.app.ShellEvent
 import io.github.emassey0135.lumenna.app.SidebarEntry
@@ -43,6 +45,24 @@ fun AppModel.rowActions(row: String, actions: List<Action>, local: (Action) -> B
         if (!local(action)) send(ShellEvent.Perform(action))
     }
 }
+
+/** An action a list's row offers in short: its name, in sentence case as the app words it here. */
+val Offered.name: String get() = sentence.ifEmpty { title }
+
+/** [item]'s actions in short: its places among the list's own ([ListView.offered]). */
+fun ListView.offeredOf(item: Item): List<Offered> = item.actions.mapNotNull { offered.getOrNull(it.toInt()) }
+
+/**
+ * A list's row's actions, in short ([ListView.offered]): each puts its row in hand, then the app
+ * runs that row's action whole, as it has it (`Act`).
+ */
+fun AppModel.listRowActions(row: String, actions: List<Offered>, local: (Offered) -> Boolean = { false }): List<RowAction> =
+    actions.map { action ->
+        RowAction(action.name, action.kind, action.destructive, action.subject, action.primary) {
+            send(ShellEvent.Focus(row))
+            if (!local(action)) send(ShellEvent.Act(action))
+        }
+    }
 
 /**
  * A key [row] does not offer: the row put in hand (or held in [side]), then the app runs the

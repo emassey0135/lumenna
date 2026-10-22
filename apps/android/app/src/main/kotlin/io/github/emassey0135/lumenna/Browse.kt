@@ -174,11 +174,10 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        AppTaskRows(core, shownRows(list?.items.orEmpty(), lines?.list.orEmpty()), open = { row ->
-            row.actions.firstOrNull { it.kind == io.github.emassey0135.lumenna.app.ActionKind.EDIT }?.let { edit ->
-                app.send(ShellEvent.Focus(row.id))
-                app.send(ShellEvent.Perform(edit))
-            }
+        AppTaskRows(core, shownRows(list?.items.orEmpty(), lines?.list.orEmpty()), list, open = { row ->
+            // A block's own screen is its form, for every occurrence: its Edit, on the row in hand.
+            app.send(ShellEvent.Focus(row.id))
+            app.send(ShellEvent.Run(listOf(io.github.emassey0135.lumenna.app.ActionKind.EDIT)))
         }, openLabel = "Edit every occurrence")
     }
 }

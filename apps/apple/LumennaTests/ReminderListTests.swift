@@ -28,9 +28,11 @@ final class ReminderListTests: XCTestCase {
         settle()
         core.app.send(.open(.blocks))
         settle { core.app.view.list?.items.isEmpty == false }
-        let row = try XCTUnwrap(core.app.view.list?.items.first?.row)
-        let reminders = try XCTUnwrap(row.actions.first { $0.kind == .reminders })
-        core.app.run(reminders, on: row.id)
+        let blocks = try XCTUnwrap(core.app.view.list)
+        let item = try XCTUnwrap(blocks.items.first)
+        // A list's row offers its actions in short, each held once in the list.
+        let reminders = try XCTUnwrap(item.actions.map { blocks.offered[Int($0)] }.first { $0.kind == .reminders })
+        core.app.act(reminders, on: item.row.id)
         settle { core.app.view.reminders != nil }
 
         let list = RemindersViewController(core: core)

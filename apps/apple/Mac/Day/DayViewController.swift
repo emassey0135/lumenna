@@ -41,7 +41,7 @@ struct MacDayScreen: View {
                 if !model.actions.isEmpty {
                     Menu("Day Actions") {
                         ForEach(model.actions, id: \.self) { action in
-                            Button(action.asks ? action.title + "…" : action.title) { model.perform(action) }
+                            Button(action.asksFirst ? action.title + "…" : action.title) { model.perform(action) }
                         }
                     }
                     .fixedSize()
@@ -63,7 +63,7 @@ struct MacDayScreen: View {
             .contextMenu(forSelectionType: String.self) { keys in
                 if let key = keys.first, let item = model.rows.first(where: { $0.id == key })?.item {
                     ForEach(item.actions, id: \.self) { action in
-                        Button(action.asks ? action.title + "…" : action.title) { model.run(action, on: item) }
+                        Button(action.asksFirst ? action.title + "…" : action.title) { model.run(action, on: item) }
                     }
                 }
             } primaryAction: { _ in

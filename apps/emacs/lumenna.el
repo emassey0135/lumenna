@@ -768,7 +768,9 @@ ROW is put in hand, the action run, and what it asks asked."
   (setq lumenna--acted-on row)
   (lumenna--hold row)
   (setq lumenna--acting (format "%s/%s" (plist-get action :subject) (plist-get action :kind)))
-  (lumenna-send (list :Perform action))
+  ;; A list's row offers its actions in short (they say what they `:asks'), which the app runs
+  ;; whole for the row in hand; every other row offers them whole.
+  (lumenna-send (if (plist-member action :asks) (list :Act action) (list :Perform action)))
   (lumenna--follow))
 
 (defun lumenna--choose-action (prompt actions)

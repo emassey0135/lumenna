@@ -68,9 +68,9 @@ struct MacTaskListScreen: View {
             .accessibilityLabel(model.title)
             .focused($listFocused)
             .contextMenu(forSelectionType: String.self) { ids in
-                if let id = ids.first, let row = model.rows.first(where: { $0.id == id })?.row {
-                    ForEach(row.actions, id: \.self) { action in
-                        Button(action.asks ? action.title + "…" : action.title) { model.run(action, on: row) }
+                if let id = ids.first, let shown = model.rows.first(where: { $0.id == id }) {
+                    ForEach(shown.actions, id: \.self) { action in
+                        Button(action.asksFirst ? action.title + "…" : action.title) { model.run(action, on: shown.row) }
                     }
                 }
             } primaryAction: { _ in
@@ -131,7 +131,7 @@ struct MacTaskListScreen: View {
             } else {
                 DisclosureGroup(isExpanded: Binding(get: { node.row.row.expanded != false }, set: { open in
                     let kind: LumennaApp.ActionKind = open ? .expand : .collapse
-                    if let fold = node.row.row.actions.first(where: { $0.kind == kind }) { model.run(fold, on: node.row.row) }
+                    if let fold = node.row.actions.first(where: { $0.kind == kind }) { model.run(fold, on: node.row.row) }
                 })) {
                     ForEach(node.children) { child in
                         AnyView(NodeView(node: child, model: model))

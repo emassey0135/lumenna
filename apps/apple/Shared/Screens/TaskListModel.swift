@@ -12,6 +12,8 @@ final class TaskListModel: ObservableObject {
     struct Row: Identifiable, Equatable {
         let item: LumennaApp.Item
         let line: LumennaApp.Line?
+        /// What can be done to it, in short: its places among the list's own (`offered`).
+        let actions: [LumennaApp.Offered]
         var id: String { item.row.id }
         var row: LumennaApp.RowView { item.row }
     }
@@ -83,7 +85,11 @@ final class TaskListModel: ObservableObject {
         guard view.place == place, let list = view.list else { return }
         let lines = core.app.lines
         let rows = list.items.enumerated().map { index, item in
-            Row(item: item, line: index < lines.list.count ? lines.list[index] : nil)
+            Row(
+                item: item,
+                line: index < lines.list.count ? lines.list[index] : nil,
+                actions: item.actions.compactMap { at in Int(at) < list.offered.count ? list.offered[Int(at)] : nil }
+            )
         }
         if rows != self.rows { self.rows = rows }
         if readback != lines.readback { readback = lines.readback }
@@ -113,13 +119,18 @@ final class TaskListModel: ObservableObject {
 
     /// Runs one of a row's actions, the app's: the row in hand, then the action, whose question
     /// the window's `AppQuestions` asks.
-    func run(_ action: LumennaApp.Action, on row: LumennaApp.RowView) {
-        core.app.run(action, on: row.id)
+    func run(_ action: LumennaApp.Offered, on row: LumennaApp.RowView) {
+        core.app.act(action, on: row.id)
+    }
+
+    /// What can be done to the row listed as `row`, in short.
+    func actions(of row: LumennaApp.RowView) -> [LumennaApp.Offered] {
+        rows.first { $0.id == row.id }?.actions ?? []
     }
 
     /// The row's action of one of `kinds`, or why it has none, in the core's words.
     func run(_ kinds: [LumennaApp.ActionKind], on row: LumennaApp.RowView, saying kind: LumennaApp.ActionKind) {
-        if let action = row.actions.first(where: { kinds.contains($0.kind) }) {
+        if let action = actions(of: row).first(where: { kinds.contains($0.kind) }) {
             run(action, on: row)
         } else {
             core.app.refuse([kind], on: row.id)

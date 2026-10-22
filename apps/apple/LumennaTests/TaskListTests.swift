@@ -53,9 +53,9 @@ final class TaskListTests: XCTestCase {
     private var shownItems: [LumennaApp.Item] { (core.app.view.list?.items ?? []).filter { !$0.hidden } }
 
     /// The row's actions as the list splits them, each run as the list runs it.
-    private func split(_ tasks: TaskListModel, _ item: Int) -> AppRowActions {
-        let row = tasks.shown[item].row
-        return TaskListScreen.actions(of: row) { [weak tasks] action in tasks?.run(action, on: row) }
+    private func split(_ tasks: TaskListModel, _ item: Int) -> AppRowActions<LumennaApp.Offered> {
+        let row = tasks.shown[item]
+        return TaskListScreen.actions(of: row) { [weak tasks] action in tasks?.run(action, on: row.row) }
     }
 
     private func offered(_ tasks: TaskListModel, _ item: Int) -> Offered {
@@ -75,7 +75,7 @@ final class TaskListTests: XCTestCase {
         split.run(action)
     }
 
-    private func assertEachOnce(_ offered: Offered, _ actions: [LumennaApp.Action], file: StaticString = #filePath, line: UInt = #line) {
+    private func assertEachOnce(_ offered: Offered, _ actions: [some RowAction], file: StaticString = #filePath, line: UInt = #line) {
         let names = actions.map(\.title)
         let listed = offered.listed
         XCTAssertEqual(listed.sorted(), names.sorted(), "each action listed once: \(offered)", file: file, line: line)
@@ -95,7 +95,7 @@ final class TaskListTests: XCTestCase {
         XCTAssertEqual(row.leading, ["Mark Done"])
         XCTAssertEqual(row.trailing, ["Move to Trash"])
         XCTAssertEqual(row.custom, otherTaskActions)
-        assertEachOnce(row, shownItems[0].row.actions)
+        assertEachOnce(row, tasks.shown[0].actions)
         run("Mark Done", tasks, 0)
         settle()
         XCTAssertTrue(try core.app.device.listTasks(query: "").rows.isEmpty, "completed, so no longer listed")
@@ -110,7 +110,7 @@ final class TaskListTests: XCTestCase {
         _ = try core.app.device.moveTask(id: outline.id, to: .parent(id: essay.id))
         let tasks = shownTasks()
         XCTAssertEqual(offered(tasks, 0).trailing, ["Move to Trash", "Collapse"])
-        assertEachOnce(offered(tasks, 0), shownItems[0].row.actions)
+        assertEachOnce(offered(tasks, 0), tasks.shown[0].actions)
         run("Collapse", tasks, 0)
         settle { tasks.shown.count == 1 }
         XCTAssertEqual(tasks.shown.count, 1, "the subtask is folded away")
@@ -124,7 +124,7 @@ final class TaskListTests: XCTestCase {
         let trash = shownTasks(.trash)
         XCTAssertTrue(offered(trash, 0).leading.isEmpty, "nothing to mark done in the trash")
         XCTAssertEqual(offered(trash, 0).trailing, ["Restore", "Delete from Trash"])
-        assertEachOnce(offered(trash, 0), shownItems[0].row.actions)
+        assertEachOnce(offered(trash, 0), trash.shown[0].actions)
         run("Restore", trash, 0)
         settle()
         XCTAssertEqual(try core.app.device.listTasks(query: "").rows.map(\.title), ["old idea"])

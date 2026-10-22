@@ -171,9 +171,24 @@ private final class Writing: LumennaApp.Locale, @unchecked Sendable {
     }
 }
 
-extension LumennaApp.Action {
+/// What a row's menus, swipes and keys need of an action: one offered whole (`Action`), or a
+/// list row's in short (`Offered`), which the app runs whole for the row in hand.
+protocol RowAction: Hashable {
+    var kind: LumennaApp.ActionKind { get }
+    var title: String { get }
+    var sentence: String { get }
+    var primary: Bool { get }
+    var destructive: Bool { get }
     /// Whether it asks something before it runs: a menu item for it ends in "…" on the Mac.
-    var asks: Bool { question != .immediate }
+    var asksFirst: Bool { get }
+}
+
+extension LumennaApp.Action: RowAction {
+    var asksFirst: Bool { question != .immediate }
+}
+
+extension LumennaApp.Offered: RowAction {
+    var asksFirst: Bool { asks != .nothing }
 }
 
 extension AppModel {
@@ -187,6 +202,13 @@ extension AppModel {
             send(.focus(key))
         }
         send(.perform(action))
+    }
+
+    /// What running one of a list row's actions sends, in short: the row in hand, then the
+    /// action, which the app runs whole as it has it for that row.
+    func act(_ action: LumennaApp.Offered, on key: String) {
+        send(.focus(key))
+        send(.act(action))
     }
 
     /// A key a row does not offer: the row in hand (or held in `side`), then the app runs the

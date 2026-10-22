@@ -215,24 +215,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// The task in hand's action for a Task menu command, and the row it is run on.
-    private func action(for command: Selector?) -> (key: String, action: LumennaApp.Action)? {
+    /// The task in hand's action for a Task menu command: its title, and running it on its row.
+    /// A list's row offers it in short, the details whole.
+    private func action(for command: Selector?) -> (title: String, run: () -> Void)? {
         let kinds = Self.kinds(command)
         let view = core.app.view
-        if view.place != .today, view.place != .blocks, let focus = view.focus,
-           let row = view.list?.items.first(where: { $0.row.id == focus })?.row,
-           let action = row.actions.first(where: { kinds.contains($0.kind) }) {
-            return (row.id, action)
+        let app = core.app
+        if view.place != .today, view.place != .blocks, let focus = view.focus, let list = view.list,
+           let item = list.items.first(where: { $0.row.id == focus }),
+           let action = item.actions.lazy.compactMap({ Int($0) < list.offered.count ? list.offered[Int($0)] : nil })
+               .first(where: { kinds.contains($0.kind) }) {
+            return (action.title, { app.act(action, on: item.row.id) })
         }
         if let details = view.details, let action = details.task.actions.first(where: { kinds.contains($0.kind) }) {
-            return (view.focus ?? details.task.id, action)
+            let key = view.focus ?? details.task.id
+            return (action.title, { app.run(action, on: key) })
         }
         return nil
     }
 
     private func perform(_ command: Selector) {
-        guard let (key, action) = action(for: command) else { return }
-        core.app.run(action, on: key)
+        action(for: command)?.run()
     }
 
     @objc func toggleDone(_ sender: Any?) { perform(#selector(toggleDone(_:))) }
@@ -293,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
              #selector(makeSubtask(_:)), #selector(waitFor(_:)), #selector(moveToTrash(_:)):
             let found = action(for: item.action)
             if item.action == #selector(toggleDone(_:)) {
-                item.title = found?.1.title ?? "Mark Done"
+                item.title = found?.title ?? "Mark Done"
             }
             return found != nil
         case #selector(previousDay(_:)), #selector(nextDay(_:)):

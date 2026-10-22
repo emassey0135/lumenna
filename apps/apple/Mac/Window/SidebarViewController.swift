@@ -163,7 +163,7 @@ struct SidebarScreen: View {
                 .accessibilityIdentifier(entry.title)
                 .contextMenu {
                     ForEach(entry.actions, id: \.self) { action in
-                        Button(action.asks ? action.title + "…" : action.title) { model.run(action, on: entry) }
+                        Button(action.asksFirst ? action.title + "…" : action.title) { model.run(action, on: entry) }
                     }
                 }
         }

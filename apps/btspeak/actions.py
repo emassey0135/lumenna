@@ -109,7 +109,10 @@ def act(session: Session, action, row=None) -> str:
 
     proposals.pin(session)
     said = [session.send(held(row))] if row is not None and getattr(row, "key", None) else []
-    said.append(session.send(L.ShellEventPerform(action)))
+    # A list's row offers its actions in short (`Offered`), which the app runs whole for the row
+    # in hand; every other row offers them whole.
+    run = L.ShellEventAct(action) if isinstance(action, L.Offered) else L.ShellEventPerform(action)
+    said.append(session.send(run))
     said.append(follow(session, row))
     return joined(*said)
 

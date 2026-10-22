@@ -23,10 +23,15 @@ understood, its count, what it could not find."
   (let* ((list (plist-get lumenna--view :list))
          (items (append (plist-get list :items) nil))
          (lines (append (plist-get lumenna--lines :list) nil))
+         (offered (plist-get list :offered))
          (rows (delq nil (cl-mapcar (lambda (item line)
                                       (unless (lumenna--true (plist-get item :hidden))
+                                        ;; A list's rows name their actions in short, each
+                                        ;; held once in the list: put in place of the row's.
                                         (append (list :key (plist-get (plist-get item :row) :id)
-                                                      :text (plist-get line :text))
+                                                      :text (plist-get line :text)
+                                                      :actions (mapcar (lambda (at) (aref offered at))
+                                                                       (plist-get item :actions)))
                                                 (plist-get item :row))))
                                     items lines))))
     (setq-local lumenna--empty (plist-get list :empty))

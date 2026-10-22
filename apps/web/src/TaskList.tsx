@@ -12,10 +12,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
-import type { Action, Screen, ShellEvent, ShownItem } from "./core";
+import type { Screen, ShellEvent, ShortAction, ShownItem } from "./core";
 import { ActionKind, Syntax } from "./core";
 import { CompletingField } from "./Completing";
-import { byKind, REMOVING } from "./actions";
+import { byKind, REMOVING, shortActions } from "./actions";
 import { useCommand } from "./commands";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { rowKey } from "./landing";
@@ -70,7 +70,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
 
   // The Task menu's commands, on the task in hand here, before the details' copy of them.
   const onSelected = (...kinds: ActionKind[]) => () => {
-    if (!inHand || !byKind(inHand.row.actions, ...kinds)) return false;
+    if (!inHand || !byKind(shortActions(list, inHand), ...kinds)) return false;
     act({ tag: "Run", value0: kinds });
   };
   useCommand("mark-done", onSelected(ActionKind.MarkDone, ActionKind.MarkNotDone), 1);
@@ -108,8 +108,8 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   // Left and Right fold a row: the row's own Expand or Collapse, run through the app.
   const fold = (keys: Set<Key>) => {
     const changed = items.find((item) => item.row.expanded != null && item.row.expanded !== keys.has(item.row.id));
-    const action = changed && byKind(changed.row.actions, ActionKind.Expand, ActionKind.Collapse);
-    if (action) act({ tag: "Perform", value0: action });
+    const action = changed && byKind(shortActions(list, changed), ActionKind.Expand, ActionKind.Collapse);
+    if (action) act({ tag: "Act", value0: action });
   };
 
   return (
@@ -140,8 +140,8 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
       </p>
       <div className="buttons">
         <RowMenu
-          actions={inHand?.row.actions ?? []}
-          onAction={(action: Action) => act({ tag: "Perform", value0: action })}
+          actions={shortActions(list, inHand)}
+          onAction={(action: ShortAction) => act({ tag: "Act", value0: action })}
           isOpen={menu}
           onOpenChange={setMenu}
         />
@@ -164,7 +164,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
           renderEmptyState={() => <p className="quiet">{list?.empty}</p>}
         >
           {function item(node: Node<ShownItem>) {
-            const done = byKind(node.item.row.actions, ActionKind.MarkDone, ActionKind.MarkNotDone);
+            const done = byKind(shortActions(list, node.item), ActionKind.MarkDone, ActionKind.MarkNotDone);
             return (
               <TreeItem id={node.id} textValue={node.item.text}>
                 <TreeItemContent>

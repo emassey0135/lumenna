@@ -10,6 +10,8 @@ export const core: Comlink.Remote<Api> = Comlink.wrap<Api>(worker);
 export type { Offered, Said, Screen, Shown, ShownDay, ShownDayItem, ShownDetails, ShownAsking, ShownChoice, ShownDevice, ShownItem, ShownLine, ShownReminders } from "./worker";
 export type {
   Action,
+  // A list row's action in short (`ListView::offered`); the worker's own `Offered` is a completion.
+  Offered as ShortAction,
   Swatch,
   Answer,
   Asking,
@@ -50,6 +52,7 @@ export type {
 // The core's enumerations, which are numbers: compared by their names here, never by value.
 export {
   ActionKind,
+  Asks,
   Capitals,
   DayKind,
   DayMove,

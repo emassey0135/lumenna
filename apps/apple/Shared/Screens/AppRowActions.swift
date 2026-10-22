@@ -9,19 +9,20 @@ import LumennaApp
 ///   than replacing them, so between the two every action is listed once;
 /// - all of them, in the app's order, in the menu a long press (or a secondary click) opens.
 ///
-/// Running one is the app's: `run` puts the row in hand and sends the action.
-struct AppRowActions {
-    let actions: [LumennaApp.Action]
+/// Running one is the app's: `run` puts the row in hand and sends the action. The actions are
+/// whole (`Action`) or, for a list's rows, in short (`Offered`).
+struct AppRowActions<A: RowAction> {
+    let actions: [A]
     /// Whether Mark Done or Mark Not Done, when first, swipes from the leading edge, as a
     /// task's does.
     var doneLeads = false
-    let run: (LumennaApp.Action) -> Void
+    let run: (A) -> Void
 
     /// Expand and Collapse: the app's, swiped, since folding is a row's commonest move.
-    private static let folds: [LumennaApp.ActionKind] = [.expand, .collapse]
+    private static var folds: [LumennaApp.ActionKind] { [.expand, .collapse] }
 
     /// What swipes from the leading edge: the row's Mark Done, if it leads.
-    var leading: [LumennaApp.Action] {
+    var leading: [A] {
         guard doneLeads, let first = actions.first, first.primary, [.markDone, .markNotDone].contains(first.kind) else {
             return []
         }
@@ -30,20 +31,20 @@ struct AppRowActions {
 
     /// What swipes from the trailing edge: the other primary actions, in the app's order, then
     /// Expand or Collapse.
-    var trailing: [LumennaApp.Action] {
+    var trailing: [A] {
         let lead = leading
         let primary = actions.filter { $0.primary && !lead.contains($0) && !Self.folds.contains($0.kind) }
         return primary + actions.filter { Self.folds.contains($0.kind) }
     }
 
     /// What is offered only as an accessibility action, besides the menu.
-    var others: [LumennaApp.Action] {
+    var others: [A] {
         let swiped = leading + trailing
         return actions.filter { !swiped.contains($0) }
     }
 
     /// The first of these kinds: what a key or a menu command does to the row in hand.
-    func first(_ kinds: LumennaApp.ActionKind...) -> LumennaApp.Action? {
+    func first(_ kinds: LumennaApp.ActionKind...) -> A? {
         actions.first { kinds.contains($0.kind) }
     }
 }

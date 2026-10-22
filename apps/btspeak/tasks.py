@@ -38,12 +38,14 @@ def list_rows(session: Session) -> list[Row]:
     if view.list is None:
         return []
     rows = []
+    offered = view.list.offered
     for index, item in enumerate(view.list.items):
         if item.hidden:
             continue
         line = lines.list[index] if index < len(lines.list) else None
+        # A list's rows name their actions in short, each held once in the list.
         rows.append(Row(
-            item.row.id, line.text if line else item.row.title, item.row.actions, item.row,
+            item.row.id, line.text if line else item.row.title, [offered[at] for at in item.actions], item.row,
             level=item.level, expanded=item.row.expanded, title=item.row.title,
             braille=line.braille if line else "",
         ))

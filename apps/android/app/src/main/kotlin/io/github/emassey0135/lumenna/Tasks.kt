@@ -167,6 +167,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
         AppTaskRows(
             core,
             shownRows(list?.items.orEmpty(), lines?.list.orEmpty()),
+            list,
             open = if (trash) null else { row ->
                 app.send(ShellEvent.Focus(row.id))
                 navigator.push(Screen.Task(row.id))
@@ -184,9 +185,10 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
 fun AppTaskRows(
     core: Core,
     items: List<Pair<Item, Line?>>,
+    list: io.github.emassey0135.lumenna.app.ListView?,
     open: ((RowView) -> Unit)?,
     openLabel: String = "Show details",
-    local: (io.github.emassey0135.lumenna.app.Action) -> Boolean = { false },
+    local: (io.github.emassey0135.lumenna.app.Offered) -> Boolean = { false },
 ) {
     val state = rememberLazyListState()
     val keys = items.map { it.first.row.id }
@@ -206,7 +208,7 @@ fun AppTaskRows(
                 done = row.checked,
                 depth = row.depth.toInt(),
                 index = index,
-                actions = core.app.rowActions(row.id, row.actions, local),
+                actions = core.app.listRowActions(row.id, list?.offeredOf(item).orEmpty(), local),
                 refuse = core.app.refusal(row.id),
                 open = open?.let { { it(row) } },
                 openLabel = openLabel,

@@ -92,7 +92,7 @@ struct DevicesScreen: View {
             .contextMenu(forSelectionType: String.self) { ids in
                 if let id = ids.first, let device = model.devices.first(where: { $0.device.nodeId == id })?.device {
                     ForEach(device.actions, id: \.self) { action in
-                        Button(action.asks ? action.title + "…" : action.title) {
+                        Button(action.asksFirst ? action.title + "…" : action.title) {
                             model.core.app.run(action, on: device.nodeId, side: .devices)
                         }
                     }

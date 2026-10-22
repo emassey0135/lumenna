@@ -5,6 +5,8 @@ import io.github.emassey0135.lumenna.rememberSideLanding
 import io.github.emassey0135.lumenna.app.Side
 import androidx.wear.compose.foundation.lazy.ScalingLazyListState
 import io.github.emassey0135.lumenna.rowActions
+import io.github.emassey0135.lumenna.listRowActions
+import io.github.emassey0135.lumenna.offeredOf
 import io.github.emassey0135.lumenna.placeRows
 import io.github.emassey0135.lumenna.shownRows
 import io.github.emassey0135.lumenna.spoken
@@ -165,7 +167,7 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
         items.forEach { (shown, line) ->
             item {
                 val task = shown.row
-                val actions = app.rowActions(task.id, task.actions).sortedByDescending { it.primary }
+                val actions = app.listRowActions(task.id, list?.offeredOf(shown).orEmpty()).sortedByDescending { it.primary }
                 RowButton(
                     task.title,
                     detail = line?.detail?.ifEmpty { null },
@@ -231,14 +233,12 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
             item {
                 val row = shown.row
                 val line = lines?.list?.getOrNull(index)
-                val actions = app.rowActions(row.id, row.actions)
-                val edit = row.actions.firstOrNull { it.kind == ActionKind.EDIT }
+                val actions = app.listRowActions(row.id, list?.offeredOf(shown).orEmpty())
                 // Said as a task row is: when, in this watch's clock, then how long.
                 RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }, key = row.id, focus = focus, swatch = row.swatch) {
-                    edit?.let {
-                        app.send(ShellEvent.Focus(row.id))
-                        app.send(ShellEvent.Perform(it))
-                    }
+                    // Its own screen is its form, for every occurrence: its Edit, on the row in hand.
+                    app.send(ShellEvent.Focus(row.id))
+                    app.send(ShellEvent.Run(listOf(ActionKind.EDIT)))
                 }
             }
         }

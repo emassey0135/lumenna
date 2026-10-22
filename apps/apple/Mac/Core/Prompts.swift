@@ -43,7 +43,7 @@ extension NSMenu {
     func add(_ actions: [LumennaApp.Action], run: @escaping (LumennaApp.Action) -> Void) {
         for action in actions {
             if action.destructive, !items.isEmpty, items.last?.isSeparatorItem == false { addItem(.separator()) }
-            addItem(ClosureMenuItem(title: action.asks ? action.title + "…" : action.title) { run(action) })
+            addItem(ClosureMenuItem(title: action.asksFirst ? action.title + "…" : action.title) { run(action) })
         }
     }
 }

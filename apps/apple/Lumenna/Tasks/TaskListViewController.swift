@@ -95,9 +95,9 @@ struct TaskListScreen: View {
     }
 
     private func rowView(_ row: TaskListModel.Row) -> some View {
-        let actions = row.row.actions
+        let actions = row.actions
         // Split as every iPhone list splits them (`AppRowActions`), each listed once.
-        let split = TaskListScreen.actions(of: row.row, blocks: model.blocks) { _ in }
+        let split = TaskListScreen.actions(of: row, blocks: model.blocks) { _ in }
         let leading = split.leading
         let folds = actions.filter { [.expand, .collapse].contains($0.kind) }
         let trailing = split.trailing
@@ -170,7 +170,9 @@ struct TaskListScreen: View {
     /// A row's actions as the list offers them (`AppRowActions`): a task's Mark Done swiped from
     /// the leading edge, the other primary ones and Expand or Collapse from the trailing, the
     /// rest as accessibility actions, every one in the context menu.
-    static func actions(of row: LumennaApp.RowView, blocks: Bool = false, run: @escaping (LumennaApp.Action) -> Void) -> AppRowActions {
+    static func actions(
+        of row: TaskListModel.Row, blocks: Bool = false, run: @escaping (LumennaApp.Offered) -> Void
+    ) -> AppRowActions<LumennaApp.Offered> {
         AppRowActions(actions: row.actions, doneLeads: !blocks, run: run)
     }
 

@@ -137,7 +137,7 @@ enum MainMenu {
             separator.tag = Self.tag
             menu.addItem(separator)
             for action in actions {
-                let item = ClosureMenuItem(title: action.asks ? action.title + "…" : action.title) { app.performDay(action) }
+                let item = ClosureMenuItem(title: action.asksFirst ? action.title + "…" : action.title) { app.performDay(action) }
                 item.tag = Self.tag
                 if let key = DayKeys.key(for: action.kind) {
                     item.keyEquivalent = key
