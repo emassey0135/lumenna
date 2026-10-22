@@ -6,8 +6,8 @@ use std::rc::Rc;
 
 use gtk::gio;
 use gtk::prelude::*;
-use lumenna_app::{Asks, Offered};
-use lumenna_records::{Action, ActionKind, Question, Subject};
+use lumenna_app::{ActingOn, Asks, Offered};
+use lumenna_records::{Action, ActionKind, Subject};
 
 use crate::window::{App, spawn};
 
@@ -25,38 +25,32 @@ pub const DELETE: &[ActionKind] = &[ActionKind::Delete, ActionKind::DeleteForGoo
 /// What Enter does: open it, or what free time and a cancelled day are for.
 pub const ENTER: &[ActionKind] = &[ActionKind::Edit, ActionKind::EditTask, ActionKind::AddBlock, ActionKind::RestoreDay];
 
-/// The first of `actions` of one of `kinds`.
-pub fn find<'a>(actions: &'a [Action], kinds: &[ActionKind]) -> Option<&'a Action> {
-    kinds.iter().find_map(|kind| actions.iter().find(|action| action.kind == *kind))
+/// The first of `offered` of one of `kinds`.
+pub fn find<'a>(offered: &'a [Offered], kinds: &[ActionKind]) -> Option<&'a Offered> {
+    kinds.iter().find_map(|kind| offered.iter().find(|action| action.kind == *kind))
 }
 
-/// A menu of `actions`, each handed to `run` when chosen: the app's rows hand theirs to the
-/// app. Those that remove something come last, apart.
-pub fn menu_running(actions: &[Action], run: Rc<dyn Fn(Action)>) -> (gio::Menu, gio::SimpleActionGroup) {
-    menu_of(actions.iter().map(|action| (action.title.as_str(), action.destructive, action.question != Question::Immediate, action.clone())), run)
-}
-
-/// The same of a list row's actions in short (`ListView::offered`), handed back with `Act`.
-pub fn menu_offering(offered: &[Offered], run: Rc<dyn Fn(Offered)>) -> (gio::Menu, gio::SimpleActionGroup) {
-    menu_of(offered.iter().map(|action| (action.title.as_str(), action.destructive, action.asks != Asks::Nothing, action.clone())), run)
-}
-
-/// A menu of entries, each its title, whether it removes something, whether it asks first, and
-/// what `run` is handed when it is chosen.
-fn menu_of<'a, T: Clone + 'static>(entries: impl Iterator<Item = (&'a str, bool, bool, T)>, run: Rc<dyn Fn(T)>) -> (gio::Menu, gio::SimpleActionGroup) {
+/// A menu of what a row offers, in short, each chosen handed to the app for the row `on`
+/// names (`ActOn`); `name` is what the row is called, for a reminder list it opens. Those that
+/// remove something come last, apart.
+pub fn menu(offered: &[Offered], on: &ActingOn, name: Option<&str>) -> (gio::Menu, gio::SimpleActionGroup) {
     let menu = gio::Menu::new();
     let (keeping, removing) = (gio::Menu::new(), gio::Menu::new());
     let group = gio::SimpleActionGroup::new();
-    for (index, (title, destructive, asks, value)) in entries.enumerate() {
-        let name = format!("a{index}");
+    for (index, action) in offered.iter().enumerate() {
+        let name_of = format!("a{index}");
         // The core's titles, as spoken; an underscore in one is the title's, not a mnemonic.
-        let title = title.replace('_', "__");
-        let title = if asks { format!("{title}…") } else { title };
-        let section = if destructive { &removing } else { &keeping };
-        section.append(Some(&title), Some(&format!("row.{name}")));
-        let simple = gio::SimpleAction::new(&name, None);
-        let run = Rc::clone(&run);
-        simple.connect_activate(move |_, _| run(value.clone()));
+        let title = action.title.replace('_', "__");
+        let title = if action.asks == Asks::Nothing { title } else { format!("{title}…") };
+        let section = if action.destructive { &removing } else { &keeping };
+        section.append(Some(&title), Some(&format!("row.{name_of}")));
+        let simple = gio::SimpleAction::new(&name_of, None);
+        let (action, on, name) = (action.clone(), on.clone(), name.map(str::to_owned));
+        simple.connect_activate(move |_, _| {
+            if let Some(app) = crate::window::app() {
+                crate::asking::act_on(&app, on.clone(), action.clone(), name.as_deref());
+            }
+        });
         group.add_action(&simple);
     }
     menu.append_section(None, &keeping);

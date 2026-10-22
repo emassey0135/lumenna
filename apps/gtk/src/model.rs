@@ -14,7 +14,7 @@ use gtk::glib;
 use lumenna_app::lines::Lines;
 use lumenna_app::{Capitals, ViewModel};
 use lumenna_ffi::{App, Device, Locale, Shell, ShellEvent, Turn};
-use lumenna_records::{Action, LumennaError};
+use lumenna_records::LumennaError;
 
 /// The app over this device's store, and what it last left to draw.
 pub struct Model {
@@ -117,16 +117,10 @@ impl Model {
         true
     }
 
-    /// What running one of a row's actions sends: the row in hand, then the action.
-    pub fn run(&self, action: Action, on: &str) {
-        self.send(ShellEvent::Focus(on.to_owned()));
-        self.send(ShellEvent::Perform(action));
-    }
-
-    /// The same for a list's row, its action in short: the app runs the row's own.
-    pub fn act(&self, offered: lumenna_app::Offered, on: &str) {
-        self.send(ShellEvent::Focus(on.to_owned()));
-        self.send(ShellEvent::Act(offered));
+    /// What running one of a row's actions sends: the action in short, and the row it is on,
+    /// which the app puts in hand and runs its own of.
+    pub fn act_on(&self, on: lumenna_app::ActingOn, offered: lumenna_app::Offered) {
+        self.send(ShellEvent::ActOn(on, offered));
     }
 }
 

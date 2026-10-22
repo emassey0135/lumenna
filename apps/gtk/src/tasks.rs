@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_app::{Item as Row, Offered};
+use lumenna_app::{ActingOn, Item as Row, Offered};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::places::Place;
 use lumenna_records::{ActionKind, RowView};
@@ -153,14 +153,7 @@ impl TaskList {
         self.tree.connect_menu(move |index, point| {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some((row, offered)) = list.offered(index) else { return };
-            let (menu, group) = actions::menu_offering(
-                &offered,
-                Rc::new(move |offered| {
-                    if let Some(app) = crate::window::app() {
-                        crate::asking::act(&app, offered, &row);
-                    }
-                }),
-            );
+            let (menu, group) = actions::menu(&offered, &ActingOn::Row(row.id.clone()), Some(&row.title));
             app.popup(&menu, list.tree.view.upcast_ref(), point, Some(&group));
         });
         // Folding is the app's: Left and Right run the row's Collapse or Expand.
@@ -173,7 +166,7 @@ impl TaskList {
                 // The tree reports the row's new state itself, so the app's word for it would
                 // say it twice.
                 crate::window::QUIET_FOLD.set(true);
-                app.model.act(action, &row.id);
+                app.model.act_on(ActingOn::Row(row.id), action);
             }
         });
     }

@@ -14,10 +14,10 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
-use lumenna_app::Side;
+use lumenna_app::{ActingOn, Side};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::reminders::{DueReminder, ReminderList};
-use lumenna_records::{Action, ActionKind, Change, LumennaError};
+use lumenna_records::{ActionKind, Change, LumennaError};
 
 use crate::actions;
 use crate::tree::{Item, Landing, Tree};
@@ -208,34 +208,9 @@ fn send(event: ShellEvent) {
     }
 }
 
-/// Opens the Reminders list of a task or block series, from its Reminders action: the app's,
-/// named after what it is for.
-pub fn show(app: &App, action: &Action, on: &str) {
-    name(&action.title, name_of(app, &action.target).as_deref());
-    app.model.run(action.clone(), on);
-}
-
 /// Names the reminder list about to open: `title` ("Reminders"), for what it is for.
 pub fn name(title: &str, of: Option<&str>) {
     TITLE.set(of.map_or_else(|| title.to_owned(), |name| format!("{title} for {name}")));
-}
-
-/// What a task or block series is called, from what the app shows of it.
-fn name_of(app: &App, target: &str) -> Option<String> {
-    let view = app.model.view();
-    // A row is the task or block series its actions act on.
-    let listed = view
-        .list
-        .as_ref()
-        .and_then(|list| list.items.iter().find(|item| item.row.id == target))
-        .map(|item| item.row.title.clone());
-    let planned = view.day.as_ref().and_then(|day| {
-        day.items
-            .iter()
-            .find_map(|item| item.block.as_ref().filter(|block| block.series == target || block.id == target).map(|block| block.title.clone()))
-    });
-    let detailed = view.details.as_ref().filter(|details| details.task.id == target).map(|details| details.task.title.clone());
-    listed.or(planned).or(detailed)
 }
 
 /// The list's window, when it is in front: where its questions are asked from.
@@ -291,7 +266,7 @@ impl List {
                 ..Default::default()
             })
             .collect();
-        if let Some(add) = actions::find(&reminders.actions, &[ActionKind::New]) {
+        if let Some(add) = actions::find(&reminders.offered, &[ActionKind::New]) {
             self.add.set_label(&format!("{}…", add.title.replace('_', "__")));
         }
         let had_focus = self.tree.has_focus();
@@ -341,11 +316,6 @@ impl List {
     }
 }
 
-/// A reminder's action, held in the list first.
-fn run(key: &str, action: Action) {
-    send(ShellEvent::Hold(Side::Reminders, key.to_owned()));
-    send(ShellEvent::Perform(action));
-}
 
 fn build(app: &App) -> Rc<List> {
     let title = TITLE.take();
@@ -394,9 +364,9 @@ fn build(app: &App) -> Rc<List> {
         let weak = Rc::downgrade(&list);
         add.connect_clicked(move |_| {
             let Some(list) = weak.upgrade() else { return };
-            let action = list.shown.borrow().as_ref().and_then(|shown| actions::find(&shown.actions, &[ActionKind::New]).cloned());
+            let action = list.shown.borrow().as_ref().and_then(|shown| actions::find(&shown.offered, &[ActionKind::New]).cloned());
             if let Some(action) = action {
-                send(ShellEvent::Perform(action));
+                send(ShellEvent::ActOn(ActingOn::Reminders, action));
             }
         });
     }
@@ -435,9 +405,13 @@ fn build(app: &App) -> Rc<List> {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(shown) = list.shown.borrow().clone() else { return };
             let Some(reminder) = shown.reminders.get(index).cloned() else { return };
-            let offered = if reminder.actions.is_empty() { shown.actions.clone() } else { reminder.actions.clone() };
-            let key = reminder.id.clone();
-            let (menu, group) = actions::menu_running(&offered, Rc::new(move |action| run(&key, action)));
+            // A reminder of the defaults offers nothing of its own: the list's own actions, then.
+            let (offered, on) = if reminder.offered.is_empty() {
+                (shown.offered.clone(), ActingOn::Reminders)
+            } else {
+                (reminder.offered.clone(), ActingOn::Held(Side::Reminders, reminder.id.clone()))
+            };
+            let (menu, group) = actions::menu(&offered, &on, None);
             app.popup(&menu, list.tree.view.upcast_ref(), point, Some(&group));
         });
     }

@@ -277,9 +277,9 @@ impl Detail {
             let (Some(detail), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(task) = detail.shown.borrow().clone() else { return };
             let Some(other) = detail.waits.selected().and_then(|i| task.depends.get(i)) else { return };
-            let stop = task.actions.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other.as_deref() == Some(&other.id));
+            let stop = task.offered.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other.as_deref() == Some(&other.id));
             if let Some(action) = stop {
-                app.model.send(ShellEvent::Perform(action.clone()));
+                app.model.act_on(lumenna_app::ActingOn::Details, action.clone());
             }
         });
         // Each field typed or chosen goes to the app, which keeps it until saved.
@@ -430,10 +430,10 @@ impl Detail {
         // A button is there while the task offers its action, and says it as the core titles
         // it: Mark Done is Mark Not Done on a done task.
         for (button, kinds) in &self.buttons {
-            let action = actions::find(&task.actions, kinds);
+            let action = actions::find(&task.offered, kinds);
             button.set_sensitive(action.is_some());
             if let Some(action) = action {
-                let asks = !matches!(action.question, lumenna_records::Question::Immediate);
+                let asks = action.asks != lumenna_app::Asks::Nothing;
                 let label = if asks { format!("{}…", action.title) } else { action.title.clone() };
                 if button.label().is_none_or(|shown| shown != label.as_str()) {
                     button.set_label(&label);

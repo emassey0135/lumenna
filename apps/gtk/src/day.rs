@@ -15,9 +15,9 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_app::{DayItem, DayKind};
+use lumenna_app::{ActingOn, DayItem, DayKind, Offered};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{Action, ActionKind};
+use lumenna_records::ActionKind;
 
 use crate::actions;
 use crate::tree::{Item, Landing, Tree};
@@ -100,20 +100,12 @@ impl DayView {
             let (Some(day), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(row) = day.rows.borrow().get(index).cloned() else { return };
             // Folding is Left and Right's, as in every tree; the menu holds what the row is for.
-            let offered: Vec<Action> =
-                row.actions.iter().filter(|a| !matches!(a.kind, ActionKind::Expand | ActionKind::Collapse)).cloned().collect();
+            let offered: Vec<Offered> =
+                row.offered.iter().filter(|a| !matches!(a.kind, ActionKind::Expand | ActionKind::Collapse)).cloned().collect();
             if offered.is_empty() {
                 return;
             }
-            let key = row.key.clone();
-            let (menu, group) = actions::menu_running(
-                &offered,
-                Rc::new(move |action| {
-                    if let Some(app) = crate::window::app() {
-                        crate::asking::run(&app, action, &key);
-                    }
-                }),
-            );
+            let (menu, group) = actions::menu(&offered, &ActingOn::Row(row.key.clone()), name_of(&row));
             app.popup(&menu, day.tree.view.upcast_ref(), point, Some(&group));
         });
         let weak = Rc::downgrade(self);
@@ -121,9 +113,9 @@ impl DayView {
             let (Some(day), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(row) = day.rows.borrow().get(index).cloned() else { return };
             let kind = if expand { ActionKind::Expand } else { ActionKind::Collapse };
-            if let Some(action) = row.actions.iter().find(|action| action.kind == kind) {
+            if let Some(action) = row.offered.iter().find(|action| action.kind == kind) {
                 crate::window::QUIET_FOLD.set(true);
-                app.model.run(action.clone(), &row.key);
+                app.model.act_on(ActingOn::Row(row.key), action.clone());
             }
         });
     }
@@ -167,5 +159,13 @@ impl DayView {
     /// Moves focus into the day, once it is drawn.
     pub fn focus(&self) {
         self.landing.want(&self.tree);
+    }
+}
+
+/// What a row of the day is called, for a reminder list it opens: its block or its task.
+fn name_of(row: &DayItem) -> Option<&str> {
+    match row.kind {
+        DayKind::Sitting => row.sitting.as_ref().map(|sitting| sitting.title.as_str()),
+        _ => row.block.as_ref().map(|block| block.title.as_str()),
     }
 }

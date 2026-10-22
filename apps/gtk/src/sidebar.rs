@@ -15,8 +15,8 @@ use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
-use lumenna_records::{Action, ActionKind};
-use lumenna_app::Side;
+use lumenna_app::{ActingOn, Offered, Side};
+use lumenna_records::ActionKind;
 
 use crate::actions;
 use crate::tree::{Item, Tree};
@@ -64,7 +64,7 @@ impl Sidebar {
             // Delete here does what it does in every other list: the row's own Delete.
             if matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) && modifiers.is_empty() {
                 let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return glib::Propagation::Stop };
-                match actions::find(&entry.actions, actions::DELETE) {
+                match actions::find(&entry.offered, actions::DELETE) {
                     Some(action) => run(&app, action.clone(), &entry.key),
                     // The Inbox is refused by the app, which says why it stays; a fixed place or a
                     // heading has nothing to say.
@@ -84,20 +84,12 @@ impl Sidebar {
             let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return };
             // Folding is Left and Right's, as in every tree; the menu holds what the row is for.
-            let offered: Vec<Action> =
-                entry.actions.iter().filter(|a| !matches!(a.kind, ActionKind::Expand | ActionKind::Collapse)).cloned().collect();
+            let offered: Vec<Offered> =
+                entry.offered.iter().filter(|a| !matches!(a.kind, ActionKind::Expand | ActionKind::Collapse)).cloned().collect();
             if offered.is_empty() {
                 return;
             }
-            let key = entry.key.clone();
-            let (menu, group) = actions::menu_running(
-                &offered,
-                Rc::new(move |action| {
-                    if let Some(app) = crate::window::app() {
-                        run(&app, action, &key);
-                    }
-                }),
-            );
+            let (menu, group) = actions::menu(&offered, &ActingOn::Held(Side::Sidebar, entry.key.clone()), Some(&entry.title));
             app.popup(&menu, sidebar.tree.view.upcast_ref(), point, Some(&group));
         });
         let weak = Rc::downgrade(&sidebar);
@@ -105,7 +97,7 @@ impl Sidebar {
             let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return };
             let kind = if expand { ActionKind::Expand } else { ActionKind::Collapse };
-            if let Some(action) = entry.actions.iter().find(|action| action.kind == kind) {
+            if let Some(action) = entry.offered.iter().find(|action| action.kind == kind) {
                 crate::window::QUIET_FOLD.set(true);
                 run(&app, action.clone(), &entry.key);
             }
@@ -127,7 +119,7 @@ impl Sidebar {
                 key: entry.key.clone(),
                 text: entry.text.clone(),
                 depth: entry.depth,
-                expanded: entry.actions.iter().find_map(|action| match action.kind {
+                expanded: entry.offered.iter().find_map(|action| match action.kind {
                     ActionKind::Collapse => Some(true),
                     ActionKind::Expand => Some(false),
                     _ => None,
@@ -167,17 +159,16 @@ impl Sidebar {
     }
 }
 
-/// Runs one of a sidebar row's actions through the app: held there first, so what it changes
-/// lands back in the sidebar.
-fn run(app: &App, action: Action, key: &str) {
-    app.model.send(ShellEvent::Hold(Side::Sidebar, key.to_owned()));
-    app.model.send(ShellEvent::Perform(action));
+/// Runs one of a sidebar row's actions through the app: held there, so what it changes lands
+/// back in the sidebar.
+fn run(app: &App, action: Offered, key: &str) {
+    app.model.act_on(ActingOn::Held(Side::Sidebar, key.to_owned()), action);
 }
 
 /// What the File menu's New Project, New Label and New Saved Filter run: the heading's own.
 pub fn new_in(app: &Rc<App>, group: SidebarGroup) {
     let key = SidebarEntry::key_of(&SidebarKind::Group(group));
-    let action = app.model.view().sidebar.iter().find(|entry| entry.key == key).and_then(|entry| entry.actions.first().cloned());
+    let action = app.model.view().sidebar.iter().find(|entry| entry.key == key).and_then(|entry| entry.offered.first().cloned());
     if let Some(action) = action {
         run(app, action, &key);
     }

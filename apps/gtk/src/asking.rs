@@ -13,7 +13,7 @@ use gtk::glib;
 use gtk::prelude::*;
 use lumenna_app::Asking;
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{Action, Answer, Question};
+use lumenna_records::{Answer, Question};
 
 use crate::prompts;
 use crate::window::{App, spawn};
@@ -149,21 +149,12 @@ fn answer(app: &App, given: Option<Answer>) {
     });
 }
 
-/// Runs one of a row's actions through the app: the row in hand, then the action. A task's
-/// details are opened from the app's question; a reminder list is named first, after what it
-/// is for.
-pub fn run(app: &Rc<App>, action: Action, on: &str) {
-    if action.kind == lumenna_records::ActionKind::Reminders {
-        return crate::reminders::show(app, &action, on);
-    }
-    app.model.run(action, on);
-}
-
-/// The same for a list's row, its action in short (`ListView::offered`): the reminder list
-/// named after the row.
-pub fn act(app: &Rc<App>, offered: lumenna_app::Offered, row: &lumenna_records::RowView) {
+/// Runs one of a row's actions through the app, in short, on the row `on` names; `name` is
+/// what that row is called, after which a reminder list it opens is named. A task's details are
+/// opened from the app's question.
+pub fn act_on(app: &App, on: lumenna_app::ActingOn, offered: lumenna_app::Offered, name: Option<&str>) {
     if offered.kind == lumenna_records::ActionKind::Reminders {
-        crate::reminders::name(&offered.title, Some(&row.title));
+        crate::reminders::name(&offered.title, name);
     }
-    app.model.act(offered, &row.id);
+    app.model.act_on(on, offered);
 }
