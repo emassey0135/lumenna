@@ -71,6 +71,11 @@ impl Toasts {
     /// Names the app for Windows and claims the name for this process. `None` where Windows
     /// has no notifications to give.
     pub fn new() -> Option<Self> {
+        // A package is named for Windows already, by its manifest, and its toasts are its own.
+        if super::package::packaged() {
+            let notifier = ToastNotificationManager::CreateToastNotifier().ok()?;
+            return Some(Self { notifier, shown: std::cell::RefCell::new(Vec::new()) });
+        }
         let id = app_id();
         let key = format!("Software\\Classes\\AppUserModelId\\{id}");
         if system::read_string(&key, "DisplayName").as_deref() != Some("Lumenna") {

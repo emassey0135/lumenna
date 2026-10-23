@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Lumenna as an MSIX package, for the Microsoft Store, which signs and updates it. Filled in and
+  packed by the release workflow (`.github/workflows/release.yml`); every @NAME@ is replaced there.
+
+  The identity (@IDENTITY_NAME@, @PUBLISHER@) is a stand-in until Partner Center reserves the name
+  and gives the real ones, which the workflow then takes from the repository's variables. A
+  package's AppData writes are redirected into its own folder, so the app keeps its store there
+  outright (`profile::default_directory`), apart from an install from the installer: the two are
+  two devices, to pair if both are wanted.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 uap10 desktop rescap">
+
+  <Identity Name="@IDENTITY_NAME@" Publisher="@PUBLISHER@" Version="@VERSION@" ProcessorArchitecture="@ARCH@" />
+
+  <Properties>
+    <DisplayName>Lumenna</DisplayName>
+    <PublisherDisplayName>@PUBLISHER_DISPLAY_NAME@</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <!-- Windows 10 2004, the first with console applications in a package (`uap10:Subsystem`). -->
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26200.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+  <Applications>
+    <Application Id="Lumenna" Executable="lumenna.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Lumenna" Description="Tasks, and the blocks of time they are worked in"
+        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- Opening at sign-in (`win/package.rs`): off until the person turns it on. -->
+        <desktop:Extension Category="windows.startupTask" Executable="lumenna.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="LumennaAtSignIn" Enabled="false" DisplayName="Lumenna" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+
+    <!-- `lum`, reached from any terminal by its alias, in the package and so with its store. -->
+    <Application Id="Lum" Executable="lum.exe" EntryPoint="Windows.FullTrustApplication"
+      uap10:Subsystem="console" uap10:SupportsMultipleInstances="true">
+      <uap:VisualElements DisplayName="lum" Description="Lumenna on the command line" AppListEntry="none"
+        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="lum.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="lum.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>

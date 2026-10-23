@@ -19,6 +19,7 @@ mod help;
 mod menu;
 mod prompts;
 mod quick_add;
+mod package;
 mod pairing;
 mod picker;
 mod proposal;

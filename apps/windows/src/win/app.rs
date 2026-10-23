@@ -44,7 +44,7 @@ use super::clock::Formats;
 use super::{pairing, proposal, reminders, swatch, system};
 use super::shell::{Relay, WM_TURN};
 use super::controls::{self, rect};
-use super::core::{Poster, WM_SAY, said, taken};
+use super::core::{Poster, WM_EVENT, WM_SAY, said, taken};
 use super::toast::{Answered, Toasts, WM_REMINDER};
 use super::dark;
 use super::day::DayView;
@@ -205,7 +205,8 @@ pub fn run() {
     if arguments.no_shortcuts {
         shortcuts::leave_to_another_copy();
     }
-    app.start(arguments.background);
+    // Opened at sign-in: by the Run key with `--background`, or by a package's startup task.
+    app.start(arguments.background || super::package::started_at_sign_in());
     message_loop(&app);
     APP.with(|slot| slot.borrow_mut().take());
 }
@@ -1470,6 +1471,7 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
             WM_TIMER => app.on_timer(),
             WM_TURN => app.take_turn(taken(lparam)),
             WM_SAY => app.say(&said(lparam)),
+            WM_EVENT => app.crux.send(taken::<lumenna_ffi::ShellEvent>(lparam)),
             WM_REMINDER => app.reminder_answered(taken(lparam)),
             WM_DEFERRED => {
                 let action = app.deferred.borrow_mut().pop_front();

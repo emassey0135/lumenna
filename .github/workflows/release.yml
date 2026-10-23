@@ -77,7 +77,7 @@ jobs:
           retention-days: 30
 
   windows:
-    name: Windows installer, ${{ matrix.arch }}
+    name: Windows installer and MSIX, ${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
@@ -135,10 +135,29 @@ jobs:
           if (Test-Path "$app\lumenna.exe") { throw "the uninstaller left lumenna.exe" }
           if ((Get-ItemProperty HKCU:\Environment).Path -like "*$app*") { throw "the uninstaller left lum on the PATH" }
           if (-not (Test-Path "$store\kept")) { throw "a silent uninstall deleted the store" }
+      - name: The MSIX for the Store, and a signed copy installed and checked
+        # Unsigned, as the Store takes it. Its identity is a stand-in until Partner Center gives
+        # the real one, set then as the repository's variables.
+        shell: pwsh
+        env:
+          IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'dev.emassey0135.Lumenna' }}
+          PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=Elijah Massey' }}
+          PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME || 'Elijah Massey' }}
+        run: |
+          $version = (cargo pkgid -p lumenna-windows).Split('@')[-1]
+          $msix = powershell -NoProfile -ExecutionPolicy Bypass -File apps\windows\installer\msix\pack.ps1 `
+            -Arch ${{ matrix.arch }} -Version $version -Source "$env:GITHUB_WORKSPACE\target\release" -Output "$env:GITHUB_WORKSPACE\dist" `
+            -IdentityName $env:IDENTITY_NAME -Publisher $env:PUBLISHER -PublisherDisplayName $env:PUBLISHER_DISPLAY_NAME | Select-Object -Last 1
+          if ($LASTEXITCODE -ne 0) { throw "the MSIX did not pack" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File apps\windows\installer\msix\test.ps1 `
+            -Package $msix -IdentityName $env:IDENTITY_NAME -Publisher $env:PUBLISHER
+          if ($LASTEXITCODE -ne 0) { throw "the MSIX did not install and run" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.arch }}
-          path: dist/*-setup.exe
+          path: |
+            dist/*-setup.exe
+            dist/*.msix
           retention-days: 30
 
   gtk:
@@ -208,11 +227,24 @@ jobs:
           xcodebuild -project Lumenna.xcodeproj -scheme ${{ matrix.scheme }} -configuration Release \
             -destination '${{ matrix.destination }}' -derivedDataPath "$RUNNER_TEMP/derived" \
             CODE_SIGNING_ALLOWED=NO build
-          ditto -c -k --keepParent "$RUNNER_TEMP/derived/Build/Products/${{ matrix.products }}/Lumenna.app" "$RUNNER_TEMP/Lumenna-${{ matrix.artifact }}.zip"
+          app="$RUNNER_TEMP/derived/Build/Products/${{ matrix.products }}/Lumenna.app"
+          mkdir -p "$RUNNER_TEMP/dist"
+          if [ "${{ matrix.artifact }}" = macos ]; then
+            # The Mac's: a disk image holding the app beside a link to Applications, to drag it to.
+            version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+            mkdir "$RUNNER_TEMP/image"
+            cp -R "$app" "$RUNNER_TEMP/image/"
+            ln -s /Applications "$RUNNER_TEMP/image/Applications"
+            hdiutil create -volname Lumenna -srcfolder "$RUNNER_TEMP/image" -fs HFS+ -format UDZO \
+              -ov "$RUNNER_TEMP/dist/Lumenna-$version.dmg"
+            hdiutil verify "$RUNNER_TEMP/dist/Lumenna-$version.dmg"
+          else
+            ditto -c -k --keepParent "$app" "$RUNNER_TEMP/dist/Lumenna-${{ matrix.artifact }}.zip"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: apple-${{ matrix.artifact }}
-          path: ${{ runner.temp }}/Lumenna-${{ matrix.artifact }}.zip
+          path: ${{ runner.temp }}/dist
           retention-days: 30
 
   android:

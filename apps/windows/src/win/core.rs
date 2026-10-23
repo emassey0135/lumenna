@@ -10,6 +10,10 @@ use crate::speech;
 /// A sentence to say, posted from another thread: a boxed `String` in `lparam`.
 pub const WM_SAY: u32 = WM_APP + 2;
 
+/// A shell event worked out off the window's thread, posted with [`Poster::send`] for the
+/// window to send the app.
+pub const WM_EVENT: u32 = WM_APP + 8;
+
 /// The window to post to, as a number, since a window handle is not `Send`.
 #[derive(Clone, Copy)]
 pub struct Poster(isize);

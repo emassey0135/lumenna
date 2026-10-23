@@ -50,7 +50,48 @@ pub fn directory(explicit: Option<PathBuf>) -> Option<PathBuf> {
 /// is copied to a server at every logon on a domain with roaming profiles, carrying the store
 /// and its backups off the machine.
 pub fn default_directory() -> Option<PathBuf> {
+    if let Some(family) = package_family() {
+        return packaged_directory(&family);
+    }
     directories::ProjectDirs::from("", "", "lumenna").map(|dirs| dirs.data_local_dir().to_path_buf())
+}
+
+/// A packaged install's store (the Microsoft Store's MSIX): the package's own folder, named
+/// outright. Its writes to AppData land there anyway, while it still believes it writes the
+/// usual path; named, the app's one-instance lock and the profile's pipe, which are named from
+/// the path, are its own, and an install from the installer beside it on the same PC is
+/// another device rather than one fighting this one for a name. `lum`, run through the
+/// package's alias, is in the package too, and opens the same store.
+fn packaged_directory(family: &str) -> Option<PathBuf> {
+    let local = directories::BaseDirs::new()?.data_local_dir().to_path_buf();
+    Some(local.join("Packages").join(family).join("LocalCache").join("Local").join("lumenna").join("data"))
+}
+
+/// The package this process runs in (an MSIX's, as the Microsoft Store installs), by its family
+/// name; `None` for an ordinary install.
+#[cfg(windows)]
+#[must_use]
+pub fn package_family() -> Option<String> {
+    use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+    use windows_sys::Win32::Storage::Packaging::Appx::GetCurrentPackageFamilyName;
+    let mut length = 0u32;
+    // Asked with no buffer, a packaged process is told the length; any other, that it has none.
+    if unsafe { GetCurrentPackageFamilyName(&mut length, std::ptr::null_mut()) } != ERROR_INSUFFICIENT_BUFFER {
+        return None;
+    }
+    let mut name = vec![0u16; length as usize];
+    if unsafe { GetCurrentPackageFamilyName(&mut length, name.as_mut_ptr()) } != 0 {
+        return None;
+    }
+    let end = name.iter().position(|&unit| unit == 0).unwrap_or(name.len());
+    Some(String::from_utf16_lossy(&name[..end]))
+}
+
+/// No other system packages an app this way.
+#[cfg(not(windows))]
+#[must_use]
+pub fn package_family() -> Option<String> {
+    None
 }
 
 #[cfg(test)]
@@ -93,5 +134,20 @@ mod tests {
     #[test]
     fn a_profile_on_the_command_line_wins() {
         assert_eq!(directory(Some(PathBuf::from("D:\\work"))), Some(PathBuf::from("D:\\work")));
+    }
+
+    #[test]
+    fn a_packaged_install_keeps_its_store_in_its_own_package_folder() {
+        let path = packaged_directory("dev.emassey0135.Lumenna_8wekyb3d8bbwe").unwrap();
+        assert!(
+            path.ends_with(std::path::Path::new("Packages/dev.emassey0135.Lumenna_8wekyb3d8bbwe/LocalCache/Local/lumenna/data")),
+            "{}",
+            path.display()
+        );
+    }
+
+    #[test]
+    fn a_process_run_outside_a_package_has_no_package() {
+        assert_eq!(package_family(), None);
     }
 }

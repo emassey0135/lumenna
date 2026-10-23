@@ -35,9 +35,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::HSTRING;
 
 use super::app::{self, App};
-use super::core::sentence;
+use super::core::{Poster, WM_EVENT, sentence};
 use super::dialog::{self, Class, Dialog, Template};
-use super::{a11y, actions, controls, pairing, picker, prompts, shortcuts, system};
+use super::{a11y, actions, controls, package, pairing, picker, prompts, shortcuts, system};
 use crate::devices;
 use crate::shortcut::{Kind, Shortcut};
 use crate::speech;
@@ -418,7 +418,7 @@ impl Dialog for General {
         self.hwnd.set(page);
         a11y::make_live(dialog::item(page, STATUS));
         let at_sign_in = dialog::item(page, AT_SIGN_IN);
-        controls::check(at_sign_in, sign_in::on());
+        controls::check(at_sign_in, opens_at_sign_in());
         a11y::set_description(at_sign_in, &controls::text(dialog::item(page, AT_SIGN_IN_HINT)));
         let reminders = dialog::item(page, REMINDERS);
         if let Some(setting) = self.described.iter().find(|s| s.key == "reminders") {
@@ -537,21 +537,35 @@ impl Dialog for Recorder {
 /// What this PC keeps running in the background, as the app is told it: whether Lumenna opens
 /// at sign-in. Sent at start and after every change.
 pub fn background() -> ShellEvent {
-    ShellEvent::Background(BackgroundEvent::Offered { kind: BackgroundKind::WindowsSignIn, on: sign_in::on() })
+    ShellEvent::Background(BackgroundEvent::Offered { kind: BackgroundKind::WindowsSignIn, on: opens_at_sign_in() })
+}
+
+/// Whether Lumenna opens at sign-in: the Run key's, or a package's startup task's.
+fn opens_at_sign_in() -> bool {
+    if package::packaged() { package::opens_at_sign_in() } else { sign_in::on() }
 }
 
 /// Opens Lumenna at sign-in, or stops, as the app asked, and tells the app how that went, which
-/// it says in its own words.
+/// it says in its own words. A package asks Windows off the window's thread and posts the
+/// answer back (`WM_EVENT`).
 pub fn keep_running(app: &App, on: bool) {
-    let event = match sign_in::set(on, &app.directory) {
+    let answer = |result: Result<(), String>| match result {
         Ok(()) => background(),
         Err(reason) => ShellEvent::Background(BackgroundEvent::Failed { reason }),
     };
-    app.crux.send(event);
+    if package::packaged() {
+        let window = Poster::new(app.main);
+        std::thread::spawn(move || {
+            window.send(WM_EVENT, answer(package::open_at_sign_in(on)));
+        });
+        return;
+    }
+    app.crux.send(answer(sign_in::set(on, &app.directory)));
 }
 
-/// Opening at sign-in: the current user's Run key, as every Windows program does it. Started
-/// that way, the app opens in the notification area without its window (`--background`).
+/// Opening at sign-in, for an ordinary install: the current user's Run key, as every Windows
+/// program does it. Started that way, the app opens in the notification area without its window
+/// (`--background`).
 mod sign_in {
     use super::system;
 
