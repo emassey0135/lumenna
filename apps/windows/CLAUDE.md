@@ -68,6 +68,16 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   `Offered` is sent at start too. The key's command is `--background`, with `--profile` for a
   profile other than the usual one; its value is `LUMENNA_RUN_NAME` for tests, so they never
   change the person's.
+- **The installer is Inno Setup's** (`installer/lumenna.iss`, built per architecture by
+  `release.yml`): the app and `lum` for one person, with no administrator, into
+  `%LOCALAPPDATA%\Programs\Lumenna`, `lum` on their `PATH`, the Start menu shortcut carrying the
+  notification identity (`dev.emassey0135.Lumenna`), so toasts belong to it. Its `AppId` never
+  changes: Windows and winget know an upgrade by it. Uninstalling takes what the app wrote (the
+  sign-in Run value, the notification identity, a `lum daemon` logon task) and asks, No by
+  default and never when silent, whether to delete the person's data too
+  (`%LOCALAPPDATA%\lumenna`, the store and its backups, and `HKCU\Software\Lumenna`). The
+  workflow installs, runs and silently uninstalls it on the runner, checking the store stays.
+  The uninstall question itself is checked by hand.
 - **Quick add sends its line as it is typed** (`Typing::Text`); its readback and adding are the
   app's (`QuickAdd`), which holds what it added. Completion asks the store at keystroke rate
   (`App::complete`): the view's offer can lag the typing.
