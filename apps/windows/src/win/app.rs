@@ -349,6 +349,8 @@ impl App {
         crux.send(ShellEvent::Capitals(Capitals::Title));
         // How pairing's sentences call this device; it finds devices on its own network.
         crux.send(ShellEvent::PairingAs { called: "this PC".to_owned(), nearby: true });
+        // Whether it opens at sign-in, the app's setting of keeping Lumenna running.
+        crux.send(settings::background());
         // Resident, so in front for as long as it runs: the device's sync process once another
         // device is paired, which then answers the command surface at the profile's pipe, as
         // the daemon would, so Emacs and the BTSpeak app reach it.
@@ -534,6 +536,10 @@ impl App {
             unsafe {
                 let _ = SetTimer(Some(self.main), TIMER_SETTLE, 50, None);
             }
+        }
+        // Opening at sign-in as the person chose it, done, and the app told how it went.
+        if let Some(on) = turn.background {
+            settings::keep_running(self, on);
         }
         // An export the app made, saved where the person chooses, once this turn is drawn.
         for file in turn.files {

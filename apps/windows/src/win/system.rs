@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use windows::Win32::Foundation::{HANDLE, HWND};
+use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, HANDLE, HWND};
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoTaskMemFree};
 use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
 use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
@@ -68,7 +68,8 @@ pub fn read_string(key: &str, name: &str) -> Option<String> {
     }
 }
 
-pub fn write_string(key: &str, name: &str, value: &str) -> bool {
+/// Writes a string value, or says why Windows would not.
+pub fn write_string(key: &str, name: &str, value: &str) -> windows::core::Result<()> {
     let wide: Vec<u16> = value.encode_utf16().chain(std::iter::once(0)).collect();
     let status = unsafe {
         RegSetKeyValueW(
@@ -80,13 +81,13 @@ pub fn write_string(key: &str, name: &str, value: &str) -> bool {
             (wide.len() * 2) as u32,
         )
     };
-    status.is_ok()
+    status.ok()
 }
 
-pub fn delete_value(key: &str, name: &str) {
-    unsafe {
-        let _ = RegDeleteKeyValueW(HKEY_CURRENT_USER, &HSTRING::from(key), &HSTRING::from(name));
-    }
+/// Deletes a value, or says why Windows would not; one that was not there is gone already.
+pub fn delete_value(key: &str, name: &str) -> windows::core::Result<()> {
+    let status = unsafe { RegDeleteKeyValueW(HKEY_CURRENT_USER, &HSTRING::from(key), &HSTRING::from(name)) };
+    if status == ERROR_FILE_NOT_FOUND { Ok(()) } else { status.ok() }
 }
 
 /// Puts text on the clipboard.

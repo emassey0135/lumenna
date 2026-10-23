@@ -6,8 +6,8 @@
 //! What each setting is called, what it takes and what it can be are the core's; what it holds,
 //! what was typed and why a line was refused are the app's. Each page has its own status line,
 //! a polite live region, where what the app says goes while the sheet is open: the main
-//! window's is behind it. What is this PC's alone — opening at sign-in, the shortcuts from
-//! anywhere — is the window's own.
+//! window's is behind it. Opening at sign-in is the app's setting carried out here (the Run
+//! key); the shortcuts from anywhere are this PC's alone, and the window's own.
 
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -15,8 +15,9 @@ use std::rc::Rc;
 
 use lumenna_app::lines::Lines;
 use lumenna_app::settings::SettingsEvent;
-use lumenna_app::{ActingOn, DevicesEvent, Side, ViewModel};
+use lumenna_app::{ActingOn, BackgroundEvent, DevicesEvent, Side, ViewModel};
 use lumenna_ffi::ShellEvent;
+use lumenna_records::background::{self, BackgroundKind};
 use lumenna_records::{ActionKind, ExportFormat, Setting};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
@@ -310,6 +311,7 @@ const LIST: u32 = CBS_DROPDOWNLIST as u32 | WS_VSCROLL.0 | WS_TABSTOP.0;
 // ---------------------------------------------------------------------------------------
 
 const AT_SIGN_IN: u16 = 100;
+const AT_SIGN_IN_HINT: u16 = 101;
 const SHORTCUT: u16 = 110;
 const CHANGE: u16 = 120;
 const TOGGLE: u16 = 130;
@@ -330,6 +332,24 @@ impl General {
         let reminders = dialog::item(page, REMINDERS);
         if controls::checked(reminders) != on {
             controls::check(reminders, on);
+        }
+        // Opening at sign-in, as the app offers it: its words, and as chosen until Windows has
+        // made the change.
+        if let Some((setting, chosen)) = known.iter().find(|(s, _)| s.key == background::KEY) {
+            let at_sign_in = dialog::item(page, AT_SIGN_IN);
+            let title = devices::marked(&setting.title, 'O', '&');
+            if controls::text(at_sign_in) != title {
+                controls::set_text(at_sign_in, &title);
+            }
+            let hint = dialog::item(page, AT_SIGN_IN_HINT);
+            if controls::text(hint) != setting.hint {
+                controls::set_text(hint, &setting.hint);
+                a11y::set_description(at_sign_in, &setting.hint);
+            }
+            let on = chosen == "true";
+            if controls::checked(at_sign_in) != on {
+                controls::check(at_sign_in, on);
+            }
         }
     }
 
@@ -374,18 +394,11 @@ impl General {
 
 impl Dialog for General {
     fn template(&self) -> Template {
+        // The core's words, which the app's own row replaces as it comes.
+        let words = background::background_words(BackgroundKind::WindowsSignIn);
         let mut template = page("General")
-            .item(Class::Button, "&Open Lumenna when you sign in to Windows", AT_SIGN_IN, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
-            .item(
-                Class::Static,
-                "Lumenna stays running in the notification area when its window is closed, so your devices stay in sync. Exit it from the File menu or the notification area.",
-                u16::MAX,
-                SS_NOPREFIX.0,
-                7,
-                20,
-                238,
-                26,
-            )
+            .item(Class::Button, &devices::marked(&words.title, 'O', '&'), AT_SIGN_IN, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 7, 238, 10)
+            .item(Class::Static, &words.hint, AT_SIGN_IN_HINT, SS_NOPREFIX.0, 7, 20, 238, 26)
             .item(Class::Button, &titled(&self.described, "reminders", 'R', false), REMINDERS, BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0, 7, 50, 238, 10)
             .item(Class::Button, "Shortcuts from anywhere", u16::MAX, BS_GROUPBOX as u32, 7, 64, 238, 92);
         for (index, kind) in Kind::ALL.into_iter().enumerate() {
@@ -404,7 +417,9 @@ impl Dialog for General {
     fn init(&self, page: HWND) -> bool {
         self.hwnd.set(page);
         a11y::make_live(dialog::item(page, STATUS));
-        controls::check(dialog::item(page, AT_SIGN_IN), sign_in::on());
+        let at_sign_in = dialog::item(page, AT_SIGN_IN);
+        controls::check(at_sign_in, sign_in::on());
+        a11y::set_description(at_sign_in, &controls::text(dialog::item(page, AT_SIGN_IN_HINT)));
         let reminders = dialog::item(page, REMINDERS);
         if let Some(setting) = self.described.iter().find(|s| s.key == "reminders") {
             controls::check(reminders, setting.value == "true");
@@ -424,14 +439,10 @@ impl Dialog for General {
             return None;
         }
         app::with(|app| match id {
+            // The app hands it back to be done (`keep_running`), and says how it went.
             AT_SIGN_IN => {
                 let on = controls::checked(dialog::item(page, AT_SIGN_IN));
-                if sign_in::set(on, &app.directory) {
-                    say(page, if on { "Lumenna opens when you sign in" } else { "Lumenna no longer opens when you sign in" });
-                } else {
-                    prompts::fail(sheet(page), "Windows would not change what starts when you sign in.");
-                    controls::check(dialog::item(page, AT_SIGN_IN), sign_in::on());
-                }
+                set(background::KEY, if on { "true" } else { "false" });
             }
             REMINDERS => {
                 let on = controls::checked(dialog::item(page, REMINDERS));
@@ -523,30 +534,51 @@ impl Dialog for Recorder {
     }
 }
 
+/// What this PC keeps running in the background, as the app is told it: whether Lumenna opens
+/// at sign-in. Sent at start and after every change.
+pub fn background() -> ShellEvent {
+    ShellEvent::Background(BackgroundEvent::Offered { kind: BackgroundKind::WindowsSignIn, on: sign_in::on() })
+}
+
+/// Opens Lumenna at sign-in, or stops, as the app asked, and tells the app how that went, which
+/// it says in its own words.
+pub fn keep_running(app: &App, on: bool) {
+    let event = match sign_in::set(on, &app.directory) {
+        Ok(()) => background(),
+        Err(reason) => ShellEvent::Background(BackgroundEvent::Failed { reason }),
+    };
+    app.crux.send(event);
+}
+
 /// Opening at sign-in: the current user's Run key, as every Windows program does it. Started
 /// that way, the app opens in the notification area without its window (`--background`).
 mod sign_in {
     use super::system;
 
-    const NAME: &str = "Lumenna";
-
-    pub fn on() -> bool {
-        system::read_string(system::RUN_KEY, NAME).is_some()
+    /// The Run key's value: `LUMENNA_RUN_NAME` gives the UI tests one of their own, so they
+    /// never change what opens at the person's sign-in.
+    fn name() -> String {
+        std::env::var("LUMENNA_RUN_NAME").ok().filter(|name| !name.is_empty()).unwrap_or_else(|| "Lumenna".to_owned())
     }
 
-    /// Turns it on or off for the profile at `profile`.
-    pub fn set(on: bool, profile: &std::path::Path) -> bool {
+    pub fn on() -> bool {
+        system::read_string(system::RUN_KEY, &name()).is_some()
+    }
+
+    /// Turns it on or off for the profile at `profile`, or says why Windows would not.
+    pub fn set(on: bool, profile: &std::path::Path) -> Result<(), String> {
+        // Windows' message is a sentence; the app's own sentence ends it.
+        let reason = |error: &dyn std::fmt::Display| error.to_string().trim().trim_end_matches('.').to_owned();
         if !on {
-            system::delete_value(system::RUN_KEY, NAME);
-            return !self::on();
+            return system::delete_value(system::RUN_KEY, &name()).map_err(|error| reason(&error.message()));
         }
-        let Ok(exe) = std::env::current_exe() else { return false };
+        let exe = std::env::current_exe().map_err(|error| reason(&error))?;
         let mut command = format!("\"{}\" --background", exe.display());
         // A profile other than the usual one is the one opened at sign-in, too.
         if crate::profile::default_directory().as_deref() != Some(profile) {
             command.push_str(&format!(" --profile \"{}\"", profile.display()));
         }
-        system::write_string(system::RUN_KEY, NAME, &command)
+        system::write_string(system::RUN_KEY, &name(), &command).map_err(|error| reason(&error.message()))
     }
 }
 

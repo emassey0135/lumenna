@@ -322,6 +322,51 @@ fn a_setting_changed_in_settings_is_said_and_kept() {
     assert_eq!(app.store().settings(Some("day-end".to_owned())).unwrap().announcement, "07:30");
 }
 
+const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+/// A Run key value of a test's own (`LUMENNA_RUN_NAME`), gone again however the test ends.
+struct RunValue(String);
+
+impl Drop for RunValue {
+    fn drop(&mut self) {
+        use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RegDeleteKeyValueW};
+        use windows::core::HSTRING;
+        unsafe {
+            let _ = RegDeleteKeyValueW(HKEY_CURRENT_USER, &HSTRING::from(RUN_KEY), &HSTRING::from(&self.0));
+        }
+    }
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn opening_at_sign_in_is_the_cores_setting_and_toggling_it_writes_the_run_key_and_says_the_cores_sentence() {
+    let run = RunValue(format!("Lumenna UI test {}", std::process::id()));
+    let app = App::launch_with(&[("LUMENNA_RUN_NAME", &run.0)], |_| {});
+    let words = lumenna_records::background::background_words(lumenna_records::background::BackgroundKind::WindowsSignIn);
+    app.post(&[SETTINGS, "select:General"]);
+    let named = automation::wait(Duration::from_secs(5), || {
+        app.front()
+            .into_iter()
+            .find(|l| l.trim_start().starts_with(&format!("CheckBox '{}'", words.title)) && l.contains(&words.hint))
+    });
+    let named = named.unwrap_or_else(|| panic!("the box is the core's, its hint described: {:#?}", app.front()));
+    assert!(named.contains(" unchecked"), "{named}");
+    let said = |sentence: &str| {
+        automation::wait(Duration::from_secs(5), || {
+            app.front().iter().any(|l| l.contains(sentence) && l.contains("live=polite")).then_some(())
+        })
+        .is_some()
+    };
+    app.post(&[&format!("focus:{}", words.title), "space"]);
+    assert!(said(&words.on), "{:#?}", app.front());
+    let command = registry_string(RUN_KEY, &run.0).expect("the Run key is written");
+    assert!(command.contains("--background") && command.contains("--profile"), "{command}");
+    app.post(&["space"]);
+    assert!(said(&words.off), "{:#?}", app.front());
+    assert_eq!(registry_string(RUN_KEY, &run.0), None, "the Run key is removed");
+    app.post(&["esc"]);
+}
+
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn delete_in_the_sidebar_asks_before_deleting_a_project() {

@@ -1400,8 +1400,13 @@ store of their own). Everything Win32 is in `src/win/` behind
   A line is sent as typed (`SettingsEvent::Type`) and applied when left. Rename and Unpair hold
   the device first. Back Up Now is the device's own backup (`Device::backup`); an export the
   app makes is saved where the person chooses, and an import is read and handed to the app.
-  Pairing (`pairing.rs`) is a dialog over `view.devices.pairing`, on the app's network. What is
-  this PC's alone, opening at sign-in and the shortcuts from anywhere, stays the window's.
+  Pairing (`pairing.rs`) is a dialog over `view.devices.pairing`, on the app's network. The
+  shortcuts from anywhere, this PC's alone, stay the window's.
+- **Opening at sign-in is the app's background setting** (`background`, `WindowsSignIn`): the
+  General page's box and the hint under it are the row's words, its toggle `SettingsEvent::Set`;
+  a turn's `background` is carried out on the Run key (`settings::keep_running`) and answered
+  with `Offered` as the key now stands, or `Failed` with Windows' message, and the app says the
+  core's sentence on the page's status line. `Offered` is sent at start too.
 - **Quick add sends its line as it is typed** (`Typing::Text`); its readback and adding are the
   app's (`QuickAdd`), which holds what it added. Completion asks the store at keystroke rate
   (`App::complete`): the view's offer can lag the typing.
@@ -1439,7 +1444,8 @@ store of their own). Everything Win32 is in `src/win/` behind
 - **The Notes field gives Tab and Escape back** (`WM_GETDLGCODE`), and panes ignore
   `WM_CLOSE`, which a multi-line edit sends its parent on Escape.
 - **Global shortcuts and opening at sign-in are this PC's** (`HKCU\Software\Lumenna`, the
-  Run key with `--background`). Shortcuts are unregistered while new keys are chosen.
+  Run key with `--background`, its value `LUMENNA_RUN_NAME` for tests, so they never change
+  the person's). Shortcuts are unregistered while new keys are chosen.
   Windows does not say who holds a refused shortcut, so another open Lumenna window (class
   `LumennaMain-`) is named rather than "another program". `--no-shortcuts` leaves them to
   another copy.

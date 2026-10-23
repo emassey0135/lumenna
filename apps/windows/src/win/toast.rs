@@ -74,12 +74,12 @@ impl Toasts {
         let id = app_id();
         let key = format!("Software\\Classes\\AppUserModelId\\{id}");
         if system::read_string(&key, "DisplayName").as_deref() != Some("Lumenna") {
-            system::write_string(&key, "DisplayName", "Lumenna");
+            let _ = system::write_string(&key, "DisplayName", "Lumenna");
         }
         if let Some(icon) = icon_file() {
             let icon = icon.to_string_lossy();
             if system::read_string(&key, "IconUri").as_deref() != Some(&*icon) {
-                system::write_string(&key, "IconUri", &icon);
+                let _ = system::write_string(&key, "IconUri", &icon);
             }
         }
         unsafe {
