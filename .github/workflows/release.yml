@@ -152,12 +152,28 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File apps\windows\installer\msix\test.ps1 `
             -Package $msix -IdentityName $env:IDENTITY_NAME -Publisher $env:PUBLISHER
           if ($LASTEXITCODE -ne 0) { throw "the MSIX did not install and run" }
+      - name: lum alone, for the command line without the app
+        # A zip as Scoop and winget's portable packages take it, and as servers want it.
+        shell: pwsh
+        run: |
+          $version = (cargo pkgid -p lumenna-cli).Split('@')[-1]
+          $staging = "$env:RUNNER_TEMP\lum"
+          New-Item -ItemType Directory -Force $staging | Out-Null
+          Copy-Item target\release\lum.exe $staging
+          Copy-Item LICENSE "$staging\LICENSE.txt"
+          $zip = "dist\lum-$version-windows-${{ matrix.arch }}.zip"
+          Compress-Archive -Path "$staging\*" -DestinationPath $zip -Force
+          # What is unpacked from it runs.
+          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\lum-unpacked" -Force
+          & "$env:RUNNER_TEMP\lum-unpacked\lum.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "the lum in the zip did not run" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.arch }}
           path: |
             dist/*-setup.exe
             dist/*.msix
+            dist/*.zip
           retention-days: 30
 
   gtk:
