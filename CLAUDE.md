@@ -177,7 +177,7 @@ without the screens over BoltFFI. No JSON crosses the FFI.
 `crates/app` is the screens as a Crux 0.20 app; `crates/bridge` runs it beside a store. The
 web, the Android phone, Wear OS, BTSpeak, the iPhone, iPad, Mac and Apple Watch, Windows and
 GTK are drawn from it entirely, and Emacs over RPC; only the CLI still calls the host directly
-(the `legacy` tag is the last commit before the move).
+(8805659 is the last commit before the move).
 
 - **The app never depends on the host.** It holds the snapshot the host last sent (`Watch`, a
   stream answered at once and on every change) and works out from it, with `lumenna-records`,
