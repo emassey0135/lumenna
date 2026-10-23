@@ -47,10 +47,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --release --locked -p lumenna-cli
+      - name: In a tarball, which keeps it executable as an artifact alone does not
+        run: |
+          version=$(cargo pkgid -p lumenna-cli | sed 's/.*@//')
+          mkdir -p dist staging
+          cp target/release/lum staging/
+          cp LICENSE staging/
+          tar -czf "dist/lum-$version-linux-${{ matrix.arch }}.tar.gz" -C staging lum LICENSE
+          mkdir unpacked && tar -xzf dist/*.tar.gz -C unpacked && unpacked/lum --version
       - uses: actions/upload-artifact@v4
         with:
           name: lum-linux-${{ matrix.arch }}
-          path: target/release/lum
+          path: dist/*.tar.gz
           retention-days: 30
 
   lum-mac:
@@ -67,13 +75,19 @@ jobs:
           for target in aarch64-apple-darwin x86_64-apple-darwin; do
             cargo build --release --locked -p lumenna-cli --target "$target"
           done
-          mkdir -p dist
-          lipo -create -output dist/lum target/aarch64-apple-darwin/release/lum target/x86_64-apple-darwin/release/lum
-          lipo -info dist/lum
+          mkdir -p staging dist
+          lipo -create -output staging/lum target/aarch64-apple-darwin/release/lum target/x86_64-apple-darwin/release/lum
+          lipo -info staging/lum
+      - name: In a tarball, which keeps it executable as an artifact alone does not
+        run: |
+          version=$(cargo pkgid -p lumenna-cli | sed 's/.*@//')
+          cp LICENSE staging/
+          tar -czf "dist/lum-$version-macos-universal.tar.gz" -C staging lum LICENSE
+          mkdir unpacked && tar -xzf dist/*.tar.gz -C unpacked && unpacked/lum --version
       - uses: actions/upload-artifact@v4
         with:
           name: lum-macos-universal
-          path: dist/lum
+          path: dist/*.tar.gz
           retention-days: 30
 
   windows:
@@ -193,15 +207,19 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
       - name: Build
         run: cargo build --release --locked -p lumenna-gtk
-      - name: With its desktop file and icons
+      - name: With its desktop file and icons, in a tarball, which keeps them executable
         run: |
-          mkdir -p dist
-          cp target/release/lumenna-gtk apps/gtk/install.sh dist/
-          cp -r apps/gtk/data dist/
+          version=$(cargo pkgid -p lumenna-gtk | sed 's/.*@//')
+          name="lumenna-gtk-$version-linux-${{ matrix.arch }}"
+          mkdir -p "staging/$name" dist
+          cp target/release/lumenna-gtk apps/gtk/install.sh LICENSE "staging/$name/"
+          cp -r apps/gtk/data "staging/$name/"
+          tar -czf "dist/$name.tar.gz" -C staging "$name"
+          tar -tzvf "dist/$name.tar.gz" | grep -E 'lumenna-gtk$|install.sh$'
       - uses: actions/upload-artifact@v4
         with:
           name: gtk-linux-${{ matrix.arch }}
-          path: dist
+          path: dist/*.tar.gz
           retention-days: 30
 
   apple:
