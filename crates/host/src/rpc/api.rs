@@ -32,12 +32,26 @@ pub struct Response {
     /// a smaller result.
     #[serde(skip)]
     pub silent: bool,
+    /// What `lum daemon status` found of the sync daemon's service, for a client that turns it
+    /// on and off (Emacs's Sync in the background); absent from every other response.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<ServiceState>,
+}
+
+/// Whether the sync daemon is installed as the platform's service, and whether anything holds
+/// the device's sync endpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct ServiceState {
+    /// Installed as a service, so it starts at login.
+    pub installed: bool,
+    /// Something on this device holds the sync endpoint: the daemon, or an app.
+    pub running: bool,
 }
 
 impl Response {
     /// A response carrying this payload.
     pub fn new(outcome: impl Into<Outcome>) -> Self {
-        Self { version: VERSION, outcome: outcome.into(), silent: false }
+        Self { version: VERSION, outcome: outcome.into(), silent: false, service: None }
     }
 
     /// A mutation that turned out to have nothing to do.
@@ -54,6 +68,13 @@ impl Response {
     #[must_use]
     pub const fn quietly(mut self) -> Self {
         self.silent = true;
+        self
+    }
+
+    /// Carries what was found of the sync daemon's service.
+    #[must_use]
+    pub const fn with_service(mut self, service: ServiceState) -> Self {
+        self.service = Some(service);
         self
     }
 

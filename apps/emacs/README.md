@@ -25,6 +25,10 @@ sync while Emacs runs once it is paired. Either way changes made elsewhere reach
 whose screens every open Lumenna buffer redraws. `lumenna-profile`, or
 `LUMENNA_PROFILE` in Emacs's environment, picks a store, as it does for the CLI.
 
+To keep this device in sync while Emacs is closed, turn on Sync in the background in
+`lumenna-settings`: it installs `lum`'s sync daemon as a service that starts at login (`lum
+daemon install`), and turning it off removes it again.
+
 ## Using it
 
 Every list is a read-only buffer with one item per line, said in words: a task reads

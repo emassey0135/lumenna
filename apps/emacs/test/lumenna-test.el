@@ -740,6 +740,81 @@ until the app has taken it in."
       (should (equal offered '("Every 12 hours" "Every day" "Every week" "Off"))))
     (lumenna-test--goto "Automatic backups, Every week")))
 
+(defun lumenna-test--until (done)
+  "Wait until DONE, a function of no arguments, is true: what `lum daemon'
+answers comes when it comes."
+  (let ((deadline (+ (float-time) 20)))
+    (while (and (not (funcall done)) (< (float-time) deadline))
+      (accept-process-output nil 0.05))
+    (should (funcall done))))
+
+(defun lumenna-test--has-line (text)
+  "Whether this buffer has a line that is TEXT."
+  (save-excursion
+    (goto-char (point-min))
+    (re-search-forward (concat "^" (regexp-quote text) "$") nil t)))
+
+(defmacro lumenna-test--with-daemon (&rest body)
+  "Run BODY against a fresh store, `lum daemon' stood in for by a script whose
+service is the file `installed'; `said' collects what was announced.  The
+script refuses to install while the file `refuse' exists, as `lum' would say."
+  (declare (indent 0))
+  `(lumenna-test--with-store
+     (let* ((installed (expand-file-name "installed" profile))
+            (refuse (expand-file-name "refuse" profile))
+            (lumenna--daemon-program (expand-file-name "lum-daemon" profile))
+            said
+            (lumenna-announce-function (lambda (announcement _notices) (push announcement said))))
+       (skip-unless (not (eq system-type 'windows-nt)))
+       (with-temp-file lumenna--daemon-program
+         (insert "#!/bin/sh\n"
+                 "for verb; do :; done\n"
+                 "case \"$verb\" in\n"
+                 "  install) if [ -e '" refuse "' ]; then echo 'lum: launchctl refused' >&2; exit 1; fi\n"
+                 "           touch '" installed "' ;;\n"
+                 "  uninstall) rm -f '" installed "' ;;\n"
+                 "esac\n"
+                 "if [ -e '" installed "' ]; then on=true; else on=false; fi\n"
+                 "printf '{\"version\": 1, \"result\": \"change\", \"announcement\": \"\", \"changed\": false, "
+                 "\"service\": {\"installed\": %s, \"running\": false}}\\n' $on\n"))
+       (set-file-modes lumenna--daemon-program #o755)
+       ,@body)))
+
+(ert-deftest lumenna-sync-in-the-background-is-a-setting-as-lum-finds-the-daemon ()
+  (lumenna-test--with-store
+    (lumenna-settings)
+    ;; The real `lum', asked only whether it is installed: on a fresh profile it is not.
+    (lumenna-test--until (lambda () (lumenna-test--has-line "Sync in the background, Off")))))
+
+(ert-deftest lumenna-sync-in-the-background-installs-and-removes-the-daemon-and-says-the-cores-sentence ()
+  (lumenna-test--with-daemon
+    (lumenna-settings)
+    (lumenna-test--until (lambda () (lumenna-test--has-line "Sync in the background, Off")))
+    (lumenna-test--goto "Sync in the background")
+    (lumenna-test--answering ("On")
+      (lumenna-activate))
+    (lumenna-test--until (lambda () (member "The sync daemon is on. It starts when you log in" said)))
+    (should (file-exists-p installed))
+    (should (lumenna-test--has-line "Sync in the background, On"))
+    (lumenna-test--goto "Sync in the background")
+    (lumenna-test--answering ("Off")
+      (lumenna-activate))
+    (lumenna-test--until (lambda () (member "The sync daemon is off" said)))
+    (should-not (file-exists-p installed))
+    (should (lumenna-test--has-line "Sync in the background, Off"))))
+
+(ert-deftest lumenna-sync-in-the-background-refused-says-why-and-stays-off ()
+  (lumenna-test--with-daemon
+    (with-temp-file refuse)
+    (lumenna-settings)
+    (lumenna-test--until (lambda () (lumenna-test--has-line "Sync in the background, Off")))
+    (lumenna-test--goto "Sync in the background")
+    (lumenna-test--answering ("On")
+      (lumenna-activate))
+    (lumenna-test--until (lambda () (member "That could not be changed: launchctl refused" said)))
+    (should-not (file-exists-p installed))
+    (should (lumenna-test--has-line "Sync in the background, Off"))))
+
 (ert-deftest lumenna-a-tasks-priority-is-chosen-by-the-cores-words ()
   (lumenna-test--with-store
     (lumenna-test--seed "task.add" :text "file taxes")

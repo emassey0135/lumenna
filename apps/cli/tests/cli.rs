@@ -178,6 +178,17 @@ fn json_carries_a_version_and_the_row_numbers() {
 }
 
 #[test]
+fn json_says_plainly_whether_the_sync_daemon_is_installed_and_only_daemon_status_says_it() {
+    // What a client turning the daemon on and off reads, rather than the sentence.
+    let lum = Lum::new();
+    let out = lum.ok(&["--json", "daemon", "status"]);
+    assert!(out.contains("\"result\": \"change\""), "the result it always had: {out}");
+    assert!(out.contains("\"installed\": false"), "{out}");
+    assert!(out.contains("\"running\": false"), "{out}");
+    assert!(!lum.ok(&["--json", "task", "list"]).contains("\"service\""));
+}
+
+#[test]
 fn trash_is_recoverable_and_the_way_back_is_in_the_message() {
     let lum = Lum::new();
     lum.ok(&["task", "add", "delete me"]);

@@ -918,6 +918,12 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
   checks one (`Proposal(Check)`), C-c C-c applies, and the app's next proposal takes its place
   until it closes. `lumenna-proposal--now` fixes the moment for tests (`PlanFrom`). A
   reminder's `replan` button, and `r` in the due list, open Replan from Now.
+- **Its background setting is `lum`'s sync daemon** (`BackgroundKind::SyncDaemon`, Sync in the
+  background), since Emacs is not open all the time: `lum --json daemon status`'s `service`
+  (`installed`, `running`) is told the app as `Background(Offered)` at connecting and as Settings
+  opens, and a turn's `background` runs `lum daemon install` or `uninstall` asynchronously, the
+  state read back answering the app, or `Failed` with what `lum` said; the sentence is the app's.
+  Tests stand a script in for `lum daemon` (`lumenna--daemon-program`), so nothing is installed.
 - **Reminders are given through `reminder.deliver`**, which takes this device's reminder lock,
   and dealt with through the store's own methods; a task's or block's reminder list is the
   app's.

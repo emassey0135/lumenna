@@ -55,6 +55,10 @@ come first, then this device's own.
 (defun lumenna-settings ()
   "Show Lumenna's settings."
   (interactive)
+  ;; Connected already, the daemon may have been installed or removed since: asked
+  ;; again, its line follows when `lum' answers.
+  (when (and lumenna--connection (jsonrpc-running-p lumenna--connection))
+    (lumenna--offer-daemon))
   (lumenna--show-screen "*Lumenna: Settings*" #'lumenna-settings-mode
                         (list (list :Settings "Open") (list :Devices "Show"))))
 
@@ -106,6 +110,96 @@ core reads and checks it, asking again with why when it refuses."
                    (if-let* ((problem (lumenna--setting-problem key)))
                        (setq wrong problem typed value)
                      (setq done t))))))))))
+
+;;;; Sync in the background
+
+;; Emacs is not open all the time, so what keeps this device in sync while it
+;; is closed is `lum''s sync daemon.  Whether it is installed is the app's
+;; setting, in the core's words, among this device's own; installing or
+;; removing it is this client's, with `lum daemon', and the app says how it
+;; went.
+
+(defvar lumenna--daemon-program nil
+  "The program run as `lum daemon', or nil for `lumenna-lum-program'.
+Tests stand one in, so that no real service is installed.")
+
+(defvar lumenna--daemon-changes 0
+  "How many times the daemon was installed or removed: a status asked before
+the last change is not told the app, which would take it for the answer.")
+
+(defun lumenna--daemon (verb then)
+  "Run `lum daemon VERB' in the background, then call THEN with what it found.
+THEN is called with `lum''s response as a plist and nil, or with nil and why
+it failed, in `lum''s words."
+  (if-let* ((program (executable-find (or lumenna--daemon-program lumenna-lum-program))))
+    (let* ((out (generate-new-buffer " *lumenna daemon*"))
+           (err (generate-new-buffer " *lumenna daemon stderr*"))
+           ;; A pipe of its own, whose sentinel writes nothing: the default one
+           ;; adds "Process ... finished" to what `lum' said.
+           (stderr (make-pipe-process :name "lumenna-daemon stderr" :buffer err
+                                      :sentinel #'ignore :noquery t)))
+      (make-process
+       :name "lumenna-daemon"
+       :command (append (list program "--json")
+                        (and lumenna-profile (list "--profile" (expand-file-name lumenna-profile)))
+                        (list "daemon" verb))
+       :buffer out
+       :stderr stderr
+       :connection-type 'pipe
+       :coding 'utf-8-emacs-unix
+       :noquery t
+       :sentinel
+       (lambda (process _event)
+         (unless (process-live-p process)
+           ;; What it wrote to stderr can still be on its way.
+           (let ((deadline (+ (float-time) 2)))
+             (while (and (process-live-p stderr) (< (float-time) deadline))
+               (accept-process-output stderr 0.05)))
+           (delete-process stderr)
+           (let ((ok (zerop (process-exit-status process)))
+                 (why (string-remove-prefix "lum: " (string-trim (with-current-buffer err (buffer-string)))))
+                 (response (with-current-buffer out
+                             (goto-char (point-min))
+                             (ignore-errors
+                               (json-parse-buffer :object-type 'plist :null-object nil :false-object :json-false)))))
+             (kill-buffer out)
+             (kill-buffer err)
+             (if ok (funcall then response nil) (funcall then nil why)))))))
+    (funcall then nil (format "Cannot find `%s'" (or lumenna--daemon-program lumenna-lum-program)))))
+
+(defun lumenna--offer-daemon (&optional screen answering)
+  "Tell the app whether the sync daemon is installed, once `lum' has said.
+SCREEN is the screen told, 0 by default.  ANSWERING is set when this answers
+the app's asking, which is then told why when `lum' cannot say."
+  (let ((changes lumenna--daemon-changes))
+    (lumenna--daemon
+     "status"
+     (lambda (response why)
+       (let ((service (plist-get response :service)))
+         (when (and lumenna--connection (jsonrpc-running-p lumenna--connection)
+                    (or answering (= changes lumenna--daemon-changes)))
+           (cond (service
+                  (lumenna-send (list :Background (list :Offered (list :kind "sync_daemon"
+                                                                       :on (plist-get service :installed))))
+                                (or screen 0)))
+                 (answering
+                  (lumenna-send (list :Background (list :Failed (list :reason (or why "")))) screen)))))))))
+
+(defun lumenna--daemon-turned (turn)
+  "Install or remove the sync daemon if TURN asks, and tell the app how it went."
+  (when-let* ((wanted (plist-get turn :background)))
+    (let ((screen (plist-get turn :screen)))
+      (cl-incf lumenna--daemon-changes)
+      ;; Run once the process filter has returned, as everything a turn sets off is.
+      (run-at-time
+       0 nil #'lumenna--daemon (if (eq wanted t) "install" "uninstall")
+       (lambda (_response why)
+         (if why
+             (lumenna-send (list :Background (list :Failed (list :reason why))) screen)
+           (lumenna--offer-daemon screen t)))))))
+
+(add-hook 'lumenna-connected-hook #'lumenna--offer-daemon)
+(add-hook 'lumenna-turned-functions #'lumenna--daemon-turned)
 
 ;;;; Devices and syncing
 
