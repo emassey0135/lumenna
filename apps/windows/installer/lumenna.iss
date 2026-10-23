@@ -83,8 +83,9 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; Value
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Lumenna"; Flags: uninsdeletevalue dontcreatekey
 Root: HKCU; Subkey: "Software\Classes\AppUserModelId\{#AppUserModelId}"; ValueType: none; Flags: uninsdeletekey dontcreatekey
 
-; Nothing under %LOCALAPPDATA%\lumenna is ever removed: it is the person's store (and, Windows
-; ignoring case, the same folder as the %LOCALAPPDATA%\Lumenna the notification icon is kept in).
+; %LOCALAPPDATA%\lumenna, the store, its backups and the notification icon, is removed only when the
+; person says so as they uninstall (DeleteData, below), never by a silent uninstall such as
+; winget's, nor by an upgrade, which does not uninstall.
 
 [Run]
 Filename: "{app}\lumenna.exe"; Description: "{cm:LaunchProgram,Lumenna}"; Flags: nowait postinstall skipifsilent
@@ -122,8 +123,27 @@ begin
   RegWriteExpandStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', Path);
 end;
 
+{ The person's data on this PC, when they choose: the store (the profile's default,
+  %LOCALAPPDATA%\lumenna\data), its automatic backups beside it, the notification icon, and the
+  app's own settings (the shortcuts from anywhere). Asked only when someone is there to answer,
+  No the default; a backup folder chosen elsewhere is left where it is. }
+procedure DeleteData();
+begin
+  if UninstallSilent() then
+    exit;
+  if MsgBox('Also delete your Lumenna data on this PC: your tasks, settings and automatic backups?' + #13#10#13#10 +
+      'Devices you have paired keep their own copies. If this PC is your only one, everything is lost. ' +
+      'Choose No to keep it for a later install.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) <> IDYES then
+    exit;
+  DelTree(ExpandConstant('{localappdata}\lumenna'), True, True, True);
+  RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, 'Software\Lumenna');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
+  begin
     RemoveFromPath(ExpandConstant('{app}'));
+    DeleteData();
+  end;
 end;
