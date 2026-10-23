@@ -423,7 +423,7 @@ jobs:
           flatpak run --command=lum dev.emassey0135.Lumenna task add "Made in the sandbox"
           test -f "$HOME/.var/app/dev.emassey0135.Lumenna/data/lumenna/lumenna.sqlite"
           flatpak run --command=lum dev.emassey0135.Lumenna task list | grep -q "Made in the sandbox"
-          flatpak uninstall --user -y --noninteractive --delete-data dev.emassey0135.Lumenna
+          # Not uninstalled: the container goes with the job, and uninstalling wants a session bus.
       - uses: actions/upload-artifact@v4
         with:
           name: flatpak-${{ matrix.arch }}
