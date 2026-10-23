@@ -73,7 +73,7 @@ jobs:
           retention-days: 30
 
   windows:
-    name: Windows app and lum, ${{ matrix.arch }}
+    name: Windows installer, ${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
@@ -96,12 +96,40 @@ jobs:
           Add-Content $env:GITHUB_PATH $clang.DirectoryName
       - name: Build
         run: cargo build --release --locked -p lumenna-windows -p lumenna-cli
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = Get-ChildItem -Recurse -Filter ISCC.exe "${env:ProgramFiles(x86)}\Inno Setup*", "$env:ProgramFiles\Inno Setup*" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw "Inno Setup's compiler is not where it installs" }
+          "ISCC=$($iscc.FullName)" | Add-Content $env:GITHUB_ENV
+      - name: The installer, the app and lum together
+        shell: pwsh
+        run: |
+          $version = (cargo pkgid -p lumenna-windows).Split('@')[-1]
+          & $env:ISCC /Qp "/DAppVersion=$version" "/DArch=${{ matrix.arch }}" "/DSource=$env:GITHUB_WORKSPACE\target\release" "/DOutput=$env:GITHUB_WORKSPACE\dist" apps\windows\installer\lumenna.iss
+          if ($LASTEXITCODE -ne 0) { throw "the installer did not build" }
+          Get-ChildItem dist
+      - name: It installs, puts lum on PATH, and uninstalls
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist\*-setup.exe).FullName
+          Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          $app = "$env:LOCALAPPDATA\Programs\Lumenna"
+          if (-not (Test-Path "$app\lumenna.exe")) { throw "lumenna.exe is not in $app" }
+          & "$app\lum.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "lum did not run" }
+          if ((Get-ItemProperty HKCU:\Environment).Path -notlike "*$app*") { throw "lum is not on the PATH" }
+          # The uninstaller hands itself to a copy and returns at once, so its work is waited for.
+          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          $deadline = (Get-Date).AddMinutes(2)
+          while ((Test-Path "$app\lumenna.exe") -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if (Test-Path "$app\lumenna.exe") { throw "the uninstaller left lumenna.exe" }
+          if ((Get-ItemProperty HKCU:\Environment).Path -like "*$app*") { throw "the uninstaller left lum on the PATH" }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.arch }}
-          path: |
-            target/release/lumenna.exe
-            target/release/lum.exe
+          path: dist/*-setup.exe
           retention-days: 30
 
   gtk:
