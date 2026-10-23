@@ -64,7 +64,7 @@ here draws what the app shows, in the core's lines worded in this device's clock
 what the person did.
 
 Syncing runs while the app does. `lum daemon install`, run once from a shell, sets the daemon
-up as a system service to sync while it is closed; the app then waits its turn for the
+up as a systemd user service to sync while it is closed; the app then waits its turn for the
 device's endpoint, and *Devices and sync* asks the daemon for a round.
 
 Nothing here parses a date, computes a state, or decides what completing a task does to its

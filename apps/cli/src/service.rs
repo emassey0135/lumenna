@@ -7,8 +7,8 @@
 //!
 //! - **Linux** — a `systemctl --user` unit, **plus `loginctl enable-linger`**: without
 //!   lingering the service stops when the last session ends, which defeats the purpose.
-//! - **BTSpeak** — a system unit with `User=` the person installing it, the device's own
-//!   convention, which needs no lingering. Writing it takes `sudo`.
+//!   A BTSpeak is the same, less the lingering: the device logs its person in at every start,
+//!   so their units start with it, and nothing needs an administrator.
 //! - **macOS** — a LaunchAgent in `~/Library/LaunchAgents`.
 //! - **Windows** — a Task Scheduler entry at logon, which needs no administrator rights,
 //!   unlike a real Windows service.
@@ -86,10 +86,10 @@ impl Service {
         }
     }
 
-    /// The systemd unit. `user` is set for BTSpeak's system unit and absent for a user unit.
-    fn systemd_unit(&self, user: Option<&str>) -> String {
+    /// The systemd user unit.
+    fn systemd_unit(&self) -> String {
         let exec = self.arguments().iter().map(|a| systemd_quote(a)).collect::<Vec<_>>().join(" ");
-        let mut unit = format!(
+        format!(
             "# Written by `lum daemon install`; `lum daemon uninstall` removes it.\n\
              [Unit]\n\
              Description=Lumenna sync daemon for {}\n\
@@ -99,15 +99,12 @@ impl Service {
              [Service]\n\
              ExecStart={exec}\n\
              Restart=on-failure\n\
-             RestartSec=10\n",
+             RestartSec=10\n\
+             \n\
+             [Install]\n\
+             WantedBy=default.target\n",
             self.profile.display()
-        );
-        if let Some(user) = user {
-            unit.push_str(&format!("User={user}\n"));
-        }
-        let wanted_by = if user.is_some() { "multi-user.target" } else { "default.target" };
-        unit.push_str(&format!("\n[Install]\nWantedBy={wanted_by}\n"));
-        unit
+        )
     }
 
     /// The launchd property list.
@@ -232,7 +229,6 @@ fn run(program: &str, args: &[&str]) -> Result<String> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Platform {
     LinuxUser,
-    BtSpeak,
     MacOs,
     Windows,
     Other,
@@ -244,10 +240,15 @@ fn platform() -> Platform {
     } else if cfg!(target_os = "windows") {
         Platform::Windows
     } else if cfg!(target_os = "linux") {
-        if Path::new("/BTSpeak").exists() { Platform::BtSpeak } else { Platform::LinuxUser }
+        Platform::LinuxUser
     } else {
         Platform::Other
     }
+}
+
+/// Whether this is a BTSpeak or BT Braille, which logs its person in at every start.
+fn logs_in_at_start() -> bool {
+    Path::new("/BTSpeak").exists()
 }
 
 fn unsupported() -> CliError {
@@ -270,10 +271,6 @@ fn user_unit_path(service: &Service) -> Result<PathBuf> {
         .filter(|p| p.is_absolute())
         .map_or_else(|| home().map(|h| h.join(".config")), Ok)?;
     Ok(config.join("systemd/user").join(format!("{}.service", service.unit_name())))
-}
-
-fn system_unit_path(service: &Service) -> PathBuf {
-    PathBuf::from("/etc/systemd/system").join(format!("{}.service", service.unit_name()))
 }
 
 fn plist_path(service: &Service) -> Result<PathBuf> {
@@ -299,36 +296,22 @@ pub(crate) fn install(profile: &Profile, local_only: bool) -> Result<Response> {
     let where_ = match platform() {
         Platform::LinuxUser => {
             let path = user_unit_path(&service)?;
-            write_file(&path, &service.systemd_unit(None))?;
+            write_file(&path, &service.systemd_unit())?;
             run("systemctl", &["--user", "daemon-reload"])?;
             let unit = format!("{}.service", service.unit_name());
             run("systemctl", &["--user", "enable", "--now", &unit])?;
-            // Without lingering the service stops with the last session.
-            let user = current_user()?;
-            if let Err(error) = run("loginctl", &["enable-linger", &user]) {
-                notes.push(format!(
-                    "could not let it keep running after you log out ({error}); \
-                     `loginctl enable-linger {user}` as an administrator fixes that"
-                ));
+            // Without lingering the service stops with the last session. A BTSpeak logs its
+            // person in at every start and stays logged in, so it needs none.
+            if !logs_in_at_start() {
+                let user = current_user()?;
+                if let Err(error) = run("loginctl", &["enable-linger", &user]) {
+                    notes.push(format!(
+                        "could not let it keep running after you log out ({error}); \
+                         `loginctl enable-linger {user}` as an administrator fixes that"
+                    ));
+                }
             }
             format!("a user service, {unit}; `journalctl --user -u {unit}` shows its log")
-        }
-        Platform::BtSpeak => {
-            let user = current_user()?;
-            let staged = profile.directory().join(format!("{}.service", service.unit_name()));
-            write_file(&staged, &service.systemd_unit(Some(&user)))?;
-            let target = system_unit_path(&service);
-            let result = (|| {
-                run("sudo", &["install", "-m", "0644", &staged.display().to_string(), &target.display().to_string()])?;
-                run("sudo", &["systemctl", "daemon-reload"])?;
-                run("sudo", &["systemctl", "enable", "--now", &format!("{}.service", service.unit_name())])
-            })();
-            let _ = std::fs::remove_file(&staged);
-            result?;
-            format!(
-                "a system service, {}.service, running as {user}",
-                service.unit_name()
-            )
         }
         Platform::MacOs => {
             let path = plist_path(&service)?;
@@ -383,17 +366,6 @@ pub(crate) fn uninstall(profile: &Profile) -> Result<Response> {
             run("systemctl", &["--user", "daemon-reload"])?;
             unit
         }
-        Platform::BtSpeak => {
-            let target = system_unit_path(&service);
-            if !target.exists() {
-                return Ok(Response::unchanged("the sync daemon is not installed as a service"));
-            }
-            let unit = format!("{}.service", service.unit_name());
-            let _ = run("sudo", &["systemctl", "disable", "--now", &unit]);
-            run("sudo", &["rm", "-f", &target.display().to_string()])?;
-            run("sudo", &["systemctl", "daemon-reload"])?;
-            unit
-        }
         Platform::MacOs => {
             let path = plist_path(&service)?;
             if !path.exists() {
@@ -424,9 +396,6 @@ pub(crate) fn start_or_stop(profile: &Profile, start: bool) -> Result<Response> 
         Platform::LinuxUser => {
             run("systemctl", &["--user", verb, &format!("{}.service", service.unit_name())])?;
         }
-        Platform::BtSpeak => {
-            run("sudo", &["systemctl", verb, &format!("{}.service", service.unit_name())])?;
-        }
         Platform::MacOs => {
             let target = format!("{}/{}", launchd_domain()?, service.label());
             if start {
@@ -454,7 +423,6 @@ pub(crate) fn status(profile: &Profile) -> Result<Response> {
     let service = Service::for_profile(profile, false)?;
     let installed = match platform() {
         Platform::LinuxUser => user_unit_path(&service)?.exists(),
-        Platform::BtSpeak => system_unit_path(&service).exists(),
         Platform::MacOs => plist_path(&service)?.exists(),
         Platform::Windows => run("schtasks", &["/Query", "/TN", &service.task_name()]).is_ok(),
         Platform::Other => false,
@@ -492,16 +460,12 @@ mod tests {
 
     #[test]
     fn a_systemd_unit_quotes_its_arguments_and_names_its_profile() {
-        let unit = service().systemd_unit(None);
+        let unit = service().systemd_unit();
         assert!(unit.contains(
             "ExecStart=\"/usr/local/bin/lum\" \"--profile\" \"/home/pi/.local/share/my tasks\" \"sync-daemon\" \"--local-only\""
         ), "{unit}");
         assert!(unit.contains("WantedBy=default.target"));
-        assert!(!unit.contains("User="));
-
-        let system = service().systemd_unit(Some("pi"));
-        assert!(system.contains("User=pi\n"));
-        assert!(system.contains("WantedBy=multi-user.target"));
+        assert!(!unit.contains("User="), "a user unit, on a BTSpeak too");
     }
 
     #[test]

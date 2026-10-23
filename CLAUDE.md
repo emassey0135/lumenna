@@ -428,10 +428,10 @@ byte stream; `pairing` is the word comparison; `node` is the device's Iroh endpo
 - **Tests that pair take turns** (`ONE_PAIRING_AT_A_TIME`): waiting sessions on one network
   find each other. Tests use `Network::LocalOnly` with explicit addresses.
 - Device records are inline (`Record::INLINE`): both sides of a pairing write them.
-- `lum daemon install` (`service.rs`) writes a systemd user unit plus linger on Linux, a
-  system unit through `sudo` on BTSpeak, a LaunchAgent on macOS, a logon task on Windows,
-  always with `--profile`. macOS and Linux have been run for real; BTSpeak's and Windows'
-  are unit-tested only.
+- `lum daemon install` (`service.rs`) writes a systemd user unit plus linger on Linux (a
+  BTSpeak the same without linger, since it logs its person in at every start), a LaunchAgent
+  on macOS, a logon task on Windows, always with `--profile`. macOS and Linux have been run
+  for real; Windows' is unit-tested only.
 
 ## The core and the store
 
