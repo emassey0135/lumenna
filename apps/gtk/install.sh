@@ -1,7 +1,7 @@
 #!/bin/sh
-# Builds the GTK app, or takes the one beside it in a release, and installs it for this user: the program in ~/.local/bin, its icon, and its
-# desktop entry, which is how GNOME lists it and how the portals know it — the shortcuts
-# from anywhere are refused to an app with no entry.
+# Builds the GTK app, or takes the one beside it in a release, and installs it for this user:
+# the program in ~/.local/bin, its icon, and its desktop entry, which is how GNOME lists it and
+# how the portals know it — the shortcuts from anywhere are refused to an app with no entry.
 #
 #   apps/gtk/install.sh            # a release build
 #   PROFILE=dev apps/gtk/install.sh  # the debug build, faster to make
