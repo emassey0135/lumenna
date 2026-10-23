@@ -56,6 +56,8 @@ final class AppModel {
             // surface, as the daemon would, so Emacs and the BTSpeak app reach it.
             app.serveCommands(app: "Lumenna for Mac", deviceName: Host.current().localizedName ?? "Mac")
         }
+        // Opening at login, which Settings offers in the core's words.
+        app.send(event: LoginItem.offered)
         #endif
         // What a sync, the watch or another process wrote, the app takes in; and the minutes,
         // for what is now and due. A tick only looks whether the store or the minute moved.
@@ -131,6 +133,11 @@ final class AppModel {
         // Said after the screens have drawn and moved focus, queued behind what VoiceOver is
         // saying, so neither cuts the other off.
         for said in turn.said { Announcer.say(said) }
+        #if os(macOS)
+        // What the person chose for opening at login: the system's to do, and the app told how
+        // it went, which it says.
+        if let on = turn.background { app.send(event: LoginItem.set(on)) }
+        #endif
     }
 }
 

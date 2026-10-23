@@ -1199,6 +1199,13 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   the app's network middleware syncs for as long as it runs and, while it holds the endpoint,
   serves the command surface at the profile's address (`App.serveCommands`, the bridge's `rpc`
   feature), as the daemon would. `LUMENNA_NO_SYNC` (the UI tests') keeps it from both.
+- **Opening at login is the app's background setting** (`LoginItem`, `BackgroundKind::MacLogin`):
+  the app is told at start whether `SMAppService.mainApp` is enabled, and General draws the
+  setting's row, its title the toggle's and its hint beneath. Toggled, it is a `Set` of
+  `background`; the turn carrying `background` registers or unregisters the login item, and the
+  app is told the status read back, or the error, and says the core's sentence. Under
+  `LUMENNA_TEST_PROFILE` the login item is a stand-in in memory, so no build under test joins the
+  login items (CI's unsigned one could not).
 - **The resident app delivers reminders** (`ReminderDelivery`): while it holds
   `take_reminders`, `deliver_reminders` every 20 seconds and on becoming active, each shown at
   once through `UNUserNotificationCenter` with the iPhone's category, the missed summary as one
