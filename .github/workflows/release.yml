@@ -1,0 +1,275 @@
+# Release builds of every app, unsigned, kept as artifacts: what only a release build shows
+# (R8's shrinking, fat LTO, a statically linked core, the ARM64 Windows build) is found as it
+# is made rather than at publishing, and these are what packaging and publishing build on.
+# Signing, packages and the stores come later (ROADMAP.md, Before others use it).
+#
+# Apart from CI (ci.yml), which tests every push: whole-program builds take long, so these run
+# on master, on a version tag, and when asked.
+name: Release builds
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+# A newer push to master replaces the run still going for the one before it, as CI's do.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  lum-linux:
+    name: lum, Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, os: ubuntu-24.04 }
+          - { arch: arm64, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
+    # Debian 12, for its glibc (2.36): the oldest the BTSpeak and BT Braille run, so the same
+    # binary starts on them and on any newer Linux.
+    container: debian:bookworm
+    steps:
+      - name: A compiler, for ring's and SQLite's C
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential ca-certificates curl git
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked -p lumenna-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lum-linux-${{ matrix.arch }}
+          path: target/release/lum
+          retention-days: 30
+
+  lum-mac:
+    name: lum, macOS universal
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build, both architectures in one binary
+        run: |
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --locked -p lumenna-cli --target "$target"
+          done
+          mkdir -p dist
+          lipo -create -output dist/lum target/aarch64-apple-darwin/release/lum target/x86_64-apple-darwin/release/lum
+          lipo -info dist/lum
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lum-macos-universal
+          path: dist/lum
+          retention-days: 30
+
+  windows:
+    name: Windows app and lum, ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, os: windows-2025 }
+          - { arch: arm64, os: windows-11-arm }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Clang for ring (arm64)
+        # ring's C needs clang on ARM64 Windows; Visual Studio ships one.
+        if: matrix.arch == 'arm64'
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $clang = Get-ChildItem -Recurse -Filter clang.exe "$vs\VC\Tools\Llvm" | Where-Object { $_.FullName -match 'ARM64' } | Select-Object -First 1
+          if (-not $clang) { $clang = Get-ChildItem -Recurse -Filter clang.exe "$vs\VC\Tools\Llvm" | Select-Object -First 1 }
+          Add-Content $env:GITHUB_PATH $clang.DirectoryName
+      - name: Build
+        run: cargo build --release --locked -p lumenna-windows -p lumenna-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: |
+            target/release/lumenna.exe
+            target/release/lum.exe
+          retention-days: 30
+
+  gtk:
+    name: GTK app, ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, os: ubuntu-24.04 }
+          - { arch: arm64, os: ubuntu-24.04-arm }
+    # Ubuntu 24.04: libadwaita 1.5, the app's floor.
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+      - name: Build
+        run: cargo build --release --locked -p lumenna-gtk
+      - name: With its desktop file and icons
+        run: |
+          mkdir -p dist
+          cp target/release/lumenna-gtk apps/gtk/install.sh dist/
+          cp -r apps/gtk/data dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gtk-linux-${{ matrix.arch }}
+          path: dist
+          retention-days: 30
+
+  apple:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The iPhone app embeds the Apple Watch app, so it builds the watch's core too.
+          - name: iPhone and Apple Watch apps, for devices
+            scheme: Lumenna
+            destination: generic/platform=iOS
+            targets: aarch64-apple-ios, aarch64-apple-watchos
+            products: Release-iphoneos
+            artifact: ios
+          - name: Mac app, Apple silicon and Intel
+            scheme: LumennaMac
+            destination: generic/platform=macOS
+            targets: aarch64-apple-darwin, x86_64-apple-darwin
+            products: Release
+            artifact: macos
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+      - uses: Swatinem/rust-cache@v2
+      - name: BoltFFI, which build-core.sh generates the app's Swift with
+        run: cargo install boltffi_cli --version 0.31.1 --locked
+      - name: Newest Xcode, and XcodeGen
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          brew install xcodegen
+      - name: Build
+        working-directory: apps/apple
+        run: |
+          xcodegen
+          xcodebuild -project Lumenna.xcodeproj -scheme ${{ matrix.scheme }} -configuration Release \
+            -destination '${{ matrix.destination }}' -derivedDataPath "$RUNNER_TEMP/derived" \
+            CODE_SIGNING_ALLOWED=NO build
+          ditto -c -k --keepParent "$RUNNER_TEMP/derived/Build/Products/${{ matrix.products }}/Lumenna.app" "$RUNNER_TEMP/Lumenna-${{ matrix.artifact }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apple-${{ matrix.artifact }}
+          path: ${{ runner.temp }}/Lumenna-${{ matrix.artifact }}.zip
+          retention-days: 30
+
+  android:
+    name: Android and Wear OS apps
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android, armv7-linux-androideabi
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: NDK, platform and BoltFFI
+        run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses > /dev/null
+          yes | sdkmanager "ndk;30.0.16248370" "platforms;android-37.0" > /dev/null
+          cargo install boltffi_cli --version 0.31.1 --locked
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+      - name: Build
+        # The App Bundles the stores take, and the APKs to install by hand. Unsigned: Play App
+        # Signing and the upload key come with publishing.
+        working-directory: apps/android
+        run: ./gradlew --no-daemon :app:bundleRelease :wear:bundleRelease :app:assembleRelease :wear:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: |
+            apps/android/app/build/outputs/bundle/release
+            apps/android/wear/build/outputs/bundle/release
+            apps/android/app/build/outputs/apk/release
+            apps/android/wear/build/outputs/apk/release
+          retention-days: 30
+
+  btspeak:
+    name: BTSpeak app
+    runs-on: ubuntu-24.04-arm
+    # Debian 12 on arm64, as the devices run: the core is an extension for this Python (3.11)
+    # and links this glibc.
+    container: debian:bookworm
+    steps:
+      - name: Python with its headers and pip, and a compiler
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential ca-certificates curl git python3 python3-dev python3-pip python3-venv
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: BoltFFI, which build-core.sh builds the core with
+        run: cargo install boltffi_cli --version 0.31.1 --locked
+      - name: Build
+        run: apps/btspeak/build-core.sh
+      - name: The app with its core
+        run: |
+          mkdir -p dist
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git ls-files apps/btspeak | grep -v '^apps/btspeak/tests/' | tar -cf dist/lumenna-btspeak.tar -T -
+          tar -rf dist/lumenna-btspeak.tar apps/btspeak/native
+          gzip dist/lumenna-btspeak.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: btspeak-arm64
+          path: dist/lumenna-btspeak.tar.gz
+          retention-days: 30
+
+  web:
+    name: Web client
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: wasm-bindgen, at the version in Cargo.lock
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.127
+      - name: BoltFFI
+        run: cargo install boltffi_cli --version 0.31.1 --locked
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: apps/web/dist
+          retention-days: 30
