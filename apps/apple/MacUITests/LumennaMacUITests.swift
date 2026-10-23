@@ -304,6 +304,29 @@ final class LumennaMacUITests: XCTestCase {
         try audit("settings, something said", in: settings)
     }
 
+    /// Opening at login is the app's setting, in the core's words: turned on or off, the app
+    /// hands the change to the Mac, is told how it went, and says the core's sentence. (Under
+    /// test the login item is a stand-in, so the build under test never joins the login items.)
+    func testOpeningAtLoginIsTheAppsSettingAndItsChangeIsSaid() throws {
+        XCTAssertTrue(window.waitForExistence(timeout: 10))
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.toolbars.buttons["General"].click()
+        let named = NSPredicate(format: "label == 'Open Lumenna at login'")
+        let toggle = settings.checkBoxes.matching(named).firstMatch.exists
+            ? settings.checkBoxes.matching(named).firstMatch : settings.switches.matching(named).firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), settings.debugDescription)
+        XCTAssertTrue(text(containing: "stays running in the menu bar", in: settings).exists, "the core's hint beneath it")
+        let status = window.staticTexts["status"]
+        toggle.click()
+        XCTAssertTrue(status.waitForValue("Lumenna opens at login"), "\(status.value ?? "")")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "value == 1"), evaluatedWith: toggle)], timeout: 5), .completed, "\(toggle.value ?? "")")
+        toggle.click()
+        XCTAssertTrue(status.waitForValue("Lumenna no longer opens at login"), "\(status.value ?? "")")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "value == 0"), evaluatedWith: toggle)], timeout: 5), .completed, "\(toggle.value ?? "")")
+    }
+
     /// The filter completes on Down, never by itself: the list opens, and choosing from it fills
     /// the field.
     func testTheFilterCompletesOnDownFromAListAndNeverByItself() throws {

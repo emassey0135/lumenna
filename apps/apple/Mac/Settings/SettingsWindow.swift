@@ -1,6 +1,5 @@
 import AppKit
 import LumennaApp
-import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -56,17 +55,10 @@ extension SettingsModel {
 
     // MARK: - Opening at login
 
-    var opensAtLogin: Bool {
-        get { SMAppService.mainApp.status == .enabled }
-        set {
-            objectWillChange.send()
-            do {
-                if newValue { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-                Announcer.say(newValue ? "Lumenna opens at login" : "Lumenna no longer opens at login")
-            } catch {
-                failure = error.localizedDescription
-            }
-        }
+    /// Opening at login, as the app offers it among this device's settings, in its words: the
+    /// system holds its value, which the app asks it to change (`LoginItem`).
+    var openingAtLogin: LumennaApp.Setting? {
+        settings.first { $0.key == "background" }
     }
 
     // MARK: - Files
@@ -123,10 +115,16 @@ struct GeneralSettings: View {
 
     var body: some View {
         Form {
-            Section {
-                Toggle("Open Lumenna at login", isOn: Binding(get: { model.opensAtLogin }, set: { model.opensAtLogin = $0 }))
-                Text("Lumenna stays running in the menu bar when its window is closed, so your devices stay in sync. Quit it from the menu bar or the Lumenna menu.")
-                    .font(.footnote).foregroundStyle(Color.quietLabel)
+            if let login = model.openingAtLogin {
+                Section {
+                    Labelled(login.title) {
+                        Toggle(login.title, isOn: Binding(
+                            get: { model.values[login.key] == "true" },
+                            set: { model.set(login.key, $0 ? "true" : "false") }
+                        ))
+                    }
+                    FormParts.caption(login.hint)
+                }
             }
             Section {
                 ForEach(HotKeys.Kind.allCases, id: \.self) { kind in
