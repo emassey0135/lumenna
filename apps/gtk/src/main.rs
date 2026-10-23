@@ -12,6 +12,7 @@
 
 mod actions;
 mod asking;
+mod autostart;
 mod block_form;
 mod clock;
 mod completion;

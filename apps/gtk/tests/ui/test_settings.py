@@ -1,6 +1,7 @@
 """Settings: each page applies a change as it is made, and says so."""
 
 import unittest
+from pathlib import Path
 
 from harness import Atspi, Session
 
@@ -40,6 +41,32 @@ class SettingsTest(unittest.TestCase):
     def test_a_check_box_is_named_without_its_mnemonic_marker(self):
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[check box] 'Open Lumenna when you sign in, in the background'")
+
+    def test_opening_at_sign_in_is_the_cores_setting_and_toggling_it_makes_the_entry_and_says_so(self):
+        self.session.press("Tab")
+        check = self.session.focused()
+        self.assertEqual(check.get_name(), "Open Lumenna when you sign in, in the background")
+        self.assertTrue(check.get_description().startswith("Lumenna keeps running after its window is closed"))
+        autostart = Path(self.session.directory) / "config" / "autostart"
+        self.session.press("space", wait=1)
+        self.assertEqual(self.session.said(), ["Lumenna opens when you sign in"])
+        (entry,) = autostart.glob("*.desktop")
+        self.assertIn("--background", entry.read_text())
+        self.assertIn("checked", self.session.focus())
+        self.session.press("space", wait=1)
+        self.assertEqual(self.session.said(), ["Lumenna no longer opens when you sign in"])
+        self.assertEqual(list(autostart.glob("*.desktop")), [])
+        self.assertNotIn("checked", self.session.focus())
+
+    def test_opening_at_sign_in_that_cannot_be_made_says_why_and_stays_off(self):
+        config = Path(self.session.directory) / "config"
+        config.mkdir(exist_ok=True)
+        (config / "autostart").write_text("a file where the folder would be")
+        self.session.press("Tab")
+        self.session.press("space", wait=1)
+        (said,) = self.session.said()
+        self.assertTrue(said.startswith("That could not be changed: "), said)
+        self.assertNotIn("checked", self.session.focus())
 
     def test_a_check_box_applies_at_once_and_says_so(self):
         self.page(1)

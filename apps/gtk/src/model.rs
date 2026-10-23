@@ -27,8 +27,9 @@ pub struct Model {
 }
 
 impl Model {
-    /// Starts the app over the profile in `directory`, saying in pairing that it runs Linux.
-    pub fn open(directory: &std::path::Path, clock: &crate::clock::Locale) -> Result<Self, LumennaError> {
+    /// Starts the app over the profile in `directory`, saying in pairing that it runs Linux, and
+    /// whether it opens at sign-in (`autostart`).
+    pub fn open(directory: &std::path::Path, clock: &crate::clock::Locale, autostart: &crate::autostart::Autostart) -> Result<Self, LumennaError> {
         let device = Arc::new(Device::new(directory.display().to_string())?);
         let writing = Arc::new(Writing { twelve: Arc::clone(&clock.twelve) });
         let app = App::new(&device, "linux".to_owned(), writing, Arc::new(Relay))?;
@@ -38,6 +39,8 @@ impl Model {
         // Title Case, as GNOME writes buttons and menus.
         app.send(ShellEvent::Capitals(Capitals::Title));
         app.send(ShellEvent::PairingAs { called: "this computer".to_owned(), nearby: true });
+        // Opening at sign-in, in the background, and whether it does: the app's setting to offer.
+        app.send(autostart.offered());
         app.send(ShellEvent::PlanFrom(crate::clock::pinned_now()));
         Ok(Self { device, app, view: RefCell::new(view), lines: RefCell::new(lines), seq: Cell::new(0) })
     }

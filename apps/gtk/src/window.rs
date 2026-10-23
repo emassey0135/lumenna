@@ -73,8 +73,8 @@ pub struct App {
     pub detail: Rc<Detail>,
     /// Whether focus goes into the middle pane once the app has gone to the place it shows.
     focus_on_show: Cell<bool>,
-    /// The profile's folder.
-    pub directory: std::path::PathBuf,
+    /// Opening at sign-in, which the app's background setting asks for.
+    autostart: crate::autostart::Autostart,
 }
 
 thread_local! {
@@ -135,6 +135,10 @@ pub fn take(turn: lumenna_ffi::Turn) {
     for file in &turn.files {
         crate::settings::save(&app, file);
     }
+    // Opening at sign-in is this desktop's to do, as the person chose; the app says how it went.
+    if let Some(on) = turn.background {
+        app.model.send(app.autostart.keep(on));
+    }
     for said in &turn.said {
         if matches!(said.as_str(), "Expanded" | "Collapsed") && QUIET_FOLD.replace(false) {
             continue;
@@ -165,7 +169,9 @@ pub fn activate(application: &gtk::Application, directory: &Path, background: bo
         return;
     }
     let clock = Locale::new();
-    let model = match crate::model::Model::open(directory, &clock) {
+    let id = application.application_id().map_or_else(|| crate::ID.to_owned(), |id| id.to_string());
+    let autostart = crate::autostart::Autostart::new(&id, directory);
+    let model = match crate::model::Model::open(directory, &clock, &autostart) {
         Ok(model) => model,
         Err(error) => {
             let message = format!("Lumenna could not open its data. {}", error.message());
@@ -179,13 +185,13 @@ pub fn activate(application: &gtk::Application, directory: &Path, background: bo
             return;
         }
     };
-    let app = App::build(application, directory, model, clock);
+    let app = App::build(application, model, clock, autostart);
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
     app.start(background, shortcuts);
 }
 
 impl App {
-    fn build(application: &gtk::Application, directory: &Path, model: crate::model::Model, clock: Locale) -> Rc<Self> {
+    fn build(application: &gtk::Application, model: crate::model::Model, clock: Locale, autostart: crate::autostart::Autostart) -> Rc<Self> {
         let window = gtk::ApplicationWindow::builder()
             .application(application)
             .title("Lumenna")
@@ -249,7 +255,7 @@ impl App {
             content: RefCell::new(None),
             detail,
             focus_on_show: Cell::new(false),
-            directory: directory.to_path_buf(),
+            autostart,
         });
         app.add_actions();
 

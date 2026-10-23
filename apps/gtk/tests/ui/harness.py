@@ -226,6 +226,9 @@ class Session:
             os.environ,
             LUMENNA_PROFILE=str(Path(self.directory) / "profile"),
             LUMENNA_BACKUP_DIR=str(Path(self.directory) / "backups"),
+            # The desktop's own configuration is never written: opening at sign-in makes an
+            # autostart entry there.
+            XDG_CONFIG_HOME=str(Path(self.directory) / "config"),
             **(environment or {}),
         )
         # Each a `lum` command, or a function of the session for what needs an earlier
