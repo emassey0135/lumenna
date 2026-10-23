@@ -1566,6 +1566,12 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   pairing runs gives it up and then closes. An export's file is chosen first, then the app's
   `SaveFile` written there; Back Up Now is the device's. What the app says while Settings or
   pairing is in front is said there.
+- **Opening at sign-in is the app's background setting** (`autostart.rs`,
+  `BackgroundKind::DesktopSignIn`): the app is told at start whether this profile's XDG autostart
+  entry is there, and General's check box is the app's `background` row, its words and hint the
+  core's. A turn's `background` makes or removes the entry, answered with `Offered` as it now is
+  or `Failed` with the I/O error; the sentence said is the app's. The UI tests give each session
+  its own `XDG_CONFIG_HOME`, so none writes the desktop's autostart folder.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). `GtkTreeView`
   exposes no rows to AT-SPI in GTK 4, and a list view with `TreeExpander` reports a flat

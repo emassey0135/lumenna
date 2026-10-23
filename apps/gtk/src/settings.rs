@@ -10,7 +10,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use gtk::prelude::*;
@@ -36,7 +36,8 @@ const PAGES: [&str; 5] = ["General", "Planning", "Devices", "Backups", "Export a
 
 /// Each page's settings, in order, with the mnemonic each is marked with: the one thing
 /// about a setting that is this app's.
-const GENERAL: [(&str, char); 1] = [("reminders", 'R')];
+/// Opening at sign-in (`background`) is offered by the app once this desktop has said it can.
+const GENERAL: [(&str, char); 2] = [("background", 'O'), ("reminders", 'R')];
 const PLANNING: [(&str, char); 10] = [
     ("cascade-complete-subtasks", 'C'),
     ("day-start", 's'),
@@ -172,7 +173,7 @@ pub fn show(app: &Rc<App>, page: Page) {
     let stack = gtk::Stack::new();
     let mut statuses = Vec::new();
     let mut slots = Vec::new();
-    let pages = [general(app), planning(), devices_page(), backups(app), export(app)];
+    let pages = [general(), planning(), devices_page(), backups(app), export(app)];
     let mut folder = None;
     let mut devices = None;
     for (title, built) in PAGES.iter().zip(pages) {
@@ -577,71 +578,11 @@ fn tell(status: &gtk::Label, text: &str) {
 // General: this computer's own
 // ---------------------------------------------------------------------------------------
 
-fn general(app: &Rc<App>) -> Built {
+fn general() -> Built {
     let page = PageBox::new();
-    let at_sign_in = prompts::check("_Open Lumenna when you sign in, in the background");
-    at_sign_in.set_active(autostart_file(app).is_some_and(|file| file.exists()));
-    page.add(&at_sign_in);
     page.settings();
-    page.footer(
-        "Lumenna keeps running after its window is closed, so it syncs and reminds you. Start it again, from the menu or with lumenna-gtk, to bring the window back. These settings are this computer's alone.",
-    );
-    let built = page.finish();
-    let status = built.status.clone();
-    let app = Rc::downgrade(app);
-    at_sign_in.connect_toggled(move |check| {
-        let Some(app) = app.upgrade() else { return };
-        match set_autostart(&app, check.is_active()) {
-            Ok(()) if check.is_active() => tell(&status, "Lumenna opens when you sign in"),
-            Ok(()) => tell(&status, "Lumenna no longer opens when you sign in"),
-            Err(error) => {
-                prompts::fail(&window_of(check, &app), &format!("That could not be changed. {error}"));
-                check.set_active(!check.is_active());
-            }
-        }
-    });
-    built
-}
-
-/// Where the sign-in entry for this profile goes: the XDG autostart directory, named after
-/// the application identifier, so each profile has its own.
-fn autostart_file(app: &App) -> Option<PathBuf> {
-    let id = app.application.application_id()?;
-    Some(glib::user_config_dir().join("autostart").join(format!("{id}.desktop")))
-}
-
-fn set_autostart(app: &App, on: bool) -> std::io::Result<()> {
-    let Some(file) = autostart_file(app) else { return Ok(()) };
-    if !on {
-        return match std::fs::remove_file(&file) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
-            _ => Ok(()),
-        };
-    }
-    let program = std::env::current_exe()?;
-    let mut exec = format!("{} --background", quoted(&program));
-    if lumenna_ffi::profile::default_directory().as_deref() != Some(app.directory.as_path()) {
-        exec.push_str(&format!(" --profile {}", quoted(&app.directory)));
-    }
-    if let Some(parent) = file.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(
-        &file,
-        format!(
-            "[Desktop Entry]\nType=Application\nName=Lumenna\nComment=Tasks and time blocks\nExec={exec}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
-        ),
-    )
-}
-
-/// A path as a desktop entry's Exec line takes it.
-fn quoted(path: &Path) -> String {
-    let text = path.display().to_string();
-    if text.chars().any(|c| c.is_whitespace() || "\"'\\$`".contains(c)) {
-        format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\"").replace('$', "\\$").replace('`', "\\`"))
-    } else {
-        text
-    }
+    page.footer("These settings are this computer's alone.");
+    page.finish()
 }
 
 // ---------------------------------------------------------------------------------------
