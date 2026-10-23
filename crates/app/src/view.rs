@@ -270,7 +270,7 @@ fn shown(model: &Screen) -> ViewModel {
         block_form: model.block_form.as_ref().map(crate::blockform::Form::view),
         proposal: model.proposal.as_ref().map(crate::proposal::view),
         proposal_made: model.proposal_made,
-        settings: model.settings.as_ref().map(|s| crate::settings::view(s, store.now.date())),
+        settings: model.settings.as_ref().map(|s| crate::settings::view(s, model.background, store.now.date())),
         devices: model.devices.as_ref().map(|d| crate::DevicesView {
             words: model.pairing_words(),
             list: d.list.clone(),

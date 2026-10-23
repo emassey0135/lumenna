@@ -45,7 +45,12 @@ def planning(setting) -> bool:
 
 def on_this_device(setting) -> bool:
     """Whether a setting is on the Backups page: this device's own."""
-    return not setting.syncs and setting.key not in NOT_HERE and setting.key not in reminder_lists.KEYS
+    return (
+        not setting.syncs
+        and setting.key not in NOT_HERE
+        and setting.key not in reminder_lists.KEYS
+        and setting.key != BACKGROUND
+    )
 
 
 def read_back_title() -> str:
@@ -57,6 +62,30 @@ def toggle_read_back() -> str:
     on = not options.get(options.READ_BACK, False)
     options.put(options.READ_BACK, on)
     return "A task is read back before it is added" if on else "A task is added as soon as it is entered"
+
+
+#: The app's setting for the background service, shown in Settings itself rather than on a page:
+#: it gives reminders and syncs, so it belongs to neither.
+BACKGROUND = "background"
+
+
+def setting_title(setting) -> str:
+    """A setting's row: its name and its value, as the core names them."""
+    named = {option.id: option.title for option in setting.options}
+    return f"{setting.title}, {named.get(setting.value, setting.value)}"
+
+
+def background_item(session: Session):
+    """The app's background setting as a row of Settings, where the app offers it: Enter
+    chooses, the core's hint said with the question. Turning it on or off is the session's."""
+    if setting_of(session, BACKGROUND) is None:
+        return None
+
+    def title(*_):
+        shown = setting_of(session, BACKGROUND)
+        return setting_title(shown.setting) if shown is not None else ""
+
+    return dialogs.DynamicMenuItem(title=title, shortcut="g", action=lambda: change_setting(session, BACKGROUND))
 
 
 @contextlib.contextmanager
@@ -73,17 +102,19 @@ def opened(session: Session):
 
 
 def settings(session: Session) -> str:
-    """A short list of pages, as on the phone, and this app's own preference."""
-    menu = [
-        dialogs.DynamicMenuItem(title="Planning", shortcut="p", action=lambda: setting_page(session, "Planning", planning)),
-        dialogs.DynamicMenuItem(title="Devices and sync", shortcut="d", action=lambda: devices(session)),
-        dialogs.DynamicMenuItem(title="Reminders, on this device", shortcut="m", action=lambda: reminder_lists.settings_page(session)),
-        dialogs.DynamicMenuItem(title="Backups, on this device only", shortcut="b", action=lambda: backups(session)),
-        dialogs.DynamicMenuItem(title="Export and import", shortcut="e", action=lambda: export_import(session)),
-        dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back),
-    ]
+    """A short list of pages, as on the phone, the app's background setting, and this app's own
+    preference."""
     with screen("lumenna-settings"), opened(session):
-        dialogs.dynamic_menu(menu, title="Settings")
+        menu = [
+            dialogs.DynamicMenuItem(title="Planning", shortcut="p", action=lambda: setting_page(session, "Planning", planning)),
+            dialogs.DynamicMenuItem(title="Devices and sync", shortcut="d", action=lambda: devices(session)),
+            dialogs.DynamicMenuItem(title="Reminders, on this device", shortcut="m", action=lambda: reminder_lists.settings_page(session)),
+            background_item(session),
+            dialogs.DynamicMenuItem(title="Backups, on this device only", shortcut="b", action=lambda: backups(session)),
+            dialogs.DynamicMenuItem(title="Export and import", shortcut="e", action=lambda: export_import(session)),
+            dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back),
+        ]
+        dialogs.dynamic_menu([item for item in menu if item is not None], title="Settings")
     return ""
 
 
@@ -100,9 +131,8 @@ def setting_items(session: Session, which) -> list:
         setting = shown.setting
         if not which(setting):
             continue
-        named = {option.id: option.title for option in setting.options}
         made.append(dialogs.DynamicMenuItem(
-            title=f"{setting.title}, {named.get(setting.value, setting.value)}",
+            title=setting_title(setting),
             action=lambda key=setting.key: change_setting(session, key),
         ))
     return made
@@ -215,7 +245,7 @@ def devices(session: Session) -> str:
 
 def sync_now(session: Session) -> str:
     """One round with every paired device, through whatever on this device holds the sync
-    endpoint (the daemon, as it should be here); the app says how it went once it has."""
+    endpoint (the background service, once it is on); the app says how it went once it has."""
     session.send(L.ShellEventDevices(L.DevicesEventSyncNow()))
     with dialogs.activity("Syncing"):
         return session.wait_said(SYNC_FOR)

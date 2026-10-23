@@ -200,7 +200,9 @@ impl Inner {
                 }),
                 Shell::Save(file) => turn.files.push(file.clone()),
                 Shell::Notify(notice) => turn.notices.push(notice.clone()),
-                Shell::Render => {}
+                // Never asked here: a browser keeps nothing running once its tab is closed, so the
+                // web offers no background setting.
+                Shell::Background(_) | Shell::Render => {}
             }
         }
         let listener = self.listener.borrow().clone();

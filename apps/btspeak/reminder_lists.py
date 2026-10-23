@@ -6,37 +6,23 @@ read, and Remove reminder on each of its own (the delete keys). The main menu's 
 what came due over the last day and was not dealt with, whatever gave it — this app's service,
 or another device's dismissal not yet here — to dismiss (the delete keys) or snooze (`z`), at a
 block's end that left work short to carry it forward (`f`), and on an overrun to replan (`p`).
-Settings has Reminders on this device, the core's own setting, and the reminder service,
-installed only when asked.
+Settings has Reminders on this device, the core's own setting; the background service that
+gives them while the app is closed is Settings' own (`preferences.py`).
 """
 
 from __future__ import annotations
 
 import datetime
-import subprocess
-from pathlib import Path
-
-from BTSpeak import dialogs
 
 import actions
 from actions import K, L
-from core import profile_directory
 from rows import Row, items
-import service
-from session import Command, Session, confirm, live_menu, screen
+from session import Command, Session, live_menu, screen
 from tasks import undo_commands
 
 
 #: For tests: a function of nothing giving now, as an aware datetime. None is now.
 NOW = None
-
-#: Where the reminder service is linked in: the person's configuration directory, or a test's.
-#: None is the person's.
-CONFIG: Path | None = None
-
-
-def config() -> Path:
-    return CONFIG or service.config_home()
 
 #: How far back the Reminders screen looks for what came due: as far as the service ever
 #: goes back after being stopped.
@@ -169,7 +155,7 @@ def due(session: Session) -> str:
 
 
 # ---------------------------------------------------------------------------------------
-# Settings: reminders on this device, and the service that gives them
+# Settings: reminders on this device
 # ---------------------------------------------------------------------------------------
 
 
@@ -177,36 +163,13 @@ def due(session: Session) -> str:
 KEYS = {"reminders"}
 
 
-def service_title() -> str:
-    return f"Reminder service, {'on' if service.enabled(config()) else 'off'}"
-
-
-def toggle_service(session: Session) -> str:
-    """Turns the service on, or off, each only once the person says yes."""
-    try:
-        if service.enabled(config()):
-            if not confirm("Turn off the reminder service? Reminders are then given only while another app runs"):
-                return ""
-            return service.disable(config())
-        if not confirm(
-            "Turn on the reminder service? It runs all the time, apart from this app, and gives "
-            "reminders with the notification sound, speech and braille"
-        ):
-            return ""
-        return service.enable(profile_directory(), config())
-    except (OSError, subprocess.CalledProcessError) as error:
-        detail = getattr(error, "stderr", "") or str(error)
-        return f"The reminder service could not be set up: {detail.strip()}"
-
-
 def settings_page(session: Session) -> str:
-    """Reminders on this device, which the core honours, and the service."""
+    """Reminders on this device, which the core honours. The service that gives them while the
+    app is closed is Settings' own Background reminders and sync, since it syncs too."""
     import preferences  # here, since preferences imports this module
 
     def build():
-        made = preferences.setting_items(session, lambda setting: setting.key in KEYS)
-        made.append(dialogs.DynamicMenuItem(title=lambda *_: service_title(), action=lambda: toggle_service(session)))
-        return made
+        return preferences.setting_items(session, lambda setting: setting.key in KEYS)
 
     with screen("lumenna-reminders"), preferences.opened(session):
         live_menu(session, build, "Reminders", app=undo_commands(session), app_title="Reminders menu")

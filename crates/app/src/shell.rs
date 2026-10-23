@@ -7,7 +7,7 @@
 //! exhaustive match, so a new event is sorted into one or the other where it is added.
 
 use boltffi::data;
-use crate::{ActingOn, BlockEvent, Capitals, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Side, Typing};
+use crate::{ActingOn, BackgroundEvent, BlockEvent, Capitals, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Side, Typing};
 use lumenna_records::places::Place;
 use lumenna_records::proposals::TimeStyle;
 use lumenna_records::Offered;
@@ -67,6 +67,8 @@ pub enum ShellEvent {
     Devices(DevicesEvent),
     /// Reminders due: the shell's look, or a button.
     Due(DueEvent),
+    /// What this shell keeps running in the background, or how turning it on or off went.
+    Background(BackgroundEvent),
     /// The clock this shell says times in.
     Clock(TimeStyle),
     /// How this shell writes its buttons, headings and questions.
@@ -113,6 +115,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Settings(event) => Event::Settings(event),
             ShellEvent::Devices(event) => Event::Devices(event),
             ShellEvent::Due(event) => Event::Due(event),
+            ShellEvent::Background(event) => Event::Background(event),
             ShellEvent::Clock(style) => Event::Clock(style),
             ShellEvent::Capitals(capitals) => Event::Capitals(capitals),
             ShellEvent::PairingAs { called, nearby } => Event::PairingAs { called, nearby },
@@ -150,6 +153,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Settings(event) => ShellEvent::Settings(event),
             Event::Devices(event) => ShellEvent::Devices(event),
             Event::Due(event) => ShellEvent::Due(event),
+            Event::Background(event) => ShellEvent::Background(event),
             Event::Clock(style) => ShellEvent::Clock(style),
             Event::Capitals(capitals) => ShellEvent::Capitals(capitals),
             Event::PairingAs { called, nearby } => ShellEvent::PairingAs { called, nearby },

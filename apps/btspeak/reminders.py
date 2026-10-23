@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Lumenna's reminders on BTSpeak: a small resident service, apart from the sync daemon.
+"""Lumenna's reminders on BTSpeak, as the background service gives them (`background.py`).
 
 It opens the store itself, through the core the app runs (`core.py`), holds the right to give
 this device's reminders (`Device::deliver_reminders`), asks every twenty seconds what came due, and gives each: the device's
@@ -9,10 +8,8 @@ restart does not say the day again (it remembers when it last gave reminders), t
 while it was stopped is one summary, and that nothing is given while another process on the
 device gives them. There is no reminder logic here.
 
-It runs as a systemd user service (`system/lumenna-reminders.service`, which `service.py` links
-in only when it is turned on from the app's Settings), and is turned off there, which stops it
-and lets go of the right so another process may take it, or by the app's Reminders on this
-device, which the core honours.
+Stopping the service lets go of the right so another process may take it; the app's Reminders
+on this device, which the core honours, turns them off alone.
 
 Dismissing, snoozing and carrying forward what a block's end left short (the reminder's
 `carry`, whose question ends its text) are the app's Reminders screen: a service has no keys
@@ -22,7 +19,6 @@ of its own.
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -119,29 +115,3 @@ class Giver:
     def pause(self) -> float:
         """How long to wait before asking again: shorter while another process gives them."""
         return WAITING if self.elsewhere else INTERVAL
-
-    def run(self) -> None:
-        """Gives reminders until stopped."""
-        try:
-            while True:
-                try:
-                    self.once()
-                except LumennaError as error:
-                    # Logged where the unit's journal finds it; the next round tries again.
-                    print(f"lumenna reminders: {error.message}", file=sys.stderr, flush=True)
-                    self.let_go()
-                time.sleep(self.pause())
-        finally:
-            self.let_go()
-
-
-def main() -> int:
-    try:
-        Giver().run()
-    except KeyboardInterrupt:
-        pass
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

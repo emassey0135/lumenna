@@ -43,6 +43,9 @@ pub enum Shell {
     Save(lumenna_app::SaveFile),
     /// Show this notification, as the platform shows one.
     Notify(lumenna_app::Notice),
+    /// Keep Lumenna running in the background, or stop (`true` or `false`): the platform's to
+    /// do, which answers with `BackgroundEvent::Offered`, or `Failed`.
+    Background(bool),
 }
 
 /// What is left of `effects` for the shell, drawing once and first: everything the
@@ -72,6 +75,8 @@ fn left(effects: Vec<Effect>, screen: Option<lumenna_app::ScreenId>) -> Vec<Shel
             }
             Effect::Save(request) => shell.push(Shell::Save(request.operation)),
             Effect::Notify(request) => shell.push(Shell::Notify(request.operation)),
+            Effect::Background(request) if screen.is_some_and(|screen| screen != request.operation.screen) => {}
+            Effect::Background(request) => shell.push(Shell::Background(request.operation.on)),
             Effect::Watch(_) | Effect::Host(_) | Effect::Network(_) => {}
         }
     }

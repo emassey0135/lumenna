@@ -182,7 +182,7 @@ fn said(shell: &[Shell]) -> Vec<&str> {
         .iter()
         .filter_map(|s| match s {
             Shell::Announce(text) | Shell::Heading(text) => Some(text.as_str()),
-            Shell::Render | Shell::Save(_) | Shell::Notify(_) => None,
+            Shell::Render | Shell::Save(_) | Shell::Notify(_) | Shell::Background(_) => None,
         })
         .collect()
 }
@@ -1011,6 +1011,51 @@ fn a_setting_applies_and_one_refused_stays_as_typed_beside_why() {
     let day_end = setting(&app, "day-end");
     assert_eq!(day_end.typed, "teatime");
     assert!(day_end.problem.is_some());
+}
+
+#[test]
+fn running_in_the_background_is_offered_only_where_the_shell_says_and_its_change_is_the_shells_to_make() {
+    use lumenna_app::BackgroundEvent;
+    use lumenna_records::background::{BackgroundKind, background_words};
+
+    let mut app = App::new();
+    app.send(Event::Settings(SettingsEvent::Open));
+    let has = |app: &App| app.view().settings.unwrap().settings.iter().any(|s| s.setting.key == "background");
+    assert!(!has(&app), "a shell that keeps nothing running offers nothing");
+
+    app.send(Event::Background(BackgroundEvent::Offered { kind: BackgroundKind::Service, on: false }));
+    let words = background_words(BackgroundKind::Service);
+    let offered = setting(&app, "background");
+    assert_eq!(offered.setting.title, words.title);
+    assert_eq!(offered.setting.hint, words.hint);
+    assert_eq!(offered.typed, "false");
+    assert!(!offered.setting.syncs, "this device's alone");
+
+    // Turning it on is handed to the shell, said only once the shell says it is on.
+    let set = |value: &str| Event::Settings(SettingsEvent::Set { key: "background".to_owned(), value: value.to_owned() });
+    let shell = app.send(set("true"));
+    assert!(shell.contains(&Shell::Background(true)), "{shell:?}");
+    assert!(said(&shell).is_empty());
+    assert_eq!(setting(&app, "background").typed, "true", "as chosen, while the shell makes it so");
+    let shell = app.send(Event::Background(BackgroundEvent::Offered { kind: BackgroundKind::Service, on: true }));
+    assert_eq!(said(&shell), [words.on.as_str()]);
+    assert_eq!(setting(&app, "background").setting.value, "true");
+
+    // A change the shell could not make is said with its reason, the setting as it is.
+    app.send(set("false"));
+    let shell = app.send(Event::Background(BackgroundEvent::Failed { reason: "systemctl refused".to_owned() }));
+    assert_eq!(said(&shell), [format!("{}: systemctl refused", words.failed).as_str()]);
+    assert_eq!(setting(&app, "background").typed, "true");
+
+    // What the shell says of its own accord, a change made elsewhere, is shown and not said.
+    let shell = app.send(Event::Background(BackgroundEvent::Offered { kind: BackgroundKind::Service, on: false }));
+    assert!(said(&shell).is_empty());
+    assert_eq!(setting(&app, "background").typed, "false");
+
+    // Each platform words it its own way.
+    for kind in [BackgroundKind::WindowsSignIn, BackgroundKind::MacLogin, BackgroundKind::DesktopSignIn, BackgroundKind::SyncDaemon] {
+        assert_ne!(background_words(kind).title, words.title);
+    }
 }
 
 #[test]

@@ -139,6 +139,15 @@ without the screens over BoltFFI. No JSON crosses the FFI.
 - **A setting describes itself** (`Setting::title`, `kind`, `options`, `syncs`, `hint`), and
   the priorities are `priorities()`: a settings screen or a priority picker builds its
   controls from them, never from a table of its own.
+- **Keeping Lumenna running in the background is a device setting whose value is the
+  platform's** (`records::background`, key `background`). A shell that can says so with
+  `BackgroundEvent::Offered { kind, on }` at start and whenever it changes; the app lists it
+  among the device's settings, worded for its kind (`background_words`: Windows' sign-in, the
+  Mac's login, a Linux desktop's sign-in, BTSpeak's service, Emacs's sync daemon), hands what the
+  person chose to the shell (`Effect::Background`, a `Turn`'s `background`), and says the core's
+  sentence once the shell answers `Offered` with it, or its `failed` and the platform's reason
+  after `Failed`. A shell that keeps nothing running (the web, the phones) never sends it, and
+  nothing is offered.
 - **Colours are the core's palette** (`lumenna_core::colour`, `records::colours`): eleven named
   colours, each with a value for a light background and one for a dark, both of 3:1 contrast.
   A project, label or saved filter takes one by its Colour pick (`colour_choices`, "No colour"
@@ -642,10 +651,8 @@ surface's `reminders.rs` words them and answers the apps.
   showed (`<key>@<occurrence>`) and the rest since the last ask was missed.
 - **Who delivers, per client**: the resident desktop apps through `deliver_reminders`; iOS,
   watchOS, Android and Wear OS by scheduling `upcoming_reminders`; `lum notify` on a console;
-  Emacs's `lumenna-reminders-mode` through `reminder.deliver` and BTSpeak's resident service
-  (`reminders.py`, a systemd user unit kept in `system/` and linked into the person's own units
-  only from its Settings, after asking: nothing under `/BTSpeak`, which each release replaces,
-  and no administrator) through `Device::deliver_reminders`, whose `elsewhere` says another process has it,
+  Emacs's `lumenna-reminders-mode` through `reminder.deliver` and BTSpeak's background service
+  (`background.py`, which keeps the device in sync too, turned on only from its Settings) through `Device::deliver_reminders`, whose `elsewhere` says another process has it,
   so ask again soon. The
   web's one tab delivers through `reminders_due` with a "since" of its own, and keeps
   "Reminders on this device" in local storage: a browser has no device-settings file.
@@ -831,7 +838,15 @@ tests run on `tests/btspeak_stub.py`, with the core built and `target/debug` on 
 - **It is a line in `~/BTSpeak/user.menu`**, added with `user_menu.add_item`, not a `.menu`
   file.
 - **The app syncs while it runs** (`App::in_front`), waiting its turn for the endpoint while the
-  daemon holds it, and takes the automatic backups, hourly, as `lum rpc` did.
+  background service or the daemon holds it, and takes the automatic backups, hourly, as `lum rpc`
+  did.
+- **One background service keeps the device in sync and gives its reminders** (`background.py`),
+  so no one needs a shell for either: `Device::keep_in_sync` holds the endpoint as the daemon
+  does, waiting its turn while another process has it, and serves the command surface while it
+  holds it (the core built with `rpc`); `reminders.Giver` gives what comes due. It is a systemd
+  user unit kept in `system/`, linked into the person's own units only from Settings, Background
+  reminders and sync (the app's setting, carried out by the session): nothing under `/BTSpeak`, which each release replaces, and no
+  administrator. The device logs `pi` in at every start, so it starts with the device.
 - **The day's own actions lead the Day menu**: `live_menu`'s `app` may be a function, read
   after `build`, so the menu offers what the plan shown offers (`day.day_commands`).
 - **A choice's reason is its row's hint.** `request_choice` has no description, so a pick

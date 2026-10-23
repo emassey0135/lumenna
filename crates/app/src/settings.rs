@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use crux_core::Command;
 use crux_core::render::render;
 use lumenna_records::LumennaError;
+use lumenna_records::background::{BackgroundKind, KEY as BACKGROUND, background_words};
 use lumenna_records::types::{ExportFormat, Setting};
 use serde::{Deserialize, Serialize};
 
@@ -48,6 +49,41 @@ pub enum SettingsEvent {
         #[serde(with = "serde_bytes")]
         bytes: Vec<u8>,
     },
+}
+
+/// What the shell says of keeping Lumenna running in the background, the one device setting
+/// whose value is the platform's (`lumenna_records::background`).
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BackgroundEvent {
+    /// What this platform keeps running and whether it is on: sent once at start, and again
+    /// whenever it changes, the app's asking included.
+    Offered {
+        /// What it keeps running, which the setting's words follow.
+        kind: BackgroundKind,
+        /// Whether it is on.
+        on: bool,
+    },
+    /// Turning it on or off, as the app asked, failed: why, in the platform's words.
+    Failed {
+        /// Why.
+        reason: String,
+    },
+}
+
+/// What the person chose for keeping Lumenna running in the background, for the shell to do:
+/// it answers with `BackgroundEvent::Offered` once done, or `Failed`.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Background {
+    /// On or off.
+    pub on: bool,
+    /// The screen that asked, where the shell answers.
+    pub screen: u32,
+}
+
+impl crux_core::capability::Operation for Background {
+    type Output = ();
 }
 
 /// Settings, open.
@@ -117,13 +153,16 @@ impl crux_core::capability::Operation for SaveFile {
     type Output = ();
 }
 
-/// Settings as shown, the exports named for `today`.
+/// Settings as shown, the exports named for `today`, with keeping Lumenna running in the
+/// background where the shell offers it (`background`, as the shell last said).
 #[must_use]
-pub fn view(settings: &Settings, today: jiff::civil::Date) -> SettingsView {
+pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, today: jiff::civil::Date) -> SettingsView {
+    let offered = background.map(|(kind, on)| lumenna_records::background::background_setting(kind, on));
     let rows = settings
         .list
         .iter()
         .flatten()
+        .chain(settings.list.is_some().then_some(offered.as_ref()).flatten())
         .map(|setting| SettingView {
             typed: settings.typed.get(&setting.key).cloned().unwrap_or_else(|| setting.value.clone()),
             problem: settings.problems.get(&setting.key).cloned(),
@@ -159,6 +198,17 @@ impl Lumenna {
                 }
                 render()
             }
+            SettingsEvent::Set { key, value } if key == BACKGROUND => {
+                // The platform's to do: handed to the shell, which says how it went.
+                let Some((kind, _)) = model.background else { return Command::done() };
+                let on = value == "true";
+                if let Some(settings) = &mut model.settings {
+                    settings.typed.insert(key, value);
+                }
+                model.background_asked = Some((kind, on));
+                let ask: Command<Effect, Event> = Command::notify_shell(Background { on, screen: 0 }).into();
+                render().and(ask)
+            }
             SettingsEvent::Set { key, value } => {
                 let Some(settings) = &mut model.settings else { return Command::done() };
                 settings.typed.insert(key.clone(), value.clone());
@@ -171,7 +221,34 @@ impl Lumenna {
         }
     }
 
-    pub(crate) fn listed(&self, result: Result<lumenna_records::types::SettingList, LumennaError>, model: &mut Screen) -> Command<Effect, Event> {
+    /// What the shell says of keeping Lumenna running in the background: what it offers, or
+    /// that what the app asked failed, each said where it was asked.
+    pub(crate) fn background(&self, event: BackgroundEvent, model: &mut Screen) -> Command<Effect, Event> {
+        if let Some(settings) = &mut model.settings {
+            settings.typed.remove(BACKGROUND);
+        }
+        match event {
+            BackgroundEvent::Offered { kind, on } => {
+                model.background = Some((kind, on));
+                let asked = model.background_asked.take();
+                match asked {
+                    Some((_, wanted)) if wanted == on => {
+                        let words = background_words(kind);
+                        render().and(say(if on { words.on } else { words.off }))
+                    }
+                    _ => render(),
+                }
+            }
+            BackgroundEvent::Failed { reason } => {
+                let kind = model.background_asked.take().map(|(kind, _)| kind).or(model.background.map(|(kind, _)| kind));
+                let failed = kind.map_or_else(|| "That could not be changed".to_owned(), |kind| background_words(kind).failed);
+                let reason = reason.trim();
+                render().and(say(if reason.is_empty() { failed } else { format!("{failed}: {reason}") }))
+            }
+        }
+    }
+
+    pub(crate) fn listed(&self,result: Result<lumenna_records::types::SettingList, LumennaError>, model: &mut Screen) -> Command<Effect, Event> {
         let Some(settings) = &mut model.settings else { return Command::done() };
         match result {
             Ok(list) => {

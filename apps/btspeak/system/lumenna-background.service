@@ -1,11 +1,12 @@
-# Lumenna's reminders on BTSpeak, as a systemd user service. This file is the unit, used where it
-# is: Settings, Reminders, Reminder service links it into the person's own units
+# Lumenna's background service on BTSpeak, as a systemd user service: it keeps the device in sync
+# and gives its reminders while the app is closed. This file is the unit, used where it is:
+# Settings, Background reminders and sync links it into the person's own units
 # (~/.config/systemd/user, and default.target.wants to start it at login, which the device makes at
 # every start), and turning it off takes the links away. Nothing is written outside the person's
 # home, so nothing needs an administrator. The profile is given in a drop-in written beside the
 # links, so the service opens the app's own store.
 [Unit]
-Description=Lumenna reminders
+Description=Lumenna reminders and sync
 
 [Service]
 Type=simple
@@ -13,8 +14,8 @@ Type=simple
 # calendar reminders are ordered after: the device ready to speak and show.
 ExecStartPre=/bin/sh -c 'until systemctl is-active --quiet btspeak-ready.service; do sleep 2; done'
 TimeoutStartSec=infinity
-# %Y is this file's own directory, even through the link, so this runs the reminders.py beside it.
-ExecStart=/usr/bin/python3 %Y/../reminders.py
+# %Y is this file's own directory, even through the link, so this runs the background.py beside it.
+ExecStart=/usr/bin/python3 %Y/../background.py
 Restart=always
 RestartSec=10
 

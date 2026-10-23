@@ -124,6 +124,7 @@ impl Shell for Notifying {
             "said": turn.said,
             "files": files,
             "notices": turn.notices,
+            "background": turn.background,
         }));
     }
 }

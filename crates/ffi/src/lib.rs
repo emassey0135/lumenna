@@ -85,6 +85,9 @@ pub struct Turn {
     pub files: Vec<SaveFile>,
     /// Notifications to show, as the platform shows them.
     pub notices: Vec<Notice>,
+    /// Keep Lumenna running in the background, or stop: what the person chose in Settings, for
+    /// the shell to do and answer with `BackgroundEvent`.
+    pub background: Option<bool>,
     /// Counted, from one: each turn draws over the one before.
     pub seq: u32,
 }
@@ -257,8 +260,9 @@ fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaE
         .map_err(|error| LumennaError::new(error.to_string()))
 }
 
-/// What a batch left one screen: what it heard (a heading, or a sentence), files and notices.
-type Left = (Vec<(bool, String)>, Vec<SaveFile>, Vec<Notice>);
+/// What a batch left one screen: what it heard (a heading, or a sentence), files, notices, and
+/// keeping Lumenna running in the background as last asked.
+type Left = (Vec<(bool, String)>, Vec<SaveFile>, Vec<Notice>, Option<bool>);
 
 /// Hands the shell a turn for whatever the app has left, until the app is gone: one per screen
 /// that has something new, a view it has not drawn or something to say or save. What arrived
@@ -291,6 +295,7 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
                     let first = views.keys().next().copied().unwrap_or(0);
                     left.entry(first).or_default().2.push(request.operation);
                 }
+                Effect::Background(request) => left.entry(request.operation.screen).or_default().3 = Some(request.operation.on),
                 Effect::Watch(_) | Effect::Host(_) | Effect::Network(_) => {}
             }
         }
@@ -301,7 +306,7 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
                 }
             }
         }
-        for (screen, (heard, files, notices)) in left {
+        for (screen, (heard, files, notices, background)) in left {
             let view = views.remove(&screen).unwrap_or_default();
             // "<day>. <summary>", for a day newly shown.
             let said = heard
@@ -313,7 +318,7 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
                 .collect();
             seq += 1;
             drawn.insert(screen, view.clone());
-            shell.turn(Turn { screen, lines: lines(&view, clock), view, said, files, notices, seq });
+            shell.turn(Turn { screen, lines: lines(&view, clock), view, said, files, notices, background, seq });
         }
         // Handed on: the shell counts it from here until it is drawn.
         unsent.fetch_sub(batches, Ordering::SeqCst);

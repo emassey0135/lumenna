@@ -6,7 +6,11 @@ Enter changes a setting. Times are written as you would say them: 9am, 14:30. Th
 
 ## Reminders, on this device
 
-Reminders on this device, and the reminder service that gives them while Lumenna is closed. See [Lumenna Reminders](help:lumenna-reminders). The defaults for every task and every block are on Planning: phrases such as 5m before start, separated by commas.
+Reminders on this device. See [Lumenna Reminders](help:lumenna-reminders). The defaults for every task and every block are on Planning: phrases such as 5m before start, separated by commas.
+
+## Background reminders and sync
+
+On the Settings page, g chooses On or Off, after saying what it does. When it is on, a service keeps this device in sync with your other devices and gives its reminders while Lumenna is closed, and starts whenever the device does. While Lumenna is open, the service goes on doing both, and Sync now asks it for a round.
 
 ## Read a task back before adding it
 

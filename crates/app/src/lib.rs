@@ -61,7 +61,7 @@ pub use typing::{LineView, Typing};
 pub use host::{Arrival, HostAnswer, HostRequest, Watch};
 pub use list::{Asks, Item, Offered};
 pub use proposal::{ProposalEvent, ProposalView};
-pub use settings::{SaveFile, SettingsEvent, SettingsView};
+pub use settings::{Background, BackgroundEvent, SaveFile, SettingsEvent, SettingsView};
 pub use due::{Due, DueEvent, Notice};
 pub use network::{DevicesEvent, DevicesView, NetworkAnswer, NetworkRequest, PairEvent};
 pub use view::{Asking, ListView, ViewModel};
@@ -93,7 +93,7 @@ mod effects {
     use crux_core::macros::effect;
     use crux_core::render::RenderOperation;
 
-    use crate::{Announce, HostRequest, NetworkRequest, Notice, SaveFile, Watch};
+    use crate::{Announce, Background, HostRequest, NetworkRequest, Notice, SaveFile, Watch};
 
     /// What the app asks for.
     #[effect]
@@ -113,11 +113,14 @@ mod effects {
         Network(NetworkRequest),
         /// Show a notification, as the platform shows one.
         Notify(Notice),
+        /// Keep Lumenna running in the background, or stop: the platform's to do.
+        Background(Background),
     }
 }
 
 impl Effect {
-    /// The same effect, anything it says said on `screen`, and any file it saves saved from it.
+    /// The same effect, anything it says said on `screen`, any file it saves saved from it, and
+    /// anything it asks of the shell answered there.
     fn said_on(self, screen: ScreenId) -> Self {
         match self {
             Effect::Announce(mut request) => {
@@ -127,6 +130,10 @@ impl Effect {
             Effect::Save(mut request) => {
                 request.operation.screen = screen;
                 Effect::Save(request)
+            }
+            Effect::Background(mut request) => {
+                request.operation.screen = screen;
+                Effect::Background(request)
             }
             effect => effect,
         }
@@ -226,6 +233,8 @@ pub enum Event {
     /// What a pairing under way says.
     #[serde(skip)]
     Pairing(NetworkAnswer),
+    /// What this shell keeps running in the background, or how turning it on or off went.
+    Background(settings::BackgroundEvent),
     /// The clock this shell says times in, for the sentences the core composes whole.
     Clock(lumenna_records::proposals::TimeStyle),
     /// How this shell writes its buttons, headings and questions.
@@ -314,6 +323,7 @@ impl Event {
                 | Event::Synced(_)
                 | Event::SyncStatus(_)
                 | Event::Pairing(_)
+                | Event::Background(_)
                 | Event::Clock(_)
                 | Event::Capitals(_)
                 | Event::PairingAs { .. }
@@ -417,6 +427,7 @@ impl Lumenna {
             | Event::Synced(_)
             | Event::SyncStatus(_)
             | Event::Pairing(_)
+            | Event::Background(_)
             | Event::Clock(_)
             | Event::Capitals(_)
             | Event::PairingAs { .. }
@@ -497,6 +508,7 @@ impl Lumenna {
                 model.plan_from = moment;
                 Command::done()
             }
+            Event::Background(event) => self.background(event, model),
             Event::Clock(style) => {
                 model.style = Some(style);
                 Command::done()

@@ -8,6 +8,7 @@
 //! command line and the same list on a phone cannot drift apart.
 
 pub mod actions;
+pub mod background;
 pub mod choices;
 pub mod colours;
 pub mod day;

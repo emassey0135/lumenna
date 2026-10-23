@@ -63,9 +63,11 @@ turn, on a thread of its own, that the menus take in when they wake (`session.py
 here draws what the app shows, in the core's lines worded in this device's clock, and sends
 what the person did.
 
-Syncing runs while the app does. `lum daemon install`, run once from a shell, sets the daemon
-up as a systemd user service to sync while it is closed; the app then waits its turn for the
-device's endpoint, and *Devices and sync* asks the daemon for a round.
+Syncing runs while the app does. While it is closed, the background service keeps the device in
+sync (see Background reminders and sync, below), turned on from Settings, so no one needs a
+shell for it; `lum daemon install` does the same for someone who wants `lum`. Either way the app
+waits its turn for the device's endpoint, and *Devices and sync* asks whichever holds it for a
+round.
 
 Nothing here parses a date, computes a state, or decides what completing a task does to its
 subtasks. That is all the core's, so that every client behaves alike and none can drift.
@@ -86,7 +88,8 @@ subtasks. That is all the core's, so that every client behaves alike and none ca
 | `organise.py` | Projects, labels and saved filters. |
 | `preferences.py` | Settings, devices, sync and pairing, backups, export and import. |
 | `reminder_lists.py` | A task's or block's reminders, what came due, and the Reminders settings page. |
-| `reminders.py` | The resident reminder service. |
+| `background.py` | The background service: keeping the device in sync and giving its reminders. |
+| `reminders.py` | Giving reminders, as the background service does. |
 | `service.py` | Turning that service on and off, only when asked. |
 | `system/` | The service's systemd user unit, linked in from where it is. |
 
@@ -129,11 +132,18 @@ row, choose that, type this — failing at once if the app asks for something el
 test reads as the conversation a person would have. Pairing is among them, against a second
 store. Every test runs in UTC, at fixed moments where the hour matters.
 
-## Reminders
+## Background reminders and sync
 
-`reminders.py` is a small resident service, apart from the sync daemon, because delivery
-belongs to whatever process owns an output and the daemon owns none. Every twenty seconds it
-asks the core what came due (`Device::deliver_reminders`) and gives each: the notification sound, then
+`background.py` is the one process that runs while the app is closed, as Blazie asks of a
+background service, and does what the daemon and a resident desktop app do. It keeps the device
+in sync (`Device::keep_in_sync`): it holds the device's endpoint, or waits its turn while another
+process holds it and takes over when that one stops, and while it holds it it serves the command
+surface at the profile's address, so the app's Sync now and `lum sync` run their round there. It
+gives reminders (`reminders.py`), and it takes the automatic backups when they are due. The core
+is built with the `rpc` feature for the serving.
+
+`reminders.py` is the giving of reminders, in the process that owns an output. Every twenty
+seconds it asks the core what came due (`Device::deliver_reminders`) and gives each: the notification sound, then
 `host.say()` and `brl.push_message()`, so a reminder reaches the display too. What fires, its
 words, and remembering what was given — so a restart does not say the day again, and what
 came while it was stopped is one summary — are the core's; there is no reminder logic here.
@@ -142,12 +152,13 @@ both say one.
 
 It is a systemd user service, and nothing of it is written under `/BTSpeak`, which the device
 replaces on every release, or anywhere that needs an administrator. The unit,
-`system/lumenna-reminders.service`, is used where it is: Settings, Reminders, Reminder service
-turns it on, after asking, by linking it into `~/.config/systemd/user` and its
+`system/lumenna-background.service`, is used where it is: Settings, Background reminders and
+sync (the app's device setting, `lumenna_records::background`, which the session carries out), turns it on by linking it into `~/.config/systemd/user` and its
 `default.target.wants` (what `systemctl --user enable` makes), with a drop-in giving it the
 app's profile, then starting it; off stops it and takes the three away, and stopping lets go of
-the right to give reminders. The links are the one record of whether it is on. The device logs
-`pi` in at every start, so the person's units start with it; the unit runs `reminders.py` beside
+the endpoint and of the right to give reminders. The links are the one record of whether it is
+on. The device logs `pi` in at every start, so the person's units start with it; the unit runs
+`background.py` beside
 it through `%Y`, its own directory even through the link, and waits for `btspeak-ready.service`,
 which a user unit cannot be ordered after. The tests link into a temporary directory and record
 the `systemctl` commands rather than run them.

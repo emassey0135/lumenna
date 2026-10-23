@@ -62,13 +62,34 @@ pub struct Device {
     reminders: Mutex<Option<Arc<ReminderLock>>>,
     /// The Apple Watch's exchange with its phone, on either side of it.
     link: Arc<PhoneLink>,
+    /// This device kept in sync from here, by a process with no screens: BTSpeak's service.
+    #[cfg(feature = "rpc")]
+    syncing: Mutex<Option<Syncing>>,
+}
+
+/// The sync service a process with no screens runs, and the command surface it serves while
+/// it holds the endpoint, as the daemon does.
+#[cfg(feature = "rpc")]
+struct Syncing {
+    service: Arc<lumenna_host::SyncService>,
+    commands: Arc<lumenna_host::rpc::CommandServer>,
 }
 
 impl Device {
+    fn opened(lumenna: Arc<Lumenna>) -> Device {
+        Device {
+            link: PhoneLink::new(Arc::clone(&lumenna)),
+            lumenna,
+            reminders: Mutex::new(None),
+            #[cfg(feature = "rpc")]
+            syncing: Mutex::new(None),
+        }
+    }
+
     /// The device over a store already open: a client's own connection, served over RPC.
     #[cfg(feature = "rpc")]
     pub(crate) fn over(lumenna: Arc<Lumenna>) -> Device {
-        Device { link: PhoneLink::new(Arc::clone(&lumenna)), lumenna, reminders: Mutex::new(None) }
+        Device::opened(lumenna)
     }
 }
 
@@ -80,8 +101,7 @@ impl Device {
     ///
     /// If the profile cannot be opened.
     pub fn new(directory: String) -> Result<Device, LumennaError> {
-        let lumenna = Lumenna::open(&directory)?;
-        Ok(Device { link: PhoneLink::new(lumenna.clone()), lumenna, reminders: Mutex::new(None) })
+        Ok(Device::opened(Lumenna::open(&directory)?))
     }
 
     // The services.
@@ -369,4 +389,53 @@ impl Device {
     pub fn sync_over_link(&self, stream: Arc<dyn LinkStream>, device_name: String, platform: String) -> Result<LinkSynced, LumennaError> {
         self.lumenna.sync_over_link(Arc::new(Carried(stream)), &device_name, &platform)
     }
+}
+
+/// Keeping this device in sync from a process with no screens, as the daemon does: BTSpeak's
+/// background service, which gives reminders too.
+#[cfg(feature = "rpc")]
+#[export]
+impl Device {
+    /// Keeps this device in sync until [`Device::stop_syncing`]: holds its endpoint, or waits its
+    /// turn while another process holds it and takes over when that one stops, and while it
+    /// holds it serves the command surface at the profile's address, so a round asked anywhere
+    /// else on the device runs here. `process` is what a client is told is answering,
+    /// `device_name` what a pairing asked for over it calls this device, and `platform` what
+    /// this device says it runs. Whether this process holds the endpoint now; asking again
+    /// while it keeps in sync changes nothing.
+    ///
+    /// # Errors
+    ///
+    /// If the endpoint cannot be opened.
+    pub fn keep_in_sync(&self, process: String, device_name: String, platform: String) -> Result<bool, LumennaError> {
+        let mut syncing = self.syncing.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(syncing) = syncing.as_ref() {
+            return Ok(syncing.service.is_running());
+        }
+        let service = self.lumenna.start_sync(Reach::Internet, Arc::new(Quietly))?;
+        let apps = Arc::new(crate::rpc::Apps { platform: platform.clone(), keeps_in_sync: None });
+        let commands = self.lumenna.serve_commands(Arc::clone(&service), process, device_name, platform, Some(apps));
+        let holding = service.is_running();
+        *syncing = Some(Syncing { service, commands });
+        Ok(holding)
+    }
+
+    /// Stops keeping this device in sync from here: gives up the profile's address, then the
+    /// endpoint, for another process to take.
+    pub fn stop_syncing(&self) {
+        let syncing = self.syncing.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some(syncing) = syncing {
+            syncing.commands.stop();
+            syncing.service.stop();
+        }
+    }
+}
+
+/// What arrives is not said: a process with no screens has nothing to redraw.
+#[cfg(feature = "rpc")]
+struct Quietly;
+
+#[cfg(feature = "rpc")]
+impl lumenna_host::SyncListener for Quietly {
+    fn changed(&self) {}
 }

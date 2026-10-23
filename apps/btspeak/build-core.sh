@@ -32,7 +32,9 @@ interpreters = ["$PYTHON"]
 TOML
 # The core as a cdylib alone: crates/ffi is an rlib too, for the Rust apps, and rustc builds an
 # artifact made beside an rlib without whole-program optimization (20.0 MB, where alone 17.7).
-(cd "$ROOT/crates/ffi" && boltffi pack python $RELEASE --cargo-arg=--crate-type=cdylib --overlay "$BOLT/overlay.toml")
+# With the command surface (`rpc`), which the background service serves while it keeps the
+# device in sync, as the daemon does.
+(cd "$ROOT/crates/ffi" && boltffi pack python $RELEASE --cargo-arg=--crate-type=cdylib --cargo-arg=--features=rpc --overlay "$BOLT/overlay.toml")
 
 # The wheel's package, unpacked where the app finds it (core.py), in place of the last.
 rm -rf "$APP/native"

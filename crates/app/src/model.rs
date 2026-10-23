@@ -96,6 +96,10 @@ pub struct Screen {
     pub capitals: crate::capitals::Capitals,
     /// What the shell is called in pairing's sentences, and whether it finds devices nearby.
     pub pairing_as: Option<(String, bool)>,
+    /// What the shell keeps running in the background and whether it is on, where it offers it.
+    pub background: Option<(lumenna_records::background::BackgroundKind, bool)>,
+    /// What this screen asked the shell to turn background running to, until it answers.
+    pub background_asked: Option<(lumenna_records::background::BackgroundKind, bool)>,
     /// Whether the proposal's screen last closed had made anything.
     pub proposal_made: bool,
     /// The task or block whose reminders are listed, while the list is open.
@@ -150,13 +154,14 @@ pub(crate) struct Rows {
 
 impl Screen {
     /// Takes what the device holds alike on every screen as `from` has it: the store, the
-    /// shell's clock and capitals, the moment proposals are made against, reminders due and the
-    /// look for them, and syncing.
+    /// shell's clock and capitals, what it keeps running in the background, the moment proposals
+    /// are made against, reminders due and the look for them, and syncing.
     fn share(&mut self, from: &Screen) {
         self.store.clone_from(&from.store);
         self.style = from.style;
         self.capitals = from.capitals;
         self.pairing_as.clone_from(&from.pairing_as);
+        self.background = from.background;
         self.plan_from.clone_from(&from.plan_from);
         self.due.clone_from(&from.due);
         self.looking = from.looking;

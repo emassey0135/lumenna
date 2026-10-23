@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import contextlib
 import queue
+import subprocess
 import time
 from pathlib import Path
 
 from BTSpeak import dialogs, host
 
-from core import Core, LumennaError, native
+from core import Core, LumennaError, native, profile_directory
+import service
 
 
 #: How often a menu wakes to notice that the app has something new to show.
@@ -51,6 +53,8 @@ class Session:
         self.device = core.device
         self.lumenna = native()
         self._view = None
+        #: What the app last asked the background service to be, until it is done.
+        self._background = None
         self._lines = None
         #: Files the app made for the person to keep — an export — not yet saved.
         self.files: list = []
@@ -70,6 +74,8 @@ class Session:
             self.lumenna.ShellEventCapitals(self.lumenna.Capitals.SENTENCE),
             # What pairing's sentences call this device, which finds others on its network.
             self.lumenna.ShellEventPairingAs("this device", True),
+            # Its background service, and whether it is on.
+            self.background(),
             # A place to show from the start: the main menu shows none, and without one the
             # screen stood on every task, the whole list worked out and handed over for nothing
             # (two seconds of a Pi's start on 2,000 tasks). Today is the cheapest, and first used.
@@ -89,6 +95,33 @@ class Session:
             self._view, self._lines = turn.view, turn.lines
             self.files.extend(turn.files)
             self._unsaid.extend(turn.said)
+            if turn.background is not None:
+                self._background = turn.background
+
+    def background(self):
+        """What this device keeps running in the background, as the app is told it: the
+        background service, on while its unit is linked in."""
+        return self.lumenna.ShellEventBackground(
+            self.lumenna.BackgroundEventOffered(self.lumenna.BackgroundKind.SERVICE, service.enabled(service.config()))
+        )
+
+    def _keep_background(self) -> bool:
+        """Turns the background service on or off as the app asked, if it did, and tells the
+        app how that went; whether there was anything to do."""
+        wanted, self._background = self._background, None
+        if wanted is None:
+            return False
+        try:
+            if wanted:
+                service.enable(profile_directory(), service.config())
+            else:
+                service.disable(service.config())
+        except (OSError, subprocess.CalledProcessError) as error:
+            reason = (getattr(error, "stderr", "") or str(error)).strip()
+            self.app.send(self.lumenna.ShellEventBackground(self.lumenna.BackgroundEventFailed(reason)))
+            return True
+        self.app.send(self.background())
+        return True
 
     def _said_since(self, mark: int) -> str:
         """What the app said after `mark`, taken off what is left to say."""
@@ -104,6 +137,10 @@ class Session:
             self.app.send(event)
         self.core.still()
         self._take()
+        # Keeping the background service is the shell's: done here, and the answer waited for.
+        while self._keep_background():
+            self.core.still()
+            self._take()
         return self._said_since(mark)
 
     def wait_said(self, timeout: float) -> str:

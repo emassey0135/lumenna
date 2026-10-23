@@ -4,7 +4,9 @@ real store, at fixed moments in 2030 in UTC, so nothing depends on when the test
 from __future__ import annotations
 
 import datetime
+import json
 import shutil
+import socket
 import sys
 import tempfile
 import unittest
@@ -19,6 +21,7 @@ btspeak_stub.install()
 
 from harness import LUM, Store  # noqa: E402
 from actions import L  # noqa: E402
+import background  # noqa: E402
 import day  # noqa: E402
 import preferences  # noqa: E402
 import reminder_lists  # noqa: E402
@@ -26,6 +29,20 @@ import reminders  # noqa: E402
 import service  # noqa: E402
 
 play = btspeak_stub.play
+
+
+def answering(profile: Path) -> str | None:
+    """What answers at the profile's address, by what `initialize` says it is, as `lum` asks."""
+    path = profile / "lumenna.sock"
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(5)
+            connection.connect(str(path))
+            connection.sendall(b'{"jsonrpc":"2.0","id":1,"method":"initialize"}\n')
+            line = connection.makefile("r", encoding="utf-8").readline()
+    except OSError:
+        return None
+    return json.loads(line).get("result", {}).get("process")
 
 STARTS = "Deep work starts in 5 minutes — nothing assigned yet"
 
@@ -39,7 +56,6 @@ class Reminders(unittest.TestCase):
         self.session = self.store.session
         self.ran = []
         service.RUN = self.ran.append
-        reminder_lists.CONFIG = self.profile / "config"
         reminder_lists.NOW = None
         btspeak_stub.given.clear()
         self.client.call("block.add", title="Deep work", at="9:00", minutes=60, date="2030-01-15")
@@ -49,7 +65,6 @@ class Reminders(unittest.TestCase):
         for giver in self.givers:
             giver.let_go()
         service.RUN = service._run
-        reminder_lists.CONFIG = None
         reminder_lists.NOW = None
         self.store.close()
 
@@ -199,20 +214,23 @@ class Reminders(unittest.TestCase):
         )
         self.assertIn("That does not apply here.", script.said)
 
-    # -- settings and the service ---------------------------------------------------------
+    # -- the background service, and turning it on -----------------------------------------
 
-    def test_the_service_is_turned_on_only_when_asked_by_linking_its_unit_in(self):
-        config = reminder_lists.CONFIG
-        self.run_script(
+    def test_background_reminders_and_sync_are_the_apps_setting_turned_on_by_linking_the_unit_in(self):
+        config = service.config()
+        script = self.run_script(
             [
-                ("menu", "Reminder service, off"),
-                ("confirm", False),
-                ("menu", "Reminder service, off"),
-                ("confirm", True),
+                ("menu", "Background reminders and sync, Off"),
+                ("choose", "Off"),
+                ("menu", "Background reminders and sync, Off"),
+                ("choose", "On"),
+                ("menu", "Background reminders and sync, On"),
+                ("choose", "On"),
                 ("back",),
             ],
-            lambda: reminder_lists.settings_page(self.session),
+            lambda: preferences.settings(self.session),
         )
+        self.assertIn("Background reminders and sync are on. They start whenever the device does", script.said)
         self.assertTrue(service.enabled(config))
         where = service.paths(config)
         self.assertEqual(where["unit"].resolve(), service.UNIT)
@@ -220,29 +238,42 @@ class Reminders(unittest.TestCase):
         self.assertEqual(where["profile"].read_text(), f'[Service]\nEnvironment="LUMENNA_PROFILE={self.profile}"\n')
         self.assertEqual(
             self.ran,
-            [["systemctl", "--user", "daemon-reload"], ["systemctl", "--user", "start", "lumenna-reminders.service"]],
+            [["systemctl", "--user", "daemon-reload"], ["systemctl", "--user", "start", "lumenna-background.service"]],
         )
 
     def test_turned_off_the_service_is_stopped_and_its_links_and_profile_are_gone(self):
-        config = reminder_lists.CONFIG
+        config = service.config()
         service.enable(self.profile, config)
+        # Turned on elsewhere: the session tells the app as it would at start.
+        self.session.send(self.session.background())
         self.ran.clear()
-        self.run_script(
-            [("menu", "Reminder service, on"), ("confirm", True), ("back",)],
-            lambda: reminder_lists.settings_page(self.session),
+        script = self.run_script(
+            [("menu", "Background reminders and sync, On"), ("choose", "Off"), ("back",)],
+            lambda: preferences.settings(self.session),
         )
+        self.assertIn("Background reminders and sync are off", script.said)
         self.assertEqual(
             self.ran,
-            [["systemctl", "--user", "stop", "lumenna-reminders.service"], ["systemctl", "--user", "daemon-reload"]],
+            [["systemctl", "--user", "stop", "lumenna-background.service"], ["systemctl", "--user", "daemon-reload"]],
         )
         for path in service.paths(config).values():
             self.assertFalse(path.is_symlink() or path.exists(), path)
         self.assertFalse(service.paths(config)["profile"].parent.exists())
 
-    def test_the_unit_runs_the_reminders_beside_it_as_the_person_once_the_device_is_ready(self):
+    def test_the_background_service_keeps_the_device_in_sync_and_serves_the_command_surface(self):
+        device = L.Device(str(self.profile))
+        try:
+            self.assertTrue(device.keep_in_sync(background.PROCESS, "test device", "btspeak"), "holds the endpoint")
+            self.assertTrue(device.keep_in_sync(background.PROCESS, "test device", "btspeak"), "asked again, unchanged")
+            self.assertEqual(answering(self.profile), background.PROCESS)
+        finally:
+            device.stop_syncing()
+        self.assertIsNone(answering(self.profile), "the address given up once stopped")
+
+    def test_the_unit_runs_the_background_service_beside_it_as_the_person_once_the_device_is_ready(self):
         unit = service.UNIT.read_text()
-        self.assertIn("ExecStart=/usr/bin/python3 %Y/../reminders.py\n", unit)
-        self.assertTrue((service.UNIT.parent.parent / "reminders.py").exists())
+        self.assertIn("ExecStart=/usr/bin/python3 %Y/../background.py\n", unit)
+        self.assertTrue((service.UNIT.parent.parent / "background.py").exists())
         self.assertIn("is-active --quiet btspeak-ready.service", unit)
         self.assertIn("WantedBy=default.target\n", unit)
         self.assertNotIn("User=", unit)
