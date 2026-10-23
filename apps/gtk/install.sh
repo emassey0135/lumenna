@@ -1,16 +1,20 @@
 #!/bin/sh
-# Builds the GTK app and installs it for this user: the program in ~/.local/bin, its icon, and its
+# Builds the GTK app, or takes the one beside it in a release, and installs it for this user: the program in ~/.local/bin, its icon, and its
 # desktop entry, which is how GNOME lists it and how the portals know it — the shortcuts
 # from anywhere are refused to an app with no entry.
 #
 #   apps/gtk/install.sh            # a release build
 #   PROFILE=dev apps/gtk/install.sh  # the debug build, faster to make
+#   ./install.sh                     # in an unpacked release, which installs the program beside it
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 root=$here/../..
 bin=${XDG_BIN_HOME:-$HOME/.local/bin}
 data=${XDG_DATA_HOME:-$HOME/.local/share}
-if [ "${PROFILE:-release}" = release ]; then
+if [ -x "$here/lumenna-gtk" ]; then
+    # An unpacked release tarball: the program is already built, beside this script.
+    built=$here/lumenna-gtk
+elif [ "${PROFILE:-release}" = release ]; then
     cargo build --release --manifest-path "$root/Cargo.toml" -p lumenna-gtk
     built=$root/target/release/lumenna-gtk
 else
