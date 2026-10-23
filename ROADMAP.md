@@ -25,7 +25,7 @@ The order, and why:
   - **Release builds of every app**, unsigned: what only a release build shows (R8's shrinking,
     fat LTO, a statically linked core, the ARM64 Windows build) is found as it is made, not at
     publishing, and they are what packaging and publishing build on. Android's release build
-    already runs.
+    and the web's release core already run.
   - **Signing and publishing** from it, with packaging (Before others use it).
 
 ## 2. Reminders and time events
