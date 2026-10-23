@@ -54,7 +54,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     /// Also under `UIApplicationShortcutItems` in Info.plist.
-    static let newTask = "io.github.emassey0135.lumenna.new-task"
+    static let newTask = "dev.emassey0135.lumenna.new-task"
 
     func sceneWillEnterForeground(_ scene: UIScene) {
         core?.timeZoneMayHaveChanged()

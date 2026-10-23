@@ -140,7 +140,7 @@ enum KeyboardCommands {
     }
 
     private static func inline(_ name: String, _ children: [UIMenuElement]) -> UIMenu {
-        UIMenu(title: "", identifier: UIMenu.Identifier("io.github.emassey0135.lumenna.\(name)"), options: .displayInline, children: children)
+        UIMenu(title: "", identifier: UIMenu.Identifier("dev.emassey0135.lumenna.\(name)"), options: .displayInline, children: children)
     }
 
     /// The iPad's menu bar: the system's menus, with what does not apply taken out — Find and
@@ -166,9 +166,9 @@ enum KeyboardCommands {
             builder.insertChild(inline("settings", settingsItems), atStartOfMenu: .application)
         }
         builder.insertChild(inline("go", viewItems), atStartOfMenu: .view)
-        let task = UIMenu(title: "Task", identifier: UIMenu.Identifier("io.github.emassey0135.lumenna.task"), children: taskItems)
+        let task = UIMenu(title: "Task", identifier: UIMenu.Identifier("dev.emassey0135.lumenna.task"), children: taskItems)
         let day = UIMenu(
-            title: "Day", identifier: UIMenu.Identifier("io.github.emassey0135.lumenna.day"),
+            title: "Day", identifier: UIMenu.Identifier("dev.emassey0135.lumenna.day"),
             children: dayItems + [inline("day-actions", dayActionItems)]
         )
         builder.insertSibling(task, afterMenu: .view)

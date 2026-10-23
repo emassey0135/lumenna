@@ -42,7 +42,7 @@ use gtk::prelude::*;
 use lumenna_ffi::profile;
 
 /// The application identifier, which is also the name it owns on the session bus.
-pub const ID: &str = "io.github.emassey0135.Lumenna";
+pub const ID: &str = "dev.emassey0135.Lumenna";
 
 /// Where the app's own icon is in this checkout, for a build run without `install.sh`, which
 /// puts it in the user's hicolor theme.

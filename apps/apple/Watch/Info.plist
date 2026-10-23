@@ -23,6 +23,6 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>io.github.emassey0135.lumenna</string>
+	<string>dev.emassey0135.lumenna</string>
 </dict>
 </plist>

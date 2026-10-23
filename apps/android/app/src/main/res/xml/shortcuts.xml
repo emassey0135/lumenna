@@ -9,8 +9,8 @@
         android:shortcutLongLabel="@string/new_task"
         android:shortcutShortLabel="@string/new_task">
         <intent
-            android:action="io.github.emassey0135.lumenna.NEW_TASK"
-            android:targetClass="io.github.emassey0135.lumenna.MainActivity"
-            android:targetPackage="io.github.emassey0135.lumenna" />
+            android:action="dev.emassey0135.lumenna.NEW_TASK"
+            android:targetClass="dev.emassey0135.lumenna.MainActivity"
+            android:targetPackage="dev.emassey0135.lumenna" />
     </shortcut>
 </shortcuts>

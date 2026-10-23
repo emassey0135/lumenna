@@ -550,7 +550,7 @@ jobs:
             profile: medium_phone
             keyboard: false
             blocking: true
-            tests: "io.github.emassey0135.lumenna.LumennaTest#addingATaskReadsItBackAndListsIt,io.github.emassey0135.lumenna.LumennaTest#completingATaskPutsFocusOnTheOneNowInItsPlaceThenSaysWhatHappened,io.github.emassey0135.lumenna.LumennaTest#aTaskWithSubtasksCollapsesAndExpandsAndSaysWhichItIs,io.github.emassey0135.lumenna.KeyboardTest#ctrlNOpensQuickAddFromAnotherTab,io.github.emassey0135.lumenna.LargeTextTest"
+            tests: "dev.emassey0135.lumenna.LumennaTest#addingATaskReadsItBackAndListsIt,dev.emassey0135.lumenna.LumennaTest#completingATaskPutsFocusOnTheOneNowInItsPlaceThenSaysWhatHappened,dev.emassey0135.lumenna.LumennaTest#aTaskWithSubtasksCollapsesAndExpandsAndSaysWhichItIs,dev.emassey0135.lumenna.KeyboardTest#ctrlNOpensQuickAddFromAnotherTab,dev.emassey0135.lumenna.LargeTextTest"
     runs-on: ubuntu-24.04
     # The full suites report; the smoke set blocks.
     continue-on-error: ${{ matrix.blocking != true }}

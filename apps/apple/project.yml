@@ -8,7 +8,7 @@
 # Foundation's. The framework builds first, so the script runs as its first step.
 name: Lumenna
 options:
-  bundleIdPrefix: io.github.emassey0135
+  bundleIdPrefix: dev.emassey0135
   deploymentTarget:
     iOS: "17.0"
     macOS: "14.0"
@@ -161,10 +161,10 @@ targets:
         UIBackgroundModes:
           - fetch
         BGTaskSchedulerPermittedIdentifiers:
-          - io.github.emassey0135.lumenna.sync
+          - dev.emassey0135.lumenna.sync
         # New Task on the app icon's quick actions (SceneDelegate).
         UIApplicationShortcutItems:
-          - UIApplicationShortcutItemType: io.github.emassey0135.lumenna.new-task
+          - UIApplicationShortcutItemType: dev.emassey0135.lumenna.new-task
             UIApplicationShortcutItemTitle: New Task
             UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeAdd
         UIApplicationSupportsIndirectInputEvents: true
@@ -185,7 +185,7 @@ targets:
                 UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.emassey0135.lumenna
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna
         TARGETED_DEVICE_FAMILY: "1,2"
         # The script writes into the source tree and runs Cargo, neither of which the
         # script sandbox allows.
@@ -253,10 +253,10 @@ targets:
       properties:
         CFBundleDisplayName: Lumenna
         WKApplication: true
-        WKCompanionAppBundleIdentifier: io.github.emassey0135.lumenna
+        WKCompanionAppBundleIdentifier: dev.emassey0135.lumenna
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.emassey0135.lumenna.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.watchkitapp
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/Watch/App/include
         "EXCLUDED_ARCHS[sdk=watchsimulator*]": x86_64
@@ -270,7 +270,7 @@ targets:
       - target: LumennaWatch
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.emassey0135.lumenna.watchkitapp.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.watchkitapp.uitests
         TEST_TARGET_NAME: LumennaWatch
         GENERATE_INFOPLIST_FILE: YES
         "EXCLUDED_ARCHS[sdk=watchsimulator*]": x86_64
@@ -284,7 +284,7 @@ targets:
       - target: Lumenna
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.emassey0135.lumenna.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.uitests
         TEST_TARGET_NAME: Lumenna
         GENERATE_INFOPLIST_FILE: YES
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
@@ -300,7 +300,7 @@ targets:
       - target: Lumenna
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.emassey0135.lumenna.tests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.tests
         GENERATE_INFOPLIST_FILE: YES
         # The app's module refers to the core's C module, which tests importing it need too.
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
@@ -347,7 +347,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Lumenna
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.emassey0135.lumenna
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
@@ -361,7 +361,7 @@ targets:
       - target: LumennaMac
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.emassey0135.lumenna.mac.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.mac.uitests
         TEST_TARGET_NAME: LumennaMac
         GENERATE_INFOPLIST_FILE: YES
 

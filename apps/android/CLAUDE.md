@@ -10,7 +10,7 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
 
 - **Every screen draws the app's view model and sends it what the person did**
   (`ShellEvent`), as the web does. One library (`liblumenna-ffi.so`) and its Kotlin
-  (`io.github.emassey0135.lumenna.app`) come from `build-core.sh` (`boltffi pack android`, an
+  (`dev.emassey0135.lumenna.app`) come from `build-core.sh` (`boltffi pack android`, an
   overlay pointing its outputs into the build directory). What runs without the screens —
   reminders' alarms and receivers, `SyncWorker`, the watch's link, backups — calls `Device`
   (`crates/ffi/src/device.rs`), the host's operations of the same names over the one

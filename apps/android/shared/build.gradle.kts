@@ -42,7 +42,7 @@ abstract class BuildCore @Inject constructor(private val exec: ExecOperations) :
 }
 
 android {
-    namespace = "io.github.emassey0135.lumenna.shared"
+    namespace = "dev.emassey0135.lumenna.shared"
     compileSdk = 37
 
     defaultConfig {

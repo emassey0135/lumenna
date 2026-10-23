@@ -4,7 +4,7 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>io.github.emassey0135.lumenna.sync</string>
+		<string>dev.emassey0135.lumenna.sync</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
@@ -56,7 +56,7 @@
 			<key>UIApplicationShortcutItemTitle</key>
 			<string>New Task</string>
 			<key>UIApplicationShortcutItemType</key>
-			<string>io.github.emassey0135.lumenna.new-task</string>
+			<string>dev.emassey0135.lumenna.new-task</string>
 		</dict>
 	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

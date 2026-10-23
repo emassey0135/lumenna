@@ -837,7 +837,7 @@ fn a_reminder_that_comes_due_is_a_windows_notification_with_the_cores_buttons() 
     use windows::core::HSTRING;
 
     // An identity of the test's own, so it shows and clears nothing of the person's.
-    const ID: &str = "io.github.emassey0135.Lumenna.UiTest";
+    const ID: &str = "dev.emassey0135.Lumenna.UiTest";
     let due = jiff::Zoned::now().checked_sub(jiff::Span::new().minutes(1)).unwrap();
     let app = App::launch_with(&[("LUMENNA_APP_ID", ID)], |lumenna| {
         lumenna.set_setting("reminders", "true").unwrap();
@@ -1569,7 +1569,7 @@ fn a_block_that_ended_with_work_short_offers_carry_forward_on_its_notification()
     use windows::UI::Notifications::ToastNotificationManager;
     use windows::core::HSTRING;
 
-    const ID: &str = "io.github.emassey0135.Lumenna.UiTest";
+    const ID: &str = "dev.emassey0135.Lumenna.UiTest";
     // A block of a minute that ended a minute ago, so its end is owed now, and one tomorrow
     // with room for what it left short, in this week whatever day it is.
     let now = jiff::Zoned::now();
@@ -1673,7 +1673,7 @@ fn a_blocks_work_outrunning_it_is_a_notification_with_the_cores_replan_button() 
     use windows::UI::Notifications::ToastNotificationManager;
     use windows::core::HSTRING;
 
-    const ID: &str = "io.github.emassey0135.Lumenna.UiTest";
+    const ID: &str = "dev.emassey0135.Lumenna.UiTest";
     // A block of two minutes that started a minute ago, ten minutes of work planned in it (an
     // overrun of a few minutes is not said),
     // and another block straight after it to run into.

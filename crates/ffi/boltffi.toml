@@ -8,7 +8,7 @@ min_sdk = 28
 architectures = ["arm64", "x86_64", "armv7"]
 
 [targets.android.kotlin]
-package = "io.github.emassey0135.lumenna.app"
+package = "dev.emassey0135.lumenna.app"
 module_name = "LumennaApp"
 
 # The Apple apps': apps/apple/build-core.sh generates the Swift into apps/apple/Generated/App,

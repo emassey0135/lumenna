@@ -13,7 +13,7 @@ import UIKit
 /// Two phones both in the background meet through those, or when either is opened.
 enum BackgroundSync {
     /// Also listed under `BGTaskSchedulerPermittedIdentifiers` in Info.plist.
-    static let identifier = "io.github.emassey0135.lumenna.sync"
+    static let identifier = "dev.emassey0135.lumenna.sync"
 
     /// How soon to ask for the next refresh. iOS treats it as the earliest, not a promise.
     private static let interval: TimeInterval = 15 * 60

@@ -23,17 +23,17 @@ import UserNotifications
 /// moment on both. Without the phone's, the watch shows its own after about 13 seconds.
 enum Reminders {
     /// The category every reminder is in, with the core's Dismiss and Snooze as its buttons.
-    static let category = "io.github.emassey0135.lumenna.reminder"
-    static let dismissAction = "io.github.emassey0135.lumenna.reminder.dismiss"
-    static let snoozeAction = "io.github.emassey0135.lumenna.reminder.snooze"
+    static let category = "dev.emassey0135.lumenna.reminder"
+    static let dismissAction = "dev.emassey0135.lumenna.reminder.dismiss"
+    static let snoozeAction = "dev.emassey0135.lumenna.reminder.snooze"
     /// The category of a block's end with work left short: Dismiss and Snooze, and the core's
     /// Carry Forward (`DueReminder.carry`), whose question the text already ends in.
-    static let carryCategory = "io.github.emassey0135.lumenna.reminder.carry"
-    static let carryAction = "io.github.emassey0135.lumenna.reminder.carry-forward"
+    static let carryCategory = "dev.emassey0135.lumenna.reminder.carry"
+    static let carryAction = "dev.emassey0135.lumenna.reminder.carry-forward"
     /// The category of a block's work outrunning its time: Dismiss and Snooze, and the core's
     /// Replan (`DueReminder.replan`), which opens the app at Replan from Now.
-    static let replanCategory = "io.github.emassey0135.lumenna.reminder.replan"
-    static let replanAction = "io.github.emassey0135.lumenna.reminder.replan-from-now"
+    static let replanCategory = "dev.emassey0135.lumenna.reminder.replan"
+    static let replanAction = "dev.emassey0135.lumenna.reminder.replan-from-now"
     /// What every reminder's identifier starts with, so re-arming cancels only its own.
     static let prefix = "reminder "
     /// How far ahead to schedule: the system holds 64 pending, so not a week of blocks.

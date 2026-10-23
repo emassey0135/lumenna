@@ -7,12 +7,12 @@ plugins {
 // (`:shared`). A standalone full peer, running Iroh itself: unlike watchOS, Wear OS allows
 // sockets, so it syncs with every paired device as the phone does.
 android {
-    namespace = "io.github.emassey0135.lumenna.wear"
+    namespace = "dev.emassey0135.lumenna.wear"
     compileSdk = 37
 
     defaultConfig {
         // The phone app's identifier, as a watch app of the same app has it.
-        applicationId = "io.github.emassey0135.lumenna"
+        applicationId = "dev.emassey0135.lumenna"
         // Wear OS 3, the oldest any current watch runs.
         minSdk = 30
         targetSdk = 37

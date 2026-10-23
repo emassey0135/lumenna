@@ -11,7 +11,7 @@ set -euo pipefail
 app=${APP:-app}
 apks=${APKS:-$app/build/outputs/apk}
 out=${1:-test-output}
-package=io.github.emassey0135.lumenna
+package=dev.emassey0135.lumenna
 device_output=/sdcard/Android/media/$package/additional_test_output
 
 # macOS has no `timeout`; there each try just runs to its end.

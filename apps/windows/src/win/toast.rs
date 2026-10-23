@@ -19,7 +19,7 @@ use super::system;
 /// The app's identity; `LUMENNA_APP_ID` gives the UI tests one of their own, so what they
 /// show and clear is never the person's.
 pub fn app_id() -> String {
-    std::env::var("LUMENNA_APP_ID").ok().filter(|id| !id.is_empty()).unwrap_or_else(|| "io.github.emassey0135.Lumenna".to_owned())
+    std::env::var("LUMENNA_APP_ID").ok().filter(|id| !id.is_empty()).unwrap_or_else(|| "dev.emassey0135.Lumenna".to_owned())
 }
 
 /// The icon a toast shows, as an image of its own on disk: an identity names a file, not a

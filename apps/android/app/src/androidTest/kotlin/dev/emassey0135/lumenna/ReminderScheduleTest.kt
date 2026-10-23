@@ -1,0 +1,336 @@
+package dev.emassey0135.lumenna
+
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
+import java.util.UUID
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * What alarms a store asks for (`ReminderSchedule`, through a recording [Alarms]), and what a
+ * firing's notification says. Every block is put a set time from now, so nothing depends on
+ * the hour the tests run.
+ */
+@RunWith(AndroidJUnit4::class)
+class ReminderScheduleTest {
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+    private lateinit var directory: File
+    private lateinit var core: Core
+
+    /** What was asked of the alarms, kept as AlarmManager would keep it. */
+    private class Recorded(override val exact: Boolean = true) : Alarms {
+        val set = mutableMapOf<String, Pair<ReminderAlarm, Boolean>>()
+        val cancelled = mutableListOf<String>()
+        var rearm: Instant? = null
+        override var armed: Set<String> = emptySet()
+        override fun set(alarm: ReminderAlarm, exact: Boolean) {
+            set[alarm.id] = alarm to exact
+        }
+        override fun cancel(id: String) {
+            cancelled += id
+            set.remove(id)
+        }
+        override fun rearmAt(at: Instant) {
+            rearm = at
+        }
+    }
+
+    @Before
+    fun open() {
+        directory = File(context.cacheDir, "test-${UUID.randomUUID()}")
+        core = Core(directory)
+    }
+
+    @After
+    fun close() {
+        directory.deleteRecursively()
+    }
+
+    /** A one-off 30-minute block starting [minutes] from now, to the minute; its start and series. */
+    private fun blockIn(title: String, minutes: Long): Pair<Instant, String> {
+        val start = ZonedDateTime.now().plusMinutes(minutes).truncatedTo(ChronoUnit.MINUTES)
+        core.device.addBlock(
+            newBlock(
+                title = title,
+                at = "%02d:%02d".format(start.hour, start.minute),
+                minutes = 30u,
+                date = start.toLocalDate().toString(),
+                kind = "work",
+                repeat = null,
+            ),
+        )
+        val series = core.device.listBlocks().rows.single { it.title == title }.id.substringBefore('@')
+        val at = LocalDateTime.of(start.toLocalDate(), start.toLocalTime()).atZone(ZoneId.systemDefault()).toInstant()
+        return at to series
+    }
+
+    @Test
+    fun aBlockAnHourAwayIsArmedFiveMinutesBeforeItStartsAtTheExactTime() {
+        val (start, _) = blockIn("Deep work", 60)
+        val alarms = Recorded()
+        val armed = ReminderSchedule(core.device, alarms).arm()
+        val (alarm, exact) = alarms.set.values.single()
+        assertEquals(start.minus(Duration.ofMinutes(5)), alarm.at)
+        assertTrue("exact, where allowed", exact)
+        assertEquals(armed, listOf(alarm))
+        assertEquals(setOf(alarm.id), alarms.armed)
+        assertNotNull("armed again before the window runs out", alarms.rearm)
+    }
+
+    @Test
+    fun refusedExactAlarmsAreSetToComeWhenAndroidAllows() {
+        blockIn("Deep work", 60)
+        val alarms = Recorded(exact = false)
+        ReminderSchedule(core.device, alarms).arm()
+        assertEquals(listOf(false), alarms.set.values.map { it.second })
+    }
+
+    @Test
+    fun aDismissedFiringIsCancelledAtTheNextArming() {
+        blockIn("Deep work", 60)
+        blockIn("Review", 120)
+        val alarms = Recorded()
+        val schedule = ReminderSchedule(core.device, alarms)
+        val first = schedule.arm().first()
+        core.device.dismissReminder(first.key, first.occurrence)
+        schedule.arm()
+        assertEquals(listOf(first.id), alarms.cancelled)
+        assertEquals(1, alarms.set.size)
+    }
+
+    @Test
+    fun aSnoozedFiringIsArmedAgainTenMinutesOnUnderTheSameIdentity() {
+        blockIn("Deep work", 60)
+        val alarms = Recorded()
+        val schedule = ReminderSchedule(core.device, alarms)
+        val first = schedule.arm().single()
+        val before = Instant.now()
+        core.device.snoozeReminder(first.key, first.occurrence, null)
+        val again = schedule.arm().single()
+        assertEquals(first.id, again.id)
+        val gap = Duration.between(before, again.at)
+        assertTrue("about ten minutes on: $gap", gap >= Duration.ofMinutes(9) && gap <= Duration.ofMinutes(11))
+    }
+
+    @Test
+    fun aBlocksOwnReminderReplacesTheDefault() {
+        val (start, series) = blockIn("Deep work", 60)
+        core.device.addReminderSaying(series, "at end")
+        val alarms = Recorded()
+        ReminderSchedule(core.device, alarms).arm()
+        assertEquals(listOf(start.plus(Duration.ofMinutes(30))), alarms.set.values.map { it.first.at })
+    }
+
+    @Test
+    fun withRemindersOffOnThisDeviceEveryAlarmIsCancelled() {
+        blockIn("Deep work", 60)
+        val alarms = Recorded()
+        val schedule = ReminderSchedule(core.device, alarms)
+        val first = schedule.arm().single()
+        core.device.setSetting("reminders", "false")
+        assertTrue(schedule.arm().isEmpty())
+        assertEquals(listOf(first.id), alarms.cancelled)
+        assertTrue(alarms.armed.isEmpty())
+    }
+
+    @Test
+    fun aFiringFurtherOffThanTheWindowWaitsForALaterArming() {
+        blockIn("Deep work", 60)
+        blockIn("Far off", ReminderSchedule.WINDOW.toMinutes() + 60)
+        val alarms = Recorded()
+        ReminderSchedule(core.device, alarms).arm()
+        assertEquals(1, alarms.set.size)
+    }
+
+    @Test
+    fun aFiringsNotificationSaysTheCoresWordsWithItsButtons() {
+        blockIn("Deep work", 60)
+        val due = core.device.upcomingReminders(Instant.now().plus(Duration.ofHours(3)).toString()).due.single()
+        val notification = Reminders.notification(context, due)
+        assertEquals(due.title, notification.extras.getString(Notification.EXTRA_TITLE))
+        assertEquals(due.text, notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        assertEquals("Deep work starts in 5 minutes — nothing assigned yet", due.text)
+        assertEquals(listOf(due.dismiss, due.snooze).map { dev.emassey0135.lumenna.app.sentenceCase(it) }, notification.actions.map { it.title.toString() })
+        assertEquals("sentence case, as Android writes", listOf("Dismiss", "Snooze 10 minutes"), notification.actions.map { it.title.toString() })
+        assertEquals(Notification.CATEGORY_REMINDER, notification.category)
+        assertEquals(Reminders.CHANNEL, notification.channelId)
+        assertEquals("not bridged to a watch that gives its own", Reminders.BRIDGE_TAG, NotificationCompat.WearableExtender(notification).bridgeTag)
+    }
+
+    /** The instant of a civil time here, as the core reads one. */
+    private fun instant(civil: String): String = LocalDateTime.parse(civil).atZone(ZoneId.systemDefault()).toInstant().toString()
+
+    @Test
+    fun aBlocksEndWithWorkLeftShortOffersCarryForwardWhichCarriesItToTheNextBlock() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation
+            .grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        // Fixed days, as the core's own test has them: no reminder at the end but the offer.
+        core.device.setSetting("default-block-reminders", "")
+        for ((title, date) in listOf("Deep work" to "2026-05-06", "Admin" to "2026-05-07")) {
+            core.device.addBlock(newBlock(title = title, at = "09:00", minutes = 60u, date = date, kind = "work", repeat = null))
+        }
+        val deep = core.device.listBlocks().rows.first { it.title == "Deep work" }.id
+        val essay = core.device.addTask("Essay").task!!.id
+        core.device.assign(essay, deep, "2026-05-06", 90u)
+        core.device.stopTimer(core.device.plan("2026-05-06").blocks.single().assignments.single().id, 40u)
+
+        val end = core.device.remindersDue(instant("2026-05-06T09:59"), instant("2026-05-06T10:01")).due.single()
+        assertTrue(end.text, end.text.endsWith("Carry the remaining 50 minutes to Admin tomorrow?"))
+        val notification = Reminders.notification(context, end)
+        assertEquals(listOf("Dismiss", "Snooze 10 minutes", "Carry forward"), notification.actions.map { it.title.toString() })
+
+        // What the button runs: its intent reaches the app's own store, so the test runs it on this one.
+        val manager = context.getSystemService(NotificationManager::class.java)
+        try {
+            Reminders.carry(context, core, end.key, end.target, end.occurrence)
+            assertEquals(50u, core.device.plan("2026-05-07").blocks.single().assignments.single().plannedMins)
+            val told = manager.activeNotifications.single { it.tag == "carried" }
+            assertEquals("Carried forward Essay to Admin", told.notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+        } finally {
+            manager.cancel("carried", 1)
+        }
+    }
+
+    @Test
+    fun workOutrunningABlockIsSaidWithAReplanButtonThatOpensTheApp() {
+        core.device.setSetting("default-block-reminders", "")
+        for ((title, at) in listOf("Deep work" to "09:00", "Meeting" to "10:00")) {
+            core.device.addBlock(newBlock(title = title, at = at, minutes = 60u, date = "2026-05-06", kind = "work", repeat = null))
+        }
+        val deep = core.device.listBlocks().rows.first { it.title == "Deep work" }.id
+        for ((title, minutes) in listOf("Essay" to 40u, "Email" to 30u)) {
+            core.device.assign(core.device.addTask(title).task!!.id, deep, "2026-05-06", minutes)
+        }
+        val overrun = core.device.remindersDue(instant("2026-05-06T08:59"), instant("2026-05-06T09:01")).due.single()
+        assertEquals("Replan", overrun.replan)
+        val notification = Reminders.notification(context, overrun)
+        assertEquals(listOf("Dismiss", "Snooze 10 minutes", "Replan"), notification.actions.map { it.title.toString() })
+        // It opens the app, rather than doing something behind it.
+        if (android.os.Build.VERSION.SDK_INT >= 31) assertTrue(notification.actions[2].actionIntent.isActivity)
+    }
+
+    /**
+     * What going off decides, from what `fire` showed. Not read back from the notification
+     * manager: posting is asynchronous there (`notify` returns before the notification is
+     * listed), so a read straight after missed it about as often as not on an emulator.
+     */
+    @Test
+    fun anAlarmGoingOffShowsItsFiringUnlessItWasDismissedSince() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation
+            .grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        blockIn("Deep work", 60)
+        blockIn("Review", 120)
+        val (deep, review) = ReminderSchedule(core.device, Recorded()).arm()
+        val manager = context.getSystemService(NotificationManager::class.java)
+        try {
+            assertEquals(deep.key, Reminders.fire(context, core, deep.key, deep.occurrence, deep.at.toString())?.key)
+            core.device.dismissReminder(review.key, review.occurrence)
+            assertEquals(
+                "a firing dismissed elsewhere since it was armed is not shown",
+                null, Reminders.fire(context, core, review.key, review.occurrence, review.at.toString()),
+            )
+        } finally {
+            manager.cancel(deep.id, 1)
+            manager.cancel(review.id, 1)
+        }
+    }
+
+    /**
+     * Arming takes away what was dealt with since it was shown, but only what its own store
+     * showed. The app's own store arms whenever it changes or an alarm of its own goes off, and
+     * it once took away a test store's notification as dealt with, between the test showing it
+     * and looking for it.
+     */
+    @Test
+    fun armingTakesAwayOnlyWhatItsOwnStoreShowedAndHasDealtWith() {
+        // Starting in three minutes, so its five-minute warning has gone off and been shown.
+        blockIn("Deep work", 3)
+        val deep = core.device.remindersDue(Instant.now().minus(Duration.ofHours(1)).toString(), null).due.single()
+        assertEquals("a notification names the store that showed it", core.directory.path,
+            Reminders.notification(context, deep, store = core.directory.path).extras.getString("dev.emassey0135.lumenna.store"))
+        val ours = ShownNotification("${deep.key}@${deep.occurrence}", core.directory.path)
+        val other = Core(File(context.cacheDir, "test-${UUID.randomUUID()}"))
+        try {
+            assertEquals("another store knows nothing of it, and leaves it", emptyList<String>(), Reminders.dealtWith(other, listOf(ours)))
+            assertEquals("not dealt with, it stays", emptyList<String>(), Reminders.dealtWith(core, listOf(ours)))
+            core.device.dismissReminder(deep.key, deep.occurrence)
+            assertEquals(listOf(ours.tag), Reminders.dealtWith(core, listOf(ours)))
+        } finally {
+            other.directory.deleteRecursively()
+        }
+    }
+
+    // MARK: - Catching up after the device was off
+
+    /** What the app showed, as the alarm receiver records it. */
+    private class Shown(vararg ids: String) : ShownReminders {
+        val ids = ids.toMutableSet()
+        override fun all(): Set<String> = ids.toSet()
+        override fun forget(told: Set<String>) {
+            ids -= told
+        }
+    }
+
+    /**
+     * The device off since an hour ago: what the core last heard of catching up is put back an
+     * hour, as a phone switched off then would have left it.
+     */
+    private fun offSinceAnHourAgo() {
+        val file = File(directory, "device-settings")
+        val kept = file.takeIf { it.exists() }?.readLines().orEmpty().filter { !it.startsWith("reminders-caught-up\t") }
+        file.writeText((kept + "reminders-caught-up\t${Instant.now().minus(Duration.ofHours(1))}").joinToString("\n") + "\n")
+    }
+
+    @Test
+    fun aFiringNotShownWhileTheDeviceWasOffComesBackOnce() {
+        val catchUp = ReminderCatchUp(core.device, Shown())
+        assertTrue("the first time, nothing", catchUp.catchUp().due.isEmpty())
+        offSinceAnHourAgo()
+        // Its default fired two or three minutes ago, while the device was off.
+        blockIn("Deep work", 3)
+        val found = catchUp.catchUp()
+        assertEquals(listOf("Deep work"), found.due.map { it.title })
+        assertTrue(found.missedSummary.isEmpty())
+        assertTrue("caught up once", catchUp.catchUp().due.isEmpty())
+    }
+
+    @Test
+    fun aFiringTheAppShowedIsNotCaughtUpAndIsForgottenOnceTold() {
+        val first = ReminderCatchUp(core.device, Shown())
+        first.catchUp()
+        offSinceAnHourAgo()
+        blockIn("Deep work", 3)
+        val fired = core.device.remindersDue(Instant.now().minus(Duration.ofHours(1)).toString(), null).due.single()
+        val shown = Shown("${fired.key}@${fired.occurrence}")
+        assertTrue(ReminderCatchUp(core.device, shown).catchUp().due.isEmpty())
+        assertTrue("told, so forgotten", shown.ids.isEmpty())
+    }
+
+    @Test
+    fun whatWasMissedLongAgoComesAsOneSummary() {
+        val catchUp = ReminderCatchUp(core.device, Shown())
+        catchUp.catchUp()
+        offSinceAnHourAgo()
+        blockIn("Deep work", -30)
+        val found = catchUp.catchUp()
+        assertTrue(found.due.isEmpty())
+        assertEquals("1 reminder missed: Deep work started.", found.missedSummary)
+        assertEquals(found.missedSummary, Reminders.summary(context, found.missedSummary).extras.getCharSequence(Notification.EXTRA_TEXT).toString())
+    }
+}

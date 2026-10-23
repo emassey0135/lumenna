@@ -89,8 +89,8 @@ done
 # Only the Kotlin: the JNI glue beside it is compiled into the library already. What an
 # earlier build wrote there goes first, the library of before the crate was renamed included.
 rm -rf "$KOTLIN/io" "$JNI_LIBS"/*/liblumenna-mobile.so
-mkdir -p "$KOTLIN/io/github/emassey0135/lumenna"
-cp -R "$BOLT/kotlin/io/github/emassey0135/lumenna/app" "$KOTLIN/io/github/emassey0135/lumenna/"
+mkdir -p "$KOTLIN/dev/emassey0135/lumenna"
+cp -R "$BOLT/kotlin/dev/emassey0135/lumenna/app" "$KOTLIN/dev/emassey0135/lumenna/"
 
 
 # A release core without its symbols and debug information: BoltFFI links the library itself,

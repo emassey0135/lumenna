@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "io.github.emassey0135.lumenna"
+    namespace = "dev.emassey0135.lumenna"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.emassey0135.lumenna"
+        applicationId = "dev.emassey0135.lumenna"
         minSdk = 28
         targetSdk = 37
         versionCode = 1

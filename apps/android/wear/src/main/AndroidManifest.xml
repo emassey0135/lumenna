@@ -53,12 +53,12 @@
         <!-- Reminders' alarms and their notifications' Dismiss and Snooze: the app's own
              intents only. -->
         <receiver
-            android:name="io.github.emassey0135.lumenna.ReminderReceiver"
+            android:name="dev.emassey0135.lumenna.ReminderReceiver"
             android:exported="false" />
         <!-- What moves every alarm: starting up, an update, the clock or zone changing, exact
              alarms granted. Each is a broadcast only the system sends. -->
         <receiver
-            android:name="io.github.emassey0135.lumenna.ReminderRearmReceiver"
+            android:name="dev.emassey0135.lumenna.ReminderRearmReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

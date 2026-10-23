@@ -38,7 +38,7 @@
             </intent-filter>
             <!-- New Task, from the launcher's shortcut and the Quick Settings tile. -->
             <intent-filter>
-                <action android:name="io.github.emassey0135.lumenna.NEW_TASK" />
+                <action android:name="dev.emassey0135.lumenna.NEW_TASK" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <meta-data
