@@ -1,0 +1,240 @@
+# The Android apps
+
+Read when working in `apps/android/`: the phone and Wear OS. The root `CLAUDE.md` holds what every part of Lumenna shares; this is what is easy to get wrong here.
+
+## The Android app
+
+`apps/android/`: Kotlin and Jetpack Compose over the Crux app (`crates/ffi`), through
+BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` (the phone),
+`wear` (Wear OS) and `shared`.
+
+- **Every screen draws the app's view model and sends it what the person did**
+  (`ShellEvent`), as the web does; UniFFI and JNA are gone from Android. One library
+  (`liblumenna-ffi.so`) and its Kotlin (`io.github.emassey0135.lumenna.app`) come from
+  `build-core.sh` (`boltffi pack android`, an overlay pointing its outputs into the build
+  directory). What runs without the screens — reminders' alarms and receivers, `SyncWorker`,
+  the watch's link, backups — calls `Device` (`crates/ffi/src/device.rs`), the host's
+  operations of the same names over the one connection the `App` runs on; so do the tests, to
+  seed and check the store. BoltFFI's records have no defaults, so the tests seed blocks
+  through `newBlock` (`Seeds.kt`). BoltFFI carries the records typed, by its own encoding, so
+  serde's shapes are no concern; `#[boltffi::data]` marks every record the view reaches.
+  Its scanner does not see a marker inside `cfg_attr`, so it is unconditional, and it resolves a
+  type of another crate only by that crate's root path or an import, never a path into its
+  modules. BoltFFI cannot leave a variant out, so the shell's events are `ShellEvent`, the
+  app's `Event` less what its own effects answer; an exhaustive match each way sorts a new one.
+  The network is the bridge's native middleware (`lumenna_bridge::network`, the `network`
+  feature): each request on a thread over the host's blocking sync, syncing only while the app
+  is in front (`App::in_front`), which is the platform's to say. Turns reach the Kotlin `Shell`
+  from one thread of the app's, in order, what arrived together as one.
+- **`shared` holds the core and what decides nothing about looks**: the core's build and
+  bindings, `Core` (the `Device` and, over it, the app), `AppModel` (turns taken on the main
+  thread in order, speech held while a list lands, the turn's `lines`), `Words.kt` (the
+  locale's time and date, handed to the core as `Clock.locale`), `AppWords.kt` (only what a
+  tree control would say by itself and a Compose list does not: folding and the level),
+  `RowAction`, landing on a row (`Landing.kt`: `rememberLanding`, `RowFocus`, `RowKey`, given the
+  list's own scroll), a screen on what the app has open (`Showing.kt`: a proposal, a reminder
+  list, the block form, gone when the app lets it go and given up when left), the forms'
+  fields by the core's keys (`FormFields.kt`), asking for notifications, reminders' alarms,
+  the watch's link and `SyncWorker` (through
+  `CoreHolder`, which each app's Application is). What is in hand, what is folded, which
+  question is open, the forms, settings, pairing and proposals are the app's; each app draws
+  them, the questions once at its root (`AppQuestions`, `WearQuestions`).
+  A shared file must not be named like one of the phone's in the same package: both
+  compile to one `…Kt` class, and the dex keeps only one (a shared `Settings.kt` hid the
+  phone's `SettingsScreen`).
+
+- **Gradle builds the core itself**: `buildCore<Variant>` runs `build-core.sh`, which builds each
+  ABI's static library alone (`cargo rustc --crate-type staticlib`, for the Apple apps' reason, the
+  NDK's clang at API 28 compiling the C its dependencies bring), then has `boltffi pack android
+  --no-build` link it with its JNI glue into one library per ABI; only the Kotlin beside it is
+  copied. A release library is stripped there, with that NDK's `llvm-strip`: BoltFFI's link is
+  past Cargo's `strip`, and the Gradle plugin strips only with the NDK version it expects,
+  copying the library whole (35 MB for arm64, 19 MB stripped) when another is installed.
+- **Release builds are shrunk by R8** (`isMinifyEnabled`, `isShrinkResources`), the dex from
+  26.5 MB to 3.4 MB. The core reaches its Kotlin by name through JNI both ways, the `Native`
+  object's externals and the callback objects it calls back (`ShellCallbacks.turn`), so
+  `:shared`'s `consumer-rules.pro` keeps the bindings' package whole. The instrumented tests run
+  on debug builds: against a shrunk app the test APK finds missing whatever the app does not use
+  itself (the tracing library, then Kotlin's), so a release build is checked by hand, installed
+  signed with the debug key, opened, and a task added; CI builds it, so R8's refusals show. The phone takes Arm64 and x86_64 (Googlebooks have both, and
+  CI's emulator is x86_64), the watch 32-bit ARM too (`abiFilters`); minSdk 28. Every library
+  is 16 KB aligned, which CI checks. `LUMENNA_ANDROID_ABIS` narrows the build.
+- **Espresso is pinned to 3.7**: Compose's test library brings 3.5, which calls an
+  `InputManager` method Android 17 removed.
+- **The tests run Google's accessibility checks on every interaction**, on a store of their
+  own (`Core(directory)`). Buttons scroll into view before a click: a click on an
+  off-screen node lands on nothing.
+- **The tests wait on the app as Compose waits on itself** (`stillApp`, an idling resource
+  over `Core.still`: `App::is_still`, nothing with the store and every turn handed on, and no
+  turn posted to the main thread undrawn). A turn comes from the app's own thread, so without
+  it a test looked at the screen between pressing Add and the row arriving. A pairing or a sync
+  under way does not count.
+- **Material's text and outlined buttons are 40dp**, and a radio row is as tall as its
+  padding: both failed the touch-target check. `Target` gives 48dp.
+- **A row is one node** (`ListRow`: `clearAndSetSemantics`, custom actions) with one
+  description, the title first. As a separate state description, the rest was said before
+  the title. `RowTitle` carries the title alone, for tests to find a row by.
+- **A colour is a dot beside its name** (`SwatchDot`, shared's `Swatch.colour`): a row's, a
+  pick's choice's (`Option.swatch`) and the block form's colour options, the core's light or
+  dark value by `isSystemInDarkTheme()` on the phone and always dark on the watch, whose
+  backgrounds are. It is outside the row's semantics, so TalkBack says the name and the
+  colour's word the line already holds, nothing more. The block form reads each choice's
+  value by its key (`BlockFields.text`), the kind and the colour alike.
+- **Nested lists fold, as the app folds them**: everything starts expanded, and a row with
+  something under it has the app's Collapse or Expand among its actions and says which it
+  is. The level is the app's, said against the row shown before, after folding. The iPhone
+  does the same, as a swipe action.
+- **TalkBack does not follow input focus under touch**, on the phone or the watch. `RowFocus`
+  gives the row input focus,
+  then performs the accessibility-focus action through the view's
+  `AccessibilityNodeProvider`, found by the `RowKey` property; the announcement is held
+  (`Core.hold`/`release`) until then. The test of it is skipped unless TalkBack is on.
+  Compose sends accessibility events only while a screen reader runs.
+- **Keyboard commands are the Windows and GTK apps' keys**, taken from the core's shared table
+  (`keyboard_shortcuts()`, `lumenna_app::keys`) by each command's id, keys and name both;
+  only the folding arrows are Android's own (`Shortcuts.kt`). On Ctrl:
+  TalkBack's are on Alt or Search. A screen offers a command while shown (`Offer`), the
+  newest winning, and the system's shortcuts helper (Meta+/) lists what is offered now. A
+  row's own commands (Ctrl+K, Delete, Shift+F10) run its action of that `ActionKind`
+  (`Command.rowAction`), so a key never does what the row's action list does not; on a row
+  without one the app says the core's reason (`refusal`: the row in hand, then `Run`).
+  Compose's root takes the keys while
+  anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
+- **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
+  tests leave it first (`setInTouchMode(false)`), or no tab could be focused.
+- **A wide window has the desktop apps' sidebar** (`Sidebar.kt`, from `Lumenna.places`,
+  plus Settings) from 840dp, with a stack of its own for the place chosen; headings and
+  project trees fold with Expand and Collapse actions, and a heading's or place's actions
+  are the app's, run as Browse runs them. Between 600 and 840dp the tabs
+  are a rail. `LumennaTest` and `NewTaskTest` show the app at a phone's width (`PhoneWidth`),
+  so they run on the desktop-sized emulator too; `SidebarTest` and `KeyboardTest` are the
+  wide window's.
+- **A wide window** shows a screen beside the one it was opened from (`Navigator`'s depth: a row chosen in the parent replaces the
+  child rather than stacking). F6 moves between the tabs and panes, back onto the row a
+  pane was left on (`Pane`): Compose's `saveFocusedChild` keeps only the pane's immediate
+  child. Tests force only the width: a forced size bigger than the window is drawn at a
+  smaller density, and every touch target measures small. So touch targets are excused
+  only when the forced width exceeds the screen; CI's desktop-screen run checks them in
+  the wide layout for real. The desktop system images ended at API 34: `desktop_medium`
+  on 36 is a large screen without freeform windows. A real Googlebook (Android 17) has
+  those, a title bar per window, and no menu bar.
+- **Pairing is tested against a `lum pair`** as on the iPhone: `pairingByCodeBringsTheOtherDevicesTasks`
+  takes its code as `INSTRUMENT_ARGS="PAIR_CODE=…"` (a `lum daemon` on the same profile answering
+  the first sync, which brings a task called "written on the mac"), and
+  `pairingOnTheLocalNetworkNeedsNoCode` runs with `PAIR_LOCAL=1` on a real phone; both skip
+  without them. The emulator paired over the relays.
+- **`run-instrumented-tests.sh`** runs the instrumented tests from APKs already built, with
+  `am instrument`, which exits 0 whatever happened, so its summary decides. CI builds once
+  and runs it on each emulator. It never uninstalls, unlike `connectedAndroidTest`, but
+  never point it at a device whose own data matters. It first sets the device up as a
+  person's would be (provisioned, screen kept on) and waits for the same ordinary activity to
+  stay in front: on CI's fresh watch, something took the foreground part way through the
+  tests once a run, and that test found "No compose hierarchies".
+- **The store is in no-backup storage** and `allowBackup` is off: Google's backup would copy
+  a store that reaches other devices by pairing.
+- **Background sync is WorkManager** (`SyncWorker`): a round on leaving (expedited on
+  Android 12 and later; earlier, expedited work needs a foreground notification) and every
+  15 minutes. Discovery hears multicast only under a `MulticastLock`, held while syncing or
+  pairing; it is not exclusive and `mdns-sd` binds 5353 with `SO_REUSEPORT`, so other apps'
+  mDNS is unaffected. The emulator's NAT passes no multicast.
+- **Reminders are AlarmManager alarms** (`shared/Reminders.kt`, for the phone and the watch):
+  the next 48 hours of `upcoming_reminders`, at most 100, each a broadcast whose data is its
+  firing (`key@occurrence`), so re-arming replaces it; what was set and is no longer listed is
+  cancelled. Armed when the store changes (`Reminders.follow`, which the app's return to the
+  front moves too, since it says the store changed), after `SyncWorker`'s round, on boot, an
+  update, a clock or zone change and exact alarms being granted (`ReminderRearmReceiver`), and
+  by an alarm a day on. `ReminderSchedule` over an `Alarms` is the seam the tests check.
+- **Exact where the person allows it**: `SCHEDULE_EXACT_ALARM`, not `USE_EXACT_ALARM`, which
+  Google Play keeps for alarm clocks and calendars. Refused, alarms are inexact and the
+  Reminders settings page says so, with the system's page that grants it. Revoking exact
+  alarms kills the app, tests and all, so the page reads what is allowed through
+  `LocalReminderAccess`, which tests set.
+- **An alarm going off asks the core again** (`reminders_due` over that one moment): a firing
+  dismissed or done elsewhere since it was armed is not shown, and one Android held back past
+  the core's few minutes is shown in its `missed` words. Each arming also takes away shown
+  notifications dealt with since on another device, but only its own store's (a
+  notification names its store in its extras): the app's store arming took away a test
+  store's. Posting is asynchronous, so tests judge what `fire` showed, not the manager's list. Dismiss and Snooze are `ReminderReceiver`,
+  not exported. A notification is a reminder's category, so Do Not Disturb decides.
+- **Notifications are asked for once** (Android 13 and later), when the person first adds a
+  reminder or turns reminders on; after that the Reminders page says they are off and opens
+  the system's page. Tests grant the permission first, or the system's question covers the app.
+- **Carry Forward on a reminder** (`DueReminder.carry`, sentence case like Dismiss and Snooze)
+  is `ReminderReceiver`'s too: it runs `carryRestForward("<target>@<occurrence>")` and says the
+  change in a quiet notification of its own (tag `carried`, no `@`, so arming does not take it
+  for a firing), since the app may not be open to say it.
+- **A day or a time has Android's own picker beside its line** (`Pickers.kt`: `ChooseDay`,
+  `ChooseTime`, named by the core's `picker_words`, shared's `pickers`), in the block form, Go to
+  Day and a time setting's dialog, filling the line. The day is Material's calendar without its
+  switch to typing (the line is that, and the switch was a 40dp target); the time is Material's
+  time input, not its dial, whose inner numbers are 32dp targets. On a 12-hour clock its AM and
+  PM are 36dp, Material's and not ours to size, so the test of it runs on a 24-hour clock.
+- **The planner's screens are the app's proposal** (`Proposal.kt` in each app): Replan from
+  Now and Plan the Day, which the day's own actions (`Plan.actions`, on the day's heading as
+  custom actions and as buttons) open. The proposal is said on opening; after a partial apply
+  the core's `next` is the screen's list until it is empty. `LocalPlannerNow` fixes the
+  moment proposed against, so the tests' proposals do not depend on when they run. A pick's
+  `Choice.reason` is `Option.reason`, a line of its own beneath the name. A replan's other
+  options are buttons under the core's `others`, each proposing again in place (`take`).
+- **An overrun's Replan button** (`DueReminder.replan`) opens the activity, not the receiver,
+  with `ReminderOpened.kind` `replan`: the app goes to Replan from Now for today. A button that
+  opens an activity does not cancel its notification, so `Reminders.opened(context, intent)`
+  takes it away.
+
+## The Wear OS app
+
+`apps/android/wear/`: Compose for Wear OS over `shared`, the phone's application identifier,
+standalone. A full peer: Wear OS allows sockets, so it runs Iroh and pairs and syncs as the
+phone does.
+
+- **No text field on a watch**: every line comes from the system's input screen
+  (`RemoteInput`, through `TextEntry`), which replaces a whole line; quick add changes or adds
+  to it, with completions for its last word beneath. Tests provide their own `TextEntry`.
+- **`AppScaffold` shows the time** at the top of every screen, as Wear OS asks; each list's
+  `ScreenScaffold` moves it aside as it scrolls. A row's primary actions come first in its
+  custom actions and its long-press list.
+- **Rows keep full size at the screen's edges** (`edgeScale = 1f`): scaled, a button fell
+  under 48dp and failed the touch-target check.
+- **A row's actions are TalkBack's custom actions and a long press**; the day's rows offer
+  theirs when tapped too. Announcements are a 1dp polite live region, never shown: drawn
+  over the list they hid the rows beneath, and the checks found a button a third visible.
+- **The watch's own link to its phone is preferred to Iroh while they are near**
+  (`shared/WatchLink.kt`): the Wearable Data Layer's `ChannelClient`, a stream over Bluetooth
+  or the local network. Only nodes Google reports `isNearby`: further off the Data Layer can
+  route through Google's servers, and what syncs is the store. Each app's `LinkService`
+  answers a channel the other opens, so neither need be open; each syncs over it on opening
+  and two seconds after its store last changed. Iroh stays for the two apart and for every
+  other device, and its round counts a device the link has just synced as synced
+  (`Store::note_linked`).
+- **The first link pairs the phone and the watch without words** (`lumenna_sync::introduce`,
+  `Lumenna::sync_over_link`): the Data Layer joins only a phone and its paired watch, between
+  apps with the same package and signing key. Both are enrolled, and the watch joins every
+  device's list. Each side remembers, in `local_state`, that it introduced itself, so a watch
+  unpaired since is not enrolled again: the link refuses on both sides.
+- **A firing is shown once on the wrist.** The watch gives its own store's reminders, as the
+  phone does (`shared/Reminders.kt`), and turns off bridging of the phone's reminder
+  notifications only (`BridgingManager`, excluding `Reminders.BRIDGE_TAG`, which each carries).
+  Not the phone's local-only flag: with that, a watch without this app would get no
+  reminders at all. A dismissal on either reaches the other at the next sync, which takes
+  its copy away.
+- **A day or a time has the watch's own picker** (`wear/Pickers.kt`: Wear's `DatePicker` and
+  `TimePicker` in a `Dialog`) beside its line in the block form and each time setting, the
+  setting's name beneath its clock; Go to Day offers the line, then the calendar. While Wear's
+  dialog shows, the screen behind it shrinks and the checks measure its buttons as under 48dp,
+  so a test leaves them out for the presses inside it.
+- **A row's custom action that opens a screen runs on the main thread in tests**
+  (`actOnMain`): Wear's navigation refuses the test thread, where TalkBack never calls it.
+- The watch says it runs `wearos` (`PLATFORM`), in pairing and over the link.
+- **32-bit ARM too** (`armeabi-v7a`): many Wear OS watches run a 32-bit Android. The phone's
+  APK leaves it out.
+- Tests (`WearTest`) run on a Wear OS emulator with the accessibility checks, as the phone's;
+  `APP=wear ./run-instrumented-tests.sh`. A fresh Wear emulator opens on its setup screen:
+  `settings put global device_provisioned 1` and `secure user_setup_complete 1`.
+
+
+## CI
+
+`android-build` builds once, checks 16 KB alignment and builds the core optimized
+(`LUMENNA_CORE_PROFILE`), then a phone and a desktop-sized emulator run
+`run-instrumented-tests.sh` from that build, on Android 36: every Android 37 image crashed its
+display server on the runners' software renderer. The test jobs need no Rust.
