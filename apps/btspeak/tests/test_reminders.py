@@ -4,7 +4,6 @@ real store, at fixed moments in 2030 in UTC, so nothing depends on when the test
 from __future__ import annotations
 
 import datetime
-import os
 import shutil
 import sys
 import tempfile
@@ -40,7 +39,7 @@ class Reminders(unittest.TestCase):
         self.session = self.store.session
         self.ran = []
         service.RUN = self.ran.append
-        reminder_lists.ROOT = self.profile / "root"
+        reminder_lists.CONFIG = self.profile / "config"
         reminder_lists.NOW = None
         btspeak_stub.given.clear()
         self.client.call("block.add", title="Deep work", at="9:00", minutes=60, date="2030-01-15")
@@ -50,14 +49,14 @@ class Reminders(unittest.TestCase):
         for giver in self.givers:
             giver.let_go()
         service.RUN = service._run
-        reminder_lists.ROOT = Path("/")
+        reminder_lists.CONFIG = None
         reminder_lists.NOW = None
         self.store.close()
 
-    def giver(self, at: dict, on=lambda: True):
+    def giver(self, at: dict):
         # The sound file the device plays, recorded rather than played.
         reminders.play = lambda path: btspeak_stub.given.append(("sound", Path(path).stem))
-        giver = reminders.Giver(open_store=lambda: L.Device(str(self.profile)), on=on, now=lambda: at["now"])
+        giver = reminders.Giver(open_store=lambda: L.Device(str(self.profile)), now=lambda: at["now"])
         self.givers.append(giver)
         return giver
 
@@ -87,10 +86,9 @@ class Reminders(unittest.TestCase):
         at["now"] = "2030-01-15T09:30:00Z"
         self.assertEqual(self.giver(at).once(), ["1 reminder missed: Deep work started."])
 
-    def test_while_the_service_gives_them_no_other_client_does_and_turned_off_it_lets_go(self):
+    def test_while_the_service_gives_them_no_other_client_does_and_stopped_it_lets_go(self):
         at = {"now": "2030-01-15T08:50:00Z"}
-        on = {"on": True}
-        giver = self.giver(at, on=lambda: on["on"])
+        giver = self.giver(at)
         giver.once()
         held = self.client.call("reminder.deliver", now="2030-01-15T08:51:00Z")
         self.assertEqual(held["announcement"], "Another app on this device gives reminders")
@@ -98,8 +96,7 @@ class Reminders(unittest.TestCase):
         self.assertEqual(other.once(), [], "says nothing while the first gives them")
         self.assertEqual(other.pause(), reminders.WAITING)
         self.assertEqual(giver.pause(), reminders.INTERVAL)
-        on["on"] = False
-        self.assertEqual(giver.once(), [])
+        giver.let_go()
         free = self.client.call("reminder.deliver", now="2030-01-15T08:52:00Z")
         self.assertNotEqual(free["announcement"], "Another app on this device gives reminders")
         self.assertNotIn("elsewhere", free)
@@ -204,45 +201,52 @@ class Reminders(unittest.TestCase):
 
     # -- settings and the service ---------------------------------------------------------
 
-    def test_the_service_is_installed_only_when_asked_and_only_where_it_is_told(self):
-        root = reminder_lists.ROOT
+    def test_the_service_is_turned_on_only_when_asked_by_linking_its_unit_in(self):
+        config = reminder_lists.CONFIG
         self.run_script(
             [
-                ("menu", "Reminder service, not installed"),
+                ("menu", "Reminder service, off"),
                 ("confirm", False),
-                ("menu", "Reminder service, not installed"),
-                ("confirm", True),
-                ("menu", "Reminder service, installed"),
+                ("menu", "Reminder service, off"),
                 ("confirm", True),
                 ("back",),
             ],
             lambda: reminder_lists.settings_page(self.session),
         )
-        unit = root / "BTSpeak" / "Systemd" / "lumenna-reminders.service"
+        self.assertTrue(service.enabled(config))
+        where = service.paths(config)
+        self.assertEqual(where["unit"].resolve(), service.UNIT)
+        self.assertEqual(where["wanted"].resolve(), service.UNIT)
+        self.assertEqual(where["profile"].read_text(), f'[Service]\nEnvironment="LUMENNA_PROFILE={self.profile}"\n')
         self.assertEqual(
             self.ran,
-            [
-                ["sudo", "systemctl", "link", str(unit)],
-                ["sudo", "systemctl", "daemon-reload"],
-                ["sudo", "systemctl", "enable", "--now", "lumenna-reminders.service"],
-                ["sudo", "systemctl", "disable", "--now", "lumenna-reminders.service"],
-                ["sudo", "systemctl", "daemon-reload"],
-            ],
+            [["systemctl", "--user", "daemon-reload"], ["systemctl", "--user", "start", "lumenna-reminders.service"]],
         )
-        self.assertFalse(unit.exists(), "removed again")
 
-    def test_the_installed_files_are_the_checkouts_filled_in_for_this_person(self):
-        root = reminder_lists.ROOT
-        service.install(self.profile, root, user="pi")
-        where = service.paths(root)
-        unit = where["unit"].read_text()
-        self.assertIn("User=pi\n", unit)
-        self.assertIn(f'Environment="LUMENNA_PROFILE={self.profile}"\n', unit)
-        self.assertIn(f"{where['code']}\n", unit)
-        self.assertNotIn("@", unit.replace(str(self.profile), ""))
-        self.assertEqual(where["values"].read_text(), (service.SYSTEM / "lumenna-reminders.values").read_text())
-        self.assertIn("reminders.py", where["code"].read_text())
-        self.assertTrue(os.access(where["code"], os.X_OK))
+    def test_turned_off_the_service_is_stopped_and_its_links_and_profile_are_gone(self):
+        config = reminder_lists.CONFIG
+        service.enable(self.profile, config)
+        self.ran.clear()
+        self.run_script(
+            [("menu", "Reminder service, on"), ("confirm", True), ("back",)],
+            lambda: reminder_lists.settings_page(self.session),
+        )
+        self.assertEqual(
+            self.ran,
+            [["systemctl", "--user", "stop", "lumenna-reminders.service"], ["systemctl", "--user", "daemon-reload"]],
+        )
+        for path in service.paths(config).values():
+            self.assertFalse(path.is_symlink() or path.exists(), path)
+        self.assertFalse(service.paths(config)["profile"].parent.exists())
+
+    def test_the_unit_runs_the_reminders_beside_it_as_the_person_once_the_device_is_ready(self):
+        unit = service.UNIT.read_text()
+        self.assertIn("ExecStart=/usr/bin/python3 %Y/../reminders.py\n", unit)
+        self.assertTrue((service.UNIT.parent.parent / "reminders.py").exists())
+        self.assertIn("is-active --quiet btspeak-ready.service", unit)
+        self.assertIn("WantedBy=default.target\n", unit)
+        self.assertNotIn("User=", unit)
+        self.assertNotIn("/BTSpeak", unit)
 
     def test_reminders_on_this_device_is_on_the_reminders_page_not_with_the_backups(self):
         backups = [item.get_title() for item in preferences.setting_items(self.session, preferences.on_this_device)]

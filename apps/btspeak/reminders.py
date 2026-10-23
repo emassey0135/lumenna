@@ -9,10 +9,10 @@ restart does not say the day again (it remembers when it last gave reminders), t
 while it was stopped is one summary, and that nothing is given while another process on the
 device gives them. There is no reminder logic here.
 
-It runs as a system service (`service.py` writes it, only when asked from the app's Settings),
-and is turned off either by the device's own setting, `lumenna-reminders` (off), which lets go
-of the right so another process may take it, or by the app's Reminders on this device, which
-the core honours.
+It runs as a systemd user service (`system/lumenna-reminders.service`, which `service.py` links
+in only when it is turned on from the app's Settings), and is turned off there, which stops it
+and lets go of the right so another process may take it, or by the app's Reminders on this
+device, which the core honours.
 
 Dismissing, snoozing and carrying forward what a block's end left short (the reminder's
 `carry`, whose question ends its text) are the app's Reminders screen: a service has no keys
@@ -34,20 +34,6 @@ INTERVAL = 20
 
 #: How often to ask while another process gives reminders, to take over soon after it stops.
 WAITING = 5
-
-#: The device setting that turns the service off, with its `.values` file in Settings.
-SETTING = "lumenna-reminders"
-
-
-def enabled() -> bool:
-    """Whether the device's own setting leaves the service on. Absent, it is on."""
-    try:
-        from BTSpeak import settings
-
-        return str(settings.getValue(SETTING) or "on").strip().lower() not in {"off", "false", "no"}
-    except Exception:  # noqa: BLE001 - off the device, or before the setting exists
-        return True
-
 
 def play(path) -> None:
     """Plays a sound file as the device's own services do, with ffplay, waiting for it."""
@@ -95,9 +81,8 @@ class Giver:
     for tests; the service leaves it out and the core takes now.
     """
 
-    def __init__(self, open_store=open_store, on=enabled, sound=chime, speak=say, show=braille, now=None) -> None:
+    def __init__(self, open_store=open_store, sound=chime, speak=say, show=braille, now=None) -> None:
         self._open = open_store
-        self._on = on
         self._sound = sound
         self._speak = speak
         self._show = show
@@ -113,10 +98,6 @@ class Giver:
 
     def once(self) -> list[str]:
         """Asks what came due and gives it; what was given, in order."""
-        if not self._on():
-            self.let_go()
-            self.elsewhere = False
-            return []
         if self.device is None:
             self.device = self._open()
         try:

@@ -643,8 +643,9 @@ surface's `reminders.rs` words them and answers the apps.
 - **Who delivers, per client**: the resident desktop apps through `deliver_reminders`; iOS,
   watchOS, Android and Wear OS by scheduling `upcoming_reminders`; `lum notify` on a console;
   Emacs's `lumenna-reminders-mode` through `reminder.deliver` and BTSpeak's resident service
-  (`reminders.py`, its unit and toggle in `system/`, installed only from its Settings, after
-  asking) through `Device::deliver_reminders`, whose `elsewhere` says another process has it,
+  (`reminders.py`, a systemd user unit kept in `system/` and linked into the person's own units
+  only from its Settings, after asking: nothing under `/BTSpeak`, which each release replaces,
+  and no administrator) through `Device::deliver_reminders`, whose `elsewhere` says another process has it,
   so ask again soon. The
   web's one tab delivers through `reminders_due` with a "since" of its own, and keeps
   "Reminders on this device" in local storage: a browser has no device-settings file.

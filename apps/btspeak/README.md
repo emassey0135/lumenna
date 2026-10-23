@@ -87,8 +87,8 @@ subtasks. That is all the core's, so that every client behaves alike and none ca
 | `preferences.py` | Settings, devices, sync and pairing, backups, export and import. |
 | `reminder_lists.py` | A task's or block's reminders, what came due, and the Reminders settings page. |
 | `reminders.py` | The resident reminder service. |
-| `service.py` | Installing and removing that service, only when asked. |
-| `system/` | The service's systemd unit and its `.values` toggle, as the device keeps them. |
+| `service.py` | Turning that service on and off, only when asked. |
+| `system/` | The service's systemd user unit, linked in from where it is. |
 
 The menus are laid out as the phone's are — the day, tasks, projects, labels, filters, the
 trash, settings — so the two can be described in one breath. A row's context menu offers
@@ -140,12 +140,17 @@ came while it was stopped is one summary — are the core's; there is no reminde
 The right to give them is one process's on the device, so the service and any other app never
 both say one.
 
-It is laid out as the device's own services are: the code in `/BTSpeak/Services/`, the unit
-in `/BTSpeak/Systemd/`, the toggle in `/BTSpeak/Settings/lumenna-reminders.values` (off lets
-go of the right to give them). The unit and the toggle are kept in `system/`; `service.py`
-fills in the person and the profile and puts all three in place, and links and starts the
-unit, only from Settings, Reminders, Reminder service, after asking. The tests install into
-a temporary directory and record the `systemctl` commands rather than run them.
+It is a systemd user service, and nothing of it is written under `/BTSpeak`, which the device
+replaces on every release, or anywhere that needs an administrator. The unit,
+`system/lumenna-reminders.service`, is used where it is: Settings, Reminders, Reminder service
+turns it on, after asking, by linking it into `~/.config/systemd/user` and its
+`default.target.wants` (what `systemctl --user enable` makes), with a drop-in giving it the
+app's profile, then starting it; off stops it and takes the three away, and stopping lets go of
+the right to give reminders. The links are the one record of whether it is on. The device logs
+`pi` in at every start, so the person's units start with it; the unit runs `reminders.py` beside
+it through `%Y`, its own directory even through the link, and waits for `btspeak-ready.service`,
+which a user unit cannot be ordered after. The tests link into a temporary directory and record
+the `systemctl` commands rather than run them.
 
 In the app, a task with a due date and every block offer Reminders (`r`): their list, Add
 reminder by a phrase, Remove reminder. The main menu's Reminders (`r`) lists what came due

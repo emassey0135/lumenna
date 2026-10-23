@@ -1,79 +1,56 @@
-"""Installing the reminder service, only when asked from the app's Settings.
+"""Turning the reminder service on and off, only when asked from the app's Settings.
 
-The device's own resident services live in `/BTSpeak`, as `btspeak-calendar-reminders` does:
-the code in `Services/`, its systemd unit in `Systemd/`, and the toggle the device's settings
-offer for it in `Settings/<name>.values`. This writes those three, then links and starts the
-unit. Writing under `/BTSpeak` and enabling a system unit need an administrator, so on the
-device each file is staged and put in place with `sudo install`; under a directory the person
-can write to (a test's), it is written directly.
+The service is a systemd user unit, kept in `system/` and used where it is: turning it on links
+it into the person's own units, as `systemctl --user enable` would, with the profile in a
+drop-in beside it, then starts it; turning it off stops it and takes all three away. Everything
+is in the person's home, so nothing needs an administrator, and nothing is written under
+`/BTSpeak`, which the device replaces on every release. The links are the one record of whether
+it is on.
 
-Nothing here runs unless the person chooses Install in Settings, Reminders, and answers yes:
-a service on the device is theirs to agree to.
+Nothing here runs unless the person turns it on in Settings, Reminders, and answers yes: a
+service on the device is theirs to agree to.
 """
 
 from __future__ import annotations
 
-import getpass
 import os
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
 
 
-#: The service's name: its unit, its code and its setting are all called this.
+#: The service's name: its unit is called this.
 NAME = "lumenna-reminders"
 
-#: Where this checkout's app is, which the service's code runs.
-APP = Path(__file__).resolve().parent
+#: The unit, in this app's own folder.
+UNIT = Path(__file__).resolve().parent / "system" / f"{NAME}.service"
 
 
-def paths(root: Path) -> dict:
-    """Where each file goes under `root`, `/` on the device."""
-    base = root / "BTSpeak"
+def config_home() -> Path:
+    """The person's configuration directory, `$XDG_CONFIG_HOME` or `~/.config`, as systemd finds
+    their units under it."""
+    configured = os.environ.get("XDG_CONFIG_HOME", "")
+    return Path(configured) if os.path.isabs(configured) else Path.home() / ".config"
+
+
+def paths(config: Path) -> dict:
+    """What turning it on writes under `config`: the unit's link, the link that starts it at
+    login, and the drop-in naming the profile."""
+    units = config / "systemd" / "user"
     return {
-        "code": base / "Services" / f"{NAME}.py",
-        "unit": base / "Systemd" / f"{NAME}.service",
-        "values": base / "Settings" / f"{NAME}.values",
+        "unit": units / f"{NAME}.service",
+        "wanted": units / "default.target.wants" / f"{NAME}.service",
+        "profile": units / f"{NAME}.service.d" / "profile.conf",
     }
 
 
-#: The unit and the toggle as they are kept in this checkout, for the device's /BTSpeak.
-SYSTEM = APP / "system"
+def profile_text(profile: Path) -> str:
+    """The drop-in giving the service the app's profile, so both open one store."""
+    return f'[Service]\nEnvironment="LUMENNA_PROFILE={profile}"\n'
 
 
-def code_text(app: Path = APP) -> str:
-    """The service's code: this checkout's `reminders.py`, run from where the device keeps
-    its services, so the app and the service are one version."""
-    return (
-        "#!/usr/bin/env python3\n"
-        "# Written by Lumenna's BTSpeak app (Settings, Reminders); removing it there takes it away.\n"
-        '"""Lumenna\'s reminders: the service in the Lumenna checkout, run from here."""\n'
-        "import runpy\n"
-        "import sys\n"
-        f"sys.path.insert(0, {str(app)!r})\n"
-        f"runpy.run_path({str(app / 'reminders.py')!r}, run_name='__main__')\n"
-    )
-
-
-def unit_text(user: str, profile: Path, python: str = "/usr/bin/python3", code: Path | None = None) -> str:
-    """The systemd unit kept in `system/`, for this person and profile: a system unit
-    running as the person, the device's own convention, the profile given outright."""
-    text = (SYSTEM / f"{NAME}.service").read_text(encoding="utf-8")
-    text = text.replace("@USER@", user).replace("@PROFILE@", str(profile)).replace("@PYTHON@", python)
-    if code is not None:
-        text = text.replace(str(paths(Path("/"))["code"]), str(code))
-    return text
-
-
-def values_text() -> str:
-    """The toggle the device's settings offer, as kept in `system/`: on, the default, or off."""
-    return (SYSTEM / f"{NAME}.values").read_text(encoding="utf-8")
-
-
-def installed(root: Path = Path("/")) -> bool:
-    """Whether the service's unit is in place."""
-    return paths(root)["unit"].exists()
+def enabled(config: Path) -> bool:
+    """Whether the service is on: whether it starts at login."""
+    return paths(config)["wanted"].is_symlink()
 
 
 def _run(command: list[str]) -> None:
@@ -84,51 +61,38 @@ def _run(command: list[str]) -> None:
 RUN = _run
 
 
-def _place(path: Path, text: str, mode: int, run) -> None:
-    """Writes `text` to `path`: directly where that is allowed, else through `sudo install`."""
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-        path.chmod(mode)
-        return
-    except PermissionError:
-        pass
-    with tempfile.NamedTemporaryFile("w", delete=False, suffix=path.suffix, encoding="utf-8") as staged:
-        staged.write(text)
-    try:
-        run(["sudo", "install", "-D", "-m", f"{mode:o}", staged.name, str(path)])
-    finally:
-        os.unlink(staged.name)
+def _link(path: Path, target: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink() or path.exists():
+        path.unlink()
+    path.symlink_to(target)
 
 
-def install(profile: Path, root: Path = Path("/"), run=None, user: str | None = None) -> str:
-    """Writes the service's code, unit and toggle under `root`, then links and starts the
-    unit; what to say. `run` runs a command, `RUN` when absent."""
+def enable(profile: Path, config: Path, run=None) -> str:
+    """Links the unit in, gives it the profile, and starts it; what to say. `run` runs a
+    command, `RUN` when absent."""
     run = run or RUN
-    where = paths(root)
-    _place(where["code"], code_text(), 0o755, run)
-    python = sys.executable or "/usr/bin/python3"
-    _place(where["unit"], unit_text(user or getpass.getuser(), profile, python, where["code"]), 0o644, run)
-    _place(where["values"], values_text(), 0o644, run)
-    unit = str(where["unit"])
-    run(["sudo", "systemctl", "link", unit])
-    run(["sudo", "systemctl", "daemon-reload"])
-    run(["sudo", "systemctl", "enable", "--now", f"{NAME}.service"])
-    return "The reminder service is installed and running. It starts whenever the device does"
+    where = paths(config)
+    where["profile"].parent.mkdir(parents=True, exist_ok=True)
+    where["profile"].write_text(profile_text(profile), encoding="utf-8")
+    _link(where["unit"], UNIT)
+    _link(where["wanted"], UNIT)
+    run(["systemctl", "--user", "daemon-reload"])
+    run(["systemctl", "--user", "start", f"{NAME}.service"])
+    return "The reminder service is on. It starts whenever the device does"
 
 
-def uninstall(root: Path = Path("/"), run=None) -> str:
-    """Stops the service and takes away all three files; what to say."""
+def disable(config: Path, run=None) -> str:
+    """Stops the service and takes its links and drop-in away; what to say."""
     run = run or RUN
-    where = paths(root)
-    run(["sudo", "systemctl", "disable", "--now", f"{NAME}.service"])
+    where = paths(config)
+    run(["systemctl", "--user", "stop", f"{NAME}.service"])
     for path in where.values():
-        try:
+        if path.is_symlink() or path.exists():
             path.unlink()
-        except FileNotFoundError:
-            pass
-        except PermissionError:
-            run(["sudo", "rm", "-f", str(path)])
-    run(["sudo", "systemctl", "daemon-reload"])
-    return "The reminder service is stopped and removed"
-
+    try:
+        where["profile"].parent.rmdir()
+    except OSError:
+        pass
+    run(["systemctl", "--user", "daemon-reload"])
+    return "The reminder service is off"

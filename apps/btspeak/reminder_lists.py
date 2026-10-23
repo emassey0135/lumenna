@@ -30,8 +30,13 @@ from tasks import undo_commands
 #: For tests: a function of nothing giving now, as an aware datetime. None is now.
 NOW = None
 
-#: Where the reminder service is installed: the device's root, or a test's directory.
-ROOT = Path("/")
+#: Where the reminder service is linked in: the person's configuration directory, or a test's.
+#: None is the person's.
+CONFIG: Path | None = None
+
+
+def config() -> Path:
+    return CONFIG or service.config_home()
 
 #: How far back the Reminders screen looks for what came due: as far as the service ever
 #: goes back after being stopped.
@@ -173,22 +178,22 @@ KEYS = {"reminders"}
 
 
 def service_title() -> str:
-    return f"Reminder service, {'installed' if service.installed(ROOT) else 'not installed'}"
+    return f"Reminder service, {'on' if service.enabled(config()) else 'off'}"
 
 
 def toggle_service(session: Session) -> str:
-    """Installs the service, or removes it, each only once the person says yes."""
+    """Turns the service on, or off, each only once the person says yes."""
     try:
-        if service.installed(ROOT):
-            if not confirm("Remove the reminder service? Reminders are then given only while another app runs"):
+        if service.enabled(config()):
+            if not confirm("Turn off the reminder service? Reminders are then given only while another app runs"):
                 return ""
-            return service.uninstall(ROOT)
+            return service.disable(config())
         if not confirm(
-            "Install the reminder service? It runs all the time, apart from this app, and gives "
-            "reminders with the notification sound, speech and braille. Installing it needs an administrator"
+            "Turn on the reminder service? It runs all the time, apart from this app, and gives "
+            "reminders with the notification sound, speech and braille"
         ):
             return ""
-        return service.install(profile_directory(), ROOT)
+        return service.enable(profile_directory(), config())
     except (OSError, subprocess.CalledProcessError) as error:
         detail = getattr(error, "stderr", "") or str(error)
         return f"The reminder service could not be set up: {detail.strip()}"

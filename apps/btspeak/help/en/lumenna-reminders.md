@@ -10,4 +10,4 @@ Reminders, r, on the main menu, lists what came due over the last day and was no
 
 ## Reminders on this device
 
-In Settings, Reminders, on this device: Reminders on this device turns them off here alone; every other device still gives them. The reminder service gives reminders while Lumenna is closed, with the notification sound, speech and braille. Enter on it installs it, asking first, or removes it. It needs an administrator.
+In Settings, Reminders, on this device: Reminders on this device turns them off here alone; every other device still gives them. The reminder service gives reminders while Lumenna is closed, with the notification sound, speech and braille, and starts whenever the device does. Enter on it turns it on, asking first, or off.
