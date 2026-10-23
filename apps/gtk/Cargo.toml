@@ -23,7 +23,7 @@ lumenna-records.workspace = true
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
 futures-channel = "0.3"
 futures-util = { version = "0.3", default-features = false }
-ashpd = { version = "0.13", default-features = false, features = ["async-io", "global_shortcuts", "gtk4"] }
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "background", "global_shortcuts", "gtk4"] }
 # The shortcuts from anywhere on X11 without the GlobalShortcuts portal: a key grab.
 x11rb = { version = "0.13", default-features = false }
 ksni = { version = "0.3", default-features = false, features = ["async-io"] }

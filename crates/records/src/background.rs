@@ -45,6 +45,9 @@ pub struct BackgroundWords {
     pub off: String,
     /// Said, before the platform's reason, when it could not be changed.
     pub failed: String,
+    /// Why it asks, where the system asks the person itself before allowing it (a Flatpak's
+    /// Background portal shows it in its question).
+    pub asking: String,
 }
 
 /// The words for `kind`.
@@ -93,6 +96,9 @@ pub fn background_words(kind: BackgroundKind) -> BackgroundWords {
         on: on.to_owned(),
         off: off.to_owned(),
         failed: "That could not be changed".to_owned(),
+        asking: "Lumenna opens when you sign in and keeps running after its window is closed, so it syncs with your \
+                 other devices and gives your reminders"
+            .to_owned(),
     }
 }
 

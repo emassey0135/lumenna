@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- What app stores (GNOME Software, Discover) say of Lumenna; installed with the Flatpak. -->
+<component type="desktop-application">
+  <id>dev.emassey0135.Lumenna</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+  <name>Lumenna</name>
+  <summary>Tasks, and the blocks of time they are worked in</summary>
+  <developer id="dev.emassey0135">
+    <name>Elijah Massey</name>
+  </developer>
+  <description>
+    <p>
+      Lumenna is a task manager and day planner in one: projects, labels, priorities, subtasks,
+      repeating tasks and quick add, beside a timeline of the day's blocks of time, and a task is
+      put into blocks again and again, across as many sittings as it takes, until it is done.
+    </p>
+    <p>
+      Every screen is built for screen readers and keyboards first. Your devices sync with each
+      other directly, with no server that sees your tasks.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.emassey0135.Lumenna.desktop</launchable>
+  <url type="homepage">https://github.com/emassey0135/lumenna</url>
+  <url type="bugtracker">https://github.com/emassey0135/lumenna/issues</url>
+  <url type="vcs-browser">https://github.com/emassey0135/lumenna</url>
+  <content_rating type="oars-1.1" />
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <releases>
+    <release version="0.1.0" date="2026-10-23" />
+  </releases>
+</component>

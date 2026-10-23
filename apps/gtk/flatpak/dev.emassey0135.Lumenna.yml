@@ -1,0 +1,49 @@
+# Lumenna's GTK app as a Flatpak, with `lum` beside it (`flatpak run --command=lum …`), which
+# shares its store. Built with flatpak-builder from the repository it sits in:
+#
+#   flatpak-builder --user --install --force-clean build apps/gtk/flatpak/dev.emassey0135.Lumenna.yml
+#
+# For a repository of our own, not Flathub: the crates are fetched as it builds (`--share=network`
+# below), which Flathub's offline builds would refuse.
+id: dev.emassey0135.Lumenna
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: lumenna-gtk
+finish-args:
+  # Syncing over Iroh, and finding devices on the local network (mDNS).
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  # X11 where there is no Wayland, which the shortcuts from anywhere then grab keys on.
+  - --socket=fallback-x11
+  - --device=dri
+  # Finding devices through Avahi, where it runs.
+  - --system-talk-name=org.freedesktop.Avahi
+  # The tray (`tray.rs` serves it without a well-known name, which a sandbox cannot own).
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - name: lumenna
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      build-args:
+        - --share=network
+      env:
+        CARGO_HOME: /run/build/lumenna/cargo
+    build-commands:
+      - cargo build --release --locked -p lumenna-gtk -p lumenna-cli
+      - install -Dm755 target/release/lumenna-gtk /app/bin/lumenna-gtk
+      - install -Dm755 target/release/lum /app/bin/lum
+      - install -Dm644 apps/gtk/data/dev.emassey0135.Lumenna.desktop /app/share/applications/dev.emassey0135.Lumenna.desktop
+      - install -Dm644 apps/gtk/data/dev.emassey0135.Lumenna.metainfo.xml /app/share/metainfo/dev.emassey0135.Lumenna.metainfo.xml
+      - mkdir -p /app/share/icons && cp -r apps/gtk/data/icons/hicolor /app/share/icons/
+    sources:
+      - type: dir
+        path: ../../..
+        skip:
+          - target
+          - .git
+          - apps/web/node_modules

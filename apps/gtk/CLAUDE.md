@@ -75,7 +75,20 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   `BackgroundKind::DesktopSignIn`): this profile's XDG autostart entry. The app is told at
   start whether it is there; a turn's `background` makes or removes it (`window::take`). The
   UI tests give each session its own `XDG_CONFIG_HOME`, so none writes the desktop's
-  autostart folder.
+  autostart folder. **In a sandbox (`crate::sandboxed`, a Flatpak) it is the Background
+  portal's**, which a sandbox's own autostart folder never reaches: asked over the window with
+  the core's reason (`BackgroundWords::asking`), and since the portal never says whether it is
+  on, the app keeps the choice granted in the sandbox's configuration. At each start while that
+  says on it asks again (`renew`), which asks the person nothing once allowed, keeps the
+  portal's command current, and is the one reading of the value: refused, as when the person
+  turned it off in the desktop's settings, the record is forgotten and the setting told it is
+  off. A portal that cannot be reached changes nothing.
+- **The Flatpak** (`flatpak/dev.emassey0135.Lumenna.yml`, GNOME 51, `lum` beside the app,
+  `data/…metainfo.xml` for app stores) is for a repository of our own: it fetches crates as it
+  builds, which Flathub refuses. Its store is the sandbox's, `~/.var/app/<id>/data/lumenna`;
+  its tray serves without a well-known name (`disable_dbus_name`), which a sandbox cannot own.
+  `flatpak-builder` needs `--disable-rofiles-fuse` where FUSE mounts are refused (a VM's
+  shared folder).
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). `GtkTreeView`
   exposes no rows to AT-SPI in GTK 4, and a list view with `TreeExpander` reports a flat

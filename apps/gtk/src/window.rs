@@ -137,7 +137,16 @@ pub fn take(turn: lumenna_ffi::Turn) {
     }
     // Opening at sign-in is this desktop's to do, as the person chose; the app says how it went.
     if let Some(on) = turn.background {
-        app.model.send(app.autostart.keep(on));
+        if crate::sandboxed() {
+            // The portal asks the person, over the window, and answers later.
+            spawn(async move {
+                let Some(app) = self::app() else { return };
+                let event = app.autostart.ask(on, Some(&app.window)).await;
+                app.model.send(event);
+            });
+        } else {
+            app.model.send(app.autostart.keep(on));
+        }
     }
     for said in &turn.said {
         if matches!(said.as_str(), "Expanded" | "Collapsed") && QUIET_FOLD.replace(false) {
@@ -188,6 +197,13 @@ pub fn activate(application: &gtk::Application, directory: &Path, background: bo
     let app = App::build(application, model, clock, autostart);
     APP.with(|slot| *slot.borrow_mut() = Some(Rc::clone(&app)));
     app.start(background, shortcuts);
+    // In a sandbox, opening at sign-in is the portal's, renewed at each start while it is on.
+    spawn(async move {
+        let Some(app) = self::app() else { return };
+        if let Some(event) = app.autostart.renew().await {
+            app.model.send(event);
+        }
+    });
 }
 
 impl App {

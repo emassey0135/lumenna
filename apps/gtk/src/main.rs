@@ -44,6 +44,13 @@ use lumenna_ffi::profile;
 /// The application identifier, which is also the name it owns on the session bus.
 pub const ID: &str = "dev.emassey0135.Lumenna";
 
+/// Whether the app runs in a sandbox, a Flatpak's: it opens at sign-in through the Background
+/// portal (`autostart.rs`), and its tray owns no well-known name (`tray.rs`). Its store is the
+/// sandbox's own, `~/.var/app/<id>/data/lumenna`, by the XDG directories the sandbox sets.
+pub fn sandboxed() -> bool {
+    ashpd::is_sandboxed()
+}
+
 /// Where the app's own icon is in this checkout, for a build run without `install.sh`, which
 /// puts it in the user's hicolor theme.
 pub fn icons_here() -> Option<&'static str> {

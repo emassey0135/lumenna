@@ -58,8 +58,9 @@ impl ksni::Tray for Tray {
 /// Puts the icon in the tray, for as long as the app runs.
 pub fn start() {
     gtk::glib::spawn_future_local(async {
-        // A tray host that is not there yet is waited for, not an error.
-        if let Ok(handle) = Tray.assume_sni_available(true).spawn().await {
+        // A tray host that is not there yet is waited for, not an error. A sandbox owns no
+        // well-known name it was not given, so there the item is served by its connection alone.
+        if let Ok(handle) = Tray.assume_sni_available(true).disable_dbus_name(crate::sandboxed()).spawn().await {
             std::mem::forget(handle);
         }
     });
