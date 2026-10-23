@@ -57,9 +57,14 @@ case "$CONFIGURATION" in
 esac
 
 DEVELOPER="${DEVELOPER_DIR:-$(xcode-select -p)}"
+# The cargo the caller's PATH finds, kept through the clean environment: Homebrew's rustup puts
+# its cargo in /opt/homebrew/opt/rustup/bin, never linked into /opt/homebrew/bin, and a machine
+# with it has none in ~/.cargo/bin.
+FOUND_CARGO="$(command -v cargo 2>/dev/null || true)"
+CARGO_PATH="${FOUND_CARGO:+$(dirname "$FOUND_CARGO"):}$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
 cargo() {
   env -i HOME="$HOME" USER="${USER:-}" \
-    PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
+    PATH="$CARGO_PATH" \
     DEVELOPER_DIR="$DEVELOPER" IPHONEOS_DEPLOYMENT_TARGET=17.0 MACOSX_DEPLOYMENT_TARGET=14.0 \
     WATCHOS_DEPLOYMENT_TARGET=27.0 \
     cargo "$@"
@@ -93,7 +98,7 @@ HOST_TARGET="$ROOT/target"
 # `cargo metadata` too, which takes no target directory.
 boltffi() {
   env -i HOME="$HOME" USER="${USER:-}" \
-    PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" DEVELOPER_DIR="$DEVELOPER" \
+    PATH="$CARGO_PATH" DEVELOPER_DIR="$DEVELOPER" \
     CARGO_TARGET_DIR="$HOST_TARGET" "$HOME/.cargo/bin/boltffi" "$@"
 }
 APP_GENERATED="$GENERATED/App"

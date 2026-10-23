@@ -60,9 +60,13 @@ output = "$JNI_LIBS"
 [targets.android.kotlin]
 output = "$BOLT/kotlin"
 EOF
+# The cargo the caller's PATH finds, kept through the clean environment: Homebrew's rustup puts
+# its cargo in /opt/homebrew/opt/rustup/bin, never linked into /opt/homebrew/bin.
+FOUND_CARGO="$(command -v cargo 2>/dev/null || true)"
+CARGO_PATH="${FOUND_CARGO:+$(dirname "$FOUND_CARGO"):}$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
 clean() {
   env -i HOME="$HOME" USER="${USER:-}" ${CARGO_HOME:+CARGO_HOME="$CARGO_HOME"} ${RUSTUP_HOME:+RUSTUP_HOME="$RUSTUP_HOME"} \
-    PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
+    PATH="$CARGO_PATH" \
     ANDROID_HOME="$SDK" ANDROID_NDK_HOME="$NDK" "$@"
 }
 # Each ABI's static library built here, alone, and BoltFFI only links it into the JNI library
