@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::api::Response;
+use crate::api::{Response, ServiceState};
 use crate::error::{CliError, Result};
 use crate::profile::{Profile, default_directory};
 
@@ -434,7 +434,7 @@ pub(crate) fn status(profile: &Profile) -> Result<Response> {
         (false, true) => "Sync is running, but not as a service; `lum daemon install` keeps it running",
         (false, false) => "The sync daemon is not installed or running; `lum daemon install` sets it up",
     };
-    Ok(Response::unchanged(announcement))
+    Ok(Response::unchanged(announcement).with_service(ServiceState { installed, running }))
 }
 
 fn write_file(path: &Path, contents: &str) -> Result<()> {
