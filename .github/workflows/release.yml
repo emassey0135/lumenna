@@ -345,6 +345,48 @@ jobs:
           path: dist/lumenna-btspeak.tar.gz
           retention-days: 30
 
+  flatpak:
+    name: Flatpak, ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, os: ubuntu-24.04 }
+          - { arch: aarch64, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
+    # Flatpak's own builder, with the GNOME 51 SDK the manifest builds on.
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v5
+      - name: Its version, for the bundle's name
+        id: version
+        run: echo "version=$(sed -n 's/^version = "\(.*\)"/\1/p' apps/gtk/Cargo.toml | head -1)" >> "$GITHUB_OUTPUT"
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: apps/gtk/flatpak/dev.emassey0135.Lumenna.yml
+          bundle: Lumenna-${{ steps.version.outputs.version }}-${{ matrix.arch }}.flatpak
+          arch: ${{ matrix.arch }}
+          cache-key: flatpak-builder-${{ matrix.arch }}-${{ github.sha }}
+          upload-artifact: false
+      - name: The bundle installs, and lum runs in its sandbox and keeps its store there
+        run: |
+          bundle="Lumenna-${{ steps.version.outputs.version }}-${{ matrix.arch }}.flatpak"
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.gnome.Platform//51
+          flatpak install --user -y --noninteractive --bundle "$bundle"
+          flatpak run --command=lum dev.emassey0135.Lumenna --version
+          flatpak run --command=lum dev.emassey0135.Lumenna task add "Made in the sandbox"
+          test -f "$HOME/.var/app/dev.emassey0135.Lumenna/data/lumenna/lumenna.sqlite"
+          flatpak run --command=lum dev.emassey0135.Lumenna task list | grep -q "Made in the sandbox"
+          flatpak uninstall --user -y --noninteractive --delete-data dev.emassey0135.Lumenna
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-${{ matrix.arch }}
+          path: Lumenna-*.flatpak
+          retention-days: 30
+
   web:
     name: Web client
     runs-on: ubuntu-24.04
