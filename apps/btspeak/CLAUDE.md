@@ -8,7 +8,9 @@ in the same process beside the store: `crates/ffi` built by BoltFFI's Python tar
 with pip) into `native/`, not committed. `README.md` gives running it, its files and the tests
 (`python3 -m unittest discover -s tests`). The library is only on a BTSpeak
 (`/BTSpeak/Python/BTSpeak/`); elsewhere the tests run on `tests/btspeak_stub.py`, with the core
-built and `target/debug` on `PATH` for `lum`. On the Mac the system's Python is 3.9: build and
+built and `target/debug` on `PATH` for `lum`. On the device itself run them with `python3 -S`:
+the device's site packages put the real `dialogs` in place of the stub, and it needs a
+terminal. On the Mac the system's Python is 3.9: build and
 test with a newer one (`PYTHON=…`).
 
 - **A shell and nothing else.** No date parsing, no computed states, no folding of its own:
