@@ -14,14 +14,19 @@ The order, and why:
 4. **Smaller gaps**, between the larger pieces.
 5. **The watches**: what only a real watch can show.
 6. **Integrations**, once reminders and the planner exist for them to expose.
-7. **Before others use it**: packaging, real erasure, installing the web client.
+7. **Before others use it**: packaging, a relay of our own, real erasure, installing the web
+   client.
 8. **The encrypted store and accounts**, which the web's reminders and syncing alone wait on.
 9. **Only when needed**: performance and network extras.
 
 ## 1. Safeguards
 
-- **CI** runs (`.github/workflows/ci.yml`). Still to come with packaging: release builds,
-  signing, and publishing from it.
+- **CI** runs (`.github/workflows/ci.yml`). Still to come:
+  - **Release builds of every app**, unsigned: what only a release build shows (R8's shrinking,
+    fat LTO, a statically linked core, the ARM64 Windows build) is found as it is made, not at
+    publishing, and they are what packaging and publishing build on. Android's release build
+    already runs.
+  - **Signing and publishing** from it, with packaging (Before others use it).
 
 ## 2. Reminders and time events
 
@@ -147,6 +152,22 @@ Each is a thin adapter over the command surface.
 - **Packaging**: a `lumenna` alias for `lum`, a Homebrew formula (`brew services start
   lum`), a winget manifest, Flatpak and AppStream for GTK. A command-line user has no app to
   prompt for updates, so packages matter most there.
+- **BTSpeak's App Store**, Blazie's, once it ships (nothing of it was in `btspeak-dev` on
+  2026-10-23): an ordinary Debian package for arm64 (`Section: btspeak-apps`), named
+  `lumenna`. `/opt/lumenna` holds the app, its core and `lum`, the background service's unit
+  among them; the manifest is `/usr/share/btspeak/apps/lumenna.app` (`Self-Voice: yes`, its
+  `Help` the app's own topics); the profile stays in `~/.local/share/lumenna`, and nothing goes
+  under `/BTSpeak`. Built in CI on the oldest Debian release the devices run, since the core
+  is an extension for that release's Python and links its glibc. Submitted to Blazie with the
+  catalogue's note (Title, Category, `Uses: network`); updates then reach every device that
+  has it. Not BT Code's Code Store: that is for source anyone with BT Code can change and send
+  back, and a core built for one Python breaks when a release moves to another.
+- **A relay of Lumenna's own**, or n0's paid ones (shared or dedicated relays through Iroh
+  Services). n0's public relays are for development and hobby use, rate-limited by limits it
+  does not publish, and every device away from its own network syncs through a relay, every
+  browser always. `node.rs` uses n0's: a relay of our own (`iroh-relay`, which sees only
+  encrypted traffic) needs a name of its own and TLS, and a device on an older build, which
+  knows only n0's relays, must still reach one on a newer build.
 - **A Claude Desktop extension** (`.mcpb`), so `lum mcp` is added by opening a file. It carries
   `lum` itself, run by a path inside the bundle, the format's way: a macOS universal binary and
   a Windows one in one file (its overrides choose by platform, not processor, so Windows on ARM
@@ -266,7 +287,6 @@ What the web client gains from it:
   discarded: pruning history would break offline replicas.
 - **Sync status**: live reachability per device. `Device.last_seen` is written at pairing
   and never again; status comes from this device's own record, so leave the synced field.
-- **A relay of one's own**: `node.rs` always uses n0's relays.
 - **Pairing across networks by a spoken code**: the cross-network code is the pairing key,
   fine to paste and too long to read aloud. An optional rendezvous service could hold it
   under a short code; the words still confirm both sides, and pasting must keep working.
@@ -299,6 +319,12 @@ What the web client gains from it:
 - **Templates** for tasks and projects; try "duplicate this subtree" first.
 - **Paid hosting** of an encrypted store, and whether any app is ever paid (decide before an
   App Store launch).
+- **The licence and app stores**, to decide before accepting a contribution from anyone else.
+  Lumenna is AGPL-3.0, and Apple's App Store terms conflict with the GPL family; a sole
+  copyright holder can publish there regardless. With other contributors there are two ways:
+  a contributor agreement, as Signal asks of its contributors to publish its AGPL iOS app, or
+  an added permission for app stores (the AGPL's section 7), which, added later, needs every
+  contributor's consent, as VLC's move to a dual licence did.
 
 ## Decided against
 
