@@ -104,18 +104,20 @@ No third-party Python beside the core. `dialogs` comes from the device.
 
 ## Two things worth knowing before changing it
 
-**Speech and braille cannot diverge.** `DynamicMenuDialog.draw()` sets `content_text` and
-`content_braille` from the same string. The ways round it are a compact level marker in the
-title or a ~20-line subclass overriding the selection branch of `draw()`; this uses the marker, and
-announces the level only where it *changes*, which is what a screen-reader tree view does.
-`InteractiveSearchDialog` extends `ChoiceDialog`, so subclassing is an intended pattern when
-the marker stops being enough.
+**Speech and braille come from one string, unless a row gives braille of its own.**
+`DynamicMenuDialog.draw()` sets `content_text` and `content_braille` from the same string, so
+where the core words a line apart for braille (its short forms, "ovd rec", "1:15"), the row
+passes it as the menu item's `braille_title` (`rows.py`). A menu's title has no braille of its
+own, so the day's menu answers T-Chord itself with its summary short (`session._menu`, a
+`DynamicMenuDialog` subclass). The level is said only where it *changes*, as a screen-reader
+tree view says it.
 
-**Completion is not inline.** `InputDialog` has no hook for completing as you type — Tab is
-form navigation — so `assisted_input` offers candidates once the line is entered, whenever
-the last word looks like a name that was started and not finished. Inline means subclassing
-`InputDialog` to bind a key to the `complete` method, which is the same shape of change and
-worth doing once the rest is in daily use.
+**Completion is Control-L, inside the line.** `InputDialog` takes `hotkeys`, and a hotkey is
+handed the dialog, so Control-L (dots 7-8 with L, `tasks.completing_key`) completes at the
+cursor, offers what fits from a menu and puts the choice in the field. Tab stays form
+navigation. In literary braille the field holds braille, so it completes the line's end. Once
+the line is entered, `assisted_input` still offers what would finish a last word left
+unfinished.
 
 ## Tests
 
