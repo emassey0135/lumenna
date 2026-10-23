@@ -283,6 +283,13 @@ Rust apps link and other platforms load, is built with `cargo rustc --crate-type
 ships (the Apple and Android scripts; BTSpeak's through BoltFFI's `--cargo-arg`), and the web's
 crate is a `cdylib` alone.
 
+**`release.yml` builds every app for release, unsigned**, on master, a version tag or when
+asked, and keeps each as an artifact for packaging to build on: `lum` and the BTSpeak app on
+Debian 12 (the oldest glibc and Python the BTSpeak devices run), `lum` universal on macOS, the
+Windows app and GTK app on both architectures, the iPhone app with its watch app for devices,
+the Mac app for both architectures, Android's App Bundles and APKs, and the web client. A new
+platform's build goes there too.
+
 `[profile.dev]` sets `debug = "line-tables-only"` and `incremental = false` for the BTSpeak's
 small disk. There, `cargo clippy --all-targets` and `cargo test` do not share artifacts, so
 running both back to back can run out of space; `cargo clean` between them.

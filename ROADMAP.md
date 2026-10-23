@@ -21,12 +21,9 @@ The order, and why:
 
 ## 1. Safeguards
 
-- **CI** runs (`.github/workflows/ci.yml`). Still to come:
-  - **Release builds of every app**, unsigned: what only a release build shows (R8's shrinking,
-    fat LTO, a statically linked core, the ARM64 Windows build) is found as it is made, not at
-    publishing, and they are what packaging and publishing build on. Android's release build
-    and the web's release core already run.
-  - **Signing and publishing** from it, with packaging (Before others use it).
+- **CI** runs (`.github/workflows/ci.yml`), and so do unsigned release builds of every app
+  (`release.yml`). Still to come: **signing and publishing** from them, with packaging (Before
+  others use it).
 
 ## 2. Reminders and time events
 
