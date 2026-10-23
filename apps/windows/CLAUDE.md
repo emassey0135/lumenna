@@ -78,6 +78,17 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   (`%LOCALAPPDATA%\lumenna`, the store and its backups, and `HKCU\Software\Lumenna`). The
   workflow installs, runs and silently uninstalls it on the runner, checking the store stays.
   The uninstall question itself is checked by hand.
+- **The MSIX is for the Microsoft Store** (`installer/msix/`: `AppxManifest.xml`, `pack.ps1`,
+  `test.ps1`), unsigned as the Store takes it, its identity a stand-in until Partner Center's
+  (the repository variables `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER`). One `lumenna.exe` serves
+  both channels, asking at run time whether it is packaged (`profile::package_family`,
+  `win/package.rs`). Packaged, its store is the package's own folder, named outright
+  (`…\Packages\<family>\LocalCache\Local\lumenna\data`), where its AppData writes would land
+  anyway, so its lock, window class and pipe, named from that path, never meet an installer
+  copy's; it opens at sign-in through the package's startup task (`LumennaAtSignIn`, enabled off
+  the window's thread and answered through `WM_EVENT`), since a package's registry writes never
+  reach the Run key; its toasts are the package's; and `lum` comes with it under an app
+  execution alias. `test.ps1` trusts a certificate machine-wide: for CI's throwaway runners only.
 - **Quick add sends its line as it is typed** (`Typing::Text`); its readback and adding are the
   app's (`QuickAdd`), which holds what it added. Completion asks the store at keystroke rate
   (`App::complete`): the view's offer can lag the typing.

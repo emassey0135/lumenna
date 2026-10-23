@@ -286,9 +286,9 @@ crate is a `cdylib` alone.
 **`release.yml` builds every app for release, unsigned**, on master, a version tag or when
 asked, and keeps each as an artifact for packaging to build on: `lum` and the BTSpeak app on
 Debian 12 (the oldest glibc and Python the BTSpeak devices run), `lum` universal on macOS, the
-Windows installer (the app and `lum`, Inno Setup) and the GTK app on both architectures, the
-iPhone app with its watch app for devices,
-the Mac app for both architectures, Android's App Bundles and APKs, and the web client. A new
+Windows installer (the app and `lum`, Inno Setup), the MSIX for the Store and the GTK app on
+both architectures, the iPhone app with its watch app for devices, the Mac app for both
+architectures as a disk image, Android's App Bundles and APKs, and the web client. A new
 platform's build goes there too.
 
 `[profile.dev]` sets `debug = "line-tables-only"` and `incremental = false` for the BTSpeak's
