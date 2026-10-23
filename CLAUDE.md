@@ -41,9 +41,9 @@ crates/app/     the Crux app: the screens' state (place, row in hand, folding, t
                 how every line reads (`speech`, `lines`), the shared keyboard table (`keys`),
                 flat rows as a tree (`outline`) and device wording (`devices`), for every app.
 crates/bridge/  the app beside its store: Crux middleware answering the app's store effects.
-crates/ffi/     the app for the Apple apps, Android, Windows, GTK and BTSpeak through BoltFFI:
-                `App`, its turns, and `Device`, the store for what runs without the screens.
-                The web's is apps/web/core, through BoltFFI too.
+crates/ffi/     the app for the Apple apps, Android and BTSpeak through BoltFFI, and for Windows
+                and GTK linked as Rust: `App`, its turns, and `Device`, the store for what runs
+                without the screens. The web's is apps/web/core, through BoltFFI too.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 apps/cli/       `lum`, `lum rpc` for clients that cannot link Rust, and `lum mcp`.
 apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/ffi).
@@ -61,7 +61,8 @@ apps/web/       the web client: the core in WASM (core/), TypeScript and React A
 ## The command surface
 
 `crates/host` is every operation, once, typed. `Lumenna` holds the open store; its
-methods take text identifiers and plain records and return records (`types.rs`). The CLI
+methods take text identifiers and plain records and return records (`lumenna_records`:
+`types.rs`, and `actions.rs`, `form.rs`, `fields.rs` and `words.rs` named below). The CLI
 calls it, `lum rpc` serialises what it returns, and the bridge answers the Crux app's writes
 with it; `Device` (`crates/ffi`) exports what runs without the screens over BoltFFI. No JSON
 crosses the FFI.
@@ -95,9 +96,8 @@ crosses the FFI.
   key)` in a side list, `Day`, `Details`, or `Reminders`. The app puts that row in hand, then
   runs its action as it has it now, or refuses one it no longer offers (`not_offered`) or a row
   gone (`no_longer_here`). A `Form` one is opened by the shell for the row's own record. A shell
-  can send neither `Perform` nor `Act`: a whole action is the app's own, so nothing a shell
-  holds can run against a record as it was. What a picker's row says is
-  `lumenna_app::speech::choice`.
+  cannot send `Perform` (`ShellEvent` leaves it out): a whole action is the app's own, so
+  nothing a shell holds can run against a record as it was.
 - **What every client's forms share is the core's**, as free functions in `form.rs`:
   `task_fields`/`task_edit`, `block_fields`/`block_edit`/`new_block`, `parse_weight`, the
   `#"Home Office"` references. `task_edit` and `block_edit` hold only what changed: sending an
@@ -118,25 +118,16 @@ crosses the FFI.
   `sentence_case()` for a fixed button or question) on Android, Wear OS, the web and BTSpeak,
   where every capital also costs a braille cell. A row shows its `primary` actions by itself
   and offers the rest a menu away; every client still offers every action.
-- **Lines are joined in one order everywhere**, the clock and day words being the app's: a
-  block "<start> to <end>, <title>, <details>"; a sitting "<title>, <details>"; free time
-  "<title>, <details>, <start> to <end>"; now "<title>, <time>"; a cancelled day "<start>,
-  <title>, <details>"; a block to pick "<day>, <start> to <end>, <title>"; anything else to
-  pick "<title>, <detail>"; the day's heading "<day>. <summary>". A Blocks-list row is a task
-  row: `due` ("every weekday") said with `due_time` ("at 9:00 AM"), then `value`. An empty
-  listing says `Rows::empty`.
+- **Lines are joined in one order everywhere** (`lumenna_app::speech`), the clock and day
+  words being the app's: a block "<start> to <end>, <title>, <details>"; a sitting "<title>,
+  <details>"; free time "<title>, <details>, <start> to <end>"; now "<title>, <time>"; a
+  cancelled day "<start>, <title>, <details>"; a block to pick "<day>, <start> to <end>,
+  <title>"; anything else to pick "<title>, <detail>"; the day's heading "<day>. <summary>". A
+  Blocks-list row is a task row: `due` ("every weekday") said with `due_time` ("at 9:00 AM"),
+  then `value`. An empty listing says `Rows::empty`.
 - **A setting describes itself** (`Setting::title`, `kind`, `options`, `syncs`, `hint`), and
   the priorities are `priorities()`: a settings screen or a priority picker builds its
   controls from them, never from a table of its own.
-- **Keeping Lumenna running in the background is a device setting whose value is the
-  platform's** (`records::background`, key `background`). A shell that can says so with
-  `BackgroundEvent::Offered { kind, on }` at start and whenever it changes; the app lists it
-  among the device's settings, worded for its kind (`background_words`: Windows' sign-in, the
-  Mac's login, a Linux desktop's sign-in, BTSpeak's service, Emacs's sync daemon), hands what the
-  person chose to the shell (`Effect::Background`, a `Turn`'s `background`), and says the core's
-  sentence once the shell answers `Offered` with it, or its `failed` and the platform's reason
-  after `Failed`. A shell that keeps nothing running (the web, the phones) never sends it, and
-  nothing is offered.
 - **Colours are the core's palette** (`lumenna_core::colour`, `records::colours`): eleven named
   colours, each with a value for a light background and one for a dark, both of 3:1 contrast.
   A project, label or saved filter takes one by its Colour pick (`colour_choices`, "No colour"
@@ -176,6 +167,13 @@ directly (8805659 is the last commit before the move). How the app works inside 
   background. Each batch the app leaves arrives through the layer's callback, and a shell draws
   it as it comes, never waiting on the thread it draws on. Every native shell uses screen 0
   alone for now (`Event::On(screen, event)` addresses another).
+- **Keeping Lumenna running in the background is a device setting whose value is the
+  platform's** (`records::background`, key `background`). A shell that can says so with
+  `BackgroundEvent::Offered { kind, on }` at start and whenever it changes; the app lists it,
+  worded for its `BackgroundKind` (`background_words`), hands what the person chose to the shell
+  (`Effect::Background`, a `Turn`'s `background`), and says the core's sentence once the shell
+  answers `Offered`, or its `failed` and the platform's reason after `Failed`. A shell that keeps
+  nothing running (the web, the phones) never sends it, and nothing is offered.
 - **What every app decided for itself is the app's now**: the row in hand after a change (the
   same row, else whatever holds its place); a place gone back to, which opens on the row in
   hand and the filter it was left with; folding, the sidebar's too (Expand and Collapse are row
@@ -206,13 +204,16 @@ directly (8805659 is the last commit before the move). How the app works inside 
   whole, and when to look for reminders. A shell whose clock is pinned for tests says the
   moment proposals are made against (`Event::PlanFrom`).
 - **So are its capitals** (`Event::Capitals`): a shell that writes sentence case says so and
-  the view comes cased (`capitals.rs`). An action carries both its `title` and `sentence`; a
-  shell picks one by its platform.
-- **A view's lines are worded once** (`lumenna_app::lines`, over the `speech` functions). A
-  `Line` is its first part, the rest, and the two joined (`text`), for a list that shows two
-  lines and one that reads one. The platform gives only its locale's formatting of a time and a
-  date (`speech::Formats`); "Today", "Tomorrow", and when to give the year are
-  `speech::Spoken`'s.
+  the view comes cased (`capitals.rs`).
+- **A sidebar entry carries its `title` and `detail` beside its one line** (`SidebarEntry`,
+  `text`), so a sidebar that shows two lines never cuts the line apart; `SidebarEntry::key_of`
+  names a row by its kind alone.
+- **A view's lines are worded once** (`lumenna_app::lines`, over the `speech` functions): the
+  list's rows, the day's, a pick's choices, the devices. A `Line` is its first part (`title`),
+  the rest (`detail`), the two joined (`text`), for a list that shows two lines and one that
+  reads one, and `braille` where a display shows it apart from speech. The platform gives only
+  its locale's formatting of a time and a date (`speech::Formats`); "Today", "Tomorrow", and
+  when to give the year are `speech::Spoken`'s.
 - Flow tests are `crates/bridge/tests/flows.rs`: events in, view models and sentences out,
   against a real store; a stand-in middleware takes the network's requests, and the test
   answers them.

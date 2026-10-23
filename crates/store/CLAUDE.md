@@ -1,6 +1,7 @@
 # The store
 
-Read when working in `crates/store/`. The root `CLAUDE.md` holds what every part of Lumenna shares; this is what is easy to get wrong here.
+Read when working in `crates/store/`. The root `CLAUDE.md` holds what every part of Lumenna
+shares; this is what is easy to get wrong here.
 
 ## Store rules that are easy to break
 
@@ -32,28 +33,25 @@ those too. Without it a routine vanishes on 1 January.
 
 **Change rowids are `AUTOINCREMENT` and compaction holds the write lock.** Reused rowids
 make running processes skip changes. `Db::compact` folds everything on disk into the
-document under `BEGIN IMMEDIATE` before deleting anything, and `refresh` reads in one
+document in an immediate transaction before deleting anything, and `refresh` reads in one
 transaction and loads a snapshot whose heads it lacks.
 
 **The snapshot is kept, per document, and followed record by record** (`Store::snapshot`,
-`Hydrated`, `Doc::part`, `Doc::refresh_part`). Materializing was most of what every answer cost
-(100 ms for 2,000 tasks, four times a command), so each loaded document's part is kept with its
-heads; when they move, Automerge's diff from the kept heads names the collections and records
-touched (`touched`: a patch's path begins at the collection, then the record's key, an inline
-record's cut at its `/`), and only those are read again, else the whole document. Keyed by
-heads, so no write can forget to invalidate it; `Snapshot` is still built by the store alone,
-`Documents::snapshot` the uncached reading, which `tests/hydration.rs` compares it with after
-every step of random histories (edits, purges, two years' blocks, exceptions, settings, merges,
-another process writing, the store reopened). **Parts are kept on disk too** (the local
+`Hydrated`, `Doc::part`, `Doc::refresh_part`), since materializing is most of what an answer
+costs. Each loaded document's part is kept with its heads; when they move, Automerge's diff
+from the kept heads names the collections and records touched (`touched`: a patch's path begins
+at the collection, then the record's key, an inline record's cut at its `/`), and only those
+are read again, else the whole document. Keyed by heads, so no write can forget to invalidate
+it. `Documents::snapshot` is the uncached reading, which `tests/hydration.rs` compares the kept
+one with after every step of random histories. **Parts are kept on disk too** (the local
 `hydrated` table, `doc::encode_part`, a rebuildable cache never synced or backed up), so a
-process opening the store starts from the last one's parts and follows the changes since: used
-only by the build that wrote them (`HYDRATION_BUILD`, `build.rs`'s hash of every source in
-`core` and `store`, so a change to how records read invalidates them unasked) and only where
-the document holds their heads; written after a whole reading or a following from disk, and at
-most a minute apart while followed; never with a record unread. The postponements' tally
-(`postponed`), which reads the core document's history from its start, is kept beside the core's
-part. On 2,000 tasks a `lum` command went from 0.15 s to 0.05 s. A document's changes load in one
-`load_incremental`, Automerge ordering them itself.
+process opening the store follows the changes since the last one's parts: used only by the
+build that wrote them (`HYDRATION_BUILD`, `build.rs`'s hash of every source in `core` and
+`store`, so a change to how records read invalidates them unasked) and only where the document
+holds their heads; written after a whole reading or a following from disk, and at most a minute
+apart while followed (`SAVE_EVERY`); never with a record unread. The postponements' tally
+(`postponed`), which reads the core document's history from its start, is kept beside the
+core's part. A document's changes load in one `load_incremental`, Automerge ordering them.
 
 **The change cursor only advances in `refresh`.** `PRAGMA data_version` does not move for
 your own connection's writes, and other processes' rows can interleave with yours. A cursor
@@ -74,13 +72,13 @@ update. So:
   another year's document, a record becoming inline — copy the old record as it stands
   (`Raw`) and write only the changes over it, so an unknown field, or a value read as a
   default (an unknown block kind reads as work), survives those too. A new rewrite must do
-  the same. So do the two places that build a record from the model alone: an undo that creates
-  again what its edit removed writes the record back as it stood first (`Documents::removed_by`,
-  kept in the undo entry, format 2), and the JSON export carries what each record holds beyond
-  the model (`export_json_keeping`, its `unknown` list), which an import writes back into each
-  record it creates (`Documents::revive`). Not kept: a record stored a key per field (an
-  exception, an acknowledgement, a device), and a block's sittings in an export.
-
+  the same. So do the two places that build a record from the model alone: an undo that
+  creates again what its edit removed writes the record back as it stood first
+  (`Documents::removed_by`, kept in the undo entry, format 2), and the JSON export carries what
+  each record holds beyond the model (`export_json_keeping`, its `unknown` list), which an
+  import writes back into each record it creates (`Documents::revive`). Not kept: a record
+  stored a key per field (an exception, an acknowledgement, a device), and a block's sittings
+  in an export.
 
 ## Backup and export
 
@@ -95,7 +93,6 @@ Kept apart in code, commands and wording, because confusing them is how someone 
   are for reading only. **A field added to the model must be added to `export/json.rs`**,
   or `crates/store/tests/export.rs`, which round-trips every field, fails.
 - Automatic backups go to `<profile>-backups` beside the profile, never inside it, `0600`,
-  pruned beyond `backup-keep`. `backup-dir`, `backup-keep`, `backup-every` (and `clock`) are **device
-  settings** (`<profile>/device-settings`) and never sync. `LUMENNA_BACKUP_DIR` overrides
-  the directory; every test harness sets it.
-
+  pruned beyond `backup-keep`. `backup-dir`, `backup-keep` and `backup-every` are **device
+  settings** (`<profile>/device-settings`, the host's `DEVICE_KEYS`) and never sync.
+  `LUMENNA_BACKUP_DIR` overrides the directory; every test harness sets it.

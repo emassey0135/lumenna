@@ -5,9 +5,8 @@ Read when working in `apps/windows/`. The root `CLAUDE.md` holds what every part
 `apps/windows/`: Rust over `windows-rs`, binary `lumenna.exe`, drawn from the Crux app:
 `lumenna-ffi` as an rlib (`App` and `Device`, as the Mac and Android run them), with
 `lumenna-app` for the view model's types and how every line reads and `lumenna-records` for
-the records it is made of. It names neither `lumenna-host` (bar the UI tests, which seed a
-store of their own). Everything Win32 is in `src/win/` behind
-`cfg(windows)`.
+the records it is made of. It never names `lumenna-host` (bar the UI tests, which seed a
+store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
 
 - **The app's turns are posted to the window** (`shell.rs`, `WM_TURN`) and taken in order
   (`App::take_turn`): every screen draws, then what the turn says goes to the status line, in
@@ -25,7 +24,7 @@ store of their own). Everything Win32 is in `src/win/` behind
 - **The app's dialogs are opened once the app is still** (polled every 50 ms from a turn that
   has one, `ask_when_still`): its open question (`asking.rs`), the block form (`block_form.rs`),
   a proposal's screen (`proposal.rs`), a reminder list (`reminders.rs`). Straight after an answer
-  the question is still open while the write is under way, and asking then asked it twice. Only
+  the question is still open while the write is under way, so asking then asks it twice. Only
   a question counts as asking, since a dialog of the app's asks questions of its own. Each dialog
   draws from the app's current view and closes when the app's screen does; a refusal is said
   once and what was typed kept. Put in a Block's pick ends in the app's own Another Day, which
@@ -35,7 +34,7 @@ store of their own). Everything Win32 is in `src/win/` behind
   What it says as the app closes that dialog is said where it goes next, once it has gone.
 - **A field being typed in takes the app's value only once the app is still**
   (`controls::write_typed`, then a 50 ms poll): a turn can come from typing a moment old, and
-  writing it back undid what was typed since; once still, a change from elsewhere or the app's
+  writing it back undoes what was typed since; once still, a change from elsewhere or the app's
   correction is taken. A turn with no task must not make the details forget the one being
   typed in, or the next rewrites every field.
 - **The tree's own folding is the app's** Expand and Collapse (`TVN_ITEMEXPANDED`, a tree
@@ -64,9 +63,11 @@ store of their own). Everything Win32 is in `src/win/` behind
   shortcuts from anywhere, this PC's alone, stay the window's.
 - **Opening at sign-in is the app's background setting** (`background`, `WindowsSignIn`): the
   General page's box and the hint under it are the row's words, its toggle `SettingsEvent::Set`;
-  a turn's `background` is carried out on the Run key (`settings::keep_running`) and answered
-  with `Offered` as the key now stands, or `Failed` with Windows' message, and the app says the
-  core's sentence on the page's status line. `Offered` is sent at start too.
+  a turn's `background` is carried out on the current user's Run key (`settings::keep_running`)
+  and answered with `Offered` as the key now stands, or `Failed` with Windows' message.
+  `Offered` is sent at start too. The key's command is `--background`, with `--profile` for a
+  profile other than the usual one; its value is `LUMENNA_RUN_NAME` for tests, so they never
+  change the person's.
 - **Quick add sends its line as it is typed** (`Typing::Text`); its readback and adding are the
   app's (`QuickAdd`), which holds what it added. Completion asks the store at keystroke rate
   (`App::complete`): the view's offer can lag the typing.
@@ -103,12 +104,10 @@ store of their own). Everything Win32 is in `src/win/` behind
   nowhere.
 - **The Notes field gives Tab and Escape back** (`WM_GETDLGCODE`), and panes ignore
   `WM_CLOSE`, which a multi-line edit sends its parent on Escape.
-- **Global shortcuts and opening at sign-in are this PC's** (`HKCU\Software\Lumenna`, the
-  Run key with `--background`, its value `LUMENNA_RUN_NAME` for tests, so they never change
-  the person's). Shortcuts are unregistered while new keys are chosen.
-  Windows does not say who holds a refused shortcut, so another open Lumenna window (class
-  `LumennaMain-`) is named rather than "another program". `--no-shortcuts` leaves them to
-  another copy.
+- **Global shortcuts are this PC's** (`HKCU\Software\Lumenna\Shortcuts`, `shortcuts.rs`).
+  They are unregistered while new keys are chosen. Windows does not say who holds a refused
+  shortcut, so another open Lumenna window (class `LumennaMain-`) is named rather than
+  "another program". `--no-shortcuts` leaves them to another copy.
 - **One instance per profile** (a mutex and window class named from the profile path). The
   first pairing triggers the firewall prompt, since the sync endpoint then listens; an
   unpaired app listens on nothing.

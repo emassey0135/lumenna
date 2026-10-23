@@ -48,5 +48,6 @@ contract with every shell; this is how the app keeps it.
   pairing waits, and an overrun's Replan dismissing it once something is replanned. A place
   gone back to opens as `Screen::left` keeps it. Applying a proposal is a `HostRequest`, since
   the host checks the day has not moved.
-- **The web's and Android's turns carry the lines**, and a day newly shown is said as
-  "<day>. <summary>" before it reaches either.
+- **Every turn carries its screen's lines** (the ffi's `deliver`, the web's core), and a day
+  newly shown (`Shell::Heading`) is said as "<day>. <summary>" (`speech::summary`) before it
+  reaches the shell.

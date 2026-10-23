@@ -12,16 +12,15 @@ and drawn by each platform its own way. UIKit stays for quick add, whose complet
 cursor's place, which a SwiftUI field gives only from iOS 18. `cd apps/apple && xcodegen` makes
 the project from `project.yml`; the `.xcodeproj` and `Generated/` are not committed.
 
-- **Every screen draws the app's view and sends it what the person did**, as Android and the
-  web do. `AppModel` (`Shared/`) holds the app over its `Device`, takes each turn on the main
-  thread in order and posts `AppModel.shown`; a screen draws `view` with the turn's `lines`,
-  opens its place as it comes to the front unless the app shows it already, and moves
-  VoiceOver only when `landing` went up. The app's questions are `AppQuestions`, asked through
-  each platform's `QuestionAsking` at each window's root; what the app opens by itself (the
-  block form, a proposal, a reminder list) is `AppSheets` (the watch's `WatchScreens`). A form
-  takes the app's values only once the app is still (`AppModel.whenStill`): an answer for
-  earlier typing would undo later typing, and the last turn's notice can come while a tick is
-  under way.
+- **Every screen draws the app's view and sends it what the person did.** `AppModel`
+  (`Shared/`) holds the app over its `Device`, takes each turn on the main thread in order and
+  posts `AppModel.shown`; a screen draws `view` with the turn's `lines`, opens its place as it
+  comes to the front unless the app shows it already, and moves VoiceOver only when `landing`
+  went up. The app's questions are `AppQuestions`, asked through each platform's
+  `QuestionAsking` at each window's root; what the app opens by itself (the block form, a
+  proposal, a reminder list) is `AppSheets` (the watch's `WatchScreens`). A form takes the
+  app's values only once the app is still (`AppModel.whenStill`): an answer for earlier typing
+  would undo later typing, and the last turn's notice can come while a tick is under way.
 - **The generated Swift is a framework of its own** (`LumennaApp`, one per platform, embedded
   in its app): BoltFFI emits a crate's exports only when it is the crate being built, so
   `crates/ffi` is the library, force-loaded into the framework, and the app, its tests and the
@@ -29,81 +28,74 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   `Action`) do not shadow Foundation's; code names them `LumennaApp.Action`.
 - **Xcode builds the core itself**: `build-core.sh` builds `lumenna-ffi` in a clean
   environment (Xcode's SDK variables break Cargo's host build scripts), as a static library
-  alone (`cargo rustc --crate-type staticlib`: built beside the `rlib` the Rust apps link, rustc
-  leaves it without whole-program optimization, 186 MB an architecture where alone it is 34.5
-  MB), the Mac's and the phone's with the `rpc` feature, then has BoltFFI generate the Swift (`Generated/App`, the
-  watch's `Generated/Watch/App`). What it makes is named as the build phase's output, or a
-  fresh checkout looks for the Swift before the phase has run. It must pass
-  `IPHONEOS_DEPLOYMENT_TARGET` through, or C objects target the SDK's own version; heed that
-  linker warning.
-- **The core is linked statically, by the `.a`'s full path.** `-llumenna_ffi` picks the
-  dylib Cargo builds beside it, which works in the simulator and crashes on a phone at
-  launch. A post-build phase fails the build on any `liblumenna_ffi` reference. A launch is
+  alone (`cargo rustc --crate-type staticlib`), the Mac's and the phone's with the `rpc`
+  feature, then has BoltFFI generate the Swift (`Generated/App`, the watch's
+  `Generated/Watch/App`). What it makes is named as the build phase's output, or a fresh
+  checkout looks for the Swift before the phase has run. The clean environment sets the
+  deployment targets itself (`IPHONEOS_DEPLOYMENT_TARGET` and the rest), or C objects target
+  the SDK's own version; heed that linker warning.
+- **The core is linked statically, by the `.a`'s full path** (`-force_load`). `-llumenna_ffi`
+  picks the dylib Cargo builds beside it, which works in the simulator and crashes on a phone
+  at launch. A post-build phase fails the build on any `liblumenna_` reference. A launch is
   not proof it ran: check the process is alive, or the crash logs.
 - **Iroh needs `SystemConfiguration` and `Network`** linked.
 - **A row owns what VoiceOver says**: every list row sets its own label (the title) and
   value (the rest of the app's line, whether it is folded, and the level where it changes:
   `AppModel.spoken`), its children ignored; left alone, a row says its secondary text twice.
-- **The screens are moving to SwiftUI, one at a time**, each judged by the audits, every
-  test and what VoiceOver says, as the one before it was. The task list, Blocks (the same
-  screen: no filter, a row's tap its Edit Block) and the day are done
-  (`TaskListViewController` and `DayViewController`, each a `UIHostingController` over its
-  SwiftUI screen and the shared `TaskListModel` or `DayModel`): their rows keep the UIKit
-  lists' speech and action split (`AppRowActions`:
-  Mark Done swiped from the leading edge, the other primary actions and folding from the
-  trailing, the rest accessibility actions, all in the context menu), and VoiceOver goes to
-  the row in hand through `@AccessibilityFocusState` only when `landing` went up. Every other
-  list (Browse, the iPad's sidebar, a reminder list, Devices, Settings, a pick) is an
-  `AppListViewController`, a UIKit controller holding the SwiftUI `AppListScreen`, its
-  subclasses saying only what they list and where it is held. Hosted `Text` in a UIKit cell
-  failed the audit for Dynamic Type and clipping, where a SwiftUI `List` passes. A SwiftUI
-  row is a button in its cell, so a UI test finds a row by its title with `app.row`.
-  A SwiftUI field's first responder is SwiftUI's own text view, its name on SwiftUI's element,
-  so focus is given through `@FocusState` (`TaskListModel.filterWanted`), never by finding a
-  view. A model takes the person's own move into `focus` at once (`moved(to:)`), so a key
-  pressed straight after acts on that row, not the one the app's next turn has yet to replace.
+- **Every list is SwiftUI**, since hosted `Text` in a UIKit cell fails the audit for Dynamic
+  Type and clipping, where a SwiftUI `List` passes. The task list, Blocks (the same screen: no
+  filter, a row's tap its Edit Block) and the day are `TaskListViewController` and
+  `DayViewController`, each a `UIHostingController` over its SwiftUI screen and the shared
+  `TaskListModel` or `DayModel`; their rows split actions by `AppRowActions` (Mark Done swiped
+  from the leading edge, the other primary actions and folding from the trailing, the rest
+  accessibility actions, all in the context menu), and VoiceOver goes to the row in hand
+  through `@AccessibilityFocusState` only when `landing` went up. Every other list (Browse, the
+  iPad's sidebar, a reminder list, Devices, Settings, a pick) is an `AppListViewController`, a
+  UIKit controller holding the SwiftUI `AppListScreen`, its subclasses saying only what they
+  list and where it is held. A SwiftUI row is a button in its cell, so a UI test finds a row by
+  its title with `app.row`. A SwiftUI field's first responder is SwiftUI's own text view, its
+  name on SwiftUI's element, so focus is given through `@FocusState`
+  (`TaskListModel.filterWanted`), never by finding a view. A model takes the person's own move
+  into `focus` at once (`moved(to:)`), so a key pressed straight after acts on that row, not
+  the one the app's next turn has yet to replace.
 - **VoiceOver's rotors are UIKit's** (`RowRotor`): Overdue on a task list, Blocks and Running on
   the day, a `UIAccessibilityCustomRotor` on the hosting view and the list's collection view,
   whose search finds the next matching row in the model, scrolls the collection view to it and
-  hands back its cell's element. SwiftUI's `accessibilityRotor`, entries on each row, was listed
-  and stepped to nothing: a `List` row exists only while its cell is on the screen. On the day's
-  heading VoiceOver offers no custom rotor (its SwiftUI element stops the search); from any row
-  they work.
+  hands back its cell's element. SwiftUI's `accessibilityRotor` steps to nothing: a `List` row
+  exists only while its cell is on the screen. On the day's heading VoiceOver offers no custom
+  rotor (its SwiftUI element stops the search); from any row they work.
 - **Text entry wraps** (`LineEntry`): a one-line field scrolls sideways at large sizes and
   the audit flags it as clipped.
-- **A line in the filter or quick-add language completes two ways** (`Shared/Forms/Completions.swift`,
-  `CompletionBar`): a strip of what fits, which changes as one types, and a list with clear
-  edges behind a Show Completions action, its button, or Down on a keyboard, never by itself. The
-  list is SwiftUI's `CompletionList` on iOS and the Mac's `PickerSheet` (a SwiftUI sheet's hosting
-  view was a nameless group the audit found). A question in the filter language
-  (`Asking::syntax`) is a sheet on iOS (`CompletingQuestionViewController`), since an alert's field
-  can carry no completion, and the Mac's `CompletingField` in its alert.
+- **A line in the filter or quick-add language completes two ways**
+  (`Shared/Forms/Completions.swift`, `CompletionBar`): a strip of what fits, which changes as
+  one types, and a list with clear edges behind a Show Completions action, its button, or Down
+  on a keyboard, never by itself. The list is SwiftUI's `CompletionList` on iOS and the Mac's
+  `PickerSheet` (a SwiftUI sheet's hosting view is a nameless group to the audit). A question
+  in the filter language (`Asking::syntax`) is a sheet on iOS
+  (`CompletingQuestionViewController`), since an alert's field can carry no completion, and the
+  Mac's `CompletingField` in its alert.
 - **A colour is a dot beside its name** (`Shared/Swatch.swift`, `SwatchMark`), on every Apple
-  app: task, Blocks and day rows, Browse, the sidebar, a pick's choices and the block form's
-  colour menu, hidden from VoiceOver, which hears the colour's word in the line, light or dark
-  by the appearance and growing with the text. The Mac's AppKit pick sheet draws a `SwatchDot`,
-  a plain view VoiceOver does not see.
+  app, hidden from VoiceOver, light or dark by the appearance and growing with the text. The
+  Mac's AppKit pick sheet draws a `SwatchDot`, a plain view VoiceOver does not see.
 - **A SwiftUI `TextField`'s title is only a placeholder**: with text in it, VoiceOver never
   says the name. See `NamedRow` below.
-- **Focus after a change is chosen**: the same row if still listed, else whatever holds its
-  position; the core's announcement is queued behind the focus change so neither cuts the
-  other off. This holds on every platform.
+- **The core's announcement is queued behind a focus change** (`Announcer`, a queued
+  announcement), so neither cuts the other off.
 - **What the app says is shown as well as spoken** (`Announcer` posts `Said`): a refusal or
   what a change did reaches someone without VoiceOver too. On iOS a banner over the window
   (`SaidBanner`), on the watch the same over each screen and sheet (`showsWhatIsSaid`), both
   hidden from VoiceOver, which has said it already, taking no touches, and left out under
   `LUMENNA_TEST_PROFILE`, where the audits would judge text fading out. On the Mac a status
-  line at the foot of the main window and of the Devices page (`StatusLineController`), as
-  Windows and GTK keep one, hidden until something is said: empty, the audit found a nameless
-  text.
+  line at the foot of the main window and of the Devices page (`StatusLineController`),
+  hidden until something is said: empty, the audit finds a nameless text.
 - **A row's primary actions are its swipe actions; the rest are its custom actions**, and
   all of them are in its long-press menu. A trailing swipe never runs its first action by
-  itself (`allowsFullSwipe: false`): on the SE a test's swipe did, and the first can be Delete. UIKit offers swipe actions to VoiceOver, Switch
-  Control and Full Keyboard Access and *adds* custom actions to them, so an action in both
-  would be listed twice: each is in exactly one. Eight swipe actions did not fit on a phone
-  row. A swipe action's title is its spoken name ("Mark Done", not "Done").
+  itself (`allowsFullSwipe: false`): the first can be Delete. UIKit offers swipe actions to
+  VoiceOver, Switch Control and Full Keyboard Access and *adds* custom actions to them, so an
+  action in both would be listed twice: each is in exactly one. A swipe action's title is its
+  spoken name ("Mark Done", not "Done").
 - **No bottom toolbars**: inside a tab bar the floating bar sits over a toolbar's buttons,
-  so a tap on Undo landed on the Today tab. Rows scrolled under the glass tab bar fail
+  so a tap on Undo lands on the Today tab. Rows scrolled under the glass tab bar fail
   contrast, so pushed forms set `hidesBottomBarWhenPushed`.
 - **`TZ` is set from `TimeZone.current`** at launch and on returning to the foreground: jiff
   finds the zone through `TZ` or `/etc/localtime`, and the sandbox is no place to rely on
@@ -116,7 +108,7 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
 - **Background sync** (`BackgroundSync`): a round in the time `beginBackgroundTask` grants
   on leaving, and a `BGAppRefreshTask` whenever iOS chooses. A refresh launches the app with
   no scene, so the `Core` is the app delegate's, one per process. Apple's simulated launch
-  hung in the iOS 27 simulator; the handler has only run on a device.
+  hangs in the iOS 27 simulator; the handler has only run on a device.
 - **Reminders are scheduled, not delivered** (`Shared/Reminders.swift`): `ReminderSchedule`
   hands `UNUserNotificationCenter` what `upcoming_reminders` says fires in the next 48 hours,
   the earliest 60 (iOS keeps 64), identified `reminder <key> <occurrence>` so re-arming
@@ -124,13 +116,13 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   `Core.changed` (the foreground's included), and in `BackgroundSync`'s leaving round and
   refresh, before the task ends. On launch, the foreground and a refresh it first catches up
   (`reminders_missed`, `kept: true`): what fired past the last window is shown at once, the
-  older as one summary. Dismiss and Snooze are a category whose buttons are the
-  core's words, answered by `ReminderResponder`, set as delegate before launch finishes.
-  Permission is asked when the person opens a Reminders list, turns reminders on, or makes an
-  edit that leaves something to fire, never at launch, and never under `LUMENNA_TEST_PROFILE`
-  (the system's alert would cover the app under test). A sync's change notice carries
-  `arrived`, so it is not taken for the person's edit. The scheduling is unit-tested through
-  the `NotificationCentre` seam (`ReminderScheduleTests`); UI tests cannot post real ones.
+  older as one summary. Dismiss and Snooze are a category whose buttons are the core's words,
+  answered by `ReminderResponder`, set as delegate before launch finishes. Permission is asked
+  when the person opens a Reminders list, turns reminders on, or makes an edit that leaves
+  something to fire, never at launch, and never under `LUMENNA_TEST_PROFILE` (the system's
+  alert would cover the app under test). A sync's change notice carries `arrived`, so it is
+  not taken for the person's edit. The scheduling is unit-tested through the
+  `NotificationCentre` seam (`ReminderScheduleTests`); UI tests cannot post real ones.
   A firing with `carry` set is in a second category, its third button the core's Carry
   Forward (`carry_rest_forward` of `<target>@<occurrence>`). Setting categories replaces them
   all, so the carry one is set from the last carry reminder seen whenever any is handed over:
@@ -138,16 +130,17 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   button the core's Replan, `.foreground`: `ReminderResponder` hands on a `RemindedOf` with
   `replan`, and each app opens today with Replan from Now over it (`openReplan`).
 - **The day's own actions** (`Plan.actions`) are a Day Actions menu button among the day's
-  buttons (in the navigation bar it crowded the title, which the iPad's narrow column clipped)
-  and the heading's custom actions, which make the heading at least 44 points tall: an element with
-  actions fails the audit's hit area. Replan from Now and Plan the Day are one SwiftUI
-  screen for all three apps (`Shared/Forms/AppProposalForm.swift`, the app's proposal): each change
-  a toggle named by its sentence, its reason and the core's `item` its hint, and after a
+  buttons (in the navigation bar it crowds the title, which the iPad's narrow column clips)
+  and the heading's custom actions, which make the heading at least 44 points tall: an element
+  with actions fails the audit's hit area. Replan from Now and Plan the Day are one SwiftUI
+  screen for all three apps (`Shared/Forms/AppProposalForm.swift`, the app's proposal): each
+  change a toggle named by its sentence, its reason and the core's `item` its hint, and after a
   partial apply the core's `next` in its place until nothing is proposed. On iPad it is full
-  screen: as a form sheet, the day's rows half under it failed the audit as cut-off text. A
-  refusal is shown on the screen and the proposal asked for again with the same pins. The clock it asks in is
-  `Clock.style`, the locale's. Its other options (`Replan.alternatives`) are buttons under
-  `others`, each proposing again with its pins in place. A pick's `Choice.reason` is its second line and its hint.
+  screen: as a form sheet, the day's rows half under it fail the audit as cut-off text. A
+  refusal is shown on the screen and the proposal asked for again with the same pins. The
+  clock it asks in is `Clock.style`, the locale's. Its other options (`Replan.alternatives`)
+  are buttons under `others`, each proposing again with its pins in place. A pick's
+  `Choice.reason` is its second line and its hint.
 - **A Reminders list is the app's** (`ViewModel.reminders`), opened by `AppSheets` when the
   app opens it and held in its own hand: on iOS an `AppListViewController`
   (`RemindersViewController`), whose Add Reminder in the bar asks the app's Text question,
@@ -155,13 +148,13 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
 - **Pairing follows the app's pairing once for every Apple app** (`Shared/Screens/PairingModel`):
   the status, this device's code, and the three words, asked in the platform's own alert,
   whose safe answer, No, is the one a stray Return gives. One SwiftUI screen draws it for all
-  three (`PairingScreen`), the iPhone's with SwiftUI's `PasteButton` beside the code field. Its
-  frame is drawn 34 points tall at every control size, but Apple's hit-region audit, which
-  knows the area a finger can hit, passes it, so the test asks the audit rather than the
-  frame. UIKit's `UIPasteControl` hosted in SwiftUI got the tap and never pasted.
+  three (`PairingScreen`), the iPhone's with SwiftUI's `PasteButton` beside the code field
+  (UIKit's `UIPasteControl` hosted in SwiftUI gets the tap and never pastes). Its frame is
+  drawn 34 points tall at every control size, but Apple's hit-region audit, which knows the
+  area a finger can hit, passes it, so the test asks the audit rather than the frame.
 - **Stock controls unless there is a reason**, and each in `FormParts.swift` has one:
   `NamedRow` (the field carries the name and the visible name is hidden, as UIKit forms do;
-  combining the row lost the text-field role), `example(_:)` placeholders and
+  combining the row loses the text-field role), `example(_:)` placeholders and
   `FormParts.caption` (the system greys fail contrast). Give a control an empty title when
   it has an accessibility label, or VoiceOver says the name twice.
 - **The tint is `UIColor.lumennaTint`** (system blue is about 4:1 on white), on the window
@@ -169,19 +162,16 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   `.warningLabel`. The colours have Increase Contrast variants.
 - **The audits collect every issue and fail once** (`audit()`), a second after the screen
   settles and never while a sheet or alert is closing: under its fading dimming, black text on
-  white failed contrast (`add` waits for quick add to close, as the Mac tests' `addTask` does,
-  where a click while it closed was lost). A contrast finding is looked at again, once, two
-  seconds on: a task's title fading in failed on CI's slower iPhone; text that fails at rest
-  fails both looks. Exemptions, all narrow:
-  "potentially inaccessible text" on `NamedRow` screens, the keyboard's
-  `TUIPredictionViewCell`, contrast on text under a navigation bar or the soft scroll edge
-  just beneath it (the line at the top of a SwiftUI list failed there on the SE and the iPad
-  only), contrast the audit judges of a SwiftUI text on the iPad by its whole row's frame
-  (`judgesAPadRowNotItsText`: the task list's count failed so in pure black), and "partially
-  unsupported" Dynamic Type on SwiftUI nodes (the
-  audit reports it even for a stock button), or with no element at all on a `NamedRow` screen,
-  where it comes and goes on the iPad between runs of one build (likely a row's hidden name). To see an unnamed finding, run with
-  `AUDIT_ATTACH=1` and `xcrun xcresulttool export attachments`.
+  white fails contrast (`add` waits for quick add to close, as the Mac tests' `addTask` does,
+  where a click while it closes is lost). A contrast finding is looked at again, once, two
+  seconds on, for text still fading in on a slow runner; text that fails at rest fails both
+  looks. Exemptions, all narrow: "potentially inaccessible text" on `NamedRow` screens, the
+  keyboard's `TUIPredictionViewCell`, contrast on text under a navigation bar or the soft
+  scroll edge just beneath it, contrast the audit judges of a SwiftUI text on the iPad by its
+  whole row's frame (`judgesAPadRowNotItsText`), and "partially unsupported" Dynamic Type on
+  SwiftUI nodes (the audit reports it even for a stock button), or with no element at all on a
+  `NamedRow` screen, where it comes and goes on the iPad between runs of one build. To see an
+  unnamed finding, run with `AUDIT_ATTACH=1` and `xcrun xcresulttool export attachments`.
 - **Keyboard commands are the Mac's keys and names, once** (`KeyboardCommands.swift`): on
   iPad the menu bar (`AppDelegate.buildMenu`, with Find and Format removed, which would take
   ⌘F and ⌘B), on iPhone, which has none, `RootTabs.keyCommands`; never both, or a key has
@@ -191,7 +181,8 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   as it appears, unless text is being edited. ⌘Z in a field with typing to undo undoes
   the typing. Row commands act on the row with keyboard focus, else VoiceOver's (found
   through its containers when VoiceOver's element is not a view, as the iPad's is:
-  `UIAccessibility.voiceOverView`), else the one open beside the list; the task open beside a list answers them itself.
+  `UIAccessibility.voiceOverView`), else the one open beside the list; the task open beside a
+  list answers them itself.
 - **The iPad is the Mac's layout, not the iPhone's tabs** (`IPadRoot`, three columns): the
   app's places in a sidebar (`SidebarViewController`, from `ViewModel.sidebar`, plus
   Settings), the place chosen, and what was opened from it (`showBeside`, which pushes on
@@ -200,8 +191,8 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   project's, label's or filter's actions are its own, the core's, as in Browse. A screen
   chosen by a command acts a turn later: it is not in the window until then.
 - **The Day menu ends in the day's own actions**, one item per kind (`dayActionItems`), since
-  the menu bar is built once: each runs the shown day's action of that kind, read again first,
-  through `RunDay`, which says why a day lacks one. From another place they go to today first.
+  the menu bar is built once: each runs the shown day's action of that kind through `RunDay`,
+  which says why a day lacks one. From another place they go to today first.
 - **⌘F never reaches the app in the iPad simulator**: no responder is asked about it, where
   ⌘3 is. Filter Tasks stays on ⌘F in the Edit menu, and its test skips on iPad.
 - **Three layers of iOS tests.** `LumennaTests` (unit tests hosted in the app) asks each
@@ -213,8 +204,8 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   says, acting through the keyboard commands, which act on VoiceOver's row; its output
   carries a hint's first word only ("Actions"). VO-Command-Down Arrow steps the actions
   rotor, so a test reads a row's actions as VoiceOver lists them; what it says last after a
-  change is the announcement, so a test of focus listens while it waits. The rest of the UI tests
-  drive the app by gestures, and report rather than block.
+  change is the announcement, so a test of focus listens while it waits. The rest of the UI
+  tests drive the app by gestures, and report rather than block.
 - **iPad UI tests run in portrait**: in landscape XCUITest's coordinates come out rotated, so
   part-swipes and taps land on the wrong row, and screenshots come out half black. A hidden
   sidebar's rows still exist off the screen, so a place is used only once it is hittable.
@@ -223,12 +214,12 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   screenshot (`record(_:)`).
 - **`apps/apple/test-all.sh`** runs every iOS UI test on the iPhone, an SE and the iPad at
   once, built once, each device's tests shared over clones, each test stopped after three
-  minutes: one waiting forever held a whole run.
+  minutes, so one waiting forever cannot hold a whole run.
 - **The iPad's menu bar is invisible to XCUITest while hidden**, so the keyboard tests
   (`KeyboardUITests`) prove it by its keys: on iPad they exist only there.
 - **A UI test names a fresh store** through `LUMENNA_TEST_PROFILE`, and turns animations off
-  (`LUMENNA_NO_ANIMATIONS`): under load, something left animating as the iPad's sidebar hid had
-  XCUITest wait a minute a step for an idle app, and the audit judged text still fading in.
+  (`LUMENNA_NO_ANIMATIONS`): under load, something left animating as the iPad's sidebar hides
+  has XCUITest wait a minute a step for an idle app, and the audit judges text still fading in.
 - **Run UI tests with `-collect-test-diagnostics never`**, or any failure hangs xcodebuild
   for ten minutes collecting simulator diagnostics:
 
@@ -245,44 +236,41 @@ alerts), AppKit beneath each list's outline, which is where its focus, clicks an
 taken. AppKit stays for quick add, as on the iPhone, and for the pick sheet, whose search field
 keeps focus while the arrows move through the list and say each choice. `Shared/` holds what
 the Apple apps compile, including **`Shared/Forms/`, the task, block and settings forms**, and
-`Shared/Screens`, what the screens follow; each app supplies only presentation. Where the platforms need different answers it is an
-`#if os` in `FormParts.swift` (`Named`, `Labelled`, `ChoiceSection`) or at the one row
-that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
+`Shared/Screens`, what the screens follow; each app supplies only presentation. Where the
+platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`, `Labelled`,
+`ChoiceSection`) or at the one row that differs, so a fix to a form lands on both. Scheme
+`LumennaMac`.
 
 - **Not sandboxed, and shares `lum`'s profile**: the app and the command line on one Mac
   are one device with one store. The app ticks once a second, taking in what `lum` wrote.
 - **The window follows the app**: the middle pane shows the app's place, so a place renamed,
   merged or deleted takes the window with it, and the right pane the details of the task in
-  hand, which follow the row in hand. Every list is an outline (or a table) over the app's
-  rows: the selection is the row in hand, scrolled to only when the app moved it, and folding
-  there is the row's own Expand or Collapse. The task list is SwiftUI's `List`, rows nested in
-  disclosure groups, which is AppKit's outline underneath, reporting levels and expansion
-  itself; so are Blocks (the same screen, its Return and double click Edit Block), the day
-  and the sidebar (`SidebarScreen`, whose headings keep the heading trait and are never
-  selected, and whose rows' context menus are their own, a heading's included). The rest are
-  still AppKit tables, moving to SwiftUI one at a time.
+  hand, which follow the row in hand. Every list's selection is the row in hand, scrolled to
+  only when the app moved it, and folding there is the row's own Expand or Collapse. The task
+  list is SwiftUI's `List`, rows nested in disclosure groups, which is AppKit's outline
+  underneath, reporting levels and expansion itself; so are Blocks (the same screen, its Return
+  and double click Edit Block), the day, Devices and the sidebar (`SidebarScreen`, whose
+  headings keep the heading trait and are never selected, and whose rows' context menus are
+  their own, a heading's included). Only the pick sheet is an AppKit table.
   **A SwiftUI list takes focus through its own `NSOutlineView`** (`preferredFirstResponder`,
   for F6): the window gives it to the middle pane's list once SwiftUI has made it, as it first
-  opens, since SwiftUI's `@FocusState` asked then went nowhere and AppKit's own first choice
-  was the sidebar; a list coming into the pane takes it only when focus is nowhere
-  (`takeFocusIfNowhere`), or arrowing through the sidebar, which opens each place, pulled
+  opens, since SwiftUI's `@FocusState` asked then goes nowhere and AppKit's own first choice is
+  the sidebar; a list coming into the pane takes it only when focus is nowhere
+  (`takeFocusIfNowhere`), or arrowing through the sidebar, which opens each place, would pull
   focus out of it at the first place. A click anywhere on a list gives it focus as the mouse
-  goes down (`FocusOnClick`, an event monitor): a click on the row already selected did not,
-  and a recognizer's, at the click's end, came after a key pressed straight away. Space,
-  Delete and Return are taken the same way (`ListKeys`) while the outline or a view in it is
-  first responder, never by SwiftUI's `onKeyPress`, which waits on SwiftUI's focus, a moment
-  behind the first responder.
+  goes down (`FocusOnClick`, an event monitor): a click on the row already selected does not
+  by itself, and a recognizer's, at the click's end, comes after a key pressed straight away.
+  Space, Delete and Return are taken the same way (`ListKeys`) while the outline or a view in
+  it is first responder, never by SwiftUI's `onKeyPress`, which waits on SwiftUI's focus, a
+  moment behind the first responder.
 - **Resident in the menu bar, and the device's sync process.** No daemon is needed or used:
   the app's network middleware syncs for as long as it runs and, while it holds the endpoint,
   serves the command surface at the profile's address (`App.serveCommands`, the bridge's `rpc`
   feature), as the daemon would. `LUMENNA_NO_SYNC` (the UI tests') keeps it from both.
-- **Opening at login is the app's background setting** (`LoginItem`, `BackgroundKind::MacLogin`):
-  the app is told at start whether `SMAppService.mainApp` is enabled, and General draws the
-  setting's row, its title the toggle's and its hint beneath. Toggled, it is a `Set` of
-  `background`; the turn carrying `background` registers or unregisters the login item, and the
-  app is told the status read back, or the error, and says the core's sentence. Under
-  `LUMENNA_TEST_PROFILE` the login item is a stand-in in memory, so no build under test joins the
-  login items (CI's unsigned one could not).
+- **Opening at login is the app's background setting** (`LoginItem`, `BackgroundKind::MacLogin`,
+  over `SMAppService.mainApp`); General draws the setting's row, its title the toggle's and its
+  hint beneath. Under `LUMENNA_TEST_PROFILE` the login item is a stand-in in memory, so no
+  build under test joins the login items (CI's unsigned one cannot).
 - **The resident app delivers reminders** (`ReminderDelivery`): while it holds
   `take_reminders`, `deliver_reminders` every 20 seconds and on becoming active, each shown at
   once through `UNUserNotificationCenter` with the iPhone's category, the missed summary as one
@@ -309,18 +297,18 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   accessibility group or `LabeledContent` with only hidden text beside it: SwiftUI does not
   count an AppKit control as its group's child, and the audit finds the mismatch.
 - **SwiftUI form controls go inside `Named`/`Labelled`**: on macOS a `LabeledContent`. A
-  bare `TextField("Title", …)` showed its name as separate text and left the field unnamed;
-  a bare `Toggle` was an unnamed switch. On iOS the opposite (see `NamedRow`). A growing
+  bare `TextField("Title", …)` shows its name as separate text and leaves the field unnamed;
+  a bare `Toggle` is an unnamed switch. On iOS the opposite (see `NamedRow`). A growing
   text field draws its name in grey, under contrast, so Notes is a `TextEditor`.
 - **SwiftUI is hosted through `HostedForm`**: the hosting view steps out of VoiceOver's tree
   and gives its name to the form's scroll area. It has to be the hosting view's own
   override; set from outside, it goes on reporting itself as a group.
-- **A table cell recolours itself on selection** (`TwoLineCell.backgroundStyle`): the quiet
-  grey fails contrast on the selection highlight.
+- **The pick sheet's cell recolours itself on selection** (`TwoLineCell.backgroundStyle`): the
+  quiet grey fails contrast on the selection highlight.
 - **The window's minimum size is set after its content**, or the split view shrinks it to
   almost nothing.
 - **UI tests enter text by pasting** (`enter(_:into:)`): the test Mac runs VoiceOver, and
-  synthesized keystrokes reached it. Windows are found by identifier (`main`, `settings`):
+  synthesized keystrokes reach it. Windows are found by identifier (`main`, `settings`):
   the first window can be Siri's.
 - **The Mac audit judges only the window in front** (or the open sheet): dimmed windows
   fail contrast without being what anyone reads. It also skips contrast under VoiceOver's
@@ -336,15 +324,15 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   the arrows step its rows. The accessibility tree itself (roles, names, values, a row's
   `AXDisclosureLevel`) is read with `AXUIElementCopyAttributeValue`, which needs the terminal
   to have Accessibility permission. The tree alone does not say what VoiceOver will speak: a
-  row whose element is static text was said by its value, without its level or expansion.
+  row whose element is static text is said by its value, without its level or expansion.
 - **A SwiftUI list row is a group named by its whole line** (`MacTaskListScreen`): as static
-  text VoiceOver said its value alone and no level or expansion. The check box is a pointer's
+  text VoiceOver says its value alone and no level or expansion. The check box is a pointer's
   alone, as the web's; a disclosure group's label, which SwiftUI makes a heading, has the
   heading taken off; the hosting view steps out of the tree (`FlatHostingView`), or it is a
   nameless group the audit finds. A row holding one text is read by that text, not the
   row's name, so the sidebar's text says the whole line itself (`accessibilityRepresentation`),
   with its folding and level in words, as the iPad's (`AppModel.sidebarItems`): hidden, the row
-  was said with "group" after it. No tooltip on a row: VoiceOver read it as the row's help,
+  is said with "group" after it. No tooltip on a row: VoiceOver reads it as the row's help,
   saying the count twice. A selection turned off on a disclosure group is off for everything
   in it, so a heading's is turned off on its label. Tests find a sidebar row by its
   identifier, the title.
@@ -367,14 +355,14 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   changes. Each answers on its app's own connection, so the phone's sync carries what the
   watch wrote to every other device. The watch is not in the device list: trust is the
   system's pairing of watch and phone.
-- **Out of reach, what changed is handed on** (`lumenna-sync`'s `parcel`, `Device.linkParcel` and
-  `linkUnparcel`, `Shared/LinkParcel.swift`): every change since the two last agreed, which each
-  side records when an exchange settles (`note_agreed`, in `local_state`), queued with
+- **Out of reach, what changed is handed on** (`lumenna-sync`'s `parcel`, `Device.linkParcel`
+  and `linkUnparcel`, `Shared/LinkParcel.swift`): every change since the two last agreed, which
+  each side records when an exchange settles (`note_agreed`, in `local_state`), queued with
   `transferUserInfo` (a file past 48 KB), which the system delivers when the two are next in
-  reach, the other app closed or not. Both directions: the watch when the phone is out of reach,
-  the phone when the watch app cannot answer. A newer parcel holds all an older one did, so one
-  still waiting is cancelled, and a change taken twice is taken once. The watch holds the
-  background task the system wakes it with until nothing more is pending.
+  reach, the other app closed or not. Both directions: the watch when the phone is out of
+  reach, the phone when the watch app cannot answer. A newer parcel holds all an older one did,
+  so one still waiting is cancelled, and a change taken twice is taken once. The watch holds
+  the background task the system wakes it with until nothing more is pending.
 - **The watch schedules its own reminders**, from its own store, as the iPhone does
   (`ReminderSchedule`, re-armed at launch, on becoming active, after each change and on a
   background refresh every six hours). A phone's notification goes to the watch when the phone
@@ -395,14 +383,12 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   the app moved, its swipes split by the phone's `AppRowActions`.
 - **A row's actions are the app's, run once for every Apple app** (`AppModel.run`: `ActOn`
   naming the row, or one held in a side list; `AppModel.act` for the day's own, the details'
-  task and a reminder list's own), their questions `AppQuestions`' (alerts and
-  a `ChoicePicker` on iOS, sheets on the Mac and, one at a time, a `WatchAsker`'s on the
-  watch, each sheet's closing without an answer its own cancel). Keys and menu commands run
-  the row's action of that kind, and a row without one runs it and the app says why
-  (`AppModel.refuse`); on the Mac a menu
-  item that asks ends in "…". Settings screens and the priority picker are built from the
-  core's descriptions (`Setting.kind`, `priorities()`). Folding is the app's, by each row's
-  Expand and Collapse.
+  task and a reminder list's own), their questions `AppQuestions`' (alerts and a
+  `ChoicePicker` on iOS, sheets on the Mac and, one at a time, a `WatchAsker`'s on the watch,
+  each sheet's closing without an answer its own cancel). Keys and menu commands run the row's
+  action of that kind, and a row without one runs it and the app says why
+  (`AppModel.refuse`); on the Mac a menu item that asks ends in "…". Settings screens and the
+  priority picker are built from the core's descriptions (`Setting.kind`, `priorities()`).
 - **The device list builds without Iroh** (`crates/host/src/devices.rs`): the watch is in
   no list and syncs with no device directly, so nothing is "this device" and a device's
   status says only its version (`device_status(…, direct: false)`).
@@ -410,22 +396,23 @@ that differs, so a fix to a form lands on both. Scheme `LumennaMac`.
   watch row holds (a block, a sitting, free time); a project, label or filter's are buttons
   at the foot of its list. The day's heading, tapped, offers the day's own actions, Plan the
   Day and Replan from Now opening the shared proposal screen in the asker's sheet. Completion
-  is offered after the line is entered, beside the
-  field, as BTSpeak offers it: the system's input screen takes no suggestions.
+  is offered after the line is entered, beside the field, as BTSpeak offers it: the system's
+  input screen takes no suggestions.
 - **A text field is named explicitly** (`accessibilityLabel`): with text in it, its title
   gives way to the text.
 - **A row owns its speech**: the title as its name and the rest as its value, set inside the
-  `NavigationLink`; set on the link, watchOS made the whole line the name.
+  `NavigationLink`; set on the link, watchOS makes the whole line the name.
 - **UI tests launch with `LUMENNA_NO_SYNC`**: a simulated watch is paired with a simulated
   phone, whose store otherwise arrives. A watch list holds only the rows on screen, so tests
   scroll to what they look for: by the Digital Crown, a little at a time, in a list, where a
-  swipe moved past it; by swipes in a form, where the Crown goes to the control in focus. A text field opens the system's input screen: type into its text view, then Done. A
-  place's row is named with what is in it ("Inbox, no tasks").
+  swipe moves past it; by swipes in a form, where the Crown goes to the control in focus. A
+  text field opens the system's input screen: type into its text view, then Done. A place's
+  row is named with what is in it ("Inbox, no tasks").
 - **watchOS 27 and later**, the first without 32-bit watches, so the core is built for
   `aarch64-apple-watchos` on stable and `arm64_32` (tier 3, nightly) never.
-
 
 ## CI
 
 `ios-build` runs `build-for-testing` once, then an iPhone, an SE and an iPad run
-`test-without-building` from it in parallel jobs that need no Rust.
+`test-without-building` from it in parallel jobs that need no Rust, reporting without blocking;
+`ios-smoke` runs the smoke set and `LumennaTests` on an iPhone, and blocks.

@@ -8,163 +8,143 @@ the view model's types and how every line reads and `lumenna-records` for the re
 made of. It names neither `lumenna-host` nor a connection of its own to the store.
 
 - **The app's turns go to GTK's main thread** (`model.rs`, `glib::MainContext::invoke`) and
-  are taken in order (`window::take`): the screens drawn from the app draw, then what the turn
-  says is said, on the status line of whichever of its windows is in front. Every screen is
-  drawn from it: the task list and the Blocks list (`tasks.rs`, one list for every listing the
-  app gives), the sidebar (`sidebar.rs`), the day (`day.rs`), the details (`detail.rs`), the
-  block form (`block_form.rs`), the proposals (`proposal.rs`), Settings with the Devices page
-  and pairing (`settings.rs`, `pairing.rs`), a reminder list (`reminders.rs`) and quick add
-  (`quick_add.rs`). The task list's rows, readback, filter
-  (put back on returning to a place), row in hand and folding are the app's: a move sends
+  are taken in order (`window::take`): the screens draw, then what the turn says is said, on
+  the status line of whichever of its windows is in front. The screens: the task list and the
+  Blocks list (`tasks.rs`, one list for every listing), the sidebar (`sidebar.rs`), the day
+  (`day.rs`), the details (`detail.rs`), the block form (`block_form.rs`), the proposals
+  (`proposal.rs`), Settings with the Devices page and pairing (`settings.rs`, `pairing.rs`), a
+  reminder list (`reminders.rs`) and quick add (`quick_add.rs`). In a list a move sends
   `Focus`; Space, Delete, Enter and the Task menu send `Run`; its menu and Left and Right (the
   row's Collapse and Expand, `Tree::connect_fold`, `Item::expanded`) run the row's action. The
-  app's "Expanded" or "Collapsed" after a fold the tree asked for is not said: the tree item
-  reports its state. The one form the app hands back is a task's details, opened beside.
+  app's "Expanded" or "Collapsed" after a fold the tree asked for is not said (`QUIET_FOLD`):
+  the tree item reports its state. The one form the app hands back is a task's details.
 - **The sidebar is the app's places** (`view.sidebar`, `sidebar_held`): a move holds the row
-  (`Hold(Side::Sidebar, …)`) and opens a place; a row's actions are held there and performed,
-  so a change made there lands there; Left and Right are its Collapse and Expand. Where an
-  action leads (a place renamed, made, deleted) is the app's: the middle pane follows the
-  app's place (`window::follow_place`), as the app holds it now, since a turn made before the
-  person last went somewhere still names where they were. The window opens before the places
-  come, so the first drawn take focus from their empty pane.
+  (`Hold(Side::Sidebar, …)`) and opens a place; a row's actions are held there, so a change
+  made there lands there. The middle pane follows the app's place (`window::follow_place`) as
+  the app holds it now, since a turn made before the person last went somewhere still names
+  where they were. The window opens before the places come, so the first drawn take focus
+  from their empty pane.
 - **The day is the app's** (`view.day`, `lines.day`, `lines.day_title` as the window's
-  title): which day is shown, today opening on now, and the day's moves (`Day`: Previous,
-  Next, Now, Ask for Go to Day, its question asked as any other) and a reminder's block
-  (`ShowBlock`). The day's own actions run from the Day menu over `view.day.actions`.
-- **The details are the app's** (`view.details`): which task they show, the typing not yet
-  saved (each field sent as `Details(Field)`, refilled from the app except where focus is) and
-  what Save sends. Focus coming into them sends `Details(Show)`, so they keep their task while
-  the person works there. The Task menu runs the details' task's actions with
-  `ActOn(Details, …)` away from a task list's row.
+  title): its moves (`Day`: Previous, Next, Now, Ask for Go to Day) and a reminder's block
+  (`ShowBlock`). The day's own actions are its heading row's (the summary) and the Day
+  menu's, which sends `RunDay` with each kind, going to Today first from another place.
+- **The details are the app's** (`view.details`): each field is sent as `Details(Field)` and
+  refilled from the app except where focus is. Focus coming into them sends `Details(Show)`,
+  so they keep their task while the person works there. The Task menu runs the details'
+  task's actions with `ActOn(Details, …)` away from a task list's row.
 - **The block form is a window the app opens and closes** (`view.block_form`): every field
   the core's form has for its purpose is made once, and shown or hidden as the app lists them
-  (Until while it repeats); the kind's flags and a new block's start follow what the app
-  says. A refusal is told once. Which occurrences a repeating block's change is for is the
-  app's question, asked as any other.
+  (Until while it repeats). A refusal is told once.
 - **Replan from Now and Plan the Day are a window the app opens and closes**
   (`view.proposal`): a new proposal (`shown` moving) is a new list of check boxes whose first
-  takes focus; each sends its state, and Apply and the other options go to the app. What the app
-  says while it is open is said from it, on its own status line (`proposal::say`), the first
-  held until the window is in front. An overrun's Replan button sends `Proposal(Replan)`.
+  takes focus. What the app says while it is open is said on its own status line
+  (`proposal::say`), the first held until the window is in front. An overrun's Replan button
+  sends `Proposal(Replan)`.
 - **A reminder list is a dialog the app opens and closes** (`view.reminders`), named after
   what it is for from the row it was opened on; its rows' actions are held there
   (`Hold(Side::Reminders, …)`), and focus goes to a reminder just added, or to Add Reminder
   once the last is removed.
 - **Quick add is a window the app opens and closes** (`view.line`): each keystroke is
-  `Typing(Text)`, a completion chosen `Typing(Choose)`, Add `QuickAdd`; the readback and
-  what fits at the cursor are the app's, and a refused line stays, told once. The filter's
-  completion asks `App::complete` at keystroke rate.
-- **Focus moves only when `view.landing` goes up** (`tree::Landing`, shared by every list drawn
-  from the app; or once a list gone to from a key has rows), and
-  only if focus is in the list or nowhere; a rebuild for a sync or a minute puts the selection
-  back without moving focus.
+  `Typing(Text)`, a completion chosen `Typing(Choose)`, Add `QuickAdd`; a refused line stays,
+  told once. The filter's completion asks `App::complete` at keystroke rate.
+- **Focus moves only when `view.landing` goes up** (`tree::Landing`, shared by every list; or
+  once a list gone to from a key has rows), and only if focus is in the list or nowhere; a
+  rebuild for a sync or a minute puts the selection back without moving focus.
 - **The app's open question is asked once the app is still** (`asking.rs`, polled every 50 ms
   from a turn that has one): straight after an answer it is still open while the write is
-  under way. A refusal is said, then a line is asked again with what was typed. A pick says how
-  many it offers as it opens, and Put in a Block's ends in the app's Another Day: both the app's.
-  A key a row lacks is the app's to refuse too: `Run` after a side list's `Hold`, `RunDay` for
-  the day's own actions, `Details(Run)` for the details' task; nothing here words a refusal.
+  under way. A refusal is said, then a line is asked again with what was typed. A key a row
+  lacks is the app's to refuse: `Run` after a side list's `Hold`, `RunDay` for the day's own
+  actions, `Details(Run)` for the details' task; nothing here words a refusal.
 - **The clock setting reaches the app's thread as a number** (`clock::Locale::twelve`, kept
   from GSettings' change signal): the app's `Locale` is called off the main thread, where a
   `gio::Settings` cannot go.
 - **Syncing and the command surface are the app's** (`in_front(true)` for as long as it runs,
-  `serve_commands`): it starts syncing once the device list shows another device, and serves
-  the socket only while it syncs, so an unpaired app holds no endpoint and `lum rpc` answers
-  itself (`test_commands`). Quit takes it out of the front first, which stops serving, then
+  `serve_commands`): it syncs once the device list shows another device, and serves the
+  socket only while it syncs, so an unpaired app holds no endpoint and `lum rpc` answers
+  itself (`test_commands.py`). Quit takes it out of the front first, which stops serving, then
   syncing. The automatic backup is the device's (`Device::back_up_if_due`), on a thread.
 - **Settings are the app's** (`view.settings`): each page's controls are made from the core's
-  descriptions once they come, in the page's own order with this app's mnemonics; a toggle or
-  choice is `Settings(Set)` as it changes, a line `Settings(Type)` as it is typed and `Set` when
-  left. A refused line stays as typed beside why, told once in an alert. The Devices page asks
-  `Devices(Show)` as it is shown and draws `view.devices`, its rows' actions held there
-  (`Hold(Side::Devices, …)`). Pairing is a dialog the app opens and closes
-  (`view.devices.pairing`): the words are asked once each time they come, and Cancel while a
-  pairing runs gives it up and then closes. An export's file is chosen first, then the app's
-  `SaveFile` written there; Back Up Now is the device's. What the app says while Settings or
-  pairing is in front is said there.
+  descriptions, in the page's own order with this app's mnemonics; a toggle or choice is
+  `Settings(Set)` as it changes, a line `Settings(Type)` as typed and `Set` when left. The
+  Devices page sends `Devices(Show)` as it is shown, its rows held there
+  (`Hold(Side::Devices, …)`). Pairing is a dialog over `view.devices.pairing`: the words are
+  asked once each time they come, and Cancel while a pairing runs gives it up and then closes.
+  An export's file is chosen first, then the app's `SaveFile` written there; Back Up Now is
+  the device's.
 - **Opening at sign-in is the app's background setting** (`autostart.rs`,
-  `BackgroundKind::DesktopSignIn`): the app is told at start whether this profile's XDG autostart
-  entry is there, and General's check box is the app's `background` row, its words and hint the
-  core's. A turn's `background` makes or removes the entry, answered with `Offered` as it now is
-  or `Failed` with the I/O error; the sentence said is the app's. The UI tests give each session
-  its own `XDG_CONFIG_HOME`, so none writes the desktop's autostart folder.
+  `BackgroundKind::DesktopSignIn`): this profile's XDG autostart entry. The app is told at
+  start whether it is there; a turn's `background` makes or removes it (`window::take`). The
+  UI tests give each session its own `XDG_CONFIG_HOME`, so none writes the desktop's
+  autostart folder.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). `GtkTreeView`
   exposes no rows to AT-SPI in GTK 4, and a list view with `TreeExpander` reports a flat
   list. So the view has `AccessibleRole::Tree`, the list item is not focusable, and a
   `TreeExpander` with `AccessibleRole::TreeItem` is, given its level and position in
-  `bind`. Left and Right are ours, and `ListTabBehavior::Item` makes Tab leave the tree:
-  by default it went through every row. Every list is one, the Devices list and the
-  chooser dialog's included; a `GtkListBox` has no such setting. Type-ahead is ours too
-  (`Tree::type_ahead`), as the Windows and Mac trees have it: letters typed within a second
-  are one prefix, one letter again steps on, and a space only partway through a prefix, so
-  a pause gives Space back to the row's action.
+  `bind`. Left and Right are ours, and `ListTabBehavior::Item` makes Tab leave the tree
+  rather than go through every row. Every list is one, the Devices list and the chooser
+  dialog's included; a `GtkListBox` has no such setting. Type-ahead is ours too
+  (`Tree::type_ahead`): letters typed within a second are one prefix, one letter again steps
+  on, and a space only partway through a prefix, so a pause gives Space back to the row's
+  action. A row's `description` (`Item::description`) is how a choice's reason reaches Orca,
+  after its name.
 - **GTK gives AT-SPI a tree item's level from 4.16, and its position and set size from
   4.22.** Below 4.16 (Ubuntu 24.04, Debian 13) a row says "level 2" in its text where the
-  level changes against the row shown before, as the other apps word it; position is left
-  to the platform. Decided at run time; `LUMENNA_LEVEL_IN_TEXT=1` forces it for tests. CI
-  runs the UI tests on Arch, so the native path is what it covers by default.
-- **A row's actions are the core's, run by the app**: Space, Delete and Enter send a fixed
-  set of kinds (`actions::SPACE`, `DELETE`, `ENTER`) as `Run`, so the row in hand runs its
-  own; the Task menu's commands do the same, so Mark Done toggles; a menu's item, folding, a
-  details button and Add Reminder send the row's action in short (`offered`, a list's by place in
-  `ListView::offered`) with `ActOn`, naming the row (`ActingOn`), which the app puts in hand
-  itself. No view row's whole `actions` are read. The question it asks is asked over the window
-  it came from.
+  level changes against the row shown before; position is left to the platform. Decided at
+  run time; `LUMENNA_LEVEL_IN_TEXT=1` forces it for tests. CI runs the UI tests on Arch, so
+  the native path is what it covers by default.
+- **Space, Delete and Enter send a fixed set of kinds** (`actions::SPACE`, `DELETE`, `ENTER`)
+  as `Run`, so the row in hand runs its own; the Task menu's commands do the same, so Mark
+  Done toggles. A menu's item, folding, a details button and Add Reminder send the row's
+  action in short with `ActOn`. The question it asks is asked over the window it came from.
 - **A dialog's buttons are GNOME's order**: Cancel first and the default, the answer last
-  and a verb (`Question::Text.yes`, a pick's action title, a form's Save), never OK. A
-  yes-or-no question puts the safe answer where Cancel would be (`prompts::yes_or_no`).
-  Alerts are `AdwAlertDialog`, a destructive answer drawn as one. It lays its answers side by
-  side or stacked as they fit, and Tab follows the layout, so tests `tab_to` a button by name.
-  Its message is a nameless Tab stop ("scroll pane") that libadwaita makes focusable once
-  shown; making it unfocusable lost focus altogether, so it stays.
-- **libadwaita 1.5 is the floor** (Ubuntu 24.04; Debian 13 has 1.7), for `AdwAlertDialog` and
-  `AdwAboutDialog`. Tried and not adopted, by what Orca said: `AdwShortcutsDialog` (1.8) read
-  its items by title alone, never their keys, so the keyboard help (`help.rs`, from
-  `lumenna_app::keys`) is a tree of ours; `AdwPreferencesDialog` dropped each entry row's
-  hint, opened a page only on Space, and did not say which page opened; a toast is announced
-  as "A toast appeared: …" beside the status line. `AdwApplicationWindow` does not show a menu
-  bar, which is how commands are found here.
+  and a verb (`Question::Text.yes`, a pick's action title, a form's Save). A yes-or-no
+  question puts the safe answer where Cancel would be (`prompts::yes_or_no`). Alerts are
+  `AdwAlertDialog`, a destructive answer drawn as one. It lays its answers side by side or
+  stacked as they fit, and Tab follows the layout, so tests `tab_to` a button by name. Its
+  message is a nameless Tab stop ("scroll pane") that libadwaita makes focusable once shown;
+  making it unfocusable loses focus altogether, so it stays.
+- **libadwaita 1.5 is the floor** (Ubuntu 24.04), for `AdwAlertDialog` and `AdwAboutDialog`.
+  Not used, by what Orca says: `AdwShortcutsDialog` (1.8) reads its items by title alone,
+  never their keys, so the keyboard help (`help.rs`, from `lumenna_app::keys`) is a tree of
+  ours; `AdwPreferencesDialog` drops each entry row's hint, opens a page only on Space, and
+  does not say which page opened; a toast is announced as "A toast appeared: …" beside the
+  status line. `AdwApplicationWindow` does not show a menu bar, which is how commands are
+  found here.
 - **Orca does not say a tree item's checked state**, so a done task says "completed" in its
   text.
 - **Focus into a row waits for the row's widget**, which does not exist until GTK lays the
   list out. `Tree::move_to` retries each frame until it lands. `scroll_to(FOCUS)` also
   does not move focus into a list from outside it, so `land` grabs it too; and a rebuild
   takes focus out of the list for a moment, so a tree that had focus before one still
-  counts as having it. `App::say` waits behind it
-  (`tree::when_settled`): Orca reads an announcement as a message, and a later focus change
-  cuts it off.
+  counts as having it. `App::say` waits behind it (`tree::when_settled`): Orca reads an
+  announcement as a message, and a later focus change cuts it off.
 - **Announcements are `gtk_accessible_announce` from the window**, not from a label: one
-  from a label in Settings never arrived.
+  from a label in Settings never arrives.
 - **GTK's accessible names need help**: a mnemonic check box keeps the underscore in its
   name (`prompts::check`); a button is named by its text whatever label it is given;
   read-only text is a non-editable entry, since a label named by the label above reads as
   that name.
 - **Settings' tabs are a `GtkStackSwitcher`, not a notebook.** A notebook keeps focus
-  itself, so Orca reached its tab bar as an unnamed "grouping". Only the current tab is
+  itself, so Orca reaches its tab bar as an unnamed "grouping". Only the current tab is
   focusable, so the row is one Tab stop; the arrows and Ctrl+Tab/Page Up/Down are ours.
 - **GTK adds "Alt+" and the mnemonic to a menu item's key shortcuts**, after whatever the
   property holds, so Orca reads "Control+N Alt+N". Alt+N does nothing; the letter alone works
   in an open menu. Only dropping the mnemonic removes it.
 - **A text view keeps Tab**; `prompts::leaves_on_tab` steps it out of the focus chain.
-- **The sidebar's places are the surface's** (`surface::places`, `Lumenna.places`, the
-  app's `ViewModel.sidebar`), shared by Windows, GTK, the web, the Mac, the iPad and Android.
-- **A sidebar entry carries its `title` and `detail`** beside its one line (`text`), so a sidebar
-  that shows two lines never cuts the line apart; `SidebarEntry::key_of` names a row by its kind
-  alone.
 - **A short list is a tree sized to its rows** (`Tree::fit`), hidden when empty. A list box
-  in a scroller made the scroller a nameless Tab stop, and making the scroller
-  non-focusable broke Tab for the whole page.
+  in a scroller makes the scroller a nameless Tab stop, and making the scroller
+  non-focusable breaks Tab for the whole page.
 - **A day or a time has GTK's own picker beneath its line** (`pickers.rs`), filling it: a
-  `GtkCalendar` for a block's day and Go to Day's, for a pointer alone (a named group out of the
-  focus chain: GTK 4 gives AT-SPI its month and year buttons and none of its days, so arrowing
-  through it said nothing), and, since GTK has no time picker, two spin
-  buttons, hours and minutes, for a block's start and a time setting, each described by the core's
-  `picker_words` after the line's name where a page has several. Not a named group: Orca said a
-  group's name twice going into a spin button. Orca says "Text unselected" after a spin button's
-  value as it comes in: GTK selects its text on focus and then sets it, and neither a
-  non-editable spin button (its arrows then said nothing) nor clearing the selection on focus
-  stopped it. A setting's clock is applied when it is left, as its line is.
+  `GtkCalendar` for a block's day and Go to Day's, for a pointer alone (a named group out of
+  the focus chain: GTK 4 gives AT-SPI its month and year buttons and none of its days), and,
+  since GTK has no time picker, two spin buttons, hours and minutes, for a block's start and a
+  time setting, each described by `picker_words` after the line's name where a page has
+  several. Not a named group: Orca says a group's name twice going into a spin button. Orca
+  says "Text unselected" after a spin button's value as it comes in (GTK selects its text on
+  focus and then sets it); neither a non-editable spin button (its arrows then say nothing)
+  nor clearing the selection on focus stops it. A setting's clock is applied when it is left,
+  as its line is.
 - **Orca says "opens popup" on every entry** (GTK reports a text field's context menu) and a
   field's mnemonic letter before its hint ("A A time, such as 9am"): both Orca's and GTK's own.
 - **Dialogs are futures** (GTK 4 has no blocking `run`). While a popover menu is open,
@@ -175,16 +155,13 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   reads them as it reads any other; their buttons and opening are application actions
   (`app.reminder-dismiss`, `-snooze`, `-carry`, `-replan`, `-open`), which reach the app with
   its window closed, and answer through the device (`Device::dismiss_reminder` and the rest).
-  It asks `Device::deliver_reminders` every five seconds until no other process gives them
-  (`elsewhere`), then every 20.
-  The UI tests stand in for the shell with a notification server on the private bus
-  (`harness.Notifications`), started before the app, which picks its backend at the first
-  notification.
-- **The day's own actions are its heading row's** (the summary) and the Day menu's.
-  `LUMENNA_NOW` (a local date and time, `clock::pinned_now`) pins the now proposals
-  (`PlanFrom`) and reminder delivery pass the core, for tests of the rest of a day at any hour.
-  A tree row's `description` (`Item::description`) is how a choice's reason reaches Orca,
-  after its name.
+  It asks `Device::deliver_reminders` every five seconds while another process gives them
+  (`elsewhere`), and every 20 once it gives them itself. The UI tests stand in for the shell with a
+  notification server on the private bus (`harness.Notifications`), started before the app,
+  which picks its backend at the first notification.
+- **`LUMENNA_NOW`** (a local date and time, `clock::pinned_now`) pins the now proposals
+  (`PlanFrom`) and reminder delivery (`clock::pinned_instant`) pass the core, for tests of the
+  rest of a day at any hour.
 - **The core words a whole sentence in `Locale::style()`**: the desktop's clock setting,
   else whether the locale's own time says 13:00 as 13.
 - **One instance per profile** through GApplication's bus name, tagged per profile.
@@ -197,19 +174,17 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   keys are grabbed on the root window over an X connection of the app's own (x11rb), Caps Lock
   and Num Lock either way. The tray (`ksni`) waits quietly for a host; GNOME has none without
   an extension.
-- **A colour is a dot before a row's text** (`Item::swatch`, `tree::swatches`): the sidebar's,
-  the task and Blocks lists', the day's blocks and a pick's choices (the Colour pick). It is a
+- **A colour is a dot before a row's text** (`Item::swatch`, `tree::swatches`): a
   `Presentation` box styled `.swatch-<name>` from the core's palette, the light or dark value
-  by libadwaita's `StyleManager::is_dark`, restyled as that changes; the row's name is still its
+  by libadwaita's `StyleManager::is_dark`, restyled as that changes; the row's name is its
   text alone. The block form's Colour is a drop-down of the core's options, as Kind is.
-- **The icon** (`data/icons`, an SVG and PNGs from 16 to 512 drawn from it, shared with
-  Windows' design) goes into the user's hicolor theme with `install.sh`; a build run from the
-  checkout adds `data/icons` to the icon theme's search path (`icons_here`).
+- **The icon** (`data/icons`, an SVG and PNGs drawn from it) goes into the user's hicolor
+  theme with `install.sh`; a build run from the checkout adds `data/icons` to the icon
+  theme's search path (`icons_here`).
 - **UI tests** (`tests/ui/`, Python): `apps/gtk/tests/ui/run` starts a private runtime
   directory, D-Bus session, headless mutter and accessibility bus, presses keys through
   mutter's RemoteDesktop API and reads AT-SPI. **The runtime directory must be private, and
-  made before the bus**: a run in the desktop's own `/run/user/<uid>` replaced the desktop's
+  made before the bus**: a run in the desktop's own `/run/user/<uid>` replaces the desktop's
   accessibility socket, leaving every app started afterwards without a screen reader.
   `ORCA=1` runs Orca too. A new window takes well over half a second to show in the
   headless compositor: wait with `Session.wait_for_window`.
-

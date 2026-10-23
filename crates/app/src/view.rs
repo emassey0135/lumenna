@@ -88,7 +88,7 @@ pub struct ListView {
     /// Every row, those folded away marked hidden.
     pub items: Vec<Item>,
     /// The actions the rows offer, each once, in short: each row names its own by place here
-    /// (`Item::actions`), and hands one back with `Event::Act`.
+    /// (`Item::actions`), and a shell hands one back with `Event::ActOn`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub offered: Vec<Offered>,
     /// How many there are, in a sentence: "3 tasks".
@@ -231,8 +231,8 @@ fn shown(model: &Screen) -> ViewModel {
         Ok(rows) => {
             let mut items = list::items(&rows, &model.folded);
             let offered = list::offer(&mut items);
-            // Named in short, each once: the rows carry none whole, which the app keeps for
-            // `Event::Act` (a list of 2,000 tasks carried 15,372).
+            // Named in short, each once: the rows carry none whole, which the app finds again
+            // when `Event::ActOn` names the row (a list of 2,000 tasks carried 15,372).
             for item in &mut items {
                 item.row.actions.clear();
             }
