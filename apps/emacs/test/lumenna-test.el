@@ -397,7 +397,15 @@ until the app has taken it in."
       (should (string-suffix-p "Erase the secret permanently? " asked))
       (should (member "Erased the secret permanently" said))
       (should (equal changed '("task/erase_permanently"))))
-    (should (equal (lumenna-test--titles "deleted") '("kept in the trash")))))
+    (should (equal (lumenna-test--titles "deleted") '("kept in the trash")))
+    ;; d is the core's delete key: here, Delete from Trash, its sound keyed on what the core ran.
+    (lumenna-test--goto "kept in the trash")
+    (let (changed)
+      (cl-letf (((symbol-function 'yes-or-no-p) (lambda (_) t)))
+        (let ((lumenna-changed-functions (list (lambda (event _) (push event changed)))))
+          (lumenna-act-delete)))
+      (should (equal changed '("task/delete_for_good"))))
+    (should (equal (lumenna-test--titles "deleted") nil))))
 
 (ert-deftest lumenna-settings-offer-erasing-everything-deleted-as-a-button-which-asks-first ()
   (lumenna-test--with-store
@@ -409,6 +417,13 @@ until the app has taken it in."
     ;; A line of its own after the settings, named by the core's title.
     (lumenna-test--goto "Erase Everything Deleted")
     (should (equal (lumenna-test--line) "Erase Everything Deleted"))
+    ;; The core's caption follows it, quiet but read.
+    (forward-line 1)
+    (should (equal (lumenna-test--line)
+                   "Takes what was deleted out of the history every device keeps, so nothing can bring it back."))
+    (should (eq (get-text-property (point) 'face) 'lumenna-quiet))
+    (should-error (lumenna-activate) :type 'user-error)
+    (forward-line -1)
     (should (equal (mapcar (lambda (a) (plist-get a :title)) (lumenna-actions)) '("Erase Everything Deleted")))
     ;; Turned down, nothing is erased.
     (cl-letf (((symbol-function 'yes-or-no-p) (lambda (_) nil)))

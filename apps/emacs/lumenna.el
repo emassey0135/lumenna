@@ -709,6 +709,10 @@ action's sentence unsaid when nothing came of it."
           (let ((asking (plist-get lumenna--view :asking)))
             (cond
              (asking
+              ;; A key whose action is the core's to choose learns it here, for its sound.
+              (unless lumenna--acting
+                (when-let* ((action (plist-get asking :action)))
+                  (setq lumenna--acting (format "%s/%s" (plist-get action :subject) (plist-get action :kind)))))
               (let ((answer (condition-case nil
                                 (lumenna--ask asking)
                               (quit (lumenna-send "Cancel") (lumenna--settle)
@@ -826,9 +830,23 @@ DOC is its documentation."
   "Mark the task at point done, or not done if it is.")
 (lumenna-define-action lumenna-act-edit ("edit" "edit_task")
   "Open the form of what is at point: a task's details, a block's fields.")
-(lumenna-define-action lumenna-act-delete ("delete" "delete_for_good" "unassign" "unpair")
-  "Delete what is at point, as it offers.
-To the trash, from the trash, out of a block, or a device unpaired.")
+(defun lumenna-press (key)
+  "Press KEY, a key of the shared keyboard table (\"delete\"), on the row at point.
+What it runs there is the core's, the same on every app; a row it runs
+nothing on says why in the app's words."
+  (let ((row (lumenna--row-here)))
+    (when (or lumenna--actions-function (null row)) (user-error "Nothing to do here"))
+    (setq lumenna--acted-on row lumenna--acting nil)
+    (lumenna--hold row)
+    (lumenna-send (list :Key key))
+    (lumenna--follow)))
+
+(defun lumenna-act-delete ()
+  "Delete what is at point, as the core says the delete key does.
+To the trash, from the trash, out of a block, or a device unpaired; never
+erased permanently, which is only ever chosen by name."
+  (interactive)
+  (lumenna-press "delete"))
 (lumenna-define-action lumenna-act-restore ("restore" "restore_day")
   "Bring back what is at point: a task from the trash, a day of a block.")
 (lumenna-define-action lumenna-act-rename ("rename")

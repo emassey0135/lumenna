@@ -55,12 +55,20 @@ whole, a line each, which RET does, asking first.
                  (lumenna--store-rows))))))
 
 (defun lumenna--store-rows ()
-  "What Settings offers to do to the store as a whole: a button each.
-Each is a line of its own, its action the row's, handed back as Settings'."
-  (mapcar (lambda (offered)
-            (list :key (format "store/%s" (plist-get offered :kind)) :role "button" :on "Settings"
-                  :text (plist-get offered :title) :action offered :actions (vector offered)))
-          (plist-get (plist-get lumenna--view :settings) :offered)))
+  "What Settings offers to do to the store as a whole: a button each, then the
+core's caption for them.  Each button is a line of its own, its action the
+row's, handed back as Settings'.  The caption is a quiet line, which a voice
+still reads, as the empty list's words are."
+  (let* ((settings (plist-get lumenna--view :settings))
+         (offered (append (plist-get settings :offered) nil))
+         (caption (plist-get settings :offered_caption)))
+    (append
+     (mapcar (lambda (offered)
+               (list :key (format "store/%s" (plist-get offered :kind)) :role "button" :on "Settings"
+                     :text (plist-get offered :title) :action offered :actions (vector offered)))
+             offered)
+     (when (and offered caption (not (string-empty-p caption)))
+       (list (list :key "store/caption" :role "caption" :text caption :face 'lumenna-quiet))))))
 
 ;;;###autoload
 (defun lumenna-settings ()
@@ -78,6 +86,7 @@ Each is a line of its own, its action the row's, handed back as Settings'."
 A button does its action, which the app asks about first."
   (cond ((equal (plist-get row :key) "devices") (lumenna-devices))
         ((plist-get row :action) (lumenna-act (plist-get row :action) row))
+        ((equal (plist-get row :role) "caption") (user-error "Nothing to do here"))
         (t (lumenna--change-setting-value row))))
 
 (defun lumenna--set (key value)
