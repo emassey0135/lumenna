@@ -381,9 +381,9 @@ jobs:
         include:
           # Pro-sized, as the tests are run locally: the newest this Xcode has.
           - { name: iPhone, find: '^\s+iPhone [0-9]+ Pro \(' }
-          # Large text on a small phone is where layouts break first. Xcode lists no SE of
-          # its own, but its iOS still runs on one.
-          - { name: iPhone SE, create: com.apple.CoreSimulator.SimDeviceType.iPhone-SE-3rd-generation }
+          # Large text on a small phone is where layouts break first: the newest "e", the
+          # smallest phone Xcode lists. Xcode 27.2's newest iOS refused an SE ("Incompatible device").
+          - { name: iPhone e, find: '^\s+iPhone [0-9]+e \(' }
           # The sidebar, the split views and the menu bar.
           - { name: iPad, find: '^\s+iPad Pro 11-inch' }
     runs-on: xcode-27
@@ -402,12 +402,7 @@ jobs:
           path: ${{ runner.temp }}
       - name: Simulator
         run: |
-          if [ -n "${{ matrix.create }}" ]; then
-            runtime=$(xcrun simctl list runtimes available | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9-]+' | tail -1)
-            device=$(xcrun simctl create "${{ matrix.name }}" "${{ matrix.create }}" "$runtime")
-          else
-            device=$(xcrun simctl list devices available | grep -E '${{ matrix.find }}' | tail -1 | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
-          fi
+          device=$(xcrun simctl list devices available | grep -E '${{ matrix.find }}' | tail -1 | grep -oE '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}')
           echo "Testing on $(xcrun simctl list devices | grep "$device")"
           # Booted and settled first: a test runner started on a cold simulator timed out
           # waiting for accessibility to load, and ran nothing.

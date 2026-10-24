@@ -212,7 +212,7 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   Swipe actions are revealed by a slow, held part-swipe (`reveal(actionsOf:)`): across a
   narrow column a whole swipe runs the first action itself. Every failure attaches a
   screenshot (`record(_:)`).
-- **`apps/apple/test-all.sh`** runs every iOS UI test on the iPhone, an SE and the iPad at
+- **`apps/apple/test-all.sh`** runs every iOS UI test on the iPhone, the "e" and the iPad at
   once, built once, each device's tests shared over clones, each test stopped after three
   minutes, so one waiting forever cannot hold a whole run.
 - **The iPad's menu bar is invisible to XCUITest while hidden**, so the keyboard tests
@@ -419,6 +419,6 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
 
 ## CI
 
-`ios-build` runs `build-for-testing` once, then an iPhone, an SE and an iPad run
+`ios-build` runs `build-for-testing` once, then an iPhone, the small "e" and an iPad run
 `test-without-building` from it in parallel jobs that need no Rust, reporting without blocking;
 `ios-smoke` runs the smoke set and `LumennaTests` on an iPhone, and blocks.
