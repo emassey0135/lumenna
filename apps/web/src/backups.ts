@@ -3,6 +3,11 @@
 // When one is due, which backups to remove, the file's name and what it says are the core's;
 // this keeps the folder's handle, in IndexedDB, which can hold one, and writes there. The
 // browser may ask again, after a restart, before writing: until it is allowed, nothing is.
+//
+// A real erasure, here or taken in from another device, begins another generation of the
+// store's history, and every backup taken before it holds what was erased. Every other device's
+// host deletes its own and takes one afresh; it cannot reach this folder, so this does the same
+// here, keeping beside the folder which generation its backups were taken of.
 
 import { useEffect } from "react";
 import { core } from "./core";
@@ -19,6 +24,8 @@ type Picker = (options: { id: string; mode: "readwrite" }) => Promise<Folder>;
 
 const DATABASE = "lumenna-backups";
 const KEY = "folder";
+/** Which generation of the store's history the folder's backups were taken of (none: the first). */
+const OF = "backed-up-of";
 
 function database(): Promise<IDBDatabase> {
   return new Promise((done, failed) => {
@@ -42,14 +49,32 @@ async function kept(): Promise<Folder | undefined> {
   });
 }
 
-async function keep(folder: Folder | undefined): Promise<void> {
-  held = folder;
+async function put(key: string, value: unknown): Promise<void> {
   const db = await database();
   await new Promise<void>((done, failed) => {
     const handles = db.transaction("handles", "readwrite").objectStore("handles");
-    const write = folder ? handles.put(folder, KEY) : handles.delete(KEY);
+    const write = value === undefined ? handles.delete(key) : handles.put(value, key);
     write.onsuccess = () => done();
     write.onerror = () => failed(write.error);
+  });
+}
+
+async function keep(folder: Folder | undefined): Promise<void> {
+  held = folder;
+  await put(KEY, folder);
+}
+
+/** The generation the folder's backups were last taken of, as this page last kept or read it. */
+let backedUpOf: string | undefined;
+
+async function generationBackedUp(): Promise<string> {
+  if (backedUpOf !== undefined) return backedUpOf;
+  const db = await database();
+  return new Promise((done) => {
+    const read = db.transaction("handles").objectStore("handles").get(OF);
+    // Backups taken before generations were kept are of the first, as the store's history was.
+    read.onsuccess = () => done((backedUpOf = typeof read.result === "string" ? read.result : ""));
+    read.onerror = () => done("");
   });
 }
 
@@ -82,32 +107,63 @@ export async function stop(): Promise<void> {
   await keep(undefined);
 }
 
+/** The folder's writes, one after another. */
+let going: Promise<unknown> = Promise.resolve();
+
 /** Backs up into the folder if one is due there (or `now`), and removes the oldest beyond those
- * kept. The file written, or nothing. */
-export async function backUp(now = false): Promise<string | undefined> {
+ * kept. After a real erasure every backup there goes first, and one is taken of the history
+ * begun again. The file written, or nothing. */
+export function backUp(now = false): Promise<string | undefined> {
+  // One at a time: two at once after an erasure would each take a backup of the new history.
+  const turn = going.then(() => backUpNow(now));
+  going = turn.catch(() => undefined);
+  return turn;
+}
+
+async function backUpNow(now: boolean): Promise<string | undefined> {
   const handle = supported ? await kept().catch(() => undefined) : undefined;
   if (!handle || (await handle.queryPermission({ mode: "readwrite" })) !== "granted") return undefined;
-  const names: string[] = [];
+  let names: string[] = [];
   for await (const name of handle.keys()) names.push(name);
-  if (!now && !(await core.backupDue(names, Date.now()))) return undefined;
+  const generation = await core.generation();
+  const erased = generation !== (await generationBackedUp());
+  if (erased) {
+    const gone = await core.folderBackups(names);
+    for (const old of gone) await handle.removeEntry(old);
+    names = names.filter((name) => !gone.includes(name));
+  }
+  if (!erased && !now && !(await core.backupDue(names, Date.now()))) return undefined;
   const file = await core.backupFile();
   // A writable stream writes beside the file and puts it in place on close: an interrupted
   // backup never looks like a whole one.
   const writing = await (await handle.getFileHandle(file.name, { create: true })).createWritable();
   await writing.write(file.bytes as Uint8Array<ArrayBuffer>);
   await writing.close();
+  if (erased) await put(OF, (backedUpOf = generation));
   for (const old of await core.backupsToRemove([...names, file.name])) {
     await handle.removeEntry(old).catch(() => undefined);
   }
   return file.name;
 }
 
-/** Backs up when one is due, as the app opens and every hour while it is open. */
+/** Replaces the folder's backups once the store has moved on to another generation: a look
+ * every few seconds, so what was erased does not wait an hour in them. */
+async function followErasure(): Promise<void> {
+  if (!held && !(await kept().catch(() => undefined))) return;
+  if ((await core.generation()) !== (await generationBackedUp())) await backUp();
+}
+
+/** Backs up when one is due, as the app opens and every hour while it is open, and follows an
+ * erasure as soon as it is seen. */
 export function useFolderBackups(ready: boolean) {
   useEffect(() => {
     if (!ready || !supported) return;
     void backUp().catch(() => undefined);
-    const timer = setInterval(() => void backUp().catch(() => undefined), 60 * 60 * 1000);
-    return () => clearInterval(timer);
+    const hourly = setInterval(() => void backUp().catch(() => undefined), 60 * 60 * 1000);
+    const following = setInterval(() => void followErasure().catch(() => undefined), 5 * 1000);
+    return () => {
+      clearInterval(hourly);
+      clearInterval(following);
+    };
   }, [ready]);
 }

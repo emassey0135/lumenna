@@ -446,6 +446,24 @@ impl App {
         lumenna_host::folder_backup_surplus(&names)
     }
 
+    /// Every backup among the files `names` in a backup folder: what to delete there once the
+    /// store has moved on to another generation, since each holds what was erased.
+    pub fn folder_backups(&self, names: Vec<String>) -> Vec<String> {
+        lumenna_host::folder_backups(&names)
+    }
+
+    /// Which generation of the store's history this browser holds, empty for the first: a real
+    /// erasure, here or taken in from another device, begins another. The folder's backups are
+    /// replaced when it is not the one they were taken of, as every other device replaces its
+    /// own.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn generation(&self) -> Result<String, LumennaError> {
+        self.lumenna.generation()
+    }
+
     /// A number that moves whenever another tab or process has written.
     ///
     /// # Errors
