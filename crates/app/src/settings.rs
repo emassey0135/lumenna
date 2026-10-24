@@ -136,6 +136,8 @@ pub struct SettingsView {
     /// shell hands one back with `Event::ActOn(ActingOn::Settings, offered)`, and the app
     /// asks its question as any row's.
     pub offered: Vec<Offered>,
+    /// What to say under them, as a caption: the core's, so every app says the same.
+    pub offered_caption: String,
 }
 
 /// A file for the shell to save: a backup or an export.
@@ -182,7 +184,7 @@ pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, tod
         })
         .collect();
     let offered = lumenna_records::actions::store_actions().iter().map(Offered::of).collect();
-    SettingsView { settings: rows, exports, offered }
+    SettingsView { settings: rows, exports, offered, offered_caption: lumenna_records::actions::STORE_ACTIONS.to_owned() }
 }
 
 impl Lumenna {

@@ -1035,6 +1035,28 @@ fn settings_offer_erasing_everything_deleted_which_asks_first_as_any_rows_action
 }
 
 #[test]
+fn the_delete_key_moves_a_task_to_the_trash_and_a_trashed_one_asks_to_delete_it_from_there_never_to_erase_it() {
+    let mut app = App::new();
+    app.add("the secret");
+    app.send(Event::Key("delete".to_owned()));
+    assert!(app.titles().is_empty(), "moved to the trash");
+
+    app.send(Event::Open(Place::Trash));
+    app.send(Event::Key("delete".to_owned()));
+    let asking = app.view().asking.expect("it asks first");
+    let Question::Confirm { title, message, .. } = &asking.question else { panic!("a confirmation: {:?}", asking.question) };
+    assert_eq!(title, "Delete the secret from the trash?");
+    assert!(message.starts_with("Undo can bring it back"), "Delete from Trash's, not Erase Permanently's: {message}");
+}
+
+#[test]
+fn settings_say_what_erasing_takes_under_the_stores_own_actions() {
+    let mut app = App::new();
+    app.send(Event::Settings(SettingsEvent::Open));
+    assert_eq!(app.view().settings.unwrap().offered_caption, lumenna_records::actions::STORE_ACTIONS);
+}
+
+#[test]
 fn running_in_the_background_is_offered_only_where_the_shell_says_and_its_change_is_the_shells_to_make() {
     use lumenna_app::BackgroundEvent;
     use lumenna_records::background::{BackgroundKind, background_words};

@@ -187,8 +187,12 @@ directly (8805659 is the last commit before the move). How the app works inside 
   day's blocks. Pairing's words come with the Devices view, worded as the shell says it is
   called (`Event::PairingAs`, sent once like the clock).
 - **Settings offer the store's own actions** (`SettingsView::offered`: Erase Everything
-  Deleted), a button each, handed back with `Event::ActOn(ActingOn::Settings, offered)`; the app
-  asks its question as any row's.
+  Deleted), a button each under `offered_caption`, handed back with
+  `Event::ActOn(ActingOn::Settings, offered)`; the app asks its question as any row's.
+- **What Delete and Space do to a row is the core's** (`keys::runs`): every app, whatever key
+  its platform calls Delete (the Mac's Delete, the iPad's Command-Delete, BTSpeak's chord), sends
+  `Event::Key("delete")` and never a list of kinds of its own, so the key does the same
+  everywhere.
 - **Erasing permanently is never what deleting does**: a trashed task's Erase Permanently
   (`ErasePermanently`) is a menu away, after Delete from Trash, and no key runs it. It begins the
   store's history again without what it erased, on every device (`crates/store/CLAUDE.md`).

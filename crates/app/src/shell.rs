@@ -35,6 +35,9 @@ pub enum ShellEvent {
     ActOn(ActingOn, Offered),
     /// Run the first of these kinds the row in hand offers.
     Run(Vec<ActionKind>),
+    /// A shared key pressed on the row in hand, by its `id` in `keys::SHARED`: what it runs
+    /// is the core's, the same everywhere.
+    Key(String),
     /// The answer to the question open.
     Answer(Answer),
     /// Leave the question open unanswered.
@@ -102,6 +105,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Filter(text) => Event::Filter(text),
             ShellEvent::ActOn(on, offered) => Event::ActOn(on, offered),
             ShellEvent::Run(kinds) => Event::Run(kinds),
+            ShellEvent::Key(id) => Event::Key(id),
             ShellEvent::Answer(answer) => Event::Answer(answer),
             ShellEvent::Cancel => Event::Cancel,
             ShellEvent::Day(step) => Event::Day(step),
@@ -140,6 +144,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Filter(text) => ShellEvent::Filter(text),
             Event::ActOn(on, offered) => ShellEvent::ActOn(on, offered),
             Event::Run(kinds) => ShellEvent::Run(kinds),
+            Event::Key(id) => ShellEvent::Key(id),
             Event::Answer(answer) => ShellEvent::Answer(answer),
             Event::Cancel => ShellEvent::Cancel,
             Event::Day(step) => ShellEvent::Day(step),

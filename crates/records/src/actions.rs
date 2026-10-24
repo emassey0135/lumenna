@@ -424,6 +424,10 @@ pub const ERASING_EVERYTHING: &str = "Permanently erase — rebuilds your databa
 pub const ERASED_ELSEWHERE: &str =
     "Another device erased deleted things permanently, so this device rebuilt its database without them";
 
+/// What Settings says under the store's own actions ([`store_actions`]).
+pub const STORE_ACTIONS: &str =
+    "Takes what was deleted out of the history every device keeps, so nothing can bring it back.";
+
 /// What the store as a whole offers, in Settings: Erase Everything Deleted.
 #[must_use]
 pub fn store_actions() -> Vec<Action> {

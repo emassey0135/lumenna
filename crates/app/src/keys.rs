@@ -6,7 +6,11 @@
 //! Keys are written as a person reads them, "Ctrl+Shift+N"; each app binds them in its own
 //! toolkit's terms and adds what only it has (F2 on Windows, say). A command is named by an
 //! `id` an app can match its own binding to, and a `title` in Title Case, which an app whose
-//! convention differs may word its own way ("Exit" on Windows, "Quit" on GNOME).
+//! convention differs may word its own way ("Exit" on Windows, "Quit" on GNOME). What a key
+//! does to a row is the table's too ([`runs`]), which every app hands on as `Event::Key`, the
+//! Apple apps and BTSpeak included, whose keys are their own.
+
+use lumenna_records::ActionKind;
 
 /// Where a command is listed: the menus, then what keys do in a list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,10 +95,25 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::Day, "go-to-day", "Go to Day", &["Ctrl+G"]),
     key(Group::Lists, "open", "Open the Task, or Change the Block", &["Enter"]),
     key(Group::Lists, "toggle", "Mark Done, Restore from the Trash, or Start, Pause or Resume a Timer", &["Space"]),
-    key(Group::Lists, "delete", "Delete, Move to Trash, or Unassign", &["Delete"]),
+    key(Group::Lists, "delete", "Delete, Move to Trash, Delete from the Trash, or Unassign", &["Delete"]),
     key(Group::Lists, "actions", "Everything That Can Be Done to the Row", &["Shift+F10", "Applications key"]),
     key(Group::Help, "keyboard-help", "Keyboard Shortcuts", &["F1"]),
 ];
+
+/// What a key of the table does to the row in hand, by its `id`, where that is the row's own
+/// action: the first of these kinds the row offers (`Event::Key`), refused in the first's words
+/// when it offers none. The same on every platform, the Mac's Delete and the iPad's
+/// Command-Delete included, so no app decides what its delete key does: Delete from the Trash
+/// is what it does to a trashed task, and Erase Permanently is no key's.
+#[must_use]
+pub fn runs(id: &str) -> Option<&'static [ActionKind]> {
+    use ActionKind as K;
+    match id {
+        "delete" => Some(&[K::Delete, K::DeleteForGood, K::Unassign, K::Unpair]),
+        "toggle" => Some(&[K::MarkDone, K::MarkNotDone, K::Restore, K::StartTimer, K::PauseTimer, K::ResumeTimer]),
+        _ => None,
+    }
+}
 
 /// The shared keys of `group`, in order.
 pub fn in_group(group: Group) -> impl Iterator<Item = &'static Shortcut> {
@@ -165,6 +184,16 @@ pub fn grouped(sentence: bool) -> Vec<KeyGroup> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_key_erases_permanently_and_delete_deletes_from_the_trash() {
+        for shortcut in SHARED {
+            let kinds = runs(shortcut.id).unwrap_or_default();
+            assert!(!kinds.contains(&ActionKind::ErasePermanently), "{}", shortcut.id);
+            assert!(!kinds.contains(&ActionKind::EraseEverythingDeleted), "{}", shortcut.id);
+        }
+        assert_eq!(runs("delete").map(|kinds| kinds[..2].to_vec()), Some(vec![ActionKind::Delete, ActionKind::DeleteForGood]));
+    }
 
     #[test]
     fn no_key_runs_two_commands() {

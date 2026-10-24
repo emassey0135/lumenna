@@ -188,6 +188,10 @@ pub enum Event {
     /// every row: Space is Mark Done, Mark Not Done or Restore. One it offers none of says why,
     /// in the words for the first.
     Run(Vec<ActionKind>),
+    /// A key of the shared keyboard table pressed on the row in hand, by its `id` there
+    /// ("delete"): it runs what the table says that key runs (`keys::runs`), so the key does
+    /// the same on every platform, as [`Run`](Self::Run) would with those kinds.
+    Key(String),
     /// The answer to the question open.
     Answer(Answer),
     /// Leave the question open unanswered.
@@ -414,7 +418,7 @@ impl Lumenna {
             Event::Hold(side, _) | Event::ActOn(ActingOn::Held(side, _), _) => model.acting = Some(*side),
             Event::ActOn(ActingOn::Reminders, _) => model.acting = Some(Side::Reminders),
             Event::ActOn(ActingOn::Row(_), _) => {}
-            Event::Perform(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) => {}
+            Event::Perform(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) | Event::Key(_) => {}
             other if other.is_the_persons() => model.acting = None,
             _ => {}
         }
@@ -471,6 +475,10 @@ impl Lumenna {
             Event::Filter(text) => self.filter(text, model),
             Event::Perform(action) => self.perform(action, model),
             Event::Run(kinds) => self.run(kinds, model),
+            Event::Key(id) => match keys::runs(&id) {
+                Some(kinds) => self.run(kinds.to_vec(), model),
+                None => Command::done(),
+            },
             Event::ActOn(on, offered) => self.act_on(on, &offered, model),
             Event::Answer(answer) => self.answer(answer, model),
             Event::Cancel => {
