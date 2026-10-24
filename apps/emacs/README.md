@@ -57,14 +57,15 @@ menu of its own, grouped as `?` groups them, and Tools has Lumenna's commands fr
 In a terminal, `F10` (or `M-x tmm-menubar`) opens the menu bar as a list to choose from.
 
 What a line offers is decided by Lumenna's core, the same on every app: a task in the trash
-offers Restore and Delete from Trash, the Inbox only Move Down and Weight. Each key below
+offers Restore, Delete from Trash and Erase Permanently, the Inbox only Move Down and Weight. Each key below
 runs the line's action of that kind, so a key does nothing the line does not offer, and
 says what the line does offer instead.
 
 Tasks: `a` add, `/` search, `c` Mark Done or Mark Not Done, `e` Edit Details (one field at
 a time), `b` Put in a Block, `m` Move to Project, `s` Make Subtask Of, `t` Move to Top Level,
 `w`/`W` Wait For and Stop Waiting, `d` Move to Trash; in the trash `r` Restore and `d`
-Delete from Trash. Adding is one line, written as you would say it (`call the
+Delete from Trash. Erase Permanently, which takes a task out of every device's history too, is
+no key's: choose it by name with `.`. Adding is one line, written as you would say it (`call the
 bank tomorrow at 3pm p1 #Home @calls 15m`); TAB completes a project or label, `C-c C-r` says how
 the line is understood so far (the date, priority, project and labels, as the other apps
 show under the field), and a line naming a project that does not exist is refused rather
@@ -92,7 +93,8 @@ proposal for it in place. A task's own buffer ends with its History.
 Projects, labels and saved filters each have their own list (`a` add, `r` rename, `d`
 delete, `M-p`/`M-n` reorder, and the rest in `?`). `M-x lumenna` lists the places as every
 app's sidebar does, each project, label and filter under its heading. Settings, devices and
-pairing are in `lumenna-settings` and `lumenna-devices`.
+pairing are in `lumenna-settings` and `lumenna-devices`; Settings' last line, Erase Everything
+Deleted, empties the trash and every deleted thing's history on every device, asking first.
 
 ## Reminders
 

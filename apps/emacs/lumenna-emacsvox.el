@@ -52,6 +52,9 @@
   '(("task/mark_done" lumenna-task lumenna-task-completed task-done)
     ("task/delete" lumenna-task lumenna-deleted delete-object)
     ("task/delete_for_good" lumenna-task lumenna-deleted delete-object)
+    ("task/erase_permanently" lumenna-task lumenna-deleted delete-object)
+    ;; What it erases is tasks: the trash and everything ever deleted.
+    ("store/erase_everything_deleted" lumenna-task lumenna-deleted delete-object)
     ("block/delete" lumenna-block lumenna-deleted delete-object)
     ("series/delete" lumenna-block lumenna-deleted delete-object)
     ("sitting/unassign" lumenna-sitting lumenna-deleted delete-object)

@@ -25,6 +25,9 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
   `lumenna-followed-hook`). The row is put in hand only as it is acted on (`ActOn`), never as
   point moves. A form a question names (`lumenna-define-form`) is the client's: a task's
   details, a screen of its own holding the task (`Details(Show)`).
+- **Settings' own buttons are rows** (`lumenna--store-rows`, from `settings.offered`): RET or
+  `.` hands the action back naming `Settings`, the row's `:on`, which `lumenna--acting-on`
+  takes before any list's name for a row. Never a key: erasing is a line chosen, then asked.
 - **Depth is an outline level**: `outline-level` reads the `lumenna-level` text property, for
   Emacspeak's level announcements; the folding is the app's (TAB runs Collapse or Expand).
 - **A list's keys are defined once** (`lumenna-define-keys`), which binds them, builds the

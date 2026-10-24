@@ -41,6 +41,8 @@
   '(("task/mark_done" . task-done)
     ("task/delete" . delete-object)
     ("task/delete_for_good" . delete-object)
+    ("task/erase_permanently" . delete-object)
+    ("store/erase_everything_deleted" . delete-object)
     ("block/delete" . delete-object)
     ("series/delete" . delete-object)
     ("sitting/unassign" . delete-object)
