@@ -27,21 +27,25 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  lum-linux:
-    name: lum, Linux ${{ matrix.arch }}
+  debian:
+    name: lum, ${{ matrix.btspeak && 'and the BTSpeak app, ' || '' }}Linux ${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - { arch: x86_64, os: ubuntu-24.04 }
-          - { arch: arm64, os: ubuntu-24.04-arm }
+          - { arch: arm64, os: ubuntu-24.04-arm, btspeak: true }
     runs-on: ${{ matrix.os }}
-    # Debian 12, for its glibc (2.36): the oldest the BTSpeak and BT Braille run, so the same
-    # binary starts on them and on any newer Linux.
+    # Debian 12, for its glibc (2.36) and Python (3.11): the oldest the BTSpeak and BT Braille
+    # run, so the same lum starts on them and on any newer Linux, and the BTSpeak app's core is
+    # an extension for the Python they have.
     container: debian:bookworm
     steps:
-      - name: A compiler, for ring's and SQLite's C
-        run: apt-get update && apt-get install -y --no-install-recommends build-essential ca-certificates curl git
+      - name: A compiler, for ring's and SQLite's C; for the BTSpeak app, Python with its headers and pip
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ca-certificates curl git \
+            ${{ matrix.btspeak && 'python3 python3-dev python3-pip python3-venv' || '' }}
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -59,6 +63,26 @@ jobs:
         with:
           name: lum-linux-${{ matrix.arch }}
           path: dist/*.tar.gz
+          retention-days: 30
+      - name: BoltFFI, which the BTSpeak app's build-core.sh builds its core with
+        if: matrix.btspeak
+        run: cargo install boltffi_cli --version 0.31.1 --locked
+      - name: The BTSpeak app's core
+        if: matrix.btspeak
+        run: apps/btspeak/build-core.sh
+      - name: The BTSpeak app with its core
+        if: matrix.btspeak
+        run: |
+          mkdir -p btspeak
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git ls-files apps/btspeak | grep -v '^apps/btspeak/tests/' | tar -cf btspeak/lumenna-btspeak.tar -T -
+          tar -rf btspeak/lumenna-btspeak.tar apps/btspeak/native
+          gzip btspeak/lumenna-btspeak.tar
+      - uses: actions/upload-artifact@v4
+        if: matrix.btspeak
+        with:
+          name: btspeak-arm64
+          path: btspeak/lumenna-btspeak.tar.gz
           retention-days: 30
 
   # lum for macOS, universal, is the Mac app's own, made in its job (apple).
@@ -338,35 +362,6 @@ jobs:
             apps/android/wear/build/outputs/bundle/release
             apps/android/app/build/outputs/apk/release
             apps/android/wear/build/outputs/apk/release
-          retention-days: 30
-
-  btspeak:
-    name: BTSpeak app
-    runs-on: ubuntu-24.04-arm
-    # Debian 12 on arm64, as the devices run: the core is an extension for this Python (3.11)
-    # and links this glibc.
-    container: debian:bookworm
-    steps:
-      - name: Python with its headers and pip, and a compiler
-        run: apt-get update && apt-get install -y --no-install-recommends build-essential ca-certificates curl git python3 python3-dev python3-pip python3-venv
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: BoltFFI, which build-core.sh builds the core with
-        run: cargo install boltffi_cli --version 0.31.1 --locked
-      - name: Build
-        run: apps/btspeak/build-core.sh
-      - name: The app with its core
-        run: |
-          mkdir -p dist
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git ls-files apps/btspeak | grep -v '^apps/btspeak/tests/' | tar -cf dist/lumenna-btspeak.tar -T -
-          tar -rf dist/lumenna-btspeak.tar apps/btspeak/native
-          gzip dist/lumenna-btspeak.tar
-      - uses: actions/upload-artifact@v4
-        with:
-          name: btspeak-arm64
-          path: dist/lumenna-btspeak.tar.gz
           retention-days: 30
 
   flatpak:
