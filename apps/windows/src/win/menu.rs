@@ -59,6 +59,8 @@ pub const RESTORE_TASK: u16 = 167;
 pub const ERASE_TASK: u16 = 168;
 pub const PUT_IN_BLOCK: u16 = 169;
 pub const WAIT_FOR: u16 = 170;
+/// A trashed task's Erase Permanently, which no key runs.
+pub const ERASE_PERMANENTLY: u16 = 171;
 
 pub const PREVIOUS_DAY: u16 = 180;
 pub const NEXT_DAY: u16 = 181;
@@ -130,6 +132,7 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
         (TRASH_TASK, "Move to T&rash\tDelete"),
         (RESTORE_TASK, "Rest&ore from Trash"),
         (ERASE_TASK, "&Delete from Trash..."),
+        (ERASE_PERMANENTLY, "Er&ase Permanently..."),
     ]),
     ("&Day", &[
         (PREVIOUS_DAY, "&Previous Day\tCtrl+Page Up"),
