@@ -307,11 +307,13 @@ jobs:
             tar -xzf "$RUNNER_TEMP"/lum-dist/*.tar.gz -C "$RUNNER_TEMP/lum-unpacked"
             "$RUNNER_TEMP/lum-unpacked/lum" --version
             # The Mac's: a disk image holding the app beside a link to Applications, to drag it to.
+            # LZMA (ULMO, macOS 10.15 and later, where the app needs 14) rather than zlib (UDZO):
+            # the app and the lum beside it each carry the whole core, for both architectures.
             version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
             mkdir "$RUNNER_TEMP/image"
             cp -R "$app" "$RUNNER_TEMP/image/"
             ln -s /Applications "$RUNNER_TEMP/image/Applications"
-            hdiutil create -volname Lumenna -srcfolder "$RUNNER_TEMP/image" -fs HFS+ -format UDZO \
+            hdiutil create -volname Lumenna -srcfolder "$RUNNER_TEMP/image" -fs HFS+ -format ULMO \
               -ov "$RUNNER_TEMP/dist/Lumenna-$version.dmg"
             hdiutil verify "$RUNNER_TEMP/dist/Lumenna-$version.dmg"
           else
