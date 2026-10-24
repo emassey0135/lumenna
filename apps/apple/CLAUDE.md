@@ -243,6 +243,12 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
 
 - **Not sandboxed, and shares `lum`'s profile**: the app and the command line on one Mac
   are one device with one store. The app ticks once a second, taking in what `lum` wrote.
+- **The app carries `lum`** in `Contents/MacOS`: `build-core.sh` builds it for the Mac's
+  architectures beside the core (`Generated/Mac/lum`), and the target's Put lum in the app
+  phase copies it and signs it with the app's identity and the hardened runtime, before Xcode
+  signs the app. Not Copy Files with Code Sign On Copy: its input would need naming as the
+  framework's phase's output, a phase the phone and the watch share. `release.yml` checks both
+  architectures are in it and that it runs.
 - **The window follows the app**: the middle pane shows the app's place, so a place renamed,
   merged or deleted takes the window with it, and the right pane the details of the task in
   hand, which follow the row in hand. Every list's selection is the row in hand, scrolled to

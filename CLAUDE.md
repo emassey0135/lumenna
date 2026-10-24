@@ -287,8 +287,8 @@ crate is a `cdylib` alone.
 asked, and keeps each as an artifact for packaging to build on: `lum` and the BTSpeak app on
 Debian 12 (the oldest glibc and Python the BTSpeak devices run), `lum` universal on macOS, the
 Windows installer (the app and `lum`, Inno Setup), the MSIX for the Store and a `lum` zip, the
-GTK app as a tarball, an AppImage and a Flatpak bundle, each on both architectures, the iPhone
-app with its watch app for devices, the Mac app for both architectures as a disk image,
+GTK app as an AppImage and a Flatpak bundle, each on both architectures, the iPhone app with
+its watch app for devices, the Mac app for both architectures, `lum` inside it, as a disk image,
 Android's App Bundles and APKs, and the web client. Each is checked as a person would get it
 (installed, unpacked or started) before it is kept. A new platform's build goes there too.
 

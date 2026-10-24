@@ -84,6 +84,17 @@ if [ "$PLATFORM" = macosx ]; then
   LIBS=()
   for target in $TARGETS; do LIBS+=("$ROOT/target/$target/$PROFILE/liblumenna_ffi.a"); done
   lipo -create "${LIBS[@]}" -output "$UNIVERSAL/liblumenna_ffi.a"
+
+  # `lum`, for every architecture asked for too, which the Mac app carries in Contents/MacOS:
+  # one program on the Mac for the command line, a cask's link and a Claude Desktop extension
+  # to run, updated with the app and signed with it (project.yml's Put lum in the app).
+  for target in $TARGETS; do
+    cargo build -p lumenna-cli --bin lum $PROFILE_FLAG --target "$target"
+  done
+  BINS=()
+  for target in $TARGETS; do BINS+=("$ROOT/target/$target/$PROFILE/lum"); done
+  mkdir -p "$GENERATED/Mac"
+  lipo -create "${BINS[@]}" -output "$GENERATED/Mac/lum"
 fi
 
 # The watch's bindings are made in a target directory of their own, so the two do not undo

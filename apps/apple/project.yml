@@ -316,6 +316,19 @@ targets:
       - path: Mac
       - path: Shared
     postBuildScripts:
+      # `lum`, which build-core.sh made as the core's framework built, beside the app in
+      # Contents/MacOS, signed before the app is so the app's seal covers it. A script rather
+      # than Copy Files, which would look for it before the framework's phase, shared with the
+      # phone and the watch, could name it as made; and signed with the hardened runtime, as
+      # notarization wants of every program in the bundle.
+      - name: Put lum in the app
+        basedOnDependencyAnalysis: false
+        script: |
+          dest="$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/lum"
+          cp -f "$SRCROOT/Generated/Mac/lum" "$dest"
+          if [ "${CODE_SIGNING_ALLOWED:-YES}" = YES ] && [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+            codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" --options runtime "$dest"
+          fi
       - name: Check the core is linked in, not loaded
         basedOnDependencyAnalysis: false
         script: |
