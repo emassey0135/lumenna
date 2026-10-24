@@ -32,8 +32,10 @@ static ONE_WINDOW_AT_A_TIME: Mutex<()> = Mutex::new(());
 const NEW_TASK: &str = "cmd:100";
 const SETTINGS: &str = "cmd:111";
 const GO_TASKS: &str = "cmd:141";
+const GO_TRASH: &str = "cmd:143";
 const GO_HISTORY: &str = "cmd:146";
 const PUT_IN_BLOCK: &str = "cmd:169";
+const ERASE_PERMANENTLY: &str = "cmd:171";
 
 /// A running app on a store of its own.
 struct App {
@@ -1321,6 +1323,97 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     assert_eq!(app.status(), lumenna_app::speech::sentence(&why));
 }
 
+
+/// Trashes the task called `title`.
+fn trash(lumenna: &Lumenna, title: &str) {
+    add(lumenna, title);
+    let rows = lumenna.list_tasks("").unwrap().rows;
+    let id = rows.iter().find(|r| r.title == title).unwrap().id.clone();
+    lumenna.trash_task(&id).unwrap();
+}
+
+/// The titles of what is in the trash, as another process sees it.
+fn in_the_trash(app: &App) -> Vec<String> {
+    app.store().list_tasks("deleted").unwrap().rows.into_iter().map(|r| r.title).collect()
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_trashed_tasks_menu_offers_erase_permanently_after_delete_from_trash_and_its_confirmation_erases_it() {
+    let app = App::launch(|lumenna| trash(lumenna, "Old secret"));
+    app.post(&[GO_TRASH, "home", "context"]);
+    let menu: Vec<String> = app
+        .automation
+        .menu_items()
+        .iter()
+        .filter(|item| !item.starts_with("Separator"))
+        .map(|item| item.split('\'').nth(1).unwrap_or_default().to_owned())
+        .collect();
+    app.post(&["esc"]);
+    assert_eq!(menu, ["Restore", "Delete from Trash...", "Erase Permanently..."], "the core's, in its order");
+
+    // Delete is still Delete from Trash, never Erase Permanently.
+    app.post(&["delete"]);
+    let asked = app.front();
+    assert!(asked.iter().any(|l| l.contains("Delete Old secret from the trash?")), "{asked:#?}");
+    assert!(!asked.iter().any(|l| l.contains("rebuilds your database")), "{asked:#?}");
+    app.post(&["esc"]);
+
+    // Chosen from the row's menu, it asks first, Cancel the default, and cancelling erases nothing.
+    app.post(&["context"]);
+    choose_from_menu(&app, "Erase Permanently...");
+    let asked = automation::wait(Duration::from_secs(5), || {
+        let front = app.front();
+        front.iter().any(|l| l.contains("Erase Old secret permanently?")).then_some(front)
+    })
+    .unwrap_or_else(|| panic!("it asks: {:#?}", app.front()));
+    assert!(asked.iter().any(|l| l.contains("rebuilds your database")), "{asked:#?}");
+    assert!(asked.iter().any(|l| l.contains("Button 'Cancel'") && l.contains("FOCUSED")), "Cancel is the default: {asked:#?}");
+    app.post(&["esc"]);
+    assert_eq!(in_the_trash(&app), ["Old secret"], "nothing was erased");
+
+    // The Task menu's, answered, erases it.
+    app.post(&[ERASE_PERMANENTLY]);
+    automation::wait(Duration::from_secs(5), || app.front().iter().any(|l| l.contains("Erase Old secret permanently?")).then_some(()))
+        .unwrap_or_else(|| panic!("the Task menu's asks too: {:#?}", app.front()));
+    app.post(&["invoke:Erase Permanently"]);
+    assert!(app.says(|s| s.contains("Erased Old secret permanently")), "{}", app.status());
+    assert!(in_the_trash(&app).is_empty(), "{:?}", in_the_trash(&app));
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn settings_offers_erase_everything_deleted_and_its_confirmation_empties_the_trash() {
+    let app = App::launch(|lumenna| {
+        trash(lumenna, "Old secret");
+        trash(lumenna, "Old draft");
+        add(lumenna, "Water plants");
+    });
+    app.post(&[SETTINGS, "select:Export and Import"]);
+    let page = app.front();
+    let at = |name: &str| page.iter().position(|l| l.trim_start().starts_with(&format!("Button '{name}")));
+    let erase = at("Erase Everything Deleted...").unwrap_or_else(|| panic!("a button of its own: {page:#?}"));
+    assert!(at("Import or Restore...").is_some_and(|import| import < erase), "after the rest: {page:#?}");
+
+    app.post(&["invoke:Erase Everything Deleted..."]);
+    automation::wait(Duration::from_secs(5), || {
+        app.front().iter().any(|l| l.contains("Erase everything deleted permanently?")).then_some(())
+    })
+    .unwrap_or_else(|| panic!("it asks: {:#?}", app.front()));
+    app.post(&["invoke:Erase Everything Deleted"]);
+    // Said on the page's own status line, the sheet being in front.
+    let said = automation::wait(Duration::from_secs(10), || {
+        app.front()
+            .iter()
+            .any(|l| l.contains("Erased 2 tasks and the history of everything deleted") && l.contains("live=polite"))
+            .then_some(())
+    });
+    assert!(said.is_some(), "{:#?}", app.front());
+    app.post(&["esc"]);
+    assert!(in_the_trash(&app).is_empty(), "{:?}", in_the_trash(&app));
+    let left: Vec<String> = app.store().list_tasks("").unwrap().rows.into_iter().map(|r| r.title).collect();
+    assert_eq!(left, ["Water plants"]);
+}
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]

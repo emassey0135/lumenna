@@ -18,7 +18,7 @@ use lumenna_app::settings::SettingsEvent;
 use lumenna_app::{ActingOn, BackgroundEvent, DevicesEvent, Side, ViewModel};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::background::{self, BackgroundKind};
-use lumenna_records::{ActionKind, ExportFormat, Setting};
+use lumenna_records::{ActionKind, ExportFormat, Offered, Setting};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{
@@ -126,7 +126,7 @@ pub fn show(app: &App, page: Page) {
         planning: Planning { hwnd: Cell::new(HWND::default()), described: described.clone() },
         devices: Devices { hwnd: Cell::new(HWND::default()), list: RefCell::new(Vec::new()), landing: Cell::new(0) },
         backups: Backups { hwnd: Cell::new(HWND::default()), described },
-        export: Export,
+        export: Export { offered: app.crux.view().settings.map(|settings| settings.offered).unwrap_or_default() },
         live: Cell::new(HWND::default()),
         refused: RefCell::new(BTreeMap::new()),
     });
@@ -211,6 +211,15 @@ fn titled(described: &[Setting], key: &str, letter: char, colon: bool) -> String
 /// Fills a drop-down list with a setting's options, the value selected, where what it shows
 /// differs. A value set elsewhere that is not among them is listed as itself, since it is still
 /// the value.
+/// `label` with an access key on its first letter no other control on the page has, which is
+/// then taken: the words are the core's, the key the platform's.
+fn keyed(label: &str, taken: &mut Vec<char>) -> String {
+    let free = label.char_indices().find(|(_, c)| c.is_alphabetic() && !taken.iter().any(|t| t.eq_ignore_ascii_case(c)));
+    let Some((at, key)) = free else { return label.to_owned() };
+    taken.push(key);
+    format!("{}&{}", &label[..at], &label[at..])
+}
+
 fn fill_options(combo: HWND, known: &[(Setting, String)], key: &str) {
     let Some((setting, _)) = known.iter().find(|(s, _)| s.key == key) else { return };
     let mut names: Vec<&str> = setting.options.iter().map(|o| o.title.as_str()).collect();
@@ -1021,20 +1030,31 @@ impl Dialog for Backups {
 
 const EXPORT: u16 = 500;
 const IMPORT: u16 = 510;
+/// The store's own actions, from here on: Erase Everything Deleted.
+const OFFERED: u16 = 520;
 
-struct Export;
+struct Export {
+    /// What the app offers to do to the store as a whole, a button each after the rest.
+    offered: Vec<Offered>,
+}
 
 impl Dialog for Export {
     fn template(&self) -> Template {
         let mut template = page("Export and Import");
+        let mut keys = vec!['I'];
         for (index, export) in devices::EXPORTS.iter().enumerate() {
             let label = devices::marked(export.label, export.key, '&');
+            keys.push(export.key);
             template = template.item(Class::Button, &label, EXPORT + index as u16, BUTTON, 7, 7 + index as i16 * 18, 180, 14);
         }
+        template = template.item(Class::Button, "&Import or Restore...", IMPORT, BUTTON, 7, 79, 180, 14);
+        for (index, action) in self.offered.iter().enumerate() {
+            let label = keyed(&actions::label(action), &mut keys);
+            template = template.item(Class::Button, &label, OFFERED + index as u16, BUTTON, 7, 97 + index as i16 * 18, 180, 14);
+        }
         let footer = "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.";
-        template
-            .item(Class::Button, "&Import or Restore...", IMPORT, BUTTON, 7, 79, 180, 14)
-            .item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, 100, 238, 36)
+        let below = 100 + self.offered.len() as i16 * 18;
+        template.item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, below, 238, 36)
     }
 
     fn init(&self, page: HWND) -> bool {
@@ -1052,6 +1072,9 @@ impl Dialog for Export {
             app::send(ShellEvent::Settings(SettingsEvent::Export(format)));
         } else if id == IMPORT {
             import(sheet(page), "Import or Restore", &IMPORTABLE);
+        } else if let Some(action) = id.checked_sub(OFFERED).and_then(|i| self.offered.get(usize::from(i))) {
+            // The app asks its question as it asks a row's, over the sheet.
+            app::send(ShellEvent::ActOn(ActingOn::Settings, action.clone()));
         }
         None
     }

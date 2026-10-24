@@ -59,7 +59,9 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   A line is sent as typed (`SettingsEvent::Type`) and applied when left. Rename and Unpair hold
   the device first. Back Up Now is the device's own backup (`Device::backup`); an export the
   app makes is saved where the person chooses, and an import is read and handed to the app.
-  Pairing (`pairing.rs`) is a dialog over `view.devices.pairing`, on the app's network. The
+  The store's own actions (`SettingsView::offered`, Erase Everything Deleted) are buttons on
+  Export and Import after the rest, taken as the sheet opens, handed back with
+  `ActOn(ActingOn::Settings, …)`; their questions open over the sheet. Pairing (`pairing.rs`) is a dialog over `view.devices.pairing`, on the app's network. The
   shortcuts from anywhere, this PC's alone, stay the window's.
 - **Opening at sign-in is the app's background setting** (`background`, `WindowsSignIn`): the
   General page's box and the hint under it are the row's words, its toggle `SettingsEvent::Set`;
@@ -112,7 +114,8 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
 - **A row's actions are offered in one place** (`win/actions.rs`): the context menus, the
   Task menu, the details buttons and Delete, Space and Enter all take the row's core actions
   in short (`offered`, a list's by place in `ListView::offered`) by kind, and run them as the
-  app's with `ActOn`. A row the tree folds by a click is put in hand to fold it, and the
+  app's with `ActOn`. Delete runs only Delete or Delete from Trash: a trashed task's Erase
+  Permanently is its menu's and the Task menu's alone, with no accelerator. A row the tree folds by a click is put in hand to fold it, and the
   selected row put back after (`actions::fold`).
 - **IsDialogMessage runs over the whole main window**, with the panes
   `WS_EX_CONTROLPARENT`, so menu command ids are never 1 or 2 (`IDOK`, `IDCANCEL`). Field

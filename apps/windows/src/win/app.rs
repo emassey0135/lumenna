@@ -1538,6 +1538,7 @@ fn task_kinds(command: u16) -> &'static [ActionKind] {
         menu::TRASH_TASK => &[ActionKind::Delete],
         menu::RESTORE_TASK => &[ActionKind::Restore],
         menu::ERASE_TASK => &[ActionKind::DeleteForGood],
+        menu::ERASE_PERMANENTLY => &[ActionKind::ErasePermanently],
         _ => &[],
     }
 }
