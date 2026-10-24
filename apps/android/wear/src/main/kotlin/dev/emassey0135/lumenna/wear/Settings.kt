@@ -1,6 +1,8 @@
 package dev.emassey0135.lumenna.wear
 
+import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.Side
+import dev.emassey0135.lumenna.name
 import dev.emassey0135.lumenna.deviceName
 import dev.emassey0135.lumenna.rowActions
 import dev.emassey0135.lumenna.app.ShellEvent
@@ -22,6 +24,8 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.ButtonDefaults
+import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
 import dev.emassey0135.lumenna.Option
@@ -59,6 +63,7 @@ fun appSettings(core: Core): List<SettingView> {
 @Composable
 fun PlanningScreen(core: Core) {
     val all = appSettings(core)
+    val view by core.app.view.collectAsState()
     WearList {
         item { Heading("Planning") }
         all.filter { it.setting.syncs }.forEach { setting(core, it) }
@@ -68,6 +73,22 @@ fun PlanningScreen(core: Core) {
         item {
             // Into this watch's backups, beside the others.
             Button(onClick = { core.attempt { core.device.backup() }?.let { core.say(sentence(it.announcement, it.notices)) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Back up now") })
+        }
+        // What is done to the store as a whole, the core's (Erase everything deleted), beside the
+        // backups it takes with it: a watch is a peer, its store whole. The app asks its question.
+        view?.settings?.offered.orEmpty().forEach { action ->
+            item {
+                Button(
+                    onClick = { core.app.send(ShellEvent.ActOn(ActingOn.Settings, action)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = if (action.destructive) {
+                        ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
+                    } else {
+                        ButtonDefaults.buttonColors()
+                    },
+                    label = { Text(action.name) },
+                )
+            }
         }
     }
 }

@@ -88,6 +88,11 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   does what the row's action list does not; on a row without one the app says the core's
   reason (`refusal`: the row in hand, then `Run`). Compose's root takes the keys while
   anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
+- **Erasing for good is a menu away, never a key's**: a trashed task's Erase Permanently is
+  in its long-press menu and custom actions with the rest, and Delete runs only Delete or
+  Delete from Trash (`Command.rowAction`). The store's own actions (`SettingsView.offered`,
+  Erase Everything Deleted) are destructive buttons on Export and Import, the watch's under
+  Backups, sent as `ActOn(ActingOn.Settings, …)`; the app's question is asked at the root.
 - **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
   tests leave it first (`setInTouchMode(false)`), or no tab could be focused.
 - **A wide window has the desktop apps' sidebar** (`Sidebar.kt`, from the app's

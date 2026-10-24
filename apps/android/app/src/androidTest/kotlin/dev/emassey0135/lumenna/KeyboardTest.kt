@@ -187,6 +187,24 @@ class KeyboardTest {
     }
 
     @Test
+    fun deleteOnATrashedTaskAsksToDeleteItFromTheTrashNeverToEraseItPermanently() {
+        show()
+        seed("old errand")
+        core.device.trashTask(core.device.listTasks("").rows.single().id)
+        rule.runOnIdle { core.changed() }
+        tab("Browse").performClick()
+        rule.waitForIdle()
+        row("Trash").performClick()
+        rule.waitForIdle()
+        press(row("old errand"), Key.Delete)
+        shows("Delete old errand from the trash?")
+        assertTrue(
+            "no key erases permanently",
+            rule.onAllNodes(hasText("Permanently erase", substring = true)).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    @Test
     fun aKeyARowHasNoActionForSaysWhyInTheCoresWords() {
         show()
         tab("Browse").performClick()
