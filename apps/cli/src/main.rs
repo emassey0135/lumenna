@@ -337,6 +337,18 @@ pub(crate) enum Command {
         force: bool,
     },
 
+    /// Erase everything deleted permanently: the trash, and the history of everything ever
+    /// deleted, on every device.
+    ///
+    /// The store begins its history again without them, every device takes that in as it next
+    /// syncs, and each deletes its automatic backups and takes a new one. Nothing can undo it,
+    /// and a backup saved anywhere else still holds what was erased.
+    EraseDeleted {
+        /// Skip the confirmation.
+        #[arg(long)]
+        yes: bool,
+    },
+
     /// Read a JSON export, or a backup, into the store.
     ///
     /// Records keep their identifiers, so importing the same file twice changes nothing the
@@ -357,7 +369,8 @@ pub(crate) enum Command {
     ///
     /// Add it to an assistant's MCP servers as the command `lum mcp`. Its tools read tasks, the
     /// day and its blocks, and what to work on, and propose replans; with --writes, they also
-    /// add, edit, complete, plan and time tasks, each change one you can undo. Records are
+    /// add, edit, complete, plan and time tasks, each change one you can undo, and erase
+    /// permanently, which nothing undoes, only once you have said yes to it. Records are
     /// named by identifier. A model in the cloud sends whatever it reads here off this device;
     /// a local one keeps it here: choose the assistant with that in mind.
     Mcp {
@@ -492,9 +505,16 @@ pub(crate) enum TaskCommand {
     },
     /// Delete a task from the trash. Undo can bring it back, and it stays in the history every
     /// device keeps and in backups.
+    ///
+    /// With --permanently it is erased from that history too, on every device: the store
+    /// begins its history again without it, and without the history of everything deleted
+    /// before. Nothing can undo that.
     Erase {
         /// A row number from the last listing, or an identifier.
         id: String,
+        /// Erase it permanently, from the history every device keeps.
+        #[arg(long)]
+        permanently: bool,
         /// Skip the confirmation.
         #[arg(long)]
         yes: bool,
@@ -1340,6 +1360,13 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             return durability::export(profile, (*format).into(), output.as_deref(), *force);
         }
         Command::Import { file } => Response::new(profile.import(&file.display().to_string())?),
+        Command::EraseDeleted { yes } => {
+            let actions = lumenna_host::actions::store_actions();
+            if !confirmed(Some(actions), ActionKind::EraseEverythingDeleted, *yes, true)? {
+                return Ok(Response::unchanged("nothing was erased"));
+            }
+            Response::new(profile.erase_everything_deleted()?)
+        }
     })
 }
 
@@ -1378,13 +1405,21 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         }
         TaskCommand::History { id: input } => Response::new(profile.task_history(&id(input)?)?),
         TaskCommand::Restore { id: input } => Response::new(profile.restore_task(&id(input)?)?),
-        TaskCommand::Erase { id: input, yes } => {
+        TaskCommand::Erase { id: input, permanently: false, yes } => {
             let id = id(input)?;
             let actions = profile.show_task(&id)?.task.actions;
             if !confirmed(Some(actions), ActionKind::DeleteForGood, *yes, true)? {
                 return Ok(Response::unchanged("nothing was deleted"));
             }
             Response::new(profile.erase_task(&id)?)
+        }
+        TaskCommand::Erase { id: input, permanently: true, yes } => {
+            let id = id(input)?;
+            let actions = profile.show_task(&id)?.task.actions;
+            if !confirmed(Some(actions), ActionKind::ErasePermanently, *yes, true)? {
+                return Ok(Response::unchanged("nothing was erased"));
+            }
+            Response::new(profile.erase_task_permanently(&id)?)
         }
         TaskCommand::Move { id: input, parent, project, top } => {
             let to = match (parent, project, top) {
@@ -1490,7 +1525,8 @@ fn confirmed(actions: Option<Vec<lumenna_host::Action>>, kind: ActionKind, yes: 
     }
     if !std::io::stdin().is_terminal() {
         if strict {
-            return Err(lumenna_host::LumennaError::new(format!("{title} Nothing here can ask, so pass --yes")).into());
+            // The whole question, so a script's author learns what --yes agrees to.
+            return Err(lumenna_host::LumennaError::new(format!("{title} {message} Nothing here can ask, so pass --yes")).into());
         }
         return Ok(true);
     }

@@ -342,6 +342,22 @@ struct Id {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct EraseTask {
+    /// The identifier of a task in the trash.
+    id: String,
+    /// True only once the person has said yes to the question this asks without it.
+    #[serde(default)]
+    confirm: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct Confirmed {
+    /// True only once the person has said yes to the question this asks without it.
+    #[serde(default)]
+    confirm: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct Day {
     /// The day, as a person says it ("tomorrow", "friday", "2026-11-03"); today if left out.
     #[serde(default)]
@@ -450,6 +466,17 @@ struct Apply {
     /// Those of its `changes` (a replan) or `sittings` (a day plan) the person accepted, each
     /// as it was proposed.
     accepted: serde_json::Value,
+}
+
+/// The refusal of an erasure not yet confirmed: the question the core puts before the action of
+/// `kind` among `actions`, the same words every client asks, for the model to put to the person.
+fn unconfirmed(actions: Vec<lumenna_host::Action>, kind: lumenna_host::ActionKind) -> lumenna_host::LumennaError {
+    let question = actions.into_iter().find(|a| a.kind == kind).map(|a| a.question);
+    let asked = match question {
+        Some(lumenna_host::Question::Confirm { title, message, .. }) => format!("{title} {message} "),
+        _ => String::new(),
+    };
+    lumenna_host::LumennaError::new(format!("{asked}Ask the person, and pass confirm: true only once they say yes."))
 }
 
 fn record<T: serde::de::DeserializeOwned>(value: serde_json::Value, what: &str) -> lumenna_host::Result<T> {
@@ -573,6 +600,34 @@ impl Server {
     #[tool(annotations(title = "Move a task to the trash", read_only_hint = false, destructive_hint = true, idempotent_hint = true))]
     async fn trash_task(&self, Parameters(Id { id }): Parameters<Id>) -> CallToolResult {
         self.run(move |l| l.trash_task(&id)).await
+    }
+
+    /// Erases a task in the trash permanently: from the history every device keeps, and with it
+    /// the history of everything deleted before. Nothing can undo it, so without `confirm` it
+    /// answers with the question to ask the person first.
+    #[tool(annotations(title = "Erase a task permanently", read_only_hint = false, destructive_hint = true, idempotent_hint = false))]
+    async fn erase_task_permanently(&self, Parameters(EraseTask { id, confirm }): Parameters<EraseTask>) -> CallToolResult {
+        self.run(move |l| {
+            if !confirm {
+                return Err(unconfirmed(l.show_task(&id)?.task.actions, lumenna_host::ActionKind::ErasePermanently));
+            }
+            l.erase_task_permanently(&id)
+        })
+        .await
+    }
+
+    /// Erases everything deleted permanently: every task in the trash, and the history of
+    /// everything ever deleted, on every device. Nothing can undo it, so without `confirm` it
+    /// answers with the question to ask the person first.
+    #[tool(annotations(title = "Erase everything deleted", read_only_hint = false, destructive_hint = true, idempotent_hint = false))]
+    async fn erase_everything_deleted(&self, Parameters(Confirmed { confirm }): Parameters<Confirmed>) -> CallToolResult {
+        self.run(move |l| {
+            if !confirm {
+                return Err(unconfirmed(lumenna_host::actions::store_actions(), lumenna_host::ActionKind::EraseEverythingDeleted));
+            }
+            l.erase_everything_deleted()
+        })
+        .await
     }
 
     /// Brings a task back from the trash.
@@ -717,7 +772,8 @@ fn readable(uri: &str) -> bool {
 impl ServerHandler for Server {
     fn get_info(&self) -> ServerConfig {
         let writes = if self.writes {
-            "Its tools may change the store; each change is one the person can undo."
+            "Its tools may change the store; each change is one the person can undo, except erasing permanently, \
+             which nothing undoes: ask the person first, in the words the erasing tools answer with."
         } else {
             "Its tools only read: the person has not allowed changes (lum mcp --writes)."
         };

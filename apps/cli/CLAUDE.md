@@ -35,7 +35,9 @@ real profile.
   envelope `--json` writes; a refusal is a tool error in the core's words. Read-only unless
   `--writes`, set where the person configures the client. Resources: today, every open task,
   the blocks, and templates for a day, a task and a filter (`lumenna://tasks/{query}`,
-  escaped). Identifiers, never row numbers; erasing is not offered (trash and undo are). A
+  escaped). Identifiers, never row numbers. Delete from Trash is not offered (trash and undo
+  are); erasing permanently is (`erase_task_permanently`, `erase_everything_deleted`), and
+  without `confirm: true` each refuses with the core's question for the model to ask. A
   resource subscribed to is told of when it reads otherwise, whoever wrote:
   `subscriptions/listen` for a 2026-07-28 client (`accepted_subscription_filter` keeps only
   what is a resource), `resources/subscribe` for the rest. One poller per process looks each

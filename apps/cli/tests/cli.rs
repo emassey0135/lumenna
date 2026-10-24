@@ -1120,6 +1120,81 @@ fn erasing_without_a_terminal_to_ask_at_needs_yes_and_says_the_cores_question() 
     lum.ok(&["task", "erase", "1", "--yes"]);
 }
 
+/// Pairs `profile` with a device whose build is too old to follow an erasure, as one that
+/// last synced before format version 2 would be.
+fn pair_an_old_device(profile: &Path) {
+    let lumenna = lumenna_host::Lumenna::open_at(profile).unwrap();
+    let old = lumenna_core::model::Device {
+        node_id: lumenna_core::id::NodeId::from_bytes([3; 32]),
+        name: "Old Laptop".to_owned(),
+        platform: "linux".to_owned(),
+        paired_at: lumenna_core::time::now(),
+        last_seen: lumenna_core::time::now(),
+        schema: 1,
+    };
+    lumenna.store().write(|docs| docs.put_device(&old, None)).unwrap();
+}
+
+#[test]
+fn erasing_a_task_permanently_without_a_terminal_needs_yes_and_says_the_cores_question() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "the secret"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "rm", "1"]);
+    lum.ok(&["task", "list", "deleted"]);
+    let refused = lum.fails(&["task", "erase", "1", "--permanently"]);
+    assert!(refused.contains("Erase the secret permanently?"), "{refused}");
+    assert!(refused.contains("rebuilds your database and re-syncs all devices"), "{refused}");
+    assert!(lum.ok(&["task", "list", "deleted"]).contains("the secret"), "nothing was erased");
+    let erased = lum.ok(&["--json", "task", "erase", "1", "--permanently", "--yes"]);
+    let erased: serde_json::Value = serde_json::from_str(&erased).unwrap();
+    assert_eq!(erased["announcement"], "Erased the secret permanently", "{erased}");
+    assert!(!lum.ok(&["task", "list", "deleted"]).contains("the secret"));
+}
+
+#[test]
+fn erasing_permanently_needs_the_task_in_the_trash() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "the groceries"]);
+    lum.ok(&["task", "list"]);
+    let refused = lum.fails(&["task", "erase", "1", "--permanently", "--yes"]);
+    assert!(refused.contains("not in the trash"), "{refused}");
+}
+
+#[test]
+fn erasing_everything_deleted_asks_first_and_then_empties_the_trash_for_good() {
+    let lum = Lum::new();
+    for title in ["the first secret", "the second secret", "the groceries"] {
+        lum.ok(&["task", "add", title]);
+    }
+    lum.ok(&["task", "search", "secret"]);
+    lum.ok(&["task", "rm", "1"]);
+    lum.ok(&["task", "rm", "2"]);
+    let refused = lum.fails(&["erase-deleted"]);
+    assert!(refused.contains("Erase everything deleted permanently?"), "{refused}");
+    assert!(refused.contains("Everything in the trash goes"), "{refused}");
+    let erased = lum.ok(&["--json", "erase-deleted", "--yes"]);
+    let erased: serde_json::Value = serde_json::from_str(&erased).unwrap();
+    assert_eq!(erased["announcement"], "Erased 2 tasks and the history of everything deleted", "{erased}");
+    let left = lum.ok(&["task", "list"]);
+    assert!(left.contains("the groceries") && !left.contains("secret"), "{left}");
+}
+
+#[test]
+fn erasing_is_refused_while_a_paired_device_runs_format_version_one_and_names_it() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "the secret"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "rm", "1"]);
+    lum.ok(&["task", "list", "deleted"]);
+    pair_an_old_device(lum.path());
+    let refused = lum.fails(&["task", "erase", "1", "--permanently", "--yes"]);
+    assert!(refused.contains("Old Laptop runs an older version"), "{refused}");
+    let refused = lum.fails(&["erase-deleted", "--yes"]);
+    assert!(refused.contains("Old Laptop runs an older version"), "{refused}");
+    assert!(lum.ok(&["task", "list", "deleted"]).contains("the secret"), "nothing was erased");
+}
+
 #[test]
 fn a_script_deletes_a_label_without_being_asked() {
     // Only a terminal is asked; a confirmation nobody can answer would hang a script.
