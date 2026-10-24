@@ -320,6 +320,12 @@ const api = {
   /** Which of the files `names` in the backup folder to remove: the oldest beyond those kept. */
   backupsToRemove: (names: string[]): string[] => session().backupsToRemove(names),
 
+  /** Every backup among the files `names` in the backup folder: what goes after an erasure. */
+  folderBackups: (names: string[]): string[] => session().folderBackups(names),
+
+  /** Which generation of the store's history this browser holds: a real erasure begins another. */
+  generation: (): string => session().generation(),
+
   /** What automatic backups to a folder do, in a sentence. */
   folderBackupWords: (): string => folderBackupWords(),
 };

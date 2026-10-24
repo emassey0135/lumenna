@@ -8,6 +8,10 @@
 //
 // A browser has no folder to back up into and nothing running to do it on a schedule, so a
 // backup here is a download, asked for; restoring and importing read a file the person chooses.
+//
+// What is done to the store as a whole (`SettingsView::offered`: Erase Everything Deleted) is a
+// button each beside the backups, which hold what it erases: handed back to the app, which asks
+// its question as any row's.
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -31,6 +35,7 @@ import {
   Text,
   TextField,
 } from "react-aria-components";
+import { actOn } from "./actions";
 import { DevicesPage } from "./Devices";
 import type { Screen, Setting, SettingView, SettingsView } from "./core";
 import { core, SettingKind } from "./core";
@@ -67,7 +72,7 @@ export function Settings(props: {
             <DevicesPage devices={props.devices} held={props.held} />
           </TabPanel>
           <TabPanel id="backups">
-            <Backups />
+            <Backups settings={props.settings} />
           </TabPanel>
           <TabPanel id="export">
             <Exports settings={props.settings} />
@@ -232,7 +237,7 @@ function ReadFile(props: { label: string; accept: string }) {
   );
 }
 
-function Backups() {
+function Backups(props: { settings: SettingsView | null }) {
   return (
     <>
       <p>
@@ -251,6 +256,17 @@ function Backups() {
         <ReadFile label="Restore from a backup" accept=".lumbak" />
       </div>
       <p className="quiet">Restoring merges: it adds what this browser lacks, and never takes back a later change.</p>
+      <div className="buttons">
+        {(props.settings?.offered ?? []).map((action) => (
+          <Button
+            key={action.kind}
+            className={action.destructive ? "react-aria-Button destructive" : "react-aria-Button"}
+            onPress={() => void send(actOn({ tag: "Settings" }, action))}
+          >
+            {action.sentence ?? action.title}
+          </Button>
+        ))}
+      </div>
     </>
   );
 }

@@ -429,6 +429,14 @@ pub fn folder_backup_surplus(names: &[String]) -> Vec<String> {
     lumenna_store::backup::surplus_among(names, lumenna_store::backup::Policy::DEFAULT_KEEP)
 }
 
+/// For such a folder, after a real erasure: every backup among the files `names`, each holding
+/// what was erased, to delete before one is taken of the new history, as
+/// `follow_erasure` deletes a device's own. Nothing else there is ever named.
+#[must_use]
+pub fn folder_backups(names: &[String]) -> Vec<String> {
+    names.iter().filter(|name| backup::taken_from_name(name).is_some()).cloned().collect()
+}
+
 /// What a backup folder a browser was given does, in a sentence: when backups are taken there
 /// and how many are kept, by the default policy.
 #[must_use]
@@ -444,6 +452,15 @@ pub fn folder_backup_words() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_cleared_after_an_erasure_names_every_backup_there_and_nothing_else() {
+        let names: Vec<String> =
+            ["lumenna-20260110T090000.000Z.lumbak", "notes.txt", "lumenna-20261024T120000.123Z.lumbak", "lumenna-old.lumbak"]
+                .map(str::to_owned)
+                .into();
+        assert_eq!(folder_backups(&names), ["lumenna-20260110T090000.000Z.lumbak", "lumenna-20261024T120000.123Z.lumbak"]);
+    }
 
     #[test]
     fn the_common_sync_folders_are_recognised() {

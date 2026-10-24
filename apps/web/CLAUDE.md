@@ -98,6 +98,15 @@ pairing with `lum`.
   interrupted one never looks whole. A folder the browser asks about again after a restart is
   written to only once allowed, a button's press. Playwright's Chromium crashes reading an OPFS
   folder's handle back from IndexedDB, so the test's stand-in folder is the one in memory.
+- **The folder follows a real erasure itself**, since the host's `follow_erasure` cannot reach
+  it: beside the handle it keeps which generation its backups were taken of (`backed-up-of`,
+  none being the first), and when the store's (`App::generation`, looked at every five seconds
+  and before every backup) is another, every backup there (`folder_backups`, the core's naming)
+  is deleted and one taken afresh, one write to the folder at a time.
+- **What is done to the store as a whole is Settings'** (`SettingsView::offered`: Erase
+  Everything Deleted), a destructive button each on the Backups page, handed back as
+  `ActOn(ActingOn::Settings, …)`; its question opens over Settings like any other. A trashed
+  task's Erase Permanently is its menu's alone: Delete runs `REMOVING`, which never holds it.
 - **A colour is a mark beside the name** (`Swatch.tsx`): a dot in the sidebar, the lists, the
   day, a pick's choices and the block form's colour, `aria-hidden`, its value
   `light-dark(light, dark)` by the page's scheme, left out under forced colours.
