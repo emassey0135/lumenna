@@ -2,7 +2,8 @@
 
 What Lumenna does not do yet, with the decisions already made about it, in the order it is
 to be done. What is built is not listed: the code says how it works, and `CLAUDE.md` says
-what is easy to get wrong.
+what is easy to get wrong. Packaging is the exception: each platform's packages are said
+beside what they still lack.
 
 Every client gets every feature. A platform may get it later, never a smaller version of it.
 
@@ -22,7 +23,7 @@ The order, and why:
 ## 1. Safeguards
 
 - **CI** runs (`.github/workflows/ci.yml`), and so do unsigned release builds of every app
-  (`release.yml`). Still to come: **signing and publishing** from them, with packaging (Before
+  (`release.yml`). Still to come: **signing and publishing** from them, under Packaging (Before
   others use it).
 
 ## 2. Reminders and time events
@@ -146,9 +147,48 @@ Each is a thin adapter over the command surface.
 
 ## 7. Before others use it
 
-- **Packaging**: a `lumenna` alias for `lum`, a Homebrew formula (`brew services start
-  lum`), a winget manifest, Flatpak and AppStream for GTK. A command-line user has no app to
-  prompt for updates, so packages matter most there.
+- **Packaging**, platform by platform. `release.yml` builds every app unsigned, each checked
+  as a person would get it; nothing is signed or published yet. A command-line user has no app
+  to prompt for updates, so packages matter most for `lum`.
+  - **For all of them**: a version tag making a GitHub Release that carries the builds; the
+    domain, `lumenna.app` (its DNS on Cloudflare), with the site and the web client on
+    Cloudflare Pages; one appcast there (`lumenna.app/updates/…`), each entry signed with an
+    EdDSA key, read by Sparkle, WinSparkle and the AppImage's updater; a `lumenna` alias for
+    `lum`.
+  - **Windows.** Built, for x64 and arm64: the Inno Setup installer (per user, `lum` on the
+    path, an uninstaller that asks whether to delete the data), an MSIX (a profile of its own,
+    opening at sign-in through a startup task, `lum` through an alias) installed and tested in
+    CI, and `lum` alone as a zip. Still to come: winget manifests, one for the installer and one
+    for `lum` alone; WinSparkle in the installed app; the Store, with Partner Center's identity
+    in place of CI's stand-in (`MSIX_*` variables) and a submission; signing the installer and
+    `lum` (Artifact Signing), without which SmartScreen warns; and trying by hand what CI
+    cannot: the packaged app's startup task and toasts, the packaged and installed apps side by
+    side, and the uninstaller's question.
+  - **macOS.** Built: the app for both architectures on a disk image, and `lum` universal as a
+    tarball. Still to come: Developer ID signing and notarization, with the paid account, without
+    which the app opens only once allowed in System Settings; Sparkle; a Homebrew tap, a cask
+    for the app and a formula for `lum` (`brew services start lum`); `lum` inside the app
+    bundle, for the cask and Add to Claude Desktop; and trying the login item by hand.
+  - **iPhone and Apple Watch.** Built: the iPhone app with its watch app, for devices,
+    unsigned. Still to come, with the paid account: signing, App Store Connect, TestFlight, the
+    privacy manifest and the export-compliance answer.
+  - **Android and Wear OS.** Built: App Bundles and APKs, unsigned. Still to come: an upload
+    key and Play App Signing; the Play Console account and the closed test a new personal
+    account runs before production; the Wear app in the same listing.
+  - **Linux.** Built, for x86_64 and arm64: the GTK app as a tarball with its `install.sh`; an
+    AppImage, GTK and libadwaita inside it (glibc 2.39 or newer); a Flatpak bundle (GNOME 51,
+    opening at sign-in through the Background portal); and `lum` alone as a tarball, built on
+    Debian 12. Still to come: the Flatpak from a repository of our own, signed with the
+    project's GPG key (Flatter, on GitHub Pages) and offered by `.flatpakrepo` and
+    `.flatpakref` files, so updates come through `flatpak update` and the software centres;
+    not Flathub, which refuses manifests a language model wrote and asks that generated code be
+    disclosed; the metainfo's release entries and screenshots; the AppImage's own updater, and
+    its offer of a desktop entry on first run; the AUR; and trying on a real desktop what CI
+    cannot: the portal's question, the tray, the shortcuts, Orca, finding devices from inside
+    the sandbox, and `install.sh`.
+  - **BTSpeak.** Built: the app and its core as a tarball, on Debian 12 for arm64. Still to
+    come: the App Store's package, below.
+  - **The web client.** Built: the static site. Still to come: serving it, from Cloudflare Pages.
 - **BTSpeak's App Store**, Blazie's, once it ships (nothing of it was in `btspeak-dev` on
   2026-10-23): an ordinary Debian package for arm64 (`Section: btspeak-apps`), named
   `lumenna`. `/opt/lumenna` holds the app, its core and `lum`, the background service's unit
