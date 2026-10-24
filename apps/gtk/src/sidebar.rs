@@ -64,16 +64,13 @@ impl Sidebar {
             // Delete here does what it does in every other list: the row's own Delete.
             if matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) && modifiers.is_empty() {
                 let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return glib::Propagation::Stop };
-                match actions::find(&entry.offered, actions::DELETE) {
-                    Some(action) => run(&app, action.clone(), &entry.key),
-                    // The Inbox is refused by the app, which says why it stays; a fixed place or a
-                    // heading has nothing to say.
-                    None => {
-                        if matches!(&entry.kind, SidebarKind::Place(Place::Project(_) | Place::Label(_) | Place::Filter { .. })) {
-                            app.model.send(ShellEvent::Hold(Side::Sidebar, entry.key.clone()));
-                            app.model.send(ShellEvent::Run(actions::DELETE.to_vec()));
-                        }
-                    }
+                // What Delete runs is the core's. The Inbox offers none, and the app says why it
+                // stays; a fixed place or a heading has nothing to say.
+                let deletes = lumenna_app::keys::runs("delete").unwrap_or_default();
+                let offers = entry.offered.iter().any(|action| deletes.contains(&action.kind));
+                if offers || matches!(&entry.kind, SidebarKind::Place(Place::Project(_) | Place::Label(_) | Place::Filter { .. })) {
+                    app.model.send(ShellEvent::Hold(Side::Sidebar, entry.key.clone()));
+                    app.model.send(ShellEvent::Key("delete".to_owned()));
                 }
                 return glib::Propagation::Stop;
             }

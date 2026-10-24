@@ -144,6 +144,10 @@ class SettingsTest(unittest.TestCase):
         self.session.tab_to("Import or Restore…")
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[button] 'Erase Everything Deleted…'")
+        # The core's caption is said with the button, and shown under it.
+        caption = self.session.focused().get_description()
+        self.assertTrue(caption.startswith("Takes what was deleted out of the history"), caption)
+        self.assertIn(caption, [Atspi.Text.get_text(label, 0, -1) for label in self.session.find_all_in_front("label")])
         self.session.press("Return")
         # Over Settings, which is not the main window, so known by its heading.
         self.session.wait_for_window("Erase everything deleted permanently?")

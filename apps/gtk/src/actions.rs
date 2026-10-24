@@ -11,17 +11,6 @@ use lumenna_records::{Action, ActionKind, Subject};
 
 use crate::window::{App, spawn};
 
-/// What a key does on whatever row has focus: one meaning everywhere.
-pub const SPACE: &[ActionKind] = &[
-    ActionKind::MarkDone,
-    ActionKind::MarkNotDone,
-    ActionKind::StartTimer,
-    ActionKind::PauseTimer,
-    ActionKind::ResumeTimer,
-    ActionKind::Restore,
-];
-/// What Delete does: whatever removes the row.
-pub const DELETE: &[ActionKind] = &[ActionKind::Delete, ActionKind::DeleteForGood, ActionKind::Unassign, ActionKind::Unpair];
 /// What Enter does: open it, or what free time and a cancelled day are for.
 pub const ENTER: &[ActionKind] = &[ActionKind::Edit, ActionKind::EditTask, ActionKind::AddBlock, ActionKind::RestoreDay];
 

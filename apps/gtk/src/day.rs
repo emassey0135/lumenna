@@ -87,12 +87,13 @@ impl DayView {
             if modifiers.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK) {
                 return glib::Propagation::Proceed;
             }
-            let kinds = match key {
-                gdk::Key::space | gdk::Key::KP_Space => actions::SPACE,
-                gdk::Key::Delete | gdk::Key::KP_Delete => actions::DELETE,
+            // What each key does to the row in hand is the core's (`keys::runs`).
+            let id = match key {
+                gdk::Key::space | gdk::Key::KP_Space => "toggle",
+                gdk::Key::Delete | gdk::Key::KP_Delete => "delete",
                 _ => return glib::Propagation::Proceed,
             };
-            app.model.send(ShellEvent::Run(kinds.to_vec()));
+            app.model.send(ShellEvent::Key(id.to_owned()));
             glib::Propagation::Stop
         });
         let weak = Rc::downgrade(self);

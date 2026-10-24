@@ -73,7 +73,8 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   the device's. What the store as a whole offers (`SettingsView::offered`: Erase Everything
   Deleted) is a button each after Import or Restore, in its `title`, libadwaita's
   `destructive-action` where destructive, handed back with `ActOn(ActingOn::Settings, …)`; its
-  question is asked over Settings.
+  question is asked over Settings. The core's `offered_caption` is a `caption` label under them
+  (not `dim-label`, which loses contrast) and each button's description, for Orca.
 - **Opening at sign-in is the app's background setting** (`autostart.rs`,
   `BackgroundKind::DesktopSignIn`): this profile's XDG autostart entry. The app is told at
   start whether it is there; a turn's `background` makes or removes it (`window::take`). The
@@ -120,10 +121,11 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   level changes against the row shown before; position is left to the platform. Decided at
   run time; `LUMENNA_LEVEL_IN_TEXT=1` forces it for tests. CI runs the UI tests on Arch, so
   the native path is what it covers by default.
-- **Space, Delete and Enter send a fixed set of kinds** (`actions::SPACE`, `DELETE`, `ENTER`)
-  as `Run`, so the row in hand runs its own; the Task menu's commands do the same, so Mark
-  Done toggles. No key runs Erase Permanently: a trashed task's menu offers it, and so does
-  the Task menu's item, which has no accelerator. A menu's item, folding, a details button and
+- **Space and Delete are the core's keys** (`Key("toggle")`, `Key("delete")`, what
+  `keys::runs` names), in every list, the sidebar, a reminder list and the devices; Enter sends
+  `actions::ENTER` as `Run`. So the row in hand runs its own; the Task menu's commands each
+  `Run` their kinds, so Mark Done toggles. No key runs Erase Permanently: a trashed task's menu
+  offers it, and so does the Task menu's item, which has no accelerator. A menu's item, folding, a details button and
   Add Reminder send the row's action in short with `ActOn`. The question it asks is asked over
   the window it came from.
 - **A dialog's buttons are GNOME's order**: Cancel first and the default, the answer last
