@@ -224,6 +224,27 @@ class TaskListTest(unittest.TestCase):
         self.session.press("Control+z", wait=1)
         self.assertIn("Buy milk", self.session.lum("task", "list", "deleted"))
 
+    def test_a_trashed_tasks_menu_offers_erase_permanently_after_delete_from_trash_and_asks_first(self):
+        self.session.lum("task", "rm", self.ids["Buy milk"])
+        self.session.press("Control+4", wait=1.5)
+        self.assertIn("Buy milk", self.session.focus())
+        self.session.press("Shift+F10")
+        offered = [self.session.menu_item()]
+        while offered[-1] != "Erase Permanently…" and len(offered) < 6:
+            self.session.press("Down", wait=0.2)
+            offered.append(self.session.menu_item())
+        self.assertEqual(offered, ["Restore", "Delete from Trash…", "Erase Permanently…"])
+        self.session.press("Return")
+        self.assertEqual(self.session.wait_for_alert(), "Erase Buy milk permanently?")
+        texts = [Atspi.Text.get_text(label, 0, -1) for label in self.session.find_all_in_front("label")]
+        self.assertTrue(any(text.startswith("Permanently erase — rebuilds your database") for text in texts), texts)
+        self.assertEqual(self.session.focus(), "[button] 'Cancel'", "Cancel is the default")
+        self.session.tab_to("Erase Permanently")
+        self.session.press("Return", wait=2)
+        said = self.session.said()
+        self.assertTrue(said and said[0].startswith("Erased Buy milk permanently"), said)
+        self.assertNotIn("Buy milk", self.session.lum("task", "list", "deleted"))
+
     def test_history_lists_what_was_done_and_its_rows_keep_their_actions(self):
         self.session.press("space", wait=1)
         self.session.said()
