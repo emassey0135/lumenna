@@ -61,34 +61,7 @@ jobs:
           path: dist/*.tar.gz
           retention-days: 30
 
-  lum-mac:
-    name: lum, macOS universal
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin, x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-      - name: Build, both architectures in one binary
-        run: |
-          for target in aarch64-apple-darwin x86_64-apple-darwin; do
-            cargo build --release --locked -p lumenna-cli --target "$target"
-          done
-          mkdir -p staging dist
-          lipo -create -output staging/lum target/aarch64-apple-darwin/release/lum target/x86_64-apple-darwin/release/lum
-          lipo -info staging/lum
-      - name: In a tarball, which keeps it executable as an artifact alone does not
-        run: |
-          version=$(cargo pkgid -p lumenna-cli | sed 's/.*@//')
-          cp LICENSE staging/
-          tar -czf "dist/lum-$version-macos-universal.tar.gz" -C staging lum LICENSE
-          mkdir unpacked && tar -xzf dist/*.tar.gz -C unpacked && unpacked/lum --version
-      - uses: actions/upload-artifact@v4
-        with:
-          name: lum-macos-universal
-          path: dist/*.tar.gz
-          retention-days: 30
+  # lum for macOS, universal, is the Mac app's own, made in its job (apple).
 
   windows:
     name: Windows installer and MSIX, ${{ matrix.arch }}
@@ -265,7 +238,7 @@ jobs:
             targets: aarch64-apple-ios, aarch64-apple-watchos
             products: Release-iphoneos
             artifact: ios
-          - name: Mac app, Apple silicon and Intel
+          - name: Mac app and lum, Apple silicon and Intel
             scheme: LumennaMac
             destination: generic/platform=macOS
             targets: aarch64-apple-darwin, x86_64-apple-darwin
@@ -294,9 +267,21 @@ jobs:
           app="$RUNNER_TEMP/derived/Build/Products/${{ matrix.products }}/Lumenna.app"
           mkdir -p "$RUNNER_TEMP/dist"
           if [ "${{ matrix.artifact }}" = macos ]; then
-            # The lum it carries, for both architectures, runs.
-            lipo "$app/Contents/MacOS/lum" -verify_arch arm64 x86_64
-            "$app/Contents/MacOS/lum" --version
+            # The lum it carries, for both architectures, runs; and is lum alone too, in a tarball,
+            # which keeps it executable as an artifact alone does not.
+            lum="$app/Contents/MacOS/lum"
+            archs=" $(lipo -archs "$lum") "
+            for arch in arm64 x86_64; do
+              case "$archs" in *" $arch "*) ;; *) echo "::error::lum has no $arch:$archs"; exit 1 ;; esac
+            done
+            "$lum" --version
+            lum_version=$(cd "$GITHUB_WORKSPACE" && cargo pkgid -p lumenna-cli | sed 's/.*@//')
+            mkdir "$RUNNER_TEMP/lum" "$RUNNER_TEMP/lum-dist"
+            cp "$lum" "$GITHUB_WORKSPACE/LICENSE" "$RUNNER_TEMP/lum/"
+            tar -czf "$RUNNER_TEMP/lum-dist/lum-$lum_version-macos-universal.tar.gz" -C "$RUNNER_TEMP/lum" lum LICENSE
+            mkdir "$RUNNER_TEMP/lum-unpacked"
+            tar -xzf "$RUNNER_TEMP"/lum-dist/*.tar.gz -C "$RUNNER_TEMP/lum-unpacked"
+            "$RUNNER_TEMP/lum-unpacked/lum" --version
             # The Mac's: a disk image holding the app beside a link to Applications, to drag it to.
             version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
             mkdir "$RUNNER_TEMP/image"
@@ -312,6 +297,12 @@ jobs:
         with:
           name: apple-${{ matrix.artifact }}
           path: ${{ runner.temp }}/dist
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: matrix.artifact == 'macos'
+        with:
+          name: lum-macos-universal
+          path: ${{ runner.temp }}/lum-dist
           retention-days: 30
 
   android:
