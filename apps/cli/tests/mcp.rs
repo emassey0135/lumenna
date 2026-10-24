@@ -183,6 +183,84 @@ fn a_task_is_completed_by_its_identifier_and_undo_brings_it_back() {
     assert_eq!(mcp.read(&format!("lumenna://task/{id}"))["title"], "water the plants");
 }
 
+/// Pairs the served profile with a device whose build is too old to follow an erasure, as one
+/// that last synced before format version 2 would be.
+fn pair_an_old_device(mcp: &Mcp) {
+    let lumenna = lumenna_host::Lumenna::open_at(mcp._profile.path()).unwrap();
+    let old = lumenna_core::model::Device {
+        node_id: lumenna_core::id::NodeId::from_bytes([3; 32]),
+        name: "Old Laptop".to_owned(),
+        platform: "linux".to_owned(),
+        paired_at: lumenna_core::time::now(),
+        last_seen: lumenna_core::time::now(),
+        schema: 1,
+    };
+    lumenna.store().write(|docs| docs.put_device(&old, None)).unwrap();
+}
+
+/// A task added and moved to the trash, by identifier.
+fn trashed(mcp: &mut Mcp, title: &str) -> String {
+    let (added, _) = mcp.tool("add_task", json!({ "text": title }));
+    let id = added["affected"]["tasks"][0].as_str().unwrap().to_owned();
+    mcp.tool("trash_task", json!({ "id": &id }));
+    id
+}
+
+#[test]
+fn erasing_is_offered_only_with_writes() {
+    let erasing = ["erase_task_permanently", "erase_everything_deleted"];
+    let tools = Mcp::start(false).tools();
+    assert!(!tools.iter().any(|t| erasing.contains(&t.as_str())), "{tools:?}");
+    let tools = Mcp::start(true).tools();
+    assert!(erasing.iter().all(|t| tools.contains(&(*t).to_owned())), "{tools:?}");
+}
+
+#[test]
+fn erasing_a_task_permanently_without_confirm_answers_with_the_cores_question_and_erases_nothing() {
+    let mut mcp = Mcp::start(true);
+    let id = trashed(&mut mcp, "the secret");
+    let (refused, error) = mcp.tool("erase_task_permanently", json!({ "id": &id }));
+    assert!(error, "{refused}");
+    let said = refused.as_str().unwrap();
+    assert!(said.starts_with("Erase the secret permanently? Permanently erase — rebuilds your database"), "{said}");
+    assert_eq!(mcp.read("lumenna://tasks/deleted")["count"], 1, "nothing was erased");
+    let (erased, error) = mcp.tool("erase_task_permanently", json!({ "id": &id, "confirm": true }));
+    assert!(!error, "{erased}");
+    assert_eq!(erased["announcement"], "Erased the secret permanently");
+    assert_eq!(mcp.read("lumenna://tasks/deleted")["count"], 0);
+}
+
+#[test]
+fn erasing_everything_deleted_needs_confirm_and_then_empties_the_trash() {
+    let mut mcp = Mcp::start(true);
+    trashed(&mut mcp, "the first secret");
+    trashed(&mut mcp, "the second secret");
+    let (refused, error) = mcp.tool("erase_everything_deleted", json!({}));
+    assert!(error, "{refused}");
+    assert!(refused.as_str().unwrap().starts_with("Erase everything deleted permanently?"), "{refused}");
+    assert_eq!(mcp.read("lumenna://tasks/deleted")["count"], 2, "nothing was erased");
+    let (erased, error) = mcp.tool("erase_everything_deleted", json!({ "confirm": true }));
+    assert!(!error, "{erased}");
+    assert_eq!(erased["announcement"], "Erased 2 tasks and the history of everything deleted");
+    assert_eq!(mcp.read("lumenna://tasks/deleted")["count"], 0);
+}
+
+#[test]
+fn erasing_is_refused_while_a_paired_device_runs_format_version_one_and_names_it() {
+    let mut mcp = Mcp::start(true);
+    let id = trashed(&mut mcp, "the secret");
+    pair_an_old_device(&mcp);
+    for (tool, arguments) in [
+        ("erase_task_permanently", json!({ "id": &id, "confirm": true })),
+        ("erase_everything_deleted", json!({ "confirm": true })),
+    ] {
+        let (refused, error) = mcp.tool(tool, arguments);
+        assert!(error, "{tool}: {refused}");
+        assert!(refused.as_str().unwrap().contains("Old Laptop runs an older version"), "{tool}: {refused}");
+    }
+    assert_eq!(mcp.read("lumenna://tasks/deleted")["count"], 1, "nothing was erased");
+}
+
 #[test]
 fn a_refusal_is_the_cores_sentence_as_a_tool_error() {
     let mut mcp = Mcp::start(true);
