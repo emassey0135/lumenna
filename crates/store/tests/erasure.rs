@@ -64,12 +64,11 @@ fn history_holds(store: &mut Store, text: &str) -> bool {
     let backup = lumenna_store::backup::decode(&store.backup().unwrap()).unwrap();
     backup.documents.iter().any(|(_, bytes)| {
         let mut doc = automerge::AutoCommit::load(bytes).unwrap();
-        let in_changes = doc.get_changes(&[]).iter().any(|change| {
+        doc.get_changes(&[]).iter().any(|change| {
             change.decode().operations.iter().any(|op| {
                 matches!(&op.action, automerge::legacy::OpType::Put(automerge::ScalarValue::Str(s)) if s.contains(text))
             })
-        });
-        in_changes
+        })
     })
 }
 
