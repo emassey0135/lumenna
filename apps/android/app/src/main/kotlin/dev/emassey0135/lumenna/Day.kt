@@ -168,7 +168,7 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
                     index = index,
                     depth = item.depth.toInt(),
                     actions = app.rowActions(item.key, item.offered),
-                    refuse = app.refusal(item.key),
+                    keys = app.rowKeys(item.key),
                     focus = focus.requester(item.key),
                     key = item.key,
                     say = core::say,

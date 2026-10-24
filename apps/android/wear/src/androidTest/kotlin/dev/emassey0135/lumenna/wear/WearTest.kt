@@ -208,6 +208,8 @@ class WearTest {
         rule.runOnIdle { core.changed() }
         press("Settings")
         press("Planning")
+        // Under it, what it takes, in the core's words.
+        said(core.app.view.value!!.settings!!.offeredCaption).assertExists()
         press("Erase everything deleted")
         rule.onNode(hasText("Everything in the trash goes", substring = true)).assertExists()
         // The confirm button is named by the core's words, the page's by its text. Wear's dialog

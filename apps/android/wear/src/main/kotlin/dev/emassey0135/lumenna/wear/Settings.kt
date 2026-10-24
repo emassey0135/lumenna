@@ -90,6 +90,8 @@ fun PlanningScreen(core: Core) {
                 )
             }
         }
+        // What they take, the core's words, as every app says it.
+        view?.settings?.offeredCaption?.takeIf { it.isNotEmpty() }?.let { caption -> item { Text(caption) } }
     }
 }
 

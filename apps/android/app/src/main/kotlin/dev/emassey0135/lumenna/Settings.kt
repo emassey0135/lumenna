@@ -394,6 +394,10 @@ fun ExportScreen(core: Core, navigator: Navigator) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
                 }
             }
+            // What they take, the core's words, as every app says it.
+            view?.settings?.offeredCaption?.takeIf { it.isNotEmpty() }?.let { caption ->
+                Text(caption, style = MaterialTheme.typography.bodySmall, color = quiet())
+            }
         }
     }
 }
@@ -436,7 +440,7 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
                     index = index,
                     // The core's: Rename, and Unpair on every row but this device's own.
                     actions = app.rowActions(device.nodeId, device.offered, side = Side.DEVICES),
-                    refuse = app.refusal(device.nodeId, Side.DEVICES),
+                    keys = app.rowKeys(device.nodeId, Side.DEVICES),
                     open = null,
                     openLabel = "Open",
                     focus = focus.requester(device.nodeId),

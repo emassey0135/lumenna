@@ -774,6 +774,8 @@ class LumennaTest {
         val erase = core.app.view.value!!.settings!!.offered.single()
         assertTrue(erase.destructive)
         assertEquals("Erase everything deleted", erase.sentence)
+        // Under it, what it takes, in the core's words.
+        shows(core.app.view.value!!.settings!!.offeredCaption)
         button(erase.sentence)
         // The app's question, through the questions every row's go through.
         shows("Everything in the trash goes")

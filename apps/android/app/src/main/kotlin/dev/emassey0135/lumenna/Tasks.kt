@@ -209,7 +209,7 @@ fun AppTaskRows(
                 depth = row.depth.toInt(),
                 index = index,
                 actions = core.app.rowActions(row.id, list?.offeredOf(item).orEmpty(), local),
-                refuse = core.app.refusal(row.id),
+                keys = core.app.rowKeys(row.id),
                 open = open?.let { { it(row) } },
                 openLabel = openLabel,
                 focus = focus.requester(row.id),
@@ -244,7 +244,7 @@ fun ListRow(
     heading: Boolean = false,
     selected: Boolean = false,
     say: (String) -> Unit = {},
-    refuse: ((ActionKind) -> Unit)? = null,
+    keys: RowKeys? = null,
     swatch: Swatch? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -271,18 +271,26 @@ fun ListRow(
                         if (actions.isNotEmpty()) menu = true
                         return@onKeyEvent actions.isNotEmpty()
                     }
+                    // A heading's actions add one more of what is under it, so a row key says
+                    // nothing of the rest there.
+                    val heading = actions.none { it.kind != ActionKind.NEW }
+                    // Delete is the core's: whichever of `keys::runs("delete")` the row offers,
+                    // never Erase Permanently, or why it has none.
+                    if (command == Command.DELETE) {
+                        val keying = keys?.takeIf { !heading } ?: return@onKeyEvent false
+                        keying.key(command.id!!)
+                        return@onKeyEvent true
+                    }
                     val action = command.rowAction(actions)
                     if (action != null) {
                         action.run()
                         return@onKeyEvent true
                     }
                     // A row key with nothing to do here: the app says why, in the core's words,
-                    // rather than nothing. A heading's actions add one more of what is under it,
-                    // so it says nothing of the rest.
+                    // rather than nothing.
                     val kind = command.kind ?: return@onKeyEvent false
-                    if (actions.none { it.kind != ActionKind.NEW }) return@onKeyEvent false
-                    val refusing = refuse ?: return@onKeyEvent false
-                    refusing(kind)
+                    val keying = keys?.takeIf { !heading } ?: return@onKeyEvent false
+                    keying.refuse(kind)
                     true
                 }
                 .then(
