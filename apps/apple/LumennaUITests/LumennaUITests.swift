@@ -701,6 +701,39 @@ final class LumennaUITests: XCTestCase {
         try audit(.all, "pairing")
     }
 
+    func testBackupsOfferEraseEverythingDeletedAndConfirmingEmptiesTheTrash() throws {
+        add("the secret")
+        let task = row("the secret")
+        XCTAssertTrue(task.waitForExistence(timeout: 5))
+        task.tap()
+        let trash = app.buttons["Move to Trash"]
+        for _ in 0..<6 where !trash.isHittable { app.swipeUp() }
+        trash.tap()
+        XCTAssertTrue(task.waitForNonExistence(timeout: 5))
+
+        tab("Settings")
+        reveal("Backups").tap()
+        XCTAssertTrue(app.navigationBars["Backups"].waitForExistence(timeout: 5))
+        let erase = app.buttons["Erase Everything Deleted"]
+        for _ in 0..<6 where !erase.isHittable { app.swipeUp() }
+        XCTAssertTrue(erase.isHittable, "Backups offers Erase Everything Deleted")
+        settle()
+        try audit(.all, "backups with erasing")
+        erase.tap()
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), "it asks first")
+        XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Permanently erase'")).firstMatch.exists, alert.debugDescription)
+        press(alertButton: "Erase Everything Deleted")
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+        goBack()
+
+        tab("Browse")
+        cell(containing: "Trash").tap()
+        XCTAssertTrue(app.navigationBars["Trash"].waitForExistence(timeout: 5))
+        settle()
+        XCTAssertFalse(row("the secret").exists, "erased, so not in the trash")
+    }
+
     func testTaskDetailLabelsAreSavedByName() throws {
         add("ring the bank")
         row("ring the bank").tap()

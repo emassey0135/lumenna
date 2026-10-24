@@ -291,6 +291,11 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   stops AppKit looking through the menu's items, so it matches the fixed ones (Command-[)
   itself. The proposal screen is a `HostedForm` sheet with its own Cancel and default
   button. A picker sheet's reason is its row's second line and VoiceOver help.
+- **The app's questions are asked where the person is** (`FrontAsker`): over Settings while it
+  is in front, else over the main window, so what Settings offers (Erase Everything Deleted,
+  a device's Unpair) asks there. Asked over the main window, they opened behind Settings. The
+  store's own actions (`SettingsView.offered`) are destructive buttons under Backups
+  (`StoreActions`, shared with iOS); the watch has no Backups page, so it offers none.
 - **Global shortcuts through Carbon's `RegisterEventHotKey`**, which needs no accessibility
   permission. Never Control-Option: it is VoiceOver's. The recorder warns of clashes with
   VoiceOver, VOCR (Control-Command S, P, L, I; Shift-Control-Command more) and macOS

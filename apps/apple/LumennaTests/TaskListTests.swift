@@ -118,16 +118,58 @@ final class TaskListTests: XCTestCase {
         XCTAssertEqual(offered(tasks, 0).menu.last, "Expand")
     }
 
-    func testATrashedTaskOffersRestoreAndDeleteFromTrash() throws {
+    func testATrashedTaskSwipesRestoreAndDeleteFromTrashAndOffersErasePermanentlyOnlyAsAnAction() throws {
         let added = try core.app.device.addTask(text: "old idea")
         _ = try core.app.device.trashTask(id: try XCTUnwrap(added.task?.id))
         let trash = shownTasks(.trash)
         XCTAssertTrue(offered(trash, 0).leading.isEmpty, "nothing to mark done in the trash")
         XCTAssertEqual(offered(trash, 0).trailing, ["Restore", "Delete from Trash"])
+        XCTAssertEqual(offered(trash, 0).custom, ["Erase Permanently"], "never a swipe, which a stray gesture could run")
+        XCTAssertEqual(offered(trash, 0).menu, ["Restore", "Delete from Trash", "Erase Permanently"])
         assertEachOnce(offered(trash, 0), trash.shown[0].actions)
         run("Restore", trash, 0)
         settle()
         XCTAssertEqual(try core.app.device.listTasks(query: "").rows.map(\.title), ["old idea"])
+    }
+
+    func testErasePermanentlyAsksFirstAndOnceConfirmedTheTaskIsGoneFromTheTrash() throws {
+        let added = try core.app.device.addTask(text: "the secret")
+        _ = try core.app.device.trashTask(id: try XCTUnwrap(added.task?.id))
+        let trash = shownTasks(.trash)
+        run("Erase Permanently", trash, 0)
+        settle { core.app.view.asking != nil }
+        guard case let .confirm(title, message, yes) = core.app.view.asking?.question else {
+            return XCTFail("a confirmation first: \(String(describing: core.app.view.asking?.question))")
+        }
+        XCTAssertEqual(title, "Erase the secret permanently?")
+        XCTAssertTrue(message.hasPrefix("Permanently erase — rebuilds your database and re-syncs all devices."), message)
+        XCTAssertEqual(yes, "Erase Permanently")
+        XCTAssertEqual(try core.app.device.listTasks(query: "deleted").rows.map(\.title), ["the secret"], "nothing erased before the answer")
+        core.app.send(.answer(.yes))
+        settle { (try? core.app.device.listTasks(query: "deleted").rows.isEmpty) == true }
+        XCTAssertTrue(try core.app.device.listTasks(query: "deleted").rows.isEmpty)
+        XCTAssertTrue(try core.app.device.listTasks(query: "").rows.isEmpty)
+    }
+
+    func testSettingsOfferEraseEverythingDeletedWhichAsksFirstThenEmptiesTheTrash() throws {
+        let added = try core.app.device.addTask(text: "the secret")
+        _ = try core.app.device.trashTask(id: try XCTUnwrap(added.task?.id))
+        core.app.tick()
+        settle()
+        let settings = SettingsModel(core: core)
+        settle { !settings.offered.isEmpty }
+        XCTAssertEqual(settings.offered.map(\.title), ["Erase Everything Deleted"])
+        XCTAssertTrue(settings.offered[0].destructive)
+        settings.act(settings.offered[0])
+        settle { core.app.view.asking != nil }
+        guard case let .confirm(_, message, yes) = core.app.view.asking?.question else {
+            return XCTFail("a confirmation first: \(String(describing: core.app.view.asking?.question))")
+        }
+        XCTAssertTrue(message.hasPrefix("Permanently erase — rebuilds your database and re-syncs all devices."), message)
+        XCTAssertEqual(yes, "Erase Everything Deleted")
+        core.app.send(.answer(.yes))
+        settle { (try? core.app.device.listTasks(query: "deleted").rows.isEmpty) == true }
+        XCTAssertTrue(try core.app.device.listTasks(query: "deleted").rows.isEmpty)
     }
 
     func testMarkingDoneFromTheKeyboardIsTheRowsOwnAction() throws {
