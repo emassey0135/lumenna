@@ -88,7 +88,16 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   builds, which Flathub refuses. Its store is the sandbox's, `~/.var/app/<id>/data/lumenna`;
   its tray serves without a well-known name (`disable_dbus_name`), which a sandbox cannot own.
   `flatpak-builder` needs `--disable-rofiles-fuse` where FUSE mounts are refused (a VM's
-  shared folder).
+  shared folder). `release.yml` builds its bundle in Flatpak's own container (GNOME 51) on each
+  architecture's runner, installs it, and has `lum` add a task in the sandbox; uninstalling it
+  there wants a session bus, which a CI container lacks, and the container goes anyway.
+- **The AppImage** (`release.yml`'s GTK job): `linuxdeploy`'s GTK plugin gathers GTK 4 and
+  libadwaita into the AppDir, `appimagetool` packs it with the static runtime, which needs no
+  FUSE 2. Built on Ubuntu 24.04, it needs glibc 2.39 (Ubuntu 24.04, Debian 13, Fedora 40 and
+  later); older systems have the Flatpak. The job starts it under `xvfb-run` with
+  `--background` and requires it still running, its store made. The tools run as AppImages
+  themselves, so the job sets `APPIMAGE_EXTRACT_AND_RUN`. Not yet: its updater, and offering a
+  desktop entry on first run, which the shortcuts portal needs for an unsandboxed app.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). `GtkTreeView`
   exposes no rows to AT-SPI in GTK 4, and a list view with `TreeExpander` reports a flat
