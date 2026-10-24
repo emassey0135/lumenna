@@ -15,7 +15,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use lumenna_app::lines::Lines;
-use lumenna_app::{ActingOn, BlockEvent, DayItem, DayKind, DayMove, ViewModel};
+use lumenna_app::{ActingOn, BlockEvent, DayItem, DayKind, DayMove, ViewModel, keys};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{ActionKind, Asks, Offered};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
@@ -204,18 +204,19 @@ impl View for DayView {
             }
             TVN_KEYDOWN => {
                 let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
-                // Space is a sitting's timer, and does nothing elsewhere; Delete removes what
-                // the row is, or the core says why not.
+                // What each runs is the core's (`keys::runs`): Space is a sitting's timer, and
+                // stays the tree's on a row it does nothing to; Delete removes what the row is,
+                // or the core says why not.
                 if key == VK_SPACE.0 {
-                    let kinds = [ActionKind::StartTimer, ActionKind::PauseTimer, ActionKind::ResumeTimer];
-                    if self.selected().is_some_and(|row| actions::of_kind(&row.offered, &kinds).is_some()) {
-                        app.crux.send(ShellEvent::Run(kinds.to_vec()));
+                    let kinds = keys::runs("toggle").unwrap_or_default();
+                    if self.selected().is_some_and(|row| actions::of_kind(&row.offered, kinds).is_some()) {
+                        app.crux.send(ShellEvent::Key("toggle".into()));
                         return Some(1);
                     }
                     return Some(0);
                 }
                 if key == VK_DELETE.0 {
-                    app.crux.send(ShellEvent::Run(vec![ActionKind::Delete, ActionKind::Unassign]));
+                    app.crux.send(ShellEvent::Key("delete".into()));
                     // Not part of an incremental search.
                     return Some(1);
                 }

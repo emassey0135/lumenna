@@ -1383,6 +1383,17 @@ fn a_trashed_tasks_menu_offers_erase_permanently_after_delete_from_trash_and_its
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn space_on_a_trashed_task_restores_it() {
+    let app = App::launch(|lumenna| trash(lumenna, "Old receipt"));
+    app.post(&[GO_TRASH, "home", "space"]);
+    let restored = automation::wait(Duration::from_secs(5), || in_the_trash(&app).is_empty().then_some(()));
+    assert!(restored.is_some(), "{:?}", in_the_trash(&app));
+    let open: Vec<String> = app.store().list_tasks("").unwrap().rows.into_iter().map(|r| r.title).collect();
+    assert_eq!(open, ["Old receipt"]);
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn settings_offers_erase_everything_deleted_and_its_confirmation_empties_the_trash() {
     let app = App::launch(|lumenna| {
         trash(lumenna, "Old secret");
@@ -1394,6 +1405,10 @@ fn settings_offers_erase_everything_deleted_and_its_confirmation_empties_the_tra
     let at = |name: &str| page.iter().position(|l| l.trim_start().starts_with(&format!("Button '{name}")));
     let erase = at("Erase Everything Deleted...").unwrap_or_else(|| panic!("a button of its own: {page:#?}"));
     assert!(at("Import or Restore...").is_some_and(|import| import < erase), "after the rest: {page:#?}");
+    // The core's caption, under the button and said with it.
+    let caption = lumenna_records::actions::STORE_ACTIONS;
+    assert!(page[erase].contains(&format!("msaa-description='{caption}'")), "{}", page[erase]);
+    assert!(page[erase + 1].trim_start().starts_with(&format!("Text '{caption}'")), "under it: {page:#?}");
 
     app.post(&["invoke:Erase Everything Deleted..."]);
     automation::wait(Duration::from_secs(5), || {

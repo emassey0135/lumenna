@@ -233,20 +233,22 @@ impl View for TaskList {
                     if self.selected().is_none_or(|selected| selected.id != row.id) {
                         app.crux.send(ShellEvent::Focus(row.id));
                     }
-                    app.crux.send(ShellEvent::Run(vec![ActionKind::MarkDone, ActionKind::MarkNotDone]));
+                    app.crux.send(ShellEvent::Key("toggle".into()));
                 }
                 Some(0)
             }
             TVN_KEYDOWN => {
                 let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
-                let kinds = if key == VK_DELETE.0 {
-                    vec![ActionKind::Delete, ActionKind::DeleteForGood]
+                // What each runs is the core's (`keys::runs`). Space elsewhere is the
+                // checkbox's, which the tree flips itself.
+                let id = if key == VK_DELETE.0 {
+                    "delete"
                 } else if key == VK_SPACE.0 && self.trash {
-                    vec![ActionKind::Restore]
+                    "toggle"
                 } else {
                     return Some(0);
                 };
-                app.crux.send(ShellEvent::Run(kinds));
+                app.crux.send(ShellEvent::Key(id.into()));
                 // Not part of an incremental search.
                 Some(1)
             }
