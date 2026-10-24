@@ -722,6 +722,8 @@ impl App {
         task_command("trash-task", &[ActionKind::Delete]);
         task_command("restore-task", &[ActionKind::Restore]);
         task_command("erase-task", &[ActionKind::DeleteForGood]);
+        // From the menu alone: no key may begin a store's history again.
+        task_command("erase-permanently", &[ActionKind::ErasePermanently]);
         simple("keyboard-help", crate::help::show);
         simple("about", |app| {
             let about = adw::AboutDialog::builder()
@@ -869,6 +871,7 @@ fn menu_bar() -> gio::Menu {
                 shown("Move to T_rash", "win.trash-task", "Delete"),
                 item("Rest_ore from Trash", "win.restore-task"),
                 item("_Delete from Trash…", "win.erase-task"),
+                item("Er_ase Permanently…", "win.erase-permanently"),
             ]),
         ]),
     );

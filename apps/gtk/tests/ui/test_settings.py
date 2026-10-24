@@ -1,5 +1,6 @@
 """Settings: each page applies a change as it is made, and says so."""
 
+import json
 import unittest
 from pathlib import Path
 
@@ -134,6 +135,25 @@ class SettingsTest(unittest.TestCase):
         self.session.press("Return")
         self.session.wait_for_window("Pair a Device")
         self.assertEqual(self.session.focus(), "[text] 'Code from the other device'")
+
+    def test_erase_everything_deleted_is_a_button_beside_import_that_asks_first_and_empties_the_trash(self):
+        self.session.lum("task", "add", "Buy milk")
+        task = json.loads(self.session.lum("task", "list", "--json"))["rows"][0]["id"]
+        self.session.lum("task", "rm", task)
+        self.page(4)
+        self.session.tab_to("Import or Restore…")
+        self.session.press("Tab")
+        self.assertEqual(self.session.focus(), "[button] 'Erase Everything Deleted…'")
+        self.session.press("Return")
+        # Over Settings, which is not the main window, so known by its heading.
+        self.session.wait_for_window("Erase everything deleted permanently?")
+        self.assertEqual(self.session.focus(), "[button] 'Cancel'", "Cancel is the default")
+        self.session.tab_to("Erase Everything Deleted")
+        self.session.press("Return", wait=2)
+        self.session.wait_for_window("Preferences")
+        said = self.session.said()
+        self.assertTrue(said and said[0].startswith("Erased 1 task and the history of everything deleted"), said)
+        self.assertNotIn("Buy milk", self.session.lum("task", "list", "deleted"))
 
     def test_escape_closes_settings(self):
         self.session.press("Escape")

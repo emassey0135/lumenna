@@ -16,7 +16,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use lumenna_app::devices::marked;
-use lumenna_app::{DevicesEvent, Side, SettingsEvent, SettingsView};
+use lumenna_app::{ActingOn, Asks, DevicesEvent, Offered, Side, SettingsEvent, SettingsView};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{ActionKind, ExportFormat, Setting, SettingKind};
 
@@ -122,6 +122,9 @@ struct Window {
     told: RefCell<HashMap<String, String>>,
     folder: gtk::Entry,
     devices: Rc<DevicesPage>,
+    /// Where what is done to the store as a whole goes, a button each, and what they are.
+    store: gtk::Box,
+    store_offered: RefCell<Vec<Offered>>,
     /// A file chosen to save the next one the app makes into: an export.
     saving: RefCell<Option<PathBuf>>,
 }
@@ -176,12 +179,14 @@ pub fn show(app: &Rc<App>, page: Page) {
     let pages = [general(), planning(), devices_page(), backups(app), export(app)];
     let mut folder = None;
     let mut devices = None;
+    let mut store = None;
     for (title, built) in PAGES.iter().zip(pages) {
         stack.add_titled(&built.widget, Some(title), title);
         statuses.push(built.status);
         slots.push(built.slot);
         folder = folder.or(built.folder);
         devices = devices.or(built.devices);
+        store = store.or(built.store);
     }
     let switcher = gtk::StackSwitcher::builder().stack(&stack).halign(gtk::Align::Center).margin_top(6).build();
     let tabs = Rc::new(Tabs { stack: stack.clone(), switcher: switcher.clone() });
@@ -273,6 +278,8 @@ pub fn show(app: &Rc<App>, page: Page) {
         told: RefCell::new(HashMap::new()),
         folder: folder.unwrap_or_default(),
         devices: devices.unwrap_or_else(|| Rc::new(DevicesPage::empty())),
+        store: store.unwrap_or_default(),
+        store_offered: RefCell::new(Vec::new()),
         saving: RefCell::new(None),
     });
     OPEN.set(Some(open));
@@ -299,6 +306,9 @@ pub fn draw(app: &App) {
     if let Some(settings) = view.settings.as_ref().filter(|settings| !settings.settings.is_empty()) {
         open.fill(app, settings);
     }
+    if let Some(settings) = &view.settings {
+        open.offer(&settings.offered);
+    }
     if let Some(devices) = &view.devices {
         open.devices.draw(app, devices, &view.devices_held);
         crate::pairing::draw(app, devices.pairing.as_ref(), &devices.words, &open.window);
@@ -306,6 +316,31 @@ pub fn draw(app: &App) {
 }
 
 impl Window {
+    /// Draws what the store as a whole offers (Erase Everything Deleted) as a button each, in
+    /// its title, destructive ones drawn as such; each is handed back to the app, which asks its
+    /// question over this window.
+    fn offer(&self, offered: &[Offered]) {
+        if *self.store_offered.borrow() == offered {
+            return;
+        }
+        while let Some(child) = self.store.first_child() {
+            self.store.remove(&child);
+        }
+        for action in offered {
+            let title = if action.asks == Asks::Nothing { action.title.clone() } else { format!("{}…", action.title) };
+            let mnemonic = title.chars().next().unwrap_or_default();
+            let button = gtk::Button::with_mnemonic(&marked(&title, mnemonic, '_'));
+            button.set_halign(gtk::Align::Start);
+            if action.destructive {
+                button.add_css_class("destructive-action");
+            }
+            let action = action.clone();
+            button.connect_clicked(move |_| send(ShellEvent::ActOn(ActingOn::Settings, action.clone())));
+            self.store.append(&button);
+        }
+        *self.store_offered.borrow_mut() = offered.to_vec();
+    }
+
     /// Makes each page's controls the first time the app says what the settings are, then
     /// shows what each holds — except a line focus is in, which holds the newest.
     fn fill(&self, app: &App, view: &SettingsView) {
@@ -517,6 +552,7 @@ struct Built {
     slot: gtk::Box,
     folder: Option<gtk::Entry>,
     devices: Option<Rc<DevicesPage>>,
+    store: Option<gtk::Box>,
 }
 
 struct PageBox {
@@ -564,7 +600,7 @@ impl PageBox {
     fn finish(self) -> Built {
         self.body.append(&self.status);
         let scrolled = gtk::ScrolledWindow::builder().child(&self.body).hscrollbar_policy(gtk::PolicyType::Never).build();
-        Built { widget: scrolled.upcast(), status: self.status, slot: self.slot, folder: None, devices: None }
+        Built { widget: scrolled.upcast(), status: self.status, slot: self.slot, folder: None, devices: None, store: None }
     }
 }
 
@@ -828,10 +864,14 @@ fn export(app: &Rc<App>) -> Built {
     let import_button = gtk::Button::with_mnemonic("_Import or Restore…");
     import_button.set_halign(gtk::Align::Start);
     page.add(&import_button);
+    // What is done to the store as a whole, once the app says what it is.
+    let store = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).margin_top(6).build();
+    page.add(&store);
     page.footer(
         "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.",
     );
-    let built = page.finish();
+    let mut built = page.finish();
+    built.store = Some(store);
     for (format, button) in buttons {
         let app = Rc::downgrade(app);
         button.connect_clicked(move |button| {

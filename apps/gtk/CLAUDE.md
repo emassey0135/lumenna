@@ -70,7 +70,10 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   (`Hold(Side::Devices, …)`). Pairing is a dialog over `view.devices.pairing`: the words are
   asked once each time they come, and Cancel while a pairing runs gives it up and then closes.
   An export's file is chosen first, then the app's `SaveFile` written there; Back Up Now is
-  the device's.
+  the device's. What the store as a whole offers (`SettingsView::offered`: Erase Everything
+  Deleted) is a button each after Import or Restore, in its `title`, libadwaita's
+  `destructive-action` where destructive, handed back with `ActOn(ActingOn::Settings, …)`; its
+  question is asked over Settings.
 - **Opening at sign-in is the app's background setting** (`autostart.rs`,
   `BackgroundKind::DesktopSignIn`): this profile's XDG autostart entry. The app is told at
   start whether it is there; a turn's `background` makes or removes it (`window::take`). The
@@ -119,8 +122,10 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   the native path is what it covers by default.
 - **Space, Delete and Enter send a fixed set of kinds** (`actions::SPACE`, `DELETE`, `ENTER`)
   as `Run`, so the row in hand runs its own; the Task menu's commands do the same, so Mark
-  Done toggles. A menu's item, folding, a details button and Add Reminder send the row's
-  action in short with `ActOn`. The question it asks is asked over the window it came from.
+  Done toggles. No key runs Erase Permanently: a trashed task's menu offers it, and so does
+  the Task menu's item, which has no accelerator. A menu's item, folding, a details button and
+  Add Reminder send the row's action in short with `ActOn`. The question it asks is asked over
+  the window it came from.
 - **A dialog's buttons are GNOME's order**: Cancel first and the default, the answer last
   and a verb (`Question::Text.yes`, a pick's action title, a form's Save). A yes-or-no
   question puts the safe answer where Cancel would be (`prompts::yes_or_no`). Alerts are
