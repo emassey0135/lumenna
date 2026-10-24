@@ -564,6 +564,24 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(window.outlines["Tasks"].staticTexts["keep me"].waitForExistence(timeout: 5))
     }
 
+    func testATrashedTasksMenuErasesItPermanentlyAfterAsking() throws {
+        place("Tasks")
+        addTask("the secret")
+        let tasks = window.outlines["Tasks"]
+        tasks.staticTexts["the secret"].click()
+        app.typeKey(.delete, modifierFlags: [])
+        XCTAssertTrue(tasks.staticTexts["the secret"].waitForNonExistence(timeout: 5))
+        place("Trash")
+        let trash = window.outlines["Trash"]
+        menu(trash.staticTexts["the secret"], "Erase Permanently…")
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "it asks first")
+        XCTAssertTrue(text(containing: "Permanently erase", in: sheet).exists, sheet.debugDescription)
+        try audit("erasing permanently, asked")
+        sheetButton("Erase Permanently")
+        XCTAssertTrue(trash.staticTexts["the secret"].waitForNonExistence(timeout: 10), "erased")
+    }
+
     // MARK: - Blocks and the day
 
     /// Adds a block from whichever pane is showing, through the menu bar's New Block.
@@ -800,6 +818,37 @@ final class LumennaMacUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(5)
         while count() == before, Date() < deadline { usleep(100_000) }
         XCTAssertEqual(count(), before + 1)
+    }
+
+    func testSettingsOfferEraseEverythingDeletedWhichAsksOverSettingsAndEmptiesTheTrash() throws {
+        place("Tasks")
+        addTask("the secret")
+        let tasks = window.outlines["Tasks"]
+        tasks.staticTexts["the secret"].click()
+        app.typeKey(.delete, modifierFlags: [])
+        XCTAssertTrue(tasks.staticTexts["the secret"].waitForNonExistence(timeout: 5))
+
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        settings.toolbars.buttons["Backups"].click()
+        let erase = settings.buttons["Erase Everything Deleted…"]
+        XCTAssertTrue(erase.waitForExistence(timeout: 5), settings.debugDescription)
+        try audit("settings, Backups with erasing", in: settings)
+        erase.click()
+        // Over Settings, where it was asked for, not over the main window behind it.
+        let sheet = settings.sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "it asks first, over Settings")
+        XCTAssertTrue(text(containing: "Permanently erase", in: sheet).exists, sheet.debugDescription)
+        try audit("settings, erasing asked", in: settings)
+        sheet.buttons["Erase Everything Deleted"].click()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 10))
+        settings.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(settings.waitForNonExistence(timeout: 5))
+
+        place("Trash")
+        XCTAssertTrue(window.outlines["Trash"].waitForExistence(timeout: 5))
+        XCTAssertTrue(window.outlines["Trash"].staticTexts["the secret"].waitForNonExistence(timeout: 10), "erased")
     }
 }
 

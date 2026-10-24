@@ -115,3 +115,44 @@ extension NSWindow: QuestionAsking {
         }
     }
 }
+
+/// The app's questions asked where the person is: over Settings while it is in front, whose own
+/// actions (Erase Everything Deleted, a device's Unpair) ask there, else over the main window.
+/// Asked over the main window, Settings' questions opened behind it.
+final class FrontAsker: QuestionAsking {
+    private weak var main: NSWindow?
+
+    init(main: NSWindow) {
+        self.main = main
+    }
+
+    private var window: NSWindow? {
+        var key = NSApp.keyWindow
+        while let parent = key?.sheetParent { key = parent }
+        return key?.identifier?.rawValue == "settings" ? key : main
+    }
+
+    func tell(title: String, _ sentence: String) {
+        window?.tell(title: title, sentence)
+    }
+
+    func confirm(title: String, message: String, yes: String, destructive: Bool, answered: @escaping (Bool) -> Void) {
+        guard let window else { return answered(false) }
+        window.confirm(title: title, message: message, yes: yes, destructive: destructive, answered: answered)
+    }
+
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, answered: @escaping (String?) -> Void) {
+        guard let window else { return answered(nil) }
+        window.text(title: title, label: label, initial: initial, hint: hint, problem: problem, yes: yes, syntax: syntax, answered: answered)
+    }
+
+    func pick(title: String, offered: [Offered], yes: String, answered: @escaping (Picked) -> Void) {
+        guard let window else { return answered(.cancelled) }
+        window.pick(title: title, offered: offered, yes: yes, answered: answered)
+    }
+
+    func choose(title: String, message: String, answers: [(id: String, title: String)], destructive: Bool, answered: @escaping (String?) -> Void) {
+        guard let window else { return answered(nil) }
+        window.choose(title: title, message: message, answers: answers, destructive: destructive, answered: answered)
+    }
+}

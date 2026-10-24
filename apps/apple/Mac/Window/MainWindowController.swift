@@ -18,6 +18,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let content = ContainerViewController(placeholder: "", name: "List")
     private let detail = ContainerViewController(placeholder: "No task selected", name: "Task details")
     private var questions: AppQuestions?
+    /// What asks them, kept here: `AppQuestions` holds it weakly.
+    private var asker: FrontAsker?
     private var sheets: AppSheets?
     private var observer: NSObjectProtocol?
     /// The place the middle pane shows.
@@ -59,7 +61,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         // The app's questions, as sheets on this window, and the forms they open: a task's
         // details are the pane beside the list.
-        questions = AppQuestions(app: core.app, asker: window) { [weak self] action in
+        let asker = FrontAsker(main: window)
+        self.asker = asker
+        questions = AppQuestions(app: core.app, asker: asker) { [weak self] action in
             switch action.kind {
             case .editTask, .edit where action.subject == .task: self?.showDetails()
             default: break

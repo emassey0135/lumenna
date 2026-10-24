@@ -29,6 +29,8 @@ final class SettingsModel: NSObject, ObservableObject {
     @Published private(set) var problems: [String: String] = [:]
     /// The exports offered, the app's: each format's button and the file it is named.
     @Published private(set) var exports: [LumennaApp.ExportChoice] = []
+    /// What is done to the store as a whole, the app's: Erase Everything Deleted.
+    @Published private(set) var offered: [LumennaApp.Offered] = []
     @Published var failure: String?
     private var observer: NSObjectProtocol?
 
@@ -58,6 +60,12 @@ final class SettingsModel: NSObject, ObservableObject {
         values = Dictionary(shown.settings.map { ($0.setting.key, $0.setting.value) }, uniquingKeysWith: { first, _ in first })
         problems = Dictionary(shown.settings.compactMap { setting in setting.problem.map { (setting.setting.key, $0) } }, uniquingKeysWith: { first, _ in first })
         exports = shown.exports
+        offered = shown.offered
+    }
+
+    /// One of the store's own actions, handed back to the app, which asks its question first.
+    func act(_ action: LumennaApp.Offered) {
+        core.app.act(action, on: .settings)
     }
 
     func set(_ key: String, _ value: String) {
@@ -371,8 +379,31 @@ struct BackupSettings: View {
             } footer: {
                 FormParts.caption("These settings are this device's alone.")
             }
+            StoreActions(model: model)
         }
         .modifier(SettingsPage(model: model))
+    }
+}
+
+/// What is done to the store as a whole (`SettingsView.offered`), a destructive button each,
+/// drawn as the task form's are, beside the backups whose history it reaches. What it does is
+/// said by the app's question, asked before anything is done.
+struct StoreActions: View {
+    @ObservedObject var model: SettingsModel
+
+    var body: some View {
+        if !model.offered.isEmpty {
+            Section {
+                ForEach(model.offered, id: \.self) { action in
+                    #if os(macOS)
+                    // On the Mac a button that asks ends in "…".
+                    WarningButton(action.asksFirst ? action.title + "…" : action.title) { model.act(action) }
+                    #else
+                    WarningButton(action.title) { model.act(action) }
+                    #endif
+                }
+            }
+        }
     }
 }
 
