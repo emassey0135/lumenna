@@ -122,19 +122,16 @@ struct MacDayScreen: View {
         .accessibilityIdentifier(row.line?.title ?? "")
     }
 
-    /// Return activates a row; Space and Delete are the row's own actions of those kinds:
-    /// Space starts, pauses or resumes a sitting's timer, Delete takes a sitting out or deletes
-    /// a block — each also in the row's menu. A row without one says why, in the core's words.
+    /// Return activates a row; Space and Delete are the core's keys: Space starts, pauses or
+    /// resumes a sitting's timer, Delete takes a sitting out or deletes a block — each also in
+    /// the row's menu. A row without one says why, in the core's words.
     /// Whether it took the key (`ListKeys`).
     func key(_ key: ListKey) -> Bool {
         guard let item = model.inHand else { return false }
         switch key {
         case .returnKey: activate()
-        case .space, .delete:
-            let kinds: [LumennaApp.ActionKind] = key == .space ? [.startTimer, .resumeTimer, .pauseTimer] : [.delete, .unassign]
-            if !model.run(kinds, on: item) {
-                model.core.app.refuse(kinds, on: item.key)
-            }
+        case .space: model.core.app.key("toggle", on: item.key)
+        case .delete: model.core.app.key("delete", on: item.key)
         }
         return true
     }

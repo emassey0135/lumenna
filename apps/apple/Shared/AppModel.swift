@@ -213,6 +213,18 @@ extension AppModel {
         send(.actOn(field0: on, field1: action))
     }
 
+    /// A shared key pressed on the row `key` names (or held in `side`), by its id in the core's
+    /// table: "delete", "toggle". What it runs is the core's (`keys::runs`), the same on every
+    /// app, refused in the core's words where the row has none of it.
+    func key(_ id: String, on key: String, side: LumennaApp.Side? = nil) {
+        if let side {
+            send(.hold(field0: side, field1: key))
+        } else {
+            send(.focus(key))
+        }
+        send(.key(id))
+    }
+
     /// A key a row does not offer: the row in hand (or held in `side`), then the app runs the
     /// first of `kinds` there and says why it has none, in the core's words.
     func refuse(_ kinds: [LumennaApp.ActionKind], on key: String, side: LumennaApp.Side? = nil) {

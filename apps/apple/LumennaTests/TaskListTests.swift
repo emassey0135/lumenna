@@ -160,6 +160,7 @@ final class TaskListTests: XCTestCase {
         settle { !settings.offered.isEmpty }
         XCTAssertEqual(settings.offered.map(\.title), ["Erase Everything Deleted"])
         XCTAssertTrue(settings.offered[0].destructive)
+        XCTAssertTrue(settings.offeredCaption.hasPrefix("Takes what was deleted out of the history"), "the core's caption beneath: \(settings.offeredCaption)")
         settings.act(settings.offered[0])
         settle { core.app.view.asking != nil }
         guard case let .confirm(_, message, yes) = core.app.view.asking?.question else {
@@ -186,5 +187,32 @@ final class TaskListTests: XCTestCase {
         tasks.toggleDone()
         settle()
         XCTAssertTrue(try core.app.device.listTasks(query: "").rows.isEmpty, "completed, so no longer listed")
+    }
+
+    /// A list's screen, opened as the window opens it, its first row in hand.
+    private func opened(_ place: LumennaApp.Place) -> TaskListViewController {
+        core.app.tick()
+        settle()
+        let tasks = TaskListViewController(core: core, place: place)
+        tasks.loadViewIfNeeded()
+        tasks.beginAppearanceTransition(true, animated: false)
+        tasks.endAppearanceTransition()
+        settle { core.app.view.place == place && core.app.view.list?.items.isEmpty == false && core.app.view.focus != nil }
+        return tasks
+    }
+
+    func testCommandDeleteMovesATaskToTheTrashAndOnATrashedOneAsksToDeleteItFromThereNeverToEraseIt() throws {
+        _ = try core.app.device.addTask(text: "the secret")
+        opened(.tasks).moveToTrash()
+        settle { (try? core.app.device.listTasks(query: "").rows.isEmpty) == true }
+        XCTAssertTrue(try core.app.device.listTasks(query: "").rows.isEmpty, "moved to the trash")
+
+        opened(.trash).moveToTrash()
+        settle { core.app.view.asking != nil }
+        guard case let .confirm(title, message, _) = core.app.view.asking?.question else {
+            return XCTFail("a confirmation first: \(String(describing: core.app.view.asking?.question))")
+        }
+        XCTAssertEqual(title, "Delete the secret from the trash?")
+        XCTAssertTrue(message.hasPrefix("Undo can bring it back"), "Delete from Trash's question, not Erase Permanently's: \(message)")
     }
 }

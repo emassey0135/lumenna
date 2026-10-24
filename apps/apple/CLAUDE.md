@@ -268,7 +268,9 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   by itself, and a recognizer's, at the click's end, comes after a key pressed straight away.
   Space, Delete and Return are taken the same way (`ListKeys`) while the outline or a view in
   it is first responder, never by SwiftUI's `onKeyPress`, which waits on SwiftUI's focus, a
-  moment behind the first responder.
+  moment behind the first responder. Space and Delete are the core's keys
+  (`AppModel.key`: `.key("toggle")`, `.key("delete")`), never kinds of the app's own, so a
+  trashed task's Delete asks Delete from Trash, as iOS's Command-Delete does.
 - **Resident in the menu bar, and the device's sync process.** No daemon is needed or used:
   the app's network middleware syncs for as long as it runs and, while it holds the endpoint,
   serves the command surface at the profile's address (`App.serveCommands`, the bridge's `rpc`
@@ -295,7 +297,8 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   is in front, else over the main window, so what Settings offers (Erase Everything Deleted,
   a device's Unpair) asks there. Asked over the main window, they opened behind Settings. The
   store's own actions (`SettingsView.offered`) are destructive buttons under Backups
-  (`StoreActions`, shared with iOS); the watch has no Backups page, so it offers none.
+  (`StoreActions`, shared with iOS), the core's `offeredCaption` beneath them; the watch has
+  no Backups page, so it offers none.
 - **Global shortcuts through Carbon's `RegisterEventHotKey`**, which needs no accessibility
   permission. Never Control-Option: it is VoiceOver's. The recorder warns of clashes with
   VoiceOver, VOCR (Control-Command S, P, L, I; Shift-Control-Command more) and macOS

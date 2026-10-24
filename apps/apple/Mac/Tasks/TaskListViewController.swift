@@ -86,19 +86,20 @@ struct MacTaskListScreen: View {
         }
     }
 
-    /// Space, Delete and Return on the row in hand (`ListKeys`): Space marks it done or not, or
-    /// restores it from the trash; Delete deletes it; Return opens it. Whether it took the key.
+    /// Space, Delete and Return on the row in hand (`ListKeys`): Space and Delete are the core's
+    /// (Mark Done or Restore; Move to Trash or Delete from Trash, never Erase Permanently);
+    /// Return opens it. Whether it took the key.
     func key(_ key: ListKey) -> Bool {
         guard let row = model.inHand else { return false }
         switch key {
         case .space:
             guard !model.blocks else { return false }
-            model.run([.markDone, .markNotDone, .restore], on: row, saying: .markDone)
+            model.core.app.key("toggle", on: row.id)
         case .returnKey:
             guard !model.trash else { return false }
             open()
         case .delete:
-            model.run([.delete, .deleteForGood], on: row, saying: .delete)
+            model.core.app.key("delete", on: row.id)
         }
         return true
     }

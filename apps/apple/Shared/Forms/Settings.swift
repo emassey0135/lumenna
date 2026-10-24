@@ -31,6 +31,8 @@ final class SettingsModel: NSObject, ObservableObject {
     @Published private(set) var exports: [LumennaApp.ExportChoice] = []
     /// What is done to the store as a whole, the app's: Erase Everything Deleted.
     @Published private(set) var offered: [LumennaApp.Offered] = []
+    /// What the core says under them: what erasing takes.
+    @Published private(set) var offeredCaption = ""
     @Published var failure: String?
     private var observer: NSObjectProtocol?
 
@@ -61,6 +63,7 @@ final class SettingsModel: NSObject, ObservableObject {
         problems = Dictionary(shown.settings.compactMap { setting in setting.problem.map { (setting.setting.key, $0) } }, uniquingKeysWith: { first, _ in first })
         exports = shown.exports
         offered = shown.offered
+        offeredCaption = shown.offeredCaption
     }
 
     /// One of the store's own actions, handed back to the app, which asks its question first.
@@ -386,8 +389,8 @@ struct BackupSettings: View {
 }
 
 /// What is done to the store as a whole (`SettingsView.offered`), a destructive button each,
-/// drawn as the task form's are, beside the backups whose history it reaches. What it does is
-/// said by the app's question, asked before anything is done.
+/// drawn as the task form's are, beside the backups whose history it reaches, the core's caption
+/// beneath. What it does is said again by the app's question, asked before anything is done.
 struct StoreActions: View {
     @ObservedObject var model: SettingsModel
 
@@ -402,6 +405,8 @@ struct StoreActions: View {
                     WarningButton(action.title) { model.act(action) }
                     #endif
                 }
+            } footer: {
+                if !model.offeredCaption.isEmpty { FormParts.caption(model.offeredCaption) }
             }
         }
     }
