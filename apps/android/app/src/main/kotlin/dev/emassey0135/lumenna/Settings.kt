@@ -14,6 +14,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
+import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.app.DevicesEvent
 import dev.emassey0135.lumenna.app.PairEvent
@@ -90,7 +91,7 @@ fun SettingsScreen(core: Core, navigator: Navigator) {
             Item("planning", "Planning", "The day, the week, completing subtasks, announcements"),
             Item("reminders", "Reminders", "On this device: notifications and alarms"),
             Item("backups", "Backups", "On this device only"),
-            Item("export", "Export and import", "JSON, Markdown, org, calendar"),
+            Item("export", "Export and import", "JSON, Markdown, org, calendar; erasing what was deleted"),
         ),
         open = { item ->
             navigator.push(
@@ -341,7 +342,9 @@ fun BackupsScreen(core: Core, navigator: Navigator) {
  * Getting data out and back in, through Android's own file picker, so an export can go to
  * Drive or anywhere else a provider offers. The app makes the file; the person chooses where
  * it goes. An export is the present state, nothing from the trash; importing one, or restoring
- * a backup, adds what this device lacks and removes nothing.
+ * a backup, adds what this device lacks and removes nothing. Beneath, what the core does to the
+ * store as a whole (`SettingsView.offered`): erasing for good what was deleted, from history and
+ * backups too, beside where the trash and backups are spoken of.
  */
 @Composable
 fun ExportScreen(core: Core, navigator: Navigator) {
@@ -384,6 +387,13 @@ fun ExportScreen(core: Core, navigator: Navigator) {
                 style = MaterialTheme.typography.bodySmall,
                 color = quiet(),
             )
+            // What is done to the store as a whole, the core's (Erase everything deleted): the
+            // app asks its question as any row's, at the root.
+            view?.settings?.offered.orEmpty().forEach { action ->
+                OutlinedButton(modifier = Target, onClick = { app.send(ShellEvent.ActOn(ActingOn.Settings, action)) }) {
+                    Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
+                }
+            }
         }
     }
 }

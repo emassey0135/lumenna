@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.junit4.accessibility.disableAccessibilityChecks
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -198,6 +199,40 @@ class WearTest {
         press("Settings")
         press("Planning")
         shown("Completing a task completes its subtasks").assertExists()
+    }
+
+    @Test
+    fun eraseEverythingDeletedIsABackupsButtonAndAsksFirst() {
+        core.device.addTask("in the trash")
+        core.device.trashTask(core.device.listTasks("").rows.single().id)
+        rule.runOnIdle { core.changed() }
+        press("Settings")
+        press("Planning")
+        press("Erase everything deleted")
+        rule.onNode(hasText("Everything in the trash goes", substring = true)).assertExists()
+        // The confirm button is named by the core's words, the page's by its text. Wear's dialog
+        // shrinks the screen behind it while it shows (see aDeleteAsksFirstInTheCoresWords).
+        rule.disableAccessibilityChecks()
+        // The core's message is long, so the dialog's button is below it, made only once scrolled to.
+        val yes = hasContentDescription("Erase everything deleted") and hasClickAction()
+        rule.onNode(hasScrollToNodeAction() and hasAnyDescendant(hasText("Everything in the trash goes", substring = true)))
+            .performScrollToNode(yes)
+        rule.onNode(yes).performClick()
+        rule.waitForIdle()
+        rule.enableAccessibilityChecks()
+        rule.waitUntil(5_000) { core.device.listTasks("deleted").rows.isEmpty() }
+    }
+
+    @Test
+    fun aTrashedTasksEraseIsAmongItsActionsAndNeverFirst() {
+        core.device.addTask("in the trash")
+        core.device.trashTask(core.device.listTasks("").rows.single().id)
+        rule.runOnIdle { core.changed() }
+        press("Trash", substring = true)
+        val actions = shown("in the trash").fetchSemanticsNode().config
+            .getOrNull(androidx.compose.ui.semantics.SemanticsActions.CustomActions).orEmpty().map { it.label }
+        assertEquals("Erase permanently", actions.last())
+        assertTrue(actions.first() != "Erase permanently")
     }
 
     @Test

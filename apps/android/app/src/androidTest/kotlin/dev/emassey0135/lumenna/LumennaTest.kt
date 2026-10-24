@@ -14,6 +14,10 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -484,6 +488,33 @@ class LumennaTest {
         assertEquals(listOf("keep me"), titles())
     }
 
+    @Test
+    fun aTrashedTaskIsErasedPermanentlyFromItsMenuOnlyAfterSayingWhatThatTakes() {
+        seed {
+            it.addTask("say nothing of this")
+            it.trashTask(it.listTasks("").rows.single().id)
+        }
+        tab("Browse")
+        row("Trash").performClick()
+        rule.waitForIdle()
+        // The core's, in its order, all of them TalkBack's custom actions: erasing last, never primary.
+        val offered = core.device.listTasks("deleted").rows.single().actions
+        val erase = offered.single { it.kind == dev.emassey0135.lumenna.app.ActionKind.ERASE_PERMANENTLY }
+        assertFalse(erase.primary)
+        assertEquals(offered.map { it.sentence }, actionsOf("say nothing of this"))
+        assertEquals("Erase permanently", offered.last().sentence)
+        // And the long-press menu, where a touch finds it.
+        row("say nothing of this").performTouchInput { longClick() }
+        rule.waitForIdle()
+        rule.onNode(hasText("Erase permanently") and hasClickAction()).performClick()
+        rule.waitForIdle()
+        shows("Permanently erase — rebuilds your database and re-syncs all devices.")
+        rule.onNode(hasText("Erase permanently") and hasAnyAncestor(isDialog())).performClick()
+        rule.waitForIdle()
+        gone("say nothing of this")
+        rule.waitUntil(5_000) { core.device.listTasks("deleted").rows.isEmpty() }
+    }
+
     // MARK: - The day
 
     @Test
@@ -728,6 +759,28 @@ class LumennaTest {
         replace("Time", "9:30am")
         button("Set")
         assertEquals("09:30", core.device.settings("day-start").settings.single().value)
+    }
+
+    @Test
+    fun eraseEverythingDeletedIsADestructiveButtonBesideExportAndImportAndAsksFirst() {
+        seed {
+            it.addTask("in the trash")
+            it.trashTask(it.listTasks("").rows.single().id)
+        }
+        tab("Settings")
+        row("Export and import").performClick()
+        rule.waitForIdle()
+        // The store's own actions, the core's, in sentence case.
+        val erase = core.app.view.value!!.settings!!.offered.single()
+        assertTrue(erase.destructive)
+        assertEquals("Erase everything deleted", erase.sentence)
+        button(erase.sentence)
+        // The app's question, through the questions every row's go through.
+        shows("Everything in the trash goes")
+        assertEquals(listOf("in the trash"), core.device.listTasks("deleted").rows.map { it.title })
+        rule.onNode(hasText(erase.sentence) and hasAnyAncestor(isDialog())).performClick()
+        rule.waitForIdle()
+        rule.waitUntil(5_000) { core.device.listTasks("deleted").rows.isEmpty() }
     }
 
     @Test
