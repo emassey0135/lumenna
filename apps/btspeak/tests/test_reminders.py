@@ -9,6 +9,7 @@ import shutil
 import socket
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -31,8 +32,19 @@ import service  # noqa: E402
 play = btspeak_stub.play
 
 
-def answering(profile: Path) -> str | None:
-    """What answers at the profile's address, by what `initialize` says it is, as `lum` asks."""
+def answering(profile: Path, within: float = 0) -> str | None:
+    """What answers at the profile's address, by what `initialize` says it is, as `lum` asks;
+    waiting up to `within` seconds for something to: the address is served from a thread of its
+    own, started once the endpoint is held, so it can be a moment behind."""
+    deadline = time.monotonic() + within
+    while True:
+        process = _answering(profile)
+        if process is not None or time.monotonic() >= deadline:
+            return process
+        time.sleep(0.02)
+
+
+def _answering(profile: Path) -> str | None:
     path = profile / "lumenna.sock"
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
@@ -265,7 +277,7 @@ class Reminders(unittest.TestCase):
         try:
             self.assertTrue(device.keep_in_sync(background.PROCESS, "test device", "btspeak"), "holds the endpoint")
             self.assertTrue(device.keep_in_sync(background.PROCESS, "test device", "btspeak"), "asked again, unchanged")
-            self.assertEqual(answering(self.profile), background.PROCESS)
+            self.assertEqual(answering(self.profile, within=10), background.PROCESS)
         finally:
             device.stop_syncing()
         self.assertIsNone(answering(self.profile), "the address given up once stopped")

@@ -201,6 +201,65 @@ class Menus(unittest.TestCase):
         self.assertEqual(self.titles(), ["keep me"])
         self.assertEqual(self.titles("deleted"), [])
 
+    def test_a_trashed_task_offers_erase_permanently_last_which_no_key_runs_and_which_asks_first(self):
+        for title in ("keep me", "lose me"):
+            self.call("task.rm", id=self.call("task.add", text=title)["task"]["id"])
+        script = self.run_script(
+            [
+                # Turned down, then asked for again and answered yes.
+                ("context", "lose me", "Erase permanently"),
+                ("confirm", False),
+                ("context", "lose me", "Erase permanently"),
+                ("confirm", True),
+                ("back",),
+            ],
+            lambda: tasks.trash(self.session),
+        )
+        self.assertEqual(self.titles("deleted"), ["keep me"])
+        self.assertIn("Erased lose me permanently", script.said)
+        # The app's Confirm question, its safe answer what Enter gives.
+        question, default = script.confirmations[0]
+        self.assertTrue(
+            question.startswith("Erase lose me permanently? Permanently erase — rebuilds your database"), question,
+        )
+        self.assertFalse(default)
+        menu = btspeak_stub._Menu([])
+        menu.menu = [type("Row", (), {"row": tasks.list_rows(self.session)[0]})()]
+        offered = [command for command in script.menus[-1]["context"] if command.applies(menu)]
+        self.assertEqual(
+            [command.get_label(menu) for command in offered],
+            ["Restore, r", "Delete from trash", "Erase permanently", "Details"],
+        )
+        # The delete keys still do Delete from trash, and nothing is a key for erasing.
+        self.assertEqual([c.get_label(menu) for c in offered if c.on_delete_key], ["Delete from trash"])
+        erasing = next(c for c in offered if c.get_label(menu) == "Erase permanently")
+        self.assertEqual(erasing.key, "")
+
+    def test_settings_offers_erase_everything_deleted_after_export_and_import_and_it_asks_first(self):
+        self.call("task.add", text="still here")
+        self.call("task.rm", id=self.call("task.add", text="gone for good")["task"]["id"])
+        script = self.run_script(
+            [
+                ("menu", "Erase everything deleted"),
+                ("confirm", False),
+                ("menu", "Erase everything deleted"),
+                ("confirm", True),
+                ("back",),
+            ],
+            lambda: preferences.settings(self.session),
+        )
+        rows = script.menus[0]["rows"]
+        self.assertEqual(rows.index("Erase everything deleted"), rows.index("Export and import") + 1, rows)
+        self.assertEqual(self.titles(), ["still here"])
+        self.assertEqual(self.titles("deleted"), [])
+        question, default = script.confirmations[0]
+        self.assertTrue(
+            question.startswith("Erase everything deleted permanently? Permanently erase — rebuilds"), question,
+        )
+        self.assertFalse(default)
+        # Turned down the first time: nothing was erased until it was answered yes.
+        self.assertEqual(len(script.confirmations), 2)
+
     # -- the day ----------------------------------------------------------------------
 
     def test_a_new_block_starts_when_the_core_says_and_again_for_a_day_changed_to(self):

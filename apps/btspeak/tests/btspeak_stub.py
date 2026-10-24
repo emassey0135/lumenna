@@ -100,6 +100,8 @@ class Script:
         self.offered: list[list[str]] = []
         self.prompts: list[str] = []
         self.forms: list[list] = []
+        #: Each confirmation asked, with the answer Enter gives.
+        self.confirmations: list[tuple[str, bool]] = []
 
     def take(self, kind: str, asked: str):
         if not self.steps:
@@ -184,6 +186,7 @@ def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, defa
     handle = _Menu(menu)
     script.menus.append({
         "context": context_menu, "app": app_menu, "keys": dict(global_keys or {}), "empty": empty_message,
+        "rows": [item.get_title() for item in menu],
         # What each row says after it, as the device says a row's hint: by the row's title.
         "hints": {item.get_title(): item.hint for item in menu if item.hint},
         "announced": _ignored.get("announce_title", True),
@@ -335,6 +338,7 @@ def request_form(fields, **_ignored):
 
 
 def request_confirmation(question, default=True, **_ignored):
+    script.confirmations.append((question, default))
     (answer,) = script.take("confirm", question)
     return answer
 

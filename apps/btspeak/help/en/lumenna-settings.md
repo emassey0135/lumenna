@@ -31,3 +31,7 @@ How often a backup is taken, how many are kept, and where they go. A backup hold
 ## Export and import
 
 An export is what you have now, with nothing from the trash: JSON to import again, a Markdown checklist, an org outline, or a calendar file of your blocks. Import reads a JSON export or a backup.
+
+## Erase everything deleted
+
+Below Export and import, with no shortcut: it erases everything in the trash, and the history of everything ever deleted, from every device, and cannot be undone. It asks first, saying what else it does.

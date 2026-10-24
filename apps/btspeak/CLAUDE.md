@@ -25,7 +25,11 @@ test with a newer one (`PYTHON=…`).
   there and the app says why. Running one is `ActOn`, naming the row (`acting_on`), which the
   app puts in hand; `follow` then answers whatever the app opens, one after another, with the
   device's dialogs: a question (a refusal staying in it), the block form, a proposal, a reminder
-  list. The task form registers in `actions.FORMS`.
+  list. The task form registers in `actions.FORMS`. Erase Permanently is in neither `KEYS` nor
+  `DELETES`: only the context menu runs it, and the delete keys stay Delete from Trash's.
+- **Settings lists the store's own actions** (`SettingsView.offered`, Erase everything deleted)
+  as rows after Export and import, with no shortcut, each handed back as `ActOn` with
+  `ActingOnSettings` (`preferences.store_items`); the app asks its Confirm question.
 - **Speech and braille come from one string** (`DynamicMenuDialog.draw()` sets both from it),
   but where the app shows a line apart in braille (`Line::braille`) it is the menu item's
   `braille_title`, as the device's own mail list shows its statuses short. Every short form is

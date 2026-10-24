@@ -112,10 +112,25 @@ def settings(session: Session) -> str:
             background_item(session),
             dialogs.DynamicMenuItem(title="Backups, on this device only", shortcut="b", action=lambda: backups(session)),
             dialogs.DynamicMenuItem(title="Export and import", shortcut="e", action=lambda: export_import(session)),
+            *store_items(session),
             dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back),
         ]
         dialogs.dynamic_menu([item for item in menu if item is not None], title="Settings")
     return ""
+
+
+def store_items(session: Session) -> list:
+    """What the app offers to do to the store as a whole (Erase everything deleted), a row
+    each beside backups and export, under the core's name. No shortcut: what it does cannot be
+    undone, so it is reached by moving to it, and the app asks first."""
+    view = session.view().settings
+    return [
+        dialogs.DynamicMenuItem(
+            title=actions.named(offered),
+            action=lambda offered=offered: actions.act(session, offered, on=L.ActingOnSettings()),
+        )
+        for offered in (view.offered if view is not None else [])
+    ]
 
 
 def shown_settings(session: Session) -> list:
