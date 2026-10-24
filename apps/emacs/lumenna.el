@@ -764,9 +764,11 @@ One task's buffer offers the task's, whatever field point is on.")
 
 (defun lumenna--acting-on (row)
   "Which row an action offered on ROW is for, as the app names it.
-A task's buffer offers its task's; a side list's row is named there."
+A task's buffer offers its task's; a side list's row is named there; a row
+standing for something else names it as its `:on' (Settings' own buttons)."
   (cond (lumenna--actions-function "Details")
         ((null row) (user-error "Nothing to do that to here"))
+        ((plist-get row :on))
         (lumenna--held (list :Held (vector (lumenna--side) (lumenna--row-key row))))
         (t (list :Row (lumenna--row-key row)))))
 

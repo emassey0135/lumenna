@@ -330,7 +330,9 @@ a major mode of its own, as `log-edit-mode' is for a commit message."
 
 (define-derived-mode lumenna-trash-mode lumenna-list-mode "Lumenna Trash"
   "Deleted tasks.
-RET or r restores one; d deletes it from the trash, asking first.
+RET or r restores one; d deletes it from the trash, asking first.  Erasing
+one permanently, from every device's history, is never a key's: choose
+it with \\[lumenna-act-at-point].
 
 \\{lumenna-trash-mode-map}"
   (setq-local lumenna--draw #'lumenna--list-rows)

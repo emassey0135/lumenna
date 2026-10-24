@@ -366,6 +366,68 @@ until the app has taken it in."
     (should (equal (lumenna-test--titles) '("keep me")))
     (should (equal (lumenna-test--titles "deleted") nil))))
 
+(ert-deftest lumenna-a-trashed-task-is-erased-permanently-only-by-name-and-its-delete-key-deletes-from-trash ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "task.add" :text "kept in the trash")
+    (lumenna-test--seed "task.add" :text "the secret")
+    (lumenna-tasks)
+    (lumenna-test--goto "kept in the trash")
+    (lumenna-act-delete)
+    (lumenna-test--goto "the secret")
+    (lumenna-act-delete)
+    (lumenna-trash)
+    ;; d asks Delete from Trash's question, which undo can take back; turned down, nothing goes.
+    (lumenna-test--goto "kept in the trash")
+    (let (asked)
+      (cl-letf (((symbol-function 'yes-or-no-p) (lambda (prompt) (setq asked prompt) nil)))
+        (lumenna-act-delete))
+      (should (string-prefix-p "Undo can bring it back" asked)))
+    (should (equal (lumenna-test--titles "deleted") '("kept in the trash" "the secret")))
+    ;; Erase Permanently is offered last, by name only, and says what it does first.
+    (lumenna-test--goto "the secret")
+    (let (offered asked said changed)
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _) (setq offered (mapcar #'car choices)) "Erase Permanently"))
+                ((symbol-function 'yes-or-no-p) (lambda (prompt) (setq asked prompt) t)))
+        (let ((lumenna-announce-function (lambda (announcement _notices) (push announcement said)))
+              (lumenna-changed-functions (list (lambda (event _) (push event changed)))))
+          (lumenna-act-at-point)))
+      (should (equal offered '("Restore" "Delete from Trash" "Erase Permanently")))
+      (should (string-prefix-p "Permanently erase — rebuilds your database and re-syncs all devices" asked))
+      (should (string-suffix-p "Erase the secret permanently? " asked))
+      (should (member "Erased the secret permanently" said))
+      (should (equal changed '("task/erase_permanently"))))
+    (should (equal (lumenna-test--titles "deleted") '("kept in the trash")))))
+
+(ert-deftest lumenna-settings-offer-erasing-everything-deleted-as-a-button-which-asks-first ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "task.add" :text "the secret")
+    (lumenna-tasks)
+    (lumenna-test--goto "the secret")
+    (lumenna-act-delete)
+    (lumenna-settings)
+    ;; A line of its own after the settings, named by the core's title.
+    (lumenna-test--goto "Erase Everything Deleted")
+    (should (equal (lumenna-test--line) "Erase Everything Deleted"))
+    (should (equal (mapcar (lambda (a) (plist-get a :title)) (lumenna-actions)) '("Erase Everything Deleted")))
+    ;; Turned down, nothing is erased.
+    (cl-letf (((symbol-function 'yes-or-no-p) (lambda (_) nil)))
+      (lumenna-activate))
+    (should (equal (lumenna-test--titles "deleted") '("the secret")))
+    (let (asked said changed)
+      (cl-letf (((symbol-function 'yes-or-no-p) (lambda (prompt) (setq asked prompt) t)))
+        (let ((lumenna-announce-function (lambda (announcement _notices) (push announcement said)))
+              (lumenna-changed-functions (list (lambda (event _) (push event changed)))))
+          (lumenna-activate)))
+      (should (string-prefix-p "Permanently erase — rebuilds your database and re-syncs all devices" asked))
+      (should (string-suffix-p "Erase everything deleted permanently? " asked))
+      (should (member "Erased 1 task and the history of everything deleted" said))
+      (should (equal changed '("store/erase_everything_deleted"))))
+    (should (equal (lumenna-test--titles "deleted") nil))
+    ;; Settings is still there to use, on the store begun again.
+    (should (derived-mode-p 'lumenna-settings-mode))
+    (lumenna-test--goto "Erase Everything Deleted")))
+
 ;;;; The day
 
 (ert-deftest lumenna-the-day-opens-on-now-and-plans-a-sitting ()

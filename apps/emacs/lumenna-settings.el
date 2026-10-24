@@ -19,7 +19,8 @@
 (define-derived-mode lumenna-settings-mode lumenna-list-mode "Lumenna Settings"
   "Settings, one per line.  RET changes one.
 The first line opens Devices and sync.  Those that sync to every device
-come first, then this device's own.
+come first, then this device's own, then what is done to the store as a
+whole, a line each, which RET does, asking first.
 
 \\{lumenna-settings-mode-map}"
   (setq-local lumenna--draw #'lumenna--setting-rows)
@@ -44,12 +45,22 @@ come first, then this device's own.
           ;; Devices and sync first, as every app's settings have it.
           (cons (list :key "devices" :title "Devices and sync"
                       :text (lumenna--heading "Devices and sync" status))
-                (mapcar (lambda (shown)
-                          (let ((setting (plist-get shown :setting)))
-                            (list :key (plist-get setting :key) :setting setting :problem (plist-get shown :problem)
-                                  :text (format "%s, %s" (plist-get setting :title)
-                                                (lumenna--setting-value setting (plist-get shown :typed))))))
-                        (append shared own))))))
+                (append
+                 (mapcar (lambda (shown)
+                           (let ((setting (plist-get shown :setting)))
+                             (list :key (plist-get setting :key) :setting setting :problem (plist-get shown :problem)
+                                   :text (format "%s, %s" (plist-get setting :title)
+                                                 (lumenna--setting-value setting (plist-get shown :typed))))))
+                         (append shared own))
+                 (lumenna--store-rows))))))
+
+(defun lumenna--store-rows ()
+  "What Settings offers to do to the store as a whole: a button each.
+Each is a line of its own, its action the row's, handed back as Settings'."
+  (mapcar (lambda (offered)
+            (list :key (format "store/%s" (plist-get offered :kind)) :role "button" :on "Settings"
+                  :text (plist-get offered :title) :action offered :actions (vector offered)))
+          (plist-get (plist-get lumenna--view :settings) :offered)))
 
 ;;;###autoload
 (defun lumenna-settings ()
@@ -63,10 +74,11 @@ come first, then this device's own.
                         (list (list :Settings "Open") (list :Devices "Show"))))
 
 (defun lumenna--change-setting (row)
-  "Change the setting in ROW; the Devices and sync line opens its own buffer."
-  (if (equal (plist-get row :key) "devices")
-      (lumenna-devices)
-    (lumenna--change-setting-value row)))
+  "Change the setting in ROW; the Devices and sync line opens its own buffer.
+A button does its action, which the app asks about first."
+  (cond ((equal (plist-get row :key) "devices") (lumenna-devices))
+        ((plist-get row :action) (lumenna-act (plist-get row :action) row))
+        (t (lumenna--change-setting-value row))))
 
 (defun lumenna--set (key value)
   "Apply VALUE to the setting KEY, the app's way, and wait for it."
