@@ -15,8 +15,8 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Toolbar, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import type { Screen, ShellEvent, ShownDayItem } from "./core";
-import { ActionKind, DayKind, DayMove } from "./core";
-import { actOn, byKind, rowShown, REMOVING } from "./actions";
+import { ActionKind, DayMove } from "./core";
+import { actOn, byKind, keyPressed, rowShown, sharedKey } from "./actions";
 import { useCommand } from "./commands";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
@@ -27,7 +27,6 @@ import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
 
 /** What Space runs on a sitting: its timer. */
-const TIMING: ActionKind[] = [ActionKind.StartTimer, ActionKind.PauseTimer, ActionKind.ResumeTimer];
 /** What Enter runs: what a row is for. */
 const OPENING: ActionKind[] = [ActionKind.Edit, ActionKind.EditTask, ActionKind.AddBlock, ActionKind.RestoreDay];
 
@@ -72,11 +71,11 @@ export function Day(props: { screen: Screen }) {
       void send({ tag: "Focus", value0: at.key }).then(() => setMenu(true));
       return;
     }
-    const kinds = event.key === " " && at.kind === DayKind.Sitting ? TIMING : event.key === "Delete" ? REMOVING : undefined;
-    if (!kinds) return;
+    const pressed = sharedKey(event);
+    if (!pressed) return;
     event.preventDefault();
     event.stopPropagation();
-    void onRow(at.key, kinds);
+    void send({ tag: "Focus", value0: at.key }).then(() => act(keyPressed(pressed)));
   };
 
   const rightClick = (event: MouseEvent) => {

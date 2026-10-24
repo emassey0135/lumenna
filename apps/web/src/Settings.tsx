@@ -10,8 +10,8 @@
 // backup here is a download, asked for; restoring and importing read a file the person chooses.
 //
 // What is done to the store as a whole (`SettingsView::offered`: Erase Everything Deleted) is a
-// button each beside the backups, which hold what it erases: handed back to the app, which asks
-// its question as any row's.
+// button each beside the backups, which hold what it erases, the core's caption beneath and
+// describing them: handed back to the app, which asks its question as any row's.
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -261,12 +261,18 @@ function Backups(props: { settings: SettingsView | null }) {
           <Button
             key={action.kind}
             className={action.destructive ? "react-aria-Button destructive" : "react-aria-Button"}
+            aria-describedby={props.settings?.offeredCaption ? "store-actions-caption" : undefined}
             onPress={() => void send(actOn({ tag: "Settings" }, action))}
           >
             {action.sentence ?? action.title}
           </Button>
         ))}
       </div>
+      {props.settings?.offeredCaption && (
+        <p id="store-actions-caption" className="quiet">
+          {props.settings.offeredCaption}
+        </p>
+      )}
     </>
   );
 }

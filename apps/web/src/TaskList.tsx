@@ -15,7 +15,7 @@ import type { Key, Selection } from "react-aria-components";
 import type { Screen, ShellEvent, ShortAction, ShownItem } from "./core";
 import { ActionKind, Syntax } from "./core";
 import { CompletingField } from "./Completing";
-import { actOn, byKind, rowShown, REMOVING, shortActions } from "./actions";
+import { actOn, byKind, keyPressed, rowShown, sharedKey, shortActions } from "./actions";
 import { useCommand } from "./commands";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { rowKey } from "./landing";
@@ -25,9 +25,6 @@ import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
-
-/** What Space runs on a row: whichever of these it has. */
-const CHECKING: ActionKind[] = [ActionKind.MarkDone, ActionKind.MarkNotDone, ActionKind.Restore];
 
 export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   const { screen } = props;
@@ -55,10 +52,10 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   /** Sends `event`; what comes back lands focus and is said as every turn is (session.ts). */
   const act = (event: ShellEvent) => void send(event);
 
-  /** Runs one of the row `id`'s kinds, with that row in hand. */
-  const onRow = async (id: string, kinds: ActionKind[]) => {
+  /** Presses a shared key on the row `id`, with that row in hand. */
+  const onRow = async (id: string, pressed: "delete" | "toggle") => {
     await send({ tag: "Focus", value0: id });
-    act({ tag: "Run", value0: kinds });
+    act(keyPressed(pressed));
   };
 
   // Filter Tasks: the filter, all of it selected so typing replaces it. Not in the trash.
@@ -85,11 +82,11 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
       void send({ tag: "Focus", value0: id }).then(() => setMenu(true));
       return;
     }
-    const kinds = event.key === " " ? CHECKING : event.key === "Delete" ? REMOVING : undefined;
-    if (!kinds) return;
+    const pressed = sharedKey(event);
+    if (!pressed) return;
     event.preventDefault();
     event.stopPropagation();
-    void onRow(id, kinds);
+    void onRow(id, pressed);
   };
 
   const rightClick = (event: MouseEvent) => {
@@ -189,7 +186,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
                           onPointerUp={(event) => event.stopPropagation()}
                           onClick={(event) => {
                             event.stopPropagation();
-                            void onRow(node.id, [done.kind]);
+                            act(actOn(rowShown(node.id), done));
                           }}
                         />
                       )}

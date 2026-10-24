@@ -58,7 +58,7 @@ test("a trashed task offers Erase permanently in its menu after Delete from tras
   await page.keyboard.press("Escape");
   await expect(row).toBeFocused();
 
-  // Delete asks Delete from Trash's question, not erasing's.
+  // Delete asks Delete from Trash's question, not erasing's: the core's key, the same everywhere.
   await page.keyboard.press("Delete");
   const deleting = page.getByRole("alertdialog", { name: "Delete Secret plan from the trash?" });
   await expect(deleting).toBeVisible();
@@ -77,12 +77,12 @@ test("a trashed task offers Erase permanently in its menu after Delete from tras
   await expect(row).toHaveCount(0);
 });
 
-test("Settings offers Erase everything deleted beside the backups, asking first, and the trash is emptied", async ({ page }) => {
+test("Settings offers Erase everything deleted beside the backups, described by its caption, asking first, and the trash is emptied", async ({ page }) => {
   await open(page);
   await trashed(page, "Old receipt");
   await backups(page);
   const erase = page.getByRole("button", { name: "Erase everything deleted", exact: true });
-  await expect(erase).toBeVisible();
+  await expect(erase).toHaveAccessibleDescription("Takes what was deleted out of the history every device keeps, so nothing can bring it back.");
   await axe(page);
   await erase.click();
   const question = page.getByRole("alertdialog", { name: /^Erase everything deleted permanently\?$/i });

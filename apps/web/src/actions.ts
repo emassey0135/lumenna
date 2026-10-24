@@ -40,5 +40,11 @@ export function byKind<A extends { kind: ActionKind }>(actions: readonly A[] | u
   return undefined;
 }
 
-/** What Delete runs on a row: whatever removes it there. */
-export const REMOVING: ActionKind[] = [ActionKind.Delete, ActionKind.DeleteForGood, ActionKind.Unassign, ActionKind.Unpair];
+/** A shared key pressed on the row in hand, by its id in the core's table ("delete", "toggle"):
+ *  what it runs there is the core's (`keys::runs`), the same on every platform. */
+export const keyPressed = (id: "delete" | "toggle"): ShellEvent => ({ tag: "Key", value0: id });
+
+/** The shared key a key press is, on a row: Delete, or Space. */
+export function sharedKey(event: { key: string }): "delete" | "toggle" | undefined {
+  return event.key === "Delete" ? "delete" : event.key === " " ? "toggle" : undefined;
+}

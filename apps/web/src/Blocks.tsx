@@ -7,7 +7,7 @@ import { Button, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import type { Screen, ShellEvent } from "./core";
 import { ActionKind } from "./core";
-import { actOn, rowShown, REMOVING, shortActions } from "./actions";
+import { actOn, keyPressed, rowShown, shortActions } from "./actions";
 import { useCommand } from "./commands";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
@@ -45,7 +45,7 @@ export function Blocks(props: { screen: Screen }) {
     } else if (event.key === "Delete") {
       event.preventDefault();
       event.stopPropagation();
-      void onRow(id, REMOVING);
+      void send({ tag: "Focus", value0: id }).then(() => act(keyPressed("delete")));
     }
   };
 
