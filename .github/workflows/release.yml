@@ -41,28 +41,28 @@ jobs:
     # an extension for the Python they have.
     container: debian:bookworm
     steps:
-      - name: A compiler, for ring's and SQLite's C; for the BTSpeak app, Python with its headers and pip
+      - name: A compiler, for ring's and SQLite's C, and xz; for the BTSpeak app, Python with its headers and pip
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends build-essential ca-certificates curl git \
+          apt-get install -y --no-install-recommends build-essential ca-certificates curl git xz-utils \
             ${{ matrix.btspeak && 'python3 python3-dev python3-pip python3-venv' || '' }}
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --release --locked -p lumenna-cli
-      - name: In a tarball, which keeps it executable as an artifact alone does not
+      - name: In a tarball, xz, which keeps it executable as an artifact alone does not
         run: |
           version=$(cargo pkgid -p lumenna-cli | sed 's/.*@//')
           mkdir -p dist staging
           cp target/release/lum staging/
           cp LICENSE staging/
-          tar -czf "dist/lum-$version-linux-${{ matrix.arch }}.tar.gz" -C staging lum LICENSE
-          mkdir unpacked && tar -xzf dist/*.tar.gz -C unpacked && unpacked/lum --version
+          XZ_OPT=-9 tar -cJf "dist/lum-$version-linux-${{ matrix.arch }}.tar.xz" -C staging lum LICENSE
+          mkdir unpacked && tar -xJf dist/*.tar.xz -C unpacked && unpacked/lum --version
       - uses: actions/upload-artifact@v4
         with:
           name: lum-linux-${{ matrix.arch }}
-          path: dist/*.tar.gz
+          path: dist/*.tar.xz
           retention-days: 30
       - name: BoltFFI, which the BTSpeak app's build-core.sh builds its core with
         if: matrix.btspeak
@@ -231,7 +231,12 @@ jobs:
             --icon-file apps/gtk/data/icons/hicolor/scalable/apps/dev.emassey0135.Lumenna.svg \
             --plugin gtk
           install -Dm644 apps/gtk/data/dev.emassey0135.Lumenna.metainfo.xml AppDir/usr/share/metainfo/dev.emassey0135.Lumenna.metainfo.xml
-          appimagetool --no-appstream AppDir "dist/Lumenna-$version-${{ matrix.appimage }}.AppImage"
+          # zstd at its strongest with 1 MiB blocks: 42 MB where appimagetool's own (128 KiB blocks)
+          # made 45, and it unpacks as fast at any level. xz made 38, but starts slower.
+          appimagetool --no-appstream --comp zstd \
+            --mksquashfs-opt -b --mksquashfs-opt 1048576 \
+            --mksquashfs-opt -Xcompression-level --mksquashfs-opt 19 \
+            AppDir "dist/Lumenna-$version-${{ matrix.appimage }}.AppImage"
           ls -l dist
       - name: The AppImage starts and keeps running
         env:
@@ -302,9 +307,9 @@ jobs:
             lum_version=$(cd "$GITHUB_WORKSPACE" && cargo pkgid -p lumenna-cli | sed 's/.*@//')
             mkdir "$RUNNER_TEMP/lum" "$RUNNER_TEMP/lum-dist"
             cp "$lum" "$GITHUB_WORKSPACE/LICENSE" "$RUNNER_TEMP/lum/"
-            tar -czf "$RUNNER_TEMP/lum-dist/lum-$lum_version-macos-universal.tar.gz" -C "$RUNNER_TEMP/lum" lum LICENSE
+            tar --options xz:compression-level=9 -cJf "$RUNNER_TEMP/lum-dist/lum-$lum_version-macos-universal.tar.xz" -C "$RUNNER_TEMP/lum" lum LICENSE
             mkdir "$RUNNER_TEMP/lum-unpacked"
-            tar -xzf "$RUNNER_TEMP"/lum-dist/*.tar.gz -C "$RUNNER_TEMP/lum-unpacked"
+            tar -xJf "$RUNNER_TEMP"/lum-dist/*.tar.xz -C "$RUNNER_TEMP/lum-unpacked"
             "$RUNNER_TEMP/lum-unpacked/lum" --version
             # The Mac's: a disk image holding the app beside a link to Applications, to drag it to.
             # LZMA (ULMO, macOS 10.15 and later, where the app needs 14) rather than zlib (UDZO):

@@ -94,7 +94,8 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
 - **The AppImage** (`release.yml`'s GTK job), the release beside the Flatpak. No tarball: the
   AppImage is the program alone with GTK inside, and `install.sh` is for a checkout.
   `linuxdeploy`'s GTK plugin gathers GTK 4 and libadwaita into the AppDir, `appimagetool` packs it with the static runtime, which needs no
-  FUSE 2. Built on Ubuntu 24.04, it needs glibc 2.39 (Ubuntu 24.04, Debian 13, Fedora 40 and
+  FUSE 2, in zstd at level 19 with 1 MiB blocks (42 MB; its own settings made 45, and xz's 38
+  starts slower). Built on Ubuntu 24.04, it needs glibc 2.39 (Ubuntu 24.04, Debian 13, Fedora 40 and
   later); older systems have the Flatpak. The job starts it under `xvfb-run` with
   `--background` and requires it still running, its store made. The tools run as AppImages
   themselves, so the job sets `APPIMAGE_EXTRACT_AND_RUN`. Not yet: its updater, and offering a
