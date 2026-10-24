@@ -96,7 +96,7 @@ fn a_trashed_task_is_restored_or_deleted_from_the_trash_after_saying_what_that_m
     lumenna.trash_task(&id).unwrap();
     let rows = lumenna.list_tasks("deleted").unwrap().rows;
     let actions = &rows[0].actions;
-    assert_eq!(titles(actions), ["Restore", "Delete from Trash"]);
+    assert_eq!(titles(actions), ["Restore", "Delete from Trash", "Erase Permanently"]);
     let erase = find(actions, "Delete from Trash");
     let Question::Confirm { message, yes, .. } = &erase.question else { panic!("{:?}", erase.question) };
     assert!(message.starts_with("Undo can bring it back"));

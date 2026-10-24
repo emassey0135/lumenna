@@ -57,6 +57,8 @@ pub const METHODS: &[&str] = &[
     "task.rm",
     "task.restore",
     "task.erase",
+    "task.erase_permanently",
+    "erase_everything_deleted",
     "task.move",
     "task.search",
     "task.depend.add",
@@ -499,6 +501,18 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
                 return Err(invalid("deleting from the trash asks first; pass \"confirm\": true"));
             }
             Response::new(l.erase_task(&id()?)?)
+        }
+        "task.erase_permanently" => {
+            if !flag(params, "confirm") {
+                return Err(invalid("erasing permanently asks first; pass \"confirm\": true"));
+            }
+            Response::new(l.erase_task_permanently(&id()?)?)
+        }
+        "erase_everything_deleted" => {
+            if !flag(params, "confirm") {
+                return Err(invalid("erasing permanently asks first; pass \"confirm\": true"));
+            }
+            Response::new(l.erase_everything_deleted()?)
         }
         "task.move" => {
             let to = match (maybe_text(params, "parent"), maybe_text(params, "project"), flag(params, "top")) {

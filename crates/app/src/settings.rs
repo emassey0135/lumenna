@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use crux_core::Command;
 use crux_core::render::render;
-use lumenna_records::LumennaError;
+use lumenna_records::{LumennaError, Offered};
 use lumenna_records::background::{BackgroundKind, KEY as BACKGROUND, background_words};
 use lumenna_records::types::{ExportFormat, Setting};
 use serde::{Deserialize, Serialize};
@@ -132,6 +132,10 @@ pub struct SettingsView {
     pub settings: Vec<SettingView>,
     /// The exports offered.
     pub exports: Vec<ExportChoice>,
+    /// What is done to the store as a whole, a button each: Erase Everything Deleted. A
+    /// shell hands one back with `Event::ActOn(ActingOn::Settings, offered)`, and the app
+    /// asks its question as any row's.
+    pub offered: Vec<Offered>,
 }
 
 /// A file for the shell to save: a backup or an export.
@@ -177,7 +181,8 @@ pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, tod
             name: lumenna_records::exports::export_name(export.format, today),
         })
         .collect();
-    SettingsView { settings: rows, exports }
+    let offered = lumenna_records::actions::store_actions().iter().map(Offered::of).collect();
+    SettingsView { settings: rows, exports, offered }
 }
 
 impl Lumenna {

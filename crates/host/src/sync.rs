@@ -159,6 +159,7 @@ pub(crate) fn this_node(store: &SharedStore) -> Result<NodeId> {
 
 /// Says how a round went, device by device.
 fn report(results: Vec<PeerResult>) -> SyncReport {
+    let adopted = results.iter().any(|result| result.outcome.as_ref().is_ok_and(|summary| summary.adopted.is_some()));
     let peers: Vec<PeerSync> = results
         .into_iter()
         .map(|result| match result.outcome {
@@ -184,7 +185,8 @@ fn report(results: Vec<PeerResult>) -> SyncReport {
     } else {
         format!("Synced with {reached} of {}", count_line(peers.len(), "device"))
     };
-    SyncReport { announcement, notices: Vec::new(), peers }
+    let notices = if adopted { vec![lumenna_records::actions::ERASED_ELSEWHERE.to_owned()] } else { Vec::new() };
+    SyncReport { announcement, notices, peers }
 }
 
 fn brought_anything(report: &SyncReport) -> bool {

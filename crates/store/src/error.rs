@@ -35,6 +35,11 @@ pub enum StoreError {
     /// The filesystem refused something — writing a backup, say.
     #[error("{0}")]
     Io(String),
+
+    /// Another process rebuilt the store for a real erasure while this one held the history
+    /// before it, so this one's write was not made: it is to be made again over the new one.
+    #[error("the store was just rebuilt, to erase what was deleted for good; try that again")]
+    Rebuilt,
 }
 
 impl From<std::io::Error> for StoreError {

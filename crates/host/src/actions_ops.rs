@@ -83,6 +83,8 @@ impl Lumenna {
             (S::Task, K::Delete) => self.trash_task(target),
             (S::Task, K::Restore) => self.restore_task(target),
             (S::Task, K::DeleteForGood) => self.erase_task(target),
+            (S::Task, K::ErasePermanently) => self.erase_task_permanently(target),
+            (S::Store, K::EraseEverythingDeleted) => self.erase_everything_deleted(),
             (S::Task, K::MoveToTopLevel) => self.move_task(target, MoveTarget::Top),
             (S::Task, K::MoveToProject) => {
                 self.move_task(target, MoveTarget::Project { name: answer_pick(&answer)?.0 })

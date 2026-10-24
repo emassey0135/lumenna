@@ -43,7 +43,14 @@ pub use device::Device;
 /// listed device reports at least the version that understands it
 /// ([`Snapshot::all_devices_at_least`](crate::snapshot::Snapshot::all_devices_at_least)), and
 /// a device on another version is said to be, in words.
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// 2: generations (the store's `generation`), which a real erasure begins: made only once
+/// every device is at [`GENERATIONS`].
+pub const SCHEMA_VERSION: u32 = 2;
+
+/// The first version that follows a real erasure: one before it would go on syncing the
+/// history erased, with any device that still had it.
+pub const GENERATIONS: u32 = 2;
 pub use project::{Label, Project, SavedFilter};
 pub use reminder::{
     Delivery, Reminder, ReminderAck, ReminderAction, ReminderAnchor, ReminderTarget, Trigger,

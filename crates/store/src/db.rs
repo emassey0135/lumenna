@@ -14,7 +14,9 @@
 //! may be offline for months. Compaction changes the *representation*; it discards no
 //! operations. Nor is the volume a problem: a heavy user generating a hundred operations a
 //! day produces roughly 2 MB a year compressed. The cost that matters is load time, and
-//! snapshots plus year-sharding already bound that.
+//! snapshots plus year-sharding already bound that. The one way history goes is a real
+//! erasure, which begins every document again as a new generation that every device takes in
+//! (`crate::generation`, [`Db::replace_generation`]).
 //!
 //! # Why SQLite at all
 //!
@@ -34,6 +36,14 @@ use crate::error::{Result, StoreError};
 /// Replay is linear, so the threshold trades a periodic write against startup time. A few
 /// thousand is where the replay starts being noticeable on the slowest target that matters.
 const COMPACT_AFTER_CHANGES: i64 = 2_000;
+
+/// Where the file says which generation of the store's history it holds (`crate::generation`):
+/// beside the documents, written in the transaction that replaces them, so every process
+/// sharing the file sees the two change together.
+const GENERATION: &str = "generation";
+
+/// Where it keeps each document's heads as its generation began.
+pub(crate) const GENERATION_BEGAN: &str = "generation-began";
 
 /// The SQLite file backing one profile.
 pub struct Db {
@@ -209,10 +219,44 @@ impl Db {
         doc: DocId,
         changes: &[(ChangeHash, Vec<u8>)],
     ) -> Result<Option<i64>> {
+        self.append(None, doc, changes)
+    }
+
+    /// [`append_changes`](Self::append_changes) for a process holding `generation`'s
+    /// documents: refused, [`StoreError::Rebuilt`](crate::StoreError::Rebuilt), when another
+    /// has since rebuilt the store as a newer one, in the same transaction, so a change of the
+    /// older history never lands among the newer's.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails, or the file holds another generation.
+    pub fn append_changes_of(
+        &mut self,
+        generation: Option<&str>,
+        doc: DocId,
+        changes: &[(ChangeHash, Vec<u8>)],
+    ) -> Result<Option<i64>> {
+        self.append(Some(generation), doc, changes)
+    }
+
+    fn append(
+        &mut self,
+        generation: Option<Option<&str>>,
+        doc: DocId,
+        changes: &[(ChangeHash, Vec<u8>)],
+    ) -> Result<Option<i64>> {
         if changes.is_empty() {
             return Ok(None);
         }
-        let tx = self.conn.transaction()?;
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(generation) = generation {
+            let held: Option<Vec<u8>> = tx
+                .query_row("SELECT value FROM local_state WHERE key = ?1", params![GENERATION], |r| r.get(0))
+                .optional()?;
+            if held.as_deref() != generation.map(str::as_bytes) {
+                return Err(StoreError::Rebuilt);
+            }
+        }
         {
             // A change is immutable and named by its hash, so re-appending one is a no-op.
             // That is what makes replaying a sync exchange, or a crash mid-write, harmless.
@@ -355,6 +399,53 @@ impl Db {
             params![doc.name(), encode_heads(&heads), data],
         )?;
         tx.execute("DELETE FROM changes WHERE doc_id = ?1", params![doc.name()])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The generation of the store's history this file holds (see `crate::generation`):
+    /// `None` for the first.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn generation(&self) -> Result<Option<String>> {
+        Ok(self.local_value(GENERATION)?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()))
+    }
+
+    /// Replaces every document with `documents`, generation `generation`, in one transaction:
+    /// a real erasure, here or taken in from another device. Everything that held the history
+    /// before goes with it: the changes and snapshots, the parts read from them, the undo
+    /// history (whose edits carry the records they removed), and what a watch link last agreed
+    /// on. `began` is kept, for when a newer generation is taken in after this one.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails.
+    pub fn replace_generation(
+        &mut self,
+        generation: &str,
+        documents: &[(DocId, Vec<ChangeHash>, Vec<u8>)],
+        began: &str,
+    ) -> Result<()> {
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute_batch(
+            "DELETE FROM changes; DELETE FROM snapshots; DELETE FROM hydrated; DELETE FROM undo;",
+        )?;
+        for (doc, heads, data) in documents {
+            tx.execute(
+                "INSERT INTO snapshots (doc_id, heads, data) VALUES (?1, ?2, ?3)",
+                params![doc.name(), encode_heads(heads), data],
+            )?;
+        }
+        for (key, value) in [(GENERATION, generation), (GENERATION_BEGAN, began)] {
+            tx.execute(
+                "INSERT INTO local_state (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![key, value.as_bytes()],
+            )?;
+        }
+        tx.execute("DELETE FROM local_state WHERE key = 'link-agreed'", [])?;
         tx.commit()?;
         Ok(())
     }

@@ -25,6 +25,23 @@ pub(crate) fn record(store: &mut Store, change: &Edit) -> Result<Change> {
 
 /// The same, unless there was nothing to do — in which case nothing is written, and the
 /// undo history does not fill with entries that appear to do nothing when reversed.
+/// Refuses a real erasure while a paired device runs a version from before generations, which
+/// would go on syncing the history erased with any device that still had it, saying which.
+fn too_old_to_follow(snapshot: &lumenna_core::snapshot::Snapshot) -> Result<()> {
+    use lumenna_core::model::GENERATIONS;
+    if snapshot.all_devices_at_least(GENERATIONS) {
+        return Ok(());
+    }
+    let mut old: Vec<String> =
+        snapshot.devices.values().filter(|d| d.schema < GENERATIONS).map(|d| d.name.clone()).collect();
+    old.sort_unstable();
+    Err(LumennaError::new(format!(
+        "Nothing can be erased permanently until every paired device is updated: {} {} an older version of Lumenna",
+        crate::words::listed(&old),
+        if old.len() == 1 { "runs" } else { "run" }
+    )))
+}
+
 pub(crate) fn record_or(store: &mut Store, change: &Edit, otherwise: &str) -> Result<Change> {
     if change.is_empty() {
         return Ok(Change::unchanged(otherwise));
@@ -382,7 +399,7 @@ impl Lumenna {
 
     /// Deletes a task outright rather than moving it to the trash, so a client asks first —
     /// nothing here can. Undo brings it back, and its content stays in the document's history
-    /// and in backups until a real erasure exists.
+    /// and in backups until it is erased permanently (`erase_task_permanently`).
     ///
     /// # Errors
     ///
@@ -392,6 +409,64 @@ impl Lumenna {
             let snapshot = repaired(store);
             let change = edit::purge_task(&snapshot, resolve::task_id(&snapshot, id)?)?;
             record(store, &change)
+        })
+    }
+
+    /// Erases a trashed task permanently: from the store's history, on every device, not only
+    /// from the current state. The store begins its history again without it (and without
+    /// the history of everything deleted before), which every device takes in as it next
+    /// syncs, so a client asks first; nothing can undo it. Refused, saying which, while any
+    /// paired device runs a version that would not follow it.
+    ///
+    /// # Errors
+    ///
+    /// If no task matches `id`, it is not in the trash, or a device is too old.
+    pub fn erase_task_permanently(&self, id: &str) -> Result<Change> {
+        self.told(|store| {
+            let snapshot = repaired(store);
+            let task = resolve::task_id(&snapshot, id)?;
+            let title = snapshot.tasks[&task].title.clone();
+            if !snapshot.tasks[&task].is_deleted() {
+                return Err(LumennaError::new(format!("{title} is not in the trash; move it there first")));
+            }
+            too_old_to_follow(&snapshot)?;
+            let edit = edit::purge_task(&snapshot, task)?;
+            store.apply(&edit)?;
+            store.erase(lumenna_store::Documents::erased_by(&edit))?;
+            Ok(Change { changed: true, ..Change::unchanged(format!("Erased {title} permanently")) })
+        })
+    }
+
+    /// Erases everything deleted permanently: every task in the trash, and the history of
+    /// everything ever deleted, as [`erase_task_permanently`](Self::erase_task_permanently)
+    /// does one.
+    ///
+    /// # Errors
+    ///
+    /// If a device is too old to follow, or the store cannot be written.
+    pub fn erase_everything_deleted(&self) -> Result<Change> {
+        self.told(|store| {
+            let snapshot = repaired(store);
+            too_old_to_follow(&snapshot)?;
+            let trashed: Vec<_> = snapshot.tasks.values().filter(|t| t.is_deleted()).map(|t| t.id).collect();
+            let mut erased = Vec::new();
+            for id in trashed {
+                // A subtask goes with its parent, so may be gone already.
+                let current = repaired(store);
+                if !current.tasks.contains_key(&id) {
+                    continue;
+                }
+                let edit = edit::purge_task(&current, id)?;
+                store.apply(&edit)?;
+                erased.extend(lumenna_store::Documents::erased_by(&edit));
+            }
+            let tasks = erased.iter().filter(|key| key.starts_with("tasks/")).count();
+            store.erase(erased)?;
+            let said = match tasks {
+                0 => "Erased the history of everything deleted".to_owned(),
+                n => format!("Erased {} and the history of everything deleted", crate::words::count_line(n, "task")),
+            };
+            Ok(Change { changed: true, ..Change::unchanged(said) })
         })
     }
 

@@ -14,7 +14,8 @@
 //! u16                                format version, little-endian
 //! u32                                document count
 //! per document:
-//!   u16 + bytes                      its name: "core", "devices", "blocks-2026"
+//!   u16 + bytes                      its name: "core", "devices", "blocks-2026", with
+//!                                    "@<generation>" after a real erasure
 //!   u64 + bytes                      its saved bytes
 //! ```
 //!
@@ -35,7 +36,7 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 
-use crate::doc::DocId;
+use crate::doc::SyncName;
 use crate::error::{Result, StoreError};
 
 const MAGIC: &[u8] = b"LUMENNA-BACKUP\n";
@@ -51,7 +52,7 @@ pub fn is_backup(bytes: &[u8]) -> bool {
 
 /// Frames saved documents as a backup file.
 #[must_use]
-pub fn encode(documents: &[(DocId, Vec<u8>)]) -> Vec<u8> {
+pub fn encode(documents: &[(SyncName, Vec<u8>)]) -> Vec<u8> {
     let mut out = MAGIC.to_vec();
     out.extend_from_slice(&VERSION.to_le_bytes());
     let count = u32::try_from(documents.len()).unwrap_or(u32::MAX);
@@ -71,7 +72,7 @@ pub fn encode(documents: &[(DocId, Vec<u8>)]) -> Vec<u8> {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Decoded {
     /// The documents, with their saved bytes.
-    pub documents: Vec<(DocId, Vec<u8>)>,
+    pub documents: Vec<(SyncName, Vec<u8>)>,
     /// Names of documents this version does not know, which were left out rather than
     /// failing the whole restore. A newer version may add a kind of document; the rest of the
     /// backup is still yours.
@@ -103,7 +104,7 @@ pub fn decode(bytes: &[u8]) -> Result<Decoded> {
         let data_length = usize::try_from(u64::from_le_bytes(take(&mut rest)?))
             .map_err(|_| truncated())?;
         let data = take_slice(&mut rest, data_length)?.to_vec();
-        match DocId::parse(&name) {
+        match SyncName::parse(&name) {
             Some(id) => decoded.documents.push((id, data)),
             None => decoded.unknown.push(name),
         }
@@ -260,6 +261,21 @@ pub fn write(policy: &Policy, bytes: &[u8], taken: Timestamp) -> Result<PathBuf>
     Ok(path)
 }
 
+/// Removes every backup in `directory`, as [`list`] finds them by name: what a real erasure
+/// does with the backups taken automatically, which hold what it erased. Anything else kept
+/// there is never touched. Returns how many went.
+///
+/// # Errors
+///
+/// If the directory exists but cannot be read, or a backup cannot be removed.
+pub fn remove_all(directory: &Path) -> Result<usize> {
+    let found = list(directory)?;
+    for backup in &found {
+        std::fs::remove_file(&backup.path)?;
+    }
+    Ok(found.len())
+}
+
 /// Whether the newest backup is older than the policy allows.
 ///
 /// # Errors
@@ -278,13 +294,14 @@ pub fn is_due(policy: &Policy, now: Timestamp) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DocId;
 
     #[test]
     fn a_frame_round_trips() {
         let documents = vec![
-            (DocId::Core, vec![1, 2, 3]),
-            (DocId::Devices, vec![]),
-            (DocId::Blocks(2026), vec![9; 300]),
+            (SyncName::new(DocId::Core, None), vec![1, 2, 3]),
+            (SyncName::new(DocId::Devices, None), vec![]),
+            (SyncName::new(DocId::Blocks(2026), Some("019a0000-0000-7000-8000-000000000001")), vec![9; 300]),
         ];
         let bytes = encode(&documents);
         assert!(is_backup(&bytes));
@@ -296,7 +313,7 @@ mod tests {
     #[test]
     fn anything_else_is_refused_with_a_reason() {
         assert!(decode(b"{\"format\": \"lumenna-export\"}").is_err());
-        let bytes = encode(&[(DocId::Core, vec![1, 2, 3])]);
+        let bytes = encode(&[(SyncName::new(DocId::Core, None), vec![1, 2, 3])]);
         let cut = decode(&bytes[..bytes.len() - 1]).unwrap_err();
         assert!(cut.to_string().contains("cut short"), "{cut}");
 
@@ -307,7 +324,7 @@ mod tests {
 
     #[test]
     fn a_document_this_version_does_not_know_is_set_aside() {
-        let mut bytes = encode(&[(DocId::Core, vec![1])]);
+        let mut bytes = encode(&[(SyncName::new(DocId::Core, None), vec![1])]);
         // Patch the count to two and append a document from the future.
         bytes[MAGIC.len() + 2] = 2;
         let name = b"calendars";

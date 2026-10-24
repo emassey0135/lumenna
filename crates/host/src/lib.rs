@@ -117,6 +117,9 @@ pub struct Lumenna {
     /// Set by an operation that merged another store's changes in — a restore, an import —
     /// which can make a loop, so the repair is looked for straight after it.
     merged: std::sync::atomic::AtomicBool,
+    /// The store's generation as last seen, so what follows an erasure is done once
+    /// (`follow_erasure`).
+    generation_seen: Mutex<Option<String>>,
 }
 
 impl Lumenna {
@@ -215,6 +218,7 @@ impl Lumenna {
             looked: Mutex::new(None),
             unsaid: Mutex::new(Vec::new()),
             merged: std::sync::atomic::AtomicBool::new(false),
+            generation_seen: Mutex::new(None),
         };
         // A device that took a new build says so in the device list, for the others to see.
         // Failing to is no reason not to open.
@@ -272,6 +276,7 @@ impl Lumenna {
         // Another process may have written since, and answering from a stale document would
         // be a wrong answer rather than a slow one.
         store.refresh()?;
+        self.follow_erasure(&mut store)?;
         self.write_repairs(&mut store)?;
         let result = operation(&mut store);
         if self.merged.swap(false, std::sync::atomic::Ordering::Relaxed) {
@@ -279,6 +284,9 @@ impl Lumenna {
         } else {
             *self.looked.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(store.version());
         }
+        // An erasure the operation made, or took in from a sync, is followed now, not at the
+        // next operation.
+        self.follow_erasure(&mut store)?;
         result
     }
 

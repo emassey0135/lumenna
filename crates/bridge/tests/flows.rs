@@ -1014,6 +1014,27 @@ fn a_setting_applies_and_one_refused_stays_as_typed_beside_why() {
 }
 
 #[test]
+fn settings_offer_erasing_everything_deleted_which_asks_first_as_any_rows_action() {
+    let mut app = App::new();
+    app.add("the secret");
+    let host = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    host.trash_task(&app.id_of("the secret")).unwrap();
+    app.session.tick();
+    app.send(Event::Settings(SettingsEvent::Open));
+    let offered = app.view().settings.unwrap().offered;
+    assert_eq!(offered.iter().map(|o| o.title.as_str()).collect::<Vec<_>>(), ["Erase Everything Deleted"]);
+    assert!(offered[0].destructive);
+
+    app.send(Event::ActOn(ActingOn::Settings, offered[0].clone()));
+    let asking = app.view().asking.expect("it asks first");
+    let Question::Confirm { message, .. } = &asking.question else { panic!("a confirmation: {:?}", asking.question) };
+    assert!(message.starts_with("Permanently erase — rebuilds your database"), "{message}");
+    let shell = app.send(Event::Answer(Answer::Yes));
+    assert_eq!(said(&shell), ["Erased 1 task and the history of everything deleted"]);
+    assert!(host.list_tasks("deleted").unwrap().rows.is_empty());
+}
+
+#[test]
 fn running_in_the_background_is_offered_only_where_the_shell_says_and_its_change_is_the_shells_to_make() {
     use lumenna_app::BackgroundEvent;
     use lumenna_records::background::{BackgroundKind, background_words};
@@ -1370,7 +1391,7 @@ fn unpair_on_this_devices_own_row_says_it_is_the_device_in_use() {
         last_attempt: None,
         last_success: None,
         last_error: None,
-        schema_version: 1,
+        schema_version: lumenna_core::model::SCHEMA_VERSION,
         status: Vec::new(),
         actions: lumenna_records::actions::device("This PC", "ab12", true),
         offered: Vec::new(),
@@ -1522,7 +1543,7 @@ fn an_action_on_a_device_is_refused_in_the_cores_words_for_that_device() {
         last_attempt: None,
         last_success: None,
         last_error: None,
-        schema_version: 1,
+        schema_version: lumenna_core::model::SCHEMA_VERSION,
         status: Vec::new(),
         actions: lumenna_records::actions::device("This PC", "ab12", true),
         offered: Vec::new(),

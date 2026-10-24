@@ -18,7 +18,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lumenna_store::{DocId, Store, SyncState};
+use lumenna_store::{Adopted, DocId, Store, SyncName, SyncState};
 
 use crate::error::{Result, SyncError};
 
@@ -32,8 +32,8 @@ pub const MAX_ROUNDS: usize = 1_000;
 /// One side of an exchange.
 #[derive(Default)]
 pub struct Exchange {
-    states: BTreeMap<DocId, SyncState>,
-    known: BTreeSet<DocId>,
+    states: BTreeMap<SyncName, SyncState>,
+    known: BTreeSet<SyncName>,
     sent: usize,
     answering: bool,
     sent_nothing: bool,
@@ -71,18 +71,21 @@ impl Exchange {
             return Err(SyncError::Protocol("the other device's sync did not settle".to_owned()));
         }
         let mine = store.sync_documents()?;
-        self.known.extend(mine.iter().copied());
+        self.known.extend(mine.iter().cloned());
+        // Only the newest generation either side holds, as in a session (`crate::session`).
+        let newest = self.known.iter().map(|name| name.generation.clone()).max().flatten();
+        self.known.retain(|name| name.generation == newest);
         let mut messages = Vec::new();
-        for &id in &self.known {
-            let state = self.states.entry(id).or_default();
-            if let Some(message) = store.sync_message(id, state)? {
-                messages.push((id.name(), message));
+        for name in &self.known {
+            let state = self.states.entry(name.clone()).or_default();
+            if let Some(message) = store.sync_message(name, state)? {
+                messages.push((name.name(), message));
             }
         }
         let fresh = self.sent == 0 && !self.answering;
         self.sent += 1;
         self.sent_nothing = messages.is_empty();
-        Ok(encode(&Message { fresh, documents: mine.iter().map(|id| id.name()).collect(), messages }))
+        Ok(encode(&Message { fresh, documents: mine.iter().map(SyncName::name).collect(), messages }))
     }
 
     /// Takes in a message from the other side. Returns the documents that changed here.
@@ -99,15 +102,15 @@ impl Exchange {
             *self = Self { answering: true, ..Self::default() };
         }
         // A kind of document this version does not know is left alone, as in a session.
-        self.known.extend(message.documents.iter().filter_map(|name| DocId::parse(name)));
+        self.known.extend(message.documents.iter().filter_map(|name| SyncName::parse(name)));
         self.heard_nothing = message.messages.is_empty();
         let mut changed = Vec::new();
         for (name, sync) in &message.messages {
-            let Some(id) = DocId::parse(name) else { continue };
-            self.known.insert(id);
-            let state = self.states.entry(id).or_default();
-            if store.receive_sync_message(id, state, sync)? {
-                changed.push(id);
+            let Some(name) = SyncName::parse(name) else { continue };
+            self.known.insert(name.clone());
+            let state = self.states.entry(name.clone()).or_default();
+            if store.receive_sync_message(&name, state, sync)? {
+                changed.push(name.id);
             }
         }
         Ok(changed)
@@ -118,6 +121,19 @@ impl Exchange {
     #[must_use]
     pub const fn settled(&self) -> bool {
         self.sent > 0 && self.sent_nothing && self.heard_nothing
+    }
+
+    /// Once [`settled`](Self::settled), takes in the newer generation the other side sent, if
+    /// it had erased for good (`Store::finish_adoption`): whole only now. Nothing before.
+    ///
+    /// # Errors
+    ///
+    /// If a document cannot be read or written.
+    pub fn finish(&mut self, store: &mut Store) -> Result<Option<Adopted>> {
+        if !self.settled() {
+            return Ok(None);
+        }
+        Ok(store.finish_adoption()?)
     }
 }
 
@@ -216,8 +232,8 @@ const AGREED: &str = "link-agreed";
 /// If the store cannot be read or written.
 pub fn note_agreed(store: &mut Store) -> Result<()> {
     let mut text = String::new();
-    for (id, heads) in store.sync_heads()? {
-        text.push_str(&id.name());
+    for (name, heads) in store.sync_heads()? {
+        text.push_str(&name.name());
         for head in heads {
             text.push(' ');
             text.push_str(&head.to_string());
@@ -230,14 +246,14 @@ pub fn note_agreed(store: &mut Store) -> Result<()> {
 
 /// The heads last agreed on, by document; none for a document never agreed on, or for any
 /// when nothing ever settled.
-fn agreed(store: &Store) -> Result<BTreeMap<DocId, Vec<lumenna_store::ChangeHash>>> {
+fn agreed(store: &Store) -> Result<BTreeMap<SyncName, Vec<lumenna_store::ChangeHash>>> {
     let text = store.local_value(AGREED)?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()).unwrap_or_default();
     Ok(text
         .lines()
         .filter_map(|line| {
             let mut words = line.split(' ');
-            let id = DocId::parse(words.next()?)?;
-            Some((id, words.filter_map(|head| head.parse().ok()).collect()))
+            let name = SyncName::parse(words.next()?)?;
+            Some((name, words.filter_map(|head| head.parse().ok()).collect()))
         })
         .collect())
 }
@@ -254,11 +270,11 @@ fn agreed(store: &Store) -> Result<BTreeMap<DocId, Vec<lumenna_store::ChangeHash
 pub fn parcel(store: &mut Store) -> Result<Option<Vec<u8>>> {
     let agreed = agreed(store)?;
     let mut documents = Vec::new();
-    for (id, _) in store.sync_heads()? {
-        let since = agreed.get(&id).cloned().unwrap_or_default();
-        let changes = store.changes_since(id, &since)?;
+    for (name, _) in store.sync_heads()? {
+        let since = agreed.get(&name).cloned().unwrap_or_default();
+        let changes = store.changes_since(&name, &since)?;
         if !changes.is_empty() {
-            documents.push((id.name(), changes));
+            documents.push((name.name(), changes));
         }
     }
     if documents.is_empty() {
@@ -295,10 +311,12 @@ pub fn unparcel(store: &mut Store, bytes: &[u8]) -> Result<Vec<DocId>> {
     for _ in 0..reader.u32()? {
         let name = reader.text()?;
         let changes = (0..reader.u32()?).map(|_| Ok(reader.chunk()?.to_vec())).collect::<Result<Vec<_>>>()?;
-        // A kind of document this version does not know is left alone, as in an exchange.
-        let Some(id) = DocId::parse(&name) else { continue };
-        if store.take_changes(id, &changes)? {
-            changed.push(id);
+        // A kind of document this version does not know is left alone, as in an exchange, and
+        // another generation's changes are too (`Store::take_changes`): a newer one comes by an
+        // exchange, whole.
+        let Some(name) = SyncName::parse(&name) else { continue };
+        if store.take_changes(&name, &changes)? {
+            changed.push(name.id);
         }
     }
     if reader.at != bytes.len() {

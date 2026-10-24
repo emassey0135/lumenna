@@ -22,7 +22,7 @@
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use lumenna_store::{DocId, SyncState};
+use lumenna_store::{Adopted, DocId, SyncName, SyncState};
 
 use crate::error::{Result, SyncError};
 use crate::framing::{read_frame, write_frame};
@@ -31,6 +31,12 @@ use crate::{SharedStore, lock};
 /// The session protocol's version. A peer speaking another is refused with a message saying
 /// which side needs updating, rather than misread.
 const PROTOCOL: u32 = 0;
+
+/// The same protocol, said by a device whose store has been erased for good (a newer
+/// generation, `lumenna_store::SyncName`), so that a build from before generations, which
+/// would sync its documents' frames into the newer ones', refuses rather than mixes the two
+/// histories. This build speaks both.
+const ERASED: u32 = 1;
 
 /// The most rounds one document may take. Automerge converges in a handful; this is a guard
 /// against a peer that never stops talking, not a tuning parameter.
@@ -49,6 +55,9 @@ pub struct Summary {
     pub documents: usize,
     /// The documents that changed on this side.
     pub changed: Vec<DocId>,
+    /// The newer generation of the store this side took in, when the other had erased for
+    /// good.
+    pub adopted: Option<Adopted>,
 }
 
 /// Runs one sync session over a stream.
@@ -66,40 +75,59 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let mine: Vec<DocId> = lock(store)?.sync_documents()?;
-    let hello = Hello { protocol: PROTOCOL, documents: mine.iter().map(|id| id.name()).collect() };
+    let mine: Vec<SyncName> = lock(store)?.sync_documents()?;
+    let erased = mine.iter().any(|name| name.generation.is_some());
+    let hello = Hello {
+        protocol: if erased { ERASED } else { PROTOCOL },
+        documents: mine.iter().map(SyncName::name).collect(),
+    };
     let encoded = serde_json::to_vec(&hello)
         .map_err(|e| SyncError::Protocol(format!("could not write a hello: {e}")))?;
     write_frame(writer, &encoded).await?;
 
     let theirs: Hello = serde_json::from_slice(&read_frame(reader).await?)
         .map_err(|e| SyncError::Protocol(format!("a hello that does not read: {e}")))?;
-    if theirs.protocol != PROTOCOL {
+    if theirs.protocol > ERASED {
         return Err(SyncError::Protocol(format!(
-            "it speaks sync protocol {} and this device speaks {PROTOCOL}; update the older one",
+            "it speaks sync protocol {} and this device speaks {ERASED}; update the older one",
             theirs.protocol
         )));
     }
 
     // Names this version does not know are left alone rather than created: a newer version's
-    // kind of document is that version's business.
+    // kind of document is that version's business. Only the newest generation either side
+    // holds is synced, which both sides work out alike: an older one's history must never
+    // reach it, and the side holding the older takes the newer in.
     let mut documents = mine;
-    documents.extend(theirs.documents.iter().filter_map(|name| DocId::parse(name)));
+    documents.extend(theirs.documents.iter().filter_map(|name| SyncName::parse(name)));
+    let newest = documents.iter().map(|name| name.generation.clone()).max().flatten();
+    documents.retain(|name| name.generation == newest);
     documents.sort();
     documents.dedup();
 
-    let mut summary = Summary { documents: documents.len(), changed: Vec::new() };
-    for id in documents {
-        if sync_document(store, id, reader, writer).await? {
-            summary.changed.push(id);
+    let mut summary = Summary { documents: documents.len(), ..Summary::default() };
+    for name in documents {
+        match sync_document(store, &name, reader, writer).await {
+            Ok(true) => summary.changed.push(name.id),
+            Ok(false) => {}
+            Err(error) => {
+                lock(store)?.discard_adoption();
+                return Err(error);
+            }
         }
+    }
+    let mut store = lock(store)?;
+    summary.adopted = store.finish_adoption()?;
+    // Taking a newer generation in changes every document there is.
+    if summary.adopted.is_some() {
+        summary.changed = store.sync_documents()?.into_iter().map(|name| name.id).collect();
     }
     Ok(summary)
 }
 
 async fn sync_document<R, W>(
     store: &SharedStore,
-    id: DocId,
+    name: &SyncName,
     reader: &mut R,
     writer: &mut W,
 ) -> Result<bool>
@@ -110,18 +138,18 @@ where
     let mut state = SyncState::new();
     let mut changed = false;
     for _ in 0..MAX_ROUNDS {
-        let outgoing = lock(store)?.sync_message(id, &mut state)?;
+        let outgoing = lock(store)?.sync_message(name, &mut state)?;
         write_frame(writer, outgoing.as_deref().unwrap_or_default()).await?;
         let incoming = read_frame(reader).await?;
 
         if !incoming.is_empty() {
-            changed |= lock(store)?.receive_sync_message(id, &mut state, &incoming)?;
+            changed |= lock(store)?.receive_sync_message(name, &mut state, &incoming)?;
         }
         if outgoing.is_none() && incoming.is_empty() {
             return Ok(changed);
         }
     }
-    Err(SyncError::Protocol(format!("{} did not settle", id.name())))
+    Err(SyncError::Protocol(format!("{} did not settle", name.id.name())))
 }
 
 #[cfg(test)]
@@ -219,5 +247,49 @@ mod tests {
 
         let mut other_process = Store::open(&path).unwrap();
         assert!(other_process.snapshot().0.tasks.contains_key(&task.id));
+    }
+
+    #[tokio::test]
+    async fn a_store_erased_for_good_is_taken_in_by_the_other_side_whole() {
+        let (a, b) = (store(), store());
+        let secret = add(&a, "the secret");
+        add(&a, "the groceries");
+        sync(&a, &b).await;
+        let edit = lumenna_core::edit::purge_task(&a.lock().unwrap().snapshot().0, secret.id).unwrap();
+        a.lock().unwrap().erase(lumenna_store::Documents::erased_by(&edit)).unwrap();
+        add(&b, "the laundry");
+
+        let (left, right) = sync(&a, &b).await;
+        assert!(left.adopted.is_none());
+        assert!(right.adopted.is_some(), "{right:?}");
+        sync(&a, &b).await;
+        let generation = a.lock().unwrap().generation().map(str::to_owned);
+        assert!(generation.is_some());
+        for side in [&a, &b] {
+            let mut side = side.lock().unwrap();
+            assert_eq!(side.generation(), generation.as_deref());
+            let mut titles: Vec<String> = side.snapshot().0.tasks.values().map(|t| t.title.clone()).collect();
+            titles.sort();
+            assert_eq!(titles, ["the groceries", "the laundry"]);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_store_erased_for_good_says_so_where_a_build_from_before_would_listen() {
+        let a = store();
+        let secret = add(&a, "the secret");
+        let edit = lumenna_core::edit::purge_task(&a.lock().unwrap().snapshot().0, secret.id).unwrap();
+        a.lock().unwrap().erase(lumenna_store::Documents::erased_by(&edit)).unwrap();
+        // What a build from before generations reads first: a protocol it refuses.
+        let (mut a_end, mut other_end) = tokio::io::duplex(1 << 16);
+        let a_store = a.clone();
+        tokio::spawn(async move {
+            let (mut r, mut w) = tokio::io::split(&mut a_end);
+            let _ = run(&a_store, &mut r, &mut w).await;
+        });
+        let (mut r, _w) = tokio::io::split(&mut other_end);
+        let hello: Hello = serde_json::from_slice(&read_frame(&mut r).await.unwrap()).unwrap();
+        assert_ne!(hello.protocol, PROTOCOL);
+        assert!(hello.documents.iter().all(|name| name.contains('@')), "{:?}", hello.documents);
     }
 }

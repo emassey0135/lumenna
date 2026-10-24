@@ -26,6 +26,7 @@ lumenna-records.workspace = true
 lumenna-store.workspace = true
 
 [dev-dependencies]
+lumenna-core.workspace = true
 tempfile.workspace = true
 
 [lints]

@@ -40,6 +40,13 @@ the CLI adds only the terminal prompt, the daemon's socket and signals.
 - **The session is lockstep per document**: both sides send one frame (a message, or empty)
   then read one; both empty ends the document, so both stop together. Sync state is per
   session, not saved.
+- **Only the newest generation either side holds is synced** (a store erased for good,
+  `crates/store/CLAUDE.md`), worked out alike on both sides from the hellos' names
+  (`SyncName`), and the side holding the older takes the newer in when the session ends
+  (`Summary::adopted`); the exchange does the same once settled (`Exchange::finish`), and a
+  parcel of another generation is ignored. A store erased says protocol 1 (`ERASED`), so a
+  build from before generations refuses it rather than feeding one history's frames into the
+  other's.
 - **Local discovery is standard DNS-SD** (`discovery/`): `_lumenna._udp` (devices) and
   `_lumenna-pair._udp` (pairing), TXT `id` plus `a0`… addresses. Apple uses the system
   responder (on iOS, Bonjour, needing only `NSBonjourServices`, no multicast entitlement).

@@ -2950,6 +2950,7 @@ dependencies = [
  "futures",
  "jiff",
  "lumenna-app",
+ "lumenna-core",
  "lumenna-host",
  "lumenna-records",
  "lumenna-store",

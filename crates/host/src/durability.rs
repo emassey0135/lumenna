@@ -22,8 +22,50 @@ use crate::{Lumenna, repaired};
 /// The settings that stay on this device.
 pub const DEVICE_KEYS: &[&str] = &["backup-dir", "backup-keep", "backup-every", "clock", "reminders"];
 
+/// Which generation of the store's history this device's automatic backups were last taken
+/// of (empty for the first): the store's own record, so every process on the device acts on
+/// an erasure once.
+const BACKUPS_OF: &str = "backups-of";
 
 impl Lumenna {
+    /// After a real erasure, here or taken in from another device, by this process or another:
+    /// the automatic backups, which hold what was erased, are deleted, and a fresh one is
+    /// taken of the new history when automatic backups are on. Looked at whenever the store's
+    /// generation is not the one last seen, so it costs nothing otherwise.
+    pub(crate) fn follow_erasure(&self, store: &mut Store) -> Result<()> {
+        let generation = store.generation().unwrap_or_default().to_owned();
+        let mut seen = self.generation_seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if seen.as_deref() == Some(generation.as_str()) {
+            return Ok(());
+        }
+        let backed_up = store.local_value(BACKUPS_OF)?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
+        if backed_up.as_deref().unwrap_or_default() != generation {
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+            {
+                let policy = self.backup_policy()?;
+                backup::remove_all(&policy.directory)?;
+                if policy.every.is_some() {
+                    store.back_up_to(&policy, Timestamp::now())?;
+                }
+            }
+            store.set_local_value(BACKUPS_OF, generation.as_bytes())?;
+        }
+        *seen = Some(generation);
+        Ok(())
+    }
+
+    /// Which generation of the store's history this device holds, empty for the first: for a
+    /// client that keeps its automatic backups where this process cannot reach (the web's,
+    /// in a folder the person chose), to delete them when it moves on after an erasure, as
+    /// [`follow_erasure`](Self::follow_erasure) does everywhere else.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn generation(&self) -> Result<String> {
+        self.with(|store| Ok(store.generation().unwrap_or_default().to_owned()))
+    }
+
     /// Backs up the whole store now, history included — into the configured directory, or
     /// `to` if given.
     ///

@@ -32,6 +32,8 @@ pub enum ActingOn {
     Details,
     /// The reminder list open, its own actions: Add Reminder.
     Reminders,
+    /// Settings open, the store's own actions: Erase Everything Deleted.
+    Settings,
 }
 
 /// One side list's row in hand, as the model keeps it.

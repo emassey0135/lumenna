@@ -15,8 +15,7 @@ The order, and why:
 4. **Smaller gaps**, between the larger pieces.
 5. **The watches**: what only a real watch can show.
 6. **Integrations**, once reminders and the planner exist for them to expose.
-7. **Before others use it**: packaging, a relay of our own, real erasure, installing the web
-   client.
+7. **Before others use it**: packaging, a relay of our own, installing the web client.
 8. **The encrypted store and accounts**, which the web's reminders and syncing alone wait on.
 9. **Only when needed**: performance and network extras.
 
@@ -212,11 +211,6 @@ Each is a thin adapter over the command surface.
   setting's value but cannot add a flag only when one is set. The Mac and Windows apps' "Add to
   Claude Desktop" makes one that runs the `lum` they ship, so it updates with the app; the
   bundle carrying its own is for someone without the app, and updates only when reinstalled.
-- **Real erasure.** Erasing a task removes it from the current state only: its content stays
-  in the history and in backups, and undo brings it back. Truly erasing means rebuilding the
-  document without it, losing all history, every device syncing afresh, and clearing the
-  undo table's copies. Rare and expensive, so it says so: "Permanently erase — rebuilds your
-  database and re-syncs all devices."
 - **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
   works, but say the provider can read the data, and make no encryption claim: unattended
   boot and provider-proof encryption conflict.
@@ -230,9 +224,8 @@ Each is a thin adapter over the command surface.
   non-extractable WebCrypto key in IndexedDB, which a service worker can use. Working out a
   reminder in the service worker (the push wake-up below) further needs the store readable
   there: OPFS's asynchronous API, which a service worker has, into an in-memory copy.
-- **Firefox for the web client**: the suite passes in Firefox 155 on Windows and runs in CI after
-  WebKit (Playwright's Firefox does not start on the macOS this was built on). An IndexedDB
-  fallback for browsers without sync access handles is optional.
+- **An IndexedDB fallback for the web client**, only for a browser without sync access handles
+  someone needs: Chromium, Firefox and WebKit all run the suite in CI.
 
 ## 8. The encrypted store and accounts
 

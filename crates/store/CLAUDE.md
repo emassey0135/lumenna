@@ -57,6 +57,37 @@ core's part. A document's changes load in one `load_incremental`, Automerge orde
 your own connection's writes, and other processes' rows can interleave with yours. A cursor
 that lags re-reads a change already held (a no-op); one that skips loses an edit.
 
+## Generations: real erasure
+
+History is never pruned, except by a real erasure (`generation.rs`, `Store::erase`): every
+document begun again from its genesis holding the current state, less what was erased, as a
+new **generation** (a UUIDv7; newest wins). What is easy to break:
+
+- **Two generations' histories must never meet.** A generation's documents sync, link and
+  back up as `core@<generation>` (`SyncName`), which a build from before generations does not
+  read, and the session says protocol 1 once erased, which it refuses. `take_changes` and
+  `changes_since` ignore another generation; `restore` refuses one, older or newer.
+- **A rebuild writes into the genesis's collections and the Inbox** (`Doc::copy_into`,
+  `Raw::write_into`), never over them: a year's document another device begins from its
+  genesis in the new generation must still share them.
+- **Adoption keeps what the device did that the rebuild never saw**: a newer generation syncs
+  into documents held aside (`Staging`, `Store::route`), and `finish_adoption` folds this
+  device's changes into it field by field against the base the two share (`Doc::fold`: the
+  rebuild's `rebuilt_from` heads, or `generation-began` after a rebuild of some other
+  generation), the newer history winning where both changed. Only once whole: a session
+  cut short drops it.
+- **Nothing erased comes back**: core's `erased` names every record erased so far, and
+  `keeps` leaves out those and every completion, sitting and reminder of an erased task, in a
+  rebuild and in a fold. A device whose own erasure the newer generation lacks erases again on
+  top of it.
+- **What only the history held is carried**: core's `postponed`, the tally `Store::tally`
+  adds to. Anything else read from history needs the same.
+- **Every process follows**: the file's generation is in `local_state`, replaced with the
+  documents in one transaction (`Db::replace_generation`, which also clears undo, the parts
+  and the watch's agreed heads); `refresh` reloads on seeing another, and a write from the
+  history before is refused (`StoreError::Rebuilt`, checked inside the append's transaction).
+- `tests/erasure.rs` is where this is proved, against stores synced in every order.
+
 ## Versions and fields this build does not know
 
 Builds of different versions sync with each other for good: nothing can make every device
@@ -87,7 +118,9 @@ Kept apart in code, commands and wording, because confusing them is how someone 
 
 - **A backup** (`store::backup`) is every document's Automerge `save()` in one file: the
   whole history, trash included. Restoring **merges**, and can never take back a later
-  change.
+  change. One of another generation is refused, since it would bring back what was erased; a
+  real erasure has every device delete its automatic backups and take one afresh (the host's
+  `follow_erasure`).
 - **An export** (`store::export`) is current state only. JSON is complete and versioned
   (`export::VERSION`), keeps identifiers, and is what import reads; Markdown, org and ics
   are for reading only. **A field added to the model must be added to `export/json.rs`**,

@@ -435,6 +435,7 @@ impl Lumenna {
             ActingOn::Day => model.day_view().map(|day| day.actions),
             ActingOn::Details => model.details_shown().map(|task| task.actions),
             ActingOn::Reminders => crate::view::whole(model).reminders.map(|list| list.actions),
+            ActingOn::Settings => model.settings.as_ref().map(|_| lumenna_records::actions::store_actions()),
         };
         let Some(actions) = actions else { return say(lumenna_records::no_longer_here()) };
         match actions.iter().find(|action| offered.is(action)) {

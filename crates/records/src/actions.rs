@@ -134,6 +134,11 @@ pub enum ActionKind {
     DeliverOn,
     /// Hold a task's due time or a block to one place's time zone, or let it float.
     TimeZone,
+    /// Erase a trashed task for good: from every device's history, not only from here, by
+    /// beginning the store's history again without it. Never Delete's, nor any key's.
+    ErasePermanently,
+    /// Erase everything deleted for good: the trash, and every deleted thing's history.
+    EraseEverythingDeleted,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -164,6 +169,8 @@ pub enum Subject {
     Reminder,
     /// A day of the plan, as an ISO date.
     Day,
+    /// The whole store, as Settings offers what is done to it. No target.
+    Store,
 }
 
 /// An action as a view offers it, in short: what it is called and does, and what it asks in
@@ -403,7 +410,27 @@ pub enum Answer {
 
 /// What erasing asks: it is gone from here, and not from history.
 pub const ERASING: &str =
-    "Undo can bring it back. It also stays in the history every device keeps, and in backups.";
+    "Undo can bring it back. It also stays in the history every device keeps, and in backups, until it is erased permanently.";
+/// What erasing permanently asks: what the history begun again takes with it, and what it
+/// cannot reach.
+pub const ERASING_FOR_GOOD: &str = "Permanently erase — rebuilds your database and re-syncs all devices. \
+     It also erases the history of everything deleted before, and nothing can be undone. Each device deletes \
+     its automatic backups and takes a new one; a backup saved anywhere else still holds it.";
+/// What erasing everything deleted asks.
+pub const ERASING_EVERYTHING: &str = "Permanently erase — rebuilds your database and re-syncs all devices. \
+     Everything in the trash goes, with the history of everything ever deleted, and nothing can be undone. \
+     Each device deletes its automatic backups and takes a new one; a backup saved anywhere else still holds it.";
+/// What a device says once it has taken in another's erasure.
+pub const ERASED_ELSEWHERE: &str =
+    "Another device erased deleted things permanently, so this device rebuilt its database without them";
+
+/// What the store as a whole offers, in Settings: Erase Everything Deleted.
+#[must_use]
+pub fn store_actions() -> Vec<Action> {
+    vec![action(ActionKind::EraseEverythingDeleted, Subject::Store, "Erase Everything Deleted", String::new()).asking(
+        confirm("Erase everything deleted permanently?".to_owned(), ERASING_EVERYTHING, "Erase Everything Deleted"),
+    )]
+}
 /// What unpairing asks: what it does, and what it does not.
 pub const UNPAIRING: &str = "It stops syncing with your devices but keeps everything it already has. \
                              Unpairing is for a device you replaced; it does not take data back from a lost one.";
@@ -429,7 +456,15 @@ fn action(kind: ActionKind, subject: Subject, title: impl Into<String>, target: 
         title,
         target: target.into(),
         other: None,
-        destructive: matches!(kind, ActionKind::Delete | ActionKind::DeleteForGood | ActionKind::Unassign | ActionKind::Unpair),
+        destructive: matches!(
+            kind,
+            ActionKind::Delete
+                | ActionKind::DeleteForGood
+                | ActionKind::ErasePermanently
+                | ActionKind::EraseEverythingDeleted
+                | ActionKind::Unassign
+                | ActionKind::Unpair
+        ),
         question: if matches!(
             kind,
             ActionKind::Edit
@@ -526,6 +561,11 @@ pub fn task(snapshot: &Snapshot, task: &Task, done: bool, shown: bool) -> Vec<Ac
                 format!("Delete {} from the trash?", task.title),
                 ERASING,
                 "Delete",
+            )),
+            a(K::ErasePermanently, "Erase Permanently").asking(confirm(
+                format!("Erase {} permanently?", task.title),
+                ERASING_FOR_GOOD,
+                "Erase Permanently",
             )),
         ];
     }

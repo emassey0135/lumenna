@@ -58,7 +58,7 @@ mod tests {
             last_attempt: None,
             last_success: success.map(str::to_owned),
             last_error: error.map(str::to_owned),
-            schema_version: 1,
+            schema_version: lumenna_core::model::SCHEMA_VERSION,
             status: Vec::new(),
             actions: Vec::new(),
             offered: Vec::new(),

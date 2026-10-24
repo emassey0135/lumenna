@@ -134,6 +134,46 @@ impl DocId {
     }
 }
 
+/// A document as a sync, a link or a backup names it: which document, and which generation of
+/// the store's history it belongs to (see [`crate::generation`]). A real erasure starts every
+/// document again without its history, under names an older build does not read, so the two
+/// histories never meet.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SyncName {
+    /// Which document.
+    pub id: DocId,
+    /// Which generation: `None` for the store's first, from before any erasure.
+    pub generation: Option<String>,
+}
+
+impl SyncName {
+    /// Document `id` of `generation`.
+    #[must_use]
+    pub fn new(id: DocId, generation: Option<&str>) -> Self {
+        Self { id, generation: generation.map(str::to_owned) }
+    }
+
+    /// The name it goes by: the document's own for the first generation, `core@<generation>`
+    /// after.
+    #[must_use]
+    pub fn name(&self) -> String {
+        match &self.generation {
+            None => self.id.name(),
+            Some(generation) => format!("{}@{generation}", self.id.name()),
+        }
+    }
+
+    /// The document a name refers to, if it is one this version knows.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        match name.split_once('@') {
+            Some((_, "")) => None,
+            Some((doc, generation)) => Some(Self { id: DocId::parse(doc)?, generation: Some(generation.to_owned()) }),
+            None => Some(Self { id: DocId::parse(name)?, generation: None }),
+        }
+    }
+}
+
 /// Which kind of document a record belongs in.
 ///
 /// A runtime check rather than a type-level one: encoding it in the type system would mean
@@ -732,6 +772,12 @@ impl Documents {
         &mut self.devices
     }
 
+    /// The `core` document, read-only.
+    #[must_use]
+    pub fn core_ref(&self) -> &Doc {
+        &self.core
+    }
+
     /// Any document by name, creating a year's from its genesis if it is not here yet.
     pub fn get_mut(&mut self, id: DocId) -> &mut Doc {
         match id {
@@ -1306,6 +1352,142 @@ pub fn assignment_year(a: &BlockAssignment, series: Option<&BlockSeries>) -> Opt
         .or_else(|| series.map(|s| s.start_date.year()))
 }
 
+/// What a generation of the store keeps at each document's root about itself (see
+/// [`crate::generation`]): never copied into the next generation, which writes its own.
+pub(crate) const GENERATION_KEYS: &[&str] = &["generation", "rebuilt_from", "erased", "postponed"];
+
+/// Whether a record, by its collection and key in it and its fields, goes on into a document
+/// written from another: false for what an erasure erased.
+pub(crate) type Keep<'a> = &'a dyn Fn(&str, &str, &Raw) -> bool;
+
+impl Doc {
+    /// A text value at the root, if there is one.
+    pub(crate) fn root_text(&self, key: &str) -> Option<String> {
+        match self.doc.get(ROOT, key).ok()?? {
+            (Value::Scalar(value), _) => value.to_str().map(str::to_owned),
+            _ => None,
+        }
+    }
+
+    /// Sets a text value at the root.
+    pub(crate) fn set_root_text(&mut self, key: &str, value: &str) -> Result<()> {
+        self.doc.put(ROOT, key, value)?;
+        Ok(())
+    }
+
+    /// This document as it stood at `heads`, as many of them as it holds: as it began when it
+    /// holds none of them, which a document the heads were never of does not.
+    pub(crate) fn at(&mut self, heads: &[ChangeHash]) -> Result<Self> {
+        let known: Vec<ChangeHash> = heads.iter().copied().filter(|head| self.has_change(head)).collect();
+        if known.is_empty() {
+            let mut fresh = Self::new(self.id);
+            fresh.ensure_schema()?;
+            return Ok(fresh);
+        }
+        Ok(Self { id: self.id, doc: self.doc.fork_at(&known)?, revive: BTreeMap::new() })
+    }
+
+    /// Writes everything this document holds now into `to`, a document of the same kind begun
+    /// afresh, leaving out each record `keep` refuses: what a real erasure rebuilds from.
+    /// Into the collections and records `to` already has (the genesis's, the Inbox), so
+    /// nothing two devices make on their own is made twice. Values a newer build wrote come
+    /// across as they stand.
+    pub(crate) fn copy_into(&self, to: &mut Self, keep: Keep<'_>) -> Result<()> {
+        for root in self.doc.keys(ROOT) {
+            if GENERATION_KEYS.contains(&root.as_str()) {
+                continue;
+            }
+            let Some((value, id)) = self.doc.get(ROOT, root.as_str())? else { continue };
+            if !matches!(value, Value::Object(ObjType::Map)) {
+                Raw::read(&self.doc, value, &id).write_into(&mut to.doc, &ROOT, &root)?;
+                continue;
+            }
+            let target = to.collection_for_write(&root)?;
+            for key in self.doc.keys(&id) {
+                let Some((entry, entry_id)) = self.doc.get(&id, key.as_str())? else { continue };
+                let raw = Raw::read(&self.doc, entry, &entry_id);
+                if keep(&root, &key, &raw) {
+                    raw.write_into(&mut to.doc, &target, &key)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// What changed in `mine` since `base`, written into this document, another history of the
+    /// same records, field by field: a device taking in a newer generation keeps what it did
+    /// that the rebuild never saw. Where this document changed a field too, its value stands,
+    /// as the newer history's. Each record `keep` refuses is left alone.
+    pub(crate) fn fold(&mut self, base: &Self, mine: &Self, keep: Keep<'_>) -> Result<()> {
+        let roots: std::collections::BTreeSet<String> = base.doc.keys(ROOT).chain(mine.doc.keys(ROOT)).collect();
+        for root in roots {
+            if GENERATION_KEYS.contains(&root.as_str()) {
+                continue;
+            }
+            let (Some(was), Some(now)) = (base.entries(&root), mine.entries(&root)) else { continue };
+            let keys: std::collections::BTreeSet<&String> = was.keys().chain(now.keys()).collect();
+            let target = self.collection_for_write(&root)?;
+            for key in keys {
+                let (b, m) = (was.get(key), now.get(key));
+                if b == m || m.or(b).is_some_and(|raw| !keep(&root, key, raw)) {
+                    continue;
+                }
+                let t = self.doc.get(&target, key.as_str())?.map(|(value, id)| Raw::read(&self.doc, value, &id));
+                fold_value(&mut self.doc, &target, key, b, m, t.as_ref())?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The entries of the map at the root's `key`, read whole; none when it is no map (an
+    /// empty map when there is nothing there).
+    fn entries(&self, key: &str) -> Option<BTreeMap<String, Raw>> {
+        match self.doc.get(ROOT, key).ok()? {
+            None => Some(BTreeMap::new()),
+            Some((Value::Object(ObjType::Map), id)) => match Raw::read_map(&self.doc, &id) {
+                Raw::Map(fields) => Some(fields.into_iter().collect()),
+                _ => None,
+            },
+            Some(_) => None,
+        }
+    }
+}
+
+/// One value of a three-way fold (see [`Doc::fold`]): as it was at the base, as this device
+/// has it, and as the newer history has it.
+fn fold_value(doc: &mut AutoCommit, obj: &ObjId, key: &str, base: Option<&Raw>, mine: Option<&Raw>, theirs: Option<&Raw>) -> Result<()> {
+    match (mine, theirs) {
+        // Already alike.
+        (m, t) if m == t => Ok(()),
+        // A record both have: field by field, so a change of one field never undoes another's.
+        (Some(Raw::Map(m)), Some(Raw::Map(t))) => {
+            let Some((Value::Object(ObjType::Map), id)) = doc.get(obj, key)? else { return Ok(()) };
+            let b: BTreeMap<&str, &Raw> = match base {
+                Some(Raw::Map(b)) => b.iter().map(|(k, v)| (k.as_str(), v)).collect(),
+                _ => BTreeMap::new(),
+            };
+            let m: BTreeMap<&str, &Raw> = m.iter().map(|(k, v)| (k.as_str(), v)).collect();
+            let t: BTreeMap<&str, &Raw> = t.iter().map(|(k, v)| (k.as_str(), v)).collect();
+            let fields: std::collections::BTreeSet<&str> = b.keys().chain(m.keys()).copied().collect();
+            for field in fields {
+                let (bf, mf) = (b.get(field).copied(), m.get(field).copied());
+                if bf != mf {
+                    fold_value(doc, &id, field, bf, mf, t.get(field).copied())?;
+                }
+            }
+            Ok(())
+        }
+        // The newer history left it as it was at the base: this device's change stands.
+        (Some(m), t) if t == base => m.write_into(doc, obj, key),
+        (None, Some(_)) if theirs == base => {
+            doc.delete(obj, key)?;
+            Ok(())
+        }
+        // Both changed it: the newer history's stands.
+        _ => Ok(()),
+    }
+}
+
 #[cfg(test)]
 impl Doc {
     /// Writes `field` into the record at `collection` and `key`, as a newer build would.
@@ -1382,6 +1564,31 @@ impl Documents {
                 }
                 Change::Assignment { year: y, transition } if transition.after.is_none() => {
                     taken::<BlockAssignment>(year(*y)?, &transition.before.as_ref()?.id)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Every record `edit` removes outright, as `<collection>/<key>`: what erasing it for good
+    /// leaves out of the next generation ([`Store::erase`](crate::Store::erase)).
+    #[must_use]
+    pub fn erased_by(edit: &Edit) -> Vec<String> {
+        fn key<R: Record>(key: &R::Key) -> String {
+            format!("{}/{}", R::COLLECTION, R::key_string(key))
+        }
+        edit.changes
+            .iter()
+            .filter_map(|change| match change {
+                Change::Task(t) if t.after.is_none() => Some(key::<Task>(&t.before.as_ref()?.id)),
+                Change::Completion(t) if t.after.is_none() => Some(key::<TaskCompletion>(&t.before.as_ref()?.id)),
+                Change::Project(t) if t.after.is_none() => Some(key::<Project>(&t.before.as_ref()?.id)),
+                Change::Label(t) if t.after.is_none() => Some(key::<Label>(&t.before.as_ref()?.id)),
+                Change::Filter(t) if t.after.is_none() => Some(key::<SavedFilter>(&t.before.as_ref()?.id)),
+                Change::Reminder(t) if t.after.is_none() => Some(key::<Reminder>(&t.before.as_ref()?.id)),
+                Change::Series(t) if t.after.is_none() => Some(key::<BlockSeries>(&t.before.as_ref()?.id)),
+                Change::Assignment { transition, .. } if transition.after.is_none() => {
+                    Some(key::<BlockAssignment>(&transition.before.as_ref()?.id))
                 }
                 _ => None,
             })
@@ -1555,6 +1762,31 @@ impl Raw {
             }
         }
         Ok(())
+    }
+
+    /// Writes this at `key` of `obj` as [`write_at`](Self::write_at) does, but a map into the
+    /// map already there, field by field, rather than over it: a map two devices each make
+    /// once (a collection, the Inbox) stays the one they share.
+    fn write_into(&self, doc: &mut AutoCommit, obj: &ObjId, key: &str) -> Result<()> {
+        if let Self::Map(fields) = self
+            && let Some((Value::Object(ObjType::Map), existing)) = doc.get(obj, key)?
+        {
+            for (field, value) in fields {
+                value.write_into(doc, &existing, field)?;
+            }
+            return Ok(());
+        }
+        self.write_at(doc, obj, key)
+    }
+
+    /// The text at `field` of a map, if it is one and has it.
+    pub(crate) fn text_at(&self, field: &str) -> Option<&str> {
+        let Self::Map(fields) = self else { return None };
+        match &fields.iter().find(|(key, _)| key == field)?.1 {
+            Self::Scalar(automerge::ScalarValue::Str(text)) => Some(text.as_str()),
+            Self::Text(text) => Some(text.as_str()),
+            _ => None,
+        }
     }
 
     fn insert_into(&self, doc: &mut AutoCommit, list: &ObjId, index: usize) -> Result<()> {

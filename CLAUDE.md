@@ -186,6 +186,12 @@ directly (8805659 is the last commit before the move). How the app works inside 
   in the app's Another Day (`ANOTHER_DAY`), which asks Go to Day's question and offers that
   day's blocks. Pairing's words come with the Devices view, worded as the shell says it is
   called (`Event::PairingAs`, sent once like the clock).
+- **Settings offer the store's own actions** (`SettingsView::offered`: Erase Everything
+  Deleted), a button each, handed back with `Event::ActOn(ActingOn::Settings, offered)`; the app
+  asks its question as any row's.
+- **Erasing permanently is never what deleting does**: a trashed task's Erase Permanently
+  (`ErasePermanently`) is a menu away, after Delete from Trash, and no key runs it. It begins the
+  store's history again without what it erased, on every device (`crates/store/CLAUDE.md`).
 - **A question says when it asks for a day** (`Asking::day`), with the day a calendar opens on,
   so a shell offers its own picker beside the line without comparing questions.
 - **A list's first row is in hand as soon as it opens**, so the details show it.

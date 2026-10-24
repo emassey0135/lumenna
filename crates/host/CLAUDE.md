@@ -36,7 +36,12 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
 - **No row numbers**: the server addresses records by identifier only. The last listing is
   one file per profile, so a resident server and a shell would overwrite each other's
   numbering.
-- **`task.erase` requires `"confirm": true`**: nothing here can prompt.
+- **`task.erase`, `task.erase_permanently` and `erase_everything_deleted` require
+  `"confirm": true`**: nothing here can prompt.
+- **A real erasure is followed by every process** (`follow_erasure`, around every operation in
+  `Lumenna::with`): when the store's generation is not the one its automatic backups were last
+  taken of (`backups-of`), they are deleted and one is taken afresh. It is refused while a
+  paired device runs a version from before generations (`too_old_to_follow`).
 - **Two framings, chosen per message by what arrived**: newline-delimited JSON (MCP's stdio
   transport) and `Content-Length` headers (`jsonrpc.el`). A reply is framed as its request.
 - **Spans are UTF-8 byte offsets.** A client that indexes by code point converts both ways.

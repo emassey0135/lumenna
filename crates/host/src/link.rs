@@ -59,6 +59,7 @@ impl PhoneLink {
         self.lumenna.with(|store| {
             self.note(&exchange.incoming(store, &reply)?);
             if exchange.settled() {
+                self.adopted(exchange.finish(store)?);
                 exchange::note_agreed(store)?;
                 Ok(None)
             } else {
@@ -79,6 +80,7 @@ impl PhoneLink {
             self.note(&exchange.incoming(store, &message)?);
             let reply = exchange.outgoing(store)?;
             if exchange.settled() {
+                self.adopted(exchange.finish(store)?);
                 exchange::note_agreed(store)?;
             }
             Ok(reply)
@@ -125,6 +127,15 @@ impl PhoneLink {
     /// made is looked for straight after, as after a restore.
     fn note(&self, changed: &[lumenna_store::DocId]) {
         if !changed.is_empty() {
+            self.took_in.store(true, std::sync::atomic::Ordering::Relaxed);
+            self.lumenna.merged();
+        }
+    }
+
+    /// Notes that the other side's erasure was taken in: everything changed, and what follows
+    /// one here follows (`Lumenna::follow_erasure`, at the end of the operation).
+    fn adopted(&self, adopted: Option<lumenna_store::Adopted>) {
+        if adopted.is_some() {
             self.took_in.store(true, std::sync::atomic::Ordering::Relaxed);
             self.lumenna.merged();
         }
