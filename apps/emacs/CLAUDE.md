@@ -33,8 +33,11 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
 - **A list's keys are defined once** (`lumenna-define-keys`), which binds them, builds the
   menu, and lists them for `?` in an ordinary buffer. A row's key runs the row's action of
   that kind (`lumenna-define-action`, `lumenna-act-kind`); `.` offers them all by title, and a
-  key the row does not offer refuses with the app's sentence (`Run`, `lumenna--refuse`). Sounds
-  key on the action's `subject/kind`. Not transient: Emacsvox reads a transient by asking
+  key the row does not offer refuses with the app's sentence (`Run`, `lumenna--refuse`). A key
+  of the shared table is the core's whole: `d` sends `Key("delete")` on the row put in hand
+  (`lumenna-press`), and what it runs (`keys::runs`) is never listed here. Sounds key on the
+  action's `subject/kind`; a key's is learnt from the question it opens (`asking.action`), so an
+  immediate one plays none until a turn names what ran. Not transient: Emacsvox reads a transient by asking
   whether its command was called interactively, and Emacs 31's transient wraps each command, so
   moving through one is silent.
 - **A task's priority is its face** (`lumenna-priority-1` to `-3`, from the row's `priority`),
