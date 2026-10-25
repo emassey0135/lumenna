@@ -101,8 +101,8 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   window, takes no instance lock and gives no reminders. It draws the glance (`Device::glance`,
   in Windows' clock) as Adaptive Cards (`src/widget.rs`, its templates in `src/widget/`): small,
   the headline and the timer running; medium, the headline, the next block and the tasks due,
-  each worded as its row (`speech::row_line`) and with its row's own Mark Done, run as
-  `assist("complete_task")`. The text is the card's data, never its template, so a `${` typed in
+  each the glance's own line (`GlanceEntry::tasks`) beside a button named as the glance names
+  Mark Done (`mark_done`, Title Case), run as `assist("complete_task")`. The text is the card's data, never its template, so a `${` typed in
   a title stays text. While a widget is on screen it looks every two seconds whether the store
   moved, and draws again then, at each moment the timeline names and each minute a timer runs.
   The Widgets API is the Windows App SDK's, not the `windows` crate's: generated once into

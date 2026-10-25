@@ -68,7 +68,6 @@
             },
             {
               "type": "Column",
-              "$when": "${offered}",
               "width": "auto",
               "verticalContentAlignment": "Center",
               "items": [

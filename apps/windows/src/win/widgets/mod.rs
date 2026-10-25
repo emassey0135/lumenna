@@ -21,7 +21,7 @@ use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::Duration;
 
 use jiff::Timestamp;
-use lumenna_records::assistant::{Argument, ArgumentValue, Assisted};
+use lumenna_records::assistant::{Argument, ArgumentValue};
 use windows::Win32::Foundation::{CLASS_E_NOAGGREGATION, E_POINTER};
 use windows::Win32::System::Com::{
     CLSCTX_LOCAL_SERVER, COINIT_MULTITHREADED, CoInitializeEx, CoRegisterClassObject, CoRevokeClassObject, IClassFactory,
@@ -103,14 +103,7 @@ impl Shared {
         let entries = self.device.glance(HOURS, Arc::new(clock::Formats)).ok()?;
         let now = Timestamp::now();
         let entry = widget::current(&entries, now)?;
-        // Every open task, each row worded and offering what it offers; the glance's are found
-        // among them by identifier.
-        let query = Argument { name: "query".to_owned(), value: ArgumentValue::Text(String::new()) };
-        let rows = match self.device.assist("list_tasks".to_owned(), vec![query]) {
-            Ok(Assisted::Rows(rows)) => rows,
-            _ => Default::default(),
-        };
-        let data = HSTRING::from(widget::data(entry, &widget::due(entry, &rows, &clock::Locale), now).to_string());
+        let data = HSTRING::from(widget::data(entry, now).to_string());
         if let Ok(manager) = WidgetManager::GetDefault() {
             for (id, size) in widgets {
                 let template = if *size == WidgetSize::Small { widget::SMALL } else { widget::MEDIUM };
