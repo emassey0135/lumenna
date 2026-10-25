@@ -154,6 +154,13 @@ Each is a thin adapter over the command surface.
     once stopped but what syncs. Claude's or Meta's cloud cannot check the attestation itself, so
     what protects the person is that their app did. The assistant sees what it asks for, as with
     any cloud assistant.
+
+    Call it the *enclave peer*. Being a device that is always awake, it is more than an MCP
+    server: it is the always-on peer for someone without one (section 7), the sender of
+    the web client's reminder wake-ups, at the moment each is due (section 8), and a peer every
+    device can reach to sync without two of the person's own being awake at once. It keeps its
+    copy of the store in the encrypted store, so a stopped or moved enclave loses nothing and
+    the operator still holds only ciphertext.
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
     unreachable device, and convergence cannot be vetoed. Hooks fire after a change is
@@ -267,7 +274,9 @@ Each is a thin adapter over the command surface.
   bundle carrying its own is for someone without the app, and updates only when reinstalled.
 - **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
   works, but say the provider can read the data, and make no encryption claim: unattended
-  boot and provider-proof encryption conflict.
+  boot and provider-proof encryption conflict. What resolves that conflict is attestation, not
+  encryption at rest: the enclave peer (under Integrations) is the always-on peer for someone
+  with no hardware of their own.
 - **Background Sync for the web client**, once the encrypted store exists. A service worker
   cannot open the store (OPFS's synchronous handles, which `sahpool` needs, are a dedicated
   worker's alone, and a service worker can start none), and Iroh needs a peer awake at the same
@@ -277,7 +286,9 @@ Each is a thin adapter over the command surface.
   is new into an inbox, which the store takes in the next time a tab opens. The account key is a
   non-extractable WebCrypto key in IndexedDB, which a service worker can use. Working out a
   reminder in the service worker (the push wake-up below) further needs the store readable
-  there: OPFS's asynchronous API, which a service worker has, into an in-memory copy.
+  there: OPFS's asynchronous API, which a service worker has, into an in-memory copy. The
+  enclave peer changes none of this: it is always awake, but the service worker still cannot
+  hold an Iroh session, so it reaches what the enclave wrote through the encrypted store.
 - **An IndexedDB fallback for the web client**, only for a browser without sync access handles
   someone needs: Chromium, Firefox and WebKit all run the suite in CI.
 
@@ -348,14 +359,24 @@ six days to guess"), never a coloured bar. Rate-limit wrapper fetches per accoun
 protection. "We cannot read your tasks" is true; "we learn nothing" is not (identity, chunk
 counts and sizes, timing, which devices connect when).
 
+**Beside the enclave peer**, it stays: the two do different work. The encrypted store holds;
+it trusts no hardware, runs no code over the data, and costs little per person, so it is what
+everyone syncs, backs up and joins through. The enclave peer computes (MCP, reminders, being
+awake), costs a running VM per person, and asks the person to trust the attestation chain of
+AMD, Intel or AWS. It keeps its state in the encrypted store and gets the account key only
+after its attestation checks. Someone who wants nothing in the cloud that can read their tasks
+uses the store and no enclave.
+
 What the web client gains from it:
 
 - **Reminders**: only as an installed PWA, through a classic service-worker push (not
   Declarative Web Push, which needs plaintext at the sender). The wake-up carries no
   content: the service worker syncs, works out what is due, and shows it, within Chrome's
-  budget for pushes that show nothing. The sender is an awake peer that can decrypt, or the
-  encrypted store sending a content-free wake-up on a schedule the person chose to give it
-  (off by default, the trade-off stated).
+  budget for pushes that show nothing. The sender is an awake peer that can decrypt (the
+  person's own, or the enclave peer, which works out from the store when each reminder is due
+  and wakes the browser then), or, for someone with neither, the encrypted store sending a
+  content-free wake-up on a schedule the person chose to give it (off by default, the
+  trade-off stated: the schedule tells the operator when reminders fall).
 - **Keys**: the account key as a non-extractable WebCrypto key.
 - **Verifiability**: subresource integrity and a published bundle hash, and a one-time plain
   notice at sign-in that a web client is harder to verify than a native one.
