@@ -35,10 +35,69 @@ The order, and why:
 
 - **A staleness question**, if a task becomes permanent furniture at the top: "this has been at
   the top for three weeks; is it real?", rather than a bigger formula.
+- **When to start, apart from when it is due**: a task's one date says both "do it Monday" and
+  "it must be done Friday", which Things (When and Deadline), OmniFocus (defer, planned and due),
+  Taskwarrior (`wait`, `scheduled`, `due`) and Todoist (due and, since 2025, deadlines) keep
+  apart. A start date that keeps a task out of the listings and the planner until it comes, a
+  deadline the urgency ranks by, and the due date as now; quick add says each ("from monday",
+  "by friday"). And **Someday**: a task kept but never offered until it is given a date, so the
+  planner and What Should I Work On? leave it alone. The planner's rule for which date it
+  reads is the core's; what each list shows by it too.
+- **A view of several days**: the days ahead at once, each day's blocks and the tasks due or
+  starting then, as Todoist's and Things' Upcoming and OmniFocus' Forecast are; today the day
+  is shown one at a time (Go to Day). A listing, worded as every line is, so it reads as well
+  as it looks.
+- **Sections within a project**: named headings a project's tasks sit under (Todoist's
+  sections, Things' headings, Reminders' sections), lighter than a subproject. A record of
+  their own, with the care in `crates/store/CLAUDE.md` for records two devices make alone.
+- **A countdown, and a timer outside the app**: a sitting's planned length counted down, with
+  the core's words when it runs out (Tiimo counts down; TickTick has Pomodoro), beside the
+  count up there is now; and a running timer shown where the system shows one: a Live Activity
+  on the iPhone's Lock Screen and Dynamic Island, an ongoing notification on Android, its
+  buttons the core's Pause and Stop.
+- **Time reports**: the minutes every sitting logs, summed by project, label and week, with
+  estimates beside them, as Todoist's productivity view and Taskwarrior's reports have. A
+  listing of the core's, read as one.
+- **A review**: every project looked at in turn at an interval of its own, as OmniFocus' weekly
+  review is, each marked reviewed; the staleness question above is the same kind of asking.
+- **Habits, from what is kept already**: a repeating task already says its cadence (`every 2
+  days`, `every! 2 days` from when it is done, `every mon, wed, fri`), which stands in for a
+  target per period, and never piles up overdue copies, being one task whose date moves on.
+  Two things to add. A **streak**, counted from its completions (each records the occurrence
+  it completed) and said in words in its details and its glance line ("done 12 times running",
+  "missed Tuesday"). And, from the `postponed` tally, the planner asking of a task put off
+  again and again, repeating or not: "this has been put off five times; make it less often, or
+  drop it?", the staleness question's twin. No "3 times a week" of any days: a cadence says it
+  well enough.
+- **Energy, as the person rates it**: capacity for focus and for starting things, which ADHD
+  and other conditions make uneven, not calories, so it is estimated, as a length is, never
+  measured.
+  - **A task's energy** beside its estimate: low, medium or high. Unrated is medium, so rating
+    nothing changes nothing.
+  - **A day's capacity**: a usual amount, and a check-in to change today's ("I'm low today")
+    from a notification, a widget, the watch, or the app.
+  - **When energy is good**: a block, or a time of day, marked as the person's best or worst.
+  - **The planner uses them**, deterministically and only proposing, as everywhere: Plan the
+    Day stops before the day's capacity is spent and puts demanding tasks in the good hours;
+    saying one is low offers a lighter Replan from Now of the rest of the day. What it weighs
+    is said in the proposal's reasons, in words.
+  - Optional throughout: worth having with a few tasks rated, never a chore of rating them all.
+- **An emoji on a task, a block or a project**, drawn beside its name, as Structured and Tiimo
+  draw icons: any emoji, chosen with the platform's own picker (Win+. on Windows,
+  Control-Command-Space on a Mac, the keyboard on a phone, Ctrl+. in GNOME), so no app keeps a
+  set of icons of its own. The core keeps one emoji (a single grapheme it checks) and words it
+  nowhere: **left out of speech and braille**, since it is chosen to be seen and its name read
+  aloud before every title is noise; the details may name it. The CLI, Emacs and BTSpeak show
+  none.
 
 ## 4. Smaller gaps
 
 A day or less each, for between the larger pieces.
+
+- **A weekday of the month in a repetition**: "every first monday", "every last friday" and
+  "every month on the last friday" are misread (the line keeps "every" or "on the last friday"
+  in its title), though the model holds them already: a task's repetition is an RRULE
+  (`BYDAY=1MO`, `BYDAY=-1FR`). The parser's (`crates/parse`), with the words to say them back.
 
 ### Completion
 
@@ -216,10 +275,26 @@ Each is a thin adapter over the command surface.
   Google Calendar's API is open to any project, but its scopes are sensitive: an app used by
   the public needs Google's OAuth verification (no paid audit), and an unverified one is
   limited to 100 people and warns them. PKCE serves a desktop app that cannot keep a secret.
-- **Imports from other systems**: Todoist first, through its public API and a personal API
-  token the person copies from Todoist's settings, so nothing needs registering (check the
-  current API version when building; its priority 4 is P1). Then Jira, Linear and GitHub,
-  which `ExternalRef` was shaped for.
+- **Imports from other systems**, each from what that system can actually export:
+  - **Todoist** first, through its public API and a personal API token the person copies from
+    Todoist's settings, so nothing needs registering (check the current API version when
+    building; its priority 4 is P1); its CSV backups (a ZIP of a CSV per project, completed
+    tasks left out) for someone without a token.
+  - **Taskwarrior**, from `task export`'s JSON: `wait` and `scheduled` to the start date above,
+    annotations into notes, its user-defined attributes kept in the notes as `name: value`
+    rather than dropped.
+  - **OmniFocus**, from its CSV or its plain-text (TaskPaper-style) export: defer dates to the
+    start date, contexts and tags to labels, projects with their folders.
+  - **todo.txt**, both ways: import a `todo.txt` and `done.txt` (priority `(A)`-`(D)` to P1-P4
+    and lower ones to P4, `+project`, `@context` to labels, `due:`, other `key:value` kept in
+    the notes), and export one, so Lumenna's tasks reach any plain-text tool and back.
+  - Then Jira, Linear and GitHub, which `ExternalRef` was shaped for.
+  - **Not Things 3**: it has no export of its own, only AppleScript on a Mac, so an import
+    would read another app's private data; revisit if Cultured Code ships one.
+- **Capture from other apps**: an iOS and Mac share extension and an Android share target
+  that take a page's or a selection's text as a quick-add line (read back before it is added,
+  as quick add always is), and Windows' share target for the MSIX. Email to a task stays under
+  "Only when needed".
 
 ## 7. Before others use it
 
@@ -467,6 +542,17 @@ What the web client gains from it:
 
 ## Decided against
 
+- **Teams** (decided 2026-10-25): shared projects, assignees and comments, as Todoist has.
+  Lumenna is one person's tasks on that person's devices; the trust boundary (the device list),
+  sync, erasure and the planner all assume it, and teams would multiply every one. Imports
+  bring someone's tasks over from a team tool; they do not make Lumenna one.
+- **Calendar export** (decided 2026-10-25): every block mirrored onto a calendar would bury the
+  meetings there, and reminders already do the alerting. Calendar import, for the planner to
+  know real meetings, stays (Integrations).
+- **Contexts** (decided 2026-10-25), Taskwarrior's or OmniFocus' focus: one filter applied
+  everywhere until switched off. Saved filters are views a person chooses, and a block's task
+  filter is a context bound to the time it applies; a hidden filter left on would make every
+  list quietly show less than it says.
 - **A timeline of every field's history** (decided 2026-10-21): a task's history counts the one
   fact the records forget, how often its due date was moved later; the rest says nothing a
   person acts on.
