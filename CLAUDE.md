@@ -142,7 +142,10 @@ crosses the FFI.
   store, run through one dispatcher (`Lumenna::assist`, over the FFI `Device::assist`). MCP's
   tools are built from it; App Intents (Siri, Shortcuts, Apple Intelligence) and Android App
   Functions (Gemini) are declared from it and checked against `assistant_operations()`, so an
-  operation added there reaches every assistant and none is worded twice.
+  operation added there reaches every assistant and none is worded twice. What another app sets
+  up once and runs unattended (Tasker's actions) is `records::automation` over the same table:
+  never an operation that `confirms`, every value as text the core types, and the answer as
+  variables, so a platform words nothing.
 - **A glance is the core's** (`records::glance`, worded by `lumenna_app::glance`; `App::glance`
   in the platform's clock, `Device::glance` without the screens): what a widget, complication,
   tile or Smart Stack shows, as a timeline of moments. A platform draws it and decides nothing.

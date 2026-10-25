@@ -642,12 +642,13 @@ jobs:
           - { name: "Wear OS watch, every test", profile: wearos_large_round, keyboard: false, app: wear, target: android-wear-signed }
           # The smoke set, which blocks: adding and completing, folding, focus after a
           # change, a keyboard command, no key erasing for good and erasing asking first, and
-          # the large-text screens, each under Google's accessibility checks.
+          # the large-text screens, each under Google's accessibility checks; and Tasker's plugin,
+          # whose firings are its only guard against another app running what was not set up.
           - name: "phone, smoke tests"
             profile: medium_phone
             keyboard: false
             blocking: true
-            tests: "dev.emassey0135.lumenna.LumennaTest#addingATaskReadsItBackAndListsIt,dev.emassey0135.lumenna.LumennaTest#completingATaskPutsFocusOnTheOneNowInItsPlaceThenSaysWhatHappened,dev.emassey0135.lumenna.LumennaTest#aTaskWithSubtasksCollapsesAndExpandsAndSaysWhichItIs,dev.emassey0135.lumenna.KeyboardTest#ctrlNOpensQuickAddFromAnotherTab,dev.emassey0135.lumenna.KeyboardTest#deleteOnATrashedTaskAsksToDeleteItFromTheTrashNeverToEraseItPermanently,dev.emassey0135.lumenna.LumennaTest#aTrashedTaskIsErasedPermanentlyFromItsMenuOnlyAfterSayingWhatThatTakes,dev.emassey0135.lumenna.LargeTextTest"
+            tests: "dev.emassey0135.lumenna.LumennaTest#addingATaskReadsItBackAndListsIt,dev.emassey0135.lumenna.LumennaTest#completingATaskPutsFocusOnTheOneNowInItsPlaceThenSaysWhatHappened,dev.emassey0135.lumenna.LumennaTest#aTaskWithSubtasksCollapsesAndExpandsAndSaysWhichItIs,dev.emassey0135.lumenna.KeyboardTest#ctrlNOpensQuickAddFromAnotherTab,dev.emassey0135.lumenna.KeyboardTest#deleteOnATrashedTaskAsksToDeleteItFromTheTrashNeverToEraseItPermanently,dev.emassey0135.lumenna.LumennaTest#aTrashedTaskIsErasedPermanentlyFromItsMenuOnlyAfterSayingWhatThatTakes,dev.emassey0135.lumenna.LargeTextTest,dev.emassey0135.lumenna.TaskerTest"
     runs-on: ubuntu-24.04
     # The full suites report; the smoke set blocks.
     continue-on-error: ${{ matrix.blocking != true }}

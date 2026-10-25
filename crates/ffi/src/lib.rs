@@ -37,6 +37,7 @@ use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
 use lumenna_app::speech::{self, Clock, Spoken};
 use lumenna_records::assistant::AssistantOperation;
+use lumenna_records::automation::{AutomationField, AutomationGiven, AutomationOutput, AutomationWords};
 use lumenna_records::controls::Control;
 use lumenna_records::glance::GlanceWidget;
 use lumenna_records::launch::LaunchShortcut;
@@ -275,6 +276,48 @@ pub fn keyboard_shortcuts() -> Vec<KeyGroup> {
 #[export]
 pub fn assistant_operations() -> Vec<AssistantOperation> {
     lumenna_records::assistant::operations()
+}
+
+/// The operations another app can set up once and run unattended (`lumenna_records::automation`):
+/// Tasker's actions. Every assistant operation but one that asks first, since nobody is there to
+/// answer, or one only a proposal just made can fill. Run one with `Device::automate`.
+#[export]
+pub fn automation_operations() -> Vec<AssistantOperation> {
+    lumenna_records::automation::operations()
+}
+
+/// What the screen setting up such an action says, beside the operations' own words.
+#[export]
+pub fn automation_words() -> AutomationWords {
+    lumenna_records::automation::words()
+}
+
+/// The fields that screen asks for the operation `id`: each parameter's label, hint, and the
+/// button beside it offering its choices (`Device::automation_choices`).
+#[export]
+pub fn automation_fields(id: String) -> Vec<AutomationField> {
+    lumenna_records::automation::fields(&id)
+}
+
+/// The variables the operation `id` gives back when it runs, for the app running it to list.
+#[export]
+pub fn automation_outputs(id: String) -> Vec<AutomationOutput> {
+    lumenna_records::automation::outputs(&id)
+}
+
+/// Why what was given to the operation `id` cannot be saved, to show beside Save: something it
+/// needs is left empty, or a value that holds no variable is not what its parameter takes. None
+/// when it can.
+#[export]
+pub fn automation_check(id: String, given: Vec<AutomationGiven>) -> Option<String> {
+    lumenna_records::automation::check(&id, given).err().map(|refused| refused.message().to_owned())
+}
+
+/// The line that sums up an action set up, each value as the person chose it (a task's title),
+/// in sentence case where `sentence` is set.
+#[export]
+pub fn automation_summary(id: String, shown: Vec<AutomationGiven>, sentence: bool) -> String {
+    lumenna_records::automation::summary(&id, shown, sentence)
 }
 
 /// The ways into Lumenna from outside it (`lumenna_records::launch`): the icon's shortcuts,
