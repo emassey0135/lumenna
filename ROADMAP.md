@@ -138,10 +138,22 @@ Each is a thin adapter over the command surface.
 - **`lum mcp` without a command line.** Built: stdio and Streamable HTTP (`--listen`), tools,
   resources and their subscriptions, `--writes`. Still to come, so a person who never opens a
   terminal can add it: for Claude Desktop, a bundle (under Packaging); and for Claude on the web
-  and phone and Meta's Muse, which reach a server from their own cloud, a public HTTPS name for
-  an always-on device of the person's (Tailscale Funnel, a Cloudflare tunnel) and OAuth, since a
-  bearer token cannot be typed in there: `lum mcp --listen` as its own authorization server,
-  each client approved on the device. Not decided.
+  and phone and Meta's Muse, which reach a server from their own cloud, an HTTPS address and
+  OAuth (a bearer token cannot be typed in there), each client approved by the person. Two
+  ways, decided, neither letting whoever runs them read the store:
+  - **Forwarded to the person's own device**, for someone with one always on: a relay at
+    `lumenna.app` gives each person an address and forwards the connection by its name, still
+    encrypted, to `lum mcp --listen` on their device, which holds the certificate and is its own
+    authorization server. The relay sees that connections happen and how much passes, never what.
+    A tunnel of their own (Tailscale Funnel) works too.
+  - **Confidential computing**, for someone with none: `lum mcp` in an attested confidential
+    VM (AMD SEV-SNP or Intel TDX, or AWS Nitro Enclaves), its memory unreadable to the operator
+    and the host, its build reproducible and its measurement published. The person's own app
+    checks the attestation before it hands the enclave the key to their store, so only that
+    published code ever reads it. It is a device that syncs like any other, and keeps nothing
+    once stopped but what syncs. Claude's or Meta's cloud cannot check the attestation itself, so
+    what protects the person is that their app did. The assistant sees what it asks for, as with
+    any cloud assistant.
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
     unreachable device, and convergence cannot be vetoed. Hooks fire after a change is
