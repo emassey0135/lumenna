@@ -109,7 +109,8 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   the program inside, whose mount is gone once it stops), its actions with it, a `TryExec` so the
   entry hides while the file is gone, and `X-Lumenna-AppImage=true`; written to
   `~/.local/share/applications` with the icon from the AppDir's hicolor theme, as `install.sh`
-  does. The answer is kept in `~/.config/lumenna/applications-menu` (`added` or `declined`), so
+  does, beside KRunner's runner and the search's D-Bus service naming the AppImage (not GNOME
+  Shell's provider: see the search below). The answer is kept in `~/.config/lumenna/applications-menu` (`added` or `declined`), so
   it is never asked again; a failed write keeps nothing, and is offered again. Once added, each
   start writes the entry again when it no longer says what it would (the AppImage moved, or a
   newer one lists other actions), only if it is still the AppImage's own: one the person removed
@@ -127,9 +128,26 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   actions included; the Flatpak installs the entry as it is, and `flatpak build-export` rewrites
   every group's `Exec` to `flatpak run --command=lumenna-gtk …`, the manifest's `command`, with
   the arguments kept. `test_launch.py` starts the app with one and starts it again with another.
+- **The desktop's search is the core's** (`search.rs`, `records::search`): GNOME Shell's
+  `org.gnome.Shell.SearchProvider2` and KRunner's `org.kde.krunner1`, objects on the app's own
+  bus connection (`/dev/emassey0135/Lumenna/SearchProvider` and `/KRunner`), registered as it
+  starts up, before its name is answered on. Both answer from `Device::search_results` in its
+  order and words: a result's `title` is its name, its `line` the shell's description and
+  KRunner's subtext; KRunner's relevance falls from 1 down the core's order, every match a
+  possible one (category 30). Activating a result (`ActivateResult`, `Run`) sends
+  `Launch(document.launch)`; the shell's own Launch Search shows the window. The shell names
+  results by identifier alone, so what was found is kept (`FOUND`) for its `GetResultMetas`.
+  Their files are `data/`'s `…search-provider.ini`, `…krunner.desktop` (installed as
+  `krunner/dbusplugins/<id>.desktop`) and `….service`, a session D-Bus service that starts the
+  app with `--background` to answer when it is not running. **GNOME Shell reads providers only
+  from the system's data folders** (`collectFromDatadirs('search-providers', false)`:
+  `XDG_DATA_DIRS`, never `~/.local/share`), so only the Flatpak, whose exports are among them,
+  gets the GNOME provider; `install.sh` and the AppImage install KRunner's runner and the service,
+  which KRunner and the bus read from `~/.local/share`, and leave GNOME's out. Only the usual
+  profile's copy owns the name the files give; `test_search.py` asks another profile's by its own.
 - **No widgets on Linux**: GNOME has no desktop widgets, and KDE's are QML plasmoids, outside
   GTK; so the glance (`records::glance`) has no client here. The ways in from outside are the
-  desktop entry's actions, the tray and the shortcuts from anywhere.
+  desktop entry's actions, the desktop's search, the tray and the shortcuts from anywhere.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). `GtkTreeView`
   exposes no rows to AT-SPI in GTK 4, and a list view with `TreeExpander` reports a flat

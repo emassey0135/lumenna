@@ -29,6 +29,7 @@ mod prompts;
 mod proposal;
 mod quick_add;
 mod reminders;
+mod search;
 mod settings;
 mod shortcuts;
 mod sidebar;
@@ -94,6 +95,9 @@ fn main() -> glib::ExitCode {
         gtk::Window::set_default_icon_name(ID);
         tree::swatches();
     });
+    // The desktop's search (GNOME Shell's provider, KRunner), on the app's connection as it
+    // registers, before its name is answered on.
+    application.connect_startup(search::export);
     // A launch shortcut chosen while the app runs, from another start of it.
     let launch = gio::SimpleAction::new("launch", Some(glib::VariantTy::STRING));
     launch.connect_activate(|_, id| {

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the GTK app and installs it for this user: the program in ~/.local/bin, its icon, and
 # its desktop entry, which is how GNOME lists it and how the portals know it — the shortcuts
-# from anywhere are refused to an app with no entry.
+# from anywhere are refused to an app with no entry — and its KRunner runner.
 #
 #   apps/gtk/install.sh            # a release build
 #   PROFILE=dev apps/gtk/install.sh  # the debug build, faster to make
@@ -24,9 +24,16 @@ install -m 755 "$built" "$bin/lumenna-gtk"
 sed "s|^Exec=lumenna-gtk|Exec=$bin/lumenna-gtk|" "$here/data/dev.emassey0135.Lumenna.desktop" \
     > "$data/applications/dev.emassey0135.Lumenna.desktop"
 update-desktop-database "$data/applications" 2>/dev/null || true
+# KRunner's runner, and the service that starts the app in the background to answer a search.
+# GNOME Shell's search provider is not installed: the shell reads providers only from the system's
+# data folders (XDG_DATA_DIRS), never ~/.local/share.
+install -D -m 644 "$here/data/dev.emassey0135.Lumenna.krunner.desktop" "$data/krunner/dbusplugins/dev.emassey0135.Lumenna.desktop"
+mkdir -p "$data/dbus-1/services"
+sed "s|^Exec=lumenna-gtk|Exec=$bin/lumenna-gtk|" "$here/data/dev.emassey0135.Lumenna.service" \
+    > "$data/dbus-1/services/dev.emassey0135.Lumenna.service"
 # The app's icon, at every size it is drawn in, in the user's hicolor theme.
 (cd "$here/data/icons" && find hicolor -type f) | while read -r icon; do
     install -D -m 644 "$here/data/icons/$icon" "$data/icons/$icon"
 done
 gtk-update-icon-cache -q -t "$data/icons/hicolor" 2>/dev/null || true
-echo "Installed $bin/lumenna-gtk, its desktop entry and its icon."
+echo "Installed $bin/lumenna-gtk, its desktop entry, its icon and its KRunner runner."

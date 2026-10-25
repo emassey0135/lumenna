@@ -15,6 +15,9 @@ use lumenna_records::launch::{menu_entry_failed, menu_entry_words};
 
 /// The desktop entry this build was made with, whose `Exec` lines name `lumenna-gtk`.
 const ENTRY: &str = include_str!("../data/dev.emassey0135.Lumenna.desktop");
+/// KRunner's runner, written as it is. GNOME Shell's search provider is not: the shell reads
+/// providers only from the system's data folders, never the user's.
+const RUNNER: &str = include_str!("../data/dev.emassey0135.Lumenna.krunner.desktop");
 
 /// Marks an entry as the AppImage's own, which a start may write again; one `install.sh` or a
 /// package wrote is left alone.
@@ -43,6 +46,15 @@ fn answer_file() -> PathBuf {
 
 fn entry_file() -> PathBuf {
     glib::user_data_dir().join("applications").join(format!("{}.desktop", crate::ID))
+}
+
+fn runner_file() -> PathBuf {
+    glib::user_data_dir().join("krunner/dbusplugins").join(format!("{}.desktop", crate::ID))
+}
+
+/// The session bus's service file, which starts the app in the background to answer a search.
+fn service_file() -> PathBuf {
+    glib::user_data_dir().join("dbus-1/services").join(format!("{}.service", crate::ID))
 }
 
 /// Whether the offer is this process's to make: run from an AppImage on the usual profile, whose
@@ -93,8 +105,11 @@ pub fn keep_current(application: &gtk::Application) {
         return;
     }
     let Ok(current) = std::fs::read_to_string(entry_file()) else { return };
+    let stale = current != entry(&appimage)
+        || std::fs::read_to_string(service_file()).ok() != Some(service(&appimage))
+        || std::fs::read_to_string(runner_file()).ok().as_deref() != Some(RUNNER);
     if current.lines().any(|line| line == MARK)
-        && current != entry(&appimage)
+        && stale
         && let Err(error) = write(&appimage)
     {
         eprintln!("Lumenna could not bring its applications menu entry up to date: {error}");
@@ -109,19 +124,38 @@ fn remember(answer: &str) {
     }
 }
 
-/// Writes the entry and copies the icon in beside it, from the AppImage's own.
+/// Writes the entry, KRunner's runner and the service that starts the AppImage, and copies the
+/// icon in beside them, from the AppImage's own.
 fn write(appimage: &Path) -> std::io::Result<()> {
-    let file = entry_file();
-    if let Some(parent) = file.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     if let Some(appdir) = std::env::var_os("APPDIR") {
         copy_icons(&Path::new(&appdir).join("usr/share/icons/hicolor"), &glib::user_data_dir().join("icons/hicolor"))?;
     }
-    // Written beside it and renamed, so the desktop never reads half an entry.
-    let partial = file.with_extension("desktop.partial");
-    std::fs::write(&partial, entry(appimage))?;
-    std::fs::rename(&partial, &file)
+    replace(&runner_file(), RUNNER)?;
+    replace(&service_file(), &service(appimage))?;
+    // The entry last, so an entry there means the rest is too.
+    replace(&entry_file(), &entry(appimage))
+}
+
+/// Written beside it and renamed, so nothing ever reads half a file.
+fn replace(file: &Path, text: &str) -> std::io::Result<()> {
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut partial = file.as_os_str().to_owned();
+    partial.push(".partial");
+    std::fs::write(&partial, text)?;
+    std::fs::rename(&partial, file)
+}
+
+/// The service file naming the AppImage, its `Exec` split as a shell would split it.
+fn service(appimage: &Path) -> String {
+    let path = appimage.display().to_string();
+    let program = if path.chars().all(|c| c.is_ascii_alphanumeric() || "/._+-".contains(c)) {
+        path
+    } else {
+        format!("'{}'", path.replace('\'', "'\\''"))
+    };
+    format!("[D-BUS Service]\nName={}\nExec={program} --background\n", crate::ID)
 }
 
 /// Every image of the app's icon under `from` (`<size>/apps/<id>.png`), to the same place under
@@ -201,6 +235,15 @@ mod tests {
         assert!(main.contains("TryExec=/home/someone/Applications/Lumenna-1.0-x86_64.AppImage\n"));
         assert!(main.contains(MARK));
         assert!(text.contains("Actions=new-task;today;what-now;"));
+    }
+
+    #[test]
+    fn the_search_service_starts_the_appimage_in_the_background() {
+        assert_eq!(
+            service(Path::new("/opt/Lumenna.AppImage")),
+            "[D-BUS Service]\nName=dev.emassey0135.Lumenna\nExec=/opt/Lumenna.AppImage --background\n"
+        );
+        assert!(service(Path::new("/home/a b/it's.AppImage")).contains("Exec='/home/a b/it'\\''s.AppImage' --background"));
     }
 
     #[test]
