@@ -717,6 +717,7 @@ final class LumennaUITests: XCTestCase {
         let erase = app.buttons["Erase Everything Deleted"]
         for _ in 0..<6 where !erase.isHittable { app.swipeUp() }
         XCTAssertTrue(erase.isHittable, "Backups offers Erase Everything Deleted")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Takes what was deleted'")).firstMatch.exists, "the core's caption beneath it")
         settle()
         try audit(.all, "backups with erasing")
         erase.tap()

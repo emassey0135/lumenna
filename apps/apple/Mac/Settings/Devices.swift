@@ -110,12 +110,12 @@ struct DevicesScreen: View {
         .frame(width: 520)
     }
 
-    /// Return renames the device in hand, Delete unpairs it (`ListKeys`).
+    /// Return renames the device in hand, Delete unpairs it, the core's Delete (`ListKeys`).
     func key(_ key: ListKey) -> Bool {
-        guard model.inHand != nil else { return false }
+        guard let device = model.inHand else { return false }
         switch key {
         case .returnKey: model.run(.rename)
-        case .delete: model.run(.unpair)
+        case .delete: model.core.app.key("delete", on: device.nodeId, side: .devices)
         case .space: return false
         }
         return true

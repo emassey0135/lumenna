@@ -300,7 +300,9 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
 
     @objc func moveToTrash() {
         guard let row = model.inHand else { return }
-        model.run([.delete], on: row, saying: .delete)
+        // The core's Delete: Move to Trash, or Delete from Trash in the trash, never Erase
+        // Permanently.
+        model.core.app.key("delete", on: row.id)
     }
 
     @objc func filterTasks() {

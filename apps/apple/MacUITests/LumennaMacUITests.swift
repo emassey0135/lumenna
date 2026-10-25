@@ -834,6 +834,7 @@ final class LumennaMacUITests: XCTestCase {
         settings.toolbars.buttons["Backups"].click()
         let erase = settings.buttons["Erase Everything Deleted…"]
         XCTAssertTrue(erase.waitForExistence(timeout: 5), settings.debugDescription)
+        XCTAssertTrue(text(containing: "Takes what was deleted out of the history", in: settings).exists, "the core's caption beneath it")
         try audit("settings, Backups with erasing", in: settings)
         erase.click()
         // Over Settings, where it was asked for, not over the main window behind it.
