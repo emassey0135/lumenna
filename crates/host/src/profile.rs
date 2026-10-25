@@ -14,8 +14,9 @@ pub struct Arguments {
     /// `--no-shortcuts`: leave the shortcuts from anywhere to another copy — one open on
     /// another profile, or the UI tests', which must not take the person's keys.
     pub no_shortcuts: bool,
-    /// `--launch <id>`: a way in from outside chosen (`lumenna_records::launch`), such as a Jump
-    /// List's task, for the app to do once it is open.
+    /// `--launch <id>`: a launch shortcut chosen from outside (`lumenna_records::launch`): a
+    /// desktop entry's action, a Jump List's task. The app does it as it opens, or a copy already
+    /// running does.
     pub launch: Option<String>,
 }
 
@@ -133,9 +134,9 @@ mod tests {
     }
 
     #[test]
-    fn a_way_in_from_outside_is_named_either_way() {
+    fn a_launch_shortcut_can_be_named_either_way() {
         assert_eq!(parse(&["--launch", "new-task"]).launch.as_deref(), Some("new-task"));
-        assert_eq!(parse(&["--profile", "D:\\work", "--launch=today"]).launch.as_deref(), Some("today"));
+        assert_eq!(parse(&["--launch=today", "--no-shortcuts"]).launch.as_deref(), Some("today"));
         assert_eq!(parse(&[]).launch, None);
     }
 
