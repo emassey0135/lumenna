@@ -36,14 +36,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- New Task, from the launcher's shortcut and the Quick Settings tile. -->
+            <!-- The core's launch shortcuts (Launches), set at run time: the icon's shortcuts, the
+                 Quick Settings tile and the widgets open the app on one. NEW_TASK is what the
+                 launcher's shortcut asked for before, which a shortcut pinned then still does. -->
             <intent-filter>
+                <action android:name="dev.emassey0135.lumenna.LAUNCH" />
                 <action android:name="dev.emassey0135.lumenna.NEW_TASK" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
         </activity>
         <service
             android:name=".NewTaskTile"
@@ -55,6 +55,50 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+        <!-- Gemini's App Functions (functions/LumennaFunctions): the service the library
+             generates, bound only by the system for a caller allowed to execute app functions,
+             and the XML it writes describing each function, which the system indexes: the v1 file
+             for Android 16's indexer, the v2 for Android 17's. -->
+        <service
+            android:name=".functions.LumennaFunctionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_APP_FUNCTION_SERVICE">
+            <property
+                android:name="android.app.appfunctions"
+                android:value="lumenna_functions-v1.xml" />
+            <property
+                android:name="android.app.appfunctions.schema"
+                android:value="app_functions_schema.xsd" />
+            <property
+                android:name="android.app.appfunctions.v2"
+                android:value="lumenna_functions.xml" />
+            <intent-filter>
+                <action android:name="android.app.appfunctions.AppFunctionService" />
+            </intent-filter>
+        </service>
+        <!-- The home screen's widgets (widgets/Widgets), drawn from the core's glance. -->
+        <receiver
+            android:name=".widgets.NowWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_now">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_now" />
+        </receiver>
+        <receiver
+            android:name=".widgets.TodayWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_today">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_today" />
+        </receiver>
         <!-- The watch's own link to the phone (WatchLink): the system starts this when the
              other side opens a channel, so neither app need be in front. -->
         <service

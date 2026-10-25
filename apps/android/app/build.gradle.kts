@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    // App Functions are declared by annotations the library's compiler reads.
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -33,6 +35,10 @@ android {
     }
 }
 
+ksp {
+    arg("appfunctions:generateV1Xml", "true")
+}
+
 dependencies {
     val bom = platform(libs.compose.bom)
     implementation(bom)
@@ -42,6 +48,13 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)
     implementation(libs.work.runtime)
+    // Gemini's App Functions (`functions/`), and the compiler that writes their service and the
+    // XML the system indexes; the v1 XML is what Android 16's indexer reads, the other Android 17's.
+    implementation(libs.appfunctions)
+    ksp(libs.appfunctions.compiler)
+    // The home screen's widgets (`widgets/`).
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
     // The core, its bindings and what the watch app shares (`:shared`).
     implementation(project(":shared"))
 

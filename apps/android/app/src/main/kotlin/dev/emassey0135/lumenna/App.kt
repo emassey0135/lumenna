@@ -66,7 +66,9 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** A block's day, as a reminder names it: its series and the occurrence's date. */
 data class BlockOn(val series: String, val date: String)
@@ -175,7 +177,7 @@ private val SidebarWidth = 300.dp
 @Composable
 fun LumennaApp(
     core: Core,
-    newTask: StateFlow<Long>? = null,
+    launched: StateFlow<Pair<Long, String>?>? = null,
     shortcuts: Shortcuts = remember { Shortcuts() },
     opened: StateFlow<Pair<Long, ReminderOpened>?>? = null,
 ) {
@@ -255,10 +257,20 @@ fun LumennaApp(
 
             BackHandler(enabled = stack.size > 1) { Navigator(stack).back() }
 
-            // New Task from outside the app: the Tasks tab, with quick add over its list.
-            val requested = newTask?.collectAsState()?.value ?: 0L
-            LaunchedEffect(requested) {
-                if (requested > 0) go(Tab.TASKS, Screen.QuickAdd)
+            // A way in from outside the app (the icon's shortcuts, the Quick Settings tile, a
+            // widget): the app does what it says, and the screens follow it there once it is
+            // still, to its place, with quick add over it when the app opened its line.
+            val launch = launched?.collectAsState()?.value
+            LaunchedEffect(launch) {
+                val id = launch?.second ?: return@LaunchedEffect
+                core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Launch(id))
+                withTimeoutOrNull(5_000) { while (!core.app.still) delay(16) }
+                val view = core.app.view.value ?: return@LaunchedEffect
+                when {
+                    view.line != null -> go(Tab.TASKS, Screen.QuickAdd)
+                    view.place == Place.Today -> go(Tab.TODAY)
+                    else -> go(Tab.TASKS)
+                }
             }
 
             // A reminder's notification, tapped: its task, or its block's day; its Replan button, Replan from Now.

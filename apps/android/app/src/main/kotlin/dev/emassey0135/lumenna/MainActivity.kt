@@ -22,8 +22,11 @@ import androidx.compose.ui.unit.dp
 class MainActivity : ComponentActivity() {
     private val core get() = (application as LumennaApplication).core
 
-    /** Counts New Task requests — the launcher shortcut, the Quick Settings tile — so each opens quick add. */
-    private val newTask = MutableStateFlow(0L)
+    /**
+     * The last launch shortcut asked for (`Launches`: the icon's shortcuts, the Quick Settings
+     * tile, a widget), counted so asking again for the same one does it again.
+     */
+    private val launched = MutableStateFlow<Pair<Long, String>?>(null)
 
     /** What each keyboard command does now, offered by the screens shown. */
     private val shortcuts = Shortcuts()
@@ -45,7 +48,10 @@ class MainActivity : ComponentActivity() {
     private val opened = MutableStateFlow<Pair<Long, ReminderOpened>?>(null)
 
     private fun handle(intent: Intent?) {
-        if (intent?.action == NEW_TASK) newTask.value += 1
+        Launches.id(intent)?.let { id ->
+            launched.value = (launched.value?.first ?: 0L) + 1 to id
+            androidx.core.content.pm.ShortcutManagerCompat.reportShortcutUsed(this, id)
+        }
         Reminders.opened(this, intent)?.let { opened.value = (opened.value?.first ?: 0L) + 1 to it }
     }
 
@@ -70,7 +76,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             LumennaTheme {
                 core.fold(
-                    onSuccess = { LumennaApp(it, newTask, shortcuts, opened) },
+                    onSuccess = { LumennaApp(it, launched, shortcuts, opened) },
                     // Nothing works without the store, so say why plainly.
                     onFailure = { error ->
                         Text(
@@ -98,7 +104,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        /** Opens quick add: the launcher shortcut's and the tile's intent. */
+        /** Opens quick add: what the launcher's shortcut asked for before the core listed them (`Launches`). */
         const val NEW_TASK = "dev.emassey0135.lumenna.NEW_TASK"
     }
 

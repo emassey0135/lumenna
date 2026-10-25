@@ -48,6 +48,13 @@ class Core(
     val app: AppModel by lazy { AppModel(this, platform).also { appOpened = true } }
     private var appOpened = false
 
+    /**
+     * What a widget, tile or complication shows for the next [hours] (`Glances`): the app's
+     * glance while it runs, else the device's, both worded in this device's clock.
+     */
+    fun glance(hours: UInt): List<dev.emassey0135.lumenna.app.GlanceEntry> =
+        if (appOpened) app.glance(hours) else device.glance(hours, Clock.locale)
+
     /** Whether the app is still, or not yet opened: what the tests wait on. */
     val still: Boolean get() = !appOpened || app.still
 
