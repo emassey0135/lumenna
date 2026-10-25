@@ -563,6 +563,9 @@ targets:
           - Assistant.swift
           - AssistantEntities.swift
           - CompleteTaskIntent.swift
+      # How the direct download's Mark Done is handed to the app, whose store it cannot reach.
+      - path: Shared/WidgetRequests.swift
+        group: Shared
       - path: Mac/Core
         group: Mac
         includes:

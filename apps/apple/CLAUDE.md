@@ -116,7 +116,8 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   the core decodes no shape of its own), written at launch, after every `Core.changed`, and in
   the background refresh before its task ends; then `WidgetCenter.reloadAllTimelines()`. Every
   Apple app writes it, the watch and both Mac editions too, since the direct download's widgets
-  cannot reach its store; a widget writes it too, after its Mark Done. Under
+  cannot reach its store; a widget writes it too, after its Mark Done, and the direct download
+  after taking in a Mark Done its widget handed on (`WidgetRequests`). Under
   `LUMENNA_TEST_PROFILE` nothing is written to the group.
 - **`TZ` is set from `TimeZone.current`** at launch and on returning to the foreground: jiff
   finds the zone through `TZ` or `/etc/localtime`, and the sandbox is no place to rely on
@@ -413,8 +414,9 @@ packaging decided:
 - **The direct download** (Debug and Release; scheme `LumennaMac`): Developer ID, not
   sandboxed, its store in `~/Library/Application Support/lumenna` (or `LUMENNA_PROFILE`'s),
   shared with the `lum` inside it and with Emacs over its socket. Its App Group
-  (`Mac/Lumenna.entitlements`) holds the glance file alone: its widgets, sandboxed, cannot read
-  its store.
+  (`Mac/Lumenna.entitlements`) holds the glance file and the widgets' requests alone: its
+  widgets, sandboxed, cannot read its store, so Today's Mark Done is handed to the app there
+  (`WidgetRequests`, "The widgets").
 - **The Mac App Store edition** (the `AppStore` configuration, scheme `LumennaMacAppStore`,
   compiled with `APP_STORE`, `LUMENNA_EDITION=appstore` for the scripts): sandboxed
   (`Mac/AppStore.entitlements`), its store in its App Group's container (`<group>/lumenna`),
@@ -509,12 +511,29 @@ each embedded in its app.
   left by taking the file out of WAL, which SQLite allows only to a connection alone with it. A
   Mark Done opens the store a few times (the entity's query, the operation, the entity after),
   each a fresh open, which is the price of holding nothing.
-  - **The direct download**: in the app, through App Intents' own way of naming the process,
-    `allowedExecutionTargets` `.main` (macOS 27): its store is outside the sandbox every Mac
-    extension runs in, and the app, resident in the menu bar, holds it. Not `openAppWhenRun`,
-    which would bring the window forward for every Shortcuts run of Complete a Task as well.
-    Before macOS 27 the
-    direct download's Today shows no Mark Done; tapping it opens Today.
+  - **The direct download**: handed to the app through the group (`Shared/WidgetRequests.swift`),
+    on every macOS from 14: its store is outside the sandbox every Mac extension runs in, and
+    the app, resident in the menu bar, holds it. The widget's `perform` opens no store: it
+    writes a request into `requests/` in the group (the operation's id and its arguments, one
+    file each, named by the moment and a UUID, written under a dot-name and renamed, so the app
+    never reads half of one), its `TaskQuery` handing back the identifier alone, and its
+    intents served a store that opens nothing (`WidgetStore`), so nothing reaches for a missing
+    dependency. The app (`Core.takeRequests`, compiled into the direct download alone) takes them
+    in at launch, on its one-second tick and when the folder changes (a dispatch source), runs
+    each through `Device.assist`, removes it once it ran, then writes the glance again, which
+    reloads the timelines. **Only `complete_task` runs**, given the task alone, whatever a file
+    names: what can write the folder must not run another operation, an erasure among them. A
+    file naming another, or one that does not read, is removed unrun. A run that fails is kept
+    and tried again, `WidgetRequests.tries` times in all, then removed: the core's refusal (a
+    task deleted elsewhere since) reads as any other failure, so a request is never tried for
+    ever. A request run whose file could not be removed is never run again in that process, or
+    a repeating task would move on twice. With the app not running, a request waits for its
+    next start; the widget shows the task until then. Nothing is said: a widget's button says
+    nothing, and no words of ours are needed. `WidgetRequestTests` (in `LumennaTests`, where the
+    shared code compiles too) checks the round trip, the refusal and the retry. Not
+    `allowedExecutionTargets` `.main`, which the newest macOS alone has and no one had seen work
+    on a Mac, nor `openAppWhenRun`, which would bring the window forward for every Shortcuts run of
+    Complete a Task as well.
   - **The watch** has no Today, so no Mark Done, and compiles no intents.
 - **A widget tapped opens Today, the core's launch** (`widgetURL` of `LaunchURL.of("today")`,
   `lumenna://launch/<id>`, the scheme each app registers): the app sends `ShellEvent.launch`
@@ -525,7 +544,7 @@ each embedded in its app.
   the sandbox and the group) are the same in both editions; only the App Store edition's store is
   there for Mark Done. Its Info.plist names the group as the apps' do (`LumennaAppGroup`).
 - **Not checked by CI**, since it builds unsigned with no group: the widgets reading the glance,
-  Mark Done in the widget and in the direct download's app, the gallery's words, a complication
+  Mark Done in the widget and handed to the direct download's app through the group, the gallery's words, a complication
   on a face, and VoiceOver on each.
 
 ## The controls

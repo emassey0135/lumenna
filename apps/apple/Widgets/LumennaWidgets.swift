@@ -12,7 +12,7 @@ struct LumennaWidgets: WidgetBundle {
     init() {
         // The core asks for the zone through `TZ`, which the sandbox is no place to leave unset.
         setenv("TZ", TimeZone.current.identifier, 1)
-        #if !os(watchOS) && !(os(macOS) && !APP_STORE)
+        #if !os(watchOS)
         WidgetStore.serve()
         #endif
     }
@@ -196,6 +196,16 @@ enum WidgetStore {
             // Done, a task's timer stops: the Timer's control reads again.
             if #available(iOS 18.0, macOS 26.0, *) { ControlCenter.shared.reloadAllControls() }
         }
+        AppDependencyManager.shared.add(dependency: store)
+    }
+}
+#elseif os(macOS)
+/// The direct download's widget reaches no store: its Mark Done hands the task to the app
+/// (`WidgetRequests`). The intents it compiles still name a store, so they are given one that
+/// opens nothing, and any use of it is a refusal, never a missing dependency.
+enum WidgetStore {
+    static func serve() {
+        let store = AssistantStore(opening: { throw CocoaError(.fileNoSuchFile) }) { _ in }
         AppDependencyManager.shared.add(dependency: store)
     }
 }

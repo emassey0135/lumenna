@@ -179,24 +179,15 @@ private struct Tasks: View {
 }
 
 #if !os(watchOS)
-/// A task's Mark Done: the core's Complete a Task (`CompleteTaskIntent`), run where the store is
-/// (`apps/apple/CLAUDE.md`, "The widgets").
+/// A task's Mark Done: the core's Complete a Task (`CompleteTaskIntent`), run on the store in the
+/// group, or in the Mac's direct download handed to the app (`apps/apple/CLAUDE.md`, "The
+/// widgets").
 private struct MarkDone: View {
     let entry: GlanceTimelineEntry
     let task: LumennaApp.GlanceTask
     let line: LumennaApp.Line
 
     var body: some View {
-        #if os(macOS) && !APP_STORE
-        // The direct download's store is outside the widget's sandbox, so the intent runs in the
-        // app, which only macOS 27 lets an intent name; before it, the widget opens the app.
-        if #available(macOS 27.0, *) { button }
-        #else
-        button
-        #endif
-    }
-
-    private var button: some View {
         Button(intent: CompleteTaskIntent(task: TaskEntity(glanced: task))) {
             Text(entry.glance.markDone).font(.caption.weight(.semibold))
         }

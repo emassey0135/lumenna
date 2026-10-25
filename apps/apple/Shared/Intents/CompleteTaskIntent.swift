@@ -26,13 +26,6 @@ struct CompleteTaskIntent: OperationIntent {
     static let isDiscoverable = false
     #endif
 
-    #if os(macOS) && !APP_STORE
-    /// In the direct download the app, never the widget: its store is outside the sandbox the
-    /// widget runs in, and the app, resident in the menu bar, holds it.
-    @available(macOS 27.0, *)
-    static var allowedExecutionTargets: ExecutionTargets { .main }
-    #endif
-
     @AppDependency private var store: AssistantStore
 
     init() {}
@@ -43,7 +36,17 @@ struct CompleteTaskIntent: OperationIntent {
     }
 
     func perform() async throws -> some IntentResult & ReturnsValue<TaskEntity?> & ProvidesDialog {
+        #if LUMENNA_WIDGETS && os(macOS) && !APP_STORE
+        // The direct download's widget: its store is outside the widget's sandbox, so the request
+        // is handed to the app, resident in the menu bar, through the group (`WidgetRequests`).
+        // The app takes it within a second, or at its next start, and the widget reads the glance
+        // it writes then; nothing is said, since a widget's button says nothing.
+        guard let container = AppGroup.container else { throw CocoaError(.fileNoSuchFile) }
+        try WidgetRequests.hand(.init(operation: Self.persistentIdentifier, arguments: ["id": id.id]), into: container)
+        return .result(value: id, dialog: IntentDialog(said: ""))
+        #else
         let changed = try store.assist(Self.persistentIdentifier, ["id": .text(id.id)])
         return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
+        #endif
     }
 }

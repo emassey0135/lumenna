@@ -127,8 +127,9 @@ Each is a thin adapter over the command surface.
 - **Widgets, tried as a person gets them**: every platform's are built from the core's glance and
   `glance_widgets()` (Now and Today), and what CI cannot check is left by hand: Apple's on a
   signed build (the group's glance read, Mark Done in the widget on the iPhone and the App Store
-  edition and in the app for the direct download, a complication on a face and in the Smart
-  Stack), the Windows board drawing the cards and pressing Mark Done (`apps/windows/CLAUDE.md`),
+  edition, and for the direct download handed to the app through the group's `requests/`,
+  taken within a second while it runs and at its next start otherwise, a complication on a face
+  and in the Smart Stack), the Windows board drawing the cards and pressing Mark Done (`apps/windows/CLAUDE.md`),
   and VoiceOver, TalkBack and Narrator on each.
 - **A PowerShell module**: a script module (`.psm1`) in PowerShell over `lum --json`, for
   Windows PowerShell 5.1 and PowerShell 7 on every platform, and the same language as Windows'

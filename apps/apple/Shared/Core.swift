@@ -17,6 +17,11 @@ final class Core {
     private var watcher: Foundation.Timer?
     /// The store's heads at the last look.
     private var seenHeads: String?
+    #if os(macOS) && !APP_STORE
+    /// Today's Mark Done, handed on by the direct download's widget, which cannot reach this
+    /// store (`WidgetRequests`), where the build has an App Group.
+    private lazy var requests: WidgetRequests? = AppGroup.container.map(WidgetRequests.init(container:))
+    #endif
 
     init() throws {
         Core.useSystemTimeZone()
@@ -90,9 +95,16 @@ final class Core {
     /// A change soon after the person did something is theirs; any other arrived.
     func watchForChanges() {
         guard watcher == nil else { return }
+        #if os(macOS) && !APP_STORE
+        // Taken before the first look, so what a widget asked for while the app was not running
+        // is done, and its change heard, as it starts.
+        takeRequests()
+        requests?.watch { [weak self] in self?.takeRequests() }
+        #endif
         seenHeads = try? app.device.heads()
         watcher = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             #if os(macOS) && !APP_STORE
+            self?.takeRequests()
             self?.glance?.tick()
             #endif
             guard let self, let heads = try? self.app.device.heads(), heads != self.seenHeads else { return }
@@ -104,6 +116,16 @@ final class Core {
         glance?.follow()
         glance?.write()
     }
+
+    #if os(macOS) && !APP_STORE
+    /// Runs every request the widgets handed on, then writes their glance again, as after any
+    /// change.
+    private func takeRequests() {
+        let device = app.device
+        guard requests?.take(running: { _ = try device.assist(operation: $0, arguments: $1) }) == true else { return }
+        glance?.soon()
+    }
+    #endif
 
     /// Takes a backup if one is due, off the main thread; `failed` hears why not.
     func backUpIfDue(failed: @escaping (String) -> Void) {
