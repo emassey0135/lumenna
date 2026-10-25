@@ -295,7 +295,13 @@ CI (`.github/workflows/ci.yml`) builds each mobile app once and tests it on seve
 parallel jobs that share the build. **Two tiers**: the Rust tests, the builds, the clients, the
 GTK and Windows UI tests and a smoke set of iOS and Android UI tests block; the full iOS and
 Android suites report without blocking, since a slow runner fails them where nothing is wrong.
-A test that has only failed for a reason can join the smoke set.
+A test that has only failed for a reason can join the smoke set. **A branch runs only what its
+changes can break** (the `changes` job: a change to `crates/`, `Cargo.*` or `ci.yml` runs
+everything, one to an app its own jobs, and the Rust workspace's for an app written in Rust);
+master, pull requests and runs asked for run everything. A new app's jobs join a group there.
+The suites that only report (the full iOS, Mac UI and Android suites), WebKit, and Rust on Intel
+macOS run on master alone (`full`), since most wait for one of the five macOS runners: a branch
+runs the builds and everything that blocks, Firefox included.
 
 `crates/core/tests/rows.rs` snapshots the row projection (each row's place, folding, checked
 state, speech and braille) in `tests/snapshots/`, rewritten with `UPDATE_SNAPSHOTS=1` once a
@@ -310,10 +316,11 @@ ships (the Apple and Android scripts; BTSpeak's through BoltFFI's `--cargo-arg`)
 crate is a `cdylib` alone.
 
 **`release.yml` builds every app for release, unsigned**, on master, a version tag or when
-asked, and keeps each as an artifact for packaging to build on: `lum` and the BTSpeak app on
-Debian 12 (the oldest glibc and Python the BTSpeak devices run), `lum` universal on macOS, the
-Windows installer (the app and `lum`, Inno Setup), the MSIX for the Store and a `lum` zip, the
-GTK app as an AppImage and a Flatpak bundle, each on both architectures, the iPhone app with
+asked (`platforms`: `all`, or the jobs to build), and keeps each as an artifact for packaging
+to build on: `lum` and the BTSpeak app on Debian 12 (the oldest glibc and Python the BTSpeak
+devices run), `lum` universal on macOS, the Windows installer (the app and `lum`, Inno
+Setup), the MSIX for the Store and a `lum` zip, the GTK app as an AppImage and a Flatpak
+bundle, each on both architectures, the iPhone app with
 its watch app for devices, the Mac app for both architectures, `lum` inside it, as a disk image,
 Android's App Bundles and APKs, and the web client. Each is checked as a person would get it
 (installed, unpacked or started) before it is kept. A new platform's build goes there too.

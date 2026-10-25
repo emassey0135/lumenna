@@ -408,6 +408,8 @@ pub enum Answer {
 // The words
 // ---------------------------------------------------------------------------------------
 
+/// What marking a task done is called, wherever it is offered: a row's action, a widget's button.
+pub const MARK_DONE: &str = "Mark Done";
 /// What erasing asks: it is gone from here, and not from history.
 pub const ERASING: &str =
     "Undo can bring it back. It also stays in the history every device keeps, and in backups, until it is erased permanently.";
@@ -573,7 +575,7 @@ pub fn task(snapshot: &Snapshot, task: &Task, done: bool, shown: bool) -> Vec<Ac
             )),
         ];
     }
-    let mut actions = vec![if done { a(K::MarkNotDone, "Mark Not Done") } else { a(K::MarkDone, "Mark Done") }];
+    let mut actions = vec![if done { a(K::MarkNotDone, "Mark Not Done") } else { a(K::MarkDone, MARK_DONE) }];
     if !shown {
         actions.push(a(K::Edit, "Edit Details"));
     }

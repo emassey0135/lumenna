@@ -94,8 +94,28 @@ Each is a thin adapter over the command surface.
   `AppShortcutsProvider` for Siri phrases with no setup. Add (in the quick-add grammar),
   complete, query by filter, today's plan, assign, start and stop. Hands-free capture is an
   accessibility feature. Check for an assistant-schema domain for tasks when building.
-- **A URL scheme** beside them, `lumenna://add?text=…` (one task per line, in the quick-add
-  grammar), so a Drafts action, or any app's x-callback-url, sends text in as tasks.
+- **A URL scheme**, `lumenna://`, on every platform, for Drafts, Scriptable, Keyboard Maestro,
+  Alfred and any app's x-callback-url:
+  - **Where:** Android's intent filter, Windows' protocol handler (the installer's and the
+    MSIX's), the desktop entry's `x-scheme-handler/lumenna`, and the web's `web+lumenna`
+    (browsers take only `web+` schemes). What a URL means and does is the core's, a records
+    module beside `launch`, so every platform only hands the URL over.
+  - **Without a token**, what is harmless and undoable: `open/<launch id>` (the core's launch
+    targets: `today`, `task:<id>`, …) and `add?text=…` (one task per line, in the quick-add
+    grammar), answering `x-success` with no data.
+  - **With a token**, every operation of the assistant table, as `lum mcp` has them
+    (`run/<operation>?<parameter>=…`), its record answered to `x-success`. The token is this
+    device's own, separate from `lum mcp`'s, made, shown and renewed in Settings, and this half
+    is off until it is turned on. An operation that asks first (erasing permanently) is never
+    run by a URL, token or not.
+  - **Why a token:** x-callback-url names no caller (iOS does not say which other developer's app
+    opened one), so a token is the only way to tell one apart, as Things and Bear do, and
+    `x-success` sends results wherever the caller says.
+- **Tasker on Android**: a Tasker plugin over the assistant table. Its action's own screen in
+  Lumenna chooses the operation and its parameters, which is the consent, and its results come
+  back as Tasker variables. Each firing carries a secret made when it was set up, so no other app
+  can fire it. App Functions are not Tasker's way in: only the system's assistant may call them.
+  Events reach Tasker by the hooks' broadcast (below).
 - **Android App Functions** (`androidx.appfunctions`, for Gemini) with AppSearch for
   retrieval; not the old App Actions. The same verbs as App Intents: add, what is next,
   start and stop a sitting's timer, complete. Through Gemini they reach the phone, the watch,
@@ -104,14 +124,49 @@ Each is a thin adapter over the command surface.
 - **Widgets**: WidgetKit (iOS, macOS) and Glance (Android): today's blocks and what is due.
   The watches' are widgets too: complications through WidgetKit on watchOS, with the running
   timer on the watch face, and tiles and complications on Wear OS.
-- **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
+- **A PowerShell module**: a script module (`.psm1`) in PowerShell over `lum --json`, for
+  Windows PowerShell 5.1 and PowerShell 7 on every platform, and the same language as Windows'
+  hooks. Unlike `lum`, it gives:
+  - objects rather than text, so the pipeline works: `Get-LumennaTask -Filter '@calls' | Complete-LumennaTask`
+  - verb-noun cmdlets with help
+  - `-WhatIf` and `-Confirm` on what removes, erasing permanently confirming by default
+  - errors as error records, and completion through `lum`'s own.
+
+  It offers the assistant table's operations, checked by a Pester test as App Intents and App
+  Functions are. Enough for scripting Windows: WSH and COM stay decided against (VBScript is on
+  its way out of Windows), and what cannot run PowerShell runs `lum` or opens a `lumenna://` URL.
 - **`lum mcp` without a command line.** Built: stdio and Streamable HTTP (`--listen`), tools,
   resources and their subscriptions, `--writes`. Still to come, so a person who never opens a
   terminal can add it: for Claude Desktop, a bundle (under Packaging); and for Claude on the web
-  and phone and Meta's Muse, which reach a server from their own cloud, a public HTTPS name for
-  an always-on device of the person's (Tailscale Funnel, a Cloudflare tunnel) and OAuth, since a
-  bearer token cannot be typed in there: `lum mcp --listen` as its own authorization server,
-  each client approved on the device. Not decided.
+  and phone and Meta's Muse, which reach a server from their own cloud, an HTTPS address and
+  OAuth (a bearer token cannot be typed in there), each client approved by the person. Two
+  ways, decided, neither letting whoever runs them read the store:
+  - **Forwarded to the person's own device**, for someone with one always on: a relay at
+    `lumenna.app` gives each person an address and forwards the connection by its name, still
+    encrypted, to `lum mcp --listen` on their device, which holds the certificate and is its own
+    authorization server. The relay sees that connections happen and how much passes, never what.
+    A tunnel of their own (Tailscale Funnel) works too.
+  - **Confidential computing**, for someone with none: `lum mcp` in an attested confidential
+    VM (AMD SEV-SNP or Intel TDX, or AWS Nitro Enclaves), its memory unreadable to the operator
+    and the host, its build reproducible and its measurement published. The person's own app
+    checks the attestation before it hands the enclave the key to their store, so only that
+    published code ever reads it. It is a device that syncs like any other, and keeps nothing
+    once stopped but what syncs. Claude's or Meta's cloud cannot check the attestation itself, so
+    what protects the person is that their app did. The assistant sees what it asks for, as with
+    any cloud assistant.
+
+    Call it the *enclave peer*. Being a device that is always awake, it is more than an MCP
+    server: it is the always-on peer for someone without one (section 7), the sender of
+    the web client's reminder wake-ups, at the moment each is due (section 8), and a peer every
+    device can reach to sync without two of the person's own being awake at once. It keeps its
+    copy of the store in the encrypted store, so a stopped or moved enclave loses nothing and
+    the operator still holds only ciphertext.
+
+    Alexa+ reaches either the same way, as an MCP client from Amazon's cloud, once its MCP
+    Toolkit is open to more than chosen partners (in preview for partners alone, in the United
+    States, as of July 2026). It asks a round trip under 500 ms, which the enclave meets more
+    surely than a forwarded home connection. No classic Alexa skill: Amazon's new tools are all for
+    Alexa+, where a skill is invoked directly only if Amazon picks it after an evaluation form.
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
     unreachable device, and convergence cannot be vetoed. Hooks fire after a change is
@@ -229,7 +284,9 @@ Each is a thin adapter over the command surface.
   bundle carrying its own is for someone without the app, and updates only when reinstalled.
 - **An always-on peer**, documented: `lum daemon` on hardware the person controls. A VPS
   works, but say the provider can read the data, and make no encryption claim: unattended
-  boot and provider-proof encryption conflict.
+  boot and provider-proof encryption conflict. What resolves that conflict is attestation, not
+  encryption at rest: the enclave peer (under Integrations) is the always-on peer for someone
+  with no hardware of their own.
 - **Background Sync for the web client**, once the encrypted store exists. A service worker
   cannot open the store (OPFS's synchronous handles, which `sahpool` needs, are a dedicated
   worker's alone, and a service worker can start none), and Iroh needs a peer awake at the same
@@ -239,7 +296,9 @@ Each is a thin adapter over the command surface.
   is new into an inbox, which the store takes in the next time a tab opens. The account key is a
   non-extractable WebCrypto key in IndexedDB, which a service worker can use. Working out a
   reminder in the service worker (the push wake-up below) further needs the store readable
-  there: OPFS's asynchronous API, which a service worker has, into an in-memory copy.
+  there: OPFS's asynchronous API, which a service worker has, into an in-memory copy. The
+  enclave peer changes none of this: it is always awake, but the service worker still cannot
+  hold an Iroh session, so it reaches what the enclave wrote through the encrypted store.
 - **An IndexedDB fallback for the web client**, only for a browser without sync access handles
   someone needs: Chromium, Firefox and WebKit all run the suite in CI.
 
@@ -310,14 +369,24 @@ six days to guess"), never a coloured bar. Rate-limit wrapper fetches per accoun
 protection. "We cannot read your tasks" is true; "we learn nothing" is not (identity, chunk
 counts and sizes, timing, which devices connect when).
 
+**Beside the enclave peer**, it stays: the two do different work. The encrypted store holds;
+it trusts no hardware, runs no code over the data, and costs little per person, so it is what
+everyone syncs, backs up and joins through. The enclave peer computes (MCP, reminders, being
+awake), costs a running VM per person, and asks the person to trust the attestation chain of
+AMD, Intel or AWS. It keeps its state in the encrypted store and gets the account key only
+after its attestation checks. Someone who wants nothing in the cloud that can read their tasks
+uses the store and no enclave.
+
 What the web client gains from it:
 
 - **Reminders**: only as an installed PWA, through a classic service-worker push (not
   Declarative Web Push, which needs plaintext at the sender). The wake-up carries no
   content: the service worker syncs, works out what is due, and shows it, within Chrome's
-  budget for pushes that show nothing. The sender is an awake peer that can decrypt, or the
-  encrypted store sending a content-free wake-up on a schedule the person chose to give it
-  (off by default, the trade-off stated).
+  budget for pushes that show nothing. The sender is an awake peer that can decrypt (the
+  person's own, or the enclave peer, which works out from the store when each reminder is due
+  and wakes the browser then), or, for someone with neither, the encrypted store sending a
+  content-free wake-up on a schedule the person chose to give it (off by default, the
+  trade-off stated: the schedule tells the operator when reminders fall).
 - **Keys**: the account key as a non-extractable WebCrypto key.
 - **Verifiability**: subresource integrity and a published bundle hash, and a one-time plain
   notice at sign-in that a web client is harder to verify than a native one.
@@ -379,9 +448,9 @@ What the web client gains from it:
 - **Reordering tasks among siblings** (decided 2026-10-20): task lists are most urgent
   first, or in the order added (`task-order`, `sort:`), so a task has no place of its own to
   move to. Projects, labels, saved filters and a block's sittings are reordered.
-- **Alexa, AppleScript, WSH/COM**: a cloud assistant cannot read what the cloud cannot
-  decrypt; Shortcuts and `lum --json` cover scripting.
-- **A hosted MCP endpoint**, for the same reason, and TLS inside `lum mcp`.
+- **AppleScript, WSH/COM**: Shortcuts, PowerShell and `lum --json` cover scripting.
+- **A hosted MCP endpoint that can read the store**: cloud MCP is forwarded to the person's own
+  device or run in the enclave peer (under Integrations), never on a server its operator reads.
 - **Interceptive or synced hooks**, and hooks on iOS, watchOS, Wear OS and the web.
 - **A language model in the planner, optimal packing, a strategy menu, automatic
   carry-forward.**

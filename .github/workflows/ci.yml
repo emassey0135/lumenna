@@ -2,13 +2,16 @@
 # macOS and Windows, each on x86_64 and arm64; the GTK and Windows apps' UI tests; the
 # BTSpeak client on the app in-process and the Emacs client against a real `lum rpc`; the web client in a browser; the Apple
 # apps; and Android for both its ABIs. Several sessions work on this repository at once,
-# and this is what catches one breaking another.
+# and this is what catches one breaking another. A branch runs only what its changes can
+# break (`changes`, below), so one app's branch does not wait behind another's macOS jobs;
+# master runs everything.
 #
 # Two tiers. What blocks is what fails only for a reason: the Rust tests, every build, the
 # clients, the GTK and Windows UI tests, and a smoke set of the iOS and Android UI tests.
 # The full iOS and Android suites run too and report, but do not block: they drive
 # simulators and emulators through gestures and timing, and a slow runner fails them
-# where nothing is wrong.
+# where nothing is wrong. They, the Mac's full UI suite, WebKit and Rust on Intel macOS run
+# on master alone, since most wait for one of the few macOS runners a branch would queue for.
 name: CI
 
 on:
@@ -36,18 +39,77 @@ env:
   LUMENNA_BACKUP_DIR: ${{ github.workspace }}/../backups
 
 jobs:
+  # What a push changed, so a branch runs only the jobs its changes can break: a change to the
+  # core runs everything, one to an app its own jobs (and the Rust workspace's, for an app
+  # written in Rust). Master, a pull request and a run asked for test everything, since that
+  # is where branches meet. A job left out by this is skipped, not failed.
+  #
+  # `full` is master's alone (and a pull request's): the suites that only report (iOS, the
+  # Mac's and Android's every test, WebKit) and Rust on Intel macOS, most of which wait for
+  # one of the few macOS runners. A branch runs the builds and what blocks.
+  changes:
+    name: What changed
+    runs-on: ubuntu-24.04
+    outputs:
+      full: ${{ steps.groups.outputs.full }}
+      rust: ${{ steps.groups.outputs.rust }}
+      core: ${{ steps.groups.outputs.core }}
+      rust_apps: ${{ steps.groups.outputs.rust_apps }}
+      apple: ${{ steps.groups.outputs.apple }}
+      android: ${{ steps.groups.outputs.android }}
+      windows: ${{ steps.groups.outputs.windows }}
+      gtk: ${{ steps.groups.outputs.gtk }}
+      web: ${{ steps.groups.outputs.web }}
+      cli: ${{ steps.groups.outputs.cli }}
+      clients: ${{ steps.groups.outputs.clients }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: groups
+        run: |
+          groups="core rust_apps apple android windows gtk web cli clients"
+          # Where the Rust workspace's tests run, Intel macOS on master alone.
+          rust='{ "name": "Linux x86_64", "os": "ubuntu-24.04", "exclude": "" },
+            { "name": "Linux arm64", "os": "ubuntu-24.04-arm", "exclude": "" },
+            { "name": "macOS arm64", "os": "macos-15", "exclude": "--exclude lumenna-gtk" },
+            { "name": "Windows x86_64", "os": "windows-2025", "exclude": "--exclude lumenna-gtk" },
+            { "name": "Windows arm64", "os": "windows-11-arm", "exclude": "--exclude lumenna-gtk" }'
+          intel='{ "name": "macOS x86_64", "os": "macos-15-intel", "exclude": "--exclude lumenna-gtk" }'
+          if [ "$GITHUB_REF" = refs/heads/master ] || [ "$GITHUB_EVENT_NAME" != push ] || ! git rev-parse -q --verify origin/master >/dev/null; then
+            for group in $groups full; do echo "$group=true" >> "$GITHUB_OUTPUT"; done
+            echo "rust=[$(echo "$rust, $intel" | tr -d '\n')]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "full=false" >> "$GITHUB_OUTPUT"
+          echo "rust=[$(echo "$rust" | tr -d '\n')]" >> "$GITHUB_OUTPUT"
+          # Everything the branch changed since it left master, not only its last push: a run
+          # cancelled by a newer push tested nothing of the commits before it.
+          changed=$(git diff --name-only origin/master...HEAD)
+          echo "$changed"
+          has() { if echo "$changed" | grep -qE "$1"; then echo true; else echo false; fi; }
+          {
+            echo "core=$(has '^(crates/|Cargo\.(toml|lock)$|\.cargo/|\.github/workflows/ci\.yml$)')"
+            echo "rust_apps=$(has '^apps/(windows|gtk|cli|web/core)/')"
+            echo "apple=$(has '^apps/apple/')"
+            echo "android=$(has '^apps/android/')"
+            echo "windows=$(has '^apps/windows/')"
+            echo "gtk=$(has '^apps/gtk/')"
+            echo "web=$(has '^apps/web/')"
+            echo "cli=$(has '^apps/cli/')"
+            echo "clients=$(has '^apps/(btspeak|emacs)/')"
+          } | tee -a "$GITHUB_OUTPUT"
+
   rust:
     name: Rust (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.rust_apps == 'true'
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { name: Linux x86_64, os: ubuntu-24.04, exclude: "" }
-          - { name: Linux arm64, os: ubuntu-24.04-arm, exclude: "" }
-          - { name: macOS arm64, os: macos-15, exclude: "--exclude lumenna-gtk" }
-          - { name: macOS x86_64, os: macos-15-intel, exclude: "--exclude lumenna-gtk" }
-          - { name: Windows x86_64, os: windows-2025, exclude: "--exclude lumenna-gtk" }
-          - { name: Windows arm64, os: windows-11-arm, exclude: "--exclude lumenna-gtk" }
+        # Linux, macOS and Windows, each on x86_64 and arm64; Intel macOS on master alone
+        # (`changes`).
+        include: ${{ fromJSON(needs.changes.outputs.rust) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -74,6 +136,8 @@ jobs:
 
   gtk-ui:
     name: GTK UI tests
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.gtk == 'true'
     runs-on: ubuntu-24.04
     # Arch, for a current GTK. What the tests check is what Orca is told, and GTK only tells
     # AT-SPI a tree item's level from 4.16 and its position among its siblings from 4.22;
@@ -89,6 +153,8 @@ jobs:
 
   windows-ui:
     name: Windows UI tests
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.windows == 'true' || needs.changes.outputs.cli == 'true'
     # The real app, driven through its message queue and read back through UI Automation:
     # what NVDA and Narrator are given. It needs the runner's interactive desktop.
     runs-on: windows-2025
@@ -103,6 +169,8 @@ jobs:
 
   clients:
     name: BTSpeak and Emacs clients
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.clients == 'true' || needs.changes.outputs.cli == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -128,6 +196,8 @@ jobs:
 
   web:
     name: Web client
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -186,7 +256,8 @@ jobs:
   # reported flaky rather than failing the run, as WebKit's timing was before as much as now.
   web-webkit:
     name: Web client in WebKit
-    needs: web
+    needs: [changes, web]
+    if: needs.changes.outputs.full == 'true'
     runs-on: xcode-27
     # Its 59 tests take three minutes on a Mac; when every one failed and retried, the job ran
     # 80 minutes with the default six-hour limit still ahead of it.
@@ -220,6 +291,8 @@ jobs:
 
   mac:
     name: Mac app, Apple silicon and Intel
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.apple == 'true'
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v5
@@ -252,6 +325,8 @@ jobs:
 
   mac-ui:
     name: Mac app, every UI test
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     # Reports without blocking, as the other full UI suites do. Locally they run with
     # VoiceOver on, which is why they enter text by pasting.
     runs-on: xcode-27
@@ -286,6 +361,8 @@ jobs:
 
   watch:
     name: Apple Watch app and its tests
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.apple == 'true'
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v5
@@ -349,6 +426,8 @@ jobs:
 
   ios-build:
     name: iOS app and its tests, built once
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.apple == 'true'
     # Xcode 27 and the iOS 27 simulator, which people run. iOS 26's audit judges text faded
     # under the navigation bar's scroll-edge blur as failing contrast (and reports it with
     # no element); iOS 27's judges only what is shown.
@@ -384,7 +463,8 @@ jobs:
 
   ios:
     name: iOS, every test (${{ matrix.name }})
-    needs: ios-build
+    needs: [changes, ios-build]
+    if: needs.changes.outputs.full == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -481,6 +561,8 @@ jobs:
 
   android-build:
     name: Android and Wear OS apps and their tests
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -539,7 +621,7 @@ jobs:
 
   android:
     name: Android (${{ matrix.name }})
-    needs: android-build
+    needs: [changes, android-build]
     strategy:
       fail-fast: false
       matrix:
@@ -563,21 +645,29 @@ jobs:
     runs-on: ubuntu-24.04
     # The full suites report; the smoke set blocks.
     continue-on-error: ${{ matrix.blocking != true }}
+    # A full suite runs on master alone (`changes`): each of its steps is skipped on a
+    # branch, and only the smoke set runs there.
+    env:
+      WANTED: ${{ matrix.blocking == true || needs.changes.outputs.full == 'true' }}
     steps:
       - uses: actions/checkout@v5
+        if: env.WANTED == 'true'
         with:
           sparse-checkout: apps/android/run-instrumented-tests.sh
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4
+        if: env.WANTED == 'true'
         with:
           name: android-apks
           path: apps/android
       - name: KVM for the emulator
+        if: env.WANTED == 'true'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Instrumented tests, on an x86_64 emulator
+        if: env.WANTED == 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           # Android 36, not 37: every 37 image (37.0, 37.1, 37.2) aborted its display
@@ -597,7 +687,7 @@ jobs:
           working-directory: apps/android
           script: APP="${{ matrix.app || 'app' }}" TESTS="${{ matrix.tests }}" ./run-instrumented-tests.sh test-output
       - name: Screenshots at the largest font
-        if: success() || failure()
+        if: env.WANTED == 'true' && (success() || failure())
         uses: actions/upload-artifact@v4
         with:
           name: android-screenshots-${{ matrix.profile }}${{ matrix.blocking && '-smoke' || '' }}
