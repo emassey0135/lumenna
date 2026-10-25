@@ -136,7 +136,7 @@ struct TaskDetailView: View {
 
     var body: some View {
         if let task = model.task {
-            form(task)
+            form(task).showingTask(task.id, titled: task.title)
         } else {
             Text("This task is no longer here.").foregroundStyle(Color.quietLabel)
         }

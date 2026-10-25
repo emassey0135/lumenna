@@ -183,6 +183,28 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   through its containers when VoiceOver's element is not a view, as the iPad's is:
   `UIAccessibility.voiceOverView`), else the one open beside the list; the task open beside a
   list answers them itself.
+- **Every assistant operation is an App Intent** (`Shared/Intents`, compiled into all three
+  apps, and the source group extensions are to compile too): one per operation of
+  `assistantOperations()`, its `persistentIdentifier` the operation's `id`, each running
+  through `Device.assist` on the store the app gives `Assistant.serve` as it launches
+  (`AppDependencyManager`, since an intent may be what launched it). App Intents' metadata is
+  read at build time, so titles, descriptions, categories and keywords are the table's as
+  literals, and `AssistantIntentTests` compares every intent with the table at run time: a new
+  operation fails it until its intent is written. A task, project, labels, a block, a sitting or
+  a choice is an entity (`AssistantEntities.swift`) built from the record the core answers with
+  and given back by its identifier (a project or label by name). An erasure asks first: the
+  task's own Erase Permanently question, else the core's unconfirmed refusal, then runs with
+  `confirm`. Apply a Replan and Apply a Day Plan propose afresh, say the proposal's sentences
+  and ask before applying; what is accepted defaults to every change. Pause and Stop default to
+  the sitting whose timer runs (`RunningSitting`). `LumennaShortcuts` is what Siri, Spotlight
+  and the Action Button offer unasked (New Task, What Should I Work On?, start, pause and stop,
+  Today, Complete). The open tasks are in Spotlight as the core's search documents have them
+  (`TaskIndex`, `IndexedEntity`, iOS 18 and macOS 15; the watch has none: `searchDocuments`'
+  line under the name and its keywords, which are a task entity's subtitle too), indexed at
+  launch and a few seconds after each `Core.changed`, and the task whose details show is the current user activity with its
+  entity, for "this task" (`showingTask`). The SDK's Reminders schema (iOS and macOS 27, not
+  watchOS) is not adopted: its reminder carries a list, flags, URLs, images and location
+  triggers that no operation takes.
 - **The iPad is the Mac's layout, not the iPhone's tabs** (`IPadRoot`, three columns): the
   app's places in a sidebar (`SidebarViewController`, from `ViewModel.sidebar`, plus
   Settings), the place chosen, and what was opened from it (`showBeside`, which pushes on

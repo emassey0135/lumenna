@@ -8,6 +8,11 @@ struct LumennaWatchApp: App {
     @StateObject private var opened = Opened.shared
     @Environment(\.scenePhase) private var phase
 
+    init() {
+        // Siri and Shortcuts' intents run on this store, and may be what launched the app.
+        if let core = Opened.shared.core { Assistant.serve(core.app.device) }
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
