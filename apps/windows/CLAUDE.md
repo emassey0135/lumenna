@@ -99,8 +99,10 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   extension name, started by the board. The app in a mode of its own rather than a program of
   its own, since the statically linked core would be carried twice; started so, it opens no
   window, takes no instance lock and gives no reminders. It draws the glance (`Device::glance`,
-  in Windows' clock) as Adaptive Cards (`src/widget.rs`, its templates in `src/widget/`): small,
-  the headline and the timer running; medium, the headline, the next block and the tasks due,
+  in Windows' clock) as Adaptive Cards (`src/widget.rs`, its templates in `src/widget/`), one
+  definition for each of the core's widgets (`glance_widgets()`, whose test checks the
+  manifest's names and descriptions), the card chosen by size: Now, small, the headline and the
+  timer running; Today, medium, the headline, the next block and the tasks due,
   each the glance's own line (`GlanceEntry::tasks`) beside a button named as the glance names
   Mark Done (`mark_done`, Title Case), run as `assist("complete_task")`. The text is the card's data, never its template, so a `${` typed in
   a title stays text. While a widget is on screen it looks every two seconds whether the store

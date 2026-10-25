@@ -37,6 +37,7 @@ use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
 use lumenna_app::speech::{self, Clock, Spoken};
 use lumenna_records::assistant::AssistantOperation;
+use lumenna_records::glance::GlanceWidget;
 use lumenna_records::launch::LaunchShortcut;
 use lumenna_records::{Completions, LumennaError, Syntax};
 
@@ -281,6 +282,13 @@ pub fn assistant_operations() -> Vec<AssistantOperation> {
 #[export]
 pub fn launch_shortcuts() -> Vec<LaunchShortcut> {
     lumenna_records::launch::launch_shortcuts()
+}
+
+/// The widgets every platform offers (`lumenna_records::glance::widgets`): each one's name and
+/// description in the widget picker, and the parts of a glance it shows, in order.
+#[export]
+pub fn glance_widgets() -> Vec<GlanceWidget> {
+    lumenna_records::glance::widgets()
 }
 
 /// A glance (`App::glance`, `Device::glance`) as the file an app hands its widgets, which run

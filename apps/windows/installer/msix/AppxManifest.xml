@@ -62,9 +62,10 @@
             </com:ExeServer>
           </com:ComServer>
         </com:Extension>
-        <!-- Its widget, small (what is happening now, and the timer running) and medium (that,
-             the next block, and what is due, each with its Mark Done). Its name and description
-             are the app's own, as above, which the core gives no words of its own for yet. -->
+        <!-- Its widgets, the core's (`lumenna_records::glance::widgets`, whose test checks these
+             names and descriptions): Now, small (what is happening now, and the timer running),
+             and Today, medium (that, the next block, and what is due, each with its Mark Done).
+             The card drawn is chosen by size, so each offers only its own. -->
         <uap3:Extension Category="windows.appExtension">
           <uap3:AppExtension Name="com.microsoft.windows.widgets" Id="Lumenna" DisplayName="Lumenna">
             <uap3:Properties>
@@ -76,11 +77,25 @@
                   <CreateInstance ClassId="18D24380-6221-4EAF-975D-40086936D300" />
                 </Activation>
                 <Definitions>
-                  <Definition Id="Today" DisplayName="Lumenna" Description="Tasks, and the blocks of time they are worked in" AllowMultiple="true">
+                  <Definition Id="now" DisplayName="Now" Description="What is happening now, and the timer running" AllowMultiple="true">
                     <Capabilities>
                       <Capability>
                         <Size Name="small" />
                       </Capability>
+                    </Capabilities>
+                    <ThemeResources>
+                      <Icons>
+                        <Icon Path="Assets\WidgetIcon.png" />
+                      </Icons>
+                      <Screenshots>
+                        <Screenshot Path="Assets\WidgetScreenshot.png" DisplayAltText="Now" />
+                      </Screenshots>
+                      <DarkMode />
+                      <LightMode />
+                    </ThemeResources>
+                  </Definition>
+                  <Definition Id="today" DisplayName="Today" Description="What is happening now, what is next, and the tasks due" AllowMultiple="true">
+                    <Capabilities>
                       <Capability>
                         <Size Name="medium" />
                       </Capability>
@@ -90,7 +105,7 @@
                         <Icon Path="Assets\WidgetIcon.png" />
                       </Icons>
                       <Screenshots>
-                        <Screenshot Path="Assets\WidgetScreenshot.png" DisplayAltText="Lumenna" />
+                        <Screenshot Path="Assets\WidgetScreenshot.png" DisplayAltText="Today" />
                       </Screenshots>
                       <DarkMode />
                       <LightMode />

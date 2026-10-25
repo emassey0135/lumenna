@@ -198,7 +198,9 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   `spoken`. The larger widget's tasks are the glance's own lines (`GlanceEntry.tasks`), each with a
   button of the core's `markDoneSentence`, named with the task's title, marking it done through
   `Device.assist("complete_task")`. Glance composes again only when its state changes, so a
-  refresh moves `Widgets.REFRESH`.
+  refresh moves `Widgets.REFRESH`. The two widgets are the core's (`glance_widgets()`: Now and
+  Today), their names and descriptions in `strings.xml` as `widget_<id>` and
+  `widget_<id>_description`, which a test of the core checks.
 - **The ways in from outside are the core's** (`Launches`, shared's `Launching`): the icon's
   shortcuts are set at run time from `launch_shortcuts()` (`ShortcutManagerCompat`), and they, the
   Quick Settings tile, a widget, the tile and a complication open the app on a launch `id`, sent

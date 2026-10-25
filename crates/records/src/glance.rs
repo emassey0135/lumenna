@@ -97,6 +97,58 @@ pub struct GlanceMoment {
     pub blocks_left: u32,
 }
 
+/// A part of a worded glance (`lumenna_app::glance::GlanceEntry`) a widget shows.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GlancePart {
+    /// What is happening now: the timer running, the block under way, free time.
+    Headline,
+    /// The next block.
+    Next,
+    /// How many tasks are due, and how many overdue.
+    Due,
+    /// The tasks due named, each with its Mark Done.
+    Tasks,
+}
+
+/// A widget every platform offers, as its widget picker or gallery lists it: Android's widget
+/// list, Windows' Widgets board, Apple's widget gallery, the complications a watch face offers.
+/// The same kinds everywhere, in these words, each showing these parts of the glance, so no
+/// platform names or fills a widget its own way. A platform whose list is a file written ahead
+/// (Android's strings, Windows' package manifest) keeps it as this says, which a test of the
+/// core checks; the rest set it at run time.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GlanceWidget {
+    /// What the platform knows it by: "now".
+    pub id: String,
+    /// Its name in the picker: "Now".
+    pub name: String,
+    /// What it shows, for the picker's second line.
+    pub description: String,
+    /// The parts it shows, in order. A smaller size shows the first of them that fit.
+    pub parts: Vec<GlancePart>,
+}
+
+/// Every widget, smallest first.
+#[must_use]
+pub fn widgets() -> Vec<GlanceWidget> {
+    use GlancePart::{Due, Headline, Next, Tasks};
+    [
+        ("now", "Now", "What is happening now, and the timer running", vec![Headline]),
+        ("today", "Today", "What is happening now, what is next, and the tasks due", vec![Headline, Next, Due, Tasks]),
+    ]
+    .into_iter()
+    .map(|(id, name, description, parts)| GlanceWidget {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        description: description.to_owned(),
+        parts,
+    })
+    .collect()
+}
+
 /// What a glance shows from `now` until `until`: the moment now, then one wherever that
 /// changes.
 ///
@@ -206,3 +258,60 @@ fn instant(day: jiff::civil::Date, time: &str, now: &Zoned) -> Option<Timestamp>
     day.at(time.hour(), time.minute(), 0, 0).to_zoned(now.time_zone().clone()).ok().map(|z| z.timestamp())
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The repository's root, from this crate.
+    fn root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    /// The value of `attribute="…"` in `element`, XML's escapes undone.
+    fn attribute(element: &str, attribute: &str) -> Option<String> {
+        let start = element.find(&format!(" {attribute}=\""))? + attribute.len() + 3;
+        let end = start + element[start..].find('"')?;
+        Some(element[start..end].replace("&apos;", "'").replace("&quot;", "\"").replace("&amp;", "&"))
+    }
+
+    #[test]
+    fn every_widget_shows_what_is_happening_now_first() {
+        for widget in widgets() {
+            assert_eq!(widget.parts.first(), Some(&GlancePart::Headline), "{}", widget.id);
+        }
+    }
+
+    #[test]
+    fn android_offers_every_widget_as_the_core_words_it() {
+        let strings = std::fs::read_to_string(root().join("apps/android/app/src/main/res/values/strings.xml")).unwrap();
+        let string = |name: &str| {
+            let element = format!("<string name=\"{name}\">");
+            let start = strings.find(&element).unwrap_or_else(|| panic!("no {name} in strings.xml")) + element.len();
+            strings[start..start + strings[start..].find("</string>").unwrap()].replace(r"\'", "'")
+        };
+        for widget in widgets() {
+            assert_eq!(string(&format!("widget_{}", widget.id)), widget.name);
+            assert_eq!(string(&format!("widget_{}_description", widget.id)), widget.description);
+            let info = root().join(format!("apps/android/app/src/main/res/xml/widget_{}.xml", widget.id));
+            assert!(info.exists(), "{}", info.display());
+        }
+    }
+
+    #[test]
+    fn the_windows_package_declares_every_widget_as_the_core_words_it() {
+        let manifest = std::fs::read_to_string(root().join("apps/windows/installer/msix/AppxManifest.xml")).unwrap();
+        let declared: Vec<(String, String, String)> = manifest
+            .split("<Definition ")
+            .skip(1)
+            .map(|element| {
+                let element = format!(" {}", &element[..element.find('>').unwrap()]);
+                let get = |name| attribute(&element, name).unwrap_or_default();
+                (get("Id"), get("DisplayName"), get("Description"))
+            })
+            .collect();
+        let wanted: Vec<(String, String, String)> =
+            widgets().into_iter().map(|w| (w.id, w.name, w.description)).collect();
+        assert_eq!(declared, wanted);
+    }
+}

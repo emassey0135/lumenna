@@ -146,6 +146,9 @@ crosses the FFI.
 - **A glance is the core's** (`records::glance`, worded by `lumenna_app::glance`; `App::glance`
   in the platform's clock, `Device::glance` without the screens): what a widget, complication,
   tile or Smart Stack shows, as a timeline of moments. A platform draws it and decides nothing.
+  The widgets themselves are the core's too (`glance::widgets`, `glance_widgets()`): Now and
+  Today, their names and descriptions in the picker and the parts each shows; a platform's
+  files written ahead (Android's strings, Windows' manifest) are checked against them.
 - **What a platform's search finds is the core's** (`records::search`: `search_documents` for an
   index such as Spotlight's or AppSearch, `search_results(text)` for one that asks as the person
   types, such as GNOME Shell or KRunner): each a `SearchDocument` opened by its `launch`
