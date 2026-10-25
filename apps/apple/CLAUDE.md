@@ -489,7 +489,8 @@ each embedded in its app.
 - **VoiceOver hears a widget as one element**, the core's `spoken`, with a running timer as its
   value: the headline part, every widget's first (the core's test), carries it, and the other
   parts are hidden. Only Today's Mark Done buttons are elements of their own, named "Mark Done,
-  <task>" (`GlanceWidgets.markDone`), as Android's are. Text is `.primary`, `quietLabel` and
+  <task>" (`GlanceWidgets.markDone`), as Android's are, and its New Task (the core's `NewTask`
+  part, last, a `Link` to the `new-task` launch, its words the launch shortcut's). Text is `.primary`, `quietLabel` and
   `warningLabel` (`Shared/Palette.swift`, moved out of the forms for this) on the system's
   background; the title and the timer are `widgetAccentable` for the accented rendering. Block
   colours are not drawn.

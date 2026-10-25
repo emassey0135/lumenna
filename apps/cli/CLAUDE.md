@@ -5,6 +5,12 @@ Read when working in `apps/cli/`: `lum`, `lum rpc`, `lum mcp` and the daemon. Th
 Run it with `LUMENNA_PROFILE=/some/dir ./target/debug/lum ...` to keep test data out of the
 real profile.
 
+- **`lum` does everything the app does**, for whoever uses it as their main interface:
+  every row action the core offers (`ActionKind`) has a command, which
+  `every_action_the_app_offers_has_a_command_that_does_it` (`tests/cli.rs`) checks through an
+  exhaustive match, so a new kind does not compile until a command does it. A form's field is
+  a flag of `task edit` or `block edit`; a place is a listing (`plan` is Today, `task list deleted`
+  the trash).
 - **Every noun is a subcommand group** (`lum task ...`, `lum block ...`). Verbs that act
   *across* nouns stay at the top: `plan`, `assign`, `unassign`, `start`, `pause`, `stop`.
 - **Row numbers are counted within a kind.** The last listing stores `kind<TAB>id` per line,
