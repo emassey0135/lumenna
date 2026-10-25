@@ -387,7 +387,7 @@ fn help_is_available_for_every_command() {
     // primary discovery mechanism for anyone who cannot skim a GUI.
     let lum = Lum::new();
     let top = lum.ok(&["--help"]);
-    for command in ["task", "plan", "project", "label", "filter", "block", "assign"] {
+    for command in ["task", "plan", "project", "label", "filter", "block", "assign", "assist", "complete"] {
         assert!(top.contains(command), "`{command}` is missing from --help");
         let help = lum.ok(&[command, "--help"]);
         assert!(help.len() > 40, "`lum {command} --help` says almost nothing");
@@ -1246,6 +1246,122 @@ fn the_shell_completes_project_label_and_filter_names_from_the_store() {
     assert!(complete(&["lum", "label", "rename", ""]).contains(&"calls".to_owned()));
     assert_eq!(complete(&["lum", "filter", "rm", "u"]), ["Urgent"]);
     assert!(lum.ok(&["completions", "bash"]).contains("COMPLETE"), "the registration asks lum itself");
+}
+
+// ---------------------------------------------------------------------------------------
+// `lum assist` and `lum complete`
+// ---------------------------------------------------------------------------------------
+
+fn json(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).unwrap_or_else(|e| panic!("{e}: {text}"))
+}
+
+#[test]
+fn assist_lists_every_operation_of_the_assistant_table_with_what_it_takes() {
+    let lum = Lum::new();
+    let listed = json(&lum.ok(&["--json", "assist", "--list"]));
+    assert_eq!(listed["result"], "operations");
+    let ids: Vec<&str> = listed["operations"].as_array().unwrap().iter().map(|op| op["id"].as_str().unwrap()).collect();
+    let table: Vec<String> = lumenna_records::assistant::operations().into_iter().map(|op| op.id).collect();
+    assert_eq!(ids, table);
+    let erase = listed["operations"].as_array().unwrap().iter().find(|op| op["id"] == "erase_task_permanently").unwrap();
+    assert_eq!(erase["confirms"], true);
+    assert_eq!(erase["destructive"], true);
+    assert_eq!(erase["parameters"][0]["kind"], "task");
+
+    let text = lum.ok(&["assist", "--list"]);
+    assert!(text.contains("complete_task, Complete a task"), "{text}");
+    assert!(text.contains("runs only with confirm=true"), "{text}");
+}
+
+#[test]
+fn assist_runs_an_operation_with_its_parameters_by_name() {
+    let lum = Lum::new();
+    let added = json(&lum.ok(&["--json", "assist", "add_task", "text=call the bank @calls p1"]));
+    assert_eq!(added["result"], "change");
+    let id = added["task"]["id"].as_str().unwrap().to_owned();
+    lum.ok(&["assist", "add_task", "text=water the plants"]);
+
+    let calls = json(&lum.ok(&["--json", "assist", "list_tasks", "query=@calls"]));
+    assert_eq!(calls["count"], 1);
+    assert_eq!(calls["rows"][0]["id"], id.as_str());
+
+    let edited = lum.ok(&["assist", "edit_task", &format!("id={id}"), "priority=2", "labels=calls,bank"]);
+    assert!(!edited.is_empty());
+    let shown = json(&lum.ok(&["--json", "assist", "show_task", &format!("id={id}")]));
+    assert_eq!(shown["result"], "task");
+    assert!(lum.ok(&["assist", "list_tasks", "query=@bank"]).contains("call the bank"));
+
+    let done = lum.ok(&["assist", "complete_task", &format!("id={id}")]);
+    assert!(done.contains("call the bank"), "{done}");
+    assert!(!lum.ok(&["assist", "list_tasks"]).contains("call the bank"));
+}
+
+#[test]
+fn assist_takes_its_parameters_as_one_json_object_too_from_an_argument_or_standard_input() {
+    let lum = Lum::new();
+    lum.ok(&["assist", "add_task", "--args", r#"{"text": "from an argument"}"#]);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_lum"))
+        .args(["assist", "add_task", "--args", "-"])
+        .env("LUMENNA_PROFILE", lum.path())
+        .env("LUMENNA_BACKUP_DIR", lum.path().join("backups"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(&mut child.stdin.take().unwrap(), r#"{"text": "from standard input, café"}"#.as_bytes()).unwrap();
+    assert!(child.wait().unwrap().success());
+    let all = lum.ok(&["assist", "list_tasks"]);
+    assert!(all.contains("from an argument") && all.contains("from standard input, café"), "{all}");
+}
+
+#[test]
+fn assist_refuses_what_an_operation_does_not_take_and_says_what_it_does() {
+    let lum = Lum::new();
+    let said = lum.fails(&["assist", "list_tasks", "filter=@calls"]);
+    assert!(said.contains("list_tasks takes no filter; it takes query"), "{said}");
+    let said = lum.fails(&["assist", "no_such_thing"]);
+    assert!(said.contains("no operation called no_such_thing"), "{said}");
+    let said = lum.fails(&["assist", "edit_task", "id=x", "priority=high"]);
+    assert!(said.contains("priority takes a whole number"), "{said}");
+    let said = lum.fails(&["assist", "show_task", "id"]);
+    assert!(said.contains("name=value"), "{said}");
+}
+
+#[test]
+fn assist_erases_permanently_only_with_confirm_and_otherwise_says_the_question() {
+    let lum = Lum::new();
+    let added = json(&lum.ok(&["--json", "assist", "add_task", "text=erase me"]));
+    let id = format!("id={}", added["task"]["id"].as_str().unwrap());
+    lum.ok(&["assist", "trash_task", &id]);
+
+    let asked = lum.fails(&["assist", "erase_task_permanently", &id]);
+    assert!(asked.contains("go ahead with confirm only once they say yes"), "{asked}");
+    assert!(lum.ok(&["task", "list", "deleted"]).contains("erase me"));
+
+    lum.ok(&["assist", "erase_task_permanently", &id, "confirm=true"]);
+    assert!(!lum.ok(&["task", "list", "deleted"]).contains("erase me"));
+}
+
+#[test]
+fn complete_offers_what_the_quick_add_field_and_the_store_offer() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Home Office"]);
+    lum.ok(&["task", "add", "phone @calls"]);
+
+    let line = json(&lum.ok(&["--json", "complete", "line", "buy paper #Ho"]));
+    assert_eq!(line["result"], "completions");
+    assert_eq!(line["start"], 10);
+    assert!(line["candidates"][0]["text"].as_str().unwrap().contains("Home Office"), "{line}");
+
+    let filter = json(&lum.ok(&["--json", "complete", "filter", "@ca"]));
+    assert_eq!(filter["candidates"][0]["text"], "@calls");
+
+    let project = json(&lum.ok(&["--json", "complete", "project", "home"]));
+    assert_eq!(project["candidates"][0]["text"], "Home Office");
+    assert_eq!(project["start"], 0);
+    assert!(lum.ok(&["complete", "label", "C"]).contains("calls"));
+    assert!(lum.ok(&["complete", "label", "x"]).contains("no completions"));
 }
 
 /// The command that does each of the app's row actions, so the CLI does everything the app

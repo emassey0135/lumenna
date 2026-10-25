@@ -1,17 +1,18 @@
 # Builds and tests everything, on every push and pull request: the Rust workspace on Linux,
 # macOS and Windows, each on x86_64 and arm64; the GTK and Windows apps' UI tests; the
-# BTSpeak client on the app in-process and the Emacs client against a real `lum rpc`; the web client in a browser; the Apple
-# apps; and Android for both its ABIs. Several sessions work on this repository at once,
-# and this is what catches one breaking another. A branch runs only what its changes can
-# break (`changes`, below), so one app's branch does not wait behind another's macOS jobs;
-# master runs everything.
+# BTSpeak client on the app in-process and the Emacs client against a real `lum rpc`; the
+# PowerShell module over `lum`; the web client in a browser; the Apple apps; and Android for
+# both its ABIs. Several sessions work on this repository at once, and this is what catches
+# one breaking another. A branch runs only what its changes can break (`changes`, below), so
+# one app's branch does not wait behind another's macOS jobs; master runs everything.
 #
 # Two tiers. What blocks is what fails only for a reason: the Rust tests, every build, the
-# clients, the GTK and Windows UI tests, and a smoke set of the iOS and Android UI tests.
-# The full iOS and Android suites run too and report, but do not block: they drive
-# simulators and emulators through gestures and timing, and a slow runner fails them
-# where nothing is wrong. They, the Mac's full UI suite, WebKit and Rust on Intel macOS run
-# on master alone, since most wait for one of the few macOS runners a branch would queue for.
+# clients, the PowerShell module, the GTK and Windows UI tests, and a smoke set of the iOS and
+# Android UI tests. The full iOS and Android suites run too and report, but do not block:
+# they drive simulators and emulators through gestures and timing, and a slow runner fails
+# them where nothing is wrong. They, the Mac's full UI suite, WebKit and Rust on Intel macOS
+# run on master alone, since most wait for one of the few macOS runners a branch would queue
+# for.
 name: CI
 
 on:
@@ -63,6 +64,7 @@ jobs:
       gtk: ${{ steps.groups.outputs.gtk }}
       web: ${{ steps.groups.outputs.web }}
       cli: ${{ steps.groups.outputs.cli }}
+      powershell: ${{ steps.groups.outputs.powershell }}
       clients: ${{ steps.groups.outputs.clients }}
     steps:
       - uses: actions/checkout@v5
@@ -70,7 +72,7 @@ jobs:
           fetch-depth: 0
       - id: groups
         run: |
-          groups="core rust_apps apple android windows gtk web cli clients"
+          groups="core rust_apps apple android windows gtk web cli clients powershell"
           # Where the Rust workspace's tests run, Intel macOS on master alone.
           rust='{ "name": "Linux x86_64", "os": "ubuntu-24.04", "exclude": "" },
             { "name": "Linux arm64", "os": "ubuntu-24.04-arm", "exclude": "" },
@@ -100,6 +102,7 @@ jobs:
             echo "web=$(has '^apps/web/')"
             echo "cli=$(has '^apps/cli/')"
             echo "clients=$(has '^apps/(btspeak|emacs)/')"
+            echo "powershell=$(has '^apps/(powershell|cli)/')"
           } | tee -a "$GITHUB_OUTPUT"
 
   rust:
@@ -195,6 +198,41 @@ jobs:
         run: emacs --batch -Q -L apps/emacs --eval '(setq byte-compile-error-on-warn t)' -f batch-byte-compile $(ls apps/emacs/*.el | grep -v emacsvox)
       - name: Emacs client
         run: emacs --batch -Q -L apps/emacs -l apps/emacs/test/lumenna-test.el -f ert-run-tests-batch-and-exit
+
+  powershell:
+    name: PowerShell module (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.powershell == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows runs both editions, Windows PowerShell 5.1 and PowerShell 7; Linux runs 7,
+        # as macOS would.
+        include:
+          - { name: Windows, os: windows-2025 }
+          - { name: Linux, os: ubuntu-24.04 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build lum
+        run: cargo build -p lumenna-cli
+      # Saved once, for both editions: Windows PowerShell 5.1 ships Pester 3.
+      - name: Pester
+        shell: pwsh
+        run: Save-Module -Name Pester -MinimumVersion 5.5 -Repository PSGallery -Path "$env:RUNNER_TEMP/modules" -Force
+      # Each runs in well under a minute: one that hangs fails, keeping its log, rather than
+      # holding a runner until it is cancelled with none.
+      - name: PowerShell 7
+        shell: pwsh
+        timeout-minutes: 10
+        run: apps/powershell/tests/run.ps1
+      - name: Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: powershell
+        timeout-minutes: 10
+        run: apps/powershell/tests/run.ps1
 
   web:
     name: Web client

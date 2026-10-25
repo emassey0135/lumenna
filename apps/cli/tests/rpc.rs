@@ -462,3 +462,79 @@ fn the_app_over_rpc_keeps_a_screen_per_buffer_and_pushes_each_screens_turn() {
     let refused = live.wait_for(r#""id":6"#);
     assert!(refused.contains(r#""error""#) && refused.contains("not an event"), "{refused}");
 }
+
+/// Each reply in what the server said, by its id.
+fn replies(out: &str) -> std::collections::HashMap<i64, serde_json::Value> {
+    out.lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter_map(|reply| Some((reply.get("id")?.as_i64()?, reply)))
+        .collect()
+}
+
+#[test]
+fn the_assistant_table_over_rpc_is_what_lum_assist_list_writes() {
+    let rpc = Rpc::new();
+    let out = rpc.talk(&[r#"{"jsonrpc":"2.0","id":1,"method":"assist.list"}"#]);
+    let listed = replies(&out)[&1]["result"].clone();
+    let written = Command::new(env!("CARGO_BIN_EXE_lum"))
+        .args(["--json", "assist", "--list"])
+        .env("LUMENNA_PROFILE", rpc.profile.path())
+        .env("LUMENNA_BACKUP_DIR", rpc.profile.path().join("backups"))
+        .output()
+        .unwrap();
+    let written: serde_json::Value = serde_json::from_slice(&written.stdout).unwrap();
+    assert_eq!(listed["result"], "operations");
+    assert_eq!(listed, written);
+}
+
+#[test]
+fn assist_runs_an_assistants_operation_and_erasing_needs_confirm_as_it_does_everywhere_here() {
+    let rpc = Rpc::new();
+    let out = rpc.talk(&[
+        r#"{"jsonrpc":"2.0","id":1,"method":"assist","params":{"operation":"add_task","args":{"text":"call the bank @calls"}}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"assist","params":{"operation":"list_tasks","args":{"query":"@calls"}}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"assist","params":{"operation":"list_tasks","args":{"filter":"@calls"}}}"#,
+        r#"{"jsonrpc":"2.0","id":4,"method":"assist","params":{"operation":"no_such_thing"}}"#,
+    ]);
+    let said = replies(&out);
+    assert_eq!(said[&1]["result"]["result"], "change");
+    let id = said[&1]["result"]["task"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(said[&2]["result"]["count"], 1);
+    assert!(said[&3]["error"]["message"].as_str().unwrap().contains("list_tasks takes no filter; it takes query"), "{out}");
+    assert!(said[&4]["error"]["message"].as_str().unwrap().contains("no operation called no_such_thing"), "{out}");
+
+    let trash = format!(r#"{{"jsonrpc":"2.0","id":1,"method":"assist","params":{{"operation":"trash_task","args":{{"id":"{id}"}}}}}}"#);
+    let unconfirmed = format!(r#"{{"jsonrpc":"2.0","id":2,"method":"assist","params":{{"operation":"erase_task_permanently","args":{{"id":"{id}"}}}}}}"#);
+    let confirmed = format!(r#"{{"jsonrpc":"2.0","id":3,"method":"assist","params":{{"operation":"erase_task_permanently","args":{{"id":"{id}","confirm":true}}}}}}"#);
+    let out = rpc.talk(&[&trash, &unconfirmed, &confirmed]);
+    let said = replies(&out);
+    assert_eq!(said[&1]["result"]["changed"], true);
+    assert!(said[&2]["error"]["message"].as_str().unwrap().contains("go ahead with confirm only once they say yes"), "{out}");
+    assert_eq!(said[&3]["result"]["changed"], true);
+}
+
+#[test]
+fn complete_says_what_could_come_next_in_a_line_a_filter_or_a_name() {
+    let rpc = Rpc::new();
+    rpc.cli(&["task", "add", "phone @calls"]);
+    let out = rpc.talk(&[
+        r#"{"jsonrpc":"2.0","id":1,"method":"complete","params":{"kind":"line","text":"buy paper #In"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"complete","params":{"kind":"label","text":"C"}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"complete","params":{"kind":"colour","text":""}}"#,
+    ]);
+    let said = replies(&out);
+    assert_eq!(said[&1]["result"]["result"], "completions");
+    assert_eq!(said[&1]["result"]["candidates"][0]["text"], "#Inbox");
+    assert_eq!(said[&1]["result"]["start"], 10);
+    assert_eq!(said[&2]["result"]["candidates"][0]["text"], "calls");
+    assert!(said[&3]["error"]["message"].as_str().unwrap().contains("'kind' is required"), "{out}");
+}
+
+#[test]
+fn a_byte_order_mark_before_the_first_request_is_passed_over() {
+    // .NET Framework writes one at the start of a child's input when the console's code page is
+    // UTF-8, which is how Windows PowerShell 5.1 starts `lum rpc` on a CI runner.
+    let rpc = Rpc::new();
+    let out = rpc.talk(&["\u{feff}{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"assist.list\"}"]);
+    assert_eq!(replies(&out)[&1]["result"]["result"], "operations", "{out}");
+}

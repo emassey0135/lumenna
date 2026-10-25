@@ -251,17 +251,12 @@ Each is a thin adapter over the command surface.
   taken within a second while it runs and at its next start otherwise, a complication on a face
   and in the Smart Stack), the Windows board drawing the cards and pressing Mark Done (`apps/windows/CLAUDE.md`),
   and VoiceOver, TalkBack and Narrator on each.
-- **A PowerShell module**: a script module (`.psm1`) in PowerShell over `lum --json`, for
-  Windows PowerShell 5.1 and PowerShell 7 on every platform, and the same language as Windows'
-  hooks. Unlike `lum`, it gives:
-  - objects rather than text, so the pipeline works: `Get-LumennaTask -Filter '@calls' | Complete-LumennaTask`
-  - verb-noun cmdlets with help
-  - `-WhatIf` and `-Confirm` on what removes, erasing permanently confirming by default
-  - errors as error records, and completion through `lum`'s own.
-
-  It offers the assistant table's operations, checked by a Pester test as App Intents and App
-  Functions are. Enough for scripting Windows: WSH and COM stay decided against (VBScript is on
-  its way out of Windows), and what cannot run PowerShell runs `lum` or opens a `lumenna://` URL.
+- **The PowerShell module, shipped.** Built (`apps/powershell`, over `lum rpc`): a cmdlet per
+  operation of the assistant table, checked against it in CI on Windows PowerShell 5.1 and
+  PowerShell 7. Still to come: shipping it, since it is only in the repository now. The Windows
+  installer and the MSIX putting it where PowerShell finds it (beside `lum`, which it looks for
+  first); `release.yml` keeping it as an artifact; and publishing it to the PowerShell Gallery
+  from a version tag, its `ModuleVersion` the release's.
 - **`lum mcp` without a command line.** Built: stdio and Streamable HTTP (`--listen`), tools,
   resources and their subscriptions, `--writes`. Still to come, so a person who never opens a
   terminal can add it: for Claude Desktop, a bundle (under Packaging); and for Claude on the web

@@ -20,6 +20,7 @@
 //! debugging convenience; and `--help` treated as an **accessibility surface**, since it is
 //! the primary discovery mechanism for anyone who cannot skim a GUI.
 
+mod assist;
 mod complete;
 mod durability;
 mod error;
@@ -389,6 +390,39 @@ pub(crate) enum Command {
         /// reaches this from elsewhere through loopback.
         #[arg(long, requires = "listen")]
         require_token: bool,
+    },
+
+    /// Run one of the operations an assistant can do, as `lum mcp`, Siri and Gemini run it.
+    ///
+    /// Give its parameters as name=value (`lum assist complete_task id=0193a`), or all of them
+    /// as one JSON object with --args. Records are named by identifier, never by row number.
+    /// --list says every operation and what it takes. One that erases permanently runs only
+    /// with confirm=true, since nothing can undo it. With --json, both answer as every other
+    /// command does.
+    Assist {
+        /// The operation, such as list_tasks or add_task.
+        #[arg(required_unless_present = "list", add = clap_complete::ArgValueCandidates::new(complete::operations))]
+        operation: Option<String>,
+        /// Its parameters, each as name=value.
+        #[arg(value_name = "NAME=VALUE", allow_hyphen_values = true)]
+        given: Vec<String>,
+        /// Its parameters as one JSON object, or `-` to read that from standard input.
+        #[arg(long, value_name = "JSON", conflicts_with = "list")]
+        args: Option<String>,
+        /// Say every operation, with what it takes, instead of running one.
+        #[arg(long, conflicts_with_all = ["operation", "given"])]
+        list: bool,
+    },
+
+    /// Say what could come next in a quick-add line, a filter, or a project's or label's name,
+    /// as typed so far: for a shell or an editor completing one.
+    Complete {
+        /// What is being typed.
+        #[arg(value_enum)]
+        kind: complete::Typed,
+        /// What has been typed so far, completed at its end.
+        #[arg(default_value = "", allow_hyphen_values = true)]
+        text: String,
     },
 
     /// Print a shell completion script, which completes project, label and filter names from
@@ -1397,6 +1431,11 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             }
             Response::new(profile.erase_everything_deleted()?)
         }
+        Command::Assist { list: true, .. } => assist::list(),
+        Command::Assist { operation, given, args, .. } => {
+            return assist::run(profile, operation.as_deref().unwrap_or_default(), given, args.as_deref());
+        }
+        Command::Complete { kind, text } => Response::new(profile.complete_typed((*kind).into(), text)?),
     })
 }
 
@@ -1541,7 +1580,9 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         | Outcome::Paired(_)
         | Outcome::Synced(_)
         | Outcome::SyncStatus(_)
-        | Outcome::Devices(_) => None,
+        | Outcome::Devices(_)
+        | Outcome::Operations(_)
+        | Outcome::Completions(_) => None,
     }
 }
 

@@ -38,12 +38,24 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   numbering.
 - **`task.erase`, `task.erase_permanently` and `erase_everything_deleted` require
   `"confirm": true`**: nothing here can prompt.
+- **`assist {operation, args}` runs an operation of the assistant table** through
+  `Lumenna::assist`, its arguments read by `rpc::assist` (`arguments_of`, which `lum mcp` and
+  `lum assist` read theirs with too) and a name the operation does not take refused. One that
+  `confirms` needs `"confirm": true` among its `args`. `assist.list` is the table, the
+  `Operations` record `lum assist --list --json` writes (`api::Operations::all`, one for both,
+  and a test in `apps/cli/tests/rpc.rs` holds them equal). `complete {kind, text}` is
+  `Lumenna::complete_typed`: what could come next at the end of a line, a filter, a project's
+  or a label's name. The PowerShell module speaks only these three, over one `lum rpc` for its
+  session; a holder from before them (an app or daemon `lum rpc` relays to) answers none.
 - **A real erasure is followed by every process** (`follow_erasure`, around every operation in
   `Lumenna::with`): when the store's generation is not the one its automatic backups were last
   taken of (`backups-of`), they are deleted and one is taken afresh. It is refused while a
   paired device runs a version from before generations (`too_old_to_follow`).
 - **Two framings, chosen per message by what arrived**: newline-delimited JSON (MCP's stdio
-  transport) and `Content-Length` headers (`jsonrpc.el`). A reply is framed as its request.
+  transport) and `Content-Length` headers (`jsonrpc.el`). A reply is framed as its request. A
+  byte order mark where a message starts is passed over: .NET Framework writes one into a
+  child's input when the console's code page is UTF-8, before its client sends anything, so
+  Windows PowerShell 5.1's `lum rpc` would otherwise refuse every request on such a console.
 - **Spans are UTF-8 byte offsets.** A client that indexes by code point converts both ways.
 - **`pair` replies when the pairing ends**, talking in between through `lumenna/pairing`
   notifications (`{code, name}`, then `{words}`); the client answers `pair.confirm {match}`

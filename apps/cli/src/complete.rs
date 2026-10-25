@@ -29,3 +29,35 @@ pub(crate) fn labels(current: &OsStr) -> Vec<CompletionCandidate> {
 pub(crate) fn filters(current: &OsStr) -> Vec<CompletionCandidate> {
     matching(current, |profile| Some(profile.list_filters().ok()?.filters.into_iter().map(|filter| filter.name).collect()))
 }
+
+/// The assistant's operations, for `lum assist`.
+pub(crate) fn operations() -> Vec<CompletionCandidate> {
+    lumenna_records::assistant::operations()
+        .into_iter()
+        .map(|op| CompletionCandidate::new(op.id).help(Some(op.sentence.into())))
+        .collect()
+}
+
+/// What `lum complete` is completing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum Typed {
+    /// A quick-add line.
+    Line,
+    /// A filter, in the filter language.
+    Filter,
+    /// A project's name.
+    Project,
+    /// A label's name.
+    Label,
+}
+
+impl From<Typed> for lumenna_host::Completing {
+    fn from(kind: Typed) -> Self {
+        match kind {
+            Typed::Line => Self::Line,
+            Typed::Filter => Self::Filter,
+            Typed::Project => Self::Project,
+            Typed::Label => Self::Label,
+        }
+    }
+}
