@@ -104,7 +104,9 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   manifest's names and descriptions), the card chosen by size: Now, small, the headline and the
   timer running; Today, medium, the headline, the next block and the tasks due,
   each the glance's own line (`GlanceEntry::tasks`) beside a button named as the glance names
-  Mark Done (`mark_done`, Title Case), run as `assist("complete_task")`. The text is the card's data, never its template, so a `${` typed in
+  Mark Done (`mark_done`, Title Case), run as `assist("complete_task")`, then New Task (the
+  core's `NewTask` part, its launch shortcut's name), whose `launch` verb starts the app with
+  `--launch new-task` as the Jump List does, and only on an id the core has. The text is the card's data, never its template, so a `${` typed in
   a title stays text. While a widget is on screen it looks every two seconds whether the store
   moved, and draws again then, at each moment the timeline names and each minute a timer runs.
   The Widgets API is the Windows App SDK's, not the `windows` crate's: generated once into

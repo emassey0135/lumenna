@@ -110,6 +110,10 @@ pub enum GlancePart {
     Due,
     /// The tasks due named, each with its Mark Done.
     Tasks,
+    /// A button opening the app on quick add: the `new-task` launch shortcut, in its words.
+    /// Last, so a size short of room drops it first; never the whole widget's tap, which opens
+    /// the day.
+    NewTask,
 }
 
 /// A widget every platform offers, as its widget picker or gallery lists it: Android's widget
@@ -134,10 +138,10 @@ pub struct GlanceWidget {
 /// Every widget, smallest first.
 #[must_use]
 pub fn widgets() -> Vec<GlanceWidget> {
-    use GlancePart::{Due, Headline, Next, Tasks};
+    use GlancePart::{Due, Headline, NewTask, Next, Tasks};
     [
         ("now", "Now", "What is happening now, and the timer running", vec![Headline]),
-        ("today", "Today", "What is happening now, what is next, and the tasks due", vec![Headline, Next, Due, Tasks]),
+        ("today", "Today", "What is happening now, what is next, and the tasks due", vec![Headline, Next, Due, Tasks, NewTask]),
     ]
     .into_iter()
     .map(|(id, name, description, parts)| GlanceWidget {
@@ -299,6 +303,19 @@ mod tests {
         let moment = empty(&now);
         assert_eq!((moment.date.as_str(), moment.at.as_str()), ("2026-10-20", "2026-10-20T08:30:00Z"));
         assert!(moment.current.is_none() && moment.next.is_none() && moment.timer.is_none() && moment.tasks.is_empty());
+    }
+
+    #[test]
+    fn only_today_offers_new_task_last_and_it_is_a_launch_shortcut() {
+        for widget in widgets() {
+            let at = widget.parts.iter().position(|part| *part == GlancePart::NewTask);
+            if widget.id == "today" {
+                assert_eq!(at, Some(widget.parts.len() - 1), "last, so a small size drops it first");
+            } else {
+                assert_eq!(at, None, "{}'s one tap is its own", widget.id);
+            }
+        }
+        assert!(crate::launch::launch_shortcuts().iter().any(|s| s.id == "new-task"));
     }
 
     #[test]

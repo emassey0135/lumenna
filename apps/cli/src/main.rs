@@ -531,6 +531,14 @@ pub(crate) enum TaskCommand {
         /// A row number from the last listing, or an identifier.
         id: String,
     },
+    /// Hold a task's due time to one place's time zone, or let it float with this device's
+    /// (`none`).
+    Zone {
+        /// A row number from the last listing, or an identifier.
+        id: String,
+        /// A place's zone, such as `America/New_York` or `Europe/London`, or `none`.
+        zone: String,
+    },
 
     /// What has happened to a task, and what makes up its urgency.
     History {
@@ -665,6 +673,14 @@ pub(crate) enum ProjectCommand {
         name: String,
         /// The multiplier, or `inherit` to take the parent's again.
         value: String,
+    },
+    /// Give a project a colour, or `none`. The name always shows too.
+    Colour {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        name: String,
+        /// A colour name, such as `red`, or `none`.
+        colour: String,
     },
 }
 
@@ -812,6 +828,14 @@ pub(crate) enum FilterCommand {
         /// up or down.
         direction: Way,
     },
+    /// Give a saved filter a colour, or `none`. The name always shows too.
+    Colour {
+        /// Its name.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::filters))]
+        name: String,
+        /// A colour name, such as `red`, or `none`.
+        colour: String,
+    },
     /// Delete a saved filter.
     Rm {
         /// Its name.
@@ -929,6 +953,13 @@ pub(crate) enum BlockCommand {
         /// Which day.
         #[arg(long)]
         date: String,
+    },
+    /// Hold a block to one place's time zone, or let it float with this device's (`none`).
+    Zone {
+        /// A row number or identifier.
+        id: String,
+        /// A place's zone, such as `America/New_York` or `Europe/London`, or `none`.
+        zone: String,
     },
     /// Delete a block series.
     Rm {
@@ -1125,10 +1156,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             LabelCommand::Order { name, direction } => {
                 profile.reorder_label(name, (*direction).into())?
             }
-            LabelCommand::Colour { name, colour } => profile.recolour_label(
-                name,
-                Some(colour.clone()).filter(|c| !c.eq_ignore_ascii_case("none")),
-            )?,
+            LabelCommand::Colour { name, colour } => profile.recolour_label(name, colour_given(colour))?,
             LabelCommand::Rm { name, yes } => {
                 let asked = profile.list_labels()?.rows.into_iter().find(|r| r.title.eq_ignore_ascii_case(name.trim_start_matches('@')));
                 if !confirmed(asked.map(|r| r.actions), ActionKind::Delete, *yes, false)? {
@@ -1148,6 +1176,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             FilterCommand::Order { name, direction } => {
                 Response::new(profile.reorder_filter(name, (*direction).into())?)
             }
+            FilterCommand::Colour { name, colour } => Response::new(profile.recolour_filter(name, colour_given(colour))?),
             FilterCommand::Rm { name, yes } => {
                 let asked = profile.list_filters()?.filters.into_iter().find(|f| f.name.eq_ignore_ascii_case(name));
                 if !confirmed(asked.map(|f| f.actions), ActionKind::Delete, *yes, false)? {
@@ -1217,6 +1246,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             BlockCommand::Restore { id, date } => {
                 Response::new(profile.restore_occurrence(&profile.row(id, "block")?, date)?)
             }
+            BlockCommand::Zone { id, zone } => Response::new(profile.set_block_zone(&profile.row(id, "block")?, Some(zone.clone()))?),
             BlockCommand::Rm { id, yes } => {
                 let id = profile.row(id, "block")?;
                 let series = id.split('@').next().unwrap_or(&id).to_owned();
@@ -1444,6 +1474,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         }
         TaskCommand::History { id: input } => Response::new(profile.task_history(&id(input)?)?),
         TaskCommand::Restore { id: input } => Response::new(profile.restore_task(&id(input)?)?),
+        TaskCommand::Zone { id: input, zone } => Response::new(profile.set_task_zone(&id(input)?, Some(zone.clone()))?),
         TaskCommand::Erase { id: input, permanently: false, yes } => {
             let id = id(input)?;
             let actions = profile.show_task(&id)?.task.actions;
@@ -1502,6 +1533,7 @@ fn project(profile: &Profile, command: &ProjectCommand) -> Result<Response> {
         ProjectCommand::Weight { name, value } => {
             profile.weigh_project(name, lumenna_host::parse_weight(value.clone())?)?
         }
+        ProjectCommand::Colour { name, colour } => profile.recolour_project(name, colour_given(colour))?,
     }))
 }
 
@@ -1557,6 +1589,11 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
 /// Asks the question the core puts before the action of `kind` among `actions`, when it
 /// asks one: the same words every client asks. `--yes` answers it; without a terminal to
 /// ask at, a `strict` one is refused and any other goes ahead, as a script expects.
+/// A colour named on the command line: `none` clears it.
+fn colour_given(colour: &str) -> Option<String> {
+    Some(colour.to_owned()).filter(|c| !c.eq_ignore_ascii_case("none"))
+}
+
 fn confirmed(actions: Option<Vec<lumenna_host::Action>>, kind: ActionKind, yes: bool, strict: bool) -> Result<bool> {
     use std::io::IsTerminal;
     let question = actions.into_iter().flatten().find(|a| a.kind == kind).map(|a| a.question);
