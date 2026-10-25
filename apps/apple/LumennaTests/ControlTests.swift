@@ -85,6 +85,22 @@ final class ControlTests: XCTestCase {
         XCTAssertEqual(try LumennaApp.timerControlFromFile(contents: written), try device.timerControl())
     }
 
+    func testTheRequestsTheMacsExtensionMayHandOnAreNamedOneByOne() {
+        XCTAssertEqual(WidgetRequests.allowed, ["complete_task": ["id"], "toggle_timer": []])
+    }
+
+    func testTheTimersPressHandedToTheAppRunsWithNothingWhateverTheFileNames() throws {
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent("controls-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: container) }
+        try WidgetRequests.hand(.init(operation: WidgetRequests.toggleTimer, arguments: ["id": "a", "confirm": "true"]), into: container)
+        var ran: [(String, [LumennaApp.Argument])] = []
+        let requests = WidgetRequests(container: container)
+        XCTAssertTrue(requests.take { ran.append(($0, $1)) })
+        XCTAssertEqual(ran.map(\.0), ["toggle_timer"])
+        XCTAssertEqual(ran.first?.1.count, 0)
+        XCTAssertFalse(requests.take { _, _ in XCTFail("a press runs once") })
+    }
+
     func testALaunchAskedForBeforeAnythingShowsTheAppWaitsForIt() {
         let launches = Launches()
         var done: [String] = []

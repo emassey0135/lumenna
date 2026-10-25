@@ -521,8 +521,10 @@ each embedded in its app.
     dependency. The app (`Core.takeRequests`, compiled into the direct download alone) takes them
     in at launch, on its one-second tick and when the folder changes (a dispatch source), runs
     each through `Device.assist`, removes it once it ran, then writes the glance again, which
-    reloads the timelines. **Only `complete_task` runs**, given the task alone, whatever a file
-    names: what can write the folder must not run another operation, an erasure among them. A
+    reloads the timelines. **Only what `WidgetRequests.allowed` names runs**, each operation with
+    the arguments it lists, whatever a file names: `complete_task` given the task alone, and the
+    Timer control's `toggle_timer` given nothing ("The controls"). What can write the folder must
+    not run another operation, an erasure among them, so the table is written out, never a pattern. A
     file naming another, or one that does not read, is removed unrun. A run that fails is kept
     and tried again, `WidgetRequests.tries` times in all, then removed: the core's refusal (a
     task deleted elsewhere since) reads as any other failure, so a request is never tried for
