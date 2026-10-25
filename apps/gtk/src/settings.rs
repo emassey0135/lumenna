@@ -122,9 +122,10 @@ struct Window {
     told: RefCell<HashMap<String, String>>,
     folder: gtk::Entry,
     devices: Rc<DevicesPage>,
-    /// Where what is done to the store as a whole goes, a button each, and what they are.
+    /// Where what is done to the store as a whole goes, a button each with the core's caption
+    /// under them, and what they are.
     store: gtk::Box,
-    store_offered: RefCell<Vec<Offered>>,
+    store_offered: RefCell<(Vec<Offered>, String)>,
     /// A file chosen to save the next one the app makes into: an export.
     saving: RefCell<Option<PathBuf>>,
 }
@@ -279,7 +280,7 @@ pub fn show(app: &Rc<App>, page: Page) {
         folder: folder.unwrap_or_default(),
         devices: devices.unwrap_or_else(|| Rc::new(DevicesPage::empty())),
         store: store.unwrap_or_default(),
-        store_offered: RefCell::new(Vec::new()),
+        store_offered: RefCell::new((Vec::new(), String::new())),
         saving: RefCell::new(None),
     });
     OPEN.set(Some(open));
@@ -307,7 +308,7 @@ pub fn draw(app: &App) {
         open.fill(app, settings);
     }
     if let Some(settings) = &view.settings {
-        open.offer(&settings.offered);
+        open.offer(&settings.offered, &settings.offered_caption);
     }
     if let Some(devices) = &view.devices {
         open.devices.draw(app, devices, &view.devices_held);
@@ -317,11 +318,14 @@ pub fn draw(app: &App) {
 
 impl Window {
     /// Draws what the store as a whole offers (Erase Everything Deleted) as a button each, in
-    /// its title, destructive ones drawn as such; each is handed back to the app, which asks its
-    /// question over this window.
-    fn offer(&self, offered: &[Offered]) {
-        if *self.store_offered.borrow() == offered {
-            return;
+    /// its title, destructive ones drawn as such, and the core's caption under them; each is
+    /// handed back to the app, which asks its question over this window.
+    fn offer(&self, offered: &[Offered], caption: &str) {
+        {
+            let drawn = self.store_offered.borrow();
+            if drawn.0 == offered && drawn.1 == caption {
+                return;
+            }
         }
         while let Some(child) = self.store.first_child() {
             self.store.remove(&child);
@@ -334,11 +338,19 @@ impl Window {
             if action.destructive {
                 button.add_css_class("destructive-action");
             }
+            // Orca says the caption with the button, as it says a field's hint; a label beside it
+            // is read only by moving through the page's text.
+            describe(&button, caption);
             let action = action.clone();
             button.connect_clicked(move |_| send(ShellEvent::ActOn(ActingOn::Settings, action.clone())));
             self.store.append(&button);
         }
-        *self.store_offered.borrow_mut() = offered.to_vec();
+        if !offered.is_empty() && !caption.is_empty() {
+            // Libadwaita's caption: smaller, never dimmed, so it keeps its contrast.
+            let label = gtk::Label::builder().label(caption).wrap(true).xalign(0.0).css_classes(["caption"]).build();
+            self.store.append(&label);
+        }
+        *self.store_offered.borrow_mut() = (offered.to_vec(), caption.to_owned());
     }
 
     /// Makes each page's controls the first time the app says what the settings are, then
@@ -680,12 +692,13 @@ impl DevicesPage {
         }
     }
 
-    /// Runs the chosen device's action of `kind`, held there so what it changes lands there. A
-    /// device without one (Unpair on this one) is refused by the app, which says why.
-    fn act(&self, app: &App, kind: ActionKind) {
+    /// Sends `event` for the chosen device (a `Run` of one kind, or a key), held there so what
+    /// it changes lands there. A device without the action (Unpair on this one) is refused by
+    /// the app, which says why.
+    fn act(&self, app: &App, event: ShellEvent) {
         let Some(device) = self.list.selected().and_then(|index| self.devices.borrow().get(index).cloned()) else { return };
         app.model.send(ShellEvent::Hold(Side::Devices, device.node_id.clone()));
-        app.model.send(ShellEvent::Run(vec![kind]));
+        app.model.send(event);
     }
 }
 
@@ -720,7 +733,7 @@ fn devices_page() -> Built {
         let devices = Rc::downgrade(&devices);
         button.connect_clicked(move |_| {
             if let (Some(app), Some(devices)) = (crate::window::app(), devices.upgrade()) {
-                devices.act(&app, kind);
+                devices.act(&app, ShellEvent::Run(vec![kind]));
             }
         });
     }
@@ -735,14 +748,14 @@ fn devices_page() -> Built {
         });
     }
     {
-        // Delete in the list unpairs, as it removes in every other list.
+        // Delete in the list unpairs, as it removes in every other list: the core's to say.
         let weak = Rc::downgrade(&devices);
         devices.list.connect_key(move |key, modifiers, _| {
             if !matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) || !modifiers.is_empty() {
                 return glib::Propagation::Proceed;
             }
             if let (Some(app), Some(devices)) = (crate::window::app(), weak.upgrade()) {
-                devices.act(&app, ActionKind::Unpair);
+                devices.act(&app, ShellEvent::Key("delete".to_owned()));
             }
             glib::Propagation::Stop
         });

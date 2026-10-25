@@ -306,13 +306,13 @@ impl List {
 
     /// Runs one of a reminder's actions, held there so what it changes lands there; one the
     /// reminder lacks is refused by the app, which says why.
-    fn act_on_selected(&self, kinds: &[ActionKind]) {
+    fn act_on_selected(&self, event: ShellEvent) {
         let shown = self.shown.borrow().clone();
         let Some(reminder) = self.tree.selected().and_then(|index| shown.as_ref().and_then(|list| list.reminders.get(index).cloned())) else {
             return;
         };
         send(ShellEvent::Hold(Side::Reminders, reminder.id));
-        send(ShellEvent::Run(kinds.to_vec()));
+        send(event);
     }
 }
 
@@ -374,7 +374,7 @@ fn build(app: &App) -> Rc<List> {
         let weak = Rc::downgrade(&list);
         remove.connect_clicked(move |_| {
             if let Some(list) = weak.upgrade() {
-                list.act_on_selected(actions::DELETE);
+                list.act_on_selected(ShellEvent::Run(vec![ActionKind::Delete]));
             }
         });
     }
@@ -393,7 +393,7 @@ fn build(app: &App) -> Rc<List> {
         list.tree.connect_key(move |key, modifiers, _| {
             let Some(list) = weak.upgrade() else { return glib::Propagation::Proceed };
             if matches!(key, gdk::Key::Delete | gdk::Key::KP_Delete) && modifiers.is_empty() {
-                list.act_on_selected(actions::DELETE);
+                list.act_on_selected(ShellEvent::Key("delete".to_owned()));
                 return glib::Propagation::Stop;
             }
             glib::Propagation::Proceed
