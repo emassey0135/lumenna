@@ -102,6 +102,9 @@ targetTemplates:
         group: Shared
       - path: Shared/LaunchURL.swift
         group: Shared
+      # New Task's control opens the app on the core's launch, in the app (Launches.swift).
+      - path: Shared/Launches.swift
+        group: Shared
     dependencies:
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework
@@ -331,8 +334,10 @@ targets:
       # The colours text is drawn in, the forms' and the complications'.
       - path: Shared/Palette.swift
         group: Shared
-      # A complication tapped opens the app on the core's launch.
+      # A complication tapped or a control pressed opens the app on the core's launch.
       - path: Shared/LaunchURL.swift
+        group: Shared
+      - path: Shared/Launches.swift
         group: Shared
       # Changes handed on to the phone when it is out of reach.
       - path: Shared/LinkParcel.swift
@@ -451,6 +456,7 @@ targets:
       - path: Widgets
         includes:
           - GlanceWidgets.swift
+          - ControlModel.swift
     dependencies:
       - target: Lumenna
     settings:

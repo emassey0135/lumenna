@@ -44,6 +44,22 @@ final class WidgetTests: XCTestCase {
         XCTAssertEqual(GlanceWidgets.fitting(try XCTUnwrap(GlanceWidgets.widget("now")).parts), [[.headline]])
     }
 
+    func testTodaysNewTaskIsItsLastPartSoTheFirstASmallerSizeLeavesOut() throws {
+        let today = try XCTUnwrap(GlanceWidgets.widget("today"))
+        let fitting = GlanceWidgets.fitting(today.parts)
+        XCTAssertEqual(fitting.first?.last, .newTask, "the whole of Today ends with New Task")
+        for shorter in fitting.dropFirst() {
+            XCTAssertFalse(shorter.contains(.newTask), "\(shorter) keeps New Task over a part before it")
+        }
+        XCTAssertFalse(try XCTUnwrap(GlanceWidgets.widget("now")).parts.contains(.newTask))
+    }
+
+    func testTodaysNewTaskIsNamedByTheCoresLaunchShortcutAndOpensIt() throws {
+        let shortcut = try XCTUnwrap(GlanceWidgets.newTask, "the core's launch shortcuts lost New Task")
+        XCTAssertEqual(shortcut.title, "New Task")
+        XCTAssertEqual(LaunchURL.id(in: LaunchURL.of(shortcut.id)), "new-task")
+    }
+
     func testEachMomentIsAnEntryDatedByItsAtInOrder() throws {
         _ = try core.app.device.addTask(text: "Pay the rent today")
         let glance = try core.app.glance(hours: GlanceFile.hours)

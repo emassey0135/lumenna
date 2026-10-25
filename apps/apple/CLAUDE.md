@@ -490,7 +490,11 @@ each embedded in its app.
   value: the headline part, every widget's first (the core's test), carries it, and the other
   parts are hidden. Only Today's Mark Done buttons are elements of their own, named "Mark Done,
   <task>" (`GlanceWidgets.markDone`), as Android's are, and its New Task (the core's `NewTask`
-  part, last, a `Link` to the `new-task` launch, its words the launch shortcut's). Text is `.primary`, `quietLabel` and
+  part, `GlanceWidgets.newTask`): a `Link` to the `new-task` launch named by the launch
+  shortcut's title alone, in caption type and `lumennaTint` (5.9 to 1 on the iPhone's white, 5.0 on
+  the Mac's light window background, over 7.5 dark) and `widgetAccentable`. It is Today's last
+  part, so the first a smaller size leaves out (`WidgetTests`). On the iPhone, iPad and Mac the
+  link opens the app's URL, which `Launches` takes to quick add. Text is `.primary`, `quietLabel` and
   `warningLabel` (`Shared/Palette.swift`, moved out of the forms for this) on the system's
   background; the title and the timer are `widgetAccentable` for the accented rendering. Block
   colours are not drawn.
@@ -522,8 +526,10 @@ each embedded in its app.
     dependency. The app (`Core.takeRequests`, compiled into the direct download alone) takes them
     in at launch, on its one-second tick and when the folder changes (a dispatch source), runs
     each through `Device.assist`, removes it once it ran, then writes the glance again, which
-    reloads the timelines. **Only `complete_task` runs**, given the task alone, whatever a file
-    names: what can write the folder must not run another operation, an erasure among them. A
+    reloads the timelines. **Only what `WidgetRequests.allowed` names runs**, each operation with
+    the arguments it lists, whatever a file names: `complete_task` given the task alone, and the
+    Timer control's `toggle_timer` given nothing ("The controls"). What can write the folder must
+    not run another operation, an erasure among them, so the table is written out, never a pattern. A
     file naming another, or one that does not read, is removed unrun. A run that fails is kept
     and tried again, `WidgetRequests.tries` times in all, then removed: the core's refusal (a
     task deleted elsewhere since) reads as any other failure, so a request is never tried for
@@ -547,6 +553,62 @@ each embedded in its app.
 - **Not checked by CI**, since it builds unsigned with no group: the widgets reading the glance,
   Mark Done in the widget and handed to the direct download's app through the group, the gallery's words, a complication
   on a face, and VoiceOver on each.
+
+## The controls
+
+Control Center's (`Widgets/ControlWidgets.swift`, `ControlModel.swift`), in each app's widget
+extension beside its widgets: iOS 18, macOS 26 and watchOS 26 are the first with controls, so the
+iPhone's and iPad's and the Mac's are behind `#available`, the watch's always there.
+
+- **Which controls, and their words, are the core's** (`controls()`): each one's id is its kind,
+  its gallery name and description read at run time. `ControlTests` compares them with the core's,
+  so a control the core adds fails until it is built here. App Intents' titles are literals, so the
+  test keeps New Task's intent titled as the core names it.
+- **The Timer is a `ControlWidgetToggle` over the core's `TimerControl`** (`Device.timerControl`,
+  `TimerControlState`): on while a timer runs, its title the core's name, beneath it the core's
+  `detail` (the task whose timer runs, what a press would start, or why nothing would), the
+  core's `action` as the press's hint, dimmed when `enabled` is false. VoiceOver hears the name,
+  the action and the detail, joined. Its `SetValueIntent` ignores the value the system hands it
+  and calls `Device.toggleTimer`: a press is always the core's toggle, never on to start and off
+  to stop, which a control drawn a minute ago would get wrong.
+- **Where the Timer reaches the store**, as the widgets reach it (`TimerControlSource`):
+  - **The iPhone, iPad, App Store edition and the watch**: the store in the group, opened and let
+    go of for each reading and each press (`GlanceStore`, the `0xdead10cc` rule), never made.
+    After a press the glance is written again while the store is open, and every widget and
+    control told. **The watch's control opens the watch's own group**, where its store is: the
+    extension has the group's entitlement, and nothing in the store asks for the app's process.
+    The watch app takes the change in at its next tick, like any other process's write, and only
+    then hands it to the phone, so a press made with the app not running reaches the phone when
+    the app next runs.
+  - **The direct download**: its store is outside the extension's sandbox. The app writes the
+    core's control into the group (`TimerControlFile`, `timer-control.json` through the core's
+    `timerControlFile`) with the glance, after every change and on the minute, since what a press
+    would start moves with the clock; the control reads that. A press is handed to the app as a
+    request (`WidgetRequests`, `toggle_timer`, beside Complete a Task's), which the app runs with
+    `Device.toggleTimer` within a second, or at its next start. Before the app has written the
+    file, the control is dimmed with the core's store-unopened sentence.
+- **New Task is a `ControlWidgetButton` opening the app on the core's `new-task` launch**
+  (`NewTaskControlIntent`, `openAppWhenRun`, compiled into the apps as well as the extensions,
+  since an intent that opens its app runs in the app). Not a URL: a control cannot open its app by
+  a scheme of its own (Apple's engineers on the forums: only a universal link, which this app has
+  none of). The intent hands the launch to `Launches`, the one way in from outside, which a
+  widget's URL takes too and which holds a launch asked for before the app shows anything until
+  it does (a cold start). Each app then sends `ShellEvent.launch`, follows the place the app left,
+  and opens quick add over it if the app opened its line, which New Task's launch does: the
+  iPhone's and iPad's scene, the Mac's window, the watch's root (quick add's sheet alone there).
+- **Every write reloads the controls** (`GlanceFile.reload`, `ControlCenter.reloadAllControls`),
+  as it reloads the widgets' timelines: after the app's `Core.changed`, after a press, and after a
+  widget's Mark Done.
+- **The watch's New Task complication** (`NewTaskComplication`, `LaunchComplication`): a widget
+  kind of its own, `launch.new-task`, in the circle, the corner and the line, a plus and the
+  core's name for the launch shortcut (`launchShortcuts()`), tapped to open the app on
+  `lumenna://launch/new-task`, which goes straight to quick add, its line dictated or typed on the
+  system's input screen. It is the launch shortcut's, not a glance, so it is none of
+  `glance_widgets()` and reads nothing; `ControlTests` fails if the core's launch shortcuts lose
+  New Task.
+- **Not checked by CI**, as the widgets are not: the controls in the gallery and Control Center on
+  each device, the press on each store, the direct download's hand-off, the complication on a
+  face, and VoiceOver on each.
 
 ## The Apple Watch app
 

@@ -25,6 +25,10 @@ final class GlanceFile {
     private let queue = DispatchQueue(label: "dev.emassey0135.lumenna.glance", qos: .utility)
     private var observer: NSObjectProtocol?
     private var queued = false
+    #if os(macOS) && !APP_STORE && !LUMENNA_WIDGETS
+    /// The timer's control, written beside the glance (`TimerControlFile`).
+    private var control: TimerControlFile?
+    #endif
 
     #if !LUMENNA_WIDGETS
     /// The glance of `app`, written into the App Group's container; `nil` where the build has
@@ -32,6 +36,10 @@ final class GlanceFile {
     convenience init?(app: AppModel) {
         guard let container = AppGroup.container else { return nil }
         self.init(directory: container) { try app.glance(hours: GlanceFile.hours) }
+        #if os(macOS) && !APP_STORE
+        let device = app.device
+        control = TimerControlFile(directory: container) { try device.timerControl() }
+        #endif
     }
     #endif
 
@@ -80,9 +88,11 @@ final class GlanceFile {
             if let self {
                 do {
                     try self.writeNow()
-                    #if canImport(WidgetKit)
-                    WidgetCenter.shared.reloadAllTimelines()
+                    #if os(macOS) && !APP_STORE && !LUMENNA_WIDGETS
+                    // The timer's control, which reaches no store in this edition, with it.
+                    self.control?.write()
                     #endif
+                    GlanceFile.reload()
                 } catch {
                     // Nothing to tell the person: a widget goes on showing the last one written.
                 }
@@ -91,10 +101,84 @@ final class GlanceFile {
         }
     }
 
+    #if os(macOS) && !APP_STORE && !LUMENNA_WIDGETS
+    /// The minute the timer's control was last written in.
+    private var minute: Int?
+
+    /// Writes the timer's control again once a minute, off the main thread: what a press would
+    /// start moves with the clock, with no change to the store.
+    func tick() {
+        let now = Int(Date().timeIntervalSince1970 / 60)
+        guard now != minute, let control else { return }
+        minute = now
+        queue.async { control.write() }
+    }
+    #endif
+
+    /// Asks every widget and control to read again: what they show is the store's, so any change
+    /// may have moved it.
+    static func reload() {
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        if #available(iOS 18.0, macOS 26.0, watchOS 26.0, *) {
+            ControlCenter.shared.reloadAllControls()
+        }
+        #endif
+    }
+
     /// Writes it on this thread: replaced whole, so a widget never reads half of one.
     func writeNow() throws {
         let text = LumennaApp.glanceFile(entries: try glance())
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(text.utf8).write(to: url, options: .atomic)
+    }
+}
+
+/// The timer's control as the core has it (`Device.timerControl`, `timerControlFile`), written
+/// into the group for the one control that cannot reach its store: the Mac's direct download's,
+/// sandboxed away from `~/Library/Application Support`. Its app writes it with the glance, after
+/// every change, and on the minute, since what a press would start moves with the clock; a write
+/// that changes nothing tells no control. Elsewhere a control reads the store itself.
+final class TimerControlFile {
+    /// The file's name in the group's container.
+    static let name = "timer-control.json"
+
+    let url: URL
+    private let control: () throws -> LumennaApp.TimerControl
+    /// What was written last, so an unchanged control is not told to read again.
+    private var last: String?
+
+    /// `control`'s, written into `directory`.
+    init(directory: URL, control: @escaping () throws -> LumennaApp.TimerControl) {
+        url = directory.appendingPathComponent(TimerControlFile.name)
+        self.control = control
+    }
+
+    /// Writes it on this thread, replaced whole; returns whether it changed.
+    @discardableResult
+    func writeNow() throws -> Bool {
+        let text = LumennaApp.timerControlFile(control: try control())
+        guard text != last else { return false }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: url, options: .atomic)
+        last = text
+        return true
+    }
+
+    /// Writes it, and tells the controls if it changed.
+    func write() {
+        guard (try? writeNow()) == true else { return }
+        #if canImport(WidgetKit)
+        if #available(macOS 26.0, iOS 18.0, watchOS 26.0, *) {
+            ControlCenter.shared.reloadControls(ofKind: "timer")
+        }
+        #endif
+    }
+
+    /// The control as the app last wrote it into the group, for the control to show.
+    static func read() -> LumennaApp.TimerControl? {
+        guard let url = AppGroup.container?.appendingPathComponent(name),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return try? LumennaApp.timerControlFromFile(contents: text)
     }
 }

@@ -105,6 +105,7 @@ final class Core {
         watcher = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             #if os(macOS) && !APP_STORE
             self?.takeRequests()
+            self?.glance?.tick()
             #endif
             guard let self, let heads = try? self.app.device.heads(), heads != self.seenHeads else { return }
             self.seenHeads = heads
@@ -121,7 +122,15 @@ final class Core {
     /// change.
     private func takeRequests() {
         let device = app.device
-        guard requests?.take(running: { _ = try device.assist(operation: $0, arguments: $1) }) == true else { return }
+        let ran = requests?.take { operation, arguments in
+            // The Timer's press is the core's toggle, which no assistant operation is.
+            if operation == WidgetRequests.toggleTimer {
+                _ = try device.toggleTimer()
+            } else {
+                _ = try device.assist(operation: operation, arguments: arguments)
+            }
+        }
+        guard ran == true else { return }
         glance?.soon()
     }
     #endif

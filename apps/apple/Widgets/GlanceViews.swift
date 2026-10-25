@@ -154,17 +154,24 @@ private struct Headline: View {
     }
 }
 
-/// New Task: the core's launch shortcut, its name and the app opened on it (quick add), a link
-/// of its own beside the widget's own tap, which opens the day.
+/// New Task: the core's launch shortcut (`GlanceWidgets.newTask`), a link of its own beside the
+/// widget's own tap, which opens the day, opening the app on quick add (`Launches`). One element
+/// to VoiceOver, named by the shortcut alone, as each Mark Done is by its own words; drawn small,
+/// in the tint that clears contrast on the widget's background, and the last of Today's parts, so
+/// the first a smaller size leaves out.
 private struct NewTask: View {
     var body: some View {
         #if !os(watchOS)
-        if let shortcut = LumennaApp.launchShortcuts().first(where: { $0.id == "new-task" }) {
+        if let shortcut = GlanceWidgets.newTask {
             Link(destination: LaunchURL.of(shortcut.id)) {
                 Label(shortcut.title, systemImage: "plus")
-                    .font(.subheadline)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .foregroundStyle(Color.lumennaTint)
                     .widgetAccentable()
             }
+            // The link is one element already: its name is the shortcut's alone, not the symbol's.
+            .accessibilityLabel(shortcut.title)
         }
         #endif
     }

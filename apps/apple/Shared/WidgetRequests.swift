@@ -1,24 +1,33 @@
 import Foundation
 import LumennaApp
 
-/// Today's Mark Done in the Mac's direct download, handed from its widget to the app through the
-/// App Group's container: the widget, sandboxed, cannot reach that edition's store
-/// (`~/Library/Application Support/lumenna`), and the app, resident in the menu bar, holds it.
+/// Today's Mark Done and the Timer control's press in the Mac's direct download, handed from its
+/// widget extension to the app through the App Group's container: the extension, sandboxed, cannot
+/// reach that edition's store (`~/Library/Application Support/lumenna`), and the app, resident in
+/// the menu bar, holds it.
 ///
 /// The widget writes a request into `requests/`, one file each: the assistant operation's id and
 /// its arguments, as text. The app takes them in at launch, on its one-second tick and when the
 /// folder changes, runs each through the core's dispatcher (`Device.assist`), and removes it once
-/// it ran. Only Complete a Task is run, whatever a file names, so nothing that can write the
-/// folder can run another operation, an erasure among them, and it is given the task alone; a
-/// request naming another operation, or one that does not read, is removed unrun. A request whose run fails is kept and tried again, a few
+/// it ran. Only what `allowed` names is run, whatever a file names, so nothing that can write the
+/// folder can run another operation, an erasure among them, and each is given only the arguments
+/// `allowed` lists; a request naming another operation, or one that does not read, is removed
+/// unrun. A request whose run fails is kept and tried again, a few
 /// times only: the core's refusal (a task since deleted elsewhere) reads as any other failure, so
 /// a refusal must not be tried for ever. With the app not running, a request waits for its next
 /// start.
 final class WidgetRequests {
     /// The folder in the group's container.
     static let folder = "requests"
-    /// The one operation a request may run: Complete a Task's (`CompleteTaskIntent`).
-    static let operation = "complete_task"
+    /// Complete a Task's (`CompleteTaskIntent`), Today's Mark Done.
+    static let completeTask = "complete_task"
+    /// The Timer control's press (`TimerControlIntent`): `Device.toggleTimer`, no assistant
+    /// operation.
+    static let toggleTimer = "toggle_timer"
+    /// Every operation a request may run, each with the arguments it is given and must have:
+    /// Complete a Task its task, the Timer's press nothing. Named one by one, never a pattern, so
+    /// adding to it is a decision about what anything that can write the group may do.
+    static let allowed: [String: [String]] = [completeTask: ["id"], toggleTimer: []]
     /// How many times a request whose run fails is run before it is given up.
     static let tries = 3
 
@@ -95,15 +104,16 @@ final class WidgetRequests {
             let file = directory.appendingPathComponent(name)
             guard let data = try? Data(contentsOf: file) else { continue }
             guard let request = try? JSONDecoder().decode(Request.self, from: data),
-                  request.operation == WidgetRequests.operation,
-                  let id = request.arguments["id"], !id.isEmpty
+                  let taken = WidgetRequests.allowed[request.operation],
+                  taken.allSatisfy({ !(request.arguments[$0] ?? "").isEmpty })
             else {
                 try? manager.removeItem(at: file)
                 continue
             }
             do {
-                // The task alone: Complete a Task takes nothing else.
-                try run(WidgetRequests.operation, [LumennaApp.Argument(name: "id", value: .text(id))])
+                // What it takes alone, whatever else the file names.
+                let arguments = taken.map { LumennaApp.Argument(name: $0, value: .text(request.arguments[$0] ?? "")) }
+                try run(request.operation, arguments)
                 ran = true
                 failures[name] = nil
                 if (try? manager.removeItem(at: file)) == nil { finished.insert(name) }

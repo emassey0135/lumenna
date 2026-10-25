@@ -74,6 +74,12 @@ enum GlanceWidgets {
         "\(entry.markDone), \(task.title)"
     }
 
+    /// Today's New Task (`GlancePart.newTask`): the core's launch shortcut it opens, whose title
+    /// names it; `nil` should the core drop it, which `WidgetTests` finds.
+    static var newTask: LumennaApp.LaunchShortcut? {
+        LumennaApp.launchShortcuts().first { $0.id == "new-task" }
+    }
+
     /// What a size may show of `parts`, most first: all of them, then each shorter run of the
     /// first, for SwiftUI to take the first that fits. A smaller size shows the first of a
     /// widget's parts that fit, never a later part without an earlier one.

@@ -212,9 +212,15 @@ A day or less each, for between the larger pieces, except the first.
 
 Each is a thin adapter over the command surface.
 
-- **Control Center controls** (iOS 18 and macOS 26 `ControlWidget`s, the watch's too): start and
-  stop a sitting's timer, and New Task, as buttons over the App Intents already built (every
-  assistant operation is one, `apps/apple/CLAUDE.md`), their names the core's.
+- **Controls, tried as a person gets them**: Apple's are built from the core's `controls()` (the
+  Timer and New Task in Control Center on the iPhone, iPad, Mac and watch, and the watch's New
+  Task complication, `apps/apple/CLAUDE.md`), and what CI cannot check is left by hand, on a
+  signed build and a device: each added from the gallery under the core's names; the Timer
+  pressed on and off and with nothing to start (dimmed, saying why), on the store in the group
+  (the iPhone, iPad, App Store edition and watch) and handed to the app in the direct download;
+  New Task opening quick add on each, from a cold start too; the complication on a face opening
+  quick add; a press on the watch reaching the phone once the watch app next runs; and
+  VoiceOver on each.
 - **A URL scheme**, `lumenna://`, on every platform, for Drafts, Scriptable, Keyboard Maestro,
   Alfred and any app's x-callback-url:
   - **Where:** Android's intent filter, Windows' protocol handler (the installer's and the

@@ -42,7 +42,7 @@ struct CompleteTaskIntent: OperationIntent {
         // The app takes it within a second, or at its next start, and the widget reads the glance
         // it writes then; nothing is said, since a widget's button says nothing.
         guard let container = AppGroup.container else { throw CocoaError(.fileNoSuchFile) }
-        try WidgetRequests.hand(.init(operation: Self.persistentIdentifier, arguments: ["id": id.id]), into: container)
+        try WidgetRequests.hand(.init(operation: WidgetRequests.completeTask, arguments: ["id": id.id]), into: container)
         return .result(value: id, dialog: IntentDialog(said: ""))
         #else
         let changed = try store.assist(Self.persistentIdentifier, ["id": .text(id.id)])
