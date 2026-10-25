@@ -229,7 +229,9 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   (`records::search`), as on every platform: every search document (open tasks, projects,
   labels, saved filters, blocks) is indexed as its entity, its attributes the document's title,
   line and keywords (`SearchIndex`, `IndexedEntity`, iOS 18 and macOS 15; the watch has none),
-  at launch and a few seconds after each `Core.changed`; a string query answers from
+  at launch and a few seconds after each `Core.changed`, **one indexing at a time** (each awaits
+  the one before: on a slow Spotlight two overlapped, wrote the same dictionary together and
+  crashed the app); a string query answers from
   `searchResults` in its order, never a match of Swift's (choices are only offered); and a
   result chosen is opened by its document's `launch` through `ShellEvent.launch` (the Open
   intents, the app's `launch` given to `Assistant.serve`). The task whose details show is the

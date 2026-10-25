@@ -74,8 +74,11 @@ enum SearchIndex {
     private static let queue = DispatchQueue(label: "Lumenna search index", qos: .utility)
     /// Whether an indexing is waiting to run; only touched on `queue`.
     private static var waiting = false
+    /// The indexing running, or the last to run, which the next waits for; only touched on
+    /// `queue`.
+    private static var running: Task<Void, Never>?
     /// What this process has indexed of each kind of entity; none until its first indexing,
-    /// which starts afresh.
+    /// which starts afresh. Only an indexing touches it, and one runs at a time.
     private static var indexed: [String: Set<String>] = [:]
 
     static func follow(_ store: AssistantStore) {
@@ -102,7 +105,12 @@ enum SearchIndex {
                 }
                 let blocks = documents.filter { $0.kind == .block }.map(BlockSeriesEntity.init)
                 let index = CSSearchableIndex.default()
-                Task {
+                // Once the one before is done, however long Spotlight took over it: two at once
+                // wrote `indexed` together, and the app crashed in its setter (an iPad on CI, its
+                // index full from a suite's worth of tests, slow enough for the next to overlap).
+                let before = running
+                running = Task {
+                    await before?.value
                     await replace(tasks, in: index)
                     // Only what the core indexes: the Inbox is a project no search offers.
                     await replace(projects.filter { $0.document != nil }, in: index)
