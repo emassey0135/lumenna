@@ -155,8 +155,14 @@ pub fn trashed_line(row: &RowView, clock: &dyn Clock) -> Line {
 
 /// When a row is due, with the time in this device's clock: "due tomorrow at 3:00 PM".
 fn due(row: &RowView, clock: &dyn Clock) -> Option<String> {
-    let due = row.due.clone()?;
-    Some(match &row.due_time {
+    due_words(row.due.as_deref(), row.due_time.as_deref(), clock)
+}
+
+/// When something is due, as every line says it: the core's words, then its time in this
+/// device's clock ("due today at 3:00 PM").
+pub fn due_words(due: Option<&str>, time: Option<&str>, clock: &dyn Clock) -> Option<String> {
+    let due = due?.to_owned();
+    Some(match time {
         Some(time) => format!("{due} at {}", clock.time(time)),
         None => due,
     })
