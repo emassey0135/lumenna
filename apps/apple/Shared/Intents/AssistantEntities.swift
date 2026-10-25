@@ -80,11 +80,16 @@ struct TaskEntity: AppEntity {
     /// A task a glance names, by its identifier and title alone: what a widget's Mark Done hands
     /// Complete a Task, which gives the operation the identifier.
     init(glanced task: LumennaApp.GlanceTask) {
-        id = task.id
+        self.init(id: task.id, title: task.title)
+    }
+
+    /// A task by its identifier and title alone.
+    init(id: String, title: String) {
+        self.id = id
         line = nil
         keywords = []
         launch = nil
-        title = task.title
+        self.title = title
         due = nil
         project = nil
         labels = []
@@ -189,8 +194,14 @@ struct TaskQuery: EntityStringQuery {
     @AppDependency private var store: AssistantStore
 
     func entities(for identifiers: [TaskEntity.ID]) async throws -> [TaskEntity] {
+        #if LUMENNA_WIDGETS && os(macOS) && !APP_STORE
+        // The direct download's widget reaches no store: its Mark Done hands the identifier on
+        // to the app (`WidgetRequests`), which is all it needs of the task.
+        return identifiers.map { TaskEntity(id: $0, title: "") }
+        #else
         let documents = store.documents()
         return identifiers.compactMap { id in store.entity(try? store.task(id), documents) }
+        #endif
     }
 
     func entities(matching string: String) async throws -> [TaskEntity] {
