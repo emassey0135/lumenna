@@ -1247,3 +1247,100 @@ fn the_shell_completes_project_label_and_filter_names_from_the_store() {
     assert_eq!(complete(&["lum", "filter", "rm", "u"]), ["Urgent"]);
     assert!(lum.ok(&["completions", "bash"]).contains("COMPLETE"), "the registration asks lum itself");
 }
+
+/// The command that does each of the app's row actions, so the CLI does everything the app
+/// does. Exhaustive, with no catch-all arm: a new `ActionKind` fails to compile here until a
+/// command does it, or it is said here why no command needs to.
+fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static str]] {
+    use lumenna_host::ActionKind as K;
+    match kind {
+        K::MarkDone => &[&["task", "done"]],
+        K::MarkNotDone => &[&["task", "undone"]],
+        K::Edit => &[&["task", "edit"], &["block", "edit"]],
+        K::EditTask => &[&["task", "edit"]],
+        K::PutInBlock | K::AssignTask => &[&["assign"]],
+        K::MoveToProject | K::MakeSubtaskOf | K::MoveToTopLevel => &[&["task", "move"]],
+        K::WaitFor => &[&["task", "depend", "add"]],
+        K::StopWaiting => &[&["task", "depend", "rm"]],
+        K::Delete => &[&["task", "rm"], &["block", "rm"], &["project", "rm"], &["label", "rm"], &["filter", "rm"]],
+        K::Restore => &[&["task", "restore"]],
+        K::DeleteForGood | K::ErasePermanently => &[&["task", "erase"]],
+        K::EraseEverythingDeleted => &[&["erase-deleted"]],
+        K::CancelDay => &[&["block", "cancel"]],
+        K::RestoreDay => &[&["block", "restore"]],
+        K::StartTimer | K::ResumeTimer => &[&["start"]],
+        K::PauseTimer => &[&["pause"]],
+        K::StopTimer | K::LogMinutes => &[&["stop"]],
+        K::PlannedLength => &[&["length"]],
+        K::Unassign => &[&["unassign"]],
+        K::AddBlock => &[&["block", "add"]],
+        K::Rename => &[&["project", "rename"], &["label", "rename"], &["filter", "edit"], &["device", "rename"]],
+        K::NewInside | K::New => &[&["project", "add"], &["label", "add"], &["filter", "add"]],
+        K::MoveUnder => &[&["project", "move"]],
+        K::MoveUp | K::MoveDown => &[&["project", "order"], &["label", "order"], &["filter", "order"], &["reorder"]],
+        K::Weight => &[&["project", "weight"]],
+        K::Archive | K::Unarchive => &[&["project", "archive"]],
+        K::MergeInto => &[&["label", "merge"]],
+        K::Colour => &[&["project", "colour"], &["label", "colour"], &["filter", "colour"]],
+        K::ChangeQuery => &[&["filter", "edit"]],
+        K::Unpair => &[&["device", "unpair"]],
+        K::Reminders => &[&["reminder", "list"], &["reminder", "add"]],
+        K::DeliverOn => &[&["reminder", "deliver"]],
+        K::EndNow => &[&["end"]],
+        K::Extend => &[&["extend"]],
+        K::EndDay => &[&["end-day"]],
+        K::ClearDay => &[&["clear-day"]],
+        K::CarryForward => &[&["carry"]],
+        K::CarryRest => &[&["carry-rest"]],
+        K::WhatNow => &[&["next"]],
+        K::Replan => &[&["replan"]],
+        K::PlanDay => &[&["plan-day"]],
+        K::Skip | K::Unskip => &[&["skip"]],
+        K::TimeZone => &[&["task", "zone"], &["block", "zone"]],
+        // Folding is a view's, and stores nothing: a listing shows every row.
+        K::Expand | K::Collapse => &[],
+    }
+}
+
+#[test]
+fn every_action_the_app_offers_has_a_command_that_does_it() {
+    use lumenna_host::ActionKind as K;
+    // Every kind, for running each one's commands; `commands_for` is what keeps new ones from
+    // being forgotten.
+    let kinds = [
+        K::MarkDone, K::MarkNotDone, K::Edit, K::EditTask, K::PutInBlock, K::MoveToProject, K::MakeSubtaskOf,
+        K::MoveToTopLevel, K::WaitFor, K::StopWaiting, K::Delete, K::Restore, K::DeleteForGood, K::AssignTask,
+        K::CancelDay, K::RestoreDay, K::StartTimer, K::ResumeTimer, K::PauseTimer, K::StopTimer, K::PlannedLength,
+        K::LogMinutes, K::Unassign, K::AddBlock, K::Rename, K::NewInside, K::MoveUnder, K::MoveUp, K::MoveDown,
+        K::Weight, K::Archive, K::Unarchive, K::MergeInto, K::Colour, K::ChangeQuery, K::New, K::Unpair,
+        K::Reminders, K::EndNow, K::Extend, K::EndDay, K::ClearDay, K::CarryForward, K::WhatNow, K::CarryRest,
+        K::Replan, K::PlanDay, K::Expand, K::Collapse, K::Skip, K::Unskip, K::DeliverOn, K::TimeZone,
+        K::ErasePermanently, K::EraseEverythingDeleted,
+    ];
+    let lum = Lum::new();
+    for kind in kinds {
+        for command in commands_for(kind) {
+            let mut args = command.to_vec();
+            args.push("--help");
+            lum.ok(&args);
+        }
+    }
+}
+
+#[test]
+fn a_project_and_a_saved_filter_take_a_colour_and_a_task_and_a_block_a_time_zone() {
+    let lum = Lum::new();
+    lum.ok(&["project", "add", "Work"]);
+    assert!(lum.ok(&["project", "colour", "Work", "teal"]).contains("teal"));
+    lum.ok(&["project", "colour", "Work", "none"]);
+    lum.ok(&["filter", "add", "Calls", "@calls"]);
+    assert!(lum.ok(&["filter", "colour", "Calls", "red"]).contains("red"));
+    lum.ok(&["task", "add", "Call Tokyo tomorrow at 9am"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["task", "zone", "1", "Asia/Tokyo"]);
+    lum.ok(&["task", "zone", "1", "none"]);
+    assert!(lum.fails(&["task", "zone", "1", "Mars/Olympus"]).contains("not a time zone"));
+    lum.ok(&["task", "add", "block Standup 9-9:15am weekdays"]);
+    lum.ok(&["block", "list"]);
+    lum.ok(&["block", "zone", "1", "Europe/London"]);
+}
