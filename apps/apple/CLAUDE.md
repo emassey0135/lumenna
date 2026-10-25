@@ -490,7 +490,11 @@ each embedded in its app.
   value: the headline part, every widget's first (the core's test), carries it, and the other
   parts are hidden. Only Today's Mark Done buttons are elements of their own, named "Mark Done,
   <task>" (`GlanceWidgets.markDone`), as Android's are, and its New Task (the core's `NewTask`
-  part, last, a `Link` to the `new-task` launch, its words the launch shortcut's). Text is `.primary`, `quietLabel` and
+  part, `GlanceWidgets.newTask`): a `Link` to the `new-task` launch named by the launch
+  shortcut's title alone, in caption type and `lumennaTint` (5.9 to 1 on the iPhone's white, 5.0 on
+  the Mac's light window background, over 7.5 dark) and `widgetAccentable`. It is Today's last
+  part, so the first a smaller size leaves out (`WidgetTests`). On the iPhone, iPad and Mac the
+  link opens the app's URL, which `Launches` takes to quick add. Text is `.primary`, `quietLabel` and
   `warningLabel` (`Shared/Palette.swift`, moved out of the forms for this) on the system's
   background; the title and the timer are `widgetAccentable` for the accented rendering. Block
   colours are not drawn.
