@@ -202,7 +202,14 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   shortcuts are set at run time from `launch_shortcuts()` (`ShortcutManagerCompat`), and they, the
   Quick Settings tile, a widget, the tile and a complication open the app on a launch `id`, sent
   as `ShellEvent.Launch`; the screens follow the app once it is still (its line open is quick add,
-  else its place). `NEW_TASK` stays for a shortcut pinned before.
+  else its place, a task's details over the tasks). `NEW_TASK` stays for a shortcut pinned before.
+- **The system's search index holds the core's search documents** (`SearchIndex`,
+  `androidx.appsearch` platform storage, Android 12 and later): `Device.searchDocuments()`, one
+  `GenericDocument` each under a schema of `SearchDocument`'s fields, written again as the store
+  changes (a fingerprint per document, kept in preferences, says what changed and what went).
+  Visible to the system's UI, the home screen's and assistant's search, and to callers that may
+  execute App Functions, so an agent finds a task there to name it to a function. What matches
+  and how a result reads stay the core's. Opening one is `Launching.ACTION` with its `launch`.
 
 ## The Wear OS app
 

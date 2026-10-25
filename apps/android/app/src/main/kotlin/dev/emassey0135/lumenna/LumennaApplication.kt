@@ -19,6 +19,8 @@ class LumennaApplication : Application(), CoreHolder, GlanceShower {
             // and the widgets drawn again then and at each moment their glance names.
             Reminders.follow(this, it)
             Glances.follow(this, it)
+            // The system's search index too (`SearchIndex`).
+            SearchIndex.follow(this, it)
         }
     }
 

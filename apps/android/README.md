@@ -68,6 +68,9 @@ one TalkBack stop that reads the whole glance as a sentence, and opens Today whe
 watch has a tile with the same, and a complication for watch faces: what is happening as short
 text, or how far through the block under way as a ranged value.
 
+On Android 12 and later, open tasks, projects, labels, saved filters and blocks are in the
+system's search index, for the device's own search to find; opening one opens it in the app.
+
 ## Gemini
 
 Every operation `lum mcp` offers an assistant is an App Function (Android 16 and later): Gemini can

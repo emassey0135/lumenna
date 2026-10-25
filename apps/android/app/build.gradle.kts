@@ -52,6 +52,9 @@ dependencies {
     // XML the system indexes; the v1 XML is what Android 16's indexer reads, the other Android 17's.
     implementation(libs.appfunctions)
     ksp(libs.appfunctions.compiler)
+    // The system's search index (`SearchIndex`), which Android 12 and later keep.
+    implementation(libs.appsearch)
+    implementation(libs.appsearch.platform.storage)
     // The home screen's widgets (`widgets/`).
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)

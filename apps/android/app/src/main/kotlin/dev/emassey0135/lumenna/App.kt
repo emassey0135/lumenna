@@ -258,18 +258,22 @@ fun LumennaApp(
             BackHandler(enabled = stack.size > 1) { Navigator(stack).back() }
 
             // A way in from outside the app (the icon's shortcuts, the Quick Settings tile, a
-            // widget): the app does what it says, and the screens follow it there once it is
-            // still, to its place, with quick add over it when the app opened its line.
+            // widget, a search result): the app does what it says, and the screens follow it
+            // there once it is still: quick add when it opened its line, else its place, with a
+            // task's details over the tasks when it shows one.
             val launch = launched?.collectAsState()?.value
             LaunchedEffect(launch) {
                 val id = launch?.second ?: return@LaunchedEffect
                 core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Launch(id))
                 withTimeoutOrNull(5_000) { while (!core.app.still) delay(16) }
                 val view = core.app.view.value ?: return@LaunchedEffect
+                val place = view.place
                 when {
                     view.line != null -> go(Tab.TASKS, Screen.QuickAdd)
-                    view.place == Place.Today -> go(Tab.TODAY)
-                    else -> go(Tab.TASKS)
+                    place == Place.Today -> go(Tab.TODAY)
+                    place == Place.Tasks && view.details != null -> go(Tab.TASKS, Screen.Task(view.details!!.task.id))
+                    place == null || place == Place.Tasks -> go(Tab.TASKS)
+                    else -> go(Tab.BROWSE, Destination.At(place).screen())
                 }
             }
 
