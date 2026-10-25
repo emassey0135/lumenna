@@ -200,6 +200,34 @@ impl Lumenna {
         self.told(|store| crate::lists::search(&repaired(store), text, &now))
     }
 
+    /// Everything a platform's search keeps an index of (`lumenna_records::search`): open tasks,
+    /// projects, labels, saved filters and blocks, each opened by its `launch`.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn search_documents(&self) -> Result<Vec<lumenna_records::search::SearchDocument>> {
+        let now = Zoned::now();
+        self.with(|store| {
+            store.load_all_years()?;
+            lumenna_records::search::documents(&repaired(store), &now)
+        })
+    }
+
+    /// What a platform's search finds for `text`, most fitting first, for one that asks as the
+    /// person types (GNOME Shell, KRunner).
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn search_results(&self, text: &str) -> Result<Vec<lumenna_records::search::SearchDocument>> {
+        let now = Zoned::now();
+        self.with(|store| {
+            store.load_all_years()?;
+            lumenna_records::search::results(&repaired(store), text, &now)
+        })
+    }
+
     /// Everything about one task.
     ///
     /// # Errors

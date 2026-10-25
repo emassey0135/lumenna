@@ -1065,6 +1065,21 @@ fn a_launch_shortcut_does_what_it_says_new_task_opening_quick_add_over_the_tasks
 }
 
 #[test]
+fn a_search_result_chosen_outside_the_app_opens_the_task_it_names_in_hand_with_its_details() {
+    let mut app = App::new();
+    app.add("Call the bank");
+    app.send(Event::Open(Place::Today));
+    let host = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    let found = host.search_results("bank").unwrap();
+    assert_eq!(found.iter().map(|d| d.title.as_str()).collect::<Vec<_>>(), ["Call the bank"]);
+
+    app.send(Event::Launch(found[0].launch.clone()));
+    let view = app.view();
+    assert_eq!(view.place, Some(Place::Tasks));
+    assert_eq!(view.details.map(|d| d.task.title), Some("Call the bank".to_owned()));
+}
+
+#[test]
 fn settings_say_what_erasing_takes_under_the_stores_own_actions() {
     let mut app = App::new();
     app.send(Event::Settings(SettingsEvent::Open));

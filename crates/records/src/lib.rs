@@ -28,6 +28,7 @@ pub mod proposals;
 pub mod reminders;
 pub mod replan;
 pub mod resolve;
+pub mod search;
 pub mod text;
 pub mod tree;
 pub mod types;

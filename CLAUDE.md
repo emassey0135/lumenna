@@ -146,6 +146,10 @@ crosses the FFI.
 - **A glance is the core's** (`records::glance`, worded by `lumenna_app::glance`; `App::glance`
   in the platform's clock, `Device::glance` without the screens): what a widget, complication,
   tile or Smart Stack shows, as a timeline of moments. A platform draws it and decides nothing.
+- **What a platform's search finds is the core's** (`records::search`: `search_documents` for an
+  index such as Spotlight's or AppSearch, `search_results(text)` for one that asks as the person
+  types, such as GNOME Shell or KRunner): each a `SearchDocument` opened by its `launch`
+  (`task:<id>`, `project:<name>`, …) through `Event::Launch`. No platform decides what matches.
 - **The ways in from outside are the core's** (`records::launch`, `Event::Launch(id)`): the
   icon's shortcuts, the Dock's menu, the Jump List, the desktop entry's actions, the manifest's
   shortcuts, in its order and words; the files written ahead are checked against it.

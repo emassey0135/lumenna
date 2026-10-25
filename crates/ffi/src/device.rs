@@ -18,6 +18,7 @@ use lumenna_host::Reach;
 use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanChange, ReplanPins, TimeStyle};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_records::assistant::{Argument, Assisted};
+use lumenna_records::search::SearchDocument;
 use lumenna_records::reminders::DueReminders;
 use lumenna_records::{
     BackupDone, Change, DeviceList, Filters, LumennaError, MoveTarget, NewBlock, Plan, Rows, SettingList, TaskEdit,
@@ -259,6 +260,25 @@ impl Device {
     pub fn glance(&self, hours: u32, locale: Arc<dyn crate::Locale>) -> Result<Vec<GlanceEntry>, LumennaError> {
         let clock = lumenna_app::speech::Spoken(crate::Formatted(locale));
         Ok(self.lumenna.glance(hours)?.into_iter().map(|moment| lumenna_app::glance::worded(moment, &clock)).collect())
+    }
+
+    /// Everything a platform's search keeps an index of (Spotlight's indexed entities,
+    /// Android's AppSearch), each opened by its `launch` through `ShellEvent::Launch`.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn search_documents(&self) -> Result<Vec<SearchDocument>, LumennaError> {
+        self.lumenna.search_documents()
+    }
+
+    /// What a platform's search finds for `text`, most fitting first.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn search_results(&self, text: String) -> Result<Vec<SearchDocument>, LumennaError> {
+        self.lumenna.search_results(&text)
     }
 
     // What the tests seed and check the store with.

@@ -403,7 +403,36 @@ impl Lumenna {
                 let actions = model.day_view().map(|day| day.actions).unwrap_or_default();
                 render().and(self.run_among(&actions, &[ActionKind::WhatNow], lumenna_records::Subject::Day, model))
             }
-            _ => Command::done(),
+            // A search result chosen (`lumenna_records::search`): what it names, opened.
+            other => match other.split_once(':') {
+                Some(("task", id)) => {
+                    model.go(Place::Tasks);
+                    model.hold(id);
+                    render().and(self.details(DetailsEvent::Show(id.to_owned()), model))
+                }
+                Some(("project", name)) => {
+                    model.go(Place::Project(name.to_owned()));
+                    render()
+                }
+                Some(("label", name)) => {
+                    model.go(Place::Label(name.to_owned()));
+                    render()
+                }
+                Some(("filter", name)) => {
+                    let query = model.store.as_ref().and_then(|store| {
+                        store.snapshot.saved_filters.values().find(|f| f.name == name).map(|f| f.query.clone())
+                    });
+                    let Some(query) = query else { return Command::done() };
+                    model.go(Place::Filter { name: name.to_owned(), query });
+                    render()
+                }
+                Some(("block", series)) => {
+                    model.go(Place::Blocks);
+                    model.hold(series);
+                    render()
+                }
+                _ => Command::done(),
+            },
         }
     }
 
