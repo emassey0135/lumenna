@@ -15,7 +15,14 @@ on:
     # every app and cancel a run that matters. A tag is built whatever it touched. Markdown that
     # ships, such as BTSpeak's help topics, is not among these.
     paths-ignore: ["**/CLAUDE.md", "**/README.md", "ROADMAP.md"]
+  # Asked for by hand, a run builds the platforms named (space-separated job names), so a branch
+  # checks the one it changed without building every app.
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "What to build: all, or any of debian windows gtk apple android flatpak web"
+        type: string
+        default: all
 
 # A newer push to master replaces the run still going for the one before it, as CI's do.
 concurrency:
@@ -29,6 +36,7 @@ env:
 jobs:
   debian:
     name: lum, ${{ matrix.btspeak && 'and the BTSpeak app, ' || '' }}Linux ${{ matrix.arch }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(format(' {0} ', inputs.platforms), ' debian ') }}
     strategy:
       fail-fast: false
       matrix:
@@ -89,6 +97,7 @@ jobs:
 
   windows:
     name: Windows installer and MSIX, ${{ matrix.arch }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(format(' {0} ', inputs.platforms), ' windows ') }}
     strategy:
       fail-fast: false
       matrix:
@@ -189,6 +198,7 @@ jobs:
 
   gtk:
     name: GTK app as an AppImage, ${{ matrix.arch }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(format(' {0} ', inputs.platforms), ' gtk ') }}
     strategy:
       fail-fast: false
       matrix:
@@ -256,6 +266,7 @@ jobs:
 
   apple:
     name: ${{ matrix.name }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(format(' {0} ', inputs.platforms), ' apple ') }}
     strategy:
       fail-fast: false
       matrix:
@@ -338,6 +349,7 @@ jobs:
 
   android:
     name: Android and Wear OS apps
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(format(' {0} ', inputs.platforms), ' android ') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -373,6 +385,7 @@ jobs:
 
   flatpak:
     name: Flatpak, ${{ matrix.arch }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(format(' {0} ', inputs.platforms), ' flatpak ') }}
     strategy:
       fail-fast: false
       matrix:
@@ -417,6 +430,7 @@ jobs:
 
   web:
     name: Web client
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(format(' {0} ', inputs.platforms), ' web ') }}
     runs-on: ubuntu-24.04
     defaults:
       run:

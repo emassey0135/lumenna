@@ -2,8 +2,8 @@
 //! Android), the Dock's menu on a Mac, the taskbar's Jump List on Windows, a desktop entry's
 //! actions on Linux, and a web app's manifest. Each platform lists these and no others, in
 //! this order and these words, and hands the one chosen to the app (`Event::Launch`), which
-//! does it. A platform whose list is a file written ahead (a desktop entry, a manifest, an
-//! Android shortcuts file) keeps it as this says, which a test of the core checks.
+//! does it. A platform whose list is a file written ahead (the desktop entry, the web's
+//! manifest) keeps it as this says, which a test of the core checks; the rest set it at run time.
 
 use serde::{Deserialize, Serialize};
 
