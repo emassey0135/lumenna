@@ -167,6 +167,32 @@ Each is a thin adapter over the command surface.
     States, as of July 2026). It asks a round trip under 500 ms, which the enclave meets more
     surely than a forwarded home connection. No classic Alexa skill: Amazon's new tools are all for
     Alexa+, where a skill is invoked directly only if Amazon picks it after an evaluation form.
+- **MCP Apps** (the extension, official since January 2026; Claude and ChatGPT draw them): the
+  whole app inside the assistant's conversation, so a person who asked for today sees the day
+  and acts on it there. Decided:
+  - **The Crux app runs in `lum mcp`**, as it runs in `lum rpc` for Emacs: each MCP App on
+    screen is one of its screens (`Event::On`). The page is the web client's drawing layer,
+    the same React Aria components over the same `ViewModel`, fed each turn as a tool's result
+    instead of by the WASM core; a key or a click goes back as one tool (an `app_event(screen,
+    event)`, offered to the page and not the model), which answers with that screen's turn.
+    What is announced goes to the page's live region, as on the web. The page carries no WASM
+    and no store, so the store never leaves the device and the snapshot never enters the
+    assistant's page.
+  - **One page for every tool, opened at a place** by `records::launch` (`today`, `task:<id>`,
+    a proposal): every view and form is there, because the whole app is, and the person moves
+    anywhere from where it opened.
+  - **The model is told what the person did** (`updateModelContext`, the core's announcement),
+    so "move it to tomorrow" after a change in the page means the row just changed.
+  - **Proposals are the first use**: the model asks for Plan the Day or Replan from Now, the
+    page shows the whole proposal, and the person accepts it there, as the planner's rule asks.
+
+  Before building past a first page: whether Claude asks the person to approve each tool call
+  the page makes (if it does, a key press each is unusable); whether Claude's page gives a
+  screen reader the iframe's focus and live region (check VoiceOver and NVDA first); and the
+  sandbox's limits on a bundled page. A page is not pushed what changed: it asks for its
+  screen's turn when shown and on a slow timer. Through cloud MCP every event crosses the
+  assistant's cloud, so moving through a list stays in the page and only a write or a new
+  place makes a round trip.
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
     unreachable device, and convergence cannot be vetoed. Hooks fire after a change is
