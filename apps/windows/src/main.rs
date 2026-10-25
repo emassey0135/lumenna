@@ -17,6 +17,7 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 mod shortcut;
+mod widget;
 
 // How every line reads, the keys and the tree are the app's, shared with every other.
 #[cfg_attr(not(windows), allow(unused_imports))]

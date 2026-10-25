@@ -16,6 +16,7 @@ mod detail;
 mod dialog;
 mod font;
 mod help;
+mod jump_list;
 mod menu;
 mod prompts;
 mod quick_add;
@@ -35,7 +36,13 @@ mod toast;
 mod tray;
 mod tree;
 mod view;
+mod widgets;
 
 pub fn run() {
+    // Started by the Widgets board, to draw its widgets: no window.
+    if widgets::requested() {
+        widgets::serve();
+        return;
+    }
     app::run();
 }

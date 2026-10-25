@@ -190,9 +190,12 @@ Each is a thin adapter over the command surface.
     CI, and `lum` alone as a zip. Still to come: winget manifests, one for the installer and one
     for `lum` alone; WinSparkle in the installed app; the Store, with Partner Center's identity
     in place of CI's stand-in (`MSIX_*` variables) and a submission; signing the installer and
-    `lum` (Artifact Signing), without which SmartScreen warns; and trying by hand what CI
-    cannot: the packaged app's startup task and toasts, the packaged and installed apps side by
-    side, and the uninstaller's question.
+    `lum` (Artifact Signing), without which SmartScreen warns; once signing exists, a package
+    with an external location (a sparse package, signed, registered by the installer) giving the
+    installed app the identity the Widgets board needs, which only the MSIX has now; and trying by
+    hand what CI cannot: the packaged app's startup task, toasts and widget on the board (drawn
+    in both sizes, kept up to date, Mark Done), the Jump List in both installs, the packaged and
+    installed apps side by side, and the uninstaller's question.
   - **macOS.** Built: the app for both architectures on a disk image, `lum` inside it, and `lum`
     universal alone as a tarball. Still to come: Developer ID signing and notarization, with the
     paid account, without which the app opens only once allowed in System Settings; Sparkle; a

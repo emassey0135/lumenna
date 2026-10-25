@@ -94,6 +94,33 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   the window's thread and answered through `WM_EVENT`), since a package's registry writes never
   reach the Run key; its toasts are the package's; and `lum` comes with it under an app
   execution alias. `test.ps1` trusts a certificate machine-wide: for CI's throwaway runners only.
+- **The Widgets board's widget is the MSIX's alone** (`win/widgets`): `lumenna.exe --widgets`, a
+  COM server of the class the manifest's `windows.comServer` and `com.microsoft.windows.widgets`
+  extension name, started by the board. The app in a mode of its own rather than a program of
+  its own, since the statically linked core would be carried twice; started so, it opens no
+  window, takes no instance lock and gives no reminders. It draws the glance (`Device::glance`,
+  in Windows' clock) as Adaptive Cards (`src/widget.rs`, its templates in `src/widget/`): small,
+  the headline and the timer running; medium, the headline, the next block and the tasks due,
+  each worded as its row (`speech::row_line`) and with its row's own Mark Done, run as
+  `assist("complete_task")`. The text is the card's data, never its template, so a `${` typed in
+  a title stays text. While a widget is on screen it looks every two seconds whether the store
+  moved, and draws again then, at each moment the timeline names and each minute a timer runs.
+  The Widgets API is the Windows App SDK's, not the `windows` crate's: generated once into
+  `win/widgets/bindings.rs` (how, at its top), and reached through the package's dependency on
+  the Windows App Runtime framework, which the Store installs with it and `test.ps1` installs
+  from Microsoft's NuGet package. **The Inno-installed app has no package identity, so it offers
+  no widget**: a package with an external location would give it one once Windows signing
+  exists (`ROADMAP.md`). What the board draws, and Mark Done, are checked by hand; CI checks the
+  class is registered with the package and that COM starts the app as it.
+- **The Jump List is the core's ways in** (`win/jump_list.rs`, `launch_shortcuts()`), made at
+  start off the window's thread, on the taskbar button and in Start: a package's through
+  `Windows.UI.StartScreen.JumpList`, whose items hand `--launch <id>` to Windows' activation
+  (`package::launched_with`); an ordinary install's as the shell's tasks for the notification
+  identity, each a link to the executable with `--launch <id>` (and `--profile` for a profile
+  other than the usual one). A second copy started with `--launch` hands the id to the one
+  running (`WM_COPYDATA`, `tray::claim`). Either way the window is shown and `Launch(id)` sent
+  once the app is still, so it runs over the store read; New Task's line, opened by the app,
+  then opens the window's quick add, which draws it.
 - **Quick add sends its line as it is typed** (`Typing::Text`); its readback and adding are the
   app's (`QuickAdd`), which holds what it added. Completion asks the store at keystroke rate
   (`App::complete`): the view's offer can lag the typing.

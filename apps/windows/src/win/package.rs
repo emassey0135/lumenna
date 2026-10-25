@@ -4,9 +4,9 @@
 //! is the package's too (`profile::default_directory`), and with it the one-instance lock and
 //! the pipe named from its path.
 
-use windows::ApplicationModel::Activation::ActivationKind;
+use windows::ApplicationModel::Activation::{ActivationKind, LaunchActivatedEventArgs};
 use windows::ApplicationModel::{AppInstance, StartupTask, StartupTaskState};
-use windows::core::HSTRING;
+use windows::core::{HSTRING, Interface};
 
 use crate::profile;
 
@@ -25,6 +25,19 @@ pub fn started_at_sign_in() -> bool {
         && AppInstance::GetActivatedEventArgs()
             .and_then(|arguments| arguments.Kind())
             .is_ok_and(|kind| kind == ActivationKind::StartupTask)
+}
+
+/// What a package's app was started with by Windows rather than on a command line: a Jump
+/// List item's arguments (`--launch <id>`).
+pub fn launched_with() -> Vec<String> {
+    if !packaged() {
+        return Vec::new();
+    }
+    AppInstance::GetActivatedEventArgs()
+        .and_then(|arguments| arguments.cast::<LaunchActivatedEventArgs>())
+        .and_then(|launched| launched.Arguments())
+        .map(|arguments| arguments.to_string().split_whitespace().map(str::to_owned).collect())
+        .unwrap_or_default()
 }
 
 fn task() -> windows::core::Result<StartupTask> {

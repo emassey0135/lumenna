@@ -29,6 +29,22 @@ if ($LASTEXITCODE -ne 0) { throw 'SignTool did not sign the test copy' }
 Export-Certificate -Cert $cert -FilePath "$work\ci.cer" | Out-Null
 Import-Certificate -FilePath "$work\ci.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
 
+# The Windows App Runtime the package depends on for its widget, which the Store would install
+# with it: taken from Microsoft's own NuGet package of it where the runner has none.
+$runtime = 'Microsoft.WindowsAppRuntime.2'
+$runtimeVersion = '2.5.1'
+if (-not (Get-AppxPackage -Name $runtime | Where-Object { "$($_.Architecture)" -eq $machine })) {
+    $ProgressPreference = 'SilentlyContinue'
+    $nuget = "$work\runtime.zip"
+    Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.windowsappsdk.runtime/$runtimeVersion/microsoft.windowsappsdk.runtime.$runtimeVersion.nupkg" -OutFile $nuget
+    Expand-Archive $nuget "$work\runtime"
+    Add-AppxPackage -Path "$work\runtime\tools\MSIX\win10-$machine\$runtime.msix"
+    Write-Output "Installed $runtime $runtimeVersion"
+}
+
+# The widget provider's COM class, as the manifest names it (`win/widgets`).
+$widgetClass = '18D24380-6221-4EAF-975D-40086936D300'
+
 try {
     Add-AppxPackage -Path $signed
     $installed = Get-AppxPackage -Name $IdentityName
@@ -52,9 +68,23 @@ try {
     $manifest = [xml](Get-Content -Raw "$($installed.InstallLocation)\AppxManifest.xml")
     if ($manifest.OuterXml -notmatch 'windows\.startupTask') { throw 'the package declares no startup task' }
 
+    # The Widgets board's provider: the widget extension, its class registered with the package,
+    # and the app started by COM as that class, as the board starts it.
+    if ($manifest.OuterXml -notmatch 'com\.microsoft\.windows\.widgets') { throw 'the package declares no widget' }
+    if (-not (Test-Path "Registry::HKEY_CLASSES_ROOT\PackagedCom\ClassIndex\{$widgetClass}\$($installed.PackageFullName)")) {
+        throw "the widget provider's class {$widgetClass} is not registered with the package"
+    }
+    $provider = [Activator]::CreateInstance([Type]::GetTypeFromCLSID([guid]$widgetClass))
+    if (-not $provider) { throw 'COM did not start the widget provider' }
+    $serving = Get-CimInstance Win32_Process -Filter "Name = 'lumenna.exe'" | Where-Object { $_.CommandLine -match '--widgets' }
+    if (-not $serving) { throw 'the widget provider is not lumenna.exe started with --widgets' }
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($provider)
+    $serving | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Write-Output 'The widget provider is registered, and COM starts it'
+
     Remove-AppxPackage -Package $installed.PackageFullName
     if (Get-AppxPackage -Name $IdentityName) { throw 'the package did not uninstall' }
-    Write-Output 'Installed, ran, kept its own store, and uninstalled'
+    Write-Output 'Installed, ran, kept its own store, served its widget, and uninstalled'
 }
 finally {
     Get-ChildItem Cert:\LocalMachine\TrustedPeople | Where-Object Thumbprint -eq $cert.Thumbprint | Remove-Item
