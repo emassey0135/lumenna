@@ -10,6 +10,7 @@ import java.util.UUID
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -80,6 +81,10 @@ class TimerTileTest {
         assertEquals(Tile.STATE_ACTIVE, running.state)
         assertEquals("essay", running.subtitle)
         core.device.toggleTimer()
-        assertEquals(Tile.STATE_INACTIVE, TimerTile.shown(core.device.timerControl(), locked = false).state)
+        // Stopped. What a press would start next is the core's: the block of its own the first
+        // press made is still under way, and a task is offered once a day, so it may be nothing.
+        val stopped = core.device.timerControl()
+        assertFalse(stopped.running)
+        assertNotEquals(Tile.STATE_ACTIVE, TimerTile.shown(stopped, locked = false).state)
     }
 }
