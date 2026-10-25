@@ -32,6 +32,7 @@ pub mod invite;
 pub mod node;
 #[cfg(feature = "network")]
 pub mod pairing;
+mod rounds;
 #[cfg(feature = "network")]
 pub mod session;
 

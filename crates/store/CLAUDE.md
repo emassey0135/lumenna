@@ -65,7 +65,7 @@ new **generation** (a UUIDv7; newest wins). What is easy to break:
 
 - **Two generations' histories must never meet.** A generation's documents sync, link and
   back up as `core@<generation>` (`SyncName`), which a build from before generations does not
-  read, and the session says protocol 1 once erased, which it refuses. `take_changes` and
+  read, and whose sessions (protocol 0) a build that knows generations (protocol 2) refuses. `take_changes` and
   `changes_since` ignore another generation; `restore` refuses one, older or newer.
 - **A rebuild writes into the genesis's collections and the Inbox** (`Doc::copy_into`,
   `Raw::write_into`), never over them: a year's document another device begins from its

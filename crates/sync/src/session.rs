@@ -5,11 +5,12 @@
 //! 1. **Hello.** Each side sends the documents it holds. A document either side holds is
 //!    synced, so a year this device has never opened arrives from a peer that has — its
 //!    genesis is deterministic, so starting it from nothing here forks nothing.
-//! 2. **Rounds, one document at a time, in name order.** In each round both sides send one
-//!    frame — the next Automerge sync message, or an empty frame for "nothing to say" — and
-//!    then read the other's. When both frames of a round were empty, the document is done.
-//!    Both sides see the same two frames, so both stop on the same round without any further
-//!    signal.
+//! 2. **Rounds, every document at once** (`crate::rounds`). In each round both sides send one
+//!    frame — the next Automerge sync message for every document that has one, or an empty
+//!    frame for "nothing to say" — and then read the other's. When both frames of a round were
+//!    empty, the session is done. Both sides see the same two frames, so both stop on the same
+//!    round without any further signal. One round trip moves every document a step, so a
+//!    session over a relay costs the round trips of its slowest document, not of them all.
 //!
 //! Sending before reading is what keeps the lockstep from deadlocking: each side's frame is
 //! already in flight when it starts waiting for the other's.
@@ -19,26 +20,27 @@
 //! small; saving per-peer state would buy a round trip and cost a table of state that goes
 //! stale whenever a peer compacts.
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use lumenna_store::{Adopted, DocId, SyncName, SyncState};
+use lumenna_store::{Adopted, DocId, SyncName};
 
 use crate::error::{Result, SyncError};
 use crate::framing::{read_frame, write_frame};
+use crate::rounds::{Reader, Rounds, put_said};
 use crate::{SharedStore, lock};
 
 /// The session protocol's version. A peer speaking another is refused with a message saying
 /// which side needs updating, rather than misread.
-const PROTOCOL: u32 = 0;
+///
+/// 0 was a round per document, and 1 the same said by a store erased for good, so that a build
+/// from before generations refused it. Every build that speaks 2 knows generations
+/// (`lumenna_store::SyncName`), so an erased store says 2 like any other.
+const PROTOCOL: u32 = 2;
 
-/// The same protocol, said by a device whose store has been erased for good (a newer
-/// generation, `lumenna_store::SyncName`), so that a build from before generations, which
-/// would sync its documents' frames into the newer ones', refuses rather than mixes the two
-/// histories. This build speaks both.
-const ERASED: u32 = 1;
-
-/// The most rounds one document may take. Automerge converges in a handful; this is a guard
+/// The most rounds one session may take. Automerge converges in a handful; this is a guard
 /// against a peer that never stops talking, not a tuning parameter.
 const MAX_ROUNDS: usize = 1_000;
 
@@ -55,6 +57,8 @@ pub struct Summary {
     pub documents: usize,
     /// The documents that changed on this side.
     pub changed: Vec<DocId>,
+    /// The rounds it took, the last of them the one in which neither side had anything to say.
+    pub rounds: usize,
     /// The newer generation of the store this side took in, when the other had erased for
     /// good.
     pub adopted: Option<Adopted>,
@@ -76,20 +80,16 @@ where
     W: AsyncWrite + Unpin,
 {
     let mine: Vec<SyncName> = lock(store)?.sync_documents()?;
-    let erased = mine.iter().any(|name| name.generation.is_some());
-    let hello = Hello {
-        protocol: if erased { ERASED } else { PROTOCOL },
-        documents: mine.iter().map(SyncName::name).collect(),
-    };
+    let hello = Hello { protocol: PROTOCOL, documents: mine.iter().map(SyncName::name).collect() };
     let encoded = serde_json::to_vec(&hello)
         .map_err(|e| SyncError::Protocol(format!("could not write a hello: {e}")))?;
     write_frame(writer, &encoded).await?;
 
     let theirs: Hello = serde_json::from_slice(&read_frame(reader).await?)
         .map_err(|e| SyncError::Protocol(format!("a hello that does not read: {e}")))?;
-    if theirs.protocol > ERASED {
+    if theirs.protocol != PROTOCOL {
         return Err(SyncError::Protocol(format!(
-            "it speaks sync protocol {} and this device speaks {ERASED}; update the older one",
+            "it speaks sync protocol {} and this device speaks {PROTOCOL}; update the older one",
             theirs.protocol
         )));
     }
@@ -102,20 +102,18 @@ where
     documents.extend(theirs.documents.iter().filter_map(|name| SyncName::parse(name)));
     let newest = documents.iter().map(|name| name.generation.clone()).max().flatten();
     documents.retain(|name| name.generation == newest);
-    documents.sort();
-    documents.dedup();
+    let documents: BTreeSet<SyncName> = documents.into_iter().collect();
 
-    let mut summary = Summary { documents: documents.len(), ..Summary::default() };
-    for name in documents {
-        match sync_document(store, &name, reader, writer).await {
-            Ok(true) => summary.changed.push(name.id),
-            Ok(false) => {}
-            Err(error) => {
-                lock(store)?.discard_adoption();
-                return Err(error);
-            }
+    let mut changed = BTreeSet::new();
+    let rounds = match reconcile(store, &documents, &mut changed, reader, writer).await {
+        Ok(rounds) => rounds,
+        Err(error) => {
+            lock(store)?.discard_adoption();
+            return Err(error);
         }
-    }
+    };
+    let mut summary =
+        Summary { documents: documents.len(), changed: changed.into_iter().collect(), rounds, adopted: None };
     let mut store = lock(store)?;
     summary.adopted = store.finish_adoption()?;
     // Taking a newer generation in changes every document there is.
@@ -125,31 +123,44 @@ where
     Ok(summary)
 }
 
-async fn sync_document<R, W>(
+/// The rounds, until a round in which neither side had anything to say. Returns how many it took.
+async fn reconcile<R, W>(
     store: &SharedStore,
-    name: &SyncName,
+    documents: &BTreeSet<SyncName>,
+    changed: &mut BTreeSet<DocId>,
     reader: &mut R,
     writer: &mut W,
-) -> Result<bool>
+) -> Result<usize>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let mut state = SyncState::new();
-    let mut changed = false;
-    for _ in 0..MAX_ROUNDS {
-        let outgoing = lock(store)?.sync_message(name, &mut state)?;
-        write_frame(writer, outgoing.as_deref().unwrap_or_default()).await?;
-        let incoming = read_frame(reader).await?;
-
-        if !incoming.is_empty() {
-            changed |= lock(store)?.receive_sync_message(name, &mut state, &incoming)?;
+    let mut rounds = Rounds::default();
+    for round in 0..MAX_ROUNDS {
+        let said = rounds.say(&mut *lock(store)?, documents)?;
+        let mut outgoing = Vec::new();
+        if !said.is_empty() {
+            put_said(&mut outgoing, &said);
         }
-        if outgoing.is_none() && incoming.is_empty() {
-            return Ok(changed);
+        write_frame(writer, &outgoing).await?;
+
+        let incoming = read_frame(reader).await?;
+        let heard = if incoming.is_empty() {
+            Vec::new()
+        } else {
+            let mut reading = Reader::new(&incoming);
+            let heard = reading.said()?;
+            reading.end()?;
+            heard
+        };
+        // Only the documents both sides agreed on: a message for any other, such as an older
+        // generation's, must never reach this store.
+        changed.extend(rounds.hear(&mut *lock(store)?, &heard, |name| documents.contains(name))?);
+        if said.is_empty() && heard.is_empty() {
+            return Ok(round + 1);
         }
     }
-    Err(SyncError::Protocol(format!("{} did not settle", name.id.name())))
+    Err(SyncError::Protocol("the other device's sync did not settle".to_owned()))
 }
 
 #[cfg(test)]
@@ -280,7 +291,8 @@ mod tests {
         let secret = add(&a, "the secret");
         let edit = lumenna_core::edit::purge_task(&a.lock().unwrap().snapshot().0, secret.id).unwrap();
         a.lock().unwrap().erase(lumenna_store::Documents::erased_by(&edit)).unwrap();
-        // What a build from before generations reads first: a protocol it refuses.
+        // What a build from before generations reads first: a protocol it refuses, since it
+        // took nothing above 1.
         let (mut a_end, mut other_end) = tokio::io::duplex(1 << 16);
         let a_store = a.clone();
         tokio::spawn(async move {
@@ -289,7 +301,50 @@ mod tests {
         });
         let (mut r, _w) = tokio::io::split(&mut other_end);
         let hello: Hello = serde_json::from_slice(&read_frame(&mut r).await.unwrap()).unwrap();
-        assert_ne!(hello.protocol, PROTOCOL);
+        assert!(hello.protocol > 1, "{}", hello.protocol);
         assert!(hello.documents.iter().all(|name| name.contains('@')), "{:?}", hello.documents);
+    }
+
+    #[tokio::test]
+    async fn a_peer_speaking_a_round_per_document_is_told_to_update() {
+        let a = store();
+        let (mut a_end, mut other_end) = tokio::io::duplex(1 << 16);
+        let a_store = a.clone();
+        let session = tokio::spawn(async move {
+            let (mut r, mut w) = tokio::io::split(&mut a_end);
+            run(&a_store, &mut r, &mut w).await
+        });
+        let (mut r, mut w) = tokio::io::split(&mut other_end);
+        let older = serde_json::to_vec(&Hello { protocol: 0, documents: vec!["core".to_owned()] }).unwrap();
+        write_frame(&mut w, &older).await.unwrap();
+        read_frame(&mut r).await.unwrap();
+        let error = session.await.unwrap().unwrap_err();
+        assert!(error.to_string().contains("update the older one"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn every_document_moves_in_the_same_round_trips() {
+        let (a, b) = (store(), store());
+        add(&a, "in the core");
+        for year in 2027..2032 {
+            let block = BlockSeries::one_off(
+                "Retreat",
+                BlockKind::Work,
+                jiff::civil::date(year, 4, 1),
+                jiff::civil::time(9, 0, 0, 0),
+                60,
+            )
+            .unwrap();
+            a.lock().unwrap().write(|docs| docs.put_series(&block, None)).unwrap();
+        }
+
+        let (left, right) = sync(&a, &b).await;
+        // A round per document could never take fewer rounds than there are documents.
+        assert!(left.rounds < left.documents, "{} rounds for {} documents", left.rounds, left.documents);
+        assert_eq!(left.rounds, right.rounds, "both sides stop on the same round");
+        for year in 2027..2032 {
+            assert!(right.changed.contains(&DocId::Blocks(year)), "{right:?}");
+        }
+        assert!(right.changed.contains(&DocId::Core), "{right:?}");
     }
 }

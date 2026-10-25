@@ -5,8 +5,18 @@
 //! time — whichever holds the sync lock — and the rest read and write the store as usual.
 //!
 //! **Trust is the `devices` document**. A connection from a key not listed there is
-//! closed before a byte of data moves, and this device never dials one either.
+//! closed before a byte of data moves, and this device never dials one either. It is asked
+//! again at every session, since a connection outlives one.
+//!
+//! **A connection is kept between sessions** while both devices are awake: each session is a
+//! stream of its own on it, either side opening one, so a change goes across in a session's
+//! round trips rather than after a new connection's handshake, which through a relay or a
+//! hole being punched takes a second or more. Iroh's heartbeats keep it open, and say within
+//! its idle timeout when the other device has gone; a kept connection that does not answer in
+//! [`KEPT_TIMEOUT`] is dropped and the device dialled afresh.
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use iroh::endpoint::{Connection, RecvStream, SendStream};
@@ -35,6 +45,12 @@ const DEVICE_SERVICE: &str = "lumenna";
 
 /// How long one peer gets before a sync with it is given up for this round.
 pub const PEER_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long a session on a kept connection gets before the connection is taken for gone and
+/// the device dialled afresh. Short, since the two were in sync a round ago: a kept session
+/// carries what changed since, and a device that went to sleep a moment ago leaves its
+/// connection looking open until Iroh's idle timeout, longer than a round should wait.
+pub const KEPT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) async fn bind(
     secret: SecretKey,
@@ -104,7 +120,9 @@ pub struct Node {
     endpoint: Endpoint,
     store: SharedStore,
     _local: LocalLookup,
-    arrived: std::sync::Arc<tokio::sync::Notify>,
+    arrived: Arc<tokio::sync::Notify>,
+    /// The connection kept to each device, whichever side dialled it.
+    kept: Arc<Mutex<HashMap<EndpointId, Connection>>>,
 }
 
 impl std::fmt::Debug for Node {
@@ -122,7 +140,7 @@ impl Node {
     pub async fn bind(store: SharedStore, network: Network) -> Result<Self> {
         let secret = device_key(&store)?;
         let (endpoint, local) = bind(secret, ALPN_SYNC, network, DEVICE_SERVICE, true).await?;
-        Ok(Self { endpoint, store, _local: local, arrived: std::sync::Arc::default() })
+        Ok(Self { endpoint, store, _local: local, arrived: Arc::default(), kept: Arc::default() })
     }
 
     /// This device's identifier.
@@ -144,7 +162,22 @@ impl Node {
     /// If the peer is not in `devices`, cannot be reached, or the session fails.
     pub async fn sync_with(&self, peer: impl Into<EndpointAddr>) -> Result<Summary> {
         let addr = peer.into();
-        self.require_trusted(addr.id)?;
+        let id = addr.id;
+        if let Err(refused) = self.require_trusted(id) {
+            // Unpaired since: what was kept for it goes too.
+            if let Some(conn) = self.kept_conn(id) {
+                self.forget(id, &conn);
+                conn.close(1u32.into(), b"not paired");
+            }
+            return Err(refused);
+        }
+        if let Some(conn) = self.kept_conn(id) {
+            match n0_future::time::timeout(KEPT_TIMEOUT, self.dial_session(&conn)).await {
+                Ok(Ok(summary)) => return Ok(summary),
+                // Gone quiet or broken: dialled afresh below.
+                _ => self.forget(id, &conn),
+            }
+        }
         let conn = self
             .endpoint
             .connect(addr, ALPN_SYNC)
@@ -156,10 +189,20 @@ impl Node {
                     "could not reach it; it may be off, asleep, or not running sync ({e})"
                 ))
             })?;
-        let (mut send, mut recv) = conn
-            .open_bi()
-            .await
-            .map_err(|e| SyncError::Network(e.to_string()))?;
+        self.keep(id, &conn);
+        // The other side may open its own sessions on it from now on.
+        let (node, answering) = (self.clone(), conn.clone());
+        n0_future::task::spawn(async move { node.answer_streams(&answering).await });
+        let outcome = self.dial_session(&conn).await;
+        if outcome.is_err() {
+            self.forget(id, &conn);
+        }
+        outcome
+    }
+
+    /// One session on `conn`, on a stream this side opens.
+    async fn dial_session(&self, conn: &Connection) -> Result<Summary> {
+        let (mut send, mut recv) = conn.open_bi().await.map_err(|e| SyncError::Network(e.to_string()))?;
         let summary = session::run(&self.store, &mut recv, &mut send).await?;
         // Said as soon as the changes are in the store, not after the goodbyes below, which can
         // take seconds — a view showing the store should redraw when the data is there.
@@ -167,8 +210,43 @@ impl Node {
             self.arrived.notify_one();
         }
         finish(&mut send, &mut recv).await?;
-        conn.close(0u32.into(), b"done");
         Ok(summary)
+    }
+
+    /// The connection kept to `peer`, if it is still open.
+    fn kept_conn(&self, peer: EndpointId) -> Option<Connection> {
+        let mut kept = self.kept.lock().ok()?;
+        match kept.get(&peer) {
+            Some(conn) if conn.close_reason().is_none() => Some(conn.clone()),
+            Some(_) => {
+                kept.remove(&peer);
+                None
+            }
+            None => None,
+        }
+    }
+
+    /// Keeps `conn` as the connection to `peer`. One it replaces closes once its last session
+    /// lets go of it, Iroh closing a connection nothing holds.
+    fn keep(&self, peer: EndpointId, conn: &Connection) {
+        if let Ok(mut kept) = self.kept.lock() {
+            kept.insert(peer, conn.clone());
+        }
+    }
+
+    /// Lets go of `conn` as the connection to `peer`, unless another has replaced it since.
+    fn forget(&self, peer: EndpointId, conn: &Connection) {
+        if let Ok(mut kept) = self.kept.lock()
+            && kept.get(&peer).is_some_and(|kept| kept.stable_id() == conn.stable_id())
+        {
+            kept.remove(&peer);
+        }
+    }
+
+    /// Whether a connection to `peer` is kept open now — for tests.
+    #[must_use]
+    pub fn keeps(&self, peer: NodeId) -> bool {
+        endpoint_id(peer).is_ok_and(|id| self.kept_conn(id).is_some())
     }
 
     /// Syncs with every paired device that answers, each with its own time limit, and records
@@ -219,39 +297,58 @@ impl Node {
     }
 
     /// Answers paired devices until the endpoint closes. Each connection is handled on its own
-    /// task, so a slow peer holds up nobody else.
+    /// task, so a slow peer holds up nobody else, and kept for this side's own sessions too.
     pub async fn serve(&self) {
         while let Some(incoming) = self.endpoint.accept().await {
             let node = self.clone();
             n0_future::task::spawn(async move {
                 let Ok(accepting) = incoming.accept() else { return };
                 let Ok(conn) = accepting.await else { return };
-                let peer = node_id(conn.remote_id());
-                let outcome = node.answer(&conn).await;
-                if !matches!(outcome, Err(SyncError::Refused(_))) {
-                    node.record(peer, &outcome);
-                }
+                node.answer(&conn).await;
             });
         }
     }
 
-    async fn answer(&self, conn: &Connection) -> Result<Summary> {
-        if let Err(refused) = self.require_trusted(conn.remote_id()) {
+    /// Takes a connection the other side dialled, if it is a paired device's, and answers it.
+    async fn answer(&self, conn: &Connection) {
+        if self.require_trusted(conn.remote_id()).is_err() {
             conn.close(1u32.into(), b"not paired");
-            return Err(refused);
+            return;
         }
-        let (mut send, mut recv) =
-            conn.accept_bi().await.map_err(|e| SyncError::Network(e.to_string()))?;
-        let summary = session::run(&self.store, &mut recv, &mut send).await?;
+        self.keep(conn.remote_id(), conn);
+        self.answer_streams(conn).await;
+    }
+
+    /// Answers every session the other side opens on `conn`, until it closes, whichever side
+    /// dialled it.
+    async fn answer_streams(&self, conn: &Connection) {
+        let id = conn.remote_id();
+        while let Ok((mut send, mut recv)) = conn.accept_bi().await {
+            // Asked again at each session: the device may have been unpaired since the last.
+            let outcome = match self.require_trusted(id) {
+                Ok(()) => self.answer_session(&mut send, &mut recv).await,
+                Err(refused) => {
+                    conn.close(1u32.into(), b"not paired");
+                    Err(refused)
+                }
+            };
+            // A device unpaired since is no longer one to keep a record of.
+            if matches!(outcome, Err(SyncError::Refused(_))) {
+                break;
+            }
+            self.record(node_id(id), &outcome);
+        }
+        self.forget(id, conn);
+    }
+
+    async fn answer_session(&self, send: &mut SendStream, recv: &mut RecvStream) -> Result<Summary> {
+        let summary = session::run(&self.store, recv, send).await?;
         // Said as soon as the changes are in the store, not after the goodbyes below, which can
         // take seconds — a view showing the store should redraw when the data is there.
         if !summary.changed.is_empty() {
             self.arrived.notify_one();
         }
-        finish(&mut send, &mut recv).await?;
-        // The dialler closes once it has everything; waiting for that keeps this side from
-        // tearing down data still in flight.
-        let _ = n0_future::time::timeout(Duration::from_secs(5), conn.closed()).await;
+        finish(send, recv).await?;
         Ok(summary)
     }
 
@@ -278,12 +375,15 @@ impl Node {
     /// node can pass them on to the other devices — this is how an edit made on the phone
     /// reaches the laptop through the Pi without either being awake at the same time.
     #[must_use]
-    pub fn arrivals(&self) -> std::sync::Arc<tokio::sync::Notify> {
-        std::sync::Arc::clone(&self.arrived)
+    pub fn arrivals(&self) -> Arc<tokio::sync::Notify> {
+        Arc::clone(&self.arrived)
     }
 
     /// Closes the endpoint, letting peers know rather than leaving them to time out.
     pub async fn close(&self) {
+        if let Ok(mut kept) = self.kept.lock() {
+            kept.clear();
+        }
         self.endpoint.close().await;
     }
 }

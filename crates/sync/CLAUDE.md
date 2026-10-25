@@ -14,6 +14,14 @@ the CLI adds only the terminal prompt, the daemon's socket and signals.
   key not listed there. The ways in are a pairing whose words were confirmed on both sides
   (`edit::enroll_devices`), and the first sync over a Wear OS watch's link to its phone, which
   only Google's pairing of the two can open (`introduce`).
+- **A connection to each device is kept between sessions** (`Node::kept`), whichever side
+  dialled it, and both sides answer the streams the other opens on it (`answer_streams`), so
+  either side's next session skips a new connection's handshake. Trust is asked again at each
+  session, not only when it connected: a device unpaired since is refused on the connection it
+  holds and let go of. A kept connection that does not finish a session in `KEPT_TIMEOUT` is
+  dropped and the device dialled afresh, since one whose device just went to sleep looks open
+  until Iroh's idle timeout. Iroh's heartbeats (every five seconds) keep it open only while
+  the service runs.
 - **Pairing never uses the device key.** It runs on a key minted per pairing, so it needs no
   daemon and no IPC; device keys are exchanged only after the words are confirmed.
 - **The words** come from the connection's TLS exporter secret plus a commit-then-reveal
@@ -37,16 +45,19 @@ the CLI adds only the terminal prompt, the daemon's socket and signals.
 - **A round that misses a device is retried**, after 5 seconds and doubling to the full
   round's five minutes; otherwise a change sent while a device is briefly unreachable waits
   for the next full round.
-- **The session is lockstep per document**: both sides send one frame (a message, or empty)
-  then read one; both empty ends the document, so both stop together. Sync state is per
-  session, not saved.
+- **The session is lockstep, every document in each round** (`rounds.rs`, which the exchange
+  shares): both sides send one frame (every document's next message, or empty) then read one;
+  both empty ends the session, so both stop together. A round per document made a session
+  over a relay cost every document's round trips in turn. Sync state is per session, not
+  saved.
 - **Only the newest generation either side holds is synced** (a store erased for good,
   `crates/store/CLAUDE.md`), worked out alike on both sides from the hellos' names
   (`SyncName`), and the side holding the older takes the newer in when the session ends
   (`Summary::adopted`); the exchange does the same once settled (`Exchange::finish`), and a
-  parcel of another generation is ignored. A store erased says protocol 1 (`ERASED`), so a
-  build from before generations refuses it rather than feeding one history's frames into the
-  other's.
+  parcel of another generation is ignored, as is a session's message for a document the two
+  did not agree on. Every build speaking session protocol 2 knows generations; builds from
+  before (0, and 1 from an erased store) are refused, and refuse it, with "update the older
+  one".
 - **Local discovery is standard DNS-SD** (`discovery/`): `_lumenna._udp` (devices) and
   `_lumenna-pair._udp` (pairing), TXT `id` plus `a0`… addresses. Apple uses the system
   responder (on iOS, Bonjour, needing only `NSBonjourServices`, no multicast entitlement).

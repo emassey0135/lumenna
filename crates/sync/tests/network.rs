@@ -124,6 +124,45 @@ async fn paired_devices_sync_later_through_their_device_keys() {
 }
 
 #[tokio::test]
+async fn a_connection_is_kept_carrying_sessions_either_way_until_the_device_is_unpaired() {
+    let (a, b) = (store(), store());
+    let (left, _, _, _) = pair(&a, &b, true, true).await;
+    left.unwrap();
+    let node_a = Node::bind(a.clone(), Network::LocalOnly).await.unwrap();
+    let node_b = Node::bind(b.clone(), Network::LocalOnly).await.unwrap();
+    for node in [&node_a, &node_b] {
+        let serving = node.clone();
+        tokio::spawn(async move { serving.serve().await });
+    }
+
+    node_b.sync_with(node_a.addr()).await.unwrap();
+    assert!(node_b.keeps(node_a.id()), "the phone kept the connection it dialled");
+    let answered = async {
+        while !node_a.keeps(node_b.id()) {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(5), answered).await.expect("the laptop kept it too");
+
+    // The laptop's own session goes on the connection the phone opened.
+    let from_a = add(&a, "written on the laptop");
+    node_a.sync_with(node_b.addr()).await.unwrap();
+    assert!(has(&b, &from_a), "it reached the phone");
+
+    // Unpaired on the laptop: the next session on the kept connection is refused, and a fresh
+    // dial is too, so nothing more crosses.
+    let unpair = lumenna_core::edit::unpair_device(&a.lock().unwrap().snapshot().0, node_b.id()).unwrap();
+    a.lock().unwrap().apply_recorded(&unpair).unwrap();
+    let after = add(&b, "written after unpairing");
+    assert!(node_b.sync_with(node_a.addr()).await.is_err());
+    assert!(!has(&a, &after), "nothing from an unpaired device was taken in");
+    assert!(!node_a.keeps(node_b.id()), "the laptop let go of it");
+
+    node_a.close().await;
+    node_b.close().await;
+}
+
+#[tokio::test]
 async fn a_device_that_was_never_paired_is_refused() {
     let (a, stranger) = (store(), store());
     let node_a = Node::bind(a.clone(), Network::LocalOnly).await.unwrap();
