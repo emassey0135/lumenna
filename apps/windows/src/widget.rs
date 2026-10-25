@@ -20,6 +20,15 @@ pub const MEDIUM: &str = include_str!("widget/medium.json");
 /// The verb a task's Mark Done sends back, with the task's `id` as its data.
 pub const COMPLETE: &str = "complete";
 
+/// The verb New Task sends back (the glance's `NewTask` part, Today's alone), with the launch
+/// shortcut's `id` as its data: the app is started on it, as the Jump List starts it.
+pub const LAUNCH: &str = "launch";
+
+/// New Task's name on the card: its launch shortcut's, in Title Case, as Windows writes a button.
+fn new_task() -> String {
+    lumenna_records::launch::launch_shortcuts().into_iter().find(|s| s.id == "new-task").map(|s| s.title).unwrap_or_default()
+}
+
 /// The card's data at `now`, for either template: each task the glance names as it words it,
 /// beside its Mark Done, named as the glance names it in Title Case, as Windows writes a button.
 pub fn data(entry: &GlanceEntry, now: Timestamp) -> Value {
@@ -42,6 +51,7 @@ pub fn data(entry: &GlanceEntry, now: Timestamp) -> Value {
             "colour": if task.overdue { "Attention" } else { "Default" },
             "done": entry.mark_done,
         })).collect::<Vec<_>>(),
+        "new_task": new_task(),
     })
 }
 
@@ -79,6 +89,17 @@ pub fn completing(verb: &str, data: &str) -> Option<String> {
     }
     let data: Value = serde_json::from_str(data).ok()?;
     data["id"].as_str().filter(|id| !id.is_empty()).map(str::to_owned)
+}
+
+/// The launch shortcut a press of New Task names, if `verb` is New Task's and it names one the
+/// core has: a card is drawn from data, so what comes back is checked rather than started on.
+pub fn launching(verb: &str, data: &str) -> Option<String> {
+    if verb != LAUNCH {
+        return None;
+    }
+    let data: Value = serde_json::from_str(data).ok()?;
+    let id = data["id"].as_str()?;
+    lumenna_records::launch::launch_shortcuts().into_iter().map(|s| s.id).find(|known| known == id)
 }
 
 #[cfg(test)]
@@ -196,5 +217,16 @@ mod tests {
         assert_eq!(completing("open", r#"{"id":"t1"}"#), None);
         assert_eq!(completing(COMPLETE, "{}"), None);
         assert_eq!(completing(COMPLETE, "not json"), None);
+    }
+
+    #[test]
+    fn new_task_is_on_the_medium_card_named_as_the_core_names_it_and_starts_only_a_launch_shortcut() {
+        assert!(MEDIUM.contains(&format!("\"verb\": \"{LAUNCH}\"")), "New Task sends the verb taken back");
+        assert!(!SMALL.contains(LAUNCH), "Now has no New Task: its parts are the core's");
+        let data = data(&entry(moment("2026-10-25T09:00:00Z")), at("2026-10-25T09:00:00Z"));
+        assert_eq!(data["new_task"], "New Task");
+        assert_eq!(launching(LAUNCH, r#"{"id":"new-task"}"#).as_deref(), Some("new-task"));
+        assert_eq!(launching(LAUNCH, r#"{"id":"--profile"}"#), None, "only a way in the core has");
+        assert_eq!(launching(COMPLETE, r#"{"id":"new-task"}"#), None);
     }
 }

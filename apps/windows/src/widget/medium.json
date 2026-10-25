@@ -88,6 +88,18 @@
           ]
         }
       ]
+    },
+    {
+      "type": "ActionSet",
+      "spacing": "Medium",
+      "actions": [
+        {
+          "type": "Action.Execute",
+          "title": "${new_task}",
+          "verb": "launch",
+          "data": { "id": "new-task" }
+        }
+      ]
     }
   ]
 }
