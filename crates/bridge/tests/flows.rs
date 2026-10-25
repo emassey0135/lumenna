@@ -1050,6 +1050,21 @@ fn the_delete_key_moves_a_task_to_the_trash_and_a_trashed_one_asks_to_delete_it_
 }
 
 #[test]
+fn a_launch_shortcut_does_what_it_says_new_task_opening_quick_add_over_the_tasks_and_today_the_day() {
+    let mut app = App::new();
+    app.send(Event::Launch("new-task".to_owned()));
+    let view = app.view();
+    assert_eq!(view.place, Some(Place::Tasks));
+    assert!(view.line.is_some(), "quick add is open");
+
+    app.send(Event::Launch("today".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Today));
+    // One this build does not know changes nothing.
+    app.send(Event::Launch("somewhere-new".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Today));
+}
+
+#[test]
 fn settings_say_what_erasing_takes_under_the_stores_own_actions() {
     let mut app = App::new();
     app.send(Event::Settings(SettingsEvent::Open));

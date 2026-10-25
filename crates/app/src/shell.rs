@@ -89,6 +89,8 @@ pub enum ShellEvent {
     PlanFrom(Option<String>),
     /// Add a task from a quick-add line.
     QuickAdd(String),
+    /// A way in from outside the app was chosen, by its `id` in `lumenna_records::launch`.
+    Launch(String),
     /// Undo the last change.
     Undo,
     /// Redo what was undone.
@@ -125,6 +127,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::PairingAs { called, nearby } => Event::PairingAs { called, nearby },
             ShellEvent::PlanFrom(moment) => Event::PlanFrom(moment),
             ShellEvent::QuickAdd(line) => Event::QuickAdd(line),
+            ShellEvent::Launch(id) => Event::Launch(id),
             ShellEvent::Undo => Event::Undo,
             ShellEvent::Redo => Event::Redo,
         }
@@ -164,6 +167,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::PairingAs { called, nearby } => ShellEvent::PairingAs { called, nearby },
             Event::PlanFrom(moment) => ShellEvent::PlanFrom(moment),
             Event::QuickAdd(line) => ShellEvent::QuickAdd(line),
+            Event::Launch(id) => ShellEvent::Launch(id),
             Event::Undo => ShellEvent::Undo,
             Event::Redo => ShellEvent::Redo,
             // A shell's events are screen 0's for now; another screen is the app's own to address.

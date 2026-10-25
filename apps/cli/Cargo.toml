@@ -20,6 +20,7 @@ directories.workspace = true
 jiff.workspace = true
 lumenna-core.workspace = true
 lumenna-parse.workspace = true
+lumenna-records.workspace = true
 lumenna-store.workspace = true
 lumenna-host = { path = "../../crates/host", features = ["sync", "rpc"] }
 lumenna-ffi = { path = "../../crates/ffi", features = ["rpc"] }

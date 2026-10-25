@@ -16,6 +16,8 @@ use lumenna_host::{Lumenna, PhoneLink, ReminderLock};
 #[cfg(feature = "network")]
 use lumenna_host::Reach;
 use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanChange, ReplanPins, TimeStyle};
+use lumenna_app::glance::GlanceEntry;
+use lumenna_records::assistant::{Argument, Assisted};
 use lumenna_records::reminders::DueReminders;
 use lumenna_records::{
     BackupDone, Change, DeviceList, Filters, LumennaError, MoveTarget, NewBlock, Plan, Rows, SettingList, TaskEdit,
@@ -237,6 +239,26 @@ impl Device {
     /// If the store cannot be read.
     pub fn heads(&self) -> Result<String, LumennaError> {
         self.lumenna.heads()
+    }
+
+    /// Runs an assistant's operation (`lumenna_records::assistant`) by its identifier: what
+    /// Siri, Shortcuts and Gemini do, every one through here as `lum mcp`'s are, so no
+    /// assistant can do what another cannot. One that asks first refuses without `confirm`,
+    /// in the core's question.
+    pub fn assist(&self, operation: String, arguments: Vec<Argument>) -> Result<Assisted, LumennaError> {
+        self.lumenna.assist(&operation, arguments)
+    }
+
+    /// What a widget, complication or tile shows for the next `hours`, worded in `locale`'s
+    /// clock, as [`App::glance`](crate::App::glance) does: for what draws one without the app's
+    /// screens running (a widget provider, a background refresh).
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn glance(&self, hours: u32, locale: Arc<dyn crate::Locale>) -> Result<Vec<GlanceEntry>, LumennaError> {
+        let clock = lumenna_app::speech::Spoken(crate::Formatted(locale));
+        Ok(self.lumenna.glance(hours)?.into_iter().map(|moment| lumenna_app::glance::worded(moment, &clock)).collect())
     }
 
     // What the tests seed and check the store with.

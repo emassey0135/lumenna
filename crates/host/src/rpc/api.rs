@@ -209,6 +209,25 @@ outcomes!(
     DayPlanned(crate::DayPlanned),
 );
 
+impl From<lumenna_records::assistant::Assisted> for Outcome {
+    fn from(assisted: lumenna_records::assistant::Assisted) -> Self {
+        use lumenna_records::assistant::Assisted as A;
+        match assisted {
+            A::Change(x) => Self::Change(x),
+            A::Rows(x) => Self::Rows(x),
+            A::Task(x) => Self::Task(x),
+            A::Plan(x) => Self::Plan(x),
+            A::Filters(x) => Self::Filters(x),
+            A::Choices(x) => Self::Choices(x),
+            A::Replan(x) => Self::Replan(x),
+            A::DayPlan(x) => Self::DayPlan(x),
+            A::Timer(x) => Self::Timer(x),
+            A::Replanned(x) => Self::Replanned(x),
+            A::DayPlanned(x) => Self::DayPlanned(x),
+        }
+    }
+}
+
 impl From<Imported> for Outcome {
     fn from(imported: Imported) -> Self {
         match imported {

@@ -8,6 +8,7 @@
 //! command line and the same list on a phone cannot drift apart.
 
 pub mod actions;
+pub mod assistant;
 pub mod background;
 pub mod choices;
 pub mod colours;
@@ -17,7 +18,9 @@ pub mod error;
 pub mod exports;
 pub mod fields;
 pub mod form;
+pub mod glance;
 pub mod history;
+pub mod launch;
 pub mod lists;
 pub mod places;
 pub mod plan;

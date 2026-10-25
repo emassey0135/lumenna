@@ -24,6 +24,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use boltffi::{data, export};
 // Imported, not named by its path: BoltFFI finds another crate's type only so.
+use lumenna_app::glance::GlanceEntry;
 use lumenna_app::keys::KeyGroup;
 use crux_core::middleware::Layer;
 use lumenna_app::{Effect, Notice, SaveFile, ViewModel};
@@ -35,6 +36,8 @@ use lumenna_bridge::{Stack, Store, stack};
 use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
 use lumenna_app::speech::{self, Clock, Spoken};
+use lumenna_records::assistant::AssistantOperation;
+use lumenna_records::launch::LaunchShortcut;
 use lumenna_records::{Completions, LumennaError, Syntax};
 
 pub use device::Device;
@@ -178,6 +181,17 @@ impl App {
     pub fn lines_on(&self, screen: u32) -> Lines {
         lines(&self.view_on(screen), &*self.clock)
     }
+
+    /// What a widget, complication or tile shows for the next `hours` (at most two days),
+    /// worded in this device's clock: the moment now, then one wherever that changes, each
+    /// whole, for the platform's widget system to be handed as a timeline.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn glance(&self, hours: u32) -> Result<Vec<GlanceEntry>, LumennaError> {
+        Ok(self.lumenna.glance(hours)?.into_iter().map(|moment| lumenna_app::glance::worded(moment, &*self.clock)).collect())
+    }
 }
 
 impl App {
@@ -250,6 +264,23 @@ impl App {
 #[export]
 pub fn keyboard_shortcuts() -> Vec<KeyGroup> {
     lumenna_app::keys::grouped(true)
+}
+
+/// Every operation an assistant can do (`lumenna_records::assistant`), each with its names,
+/// description, category, parameters and what it does to the store: what Siri's and
+/// Shortcuts' App Intents and Gemini's App Functions are declared from and checked against, so
+/// they offer what `lum mcp` does, in the same words. Run one with `Device::assist`.
+#[export]
+pub fn assistant_operations() -> Vec<AssistantOperation> {
+    lumenna_records::assistant::operations()
+}
+
+/// The ways into Lumenna from outside it (`lumenna_records::launch`): the icon's shortcuts,
+/// the Dock's menu, a Jump List. A platform lists these in this order and these words, and
+/// hands the one chosen back as `ShellEvent::Launch`.
+#[export]
+pub fn launch_shortcuts() -> Vec<LaunchShortcut> {
+    lumenna_records::launch::launch_shortcuts()
 }
 
 fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaError> {

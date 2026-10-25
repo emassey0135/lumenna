@@ -111,6 +111,7 @@ pub struct ReplanFloor {
 
 
 /// A replan's accepted changes made, and what is proposed now.
+#[boltffi::data]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Replanned {
     /// What was changed, then what is proposed now, or that the rest of the day fits.
@@ -180,6 +181,7 @@ pub struct DayPins {
 }
 
 /// A day plan's accepted sittings made, and what is proposed now.
+#[boltffi::data]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DayPlanned {
     /// What was planned, then what is proposed now, if anything.

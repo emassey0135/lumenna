@@ -29,6 +29,7 @@
 //! calls in; here a bare number is refused rather than mistaken for a prefix.
 
 mod actions_ops;
+mod assist;
 pub mod day;
 mod durability;
 mod fields_ops;

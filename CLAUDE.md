@@ -137,6 +137,18 @@ crosses the FFI.
   palette lacks is said, not drawn.
 - **Terse announcements** (the synced `verbosity`, `terse` or `full`) leave out what the person
   knows already, never what the change was. Rows are components either way.
+- **Every assistant does what `lum mcp` does, from one table** (`records::assistant`): each
+  operation's names, description, category, keywords, parameters and what it does to the
+  store, run through one dispatcher (`Lumenna::assist`, over the FFI `Device::assist`). MCP's
+  tools are built from it; App Intents (Siri, Shortcuts, Apple Intelligence) and Android App
+  Functions (Gemini) are declared from it and checked against `assistant_operations()`, so an
+  operation added there reaches every assistant and none is worded twice.
+- **A glance is the core's** (`records::glance`, worded by `lumenna_app::glance`; `App::glance`
+  in the platform's clock, `Device::glance` without the screens): what a widget, complication,
+  tile or Smart Stack shows, as a timeline of moments. A platform draws it and decides nothing.
+- **The ways in from outside are the core's** (`records::launch`, `Event::Launch(id)`): the
+  icon's shortcuts, the Dock's menu, the Jump List, the desktop entry's actions, the manifest's
+  shortcuts, in its order and words; the files written ahead are checked against it.
 - **Wording stays client-neutral.** Nothing in the surface names a `lum` command or flag;
   the CLI adds those.
 - **Identifiers are text**: a whole UUID or a prefix that names one record. A bare number is

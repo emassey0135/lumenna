@@ -29,19 +29,18 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 
 use lumenna_host::rpc::api::{Outcome, Response};
-use lumenna_host::{Lumenna, MoveTarget, TaskEdit};
-use rmcp::handler::server::router::tool::ToolRouter;
-use rmcp::handler::server::wrapper::Parameters;
+use lumenna_host::Lumenna;
+use lumenna_records::assistant::{Argument, ArgumentValue, AssistantOperation};
 use rmcp::model::{
-    CallToolResult, ContentBlock, Implementation, ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParams,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation, JsonObject, ListToolsResult, Tool, ToolAnnotations, ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParams,
     ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource, ResourceContents,
     ResourceTemplate, ResourceUpdatedNotificationParam, ServerCapabilities, ServerConfig, SubscribeRequestParams,
     SubscriptionFilter, UnsubscribeRequestParams,
 };
 use rmcp::service::{RequestContext, SubscriptionContext};
-use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, ServiceExt, tool, tool_handler, tool_router};
+use rmcp::{ErrorData, Peer, RoleServer, ServerHandler, ServiceExt};
 use tokio::sync::watch;
-use serde::Deserialize;
+use serde_json::json;
 
 use crate::error::CliError;
 use crate::profile::Profile;
@@ -224,7 +223,6 @@ fn changes(lumenna: Arc<Lumenna>) -> watch::Receiver<u64> {
 struct Server {
     lumenna: Arc<Lumenna>,
     writes: bool,
-    tool_router: ToolRouter<Self>,
     changes: watch::Receiver<u64>,
     /// What this client asked `resources/subscribe` to follow, in protocol versions before
     /// 2026-07-28 (a client on that one listens instead, `subscriptions/listen`), each with what
@@ -236,11 +234,7 @@ struct Server {
 
 impl Server {
     fn new(lumenna: Arc<Lumenna>, writes: bool, changes: watch::Receiver<u64>) -> Self {
-        let mut tool_router = Self::reading();
-        if writes {
-            tool_router += Self::writing();
-        }
-        Self { lumenna, writes, tool_router, changes, subscribed: Arc::default(), following: Arc::default() }
+        Self { lumenna, writes, changes, subscribed: Arc::default(), following: Arc::default() }
     }
 
     /// The same server for another HTTP session, following nothing yet.
@@ -324,392 +318,76 @@ fn enveloped(record: impl Into<Outcome>) -> String {
 }
 
 // ---------------------------------------------------------------------------------------
-// What the tools take
+// The tools: every assistant operation, as Siri, Shortcuts and Gemini have them too
 // ---------------------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Query {
-    /// A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `p1`,
-    /// or `search: words`; empty for every open task.
-    #[serde(default)]
-    query: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Id {
-    /// The record's identifier: a whole UUID, or a prefix that names one record.
-    id: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct EraseTask {
-    /// The identifier of a task in the trash.
-    id: String,
-    /// True only once the person has said yes to the question this asks without it.
-    #[serde(default)]
-    confirm: bool,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Confirmed {
-    /// True only once the person has said yes to the question this asks without it.
-    #[serde(default)]
-    confirm: bool,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Day {
-    /// The day, as a person says it ("tomorrow", "friday", "2026-11-03"); today if left out.
-    #[serde(default)]
-    date: Option<String>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Text {
-    /// Words to search titles and notes for.
-    text: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Line {
-    /// A quick-add line, read as a person's would be: the title, then any of a due date or time
-    /// ("tomorrow at 3pm", "every weekday"), a priority (p1 to p4), labels (@calls), a project
-    /// (#Work, #"Home Office"), an estimate (~30m). A line starting with `block` makes a time
-    /// block instead ("block Deep work 9-11am weekdays"). The answer says how it was read.
-    text: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Edit {
-    /// The task's identifier.
-    id: String,
-    /// A new title.
-    #[serde(default)]
-    title: Option<String>,
-    /// A date phrase ("next monday", "in 3 days at 9am"), or `none` to clear it.
-    #[serde(default)]
-    due: Option<String>,
-    /// A repetition ("every monday", "every! 2 weeks"), or `none` to stop it repeating.
-    #[serde(default)]
-    repeat: Option<String>,
-    /// 1 to 4, where 1 is highest.
-    #[serde(default)]
-    priority: Option<u8>,
-    /// How long it should take ("45m", "1h30m"), or `none`.
-    #[serde(default)]
-    estimate: Option<String>,
-    /// Its notes, whole.
-    #[serde(default)]
-    notes: Option<String>,
-    /// The project to move it to, by name.
-    #[serde(default)]
-    project: Option<String>,
-    /// Its labels, all of them, by name.
-    #[serde(default)]
-    labels: Option<Vec<String>>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Move {
-    /// The task's identifier.
-    id: String,
-    /// A task to make it a subtask of, by identifier.
-    #[serde(default)]
-    parent: Option<String>,
-    /// A project to move it to, by name.
-    #[serde(default)]
-    project: Option<String>,
-    /// True to make it a task of its own again, under no other.
-    #[serde(default)]
-    top: bool,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Assign {
-    /// The task's identifier.
-    task: String,
-    /// The block's identifier, as the day lists it.
-    block: String,
-    /// The day, for a block that repeats; the block's own day otherwise.
-    #[serde(default)]
-    date: Option<String>,
-    /// How long the sitting is planned to take, in minutes.
-    #[serde(default)]
-    minutes: Option<u32>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Sitting {
-    /// The sitting's identifier: a task's place in a block, as the day lists it.
-    assignment: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Stop {
-    /// The sitting's identifier.
-    assignment: String,
-    /// The minutes to log instead of the timer's, when it ran on by mistake.
-    #[serde(default)]
-    minutes: Option<u32>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Choice {
-    /// The `id` of one of the choices What Should I Work On? offered.
-    choice: String,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-struct Apply {
-    /// The proposal as `propose_replan` or `propose_day_plan` returned it, whole.
-    proposal: serde_json::Value,
-    /// Those of its `changes` (a replan) or `sittings` (a day plan) the person accepted, each
-    /// as it was proposed.
-    accepted: serde_json::Value,
-}
-
-/// The refusal of an erasure not yet confirmed: the question the core puts before the action of
-/// `kind` among `actions`, the same words every client asks, for the model to put to the person.
-fn unconfirmed(actions: Vec<lumenna_host::Action>, kind: lumenna_host::ActionKind) -> lumenna_host::LumennaError {
-    let question = actions.into_iter().find(|a| a.kind == kind).map(|a| a.question);
-    let asked = match question {
-        Some(lumenna_host::Question::Confirm { title, message, .. }) => format!("{title} {message} "),
-        _ => String::new(),
-    };
-    lumenna_host::LumennaError::new(format!("{asked}Ask the person, and pass confirm: true only once they say yes."))
-}
-
-fn record<T: serde::de::DeserializeOwned>(value: serde_json::Value, what: &str) -> lumenna_host::Result<T> {
-    serde_json::from_value(value).map_err(|e| lumenna_host::LumennaError::new(format!("that is not a {what}: {e}")))
-}
-
-// ---------------------------------------------------------------------------------------
-// Tools that only read
-// ---------------------------------------------------------------------------------------
-
-#[tool_router(router = reading)]
-impl Server {
-    /// Lists tasks: by default every open task, most urgent first, subtasks under their task;
-    /// or those a filter admits.
-    #[tool(annotations(title = "List tasks", read_only_hint = true))]
-    async fn list_tasks(&self, Parameters(Query { query }): Parameters<Query>) -> CallToolResult {
-        self.run(move |l| l.list_tasks(&query)).await
-    }
-
-    /// Searches task titles and notes for words.
-    #[tool(annotations(title = "Search tasks", read_only_hint = true))]
-    async fn search_tasks(&self, Parameters(Text { text }): Parameters<Text>) -> CallToolResult {
-        self.run(move |l| l.search_tasks(&text)).await
-    }
-
-    /// One task whole: its fields, states, subtasks, what it waits for, its sittings and its
-    /// history.
-    #[tool(annotations(title = "Show a task", read_only_hint = true))]
-    async fn show_task(&self, Parameters(Id { id }): Parameters<Id>) -> CallToolResult {
-        self.run(move |l| l.show_task(&id)).await
-    }
-
-    /// A day as it is lived: its blocks in time order, each with the tasks in it (its
-    /// sittings), the free time between them, and where now falls.
-    #[tool(annotations(title = "The day", read_only_hint = true))]
-    async fn day(&self, Parameters(Day { date }): Parameters<Day>) -> CallToolResult {
-        self.run(move |l| l.plan(date.filter(|d| !d.trim().is_empty()))).await
-    }
-
-    /// Every time block, each with when it happens and how often.
-    #[tool(annotations(title = "List blocks", read_only_hint = true))]
-    async fn list_blocks(&self) -> CallToolResult {
-        self.run(Lumenna::list_blocks).await
-    }
-
-    /// Every project, its subprojects under it.
-    #[tool(annotations(title = "List projects", read_only_hint = true))]
-    async fn list_projects(&self) -> CallToolResult {
-        self.run(Lumenna::list_projects).await
-    }
-
-    /// Every label.
-    #[tool(annotations(title = "List labels", read_only_hint = true))]
-    async fn list_labels(&self) -> CallToolResult {
-        self.run(Lumenna::list_labels).await
-    }
-
-    /// Every saved filter, with its query.
-    #[tool(annotations(title = "List saved filters", read_only_hint = true))]
-    async fn list_filters(&self) -> CallToolResult {
-        self.run(Lumenna::list_filters).await
-    }
-
-    /// What to work on now, ranked, each choice with the reason it is offered: in a block under
-    /// way its own unfinished sittings, then its suggestions; in free time, what fits before
-    /// the next block. Starting on one is `start_on`.
-    #[tool(annotations(title = "What should I work on?", read_only_hint = true))]
-    async fn what_should_i_work_on(&self) -> CallToolResult {
-        self.run(|l| l.what_should_i_work_on(None)).await
-    }
-
-    /// Proposes how to replan the rest of today, when the day has slipped: every change as a
-    /// whole sentence. Nothing changes until `apply_replan` is given the ones the person
-    /// accepted; say them to the person first.
-    #[tool(annotations(title = "Propose a replan of today", read_only_hint = true))]
-    async fn propose_replan(&self) -> CallToolResult {
-        self.run(|l| l.replan(lumenna_host::TimeStyle::TwentyFourHour, Default::default(), None)).await
-    }
-
-    /// Proposes which tasks to put in each of a day's work blocks still to come, each with
-    /// why. Nothing changes until `apply_day_plan` is given the sittings the person accepted.
-    #[tool(annotations(title = "Propose a plan for a day", read_only_hint = true))]
-    async fn propose_day_plan(&self, Parameters(Day { date }): Parameters<Day>) -> CallToolResult {
-        self.run(move |l| l.propose_day_plan(date, lumenna_host::TimeStyle::TwentyFourHour, Default::default(), None)).await
-    }
-}
-
-// ---------------------------------------------------------------------------------------
-// Tools that change the store, offered only with `--writes`
-// ---------------------------------------------------------------------------------------
-
-#[tool_router(router = writing)]
-impl Server {
-    /// Adds a task (or, from a line starting with `block`, a time block) from one quick-add
-    /// line, and says how it read it.
-    #[tool(annotations(title = "Add a task", read_only_hint = false, destructive_hint = false))]
-    async fn add_task(&self, Parameters(Line { text }): Parameters<Line>) -> CallToolResult {
-        self.run(move |l| l.add_task(&text)).await
-    }
-
-    /// Changes a task's fields: only those given.
-    #[tool(annotations(title = "Edit a task", read_only_hint = false, destructive_hint = false))]
-    async fn edit_task(&self, Parameters(edit): Parameters<Edit>) -> CallToolResult {
-        let Edit { id, title, due, repeat, priority, estimate, notes, project, labels } = edit;
-        self.run(move |l| l.edit_task(&id, TaskEdit { title, due, repeat, priority, estimate, notes, project, labels })).await
-    }
-
-    /// Marks a task done. A repeating one moves on to its next date.
-    #[tool(annotations(title = "Complete a task", read_only_hint = false, destructive_hint = false, idempotent_hint = true))]
-    async fn complete_task(&self, Parameters(Id { id }): Parameters<Id>) -> CallToolResult {
-        self.run(move |l| l.complete_task(&id)).await
-    }
-
-    /// Marks a done task not done.
-    #[tool(annotations(title = "Mark a task not done", read_only_hint = false, destructive_hint = false, idempotent_hint = true))]
-    async fn uncomplete_task(&self, Parameters(Id { id }): Parameters<Id>) -> CallToolResult {
-        self.run(move |l| l.uncomplete_task(&id)).await
-    }
-
-    /// Moves a task to the trash, from which `restore_task` brings it back.
-    #[tool(annotations(title = "Move a task to the trash", read_only_hint = false, destructive_hint = true, idempotent_hint = true))]
-    async fn trash_task(&self, Parameters(Id { id }): Parameters<Id>) -> CallToolResult {
-        self.run(move |l| l.trash_task(&id)).await
-    }
-
-    /// Erases a task in the trash permanently: from the history every device keeps, and with it
-    /// the history of everything deleted before. Nothing can undo it, so without `confirm` it
-    /// answers with the question to ask the person first.
-    #[tool(annotations(title = "Erase a task permanently", read_only_hint = false, destructive_hint = true, idempotent_hint = false))]
-    async fn erase_task_permanently(&self, Parameters(EraseTask { id, confirm }): Parameters<EraseTask>) -> CallToolResult {
-        self.run(move |l| {
-            if !confirm {
-                return Err(unconfirmed(l.show_task(&id)?.task.actions, lumenna_host::ActionKind::ErasePermanently));
-            }
-            l.erase_task_permanently(&id)
+/// The tools offered: every operation of `lumenna_records::assistant`, those that change the
+/// store only with `--writes`, each named, described and marked as the core has it.
+fn tools(writes: bool) -> Vec<Tool> {
+    lumenna_records::assistant::operations()
+        .into_iter()
+        .filter(|op| writes || !op.writes)
+        .map(|op| {
+            let annotations = ToolAnnotations::with_title(op.sentence.clone())
+                .read_only(!op.writes)
+                .destructive(op.destructive)
+                .idempotent(op.idempotent);
+            Tool::new(op.id.clone(), op.description.clone(), Arc::new(input_schema(&op))).annotate(annotations)
         })
-        .await
-    }
+        .collect()
+}
 
-    /// Erases everything deleted permanently: every task in the trash, and the history of
-    /// everything ever deleted, on every device. Nothing can undo it, so without `confirm` it
-    /// answers with the question to ask the person first.
-    #[tool(annotations(title = "Erase everything deleted", read_only_hint = false, destructive_hint = true, idempotent_hint = false))]
-    async fn erase_everything_deleted(&self, Parameters(Confirmed { confirm }): Parameters<Confirmed>) -> CallToolResult {
-        self.run(move |l| {
-            if !confirm {
-                return Err(unconfirmed(lumenna_host::actions::store_actions(), lumenna_host::ActionKind::EraseEverythingDeleted));
-            }
-            l.erase_everything_deleted()
-        })
-        .await
-    }
-
-    /// Brings a task back from the trash.
-    #[tool(annotations(title = "Restore a task", read_only_hint = false, destructive_hint = false, idempotent_hint = true))]
-    async fn restore_task(&self, Parameters(Id { id }): Parameters<Id>) -> CallToolResult {
-        self.run(move |l| l.restore_task(&id)).await
-    }
-
-    /// Makes a task a subtask of another, moves it to a project, or makes it a task of its own.
-    #[tool(annotations(title = "Move a task", read_only_hint = false, destructive_hint = false))]
-    async fn move_task(&self, Parameters(Move { id, parent, project, top }): Parameters<Move>) -> CallToolResult {
-        let to = match (parent, project, top) {
-            (Some(id), _, _) => MoveTarget::Parent { id },
-            (_, Some(name), _) => MoveTarget::Project { name },
-            (_, _, true) => MoveTarget::Top,
-            _ => return CallToolResult::error(vec![ContentBlock::text("say where: a parent, a project, or top")]),
+/// The JSON schema of what an operation takes.
+fn input_schema(op: &AssistantOperation) -> JsonObject {
+    use lumenna_records::assistant::ParameterKind as K;
+    let mut properties = serde_json::Map::new();
+    for parameter in &op.parameters {
+        let mut schema = match parameter.kind {
+            K::Minutes => json!({ "type": "integer", "minimum": 0 }),
+            K::Priority => json!({ "type": "integer", "minimum": 1, "maximum": 4 }),
+            K::Flag => json!({ "type": "boolean" }),
+            K::Labels => json!({ "type": "array", "items": { "type": "string" } }),
+            K::Replan | K::DayPlan => json!({ "type": "object" }),
+            K::ReplanChanges | K::DayPlanSittings => json!({ "type": "array", "items": { "type": "object" } }),
+            _ => json!({ "type": "string" }),
         };
-        self.run(move |l| l.move_task(&id, to)).await
+        schema["description"] = json!(parameter.description);
+        properties.insert(parameter.name.clone(), schema);
     }
+    let required: Vec<&str> = op.parameters.iter().filter(|p| !p.optional).map(|p| p.name.as_str()).collect();
+    let mut schema = serde_json::Map::new();
+    schema.insert("type".to_owned(), json!("object"));
+    schema.insert("properties".to_owned(), serde_json::Value::Object(properties));
+    if !required.is_empty() {
+        schema.insert("required".to_owned(), json!(required));
+    }
+    schema
+}
 
-    /// Puts a task in a block, as a sitting: one session of work on it there.
-    #[tool(annotations(title = "Put a task in a block", read_only_hint = false, destructive_hint = false))]
-    async fn assign(&self, Parameters(Assign { task, block, date, minutes }): Parameters<Assign>) -> CallToolResult {
-        self.run(move |l| l.assign(&task, &block, date, minutes)).await
+/// What a tool call gave, as the operation's arguments, each read as its parameter's kind.
+fn arguments_of(op: &AssistantOperation, mut given: JsonObject) -> Result<Vec<Argument>, String> {
+    use lumenna_records::assistant::ParameterKind as K;
+    let mut arguments = Vec::new();
+    for parameter in &op.parameters {
+        let Some(value) = given.remove(&parameter.name).filter(|v| !v.is_null()) else { continue };
+        let wrong = |what: &str| format!("{} takes {what}", parameter.name);
+        let typed = |e: serde_json::Error| format!("{} is not as it was proposed: {e}", parameter.name);
+        let value = match (parameter.kind, value) {
+            (K::Replan, value) => ArgumentValue::Replan(serde_json::from_value(value).map_err(typed)?),
+            (K::DayPlan, value) => ArgumentValue::DayPlan(serde_json::from_value(value).map_err(typed)?),
+            (K::ReplanChanges, value) => ArgumentValue::ReplanChanges(serde_json::from_value(value).map_err(typed)?),
+            (K::DayPlanSittings, value) => ArgumentValue::DayPlanSittings(serde_json::from_value(value).map_err(typed)?),
+            (_, serde_json::Value::String(text)) => ArgumentValue::Text(text),
+            (_, serde_json::Value::Bool(flag)) => ArgumentValue::Flag(flag),
+            (_, serde_json::Value::Number(n)) => ArgumentValue::Number(n.as_i64().ok_or_else(|| wrong("a whole number"))?),
+            (_, serde_json::Value::Array(items)) => ArgumentValue::Texts(
+                items.into_iter().map(|item| item.as_str().map(str::to_owned).ok_or_else(|| wrong("names"))).collect::<Result<_, _>>()?,
+            ),
+            _ => return Err(wrong("something else")),
+        };
+        arguments.push(Argument { name: parameter.name.clone(), value });
     }
-
-    /// Takes a sitting out of its block; the task itself stays.
-    #[tool(annotations(title = "Take a task out of a block", read_only_hint = false, destructive_hint = true))]
-    async fn unassign(&self, Parameters(Sitting { assignment }): Parameters<Sitting>) -> CallToolResult {
-        self.run(move |l| l.unassign(&assignment)).await
-    }
-
-    /// Starts, or resumes, a sitting's timer.
-    #[tool(annotations(title = "Start a timer", read_only_hint = false, destructive_hint = false))]
-    async fn start_timer(&self, Parameters(Sitting { assignment }): Parameters<Sitting>) -> CallToolResult {
-        self.run(move |l| l.start_timer(&assignment)).await
-    }
-
-    /// Pauses a sitting's timer, keeping what it has logged.
-    #[tool(annotations(title = "Pause a timer", read_only_hint = false, destructive_hint = false))]
-    async fn pause_timer(&self, Parameters(Sitting { assignment }): Parameters<Sitting>) -> CallToolResult {
-        self.run(move |l| l.pause_timer(&assignment)).await
-    }
-
-    /// Stops a sitting's timer and logs its time.
-    #[tool(annotations(title = "Stop a timer", read_only_hint = false, destructive_hint = false))]
-    async fn stop_timer(&self, Parameters(Stop { assignment, minutes }): Parameters<Stop>) -> CallToolResult {
-        self.run(move |l| l.stop_timer(&assignment, minutes)).await
-    }
-
-    /// Starts on one of What Should I Work On?'s choices at once, its timer running: in the
-    /// block under way, or in a block of its own in free time.
-    #[tool(annotations(title = "Start on a choice", read_only_hint = false, destructive_hint = false))]
-    async fn start_on(&self, Parameters(Choice { choice }): Parameters<Choice>) -> CallToolResult {
-        self.run(move |l| l.start_on(&choice, None)).await
-    }
-
-    /// Makes the replan changes the person accepted, as one change they can undo, and proposes
-    /// again around what they turned down.
-    #[tool(annotations(title = "Apply a replan", read_only_hint = false, destructive_hint = false))]
-    async fn apply_replan(&self, Parameters(Apply { proposal, accepted }): Parameters<Apply>) -> CallToolResult {
-        self.run(move |l| l.apply_replan(record(proposal, "replan")?, record(accepted, "list of changes")?, None)).await
-    }
-
-    /// Puts the sittings the person accepted into their blocks, as one change they can undo,
-    /// and plans again around what they turned down.
-    #[tool(annotations(title = "Apply a day plan", read_only_hint = false, destructive_hint = false))]
-    async fn apply_day_plan(&self, Parameters(Apply { proposal, accepted }): Parameters<Apply>) -> CallToolResult {
-        self.run(move |l| l.apply_day_plan(record(proposal, "day plan")?, record(accepted, "list of sittings")?, None)).await
-    }
-
-    /// Undoes the last change made on this device, whoever made it: an app, `lum`, or this.
-    #[tool(annotations(title = "Undo", read_only_hint = false, destructive_hint = false))]
-    async fn undo(&self) -> CallToolResult {
-        self.run(Lumenna::undo).await
-    }
-
-    /// Redoes what was last undone.
-    #[tool(annotations(title = "Redo", read_only_hint = false, destructive_hint = false))]
-    async fn redo(&self) -> CallToolResult {
-        self.run(Lumenna::redo).await
-    }
+    Ok(arguments)
 }
 
 // ---------------------------------------------------------------------------------------
@@ -768,8 +446,31 @@ fn readable(uri: &str) -> bool {
     }
 }
 
-#[tool_handler(router = self.tool_router)]
 impl ServerHandler for Server {
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult::with_all_items(tools(self.writes)))
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        // One that changes the store is no tool at all without `--writes`.
+        let Some(op) = lumenna_records::assistant::operation(&request.name).filter(|op| self.writes || !op.writes) else {
+            return Err(ErrorData::invalid_params(format!("there is no tool called {}", request.name), None));
+        };
+        let arguments = match arguments_of(&op, request.arguments.unwrap_or_default()) {
+            Ok(arguments) => arguments,
+            Err(why) => return Ok(CallToolResult::error(vec![ContentBlock::text(why)]).into()),
+        };
+        Ok(self.run(move |l| l.assist(&op.id, arguments)).await.into())
+    }
+
     fn get_info(&self) -> ServerConfig {
         let writes = if self.writes {
             "Its tools may change the store; each change is one the person can undo, except erasing permanently, \

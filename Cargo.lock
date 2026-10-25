@@ -2978,6 +2978,7 @@ dependencies = [
  "lumenna-ffi",
  "lumenna-host",
  "lumenna-parse",
+ "lumenna-records",
  "lumenna-store",
  "lumenna-sync",
  "reqwest",

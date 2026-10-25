@@ -32,6 +32,7 @@ pub mod day;
 pub mod details;
 pub mod devices;
 pub mod due;
+pub mod glance;
 pub mod host;
 pub mod list;
 mod model;
@@ -256,6 +257,10 @@ pub enum Event {
     PlanFrom(Option<String>),
     /// Add a task from a quick-add line.
     QuickAdd(String),
+    /// A way in from outside the app was chosen (`lumenna_records::launch`), by its `id`: the
+    /// icon's shortcut, the Dock's menu, a Jump List, a desktop action, a manifest's shortcut.
+    /// The app does what it says the same on every platform.
+    Launch(String),
     /// Undo the last change.
     Undo,
     /// Redo what was undone.
@@ -379,6 +384,29 @@ impl App for Lumenna {
 }
 
 impl Lumenna {
+    /// What a launch shortcut does (`lumenna_records::launch`): New Task opens quick add over
+    /// the tasks, Today the day, What Should I Work On? the day with its question asked. One
+    /// this build does not know does nothing.
+    fn launch(&self, id: &str, model: &mut Screen) -> Command<Effect, Event> {
+        model.open = None;
+        match id {
+            "new-task" => {
+                model.go(Place::Tasks);
+                render().and(self.typing(Typing::Open, model))
+            }
+            "today" => {
+                model.go(Place::Today);
+                render()
+            }
+            "what-now" => {
+                model.go(Place::Today);
+                let actions = model.day_view().map(|day| day.actions).unwrap_or_default();
+                render().and(self.run_among(&actions, &[ActionKind::WhatNow], lumenna_records::Subject::Day, model))
+            }
+            _ => Command::done(),
+        }
+    }
+
     /// `event` on screen `id`: what it asks for comes back to the same screen, and what it
     /// says is that screen's to say. What the device holds alike goes to every other screen.
     fn on(&self, id: ScreenId, event: Event, model: &mut Model) -> Command<Effect, Event> {
@@ -462,6 +490,7 @@ impl Lumenna {
                 model.go(place);
                 render()
             }
+            Event::Launch(id) => self.launch(&id, model),
             Event::Focus(key) => {
                 model.hold(&key);
                 model.details.shown = None;

@@ -12,5 +12,10 @@
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "New task", "description": "Add a task with one line", "url": "/?launch=new-task" },
+    { "name": "Today", "description": "The day's blocks and what is in them", "url": "/?launch=today" },
+    { "name": "What should I work on?", "description": "What to work on now, and starting on it", "url": "/?launch=what-now" }
   ]
 }

@@ -31,8 +31,10 @@ real profile.
   `lum --json daemon status` carries `service` (`installed`, `running`) in the envelope, which
   Emacs's Sync in the background reads.
 - **`lum mcp` is the surface for an assistant** (`mcp.rs`, the Model Context Protocol over
-  stdio, on `rmcp`): each tool calls one `Lumenna` method and answers with its record in the
-  envelope `--json` writes; a refusal is a tool error in the core's words. Read-only unless
+  stdio, on `rmcp`): each tool is an operation of the core's assistant table
+  (`records::assistant`, its schema and annotations built from it), run through
+  `Lumenna::assist` as Siri's and Gemini's are, and answers with its record in the envelope
+  `--json` writes; a refusal is a tool error in the core's words. A tool is added there, not here. Read-only unless
   `--writes`, set where the person configures the client. Resources: today, every open task,
   the blocks, and templates for a day, a task and a filter (`lumenna://tasks/{query}`,
   escaped). Identifiers, never row numbers. Delete from Trash is not offered (trash and undo

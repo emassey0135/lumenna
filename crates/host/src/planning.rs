@@ -56,6 +56,26 @@ impl Lumenna {
         })
     }
 
+    /// What a widget, complication or tile shows from now for `hours`, at most two days: the
+    /// moment now, then one wherever that changes (`lumenna_records::glance`), for a platform
+    /// to word with `lumenna_app::glance` and hand its widget system whole.
+    ///
+    /// # Errors
+    ///
+    /// If a day's blocks cannot be worked out.
+    pub fn glance(&self, hours: u32) -> Result<Vec<lumenna_records::glance::GlanceMoment>> {
+        let now = Zoned::now();
+        let ahead = jiff::SignedDuration::from_hours(i64::from(hours.min(48)));
+        let until = now.timestamp().checked_add(ahead).unwrap_or_else(|_| now.timestamp());
+        self.with(|store| {
+            store.load_year(now.date().year())?;
+            if let Ok(tomorrow) = now.date().tomorrow() {
+                store.load_year(tomorrow.year())?;
+            }
+            lumenna_records::glance::timeline(&repaired(store), &now, until)
+        })
+    }
+
     /// Adds a block, once or repeating.
     ///
     /// A repeating block whose start date the rule never lands on starts on the rule's first
