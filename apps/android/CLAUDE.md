@@ -83,16 +83,19 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   (`keyboard_shortcuts()`, `lumenna_app::keys`) by each command's id, keys and name both;
   only the folding arrows are Android's own (`Shortcuts.kt`). On Ctrl: TalkBack's are on Alt
   or Search. A screen offers a command while shown (`Offer`), the newest winning, and the
-  system's shortcuts helper (Meta+/) lists what is offered now. A row's own commands (Ctrl+K,
-  Delete, Shift+F10) run its action of that `ActionKind` (`Command.rowAction`), so a key never
-  does what the row's action list does not; on a row without one the app says the core's
-  reason (`refusal`: the row in hand, then `Run`). Compose's root takes the keys while
+  system's shortcuts helper (Meta+/) lists what is offered now. Delete is the core's: the row
+  put in hand, then `ShellEvent.Key("delete")` (`RowKeys.key`), which runs what
+  `keys::runs("delete")` names that the row offers, or says why not. Ctrl+K and Shift+F10 run
+  the row's action of that `ActionKind` (`Command.rowAction`), so a key never does what the
+  row's action list does not; on a row without one the app says the core's reason
+  (`RowKeys.refuse`: the row in hand, then `Run`). Space is not bound: on a row it is a click. Compose's root takes the keys while
   anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
 - **Erasing for good is a menu away, never a key's**: a trashed task's Erase Permanently is
-  in its long-press menu and custom actions with the rest, and Delete runs only Delete or
-  Delete from Trash (`Command.rowAction`). The store's own actions (`SettingsView.offered`,
-  Erase Everything Deleted) are destructive buttons on Export and Import, the watch's under
-  Backups, sent as `ActOn(ActingOn.Settings, …)`; the app's question is asked at the root.
+  in its long-press menu and custom actions with the rest, and Delete, the core's key, runs
+  Delete from Trash there. The store's own actions (`SettingsView.offered`, Erase Everything
+  Deleted) are destructive buttons on Export and Import, the watch's under Backups, with
+  `offeredCaption` beneath, sent as `ActOn(ActingOn.Settings, …)`; the app's question is asked
+  at the root.
 - **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
   tests leave it first (`setInTouchMode(false)`), or no tab could be focused.
 - **A wide window has the desktop apps' sidebar** (`Sidebar.kt`, from the app's

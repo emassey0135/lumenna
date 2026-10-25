@@ -77,7 +77,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
                     speech = detail,
                     index = index,
                     actions = app.rowActions(reminder.id, reminder.offered, side = Side.REMINDERS),
-                    refuse = app.refusal(reminder.id, Side.REMINDERS),
+                    keys = app.rowKeys(reminder.id, Side.REMINDERS),
                     open = null,
                     openLabel = "Open",
                     focus = focus.requester(reminder.id),

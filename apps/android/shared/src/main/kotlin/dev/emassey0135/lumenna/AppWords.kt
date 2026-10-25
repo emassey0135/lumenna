@@ -61,13 +61,27 @@ fun AppModel.actingOn(on: ActingOn, actions: List<Offered>, local: (Offered) -> 
     }
 
 /**
- * A key [row] does not offer: the row put in hand (or held in [side]), then the app runs the
- * key's kind there and says why it has none, in the core's words.
+ * What a key does to [row]: the row put in hand (or held in [side]) first, as the app runs a
+ * key on the row in hand.
  */
-fun AppModel.refusal(row: String, side: Side? = null): (dev.emassey0135.lumenna.app.ActionKind) -> Unit = { kind ->
-    send(if (side != null) ShellEvent.Hold(side, row) else ShellEvent.Focus(row))
-    send(ShellEvent.Run(listOf(kind)))
+class RowKeys(private val app: AppModel, private val row: String, private val side: Side?) {
+    private fun inHand() = app.send(if (side != null) ShellEvent.Hold(side, row) else ShellEvent.Focus(row))
+
+    /** A key of the core's table by its id ("delete"): what it does to the row is the core's (`keys::runs`). */
+    fun key(id: String) {
+        inHand()
+        app.send(ShellEvent.Key(id))
+    }
+
+    /** A key the row offers no action of [kind] for: the app runs it there and says why, in the core's words. */
+    fun refuse(kind: ActionKind) {
+        inHand()
+        app.send(ShellEvent.Run(listOf(kind)))
+    }
 }
+
+/** The keys on [row], or on a row held in [side]. */
+fun AppModel.rowKeys(row: String, side: Side? = null): RowKeys = RowKeys(this, row, side)
 
 /**
  * Everything a row says after its title: the core's line, then whether what is under it is

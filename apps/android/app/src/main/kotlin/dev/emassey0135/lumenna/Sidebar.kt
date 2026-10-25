@@ -80,7 +80,7 @@ fun PlaceRows(
                 index = index,
                 depth = row.depth,
                 actions = core.app.rowActions(row.key, row.entry.offered, side = Side.SIDEBAR),
-                refuse = core.app.refusal(row.key, Side.SIDEBAR),
+                keys = core.app.rowKeys(row.key, Side.SIDEBAR),
                 open = open(row),
                 openLabel = openLabel(row),
                 focus = focus.requester(row.key),

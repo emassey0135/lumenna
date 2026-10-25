@@ -110,12 +110,12 @@ enum class Command(val id: String?, val place: Place, private val own: List<Keys
 }
 
 /**
- * The row's action a row command runs: by the core's kind, so Delete is Delete on whatever
- * row is in hand; folding too, which is among a row's actions.
+ * The row's action a row command runs: by the core's kind, so Mark Done is Mark Done on
+ * whatever row is in hand; folding too, which is among a row's actions. Delete is not here:
+ * what it does to a row is the core's (`RowKeys.key`).
  */
 fun Command.rowAction(actions: List<RowAction>): RowAction? = when (this) {
     Command.MARK_DONE -> actions.ofKind(ActionKind.MARK_DONE, ActionKind.MARK_NOT_DONE)
-    Command.DELETE -> actions.ofKind(ActionKind.DELETE, ActionKind.DELETE_FOR_GOOD)
     Command.EXPAND -> actions.ofKind(ActionKind.EXPAND)
     Command.COLLAPSE -> actions.ofKind(ActionKind.COLLAPSE)
     else -> null
@@ -125,7 +125,6 @@ fun Command.rowAction(actions: List<RowAction>): RowAction? = when (this) {
 val Command.kind: ActionKind?
     get() = when (this) {
         Command.MARK_DONE -> ActionKind.MARK_DONE
-        Command.DELETE -> ActionKind.DELETE
         else -> null
     }
 
