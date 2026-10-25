@@ -10,7 +10,7 @@
 //! records, is a breaking change, and [`VERSION`] says which shape a reader is looking at.
 
 use crate::{
-    Announced, BackupDone, Choices, BlockShown, Change, DeviceList, Exported, Filters, ImportDone,
+    Announced, BackupDone, Choices, BlockShown, Change, Completions, DeviceList, Exported, Filters, ImportDone,
     Imported, PairedWith, Plan, RestoreDone, Rows, SettingList, SyncReport, SyncStatus,
     TaskShown, Timer, announced,
 };
@@ -152,6 +152,10 @@ pub enum Outcome {
     Replanned(crate::Replanned),
     /// A day plan's sittings made, and the next plan.
     DayPlanned(crate::DayPlanned),
+    /// Every operation an assistant can do, as `lum assist --list` writes them.
+    Operations(Operations),
+    /// What could come next in what is being typed.
+    Completions(Completions),
 }
 
 macro_rules! outcomes {
@@ -207,6 +211,8 @@ outcomes!(
     DayPlan(crate::DayPlan),
     Replanned(crate::Replanned),
     DayPlanned(crate::DayPlanned),
+    Operations(Operations),
+    Completions(Completions),
 );
 
 impl From<lumenna_records::assistant::Assisted> for Outcome {
@@ -236,6 +242,30 @@ impl From<Imported> for Outcome {
         }
     }
 }
+
+/// The assistant table (`lumenna_records::assistant::operations`), for a script that builds its
+/// own commands from it: the PowerShell module's cmdlets, and the test that keeps them whole.
+#[derive(Debug, Serialize)]
+pub struct Operations {
+    /// How many there are.
+    pub announcement: String,
+    /// Nothing, as a rule.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notices: Vec<String>,
+    /// Every operation, in the table's order.
+    pub operations: Vec<lumenna_records::assistant::AssistantOperation>,
+}
+
+impl Operations {
+    /// The whole table.
+    #[must_use]
+    pub fn all() -> Self {
+        let operations = lumenna_records::assistant::operations();
+        Self { announcement: crate::words::count_line(operations.len(), "operation"), notices: Vec::new(), operations }
+    }
+}
+
+announced!(Operations);
 
 // ---------------------------------------------------------------------------------------
 // Reachable over RPC only

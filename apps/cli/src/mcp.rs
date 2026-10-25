@@ -30,7 +30,9 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 
 use lumenna_host::rpc::api::{Outcome, Response};
 use lumenna_host::Lumenna;
-use lumenna_records::assistant::{Argument, ArgumentValue, AssistantOperation};
+use lumenna_records::assistant::AssistantOperation;
+
+use crate::assist::arguments_of;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation, JsonObject, ListToolsResult, Tool, ToolAnnotations, ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParams,
     ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource, ResourceContents,
@@ -362,32 +364,6 @@ fn input_schema(op: &AssistantOperation) -> JsonObject {
         schema.insert("required".to_owned(), json!(required));
     }
     schema
-}
-
-/// What a tool call gave, as the operation's arguments, each read as its parameter's kind.
-fn arguments_of(op: &AssistantOperation, mut given: JsonObject) -> Result<Vec<Argument>, String> {
-    use lumenna_records::assistant::ParameterKind as K;
-    let mut arguments = Vec::new();
-    for parameter in &op.parameters {
-        let Some(value) = given.remove(&parameter.name).filter(|v| !v.is_null()) else { continue };
-        let wrong = |what: &str| format!("{} takes {what}", parameter.name);
-        let typed = |e: serde_json::Error| format!("{} is not as it was proposed: {e}", parameter.name);
-        let value = match (parameter.kind, value) {
-            (K::Replan, value) => ArgumentValue::Replan(serde_json::from_value(value).map_err(typed)?),
-            (K::DayPlan, value) => ArgumentValue::DayPlan(serde_json::from_value(value).map_err(typed)?),
-            (K::ReplanChanges, value) => ArgumentValue::ReplanChanges(serde_json::from_value(value).map_err(typed)?),
-            (K::DayPlanSittings, value) => ArgumentValue::DayPlanSittings(serde_json::from_value(value).map_err(typed)?),
-            (_, serde_json::Value::String(text)) => ArgumentValue::Text(text),
-            (_, serde_json::Value::Bool(flag)) => ArgumentValue::Flag(flag),
-            (_, serde_json::Value::Number(n)) => ArgumentValue::Number(n.as_i64().ok_or_else(|| wrong("a whole number"))?),
-            (_, serde_json::Value::Array(items)) => ArgumentValue::Texts(
-                items.into_iter().map(|item| item.as_str().map(str::to_owned).ok_or_else(|| wrong("names"))).collect::<Result<_, _>>()?,
-            ),
-            _ => return Err(wrong("something else")),
-        };
-        arguments.push(Argument { name: parameter.name.clone(), value });
-    }
-    Ok(arguments)
 }
 
 // ---------------------------------------------------------------------------------------

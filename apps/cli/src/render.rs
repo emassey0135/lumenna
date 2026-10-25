@@ -257,6 +257,13 @@ fn text(response: &Response, clock: Clock) {
             }
         }
         Outcome::Plan(plan) => day(plan, clock),
+        Outcome::Operations(table) => operations(table),
+        Outcome::Completions(found) => {
+            println!("{}", response.announcement());
+            for candidate in &found.candidates {
+                println!("{}", candidate.text);
+            }
+        }
         Outcome::Filters(filters) => {
             println!("{}", response.announcement());
             for filter in &filters.filters {
@@ -273,6 +280,28 @@ fn text(response: &Response, clock: Clock) {
                 }
             }
         },
+    }
+}
+
+/// The assistant table: each operation by its id and name, what it does, what it does to the
+/// store, and what it takes.
+fn operations(table: &crate::api::Operations) {
+    println!("{}", table.announcement);
+    for op in &table.operations {
+        println!();
+        println!("{}, {}", op.id, op.sentence);
+        println!("    {}", op.description);
+        let effect = match (op.writes, op.destructive, op.confirms) {
+            (_, _, true) => "Changes the store, removing something, and runs only with confirm=true.",
+            (_, true, false) => "Changes the store, removing something.",
+            (true, false, false) => "Changes the store.",
+            (false, ..) => "Only reads.",
+        };
+        println!("    {effect}");
+        for parameter in &op.parameters {
+            let optional = if parameter.optional { ", optional" } else { "" };
+            println!("    {}{optional}: {}", parameter.name, parameter.description);
+        }
     }
 }
 
