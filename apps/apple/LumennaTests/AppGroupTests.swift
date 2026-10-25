@@ -163,11 +163,17 @@ final class GlanceFileTests: XCTestCase {
     func testTheFileHoldsTheCoresGlanceAndReadsBack() throws {
         _ = try core.app.device.addTask(text: "Pay the rent today")
         let app = core.app
-        let file = GlanceFile(directory: directory) { try app.glance(hours: GlanceFile.hours) }
+        // What was written, as the core gave it: a second glance would be of a later now.
+        var given: [LumennaApp.GlanceEntry] = []
+        let file = GlanceFile(directory: directory) {
+            given = try app.glance(hours: GlanceFile.hours)
+            return given
+        }
         try file.writeNow()
         let written = try String(contentsOf: directory.appendingPathComponent(GlanceFile.name), encoding: .utf8)
         let entries = try LumennaApp.glanceFromFile(contents: written)
-        XCTAssertEqual(entries, try core.app.glance(hours: GlanceFile.hours))
+        XCTAssertFalse(given.isEmpty)
+        XCTAssertEqual(entries, given)
         XCTAssertEqual(entries.first?.moment.due, 1)
         XCTAssertFalse(entries.first?.spoken.isEmpty ?? true)
     }
