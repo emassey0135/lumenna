@@ -161,6 +161,12 @@ Each is a thin adapter over the command surface.
     device can reach to sync without two of the person's own being awake at once. It keeps its
     copy of the store in the encrypted store, so a stopped or moved enclave loses nothing and
     the operator still holds only ciphertext.
+
+    Alexa+ reaches either the same way, as an MCP client from Amazon's cloud, once its MCP
+    Toolkit is open to more than chosen partners (in preview for partners alone, in the United
+    States, as of July 2026). It asks a round trip under 500 ms, which the enclave meets more
+    surely than a forwarded home connection. No classic Alexa skill: Amazon's new tools are all for
+    Alexa+, where a skill is invoked directly only if Amazon picks it after an evaluation form.
 - **Hooks**, `lum hook add|list|test|rm`:
   - **Reactive, never interceptive**: a change can arrive already committed from an
     unreachable device, and convergence cannot be vetoed. Hooks fire after a change is
@@ -438,9 +444,9 @@ What the web client gains from it:
 - **Reordering tasks among siblings** (decided 2026-10-20): task lists are most urgent
   first, or in the order added (`task-order`, `sort:`), so a task has no place of its own to
   move to. Projects, labels, saved filters and a block's sittings are reordered.
-- **Alexa, AppleScript, WSH/COM**: a cloud assistant cannot read what the cloud cannot
-  decrypt; Shortcuts and `lum --json` cover scripting.
-- **A hosted MCP endpoint**, for the same reason, and TLS inside `lum mcp`.
+- **AppleScript, WSH/COM**: Shortcuts, PowerShell and `lum --json` cover scripting.
+- **A hosted MCP endpoint that can read the store**: cloud MCP is forwarded to the person's own
+  device or run in the enclave peer (under Integrations), never on a server its operator reads.
 - **Interceptive or synced hooks**, and hooks on iOS, watchOS, Wear OS and the web.
 - **A language model in the planner, optimal packing, a strategy menu, automatic
   carry-forward.**
