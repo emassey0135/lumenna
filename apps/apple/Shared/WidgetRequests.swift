@@ -35,8 +35,7 @@ final class WidgetRequests {
     static func hand(_ request: Request, into container: URL) throws -> URL {
         let directory = container.appendingPathComponent(folder, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let made = Int64(Date().timeIntervalSince1970 * 1000)
-        let name = "\(made)-\(UUID().uuidString)"
+        let name = "\(moment())-\(UUID().uuidString)"
         // Not a request until renamed: the app takes only `.json` that do not start with a dot.
         let partial = directory.appendingPathComponent(".\(name).partial")
         let whole = directory.appendingPathComponent("\(name).json")
@@ -48,6 +47,21 @@ final class WidgetRequests {
             throw error
         }
         return whole
+    }
+
+    /// The last moment a request was named by in this process.
+    private static var named: UInt64 = 0
+    private static let naming = NSLock()
+
+    /// Now in nanoseconds, twenty digits, so names sort as they were made: later than the last
+    /// this process named, since two can be made within the clock's step, and a UUID alone would
+    /// order those at random.
+    private static func moment() -> String {
+        naming.lock()
+        defer { naming.unlock() }
+        named = max(clock_gettime_nsec_np(CLOCK_REALTIME), named + 1)
+        let digits = String(named)
+        return String(repeating: "0", count: max(0, 20 - digits.count)) + digits
     }
 
     #if !LUMENNA_WIDGETS

@@ -35,6 +35,31 @@ The order, and why:
 
 - **A staleness question**, if a task becomes permanent furniture at the top: "this has been at
   the top for three weeks; is it real?", rather than a bigger formula.
+- **When to start, apart from when it is due**: a task's one date says both "do it Monday" and
+  "it must be done Friday", which Things (When and Deadline), OmniFocus (defer, planned and due),
+  Taskwarrior (`wait`, `scheduled`, `due`) and Todoist (due and, since 2025, deadlines) keep
+  apart. A start date that keeps a task out of the listings and the planner until it comes, a
+  deadline the urgency ranks by, and the due date as now; quick add says each ("from monday",
+  "by friday"). And **Someday**: a task kept but never offered until it is given a date, so the
+  planner and What Should I Work On? leave it alone. The planner's rule for which date it
+  reads is the core's; what each list shows by it too.
+- **A view of several days**: the days ahead at once, each day's blocks and the tasks due or
+  starting then, as Todoist's and Things' Upcoming and OmniFocus' Forecast are; today the day
+  is shown one at a time (Go to Day). A listing, worded as every line is, so it reads as well
+  as it looks.
+- **Sections within a project**: named headings a project's tasks sit under (Todoist's
+  sections, Things' headings, Reminders' sections), lighter than a subproject. A record of
+  their own, with the care in `crates/store/CLAUDE.md` for records two devices make alone.
+- **A countdown, and a timer outside the app**: a sitting's planned length counted down, with
+  the core's words when it runs out (Tiimo counts down; TickTick has Pomodoro), beside the
+  count up there is now; and a running timer shown where the system shows one: a Live Activity
+  on the iPhone's Lock Screen and Dynamic Island, an ongoing notification on Android, its
+  buttons the core's Pause and Stop.
+- **Time reports**: the minutes every sitting logs, summed by project, label and week, with
+  estimates beside them, as Todoist's productivity view and Taskwarrior's reports have. A
+  listing of the core's, read as one.
+- **A review**: every project looked at in turn at an interval of its own, as OmniFocus' weekly
+  review is, each marked reviewed; the staleness question above is the same kind of asking.
 
 ## 4. Smaller gaps
 
@@ -217,10 +242,26 @@ Each is a thin adapter over the command surface.
   Google Calendar's API is open to any project, but its scopes are sensitive: an app used by
   the public needs Google's OAuth verification (no paid audit), and an unverified one is
   limited to 100 people and warns them. PKCE serves a desktop app that cannot keep a secret.
-- **Imports from other systems**: Todoist first, through its public API and a personal API
-  token the person copies from Todoist's settings, so nothing needs registering (check the
-  current API version when building; its priority 4 is P1). Then Jira, Linear and GitHub,
-  which `ExternalRef` was shaped for.
+- **Imports from other systems**, each from what that system can actually export:
+  - **Todoist** first, through its public API and a personal API token the person copies from
+    Todoist's settings, so nothing needs registering (check the current API version when
+    building; its priority 4 is P1); its CSV backups (a ZIP of a CSV per project, completed
+    tasks left out) for someone without a token.
+  - **Taskwarrior**, from `task export`'s JSON: `wait` and `scheduled` to the start date above,
+    annotations into notes, its user-defined attributes kept in the notes as `name: value`
+    rather than dropped.
+  - **OmniFocus**, from its CSV or its plain-text (TaskPaper-style) export: defer dates to the
+    start date, contexts and tags to labels, projects with their folders.
+  - **todo.txt**, both ways: import a `todo.txt` and `done.txt` (priority `(A)`-`(D)` to P1-P4
+    and lower ones to P4, `+project`, `@context` to labels, `due:`, other `key:value` kept in
+    the notes), and export one, so Lumenna's tasks reach any plain-text tool and back.
+  - Then Jira, Linear and GitHub, which `ExternalRef` was shaped for.
+  - **Not Things 3**: it has no export of its own, only AppleScript on a Mac, so an import
+    would read another app's private data; revisit if Cultured Code ships one.
+- **Capture from other apps**: an iOS and Mac share extension and an Android share target
+  that take a page's or a selection's text as a quick-add line (read back before it is added,
+  as quick add always is), and Windows' share target for the MSIX. Email to a task stays under
+  "Only when needed".
 
 ## 7. Before others use it
 
@@ -468,6 +509,10 @@ What the web client gains from it:
 
 ## Decided against
 
+- **Teams** (decided 2026-10-25): shared projects, assignees and comments, as Todoist has.
+  Lumenna is one person's tasks on that person's devices; the trust boundary (the device list),
+  sync, erasure and the planner all assume it, and teams would multiply every one. Imports
+  bring someone's tasks over from a team tool; they do not make Lumenna one.
 - **A timeline of every field's history** (decided 2026-10-21): a task's history counts the one
   fact the records forget, how often its due date was moved later; the rest says nothing a
   person acts on.

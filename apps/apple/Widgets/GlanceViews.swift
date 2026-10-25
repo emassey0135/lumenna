@@ -4,7 +4,8 @@ import WidgetKit
 
 /// A widget's face: the core's lines for the moment shown, as many of the widget's parts as fit,
 /// in their order. VoiceOver hears the whole glance as one element, the core's `spoken`, with a
-/// running timer as its value; only Today's Mark Done buttons are elements of their own.
+/// running timer as its value; only Today's Mark Done buttons and its New Task are elements of
+/// their own.
 struct GlanceView: View {
     let entry: GlanceTimelineEntry
     let parts: [LumennaApp.GlancePart]
@@ -119,6 +120,8 @@ private struct Parts: View {
                         .accessibilityHidden(true)
                 case .tasks:
                     Tasks(entry: entry)
+                case .newTask:
+                    NewTask()
                 }
             }
         }
@@ -148,6 +151,22 @@ private struct Headline: View {
                 .font(compact ? .body.monospacedDigit() : .title2.monospacedDigit())
                 .widgetAccentable()
         }
+    }
+}
+
+/// New Task: the core's launch shortcut, its name and the app opened on it (quick add), a link
+/// of its own beside the widget's own tap, which opens the day.
+private struct NewTask: View {
+    var body: some View {
+        #if !os(watchOS)
+        if let shortcut = LumennaApp.launchShortcuts().first(where: { $0.id == "new-task" }) {
+            Link(destination: LaunchURL.of(shortcut.id)) {
+                Label(shortcut.title, systemImage: "plus")
+                    .font(.subheadline)
+                    .widgetAccentable()
+            }
+        }
+        #endif
     }
 }
 

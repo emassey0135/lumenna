@@ -201,6 +201,12 @@ impl IWidgetProvider_Impl for Provider_Impl {
             // The board has nowhere to say a refusal: the card drawn again shows what is so.
             let id = Argument { name: "id".to_owned(), value: ArgumentValue::Text(task) };
             let _ = self.0.device.assist("complete_task".to_owned(), vec![id]);
+        } else if let Some(id) = widget::launching(&invoked.Verb()?.to_string(), &invoked.Data()?.to_string()) {
+            // As the Jump List starts it: a copy already running takes the id (`tray::claim`).
+            // Within the package, so it opens the package's own store.
+            if let Ok(exe) = std::env::current_exe() {
+                let _ = std::process::Command::new(exe).args(["--launch", &id]).spawn();
+            }
         }
         self.0.change(|state| state.dirty = true);
         Ok(())
