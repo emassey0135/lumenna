@@ -473,9 +473,13 @@ each embedded in its app.
   fit: `ViewThatFits` over each shorter run of them (`GlanceWidgets.fitting`), never a table of
   sizes, so a larger text size drops the tasks before the headline.
 - **The timeline is the glance file** (`glance.json` in the group, `glanceFromFile`): one entry
-  per moment, dated by its `at`, policy `.atEnd`. With no file (the app not yet opened, an
-  unsigned build with no group) it is the core's empty day (`glanceEmpty`), never a sentence of
-  ours. The core writes instants to the nanosecond, which Foundation's ISO 8601 parser refuses
+  per moment, dated by its `at`, policy `.atEnd`. Run out (its last moment come: the app unopened
+  for about two days, `GlanceWidgets.stale`) or never written, it is worked out afresh from the
+  store where the widget reaches it (the iPhone and iPad, the App Store edition: `Device.glance`
+  in this device's clock, opened as Mark Done opens it, and written back to the file);
+  elsewhere, and with no store, the last moment is shown as now, or with none the core's empty
+  day (`glanceEmpty`), never a sentence of ours, and asked for again in 15 minutes rather than
+  at once. The core writes instants to the nanosecond, which Foundation's ISO 8601 parser refuses
   past milliseconds, so `GlanceWidgets.instant` reads the fraction itself. A running timer counts
   by itself (`Text(_, style: .timer)` from `countingFrom`) and a block under way fills its gauge
   (`ProgressView(timerInterval:)`), neither with an entry of its own. The Smart Stack is told a
@@ -492,10 +496,19 @@ each embedded in its app.
   intent's parameter read none under `LUMENNA_WIDGETS`). The widget's copy is not discoverable,
   so Shortcuts lists the app's once. Where it runs:
   - **iPhone, iPad and the App Store edition**: in the widget, on the store in the group
-    (`WidgetStore`, through `AppDependencyManager`), opened when an intent first asks and only if
-    `lumenna.sqlite` is already there: a widget must never make a store in the group. After a
-    write (the heads moved, `AssistantStore`'s `changed`) the widget writes the glance file again
-    itself (`GlanceFile(device:)`), since the app may not be running, and WidgetKit then reads it.
+    (`WidgetStore`, through `AppDependencyManager`), and only if `lumenna.sqlite` is already
+    there: a widget must never make a store in the group. After a write (the heads moved,
+    `AssistantStore`'s `changed`) the widget writes the glance file again itself
+    (`GlanceFile(device:)`), while the store is still open, since the app may not be running.
+- **A widget never holds the store open.** iOS ends a process suspended with a lock on a file in
+  a group (`0xdead10cc`), so the widget's `AssistantStore(opening:)` opens a `Device` afresh for
+  each call (`GlanceStore.open`) and lets go of it before the call returns, as the timeline's
+  reading does (`GlanceStore.visit`): nothing caches one, and a closure given one keeps nothing of
+  it. Dropping the last `Device` closes SQLite, since nothing in the core keeps its store
+  (`a_device_let_go_of_closes_its_store_whatever_it_did`); `WidgetTests` checks no connection is
+  left by taking the file out of WAL, which SQLite allows only to a connection alone with it. A
+  Mark Done opens the store a few times (the entity's query, the operation, the entity after),
+  each a fresh open, which is the price of holding nothing.
   - **The direct download**: in the app, through App Intents' own way of naming the process,
     `allowedExecutionTargets` `.main` (macOS 27): its store is outside the sandbox every Mac
     extension runs in, and the app, resident in the menu bar, holds it. Not `openAppWhenRun`,
@@ -513,9 +526,7 @@ each embedded in its app.
   there for Mark Done. Its Info.plist names the group as the apps' do (`LumennaAppGroup`).
 - **Not checked by CI**, since it builds unsigned with no group: the widgets reading the glance,
   Mark Done in the widget and in the direct download's app, the gallery's words, a complication
-  on a face, and VoiceOver on each. iOS ends a process suspended holding a lock on a file in a
-  group (`0xdead10cc`): the widget opens the store only when an intent asks, but keeps it open
-  for the rest of its process's life, which is unchecked.
+  on a face, and VoiceOver on each.
 
 ## The Apple Watch app
 

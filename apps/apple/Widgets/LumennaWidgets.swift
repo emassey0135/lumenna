@@ -66,21 +66,38 @@ struct GlanceProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<GlanceTimelineEntry>) -> Void) {
-        completion(Timeline(entries: GlanceSource.entries(), policy: .atEnd))
+        let (entries, fresh) = GlanceSource.timeline()
+        // A glance run out is asked for again a little later, not the moment it is drawn: the app
+        // or the store may have more by then.
+        completion(Timeline(entries: entries, policy: fresh ? .atEnd : .after(Date().addingTimeInterval(15 * 60))))
     }
 }
 
 enum GlanceSource {
-    /// Every moment in the glance file, or, with none written yet (the app not yet opened, a
-    /// build without its group), the core's glance of a day with nothing in it.
-    static func entries() -> [GlanceTimelineEntry] {
-        let entries = GlanceWidgets.entries(read())
-        return entries.isEmpty ? [nothing()] : entries
+    /// The glance file's moments, and whether they still reach past now. Run out or never
+    /// written, the glance is worked out afresh from the store where the widget can reach it (the
+    /// iPhone and iPad, the App Store edition), opened for that alone. Elsewhere (the direct
+    /// download, whose store is outside the sandbox, and the watch) the last moment is shown as
+    /// now, and with none, the core's glance of a day with nothing in it.
+    static func timeline() -> (entries: [GlanceTimelineEntry], fresh: Bool) {
+        let now = Date()
+        let written = GlanceWidgets.entries(read())
+        if !GlanceWidgets.stale(written, at: now) { return (written, true) }
+        #if !os(watchOS) && !(os(macOS) && !APP_STORE)
+        if let worked = try? GlanceStore.visit(AppGroup.store, { try $0.glance(hours: GlanceFile.hours, locale: Writing()) }) {
+            // Kept for the next reading, as the app would have written it.
+            if let container = AppGroup.container { try? GlanceFile(directory: container) { worked }.writeNow() }
+            let entries = GlanceWidgets.entries(worked)
+            if !entries.isEmpty { return (entries, true) }
+        }
+        #endif
+        let last = written.last?.glance ?? LumennaApp.glanceEmpty(locale: Writing())
+        return ([GlanceTimelineEntry(date: now, glance: last)], false)
     }
 
     /// The moment true now.
     static func now() -> GlanceTimelineEntry {
-        let entries = entries()
+        let entries = timeline().entries
         return entries.last { $0.date <= Date() } ?? entries[0]
     }
 
@@ -98,21 +115,16 @@ enum GlanceSource {
 
 #if !os(watchOS) && !(os(macOS) && !APP_STORE)
 /// The store, for Today's Mark Done, where the widget can reach it: in the App Group, on the
-/// iPhone and iPad and in the Mac App Store edition. Opened only when an intent first asks, and
-/// only if the app has made it: a widget must never make a store in the group, where one found
-/// first would keep the app's from moving there (`AppGroup.profile`).
+/// iPhone and iPad and in the Mac App Store edition. Opened for each operation and closed before
+/// it returns (`GlanceStore`), never held by the process.
 enum WidgetStore {
     static func serve() {
-        AppDependencyManager.shared.add { () async throws -> AssistantStore in
-            guard let store = AppGroup.store,
-                  FileManager.default.fileExists(atPath: store.appendingPathComponent("lumenna.sqlite").path) else {
-                throw CocoaError(.fileNoSuchFile)
-            }
-            let device = try LumennaApp.Device(directory: store.path)
-            let glance = GlanceFile(device: device)
-            // What the widget reads next: the app may not be running to write it.
-            return AssistantStore(device: device) { try? glance?.writeNow() }
+        let store = AssistantStore(opening: { try GlanceStore.open(AppGroup.store) }) { device in
+            // What the widget reads next, written while the store is still open: the app may not
+            // be running to write it.
+            try? GlanceFile(device: device)?.writeNow()
         }
+        AppDependencyManager.shared.add(dependency: store)
     }
 }
 #endif

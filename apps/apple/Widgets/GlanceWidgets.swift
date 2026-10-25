@@ -56,6 +56,13 @@ enum GlanceWidgets {
         glance.compactMap { entry in instant(entry.moment.at).map { GlanceTimelineEntry(date: $0, glance: entry) } }
     }
 
+    /// Whether the glance has run out by `now`: none written, or its last moment come. The app
+    /// writes two days ahead, so it has gone unopened for about that long.
+    static func stale(_ entries: [GlanceTimelineEntry], at now: Date) -> Bool {
+        guard let last = entries.last else { return true }
+        return last.date <= now
+    }
+
     /// Whether something is under way: a block, or a timer running.
     static func relevant(_ moment: LumennaApp.GlanceMoment) -> Bool {
         moment.current != nil || moment.timer != nil
@@ -84,5 +91,29 @@ enum GlanceWidgets {
         guard let seconds = try? whole.parse(String(text[..<dot] + text[zone...])),
               let fraction = Double("0" + text[dot ..< zone]) else { return nil }
         return seconds.addingTimeInterval(fraction)
+    }
+}
+
+/// The store, as a widget may touch it: opened afresh for one piece of work and let go before it
+/// returns, never held while the widget is suspended (iOS ends a process that is suspended with a
+/// lock on a file in a group, `0xdead10cc`), and never made: one a widget made in the group would
+/// keep the app's from moving there (`AppGroup.profile`).
+enum GlanceStore {
+    /// The store's file in its directory, as the core names it.
+    static let file = "lumenna.sqlite"
+
+    /// The store in `directory`, opened afresh, if the app has made one there.
+    static func open(_ directory: URL?) throws -> LumennaApp.Device {
+        guard let directory, FileManager.default.fileExists(atPath: directory.appendingPathComponent(file).path) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        return try LumennaApp.Device(directory: directory.path)
+    }
+
+    /// `body` on the store in `directory`, closed again once it returns (nothing else holds the
+    /// device, and `body` may keep nothing of it); `nil` where there is no store.
+    static func visit<T>(_ directory: URL?, _ body: (LumennaApp.Device) throws -> T) throws -> T? {
+        guard let directory, FileManager.default.fileExists(atPath: directory.appendingPathComponent(file).path) else { return nil }
+        return try body(try open(directory))
     }
 }

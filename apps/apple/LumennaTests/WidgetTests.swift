@@ -1,5 +1,6 @@
 import Foundation
 import LumennaApp
+import SQLite3
 import WidgetKit
 import XCTest
 @testable import Lumenna
@@ -100,6 +101,52 @@ final class WidgetTests: XCTestCase {
         XCTAssertEqual(empty.moment.date, Clock.isoDay(Date()))
     }
 
+    func testAGlanceRunsOutOnceItsLastMomentHasComeOrWhenNoneWasWritten() {
+        let now = Date()
+        let entry = { (at: Date) in GlanceTimelineEntry(date: at, glance: LumennaApp.glanceEmpty(locale: Writing())) }
+        XCTAssertTrue(GlanceWidgets.stale([], at: now))
+        XCTAssertTrue(GlanceWidgets.stale([entry(now.addingTimeInterval(-7200)), entry(now.addingTimeInterval(-60))], at: now))
+        XCTAssertFalse(GlanceWidgets.stale([entry(now.addingTimeInterval(-60)), entry(now.addingTimeInterval(3600))], at: now))
+    }
+
+    func testAWidgetMakesNoStoreWhereThereIsNone() throws {
+        let directory = scratch()
+        XCTAssertNil(try GlanceStore.visit(directory) { _ in true })
+        XCTAssertThrowsError(try GlanceStore.open(directory))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    func testAWidgetsVisitToTheStoreLeavesNothingOfItOpen() throws {
+        let directory = try madeStore()
+        weak var visited: LumennaApp.Device?
+        let worked = try GlanceStore.visit(directory) { device in
+            visited = device
+            // The probe sees a connection while one is open.
+            XCTAssertTrue(heldOpen(directory))
+            return try device.glance(hours: GlanceFile.hours, locale: Writing())
+        }
+        XCTAssertFalse(worked?.isEmpty ?? true)
+        XCTAssertNil(visited)
+        XCTAssertFalse(heldOpen(directory))
+    }
+
+    func testAWidgetsMarkDoneOpensTheStoreForItAloneAndHearsOfTheWriteWhileItIsOpen() throws {
+        let directory = try madeStore()
+        var heard = 0
+        let store = AssistantStore(opening: { try GlanceStore.open(directory) }) { device in
+            heard += 1
+            XCTAssertNotNil(try? device.glance(hours: 1, locale: Writing()))
+        }
+        _ = try store.assist("add_task", ["text": .text("Pay the rent today")])
+        XCTAssertEqual(heard, 1)
+        XCTAssertFalse(heldOpen(directory))
+        let task = try XCTUnwrap(store.tasks(try store.assist("list_tasks", ["query": .text("")])).first)
+        XCTAssertEqual(heard, 1, "a reading writes nothing")
+        _ = try store.assist("complete_task", ["id": .text(task.id)])
+        XCTAssertEqual(heard, 2)
+        XCTAssertFalse(heldOpen(directory))
+    }
+
     func testAWidgetOpensTheAppOnTheCoresLaunch() throws {
         let today = try XCTUnwrap(LumennaApp.launchShortcuts().first { $0.id == "today" })
         let url = LaunchURL.of(today.id)
@@ -107,4 +154,33 @@ final class WidgetTests: XCTestCase {
         XCTAssertEqual(LaunchURL.id(in: url), "today")
         XCTAssertNil(LaunchURL.id(in: URL(string: "lumenna://tasks/overdue")!))
     }
+
+    /// A folder of the test's own, not yet made.
+    private func scratch() -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("widget-store-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        return directory
+    }
+
+    /// A store the app made, closed again, as a widget finds one.
+    private func madeStore() throws -> URL {
+        let directory = scratch()
+        _ = try LumennaApp.Device(directory: directory.path)
+        XCTAssertFalse(heldOpen(directory))
+        return directory
+    }
+}
+
+/// Whether any connection in this process holds the store in `directory` open: SQLite takes a
+/// store out of WAL only for a connection alone with the file, and the store puts it back as it
+/// opens.
+private func heldOpen(_ directory: URL) -> Bool {
+    var db: OpaquePointer?
+    guard sqlite3_open(directory.appendingPathComponent(GlanceStore.file).path, &db) == SQLITE_OK else { return true }
+    defer { sqlite3_close(db) }
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(db, "PRAGMA journal_mode = DELETE", -1, &statement, nil) == SQLITE_OK else { return true }
+    defer { sqlite3_finalize(statement) }
+    guard sqlite3_step(statement) == SQLITE_ROW, let mode = sqlite3_column_text(statement, 0) else { return true }
+    return String(cString: mode) != "delete"
 }
