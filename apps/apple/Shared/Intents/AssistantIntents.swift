@@ -203,8 +203,8 @@ struct EditTaskIntent: OperationIntent {
 
     @AppDependency private var store: AssistantStore
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        said(try store.assist(Self.persistentIdentifier, [
+    func perform() async throws -> some IntentResult & ReturnsValue<TaskEntity?> & ProvidesDialog {
+        let changed = try store.assist(Self.persistentIdentifier, [
             "id": .text(id.id),
             "title": title.map(ArgumentValue.text),
             "due": due.map(ArgumentValue.text),
@@ -214,7 +214,8 @@ struct EditTaskIntent: OperationIntent {
             "notes": notes.map(ArgumentValue.text),
             "project": project.map { .text($0.name) },
             "labels": labels.map { .texts($0.map(\.name)) },
-        ]))
+        ])
+        return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
     }
 }
 
@@ -232,8 +233,9 @@ struct CompleteTaskIntent: OperationIntent {
 
     @AppDependency private var store: AssistantStore
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        said(try store.assist(Self.persistentIdentifier, ["id": .text(id.id)]))
+    func perform() async throws -> some IntentResult & ReturnsValue<TaskEntity?> & ProvidesDialog {
+        let changed = try store.assist(Self.persistentIdentifier, ["id": .text(id.id)])
+        return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
     }
 }
 
@@ -251,8 +253,9 @@ struct UncompleteTaskIntent: OperationIntent {
 
     @AppDependency private var store: AssistantStore
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        said(try store.assist(Self.persistentIdentifier, ["id": .text(id.id)]))
+    func perform() async throws -> some IntentResult & ReturnsValue<TaskEntity?> & ProvidesDialog {
+        let changed = try store.assist(Self.persistentIdentifier, ["id": .text(id.id)])
+        return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
     }
 }
 
@@ -276,13 +279,14 @@ struct MoveTaskIntent: OperationIntent {
 
     @AppDependency private var store: AssistantStore
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        said(try store.assist(Self.persistentIdentifier, [
+    func perform() async throws -> some IntentResult & ReturnsValue<TaskEntity?> & ProvidesDialog {
+        let changed = try store.assist(Self.persistentIdentifier, [
             "id": .text(id.id),
             "parent": parent.map { .text($0.id) },
             "project": project.map { .text($0.name) },
             "top": top ? .flag(true) : nil,
-        ]))
+        ])
+        return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
     }
 }
 
@@ -321,8 +325,9 @@ struct RestoreTaskIntent: OperationIntent {
 
     @AppDependency private var store: AssistantStore
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        said(try store.assist(Self.persistentIdentifier, ["id": .text(id.id)]))
+    func perform() async throws -> some IntentResult & ReturnsValue<TaskEntity?> & ProvidesDialog {
+        let changed = try store.assist(Self.persistentIdentifier, ["id": .text(id.id)])
+        return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
     }
 }
 
@@ -416,8 +421,15 @@ struct ListBlocksIntent: OperationIntent {
 
     @AppDependency private var store: AssistantStore
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        said(try store.assist(Self.persistentIdentifier))
+    /// Each block as the Blocks list has it, by its search document.
+    func perform() async throws -> some IntentResult & ReturnsValue<[BlockSeriesEntity]> & ProvidesDialog {
+        let listed = try store.assist(Self.persistentIdentifier)
+        guard case let .rows(rows) = listed else { return .result(value: [], dialog: IntentDialog(said: listed.said)) }
+        let documents = store.searchDocuments().filter { $0.kind == .block }
+        // A row names its block's first day, `<series>@<date>`; a document its series.
+        let series = rows.rows.filter { $0.role == "block" }.compactMap { $0.id.split(separator: "@").first.map(String.init) }
+        let blocks = series.compactMap { series in documents.first { $0.id == "block:\(series)" } }
+        return .result(value: blocks.map(BlockSeriesEntity.init), dialog: IntentDialog(said: listed.said))
     }
 }
 

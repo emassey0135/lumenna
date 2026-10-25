@@ -196,7 +196,12 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   task's own Erase Permanently question, else the core's unconfirmed refusal, then runs with
   `confirm`. Apply a Replan and Apply a Day Plan propose afresh, say the proposal's sentences
   and ask before applying; what is accepted defaults to every change. Pause and Stop default to
-  the sitting whose timer runs (`RunningSitting`). `LumennaShortcuts` is what Siri, Spotlight
+  the sitting whose timer runs (`RunningSitting`). Shortcuts' Find Tasks (`TaskQuery`'s
+  `EntityPropertyQuery`) builds each comparison into a filter-language query run through
+  `list_tasks`, so what matches is the core's; a comparison the language cannot say is not
+  offered, and only the order Shortcuts asks for (due, priority, title) is Swift's. Every
+  listing returns its entities, and a write on a task returns the task, so a found task passes
+  on to the next action. `LumennaShortcuts` is what Siri, Spotlight
   and the Action Button offer unasked (New Task, What Should I Work On?, start, pause and stop,
   Today, Complete). What Spotlight, Siri and Shortcuts find is the core's search
   (`records::search`), as on every platform: every search document (open tasks, projects,

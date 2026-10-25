@@ -44,6 +44,12 @@ struct TaskEntity: AppEntity {
     @Property(title: "Priority") var priority: Int
     @Property(title: "Done") var done: Bool
     @Property(title: "Notes") var notes: String
+    @Property(title: "Estimate in Minutes") var estimate: Int?
+    /// How it repeats, in the core's words ("every weekday").
+    @Property(title: "Repeats") var repeats: String?
+    /// Its states, as the filter language names them: overdue, blocked, recurring, …
+    @Property(title: "States") var states: [String]
+    @Property(title: "Added") var added: Date?
     /// What a search shows under its name, the core's: when it is due, its project and labels.
     /// A task done or in the trash has none.
     let line: String?
@@ -65,10 +71,87 @@ struct TaskEntity: AppEntity {
         // The core's state keyword, as its filters read it.
         done = task.state.contains("completed")
         notes = task.notes
+        estimate = task.estimateMins.map(Int.init)
+        repeats = task.repetition
+        states = task.state
+        added = try? Date.ISO8601FormatStyle().parse(task.createdAt)
     }
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(title: "\(title)", subtitle: line.map { "\($0)" })
+    }
+}
+
+/// Shortcuts' Find Tasks: each comparison it offers is a query in the filter language, so what
+/// matches is the core's (`list_tasks`). A comparison the filter language has no form for is
+/// not offered: a title alone (`search:` reads notes too), a priority above or below another,
+/// a due date between two, an estimate, the states besides done. A due date or project left
+/// empty is the filter language's `no date` or `no project`.
+/// Names are quoted as the filter language reads a quoted name; a name holding a quotation mark
+/// cannot be.
+extension TaskQuery: EntityPropertyQuery {
+    static let properties = QueryProperties {
+        Property(\TaskEntity.$due) {
+            LessThanComparator { "due before: \(Clock.isoDay($0))" }
+            GreaterThanComparator { "due after: \(Clock.isoDay($0))" }
+            EqualToComparator { $0.map { "due on: \(Clock.isoDay($0))" } ?? "no date" }
+        }
+        Property(\TaskEntity.$priority) {
+            EqualToComparator { "p\($0)" }
+            NotEqualToComparator { "!p\($0)" }
+        }
+        Property(\TaskEntity.$project) {
+            EqualToComparator { $0.map { "#\"\($0)\"" } ?? "no project" }
+            NotEqualToComparator { $0.map { "!#\"\($0)\"" } ?? "!no project" }
+        }
+        Property(\TaskEntity.$labels) {
+            ContainsComparator { "@\"\($0)\"" }
+        }
+        Property(\TaskEntity.$done) {
+            EqualToComparator { $0 ? "completed" : "!completed" }
+        }
+    }
+
+    static let sortingOptions = SortingOptions {
+        SortableBy(\TaskEntity.$due)
+        SortableBy(\TaskEntity.$priority)
+        SortableBy(\TaskEntity.$title)
+    }
+
+    func entities(
+        matching comparators: [String],
+        mode: ComparatorMode,
+        sortedBy: [EntityQuerySort<TaskEntity>],
+        limit: Int?
+    ) async throws -> [TaskEntity] {
+        let query = comparators.map { "(\($0))" }.joined(separator: mode == .and ? " & " : " | ")
+        var tasks = store.tasks(try store.assist("list_tasks", ["query": .text(query)]))
+        // The order Shortcuts asks for, else the core's (most urgent first).
+        for sort in sortedBy.reversed() {
+            tasks = order(tasks, by: sort)
+        }
+        return limit.map { Array(tasks.prefix($0)) } ?? tasks
+    }
+
+    private func order(_ tasks: [TaskEntity], by sort: EntityQuerySort<TaskEntity>) -> [TaskEntity] {
+        let ascending = sort.order == .ascending
+        func ordered<Value: Comparable>(_ value: (TaskEntity) -> Value?) -> [TaskEntity] {
+            // Stable, what has no value last either way.
+            tasks.enumerated().sorted { a, b in
+                switch (value(a.element), value(b.element)) {
+                case let (x?, y?) where x != y: ascending ? x < y : x > y
+                case (nil, _?): false
+                case (_?, nil): true
+                default: a.offset < b.offset
+                }
+            }.map(\.element)
+        }
+        switch sort.by {
+        case \TaskEntity.$due: return ordered { $0.due }
+        case \TaskEntity.$priority: return ordered { $0.priority }
+        case \TaskEntity.$title: return ordered { $0.title.lowercased() }
+        default: return tasks
+        }
     }
 }
 
