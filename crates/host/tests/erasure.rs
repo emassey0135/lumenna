@@ -103,6 +103,8 @@ fn erasing_deletes_the_automatic_backups_and_takes_a_new_one() {
     let opened = open();
     let id = add(&opened.lumenna, "the secret");
     opened.lumenna.backup(None).unwrap();
+    // A backup is named to the millisecond, so two in the same one are one file.
+    std::thread::sleep(std::time::Duration::from_millis(5));
     opened.lumenna.backup(None).unwrap();
     let before = opened.backups();
     assert_eq!(before.len(), 2);

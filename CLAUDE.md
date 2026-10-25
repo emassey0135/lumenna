@@ -295,7 +295,10 @@ CI (`.github/workflows/ci.yml`) builds each mobile app once and tests it on seve
 parallel jobs that share the build. **Two tiers**: the Rust tests, the builds, the clients, the
 GTK and Windows UI tests and a smoke set of iOS and Android UI tests block; the full iOS and
 Android suites report without blocking, since a slow runner fails them where nothing is wrong.
-A test that has only failed for a reason can join the smoke set.
+A test that has only failed for a reason can join the smoke set. **A branch runs only what its
+changes can break** (the `changes` job: a change to `crates/`, `Cargo.*` or `ci.yml` runs
+everything, one to an app its own jobs, and the Rust workspace's for an app written in Rust);
+master, pull requests and runs asked for run everything. A new app's jobs join a group there.
 
 `crates/core/tests/rows.rs` snapshots the row projection (each row's place, folding, checked
 state, speech and braille) in `tests/snapshots/`, rewritten with `UPDATE_SNAPSHOTS=1` once a
