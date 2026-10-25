@@ -52,7 +52,7 @@ case "$PLATFORM" in
   *) echo "error: no Rust target for platform $PLATFORM" >&2; exit 1 ;;
 esac
 case "$CONFIGURATION" in
-  Release) PROFILE_FLAG=--release; PROFILE=release ;;
+  Release|AppStore) PROFILE_FLAG=--release; PROFILE=release ;;
   *) PROFILE_FLAG=; PROFILE=debug ;;
 esac
 
@@ -85,16 +85,19 @@ if [ "$PLATFORM" = macosx ]; then
   for target in $TARGETS; do LIBS+=("$ROOT/target/$target/$PROFILE/liblumenna_ffi.a"); done
   lipo -create "${LIBS[@]}" -output "$UNIVERSAL/liblumenna_ffi.a"
 
-  # `lum`, for every architecture asked for too, which the Mac app carries in Contents/MacOS:
-  # one program on the Mac for the command line, a cask's link and a Claude Desktop extension
-  # to run, updated with the app and signed with it (project.yml's Put lum in the app).
-  for target in $TARGETS; do
-    cargo build -p lumenna-cli --bin lum $PROFILE_FLAG --target "$target"
-  done
-  BINS=()
-  for target in $TARGETS; do BINS+=("$ROOT/target/$target/$PROFILE/lum"); done
-  mkdir -p "$GENERATED/Mac"
-  lipo -create "${BINS[@]}" -output "$GENERATED/Mac/lum"
+  # `lum`, for every architecture asked for too, which the direct download carries in
+  # Contents/MacOS: one program on the Mac for the command line, a cask's link and a Claude
+  # Desktop extension to run, updated with the app and signed with it (project.yml's Put lum in
+  # the app). The App Store edition carries none.
+  if [ "${LUMENNA_EDITION:-direct}" != appstore ]; then
+    for target in $TARGETS; do
+      cargo build -p lumenna-cli --bin lum $PROFILE_FLAG --target "$target"
+    done
+    BINS=()
+    for target in $TARGETS; do BINS+=("$ROOT/target/$target/$PROFILE/lum"); done
+    mkdir -p "$GENERATED/Mac"
+    lipo -create "${BINS[@]}" -output "$GENERATED/Mac/lum"
+  fi
 fi
 
 # The watch's bindings are made in a target directory of their own, so the two do not undo

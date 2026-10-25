@@ -178,8 +178,12 @@ Each is a thin adapter over the command surface.
     so the two sync on the Mac rather than share a file; Emacs goes through that `lum`. The
     App Store edition updates through the store, needs the sandbox's network entitlements for
     Iroh and discovery, and its global shortcuts and login item checked under the sandbox.
-    Widgets read its container directly, and the direct download's from a file the app writes
-    to its App Group (Integrations).
+    Widgets read the glance file every Apple app writes to its App Group, in either edition
+    (Integrations). Built: the App Store edition as a configuration of the Mac target (scheme
+    `LumennaMacAppStore`, `apps/apple/CLAUDE.md`), its entitlements, store, socket and backup
+    folder bookmark. Still to come: signing it with a provisioning profile for its group,
+    trying it signed under the sandbox (pairing, discovery, the socket, the login item, the
+    shortcuts, a chosen backup folder after a restart), App Store Connect and the review.
   - **iPhone and Apple Watch.** Built: the iPhone app with its watch app, for devices,
     unsigned. Still to come, with the paid account: signing, App Store Connect, TestFlight, the
     privacy manifest and the export-compliance answer.

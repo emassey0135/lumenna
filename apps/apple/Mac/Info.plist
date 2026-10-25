@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>LumennaAppGroup</key>
+	<string>$(LUMENNA_APP_GROUP)</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_lumenna._udp</string>

@@ -78,6 +78,12 @@ final class AppModel {
     /// When the person last did something, for telling their changes from arrivals.
     private(set) var lastSent = Date.distantPast
 
+    /// What a widget or complication shows for the next `hours`, the core's, worded in this
+    /// device's clock (`GlanceFile`). Safe off the main thread.
+    func glance(hours: UInt32) throws -> [LumennaApp.GlanceEntry] {
+        try app.glance(hours: hours)
+    }
+
     /// What could go at `cursor` (UTF-8 bytes) in a line of `syntax` outside the app's own quick
     /// add: a filter.
     func complete(_ text: String, cursor: UInt32, syntax: LumennaApp.Syntax) throws -> LumennaApp.Completions {
