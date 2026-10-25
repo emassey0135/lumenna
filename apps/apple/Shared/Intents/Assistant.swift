@@ -7,10 +7,35 @@ import LumennaApp
 /// `Assistant.serve`. Every intent runs its operation through `Device.assist`, as `lum mcp`
 /// does, so no assistant can do what another cannot.
 final class AssistantStore: @unchecked Sendable {
-    let device: LumennaApp.Device
+    /// The app's store, which it holds open for the process's life; none in a widget.
+    private let held: LumennaApp.Device?
+    /// A widget's: the store opened afresh for each call.
+    private let opening: (() throws -> LumennaApp.Device)?
+    /// Hears of an operation that changed the store while it is still open: in a widget, which
+    /// then writes its glance again (`GlanceFile`), the app perhaps not running.
+    private let changed: ((LumennaApp.Device) -> Void)?
 
+    /// The app's store, held open.
     init(device: LumennaApp.Device) {
-        self.device = device
+        held = device
+        opening = nil
+        changed = nil
+    }
+
+    /// A store `open` opens for each call and lets go before the call returns: a widget's, which
+    /// must hold no file in the group open while it is suspended, or iOS ends it (`0xdead10cc`).
+    init(opening open: @escaping () throws -> LumennaApp.Device, changed: @escaping (LumennaApp.Device) -> Void) {
+        held = nil
+        opening = open
+        self.changed = changed
+    }
+
+    /// `body` on the store: the app's own, or one opened for it alone, closed once nothing holds
+    /// it, so `body` must keep nothing of it.
+    private func using<T>(_ body: (LumennaApp.Device) throws -> T) throws -> T {
+        if let held { return try body(held) }
+        guard let opening else { throw CocoaError(.fileNoSuchFile) }
+        return try body(try opening())
     }
 
     /// Runs the assistant operation `id` with what its parameters were given, by name; a value
@@ -18,7 +43,13 @@ final class AssistantStore: @unchecked Sendable {
     func assist(_ id: String, _ arguments: [String: LumennaApp.ArgumentValue?] = [:]) throws -> LumennaApp.Assisted {
         let given = arguments.compactMap { name, value in value.map { LumennaApp.Argument(name: name, value: $0) } }
         do {
-            return try device.assist(operation: id, arguments: given)
+            return try using { device in
+                // By the heads, which move for every write: what the operation did is the core's.
+                let before = changed == nil ? nil : try? device.heads()
+                let assisted = try device.assist(operation: id, arguments: given)
+                if let changed, (try? device.heads()) != before { changed(device) }
+                return assisted
+            }
         } catch {
             throw AssistantRefusal(error)
         }
@@ -32,12 +63,12 @@ final class AssistantStore: @unchecked Sendable {
 
     /// Everything a platform's search indexes, the core's (`records::search`).
     func searchDocuments() -> [LumennaApp.SearchDocument] {
-        (try? device.searchDocuments()) ?? []
+        (try? using { try $0.searchDocuments() }) ?? []
     }
 
     /// What the core's search finds for `text`, most fitting first.
     func found(_ text: String) -> [LumennaApp.SearchDocument] {
-        (try? device.searchResults(text: text)) ?? []
+        (try? using { try $0.searchResults(text: text) }) ?? []
     }
 
     /// What a platform's search finds of each open task, by the task's identifier: its line
@@ -103,7 +134,7 @@ enum Assistant {
         let store = AssistantStore(device: device)
         AppDependencyManager.shared.add(dependency: store)
         AppDependencyManager.shared.add(dependency: AssistantLauncher(open: launch))
-        #if !os(watchOS)
+        #if !os(watchOS) && !LUMENNA_WIDGETS
         if #available(iOS 18.0, macOS 15.0, *) {
             SearchIndex.follow(store)
         }

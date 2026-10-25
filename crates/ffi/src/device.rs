@@ -481,3 +481,29 @@ struct Quietly;
 impl lumenna_host::SyncListener for Quietly {
     fn changed(&self) {}
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A folder of the test's own.
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+        std::env::temp_dir().join(format!("lumenna-ffi-{name}-{}-{nanos}", std::process::id()))
+    }
+
+    #[test]
+    fn a_device_let_go_of_closes_its_store_whatever_it_did() {
+        // What a widget relies on: nothing of the store outlives the device it opened, so no file
+        // in the group stays open while it is suspended.
+        let directory = scratch("dropped");
+        let device = Device::new(directory.display().to_string()).unwrap();
+        let added = device.add_task("Pay the rent today".to_owned()).unwrap();
+        device.assist("list_tasks".to_owned(), Vec::new()).unwrap();
+        device.heads().unwrap();
+        let store = Arc::downgrade(&device.lumenna);
+        drop(device);
+        assert!(store.upgrade().is_none(), "the store outlived its device after {}", added.announcement);
+        std::fs::remove_dir_all(&directory).ok();
+    }
+}

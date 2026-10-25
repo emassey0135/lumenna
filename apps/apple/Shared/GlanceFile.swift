@@ -26,11 +26,21 @@ final class GlanceFile {
     private var observer: NSObjectProtocol?
     private var queued = false
 
+    #if !LUMENNA_WIDGETS
     /// The glance of `app`, written into the App Group's container; `nil` where the build has
     /// none (an unsigned build, a UI test's).
     convenience init?(app: AppModel) {
         guard let container = AppGroup.container else { return nil }
         self.init(directory: container) { try app.glance(hours: GlanceFile.hours) }
+    }
+    #endif
+
+    /// The glance of `device`, worded in this device's clock, written into the App Group's
+    /// container: a widget's own, after a Mark Done it ran on the store, so the timeline it is
+    /// about to read again holds the change whether or not the app is running.
+    convenience init?(device: LumennaApp.Device) {
+        guard let container = AppGroup.container else { return nil }
+        self.init(directory: container) { try device.glance(hours: GlanceFile.hours, locale: Writing()) }
     }
 
     /// `glance`'s entries, written into `directory`, which tests name.
@@ -43,12 +53,14 @@ final class GlanceFile {
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
+    #if !LUMENNA_WIDGETS
     /// Writes it again whenever the store changes.
     func follow() {
         observer = NotificationCenter.default.addObserver(forName: Core.changed, object: nil, queue: .main) { [weak self] _ in
             self?.soon()
         }
     }
+    #endif
 
     /// Writes it a moment from now, once for any number of changes in between: a sync brings in
     /// many at once.

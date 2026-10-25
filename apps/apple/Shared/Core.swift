@@ -47,8 +47,8 @@ final class Core {
             return manager.temporaryDirectory.appendingPathComponent(test, isDirectory: true)
         }
         #if os(macOS) && APP_STORE
-        if let container = AppGroup.container {
-            return container.appendingPathComponent("lumenna", isDirectory: true)
+        if let store = AppGroup.store {
+            return store
         }
         #elseif os(macOS)
         if let explicit = environment["LUMENNA_PROFILE"], !explicit.isEmpty {

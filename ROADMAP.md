@@ -124,6 +124,11 @@ Each is a thin adapter over the command surface.
 - **Widgets**: WidgetKit (iOS, macOS) and Glance (Android): today's blocks and what is due.
   The watches' are widgets too: complications through WidgetKit on watchOS, with the running
   timer on the watch face, and tiles and complications on Wear OS.
+  Apple's are built (`apps/apple/CLAUDE.md`, "The widgets"): Now and Today on the iPhone, the
+  iPad and both Mac editions, Now on the watch's faces and Smart Stack. Still to come: trying
+  them signed, which CI cannot (the group's glance read, Mark Done in the widget on the iPhone
+  and the App Store edition and in the app for the direct download, a complication on a face,
+  VoiceOver on each).
 - **A PowerShell module**: a script module (`.psm1`) in PowerShell over `lum --json`, for
   Windows PowerShell 5.1 and PowerShell 7 on every platform, and the same language as Windows'
   hooks. Unlike `lum`, it gives:

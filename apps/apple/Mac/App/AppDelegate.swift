@@ -66,6 +66,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         reminders?.now()
     }
 
+    /// A widget tapped: the window, on the core's launch, which the window follows.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let core, let id = urls.lazy.compactMap(LaunchURL.id(in:)).first else { return }
+        showMainWindow(nil)
+        core.app.send(.launch(id))
+    }
+
     /// Closing the window keeps the app running; clicking the Dock icon brings it back.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 

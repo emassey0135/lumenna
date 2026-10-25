@@ -4,7 +4,7 @@ import UIKit
 /// The iPad's top level, as the Mac's window is: the places in a sidebar, the place chosen
 /// beside it, and beside that whatever was opened from it — a task, a settings page — or a
 /// line saying nothing is. The iPhone has tabs instead (`RootTabs`).
-final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, CommandActions {
+final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, CommandActions, PlaceFollowing {
     private let core: Core
     private lazy var sidebar = SidebarViewController(core: core) { [weak self] in self?.show($0) }
     /// The place shown: the middle column.
@@ -56,6 +56,11 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
 
     /// Whether something is open beside the place.
     private(set) var hasOpen = false
+
+    /// The app's place, where a launch from outside left it.
+    func showAppPlace() {
+        if let place = core.app.view.place { show(.place(place)) }
+    }
 
     /// Shows `destination`, then `then` on its screen once it is in the window: a screen not
     /// yet shown can neither present nor take focus.

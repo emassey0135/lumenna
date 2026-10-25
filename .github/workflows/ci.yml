@@ -313,7 +313,10 @@ jobs:
         run: |
           xcodegen
           xcodebuild -project Lumenna.xcodeproj -scheme LumennaMac -configuration Release \
-            -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
+            -destination 'generic/platform=macOS' -derivedDataPath "$RUNNER_TEMP/direct" \
+            CODE_SIGNING_ALLOWED=NO build
+          # Its widgets, embedded.
+          test -x "$RUNNER_TEMP/direct/Build/Products/Release/Lumenna.app/Contents/PlugIns/LumennaWidgetsMac.appex/Contents/MacOS/LumennaWidgetsMac"
       - name: Build the App Store edition
         working-directory: apps/apple
         run: |
@@ -324,6 +327,7 @@ jobs:
           app="$RUNNER_TEMP/appstore/Build/Products/AppStore/Lumenna.app"
           test -x "$app/Contents/MacOS/Lumenna"
           if [ -e "$app/Contents/MacOS/lum" ]; then echo "error: the App Store edition carries lum"; exit 1; fi
+          test -x "$app/Contents/PlugIns/LumennaWidgetsMac.appex/Contents/MacOS/LumennaWidgetsMac"
 
   mac-ui:
     name: Mac app, every UI test

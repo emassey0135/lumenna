@@ -84,6 +84,13 @@ pub fn worded(moment: GlanceMoment, clock: &dyn Clock) -> GlanceEntry {
     }
 }
 
+/// The glance now of a day with nothing in it (`lumenna_records::glance::empty`), worded in
+/// `clock`: what a widget shows before any glance was written for it.
+#[must_use]
+pub fn empty(clock: &dyn Clock) -> GlanceEntry {
+    worded(lumenna_records::glance::empty(&jiff::Zoned::now()), clock)
+}
+
 /// A block as the day says one: "<start> to <end>, <title>".
 fn block_line(block: &GlanceBlock, clock: &dyn Clock) -> Line {
     Line::of(format!("{} to {}", clock.time(&block.start), clock.time(&block.end)), vec![block.title.clone()])
@@ -169,5 +176,6 @@ mod tests {
         assert_eq!(free.headline.text, "Free, until 14:00, then Meeting");
         let empty = worded(moment(), &TwentyFour);
         assert_eq!(empty.spoken, "Nothing more planned today. Nothing due.");
+        assert_eq!(super::empty(&TwentyFour).spoken, empty.spoken);
     }
 }

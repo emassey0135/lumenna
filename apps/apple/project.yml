@@ -62,6 +62,8 @@ targetTemplates:
         PRODUCT_NAME: LumennaApp
         PRODUCT_MODULE_NAME: LumennaApp
         GENERATE_INFOPLIST_FILE: YES
+        # The widget extensions link it as the apps do, so it uses only what an extension may.
+        APPLICATION_EXTENSION_API_ONLY: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         # Generated code, whose own warnings are BoltFFI's.
         SWIFT_SUPPRESS_WARNINGS: YES
@@ -75,6 +77,40 @@ targetTemplates:
           RUST_PROFILE: release
         AppStore:
           RUST_PROFILE: release
+
+  # The widgets (Widgets/, apps/apple/CLAUDE.md "The widgets"): an extension embedded in its
+  # app, a process of its own, over the same LumennaApp framework the app embeds, so the core is
+  # built once per platform and linked statically into that framework alone. They read the
+  # glance the app writes into the App Group, and run Today's Mark Done.
+  LumennaWidgets:
+    type: app-extension
+    sources:
+      - path: Widgets
+        excludes:
+          - "**/*.plist"
+          - "**/*.entitlements"
+      # Where the glance is, how it is written again after a Mark Done, and the device's clock.
+      - path: Shared/AppGroup.swift
+        group: Shared
+      - path: Shared/GlanceFile.swift
+        group: Shared
+      - path: Shared/Clock.swift
+        group: Shared
+      - path: Shared/Words.swift
+        group: Shared
+      - path: Shared/Palette.swift
+        group: Shared
+      - path: Shared/LaunchURL.swift
+        group: Shared
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # What the shared sources leave out in a widget: the app's own model, its search index.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) LUMENNA_WIDGETS
+        APPLICATION_EXTENSION_API_ONLY: YES
 
 targets:
   LumennaAppiOS:
@@ -157,6 +193,8 @@ targets:
       # Iroh's network interface and path monitoring.
       - sdk: SystemConfiguration.framework
       - sdk: Network.framework
+      # The widgets.
+      - target: LumennaWidgetsiOS
       # The Apple Watch app, embedded as every watch app is, and its sync (WatchLink).
       - target: LumennaWatch
       - sdk: WatchConnectivity.framework
@@ -164,6 +202,12 @@ targets:
       path: Lumenna/Info.plist
       properties:
         CFBundleDisplayName: Lumenna
+        # A widget opens the app on one of the core's launches: lumenna://launch/<id>
+        # (Shared/LaunchURL.swift).
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.emassey0135.lumenna
+            CFBundleURLSchemes:
+              - lumenna
         # The App Group shared with the app's extensions, which holds the store and the glance
         # (Shared/AppGroup.swift).
         LumennaAppGroup: $(LUMENNA_APP_GROUP)
@@ -221,6 +265,42 @@ targets:
         AppStore:
           RUST_PROFILE: release
 
+  LumennaWidgetsiOS:
+    templates: [LumennaWidgets]
+    platform: iOS
+    sources:
+      # Today's Mark Done: Complete a Task, on the store in the group.
+      - path: Shared/Intents
+        group: Shared
+        includes:
+          - Assistant.swift
+          - AssistantEntities.swift
+          - CompleteTaskIntent.swift
+      - path: Lumenna/Core
+        group: Lumenna
+        includes:
+          - Colours.swift
+    dependencies:
+      # Linked, not embedded: the app embeds it, and the extension finds it there.
+      - target: LumennaAppiOS
+        embed: false
+    info:
+      path: Widgets/iOS/Info.plist
+      properties:
+        CFBundleDisplayName: Lumenna
+        LumennaAppGroup: $(LUMENNA_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        LUMENNA_APP_GROUP: group.dev.emassey0135.lumenna
+        CODE_SIGN_ENTITLEMENTS: Lumenna/Lumenna.entitlements
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks @executable_path/../../Frameworks
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+
   # The Apple Watch app: SwiftUI over a core built without Iroh, since watchOS allows no
   # sockets outside an audio session. It keeps a whole store and syncs it with the iPhone
   # over WatchConnectivity (Watch/PhoneSync.swift, Lumenna/App/WatchLink.swift).
@@ -247,6 +327,12 @@ targets:
         group: Shared
       # A colour drawn beside a name.
       - path: Shared/Swatch.swift
+        group: Shared
+      # The colours text is drawn in, the forms' and the complications'.
+      - path: Shared/Palette.swift
+        group: Shared
+      # A complication tapped opens the app on the core's launch.
+      - path: Shared/LaunchURL.swift
         group: Shared
       # Changes handed on to the phone when it is out of reach.
       - path: Shared/LinkParcel.swift
@@ -275,6 +361,8 @@ targets:
           - AppRowActions.swift
     dependencies:
       - target: LumennaAppWatch
+      # The complications.
+      - target: LumennaWidgetsWatch
       - sdk: Security.framework
       - sdk: WatchConnectivity.framework
       - sdk: UserNotifications.framework
@@ -284,6 +372,12 @@ targets:
         CFBundleDisplayName: Lumenna
         WKApplication: true
         WKCompanionAppBundleIdentifier: dev.emassey0135.lumenna
+        # A widget opens the app on one of the core's launches: lumenna://launch/<id>
+        # (Shared/LaunchURL.swift).
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.emassey0135.lumenna
+            CFBundleURLSchemes:
+              - lumenna
         LumennaAppGroup: $(LUMENNA_APP_GROUP)
     settings:
       base:
@@ -293,6 +387,29 @@ targets:
         LUMENNA_APP_GROUP: group.dev.emassey0135.lumenna.watch
         CODE_SIGN_ENTITLEMENTS: Watch/Watch.entitlements
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/Watch/App/include
+        "EXCLUDED_ARCHS[sdk=watchsimulator*]": x86_64
+
+  # The watch's complications and Smart Stack: Now alone, reading the watch's own group.
+  LumennaWidgetsWatch:
+    templates: [LumennaWidgets]
+    platform: watchOS
+    dependencies:
+      - target: LumennaAppWatch
+        embed: false
+    info:
+      path: Widgets/Watch/Info.plist
+      properties:
+        CFBundleDisplayName: Lumenna
+        LumennaAppGroup: $(LUMENNA_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.watchkitapp.widgets
+        LUMENNA_APP_GROUP: group.dev.emassey0135.lumenna.watch
+        CODE_SIGN_ENTITLEMENTS: Watch/Watch.entitlements
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/Watch/App/include
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks @executable_path/../../Frameworks
         "EXCLUDED_ARCHS[sdk=watchsimulator*]": x86_64
 
   LumennaWatchUITests:
@@ -330,6 +447,10 @@ targets:
     platform: iOS
     sources:
       - path: LumennaTests
+      # The widgets' model, which the extension has apart from the app.
+      - path: Widgets
+        includes:
+          - GlanceWidgets.swift
     dependencies:
       - target: Lumenna
     settings:
@@ -381,6 +502,8 @@ targets:
           done
     dependencies:
       - target: LumennaAppMac
+      # The widgets, both editions'.
+      - target: LumennaWidgetsMac
       - sdk: Security.framework
       - sdk: SystemConfiguration.framework
       - sdk: Network.framework
@@ -392,6 +515,12 @@ targets:
         CFBundleDisplayName: Lumenna
         LSApplicationCategoryType: public.app-category.productivity
         NSPrincipalClass: NSApplication
+        # A widget opens the app on one of the core's launches: lumenna://launch/<id>
+        # (Shared/LaunchURL.swift).
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.emassey0135.lumenna
+            CFBundleURLSchemes:
+              - lumenna
         LumennaAppGroup: $(LUMENNA_APP_GROUP)
         NSLocalNetworkUsageDescription: Lumenna finds your other devices on this network and syncs with them directly.
         NSBonjourServices:
@@ -414,6 +543,46 @@ targets:
         AppStore:
           CODE_SIGN_ENTITLEMENTS: Mac/AppStore.entitlements
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: APP_STORE
+
+  # The Mac's widgets, for both editions. A Mac extension is always sandboxed, so in the direct
+  # download it reaches only the group, which holds the glance alone; the App Store edition's
+  # store is there too. Its entitlements are the same in both, set for each configuration.
+  LumennaWidgetsMac:
+    templates: [LumennaWidgets]
+    platform: macOS
+    sources:
+      - path: Shared/Intents
+        group: Shared
+        includes:
+          - Assistant.swift
+          - AssistantEntities.swift
+          - CompleteTaskIntent.swift
+      - path: Mac/Core
+        group: Mac
+        includes:
+          - Colours.swift
+    dependencies:
+      - target: LumennaAppMac
+        embed: false
+    info:
+      path: Widgets/Mac/Info.plist
+      properties:
+        CFBundleDisplayName: Lumenna
+        LumennaAppGroup: $(LUMENNA_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.widgets
+        ENABLE_HARDENED_RUNTIME: YES
+        LUMENNA_APP_GROUP: $(DEVELOPMENT_TEAM).lumenna
+        CODE_SIGN_ENTITLEMENTS: Widgets/Mac/Widgets.entitlements
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
+        LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks
+      configs:
+        AppStore:
+          CODE_SIGN_ENTITLEMENTS: Widgets/Mac/Widgets.entitlements
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) LUMENNA_WIDGETS APP_STORE
 
   LumennaMacUITests:
     type: bundle.ui-testing

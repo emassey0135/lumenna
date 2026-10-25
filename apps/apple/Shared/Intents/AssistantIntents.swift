@@ -13,10 +13,6 @@ import LumennaApp
 // that asks first (`confirms`) puts the core's question to the person and goes ahead only on
 // yes; one that applies a proposal proposes it afresh, says it, and asks before applying.
 
-/// An intent that is one of the assistant's operations, its `persistentIdentifier` the
-/// operation's `id`.
-protocol OperationIntent: AppIntent {}
-
 /// Every operation's intent, in the table's order: what the tests compare with the table.
 let assistantIntents: [any OperationIntent.Type] = [
     ListTasksIntent.self, SearchTasksIntent.self, ShowTaskIntent.self, ShowDayIntent.self,
@@ -215,26 +211,6 @@ struct EditTaskIntent: OperationIntent {
             "project": project.map { .text($0.name) },
             "labels": labels.map { .texts($0.map(\.name)) },
         ])
-        return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
-    }
-}
-
-struct CompleteTaskIntent: OperationIntent {
-    static let persistentIdentifier = "complete_task"
-    static let title: LocalizedStringResource = "Complete a Task"
-    static let description: IntentDescription? = IntentDescription(
-        "Marks a task done. A repeating one moves on to its next date.",
-        categoryName: "Tasks",
-        searchKeywords: ["done", "finish", "check off", "tick"]
-    )
-
-    @Parameter(title: "Task", description: "The task's identifier: a whole UUID, or a prefix that names one task.")
-    var id: TaskEntity
-
-    @AppDependency private var store: AssistantStore
-
-    func perform() async throws -> some IntentResult & ReturnsValue<TaskEntity?> & ProvidesDialog {
-        let changed = try store.assist(Self.persistentIdentifier, ["id": .text(id.id)])
         return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
     }
 }

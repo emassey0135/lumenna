@@ -20,6 +20,13 @@ enum AppGroup {
         return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier)
     }
 
+    /// The store's directory in the group's container, where the iPhone, the watch and the Mac
+    /// App Store edition keep it, and where a widget finds it: `lumenna`, as builds before the
+    /// group named it in Application Support.
+    static var store: URL? {
+        container?.appendingPathComponent("lumenna", isDirectory: true)
+    }
+
     /// Where the store lives in a build that keeps it in the group, `own` being where builds
     /// before the group kept it: the group's `lumenna`, moved there from `own` first if `own`
     /// holds a profile and the group none (`ProfileMove`), with the backups beside it. Without
