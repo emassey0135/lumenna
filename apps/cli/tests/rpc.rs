@@ -529,3 +529,12 @@ fn complete_says_what_could_come_next_in_a_line_a_filter_or_a_name() {
     assert_eq!(said[&2]["result"]["candidates"][0]["text"], "calls");
     assert!(said[&3]["error"]["message"].as_str().unwrap().contains("'kind' is required"), "{out}");
 }
+
+#[test]
+fn a_byte_order_mark_before_the_first_request_is_passed_over() {
+    // .NET Framework writes one at the start of a child's input when the console's code page is
+    // UTF-8, which is how Windows PowerShell 5.1 starts `lum rpc` on a CI runner.
+    let rpc = Rpc::new();
+    let out = rpc.talk(&["\u{feff}{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"assist.list\"}"]);
+    assert_eq!(replies(&out)[&1]["result"]["result"], "operations", "{out}");
+}

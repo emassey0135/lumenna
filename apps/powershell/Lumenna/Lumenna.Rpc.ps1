@@ -147,8 +147,11 @@ function Invoke-LumennaRpc {
             }
             if (-not $line.Trim()) { continue }
             $reply = $line | ConvertFrom-Json
-            # Anything else is pushed unasked, such as lumenna/changed: nothing here waits for it.
             if ($reply.PSObject.Properties['id'] -and $reply.id -eq $id) { return $reply }
+            # A request the server could not read is answered with no id; one is sent at a time,
+            # so it is this one's.
+            if ($reply.PSObject.Properties['error'] -and $null -eq $reply.id) { return $reply }
+            # Anything else is pushed unasked, such as lumenna/changed: nothing here waits for it.
         }
     } finally {
         [System.Threading.Monitor]::Exit($script:ServersLock)

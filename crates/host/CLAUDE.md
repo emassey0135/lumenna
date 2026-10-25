@@ -52,7 +52,10 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   taken of (`backups-of`), they are deleted and one is taken afresh. It is refused while a
   paired device runs a version from before generations (`too_old_to_follow`).
 - **Two framings, chosen per message by what arrived**: newline-delimited JSON (MCP's stdio
-  transport) and `Content-Length` headers (`jsonrpc.el`). A reply is framed as its request.
+  transport) and `Content-Length` headers (`jsonrpc.el`). A reply is framed as its request. A
+  byte order mark where a message starts is passed over: .NET Framework writes one into a
+  child's input when the console's code page is UTF-8, before its client sends anything, so
+  Windows PowerShell 5.1's `lum rpc` would otherwise refuse every request on such a console.
 - **Spans are UTF-8 byte offsets.** A client that indexes by code point converts both ways.
 - **`pair` replies when the pairing ends**, talking in between through `lumenna/pairing`
   notifications (`{code, name}`, then `{words}`); the client answers `pair.confirm {match}`

@@ -331,7 +331,10 @@ fn read_message(reader: &mut impl BufRead) -> std::io::Result<Option<(Framing, S
         if reader.read_line(&mut line)? == 0 {
             return Ok(None);
         }
-        let trimmed = line.trim();
+        // A byte order mark is passed over: .NET Framework writes one at the start of a child's
+        // input whenever the console's code page is UTF-8, before the client has sent anything,
+        // and Windows PowerShell 5.1 starts `lum rpc` so.
+        let trimmed = line.trim().trim_start_matches('\u{feff}');
         if trimmed.is_empty() {
             continue;
         }
