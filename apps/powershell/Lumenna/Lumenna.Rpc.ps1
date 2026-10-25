@@ -11,6 +11,9 @@
 $script:Servers = @{}
 $script:ServersLock = New-Object System.Object
 $script:NextRequest = 0
+# How long a request waits for its answer. Every operation answers in well under a second; this
+# is for a server that never will.
+$script:RequestTimeout = [TimeSpan]::FromSeconds(60)
 
 # Where `lum` is: on PATH, else beside the module, else where the Windows installer puts it.
 function Find-Lum {
@@ -118,14 +121,26 @@ function Invoke-LumennaRpc {
                 if ($attempt -eq 2) { throw }
             }
         }
+        # A server that does not answer in time is stopped, and the request refused, rather than
+        # left to hang whatever waits on it.
+        $deadline = [DateTime]::UtcNow.Add($script:RequestTimeout)
         while ($true) {
-            $line = $server.Output.ReadLine()
+            $reading = $server.Output.ReadLineAsync()
+            $left = $deadline - [DateTime]::UtcNow
+            if ($left -lt [TimeSpan]::Zero) { $left = [TimeSpan]::Zero }
+            if (-not $reading.Wait($left)) {
+                Stop-LumennaServer $server
+                $script:Servers.Remove($key)
+                $why = "lum rpc did not answer $Method within $($script:RequestTimeout.TotalSeconds) seconds, so it was stopped"
+                return [pscustomobject] @{ error = [pscustomobject] @{ message = $why } }
+            }
+            $line = $reading.Result
             if ($null -eq $line) {
                 # It stopped with the request in hand: whether that was done is not known, so it
                 # is not sent again.
-                $server.Process.WaitForExit()
-                $said = ($server.Errors.Result -split '\r?\n' | Where-Object { $_ }) -join ' '
-                $why = if ($said) { "lum rpc stopped: $said" } else { "lum rpc stopped, ending with $($server.Process.ExitCode)" }
+                [void] $server.Process.WaitForExit(5000)
+                $said = if ($server.Errors.Wait(5000)) { ($server.Errors.Result -split '\r?\n' | Where-Object { $_ }) -join ' ' } else { '' }
+                $why = if ($said) { "lum rpc stopped: $said" } else { 'lum rpc stopped' }
                 Stop-LumennaServer $server
                 $script:Servers.Remove($key)
                 return [pscustomobject] @{ error = [pscustomobject] @{ message = $why } }

@@ -51,16 +51,22 @@ BeforeAll {
     }
 
     $script:shell = (Get-Process -Id $PID).Path
-    # Runs a line in another process of this same PowerShell, with no one to answer a prompt.
-    # Through files, not 2>&1: Windows PowerShell 5.1 makes a native command's error output an
-    # error of its own here, which the prompt it refuses would be.
+    # Runs a line in another process of this same PowerShell, with no one to answer a prompt,
+    # removing the module after so its `lum rpc` stops with it. Through files, not 2>&1: Windows
+    # PowerShell 5.1 makes a native command's error output an error of its own here, which the
+    # prompt it refuses would be. Waited for alone, within a minute: 5.1's Start-Process -Wait
+    # waits for every process the child started too.
     function Invoke-Unattended([string] $line) {
-        $script = "Import-Module '$($manifest.Replace("'", "''"))'; $line"
+        $script = "Import-Module '$($manifest.Replace("'", "''"))'; $line; Remove-Module Lumenna"
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
         $said = Join-Path ([IO.Path]::GetTempPath()) "lumenna-pester-$([guid]::NewGuid())"
         try {
-            Start-Process -FilePath $shell -ArgumentList '-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded `
-                -Wait -NoNewWindow -RedirectStandardOutput "$said.out" -RedirectStandardError "$said.err"
+            $child = Start-Process -FilePath $shell -ArgumentList '-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded `
+                -PassThru -NoNewWindow -RedirectStandardOutput "$said.out" -RedirectStandardError "$said.err"
+            if (-not $child.WaitForExit(60000)) {
+                $child.Kill()
+                throw "$line did not finish within a minute: $(Get-Content -Raw "$said.out", "$said.err" -ErrorAction SilentlyContinue)"
+            }
         } finally {
             Remove-Item -LiteralPath "$said.out", "$said.err" -ErrorAction SilentlyContinue
         }
