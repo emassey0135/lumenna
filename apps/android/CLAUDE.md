@@ -195,8 +195,9 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   unique WorkManager job), on what each Application shows it on (`GlanceShower`). A running timer
   counts by itself from `countingFrom`: the phone's chronometer (`AndroidRemoteViews` over
   `widget_timer.xml`), the tile's dynamic time. Each is one TalkBack stop named by the glance's
-  `spoken`. The larger widget's tasks are check boxes named by their titles, marking the task done
-  through `Device.assist("complete_task")`. Glance composes again only when its state changes, so a
+  `spoken`. The larger widget's tasks are the glance's own lines (`GlanceEntry.tasks`), each with a
+  button of the core's `markDoneSentence`, named with the task's title, marking it done through
+  `Device.assist("complete_task")`. Glance composes again only when its state changes, so a
   refresh moves `Widgets.REFRESH`.
 - **The ways in from outside are the core's** (`Launches`, shared's `Launching`): the icon's
   shortcuts are set at run time from `launch_shortcuts()` (`ShortcutManagerCompat`), and they, the

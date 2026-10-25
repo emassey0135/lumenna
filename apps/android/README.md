@@ -63,7 +63,7 @@ among the icon's actions), and a Quick Settings tile offers New task: the app op
 on the day, or with What should I work on? asked.
 
 Two home screen widgets show the day at a glance: Now (what is happening, and a running timer) and
-Today (that, the next block, and the tasks due, each with a check box that marks it done). Each is
+Today (that, the next block, and the tasks due, each with a Mark done button). Each is
 one TalkBack stop that reads the whole glance as a sentence, and opens Today when tapped. The
 watch has a tile with the same, and a complication for watch faces: what is happening as short
 text, or how far through the block under way as a ranged value.

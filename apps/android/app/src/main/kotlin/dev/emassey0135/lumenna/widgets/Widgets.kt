@@ -16,7 +16,9 @@ import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.AndroidRemoteViews
-import androidx.glance.appwidget.CheckBox
+import androidx.glance.Button
+import androidx.glance.layout.Alignment
+import androidx.glance.layout.Row
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
@@ -39,7 +41,6 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.Glances
@@ -62,8 +63,9 @@ import kotlinx.coroutines.launch
 /**
  * The home screen's widgets, drawn from the core's glance (`Glances`): what it says, in its
  * order, and nothing decided here. Each is one TalkBack stop named by the glance's `spoken`
- * sentence, opening Today when tapped; the larger one's tasks are each a check box of their
- * own, which marks the task done through the core's assistant operation, as Gemini would.
+ * sentence, opening Today when tapped; the larger one's tasks are each the core's line with the
+ * core's Mark done beside it, which marks the task done through the core's assistant operation,
+ * as Gemini would.
  */
 object Widgets {
     /** Moves whenever the glance may have changed, so a widget being shown composes again. */
@@ -169,22 +171,20 @@ class TodayWidget : GlanceAppWidget() {
                 }
                 Spacer(GlanceModifier.height(8.dp))
                 Text(entry.due.text, style = TextStyle(color = Widgets.quiet, fontSize = 14.sp), maxLines = 1)
-                for (task in entry.moment.tasks) {
-                    CheckBox(
-                        checked = false,
-                        onCheckedChange = actionRunCallback<MarkDone>(actionParametersOf(MarkDone.TASK to task.id)),
-                        text = task.title,
-                        style = TextStyle(color = Widgets.text, fontSize = 14.sp),
-                        maxLines = 1,
-                        modifier = GlanceModifier.fillMaxWidth(),
-                    )
-                    val due = listOfNotNull(task.due, task.dueTime?.let(Clock::time))
-                    if (due.isNotEmpty()) {
-                        Text(
-                            due.joinToString(" "),
-                            style = TextStyle(color = Widgets.quiet, fontSize = 12.sp),
-                            maxLines = 1,
-                            modifier = GlanceModifier.padding(start = 48.dp),
+                // Each task as the core words it, and its button the core's Mark done, named with
+                // the task's title so TalkBack says which task it marks.
+                for ((task, line) in entry.moment.tasks.zip(entry.tasks)) {
+                    Row(GlanceModifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(GlanceModifier.defaultWeight()) {
+                            Text(line.title, style = TextStyle(color = Widgets.text, fontSize = 14.sp), maxLines = 1)
+                            if (line.detail.isNotEmpty()) {
+                                Text(line.detail, style = TextStyle(color = Widgets.quiet, fontSize = 12.sp), maxLines = 1)
+                            }
+                        }
+                        Button(
+                            text = entry.markDoneSentence,
+                            onClick = actionRunCallback<MarkDone>(actionParametersOf(MarkDone.TASK to task.id)),
+                            modifier = GlanceModifier.semantics { contentDescription = "${entry.markDoneSentence}, ${line.title}" },
                         )
                     }
                 }
@@ -194,7 +194,7 @@ class TodayWidget : GlanceAppWidget() {
 }
 
 /**
- * A task's check box on the larger widget: the core's Complete a Task, as an assistant runs it
+ * A task's Mark done button on the larger widget: the core's Complete a Task, as an assistant runs it
  * (`Device.assist`), then the app takes the change in and every glance is drawn again.
  */
 class MarkDone : ActionCallback {
