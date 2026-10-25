@@ -183,6 +183,37 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   through its containers when VoiceOver's element is not a view, as the iPad's is:
   `UIAccessibility.voiceOverView`), else the one open beside the list; the task open beside a
   list answers them itself.
+- **Every assistant operation is an App Intent** (`Shared/Intents`, compiled into all three
+  apps, and the source group extensions are to compile too): one per operation of
+  `assistantOperations()`, its `persistentIdentifier` the operation's `id`, each running
+  through `Device.assist` on the store the app gives `Assistant.serve` as it launches
+  (`AppDependencyManager`, since an intent may be what launched it). App Intents' metadata is
+  read at build time, so titles, descriptions, categories and keywords are the table's as
+  literals, and `AssistantIntentTests` compares every intent with the table at run time: a new
+  operation fails it until its intent is written. A task, project, labels, a block, a sitting or
+  a choice is an entity (`AssistantEntities.swift`) built from the record the core answers with
+  and given back by its identifier (a project or label by name). An erasure asks first: the
+  task's own Erase Permanently question, else the core's unconfirmed refusal, then runs with
+  `confirm`. Apply a Replan and Apply a Day Plan propose afresh, say the proposal's sentences
+  and ask before applying; what is accepted defaults to every change. Pause and Stop default to
+  the sitting whose timer runs (`RunningSitting`). Shortcuts' Find Tasks (`TaskQuery`'s
+  `EntityPropertyQuery`) builds each comparison into a filter-language query run through
+  `list_tasks`, so what matches is the core's; a comparison the language cannot say is not
+  offered, and only the order Shortcuts asks for (due, priority, title) is Swift's. Every
+  listing returns its entities, and a write on a task returns the task, so a found task passes
+  on to the next action. `LumennaShortcuts` is what Siri, Spotlight
+  and the Action Button offer unasked (New Task, What Should I Work On?, start, pause and stop,
+  Today, Complete). What Spotlight, Siri and Shortcuts find is the core's search
+  (`records::search`), as on every platform: every search document (open tasks, projects,
+  labels, saved filters, blocks) is indexed as its entity, its attributes the document's title,
+  line and keywords (`SearchIndex`, `IndexedEntity`, iOS 18 and macOS 15; the watch has none),
+  at launch and a few seconds after each `Core.changed`; a string query answers from
+  `searchResults` in its order, never a match of Swift's (choices are only offered); and a
+  result chosen is opened by its document's `launch` through `ShellEvent.launch` (the Open
+  intents, the app's `launch` given to `Assistant.serve`). The task whose details show is the
+  current user activity with its entity, for "this task" (`showingTask`). The SDK's Reminders schema (iOS
+  and macOS 27, not watchOS) is not adopted: its reminder carries a list, flags, URLs, images
+  and location triggers that no operation takes.
 - **The iPad is the Mac's layout, not the iPhone's tabs** (`IPadRoot`, three columns): the
   app's places in a sidebar (`SidebarViewController`, from `ViewModel.sidebar`, plus
   Settings), the place chosen, and what was opened from it (`showBeside`, which pushes on

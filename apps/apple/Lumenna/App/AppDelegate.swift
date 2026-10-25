@@ -28,6 +28,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         BackgroundSync.register()
         // At launch, since a message from the watch is what starts the app in the background.
         if case let .success(core) = AppDelegate.core {
+            // Siri, Shortcuts and Spotlight's intents run on this store, and may be what
+            // launched the app.
+            Assistant.serve(core.app.device) { core.app.send(.launch($0)) }
             // What the Crux app's connection writes, the screens still on the surface redraw for.
             core.watchForChanges()
             watchLink = WatchLink(core: core)

@@ -229,6 +229,9 @@ targets:
       # Changes handed on to the phone when it is out of reach.
       - path: Shared/LinkParcel.swift
         group: Shared
+      # Every assistant operation as an App Intent, for Siri and Shortcuts.
+      - path: Shared/Intents
+        group: Shared
       # The task, block and settings forms the iPhone and the Mac use, with the watch's
       # differences beside theirs (FormParts.swift).
       - path: Shared/Forms
