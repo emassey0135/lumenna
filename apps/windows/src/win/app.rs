@@ -204,7 +204,7 @@ pub fn run() {
     let device = match lumenna_ffi::Device::new(directory.display().to_string()) {
         Ok(device) => device,
         Err(error) => {
-            prompts::fail(HWND::default(), &format!("Lumenna could not open its data. {}", sentence(&error)));
+            prompts::fail(HWND::default(), &lumenna_ffi::store_unopened(sentence(&error)));
             return;
         }
     };

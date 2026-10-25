@@ -299,6 +299,13 @@ pub fn glance_empty(locale: Arc<dyn Locale>) -> GlanceEntry {
     lumenna_app::glance::empty(&Spoken(Formatted(locale)))
 }
 
+/// What an app or a widget says when its store would not open, the error's own sentence after
+/// it (`lumenna_records::words::store_unopened`); an empty `reason` leaves it out.
+#[export]
+pub fn store_unopened(reason: String) -> String {
+    lumenna_records::words::store_unopened(&reason)
+}
+
 /// A glance (`App::glance`, `Device::glance`) as the file an app hands its widgets, which run
 /// apart from it: on Apple's platforms, written into the App Group container. JSON in the
 /// entries' own shape, so the file and the records cannot drift apart.

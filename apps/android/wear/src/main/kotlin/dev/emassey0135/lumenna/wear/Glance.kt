@@ -40,6 +40,7 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingTimelineComplicationDataSourceService
 import androidx.wear.watchface.complications.datasource.TimeInterval
 import androidx.wear.watchface.complications.datasource.TimelineEntry
+import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.Glances
 import dev.emassey0135.lumenna.Launching
@@ -54,10 +55,14 @@ import kotlinx.coroutines.withContext
 // (`Glances`): what it says and in its order, and nothing decided here. Each takes the glance's
 // timeline whole, an entry for each moment, so the system switches between them by itself.
 
-/** The glance from now, read off the main thread. */
+/**
+ * The glance from now, read off the main thread; none when the store would not open. One that
+ * cannot be worked out, or has no moment, is the core's empty day, as the phone's widgets show it.
+ */
 private suspend fun entries(context: Context): List<GlanceEntry> = withContext(Dispatchers.IO) {
     val core = (context.applicationContext as? CoreHolder)?.core?.getOrNull() ?: return@withContext emptyList()
-    runCatching { Glances.entries(context, core) }.getOrDefault(emptyList())
+    runCatching { Glances.entries(context, core) }.getOrNull()?.takeIf { it.isNotEmpty() }
+        ?: listOf(dev.emassey0135.lumenna.app.glanceEmpty(Clock.locale))
 }
 
 /** When each entry stops being true: when the next starts, the last a day on. */
@@ -78,7 +83,11 @@ class LumennaTile : Material3TileService() {
                 mapOf(Launching.ID to ActionBuilders.stringExtra(Launching.TODAY)),
             ),
         )
-        if (entries.isEmpty()) return tile(timeline(timelineEntry(primaryLayout(mainSlot = { text("Lumenna".layoutString) }, onClick = open))))
+        // No store: the core's sentence for it, as the watch app says it.
+        if (entries.isEmpty()) {
+            val unopened = dev.emassey0135.lumenna.app.storeUnopened("")
+            return tile(timeline(timelineEntry(primaryLayout(mainSlot = { text(unopened.layoutString) }, onClick = open))))
+        }
         val now = Instant.now()
         val layouts = entries.mapIndexed { index, entry ->
             val start = Glances.at(entry) ?: now

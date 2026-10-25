@@ -100,9 +100,18 @@ impl Shared {
     /// Draws every widget on screen and every one not yet drawn, and returns when they must be
     /// drawn again, the store unchanged.
     fn draw(&self, widgets: &[(String, WidgetSize)]) -> Option<Timestamp> {
-        let entries = self.device.glance(HOURS, Arc::new(clock::Formats)).ok()?;
+        // A glance that cannot be worked out, or has no moment, is the core's empty day, never a
+        // card left blank.
+        let entries = self.device.glance(HOURS, Arc::new(clock::Formats)).unwrap_or_default();
         let now = Timestamp::now();
-        let entry = widget::current(&entries, now)?;
+        let empty;
+        let entry = match widget::current(&entries, now) {
+            Some(entry) => entry,
+            None => {
+                empty = lumenna_ffi::glance_empty(Arc::new(clock::Formats));
+                &empty
+            }
+        };
         let data = HSTRING::from(widget::data(entry, now).to_string());
         if let Ok(manager) = WidgetManager::GetDefault() {
             for (id, size) in widgets {

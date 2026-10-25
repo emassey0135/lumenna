@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
                 core.fold(
                     onSuccess = { WearApp(it, opened = opened, launched = launched) },
                     // Nothing works without the store, so say why plainly.
-                    onFailure = { error -> Text("Lumenna could not open its store. ${error.message.orEmpty()}") },
+                    onFailure = { error -> Text(dev.emassey0135.lumenna.app.storeUnopened(error.message.orEmpty())) },
                 )
             }
         }

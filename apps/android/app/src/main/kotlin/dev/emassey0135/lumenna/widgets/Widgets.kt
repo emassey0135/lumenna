@@ -41,6 +41,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.Glances
@@ -90,10 +91,14 @@ object Widgets {
     /** The store, if it opened. */
     fun core(context: Context): Core? = (context.applicationContext as? CoreHolder)?.core?.getOrNull()
 
-    /** The glance true now, if the store opened. */
+    /**
+     * The glance true now, if the store opened. One that cannot be worked out, or has no moment,
+     * is the core's empty day rather than a sentence of ours.
+     */
     fun entry(context: Context): GlanceEntry? {
         val core = core(context) ?: return null
         return runCatching { Glances.now(Glances.entries(context, core)) }.getOrNull()
+            ?: dev.emassey0135.lumenna.app.glanceEmpty(Clock.locale)
     }
 
     val text = ColorProvider(R.color.widget_text)
@@ -134,10 +139,10 @@ private fun Timer(context: Context, timer: GlanceTimer) {
     AndroidRemoteViews(views)
 }
 
-/** Says the store could not be opened, as the app does. */
+/** Says the store could not be opened, in the core's words, as the app does. */
 @Composable
 private fun Unopened() {
-    Text("Lumenna could not open its store.", style = TextStyle(color = Widgets.text))
+    Text(dev.emassey0135.lumenna.app.storeUnopened(""), style = TextStyle(color = Widgets.text))
 }
 
 /** The small widget: what is happening now, and the timer running. */

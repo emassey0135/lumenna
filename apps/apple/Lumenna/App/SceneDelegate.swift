@@ -22,7 +22,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // Nothing works without the store, so say why plainly rather than showing an
             // empty list that looks like there is nothing to do.
             window.rootViewController = FailureViewController(
-                message: "Lumenna could not open its store. \(error.sentence)"
+                message: LumennaApp.storeUnopened(reason: error.sentence)
             )
         }
         self.window = window

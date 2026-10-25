@@ -191,7 +191,7 @@ pub fn activate(application: &gtk::Application, directory: &Path, background: bo
     let model = match crate::model::Model::open(directory, &clock, &autostart) {
         Ok(model) => model,
         Err(error) => {
-            let message = format!("Lumenna could not open its data. {}", error.message());
+            let message = lumenna_ffi::store_unopened(error.message().to_string());
             let dialog = gtk::AlertDialog::builder().message(message).build();
             let application = application.clone();
             let hold = application.hold();

@@ -80,7 +80,7 @@ class MainActivity : ComponentActivity() {
                     // Nothing works without the store, so say why plainly.
                     onFailure = { error ->
                         Text(
-                            "Lumenna could not open its store. ${error.message.orEmpty()}",
+                            dev.emassey0135.lumenna.app.storeUnopened(error.message.orEmpty()),
                             Modifier.fillMaxSize().padding(24.dp),
                         )
                     },

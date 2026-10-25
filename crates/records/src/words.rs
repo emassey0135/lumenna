@@ -252,6 +252,19 @@ pub fn on_day(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
     }
 }
 
+/// What every app and widget says when the store would not open, with the platform's `reason`
+/// (the error's own sentence) after it when there is one. Without one it is a heading, as a Mac
+/// alert's title is, the reason beneath it.
+#[must_use]
+pub fn store_unopened(reason: &str) -> String {
+    let reason = reason.trim();
+    if reason.is_empty() {
+        "Lumenna could not open its store".to_owned()
+    } else {
+        format!("Lumenna could not open its store. {reason}")
+    }
+}
+
 /// A record's sentence, then anything else worth saying, as one line to say.
 #[must_use]
 pub fn spoken(announcement: &str, notices: &[String]) -> String {
@@ -267,6 +280,15 @@ pub fn to_u32(n: usize) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_store_that_would_not_open_is_said_with_its_reason_after_it_when_there_is_one() {
+        assert_eq!(store_unopened(" "), "Lumenna could not open its store");
+        assert_eq!(
+            store_unopened("The disk is full."),
+            "Lumenna could not open its store. The disk is full."
+        );
+    }
 
     #[test]
     fn a_terse_reason_leaves_out_suggested_because_and_the_minutes() {

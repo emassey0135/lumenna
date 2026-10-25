@@ -30,7 +30,7 @@ import kotlinx.coroutines.withContext
 @AppFunctionServiceEntryPoint(serviceName = "LumennaFunctionService", appFunctionXmlFileName = "lumenna_functions")
 abstract class LumennaFunctions : AppFunctionService() {
     private fun core(): Core = (application as CoreHolder).core.getOrElse {
-        throw AppFunctionAppUnknownException("Lumenna could not open its store. ${it.message.orEmpty()}")
+        throw AppFunctionAppUnknownException(dev.emassey0135.lumenna.app.storeUnopened(it.message.orEmpty()))
     }
 
     /** The core's answer to [operation], off the main thread, where every function is called. */

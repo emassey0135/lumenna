@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         } catch {
             // Nothing works without the store, so say why plainly and stop.
             let alert = NSAlert()
-            alert.messageText = "Lumenna could not open its store"
+            alert.messageText = LumennaApp.storeUnopened(reason: "")
             alert.informativeText = error.sentence
             alert.runModal()
             NSApp.terminate(nil)

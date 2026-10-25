@@ -23,7 +23,7 @@ struct LumennaWatchApp: App {
                 } else {
                     // Nothing works without the store, so the reason is the whole screen.
                     ScrollView {
-                        Text("Lumenna could not open its store. \(opened.reason)")
+                        Text(LumennaApp.storeUnopened(reason: opened.reason))
                     }
                 }
             }
