@@ -14,6 +14,14 @@ the CLI adds only the terminal prompt, the daemon's socket and signals.
   key not listed there. The ways in are a pairing whose words were confirmed on both sides
   (`edit::enroll_devices`), and the first sync over a Wear OS watch's link to its phone, which
   only Google's pairing of the two can open (`introduce`).
+- **A connection to each device is kept between sessions** (`Node::kept`), whichever side
+  dialled it, and both sides answer the streams the other opens on it (`answer_streams`), so
+  either side's next session skips a new connection's handshake. Trust is asked again at each
+  session, not only when it connected: a device unpaired since is refused on the connection it
+  holds and let go of. A kept connection that does not finish a session in `KEPT_TIMEOUT` is
+  dropped and the device dialled afresh, since one whose device just went to sleep looks open
+  until Iroh's idle timeout. Iroh's heartbeats (every five seconds) keep it open only while
+  the service runs.
 - **Pairing never uses the device key.** It runs on a key minted per pairing, so it needs no
   daemon and no IPC; device keys are exchanged only after the words are confirmed.
 - **The words** come from the connection's TLS exporter secret plus a commit-then-reveal
