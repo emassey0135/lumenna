@@ -56,10 +56,24 @@ ordinary Gradle project.
   adb shell settings put secure accessibility_enabled 1
   ```
 
-## New Task from anywhere
+## From outside the app
 
-Long-pressing the app icon offers New task (TalkBack lists it among the icon's actions), and a
-Quick Settings tile does the same: the app opens on quick add, over the Tasks tab.
+Long-pressing the app icon offers New task, Today and What should I work on? (TalkBack lists them
+among the icon's actions), and a Quick Settings tile offers New task: the app opens on quick add,
+on the day, or with What should I work on? asked.
+
+Two home screen widgets show the day at a glance: Now (what is happening, and a running timer) and
+Today (that, the next block, and the tasks due, each with a check box that marks it done). Each is
+one TalkBack stop that reads the whole glance as a sentence, and opens Today when tapped. The
+watch has a tile with the same, and a complication for watch faces: what is happening as short
+text, or how far through the block under way as a ranged value.
+
+## Gemini
+
+Every operation `lum mcp` offers an assistant is an App Function (Android 16 and later): Gemini can
+list, add, change and complete tasks, show the day, put tasks in blocks, run timers, and propose
+and apply a replan or a day plan, each answered in the sentence the app would say. Erasing for
+good answers with the question to ask first, and goes ahead only once confirmed.
 
 ## Syncing in the background
 

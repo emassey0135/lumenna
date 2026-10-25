@@ -44,6 +44,7 @@ import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.Glances
 import dev.emassey0135.lumenna.Launches
+import dev.emassey0135.lumenna.Launching
 import dev.emassey0135.lumenna.R
 import dev.emassey0135.lumenna.app.Argument
 import dev.emassey0135.lumenna.app.ArgumentValue
@@ -98,7 +99,7 @@ object Widgets {
     val background = ColorProvider(R.color.widget_background)
 
     /** Opens the app on Today, the core's launch shortcut. */
-    fun openToday(context: Context) = actionStartActivity(Launches.intent(context, "today"))
+    fun openToday(context: Context) = actionStartActivity(Launches.intent(context, Launching.TODAY))
 }
 
 /** The widget's frame: the background, Today when tapped, and the glance said as one sentence. */

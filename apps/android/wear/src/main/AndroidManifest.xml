@@ -50,6 +50,40 @@
                 <data android:scheme="wear" android:host="*" android:pathPrefix="/lumenna/sync" />
             </intent-filter>
         </service>
+        <!-- Today on a tile (Glance.kt), drawn from the core's glance, its timeline whole. -->
+        <service
+            android:name=".LumennaTile"
+            android:description="@string/tile_today_description"
+            android:exported="true"
+            android:icon="@drawable/ic_today"
+            android:label="@string/tile_today"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_today" />
+        </service>
+        <!-- What is happening now for a watch face (Glance.kt): the headline as short text, the
+             block's progress as a ranged value. Asked for again when the glance changes, never
+             on a period. -->
+        <service
+            android:name=".LumennaComplication"
+            android:exported="true"
+            android:icon="@drawable/ic_today"
+            android:label="@string/complication_now"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="SHORT_TEXT,RANGED_VALUE" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="0" />
+        </service>
         <!-- Reminders' alarms and their notifications' Dismiss and Snooze: the app's own
              intents only. -->
         <receiver

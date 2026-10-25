@@ -177,6 +177,32 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   with `ReminderOpened.kind` `replan`: the app goes to Replan from Now for today. A button that
   opens an activity does not cancel its notification, so `Reminders.opened(context, intent)`
   takes it away.
+- **Gemini's App Functions are the core's assistant operations** (`functions/`,
+  `androidx.appfunctions`): one function per operation of `assistant_operations()` in
+  `LumennaFunctions`, an `@AppFunctionServiceEntryPoint` from which the library's compiler (KSP)
+  writes the service (`LumennaFunctionService`) and the XML the system indexes into the APK's
+  assets (`lumenna_functions.xml`, and `-v1` for Android 16's indexer). Each runs through
+  `Device.assist`; a refusal, the question an operation that `confirms` asks included, is an
+  `AppFunctionInvalidArgumentException` in the core's words. The library reads a description only
+  from an annotation written ahead (`@AppFunctionInstruction`), so the table's words are copied
+  there, and `AppFunctionsTest` reads the indexed XML and fails when a function is missing, extra,
+  or worded or parametered otherwise than the table: an operation added to the table needs its
+  function. The records answered (`functions/Records.kt`) carry each answer's announcement and
+  identifiers; a replan or day plan is carried field for field, since it goes back whole.
+- **The widgets, the watch's tile and its complications draw the core's glance** (shared's
+  `Glances`: `Core.glance`, the app's while it runs, else the device's): the entry true now, drawn
+  again when the store changes and at the next moment the timeline names (`GlanceWorker`, one
+  unique WorkManager job), on what each Application shows it on (`GlanceShower`). A running timer
+  counts by itself from `countingFrom`: the phone's chronometer (`AndroidRemoteViews` over
+  `widget_timer.xml`), the tile's dynamic time. Each is one TalkBack stop named by the glance's
+  `spoken`. The larger widget's tasks are check boxes named by their titles, marking the task done
+  through `Device.assist("complete_task")`. Glance composes again only when its state changes, so a
+  refresh moves `Widgets.REFRESH`.
+- **The ways in from outside are the core's** (`Launches`, shared's `Launching`): the icon's
+  shortcuts are set at run time from `launch_shortcuts()` (`ShortcutManagerCompat`), and they, the
+  Quick Settings tile, a widget, the tile and a complication open the app on a launch `id`, sent
+  as `ShellEvent.Launch`; the screens follow the app once it is still (its line open is quick add,
+  else its place). `NEW_TASK` stays for a shortcut pinned before.
 
 ## The Wear OS app
 
@@ -221,6 +247,10 @@ phone does.
   so a test leaves them out for the presses inside it.
 - **A row's custom action that opens a screen runs on the main thread in tests**
   (`actOnMain`): Wear's navigation refuses the test thread, where TalkBack never calls it.
+- **The tile and the complication take the glance's timeline whole** (`Glance.kt`): a tile
+  `TimelineEntry` and a `ComplicationDataTimeline` entry for each moment, so the system switches
+  between them itself. The ranged value is the block's progress from its start and end instants,
+  counted by the watch where dynamic values exist (Wear OS 4 and later).
 - The watch says it runs `wearos` (`PLATFORM`), in pairing and over the link.
 - **32-bit ARM too** (`armeabi-v7a`): many Wear OS watches run a 32-bit Android. The phone's
   APK leaves it out.

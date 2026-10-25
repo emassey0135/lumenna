@@ -16,28 +16,15 @@ import dev.emassey0135.lumenna.app.launchShortcuts
  * `ShellEvent.Launch` and does.
  */
 object Launches {
-    /** Opens the app on a launch shortcut, its `id` in [ID]. */
-    const val LAUNCH = "dev.emassey0135.lumenna.LAUNCH"
-
-    /** The launch shortcut's `id`. */
-    const val ID = "dev.emassey0135.lumenna.launch"
-
     /** The intent that opens the app on the launch shortcut [id]. */
-    fun intent(context: Context, id: String): Intent = Intent(LAUNCH)
-        .setClass(context, MainActivity::class.java)
-        .putExtra(ID, id)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    fun intent(context: Context, id: String): Intent = Launching.intent(context, MainActivity::class.java, id)
 
     /**
      * The launch shortcut an intent asks for, if it asks for one: this one's, or New Task as the
      * launcher's shortcut asked for it before the core listed them, which a shortcut pinned then
      * still does.
      */
-    fun id(intent: Intent?): String? = when (intent?.action) {
-        LAUNCH -> intent.getStringExtra(ID)
-        MainActivity.NEW_TASK -> NEW_TASK
-        else -> null
-    }
+    fun id(intent: Intent?): String? = if (intent?.action == MainActivity.NEW_TASK) NEW_TASK else Launching.id(intent)
 
     /** New Task's `id`, which the Quick Settings tile opens. */
     const val NEW_TASK = "new-task"
