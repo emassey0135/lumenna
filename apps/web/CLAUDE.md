@@ -82,6 +82,13 @@ pairing with `lum`.
   time setting, where it is grouped with its line under the setting's name, so each clock is
   told from the others; a time picked there is applied at once. Chrome makes each a textbox, so
   a test naming a field "Day" names it exactly.
+- **The launch shortcuts are the manifest's `shortcuts`** (`/?launch=<id>`, kept as
+  `launch_shortcuts()` says, in sentence case, by a test of the core): opened with one, the page
+  sends `Launch(id)` once the app has started (`launchFromAddress` in `App.tsx`), taking `launch`
+  out of the address first with `history.replaceState`, so a reload or a bookmark does not do it
+  again, and React's development mode, which starts the app twice, finds it gone the second time.
+- **No widgets**: no browser offers a widget a web app could fill worth targeting, so the glance
+  (`records::glance`) has no client here; the installed app's badge counts what is due.
 - **Installed, it is a PWA** (`public/manifest.webmanifest`, `public/sw.js`, registered only in a
   production build): the page is fetched afresh while online and kept for when there is none, and
   every other file of the origin kept as first fetched, its name carrying its hash, so the app

@@ -29,6 +29,17 @@ import { useFolderBackups } from "./backups";
 /** The store's name in this browser: one, unless a page asks for another (`?profile=`). */
 const profile = new URLSearchParams(location.search).get("profile") ?? "default";
 
+/** A launch shortcut the page was opened with (the manifest's `/?launch=<id>`), taken from the
+ * address so a reload or a bookmark does not do it again, and handed to the app, which does it. */
+function launchFromAddress(): void {
+  const address = new URL(location.href);
+  const id = address.searchParams.get("launch");
+  if (id === null) return;
+  address.searchParams.delete("launch");
+  history.replaceState(history.state, "", address);
+  void send({ tag: "Launch", value0: id }, { land: true });
+}
+
 export function App() {
   const [ready, setReady] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
@@ -45,7 +56,11 @@ export function App() {
 
   useEffect(() => {
     core.open(profile).then(
-      () => start().then(() => setReady(true)),
+      () =>
+        start().then(() => {
+          setReady(true);
+          launchFromAddress();
+        }),
       (error: Error) => setFailure(error.message),
     );
     // In a local-first app the browser may hold changes that are nowhere else yet: storage it

@@ -188,12 +188,12 @@ Each is a thin adapter over the command surface.
     account runs before production; the Wear app in the same listing.
   - **Linux.** Built, for x86_64 and arm64: the GTK app as an AppImage, GTK and libadwaita
     inside it (glibc 2.39 or newer), and as a Flatpak bundle (GNOME 51, opening at sign-in
-    through the Background portal); and `lum` alone as a tarball, built on Debian 12. Still to come: the Flatpak from a repository of our own, signed with the
+    through the Background portal), the AppImage offering once to add itself to the applications
+    menu, its entry following it when it moves; and `lum` alone as a tarball, built on Debian 12. Still to come: the Flatpak from a repository of our own, signed with the
     project's GPG key (Flatter, on GitHub Pages) and offered by `.flatpakrepo` and
     `.flatpakref` files, so updates come through `flatpak update` and the software centres;
     not Flathub, which refuses manifests a language model wrote and asks that generated code be
-    disclosed; the metainfo's release entries and screenshots; the AppImage's own updater, and
-    its offer of a desktop entry on first run; the AUR; and trying on a real desktop what CI
+    disclosed; the metainfo's release entries and screenshots; the AppImage's own updater; the AUR; and trying on a real desktop what CI
     cannot: the portal's question, the tray, the shortcuts, Orca, and finding devices from
     inside the sandbox.
   - **BTSpeak.** Built: the app and its core as a tarball, on Debian 12 for arm64. Still to

@@ -122,7 +122,8 @@ impl Autostart {
         if !on {
             return remove(&self.file);
         }
-        let program = std::env::current_exe()?;
+        // An AppImage's own path, not its program's, which is inside a mount gone once it stops.
+        let program = crate::appimage::program()?;
         let mut exec = format!("{} --background", quoted(&program));
         if lumenna_ffi::profile::default_directory().as_deref() != Some(self.directory.as_path()) {
             exec.push_str(&format!(" --profile {}", quoted(&self.directory)));
@@ -152,10 +153,5 @@ fn remove(file: &Path) -> std::io::Result<()> {
 
 /// A path as a desktop entry's Exec line takes it.
 fn quoted(path: &Path) -> String {
-    let text = path.display().to_string();
-    if text.chars().any(|c| c.is_whitespace() || "\"'\\$`".contains(c)) {
-        format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\"").replace('$', "\\$").replace('`', "\\`"))
-    } else {
-        text
-    }
+    crate::appimage::exec_argument(path)
 }

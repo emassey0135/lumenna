@@ -8,9 +8,11 @@
 //! worded, how flat rows become a tree — is the app's (`lumenna_app`), as on every platform.
 //!
 //! One instance per profile: GApplication registers the app's identifier on the session bus,
-//! and starting it again activates the running one, which shows its window.
+//! and starting it again activates the running one, which shows its window. A launch shortcut
+//! (`--launch <id>`, a desktop entry's action) goes to the running one as its `launch` action.
 
 mod actions;
+mod appimage;
 mod asking;
 mod autostart;
 mod block_form;
@@ -37,7 +39,7 @@ mod window;
 
 use std::path::Path;
 
-use gtk::glib;
+use gtk::{gio, glib};
 use gtk::prelude::*;
 use lumenna_ffi::profile;
 
@@ -92,8 +94,31 @@ fn main() -> glib::ExitCode {
         gtk::Window::set_default_icon_name(ID);
         tree::swatches();
     });
+    // A launch shortcut chosen while the app runs, from another start of it.
+    let launch = gio::SimpleAction::new("launch", Some(glib::VariantTy::STRING));
+    launch.connect_activate(|_, id| {
+        if let Some(id) = id.and_then(glib::Variant::str) {
+            window::launch(id);
+        }
+    });
+    application.add_action(&launch);
     let (background, shortcuts) = (arguments.background, !arguments.no_shortcuts);
-    application.connect_activate(move |application| window::activate(application, &directory, background, shortcuts));
+    // The first start does its launch shortcut once the window is up; a later activation, from
+    // another start, has its own through the action.
+    let first = std::cell::Cell::new(arguments.launch.clone());
+    application.connect_activate(move |application| {
+        window::activate(application, &directory, background, shortcuts);
+        if let Some(id) = first.take() {
+            window::launch(&id);
+        }
+    });
+    if let Some(id) = &arguments.launch {
+        // Started again with a shortcut: the copy already running does it. Registering here
+        // tells which this is; run() below then activates that copy and waits for both to go.
+        if application.register(None::<&gio::Cancellable>).is_ok() && application.is_remote() {
+            application.activate_action("launch", Some(&id.to_variant()));
+        }
+    }
     // GTK is given no arguments: they were ours, and were read above.
     let program = std::env::args().next().unwrap_or_else(|| "lumenna-gtk".to_owned());
     application.run_with_args(&[program])

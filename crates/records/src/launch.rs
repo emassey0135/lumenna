@@ -43,9 +43,61 @@ pub fn launch_shortcuts() -> Vec<LaunchShortcut> {
     .collect()
 }
 
+/// What an app that runs from a file of its own, not installed (Linux's AppImage), asks the first
+/// time it runs: whether to add itself to the desktop's applications menu, which is also how the
+/// desktop comes to know it (its shortcuts from anywhere, its launch shortcuts). Asked once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MenuEntryWords {
+    /// The question: "Add Lumenna to the applications menu?"
+    pub heading: String,
+    /// What adding it does, and that it is asked once.
+    pub detail: String,
+    /// The answer that adds it, in Title Case.
+    pub yes: String,
+    /// The answer that leaves it out, in Title Case, and the safe one.
+    pub no: String,
+    /// Said once it is added.
+    pub added: String,
+}
+
+/// The words of the applications menu's offer.
+#[must_use]
+pub fn menu_entry_words() -> MenuEntryWords {
+    MenuEntryWords {
+        heading: "Add Lumenna to the applications menu?".to_owned(),
+        detail: "Lumenna runs from the file you downloaded, so the applications menu does not list it yet. Added, \
+                 it opens from there like any other app, with New Task, Today and What Should I Work On? beside \
+                 it, and the desktop can offer its shortcuts from anywhere. This is asked once."
+            .to_owned(),
+        yes: "Add to Menu".to_owned(),
+        no: "Don't Add".to_owned(),
+        added: "Lumenna is in the applications menu".to_owned(),
+    }
+}
+
+/// Said when the applications menu's entry could not be written, with the platform's reason.
+#[must_use]
+pub fn menu_entry_failed(reason: &str) -> String {
+    let reason = reason.trim();
+    if reason.is_empty() {
+        "Lumenna could not be added to the applications menu".to_owned()
+    } else {
+        format!("Lumenna could not be added to the applications menu: {reason}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_menu_offer_names_every_launch_shortcut_it_promises() {
+        let detail = menu_entry_words().detail;
+        for shortcut in launch_shortcuts() {
+            assert!(detail.contains(&shortcut.title), "{} in {detail}", shortcut.title);
+        }
+        assert_eq!(menu_entry_failed(" "), "Lumenna could not be added to the applications menu");
+    }
 
     /// The repository's root, from this crate.
     fn root() -> std::path::PathBuf {
