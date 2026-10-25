@@ -16,11 +16,13 @@ name: CI
 
 on:
   # A commit to the notes for people and for Claude alone tests nothing, and would cancel a run
-  # that does. Markdown that ships, such as BTSpeak's help topics, is not among these.
+  # that does. Markdown that ships, such as BTSpeak's help topics, is not among these. Nor
+  # does the release workflow, which nothing here runs: a change to it alone held a Mac for
+  # master's full suites while every branch waited.
   push:
-    paths-ignore: ["**/CLAUDE.md", "**/README.md", "ROADMAP.md"]
+    paths-ignore: ["**/CLAUDE.md", "**/README.md", "ROADMAP.md", ".github/workflows/release.yml"]
   pull_request:
-    paths-ignore: ["**/CLAUDE.md", "**/README.md", "ROADMAP.md"]
+    paths-ignore: ["**/CLAUDE.md", "**/README.md", "ROADMAP.md", ".github/workflows/release.yml"]
 
 # A newer push replaces the run still going for the one before it, on master as on a pull
 # request: with several sessions pushing, a run per commit piled up and failure mail with
