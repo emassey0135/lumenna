@@ -92,7 +92,16 @@ The order, and why:
 
 ## 4. Smaller gaps
 
-A day or less each, for between the larger pieces.
+A day or less each, for between the larger pieces, except the first.
+
+- **More than one window**, each with a place of its own: the Crux app already holds screens
+  (`Event::On(screen, event)`, `Views::screen`, `App::send_on`, `close_screen`), each with its
+  own place, row in hand, folding, filter and question, and Emacs uses a screen per buffer; every
+  native shell still uses screen 0 alone. A New Window command on the Mac, Windows and GTK; the
+  iPad's and the Mac's scenes (and a place opened in a new window from its context menu); a
+  browser tab of the web client's own; Android's multi-window and a phone's split screen where
+  it allows. What a screen announces goes to its own window's live region; what the device
+  holds alike (the store, the clock, reminders) is already shared between screens.
 
 ### Completion
 
@@ -128,7 +137,7 @@ A day or less each, for between the larger pieces.
   speechd-el. NVDA (Windows and the web), Orca, VoiceOver on the Mac and iPhone, TalkBack,
   Emacsvox and the BTSpeak have been.
 
-## 5. The watches
+## 5. The watches and the braille devices
 
 - **watchOS**, in this order:
   - **On a real watch**: TN3135 is not enforced in the simulator, nor is memory, and
@@ -137,6 +146,63 @@ A day or less each, for between the larger pieces.
     watch polls over plain HTTPS, the one networking watchOS allows.
 - **Wear OS**, on a real watch: rotary scrolling with TalkBack, and pairing over the network.
 - **Toolchain**: unpinned.
+- **Braille keyboards' keys are the core's**, before either device app below: the chords a
+  braille keyboard sends (Space with a cell for a command, a cell alone for a letter) as a
+  table in `lumenna_app::keys` beside the keyboard's, so the BTSpeak app, the Orbit Speak and
+  the BrailleSense run the same chord to the same action. On the two new devices **a cell
+  alone is first-letter navigation** and commands are Space chords, not the BTSpeak app's
+  split of a lower- and an upper-case letter; the BTSpeak app may follow once both exist.
+- **The Orbit Speak and the Orbit Player**, Orbit Research's Android 11 devices, through
+  Satellite (`emassey0135/satellite-launcher` and `satellite-hook`) until Orbit's own SDK,
+  promised with no date, exists. Neither has a braille display: the Speak has eight braille
+  keys, Space, arrows, OK and F1-F4 and speaks; the Player has a phone keypad. (Orbit's Strata
+  has cells; its output API is unknown.)
+  - **What it rests on**: Satellite's **hook**, not its launcher. Orbit routes keys only to a
+    `com.orbit.` package; the hook routes them to an app that says
+    `<meta-data android:name="orbit.self_voicing" android:value="true"/>`, which also puts it
+    beside Orbit's apps in Satellite's menu. So the app's ID must not begin `com.orbit.` (nor
+    hold "inputmethod"), and an app without the hook gets no keys at all.
+  - **A module of its own** (`apps/android/orbit/`, over `shared` and the Crux app's Kotlin):
+    the self-voicing flag is static, and in the phone app it would silence BackTalk there.
+    Sideloaded, or from GitHub's releases.
+  - **Speech is Orbit's screen reader's**, over clean-room copies of its AIDL
+    (`IScreenReaderService`, the transaction order kept exactly; never #44, which the Player
+    lacks), bound by explicit intent, rebound when an Orbit update kills the binding, speaking
+    only after `onScreenReaderReady`, every call on one ordered worker. Rather than speak
+    lines itself, the app **describes its screens** and Orbit voices them in the person's own
+    voice and verbosity: a place is `onFocusChanged` of a list box (role 5) named by the place,
+    the row in hand its item; a move is `onItemChanged`, only when `landing` rose or a key moved
+    it; a question `onDialogOpened`; a row's actions `onContextMenuOpened`; a line being typed an
+    edit box (role 6) with `onEditBoxContentChanged`. What the app says is `speakText`, a refusal
+    `playSound(1)`. The core's lines go as they are.
+  - **Keys** (`IUARTKeypadCallback`, claimed only while the app's window has focus, keyed by
+    `keyName`): on the Speak a chord arrives whole (`SPACE_DOT1_DOT5`), so a Space chord is a
+    command from the core's braille table, a cell alone a first letter (translated through the
+    uncontracted or computer table, never the contracted one, which reads Z alone as "as"), dot 7
+    back and dot 8 open. Orbit keeps some chords even from a self-voicing app (Space alone, dot
+    7 alone on some screens, Space with dots 2, 3, 5 or 6 outside an edit box, the review
+    chords), which the table must leave free. On the Player, digits open rows by number,
+    holding star finds by letter (T9), Menu offers a row's actions, Back goes back; Home and 0
+    never arrive.
+  - **Typing**: on the Speak a cell buffer per word through Orbit's liblouis service
+    (`translateBrailleToText`, mode 388 for each cell's echo, 132 at each Space), in the
+    person's table; a quick-add line defaults to computer braille, since contracted braille
+    makes `#`, `@` and `p1` ambiguous. On the Player, multi-tap T9. Satellite's `ListFinder`,
+    `T9Input` and keypad decoder are Apache-2.0 and the user's own, to port; Orbit's own code is
+    not.
+  - **Open**: the person's braille table is in Orbit's signature-protected settings, readable
+    only through root, so a setting of Lumenna's (from the service's `getAvailableTables`) or
+    Satellite exposing it; Iroh over Wi-Fi, and Wi-Fi in sleep, untried there; reminders through
+    Orbit's Do Not Disturb untried; the default locale is en-IN, so dates read as India writes
+    them unless set. All of it rests on unofficial behaviour an Orbit update or its SDK may change;
+    CI has no Orbit, so it is tried on the devices over adb.
+- **A BrailleSense 7 app**, HIMS' Android notetaker with a braille display, once the device is in
+  hand. Expected to be more open than Orbit's: an SDK or AIDL for its speech and its braille
+  display and keys, Google Play, and fewer workarounds. The same split as the Orbit app: a
+  module beside the phone app over `shared`, speech and the braille keys through the platform's
+  interfaces, Space chords for commands and a cell alone for first letters from the core's
+  braille table, and, unlike the Orbit devices, **lines on the cells**: the core's `braille`
+  form of each line (`Line::braille`), as BTSpeak's display shows it apart from speech.
 
 ## 6. Integrations
 
