@@ -14,6 +14,7 @@ import androidx.activity.compose.setContent
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import dev.emassey0135.lumenna.Clock
+import dev.emassey0135.lumenna.Launching
 import dev.emassey0135.lumenna.SyncWorker
 import dev.emassey0135.lumenna.WatchLink
 
@@ -23,8 +24,12 @@ class MainActivity : ComponentActivity() {
     /** The last reminder notification tapped, counted so a second tap on the same one opens it too. */
     private val opened = MutableStateFlow<Pair<Long, ReminderOpened>?>(null)
 
+    /** The last launch shortcut asked for (the tile, a complication), counted so asking again does it again. */
+    private val launched = MutableStateFlow<Pair<Long, String>?>(null)
+
     private fun handle(intent: Intent?) {
         Reminders.opened(this, intent)?.let { opened.value = (opened.value?.first ?: 0L) + 1 to it }
+        Launching.id(intent)?.let { launched.value = (launched.value?.first ?: 0L) + 1 to it }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -47,7 +52,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 core.fold(
-                    onSuccess = { WearApp(it, opened = opened) },
+                    onSuccess = { WearApp(it, opened = opened, launched = launched) },
                     // Nothing works without the store, so say why plainly.
                     onFailure = { error -> Text("Lumenna could not open its store. ${error.message.orEmpty()}") },
                 )

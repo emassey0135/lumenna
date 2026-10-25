@@ -172,7 +172,12 @@ private fun glyph(path: String) = ImageVector.Builder(
 ).addPath(pathData = addPathNodes(path), fill = SolidColor(Color.Black)).build()
 
 @Composable
-fun WearApp(core: Core, entry: TextEntry? = null, opened: kotlinx.coroutines.flow.StateFlow<Pair<Long, dev.emassey0135.lumenna.ReminderOpened>?>? = null) {
+fun WearApp(
+    core: Core,
+    entry: TextEntry? = null,
+    opened: kotlinx.coroutines.flow.StateFlow<Pair<Long, dev.emassey0135.lumenna.ReminderOpened>?>? = null,
+    launched: kotlinx.coroutines.flow.StateFlow<Pair<Long, String>?>? = null,
+) {
     val controller = rememberSwipeDismissableNavController()
     val navigator = remember(controller) { Navigator(controller) }
     // A reminder's notification, tapped: its task, or the day its block is on.
@@ -185,6 +190,20 @@ fun WearApp(core: Core, entry: TextEntry? = null, opened: kotlinx.coroutines.flo
             // An overrun's Replan button: the rest of today, worked out again.
             dev.emassey0135.lumenna.Reminders.REPLAN ->
                 core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Proposal(dev.emassey0135.lumenna.app.ProposalEvent.Replan))
+        }
+    }
+    // A way in from outside the app (the tile, a complication): the app does what it says, and
+    // the screens follow it there once it is still, with quick add when the app opened its line.
+    val launch = launched?.collectAsState()?.value
+    LaunchedEffect(launch) {
+        val id = launch?.second ?: return@LaunchedEffect
+        core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Launch(id))
+        kotlinx.coroutines.withTimeoutOrNull(5_000) { while (!core.app.still) delay(16) }
+        val view = core.app.view.value ?: return@LaunchedEffect
+        when {
+            view.line != null -> navigator.open(Screen.AddTask)
+            view.place == dev.emassey0135.lumenna.app.Place.Today -> navigator.open(Screen.Day)
+            else -> view.place?.let { navigator.open(Screen.Tasks(it)) }
         }
     }
     val changes by core.changes.collectAsState()

@@ -97,6 +97,9 @@ class AppModel(
     /** What could go at [cursor] (UTF-8 bytes) in a line of [syntax] outside the app's quick add: a filter. */
     fun complete(text: String, cursor: UInt, syntax: dev.emassey0135.lumenna.app.Syntax) = app.complete(text, cursor, syntax)
 
+    /** What a widget, tile or complication shows for the next [hours], in this device's clock. */
+    fun glance(hours: UInt) = app.glance(hours)
+
     /** Takes in a change made elsewhere, or a new minute. */
     fun tick() = app.tick()
 

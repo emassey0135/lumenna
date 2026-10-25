@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The widgets', light and dark: at least 7:1 apart. -->
+    <color name="widget_background">#FFFFFFFF</color>
+    <color name="widget_text">#FF1C1B1F</color>
+    <color name="widget_quiet">#FF46454A</color>
+</resources>

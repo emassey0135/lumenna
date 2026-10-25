@@ -53,6 +53,11 @@ dependencies {
     // BridgingManager: the phone's reminder notifications are not bridged here, since the
     // watch gives its own store's.
     implementation(libs.wear.phone.interactions)
+    // The tile and the watch faces' complications, drawn from the core's glance (`Glance.kt`).
+    implementation(libs.wear.tiles)
+    implementation(libs.wear.protolayout)
+    implementation(libs.wear.protolayout.material3)
+    implementation(libs.wear.complications.data.source)
 
     androidTestImplementation(bom)
     androidTestImplementation(libs.compose.ui.test.junit4)
