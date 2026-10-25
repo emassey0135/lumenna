@@ -47,7 +47,9 @@ pairing with `lum`.
   the row, `actions.ts`), and nothing waits on the answer: the question the app opens is drawn
   from the screen (`Questions.tsx`: a confirmation or a choice of answers as an `alertdialog`, a
   line of text with the app's refusal at the field, a pick from the lines the worker words), and
-  answering it is another event. Space and Delete run the row's action of the matching kind.
+  answering it is another event. Space and Delete are the core's shared keys (`Key("toggle")`,
+  `Key("delete")`, `keyPressed` in `actions.ts`), sent with the row in hand (a side list's held
+  first), so what they run is `keys::runs`, never a list of kinds here.
   The forms are drawn from the app's: the details, the block form, quick add, Settings, a
   proposal, pairing's words.
 - **A dialog that is the app's is open while the screen says so**, and closes when the app lets
@@ -104,9 +106,10 @@ pairing with `lum`.
   and before every backup) is another, every backup there (`folder_backups`, the core's naming)
   is deleted and one taken afresh, one write to the folder at a time.
 - **What is done to the store as a whole is Settings'** (`SettingsView::offered`: Erase
-  Everything Deleted), a destructive button each on the Backups page, handed back as
-  `ActOn(ActingOn::Settings, …)`; its question opens over Settings like any other. A trashed
-  task's Erase Permanently is its menu's alone: Delete runs `REMOVING`, which never holds it.
+  Everything Deleted), a destructive button each on the Backups page, `offered_caption` beneath
+  and describing each (`aria-describedby`), handed back as `ActOn(ActingOn::Settings, …)`; its
+  question opens over Settings like any other. A trashed task's Erase Permanently is its menu's
+  alone: the core's Delete key never runs it.
 - **A colour is a mark beside the name** (`Swatch.tsx`): a dot in the sidebar, the lists, the
   day, a pick's choices and the block form's colour, `aria-hidden`, its value
   `light-dark(light, dark)` by the page's scheme, left out under forced colours.
