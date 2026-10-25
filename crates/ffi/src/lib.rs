@@ -37,6 +37,7 @@ use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
 use lumenna_app::speech::{self, Clock, Spoken};
 use lumenna_records::assistant::AssistantOperation;
+use lumenna_records::controls::Control;
 use lumenna_records::glance::GlanceWidget;
 use lumenna_records::launch::LaunchShortcut;
 use lumenna_records::{Completions, LumennaError, Syntax};
@@ -289,6 +290,14 @@ pub fn launch_shortcuts() -> Vec<LaunchShortcut> {
 #[export]
 pub fn glance_widgets() -> Vec<GlanceWidget> {
     lumenna_records::glance::widgets()
+}
+
+/// The controls every platform that has them offers (`lumenna_records::controls`): Control
+/// Center's, Quick Settings tiles, a watch's. The timer's state is `Device::timer_control`, a press
+/// `Device::toggle_timer`; New Task is its launch shortcut.
+#[export]
+pub fn controls() -> Vec<Control> {
+    lumenna_records::controls::controls()
 }
 
 /// The glance of a day with nothing in it, worded in `locale`'s clock: what a widget shows
