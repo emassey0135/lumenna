@@ -168,6 +168,18 @@ Each is a thin adapter over the command surface.
     paid account, without which the app opens only once allowed in System Settings; Sparkle; a
     Homebrew tap, a cask for the app linking the `lum` inside it, and a formula for `lum` alone
     (`brew services start lum`); and trying the login item by hand.
+
+    Two editions, decided: the **direct download** (Developer ID, Sparkle) as it is now,
+    unsandboxed, its store in `~/Library/Application Support/lumenna` shared with the `lum`
+    inside it and with Emacs over its socket; and a **Mac App Store** edition, sandboxed, its
+    store in its App Group container, with no `lum` inside (a sandboxed `lum` could not open the
+    files named to it, nor be put on the path by the app). Someone using the App Store edition
+    installs `lum` apart (Homebrew, the tarball) and pairs it with the app like another device,
+    so the two sync on the Mac rather than share a file; Emacs goes through that `lum`. The
+    App Store edition updates through the store, needs the sandbox's network entitlements for
+    Iroh and discovery, and its global shortcuts and login item checked under the sandbox.
+    Widgets read its container directly, and the direct download's from a file the app writes
+    to its App Group (Integrations).
   - **iPhone and Apple Watch.** Built: the iPhone app with its watch app, for devices,
     unsigned. Still to come, with the paid account: signing, App Store Connect, TestFlight, the
     privacy manifest and the export-compliance answer.
