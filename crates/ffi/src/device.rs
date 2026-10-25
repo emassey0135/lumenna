@@ -18,6 +18,7 @@ use lumenna_host::Reach;
 use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanChange, ReplanPins, TimeStyle};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_records::assistant::{Argument, Assisted};
+use lumenna_records::controls::TimerControl;
 use lumenna_records::search::SearchDocument;
 use lumenna_records::reminders::DueReminders;
 use lumenna_records::{
@@ -260,6 +261,26 @@ impl Device {
     pub fn glance(&self, hours: u32, locale: Arc<dyn crate::Locale>) -> Result<Vec<GlanceEntry>, LumennaError> {
         let clock = lumenna_app::speech::Spoken(crate::Formatted(locale));
         Ok(self.lumenna.glance(hours)?.into_iter().map(|moment| lumenna_app::glance::worded(moment, &clock)).collect())
+    }
+
+    /// What the timer's control shows now (`lumenna_records::controls`): Control Center's, a
+    /// Quick Settings tile, a watch's.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn timer_control(&self) -> Result<TimerControl, LumennaError> {
+        self.lumenna.timer_control(None)
+    }
+
+    /// The timer's control pressed: stops the timer running, else starts on what to work on now,
+    /// else says why there is nothing to start. Undone as any change is.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read or written.
+    pub fn toggle_timer(&self) -> Result<Change, LumennaError> {
+        self.lumenna.toggle_timer(None)
     }
 
     /// Everything a platform's search keeps an index of (Spotlight's indexed entities,

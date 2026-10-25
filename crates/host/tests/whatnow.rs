@@ -70,3 +70,36 @@ fn a_block_that_takes_no_tasks_says_so() {
     assert!(offered.choices.is_empty());
     assert_eq!(offered.announcement, "Lunch is under way, and takes no tasks.");
 }
+
+#[test]
+fn the_timer_control_starts_on_what_to_work_on_and_a_second_press_stops_it() {
+    let (_directory, lumenna) = open();
+    block(&lumenna, "Meeting", "event", "11:00", 60);
+    lumenna.add_task("Email p1").unwrap();
+    let before = lumenna.timer_control(at("10:40")).unwrap();
+    assert!(!before.running && before.enabled, "{before:?}");
+    assert_eq!((before.detail.as_str(), before.action.as_str()), ("Email", "Start Timer"));
+
+    let started = lumenna.toggle_timer(at("10:40")).unwrap();
+    assert_eq!(started.announcement, "Started on Email in a block of its own");
+    let running = lumenna.timer_control(at("10:41")).unwrap();
+    assert!(running.running, "{running:?}");
+    assert_eq!((running.detail.as_str(), running.action.as_str()), ("Email", "Stop Timer"));
+
+    let stopped = lumenna.toggle_timer(at("10:50")).unwrap();
+    assert!(stopped.changed, "{stopped:?}");
+    assert!(!lumenna.timer_control(at("10:51")).unwrap().running);
+}
+
+#[test]
+fn the_timer_control_with_nothing_to_start_says_why_and_a_press_changes_nothing() {
+    let (_directory, lumenna) = open();
+    block(&lumenna, "Lunch", "break", "12:00", 60);
+    lumenna.add_task("Email p1").unwrap();
+    let control = lumenna.timer_control(at("12:10")).unwrap();
+    assert!(!control.enabled, "{control:?}");
+    assert_eq!(control.detail, "Lunch is under way, and takes no tasks.");
+    let pressed = lumenna.toggle_timer(at("12:10")).unwrap();
+    assert!(!pressed.changed);
+    assert_eq!(pressed.announcement, control.detail);
+}

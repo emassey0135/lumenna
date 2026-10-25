@@ -35,6 +35,44 @@ impl Lumenna {
     pub fn start_on(&self, choice: &str, now: Option<String>) -> Result<Change> {
         self.work_on(choice, &crate::replan::now_or(now.as_deref())?)
     }
+
+    /// What the timer's control shows now (`lumenna_records::controls`): Control Center's, a
+    /// Quick Settings tile, a watch's. `now` is for tests, a local date and time.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn timer_control(&self, now: Option<String>) -> Result<lumenna_records::controls::TimerControl> {
+        let now = crate::replan::now_or(now.as_deref())?;
+        self.with(|store| {
+            store.load_all_years()?;
+            lumenna_records::controls::timer_control(&repaired(store), &now)
+        })
+    }
+
+    /// The timer control pressed: stops the timer running, else starts on the first of What
+    /// Should I Work On?'s choices, else says why there is nothing to start. `now` is for tests,
+    /// a local date and time.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read or written.
+    pub fn toggle_timer(&self, now: Option<String>) -> Result<Change> {
+        let now = crate::replan::now_or(now.as_deref())?;
+        let running = self.with(|store| {
+            store.load_all_years()?;
+            Ok(lumenna_records::controls::running_sitting(&repaired(store)))
+        })?;
+        if let Some(sitting) = running {
+            let timer = self.stop_timer(&sitting, None)?;
+            return Ok(Change { notices: timer.notices, changed: timer.changed, ..Change::unchanged(timer.announcement) });
+        }
+        let choices = self.what_now_choices(&now)?;
+        match choices.choices.first() {
+            Some(first) => self.work_on(&first.id, &now),
+            None => Ok(Change::unchanged(choices.announcement)),
+        }
+    }
 }
 
 impl Lumenna {

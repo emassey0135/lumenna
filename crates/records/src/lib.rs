@@ -12,6 +12,7 @@ pub mod assistant;
 pub mod background;
 pub mod choices;
 pub mod colours;
+pub mod controls;
 pub mod day;
 pub mod dayplan;
 pub mod error;
