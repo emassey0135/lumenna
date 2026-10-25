@@ -77,6 +77,26 @@ struct TaskEntity: AppEntity {
         added = try? Date.ISO8601FormatStyle().parse(task.createdAt)
     }
 
+    /// A task a glance names, by its identifier and title alone: what a widget's Mark Done hands
+    /// Complete a Task, which gives the operation the identifier.
+    init(glanced task: LumennaApp.GlanceTask) {
+        id = task.id
+        line = nil
+        keywords = []
+        launch = nil
+        title = task.title
+        due = nil
+        project = nil
+        labels = []
+        priority = 0
+        done = false
+        notes = ""
+        estimate = nil
+        repeats = nil
+        states = []
+        added = nil
+    }
+
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(title: "\(title)", subtitle: line.map { "\($0)" })
     }
@@ -418,11 +438,17 @@ extension LumennaApp.Plan {
 
 struct BlockQuery: EntityStringQuery {
     @AppDependency private var store: AssistantStore
+    #if LUMENNA_WIDGETS
+    // A widget has no Put a Task in a Block (it compiles Complete a Task alone): today's blocks.
+    private let day: String? = nil
+    #else
     /// The day Put a Task in a Block names, whose blocks it offers.
     @IntentParameterDependency<AssignIntent>(\.$date) private var assigning
+    private var day: String? { assigning?.date }
+    #endif
 
     private func offered() throws -> [BlockEntity] {
-        try store.day(assigning?.date)?.blockEntities ?? []
+        try store.day(day)?.blockEntities ?? []
     }
 
     func entities(for identifiers: [BlockEntity.ID]) async throws -> [BlockEntity] {
@@ -611,8 +637,14 @@ struct ProposedSittingEntity: AppEntity {
 
 struct ProposedSittingQuery: EntityQuery {
     @AppDependency private var store: AssistantStore
+    #if LUMENNA_WIDGETS
+    // A widget has no Apply a Day Plan: today's plan.
+    private let day: String? = nil
+    #else
     /// The day Apply a Day Plan names, whose plan it offers.
     @IntentParameterDependency<ApplyDayPlanIntent>(\.$date) private var applying
+    private var day: String? { applying?.date }
+    #endif
 
     func entities(for identifiers: [ProposedSittingEntity.ID]) async throws -> [ProposedSittingEntity] {
         // Each day's plan proposed again, the day its block's identifier names.
@@ -623,6 +655,6 @@ struct ProposedSittingQuery: EntityQuery {
 
     /// The sittings proposed now for the day named, or today.
     func suggestedEntities() async throws -> [ProposedSittingEntity] {
-        try store.dayPlan(applying?.date)?.sittings.map(ProposedSittingEntity.init) ?? []
+        try store.dayPlan(day)?.sittings.map(ProposedSittingEntity.init) ?? []
     }
 }

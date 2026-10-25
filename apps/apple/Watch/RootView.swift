@@ -78,6 +78,8 @@ struct RootView: View {
     /// What a reminder chosen in its notification is about: its task, or the day.
     @State private var remindedTask: TaskOpened?
     @State private var remindedDay: LumennaApp.Place?
+    /// Where a complication tapped took the app: the core's launch, as the app left it.
+    @State private var launched: LumennaApp.Place?
 
     init(core: WatchCore) {
         _asker = StateObject(wrappedValue: WatchAsker(core: core))
@@ -110,6 +112,14 @@ struct RootView: View {
             }
             .navigationDestination(item: $remindedDay) { place in
                 PlaceView(core: core, place: place)
+            }
+            .navigationDestination(item: $launched) { place in
+                PlaceView(core: core, place: place)
+            }
+            .onOpenURL { url in
+                guard let id = LaunchURL.id(in: url) else { return }
+                core.app.send(.launch(id))
+                core.app.whenStill { launched = core.app.view.place }
             }
             .onReceive(NotificationCenter.default.publisher(for: Opened.reminded)) { note in
                 guard let reminded = note.object as? RemindedOf else { return }

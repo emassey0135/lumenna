@@ -33,7 +33,24 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let shortcut = connectionOptions.shortcutItem {
             DispatchQueue.main.async { [weak self] in _ = self?.perform(shortcut) }
         }
+        // Opened by a widget, on one of the core's launches.
+        if let url = connectionOptions.urlContexts.first?.url {
+            DispatchQueue.main.async { [weak self] in self?.open(url) }
+        }
         core?.backUpIfDue(presentingFrom: window.rootViewController)
+    }
+
+    /// A widget tapped while the app was running.
+    func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
+        if let url = contexts.first?.url { open(url) }
+    }
+
+    /// A launch the URL names (`LaunchURL`), which the app does, then the screen showing the
+    /// place it left, once it is still.
+    private func open(_ url: URL) {
+        guard let id = LaunchURL.id(in: url), let core else { return }
+        core.app.send(.launch(id))
+        core.app.whenStill { [weak self] in (self?.window?.rootViewController as? PlaceFollowing)?.showAppPlace() }
     }
 
     /// The Home Screen's quick action, chosen while the app was running.
@@ -73,6 +90,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // One last round before stopping, so what was just edited is sent now.
         if let core { BackgroundSync.leaving(core) }
     }
+}
+
+/// A top level that shows the app's place when a launch from outside has moved it.
+protocol PlaceFollowing: AnyObject {
+    func showAppPlace()
 }
 
 /// What shows when the store cannot be opened.

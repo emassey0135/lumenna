@@ -191,6 +191,24 @@ pub fn timeline(snapshot: &Snapshot, now: &Zoned, until: Timestamp) -> Result<Ve
     Ok(moments)
 }
 
+/// The glance at `now` of a day with nothing in it: no block, no timer, nothing due. What a
+/// widget shows before any glance has been written for it (the app not yet opened, a build with
+/// nowhere to write one), so even that is the core's words, not the platform's.
+#[must_use]
+pub fn empty(now: &Zoned) -> GlanceMoment {
+    GlanceMoment {
+        at: now.timestamp().to_string(),
+        date: now.date().to_string(),
+        current: None,
+        next: None,
+        timer: None,
+        tasks: Vec::new(),
+        due: 0,
+        overdue: 0,
+        blocks_left: 0,
+    }
+}
+
 /// The glance at `now`.
 fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
     let today = now.date();
@@ -273,6 +291,14 @@ mod tests {
         let start = element.find(&format!(" {attribute}=\""))? + attribute.len() + 3;
         let end = start + element[start..].find('"')?;
         Some(element[start..end].replace("&apos;", "'").replace("&quot;", "\"").replace("&amp;", "&"))
+    }
+
+    #[test]
+    fn an_empty_glance_is_of_the_day_it_is_asked_on_with_nothing_in_it() {
+        let now: Zoned = "2026-10-20T09:30:00[Europe/London]".parse().unwrap();
+        let moment = empty(&now);
+        assert_eq!((moment.date.as_str(), moment.at.as_str()), ("2026-10-20", "2026-10-20T08:30:00Z"));
+        assert!(moment.current.is_none() && moment.next.is_none() && moment.timer.is_none() && moment.tasks.is_empty());
     }
 
     #[test]

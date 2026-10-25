@@ -166,24 +166,6 @@ private final class Relay: LumennaApp.Shell, @unchecked Sendable {
     }
 }
 
-/// This device's way of writing a time and a date, for the lines the core words. "Today",
-/// "Tomorrow" and when to give the year are the core's.
-private final class Writing: LumennaApp.Locale, @unchecked Sendable {
-    func time(hour: Int8, minute: Int8) -> String {
-        Clock.time(String(format: "%02d:%02d", hour, minute))
-    }
-
-    func date(year: Int16, month: Int8, day: Int8, withYear: Bool) -> String {
-        var parts = DateComponents()
-        parts.year = Int(year)
-        parts.month = Int(month)
-        parts.day = Int(day)
-        guard let date = Calendar.current.date(from: parts) else { return "\(year)-\(month)-\(day)" }
-        let style = Date.FormatStyle.dateTime.weekday(.wide).day().month(.wide)
-        return withYear ? date.formatted(style.year()) : date.formatted(style)
-    }
-}
-
 /// What a row's menus, swipes and keys need of an action: one offered whole (`Action`), or a
 /// list row's in short (`Offered`), which the app runs whole for the row in hand.
 protocol RowAction: Hashable {

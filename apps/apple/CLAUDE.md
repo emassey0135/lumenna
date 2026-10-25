@@ -116,7 +116,8 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   the core decodes no shape of its own), written at launch, after every `Core.changed`, and in
   the background refresh before its task ends; then `WidgetCenter.reloadAllTimelines()`. Every
   Apple app writes it, the watch and both Mac editions too, since the direct download's widgets
-  cannot reach its store. Under `LUMENNA_TEST_PROFILE` nothing is written to the group.
+  cannot reach its store; a widget writes it too, after its Mark Done. Under
+  `LUMENNA_TEST_PROFILE` nothing is written to the group.
 - **`TZ` is set from `TimeZone.current`** at launch and on returning to the foreground: jiff
   finds the zone through `TZ` or `/etc/localtime`, and the sandbox is no place to rely on
   the second.
@@ -204,7 +205,7 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   `UIAccessibility.voiceOverView`), else the one open beside the list; the task open beside a
   list answers them itself.
 - **Every assistant operation is an App Intent** (`Shared/Intents`, compiled into all three
-  apps, and the source group extensions are to compile too): one per operation of
+  apps; the widgets compile Complete a Task alone, "The widgets"): one per operation of
   `assistantOperations()`, its `persistentIdentifier` the operation's `id`, each running
   through `Device.assist` on the store the app gives `Assistant.serve` as it launches
   (`AppDependencyManager`, since an intent may be what launched it). App Intents' metadata is
@@ -450,6 +451,71 @@ What the App Store edition does differently, and why:
 - **CI builds both, unsigned**, and checks the App Store edition carries no `lum`. Unsigned,
   neither is sandboxed and neither has its group: the sandbox, the group container and the
   bookmark take effect only in a signed build, and are checked by hand.
+
+## The widgets
+
+`Widgets/`: WidgetKit, one source set for three extensions (project.yml's `LumennaWidgets`
+template): `LumennaWidgetsiOS` (the iPhone and iPad), `LumennaWidgetsMac` (both editions, one
+target in both configurations) and `LumennaWidgetsWatch` (complications and the Smart Stack),
+each embedded in its app.
+
+- **An extension links its app's `LumennaApp` framework** (`embed: false`, found through the
+  run path in the app's `Frameworks`), so the core is built once per platform and linked
+  statically into that framework alone, by the `.a`'s path, as the apps have it; the framework
+  is `APPLICATION_EXTENSION_API_ONLY`. The extension is a process of its own, so this is one
+  copy per process.
+- **Which widgets, and their words, are the core's** (`glanceWidgets()`): each one's id is its
+  WidgetKit kind, its gallery name and description are read at run time, and the sizes it comes
+  in are `GlanceWidgets.families`, keyed by id, which `WidgetTests` compares with the core's: a
+  widget the core adds fails it until it has sizes. Now is `systemSmall` (StandBy's too) and, on
+  iOS and the watch, the accessory families (the watch's corner too); Today is `systemMedium`
+  and `systemLarge`, so the watch has Now alone. A size shows the first of a widget's parts that
+  fit: `ViewThatFits` over each shorter run of them (`GlanceWidgets.fitting`), never a table of
+  sizes, so a larger text size drops the tasks before the headline.
+- **The timeline is the glance file** (`glance.json` in the group, `glanceFromFile`): one entry
+  per moment, dated by its `at`, policy `.atEnd`. With no file (the app not yet opened, an
+  unsigned build with no group) it is the core's empty day (`glanceEmpty`), never a sentence of
+  ours. The core writes instants to the nanosecond, which Foundation's ISO 8601 parser refuses
+  past milliseconds, so `GlanceWidgets.instant` reads the fraction itself. A running timer counts
+  by itself (`Text(_, style: .timer)` from `countingFrom`) and a block under way fills its gauge
+  (`ProgressView(timerInterval:)`), neither with an entry of its own. The Smart Stack is told a
+  moment matters (`relevance`, score 1) while a block is under way or a timer runs.
+- **VoiceOver hears a widget as one element**, the core's `spoken`, with a running timer as its
+  value: the headline part, every widget's first (the core's test), carries it, and the other
+  parts are hidden. Only Today's Mark Done buttons are elements of their own, named "Mark Done,
+  <task>" (`GlanceWidgets.markDone`), as Android's are. Text is `.primary`, `quietLabel` and
+  `warningLabel` (`Shared/Palette.swift`, moved out of the forms for this) on the system's
+  background; the title and the timer are `widgetAccentable` for the accented rendering. Block
+  colours are not drawn.
+- **Mark Done is Complete a Task** (`CompleteTaskIntent`, in its own file so the widgets compile
+  it with the entities and nothing else of the intents; the two queries that read another
+  intent's parameter read none under `LUMENNA_WIDGETS`). The widget's copy is not discoverable,
+  so Shortcuts lists the app's once. Where it runs:
+  - **iPhone, iPad and the App Store edition**: in the widget, on the store in the group
+    (`WidgetStore`, through `AppDependencyManager`), opened when an intent first asks and only if
+    `lumenna.sqlite` is already there: a widget must never make a store in the group. After a
+    write (the heads moved, `AssistantStore`'s `changed`) the widget writes the glance file again
+    itself (`GlanceFile(device:)`), since the app may not be running, and WidgetKit then reads it.
+  - **The direct download**: in the app, through App Intents' own way of naming the process,
+    `allowedExecutionTargets` `.main` (macOS 27): its store is outside the sandbox every Mac
+    extension runs in, and the app, resident in the menu bar, holds it. Not `openAppWhenRun`,
+    which would bring the window forward for every Shortcuts run of Complete a Task as well.
+    Before macOS 27 the
+    direct download's Today shows no Mark Done; tapping it opens Today.
+  - **The watch** has no Today, so no Mark Done, and compiles no intents.
+- **A widget tapped opens Today, the core's launch** (`widgetURL` of `LaunchURL.of("today")`,
+  `lumenna://launch/<id>`, the scheme each app registers): the app sends `ShellEvent.launch`
+  and follows the place the app left (`PlaceFollowing` on the iPhone's tabs and the iPad's
+  columns, the Mac's window by itself, the watch pushing it), so where a launch goes is the
+  core's.
+- **A Mac extension is always sandboxed**, so its entitlements (`Widgets/Mac/Widgets.entitlements`:
+  the sandbox and the group) are the same in both editions; only the App Store edition's store is
+  there for Mark Done. Its Info.plist names the group as the apps' do (`LumennaAppGroup`).
+- **Not checked by CI**, since it builds unsigned with no group: the widgets reading the glance,
+  Mark Done in the widget and in the direct download's app, the gallery's words, a complication
+  on a face, and VoiceOver on each. iOS ends a process suspended holding a lock on a file in a
+  group (`0xdead10cc`): the widget opens the store only when an intent asks, but keeps it open
+  for the rest of its process's life, which is unchecked.
 
 ## The Apple Watch app
 

@@ -291,6 +291,14 @@ pub fn glance_widgets() -> Vec<GlanceWidget> {
     lumenna_records::glance::widgets()
 }
 
+/// The glance of a day with nothing in it, worded in `locale`'s clock: what a widget shows
+/// before a glance has been written for it, the app not yet opened, so that is the core's words
+/// too (`lumenna_records::glance::empty`).
+#[export]
+pub fn glance_empty(locale: Arc<dyn Locale>) -> GlanceEntry {
+    lumenna_app::glance::empty(&Spoken(Formatted(locale)))
+}
+
 /// A glance (`App::glance`, `Device::glance`) as the file an app hands its widgets, which run
 /// apart from it: on Apple's platforms, written into the App Group container. JSON in the
 /// entries' own shape, so the file and the records cannot drift apart.

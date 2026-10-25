@@ -6,7 +6,7 @@ import UIKit
 /// Four tabs, each its own navigation stack, so a person deep in a project's tasks can look at
 /// today and come back to exactly where they were. The iPad has a sidebar instead
 /// (`IPadRoot`).
-final class RootTabs: UITabBarController, CommandActions {
+final class RootTabs: UITabBarController, CommandActions, PlaceFollowing {
     private let core: Core
     private let day: DayViewController
     private let tasks: TaskListViewController
@@ -81,6 +81,16 @@ final class RootTabs: UITabBarController, CommandActions {
         select(2) { tabs in
             let shown = tabs.browse.show(kind)
             then?(shown)
+        }
+    }
+
+    /// The tab showing the app's place: Today and Tasks their own, any other in Browse.
+    func showAppPlace() {
+        switch core.app.view.place {
+        case .today?: select(0)
+        case .tasks?: select(1)
+        case let place?: openFromBrowse(.place(place))
+        case nil: break
         }
     }
 

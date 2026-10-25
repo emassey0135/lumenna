@@ -8,20 +8,29 @@ import LumennaApp
 /// does, so no assistant can do what another cannot.
 final class AssistantStore: @unchecked Sendable {
     let device: LumennaApp.Device
+    /// Called after an operation that changed the store, where nothing else notices: in a widget,
+    /// which then writes its glance again (`GlanceFile`), the app perhaps not running.
+    private let changed: (() -> Void)?
 
-    init(device: LumennaApp.Device) {
+    init(device: LumennaApp.Device, changed: (() -> Void)? = nil) {
         self.device = device
+        self.changed = changed
     }
 
     /// Runs the assistant operation `id` with what its parameters were given, by name; a value
     /// left out is not given. A refusal is the core's sentence, for Siri to say.
     func assist(_ id: String, _ arguments: [String: LumennaApp.ArgumentValue?] = [:]) throws -> LumennaApp.Assisted {
         let given = arguments.compactMap { name, value in value.map { LumennaApp.Argument(name: name, value: $0) } }
+        // By the heads, which move for every write: what the operation did is the core's to say.
+        let before = changed == nil ? nil : try? device.heads()
+        let assisted: LumennaApp.Assisted
         do {
-            return try device.assist(operation: id, arguments: given)
+            assisted = try device.assist(operation: id, arguments: given)
         } catch {
             throw AssistantRefusal(error)
         }
+        if let changed, (try? device.heads()) != before { changed() }
+        return assisted
     }
 
     /// One task whole, by its identifier.
@@ -103,7 +112,7 @@ enum Assistant {
         let store = AssistantStore(device: device)
         AppDependencyManager.shared.add(dependency: store)
         AppDependencyManager.shared.add(dependency: AssistantLauncher(open: launch))
-        #if !os(watchOS)
+        #if !os(watchOS) && !LUMENNA_WIDGETS
         if #available(iOS 18.0, macOS 15.0, *) {
             SearchIndex.follow(store)
         }
