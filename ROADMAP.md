@@ -88,18 +88,16 @@ A day or less each, for between the larger pieces.
 
 Each is a thin adapter over the command surface.
 
-- **App Intents** (iOS and macOS; watchOS later): one implementation for Siri, Shortcuts,
-  Spotlight, widgets, Control Center and the Action Button. `AppEntity` and `EntityQuery`
-  for tasks, projects and blocks so Shortcuts can find things, not only make them;
-  `AppShortcutsProvider` for Siri phrases with no setup. Add (in the quick-add grammar),
-  complete, query by filter, today's plan, assign, start and stop. Hands-free capture is an
-  accessibility feature. Check for an assistant-schema domain for tasks when building.
+- **Control Center controls** (iOS 18 and macOS 26 `ControlWidget`s, the watch's too): start and
+  stop a sitting's timer, and New Task, as buttons over the App Intents already built (every
+  assistant operation is one, `apps/apple/CLAUDE.md`), their names the core's.
 - **A URL scheme**, `lumenna://`, on every platform, for Drafts, Scriptable, Keyboard Maestro,
   Alfred and any app's x-callback-url:
   - **Where:** Android's intent filter, Windows' protocol handler (the installer's and the
     MSIX's), the desktop entry's `x-scheme-handler/lumenna`, and the web's `web+lumenna`
     (browsers take only `web+` schemes). What a URL means and does is the core's, a records
-    module beside `launch`, so every platform only hands the URL over.
+    module beside `launch`, so every platform only hands the URL over. The Apple apps already
+    answer `lumenna://launch/<id>`, which their widgets open; `open/` takes its place.
   - **Without a token**, what is harmless and undoable: `open/<launch id>` (the core's launch
     targets: `today`, `task:<id>`, …) and `add?text=…` (one task per line, in the quick-add
     grammar), answering `x-success` with no data.
@@ -116,19 +114,16 @@ Each is a thin adapter over the command surface.
   back as Tasker variables. Each firing carries a secret made when it was set up, so no other app
   can fire it. App Functions are not Tasker's way in: only the system's assistant may call them.
   Events reach Tasker by the hooks' broadcast (below).
-- **Android App Functions** (`androidx.appfunctions`, for Gemini) with AppSearch for
-  retrieval; not the old App Actions. The same verbs as App Intents: add, what is next,
-  start and stop a sitting's timer, complete. Through Gemini they reach the phone, the watch,
-  the car and audio glasses alike.
-- **A "Today" shortcut** on the iOS and Android icons, beside New Task.
-- **Widgets**: WidgetKit (iOS, macOS) and Glance (Android): today's blocks and what is due.
-  The watches' are widgets too: complications through WidgetKit on watchOS, with the running
-  timer on the watch face, and tiles and complications on Wear OS.
-  Apple's are built (`apps/apple/CLAUDE.md`, "The widgets"): Now and Today on the iPhone, the
-  iPad and both Mac editions, Now on the watch's faces and Smart Stack. Still to come: trying
-  them signed, which CI cannot (the group's glance read, Mark Done in the widget on the iPhone
-  and the App Store edition and in the app for the direct download, a complication on a face,
-  VoiceOver on each).
+- **Gemini through App Functions**: every assistant operation is an App Function
+  (`apps/android/CLAUDE.md`), but Gemini calls only the apps in Google's early access programme
+  (a private preview with trusted testers as of May 2026). Register interest; until then a
+  function is checked by `adb shell cmd app_function`, not through Gemini.
+- **Widgets, tried as a person gets them**: every platform's are built from the core's glance and
+  `glance_widgets()` (Now and Today), and what CI cannot check is left by hand: Apple's on a
+  signed build (the group's glance read, Mark Done in the widget on the iPhone and the App Store
+  edition and in the app for the direct download, a complication on a face and in the Smart
+  Stack), the Windows board drawing the cards and pressing Mark Done (`apps/windows/CLAUDE.md`),
+  and VoiceOver, TalkBack and Narrator on each.
 - **A PowerShell module**: a script module (`.psm1`) in PowerShell over `lum --json`, for
   Windows PowerShell 5.1 and PowerShell 7 on every platform, and the same language as Windows'
   hooks. Unlike `lum`, it gives:
