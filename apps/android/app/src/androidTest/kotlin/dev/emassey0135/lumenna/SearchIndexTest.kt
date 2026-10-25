@@ -28,7 +28,7 @@ class SearchIndexTest {
     fun aTaskIsIndexedAsTheCoreDescribesItAndRemovedOnceTrashed() {
         assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
         val core = Core(directory)
-        val task = core.device.addTask("Renew the passport #Errands").task ?: error("the change names its task")
+        val task = core.device.addTask("Renew the passport tomorrow @errands").task ?: error("the change names its task")
         val document = core.device.searchDocuments().first { it.id == "task:${task.id}" }
         val session = SearchIndex.indexNow(context, core)
         val ids = listOf(document.id)
