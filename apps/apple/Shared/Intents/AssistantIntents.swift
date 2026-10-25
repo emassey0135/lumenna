@@ -39,7 +39,7 @@ private func said(_ assisted: LumennaApp.Assisted) -> some IntentResult & Provid
 struct ListTasksIntent: OperationIntent {
     static let persistentIdentifier = "list_tasks"
     static let title: LocalizedStringResource = "List Tasks"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Lists tasks: by default every open task, most urgent first, subtasks under their task; or those a filter admits.",
         categoryName: "Tasks",
         searchKeywords: ["tasks", "to do", "overdue", "due"]
@@ -59,7 +59,7 @@ struct ListTasksIntent: OperationIntent {
 struct SearchTasksIntent: OperationIntent {
     static let persistentIdentifier = "search_tasks"
     static let title: LocalizedStringResource = "Search Tasks"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Searches task titles and notes for words.",
         categoryName: "Tasks",
         searchKeywords: ["find", "search"]
@@ -79,7 +79,7 @@ struct SearchTasksIntent: OperationIntent {
 struct ShowTaskIntent: OperationIntent {
     static let persistentIdentifier = "show_task"
     static let title: LocalizedStringResource = "Show a Task"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "One task whole: its fields, states, subtasks, what it waits for, its sittings and its history.",
         categoryName: "Tasks",
         searchKeywords: ["details", "notes"]
@@ -99,7 +99,7 @@ struct ShowTaskIntent: OperationIntent {
 struct ListProjectsIntent: OperationIntent {
     static let persistentIdentifier = "list_projects"
     static let title: LocalizedStringResource = "List Projects"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Every project, its subprojects under it.",
         categoryName: "Tasks",
         searchKeywords: ["projects"]
@@ -118,7 +118,7 @@ struct ListProjectsIntent: OperationIntent {
 struct ListLabelsIntent: OperationIntent {
     static let persistentIdentifier = "list_labels"
     static let title: LocalizedStringResource = "List Labels"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Every label.",
         categoryName: "Tasks",
         searchKeywords: ["labels", "tags"]
@@ -137,7 +137,7 @@ struct ListLabelsIntent: OperationIntent {
 struct ListSavedFiltersIntent: OperationIntent {
     static let persistentIdentifier = "list_filters"
     static let title: LocalizedStringResource = "List Saved Filters"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Every saved filter, with its query.",
         categoryName: "Tasks",
         searchKeywords: ["filters", "views"]
@@ -156,7 +156,7 @@ struct ListSavedFiltersIntent: OperationIntent {
 struct AddTaskIntent: OperationIntent {
     static let persistentIdentifier = "add_task"
     static let title: LocalizedStringResource = "Add a Task"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it.",
         categoryName: "Tasks",
         searchKeywords: ["new", "create", "remember", "capture", "remind"]
@@ -176,7 +176,7 @@ struct AddTaskIntent: OperationIntent {
 struct EditTaskIntent: OperationIntent {
     static let persistentIdentifier = "edit_task"
     static let title: LocalizedStringResource = "Edit a Task"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Changes a task's fields: only those given.",
         categoryName: "Tasks",
         searchKeywords: ["change", "rename", "reschedule", "due date"]
@@ -222,7 +222,7 @@ struct EditTaskIntent: OperationIntent {
 struct CompleteTaskIntent: OperationIntent {
     static let persistentIdentifier = "complete_task"
     static let title: LocalizedStringResource = "Complete a Task"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Marks a task done. A repeating one moves on to its next date.",
         categoryName: "Tasks",
         searchKeywords: ["done", "finish", "check off", "tick"]
@@ -242,7 +242,7 @@ struct CompleteTaskIntent: OperationIntent {
 struct UncompleteTaskIntent: OperationIntent {
     static let persistentIdentifier = "uncomplete_task"
     static let title: LocalizedStringResource = "Mark a Task Not Done"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Marks a done task not done.",
         categoryName: "Tasks",
         searchKeywords: ["undone", "reopen"]
@@ -262,7 +262,7 @@ struct UncompleteTaskIntent: OperationIntent {
 struct MoveTaskIntent: OperationIntent {
     static let persistentIdentifier = "move_task"
     static let title: LocalizedStringResource = "Move a Task"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Makes a task a subtask of another, moves it to a project, or makes it a task of its own.",
         categoryName: "Tasks",
         searchKeywords: ["subtask", "project", "move"]
@@ -295,7 +295,7 @@ struct MoveTaskIntent: OperationIntent {
 struct TrashTaskIntent: OperationIntent {
     static let persistentIdentifier = "trash_task"
     static let title: LocalizedStringResource = "Move a Task to the Trash"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Moves a task to the trash, from which `restore_task` brings it back.",
         categoryName: "The Trash",
         searchKeywords: ["delete", "remove", "trash"]
@@ -314,7 +314,7 @@ struct TrashTaskIntent: OperationIntent {
 struct RestoreTaskIntent: OperationIntent {
     static let persistentIdentifier = "restore_task"
     static let title: LocalizedStringResource = "Restore a Task"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Brings a task back from the trash.",
         categoryName: "The Trash",
         searchKeywords: ["undelete", "bring back", "restore"]
@@ -351,7 +351,7 @@ extension OperationIntent {
 struct EraseTaskPermanentlyIntent: OperationIntent {
     static let persistentIdentifier = "erase_task_permanently"
     static let title: LocalizedStringResource = "Erase a Task Permanently"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Erases a task in the trash permanently: from the history every device keeps, and with it the history of everything deleted before. Nothing can undo it, so without `confirm` it answers with the question to ask the person first.",
         categoryName: "The Trash",
         searchKeywords: ["erase", "permanently", "forever"]
@@ -374,7 +374,7 @@ struct EraseTaskPermanentlyIntent: OperationIntent {
 struct EraseEverythingDeletedIntent: OperationIntent {
     static let persistentIdentifier = "erase_everything_deleted"
     static let title: LocalizedStringResource = "Erase Everything Deleted"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Erases everything deleted permanently: every task in the trash, and the history of everything ever deleted, on every device. Nothing can undo it, so without `confirm` it answers with the question to ask the person first.",
         categoryName: "The Trash",
         searchKeywords: ["erase", "empty the trash", "permanently"]
@@ -392,7 +392,7 @@ struct EraseEverythingDeletedIntent: OperationIntent {
 struct ShowDayIntent: OperationIntent {
     static let persistentIdentifier = "day"
     static let title: LocalizedStringResource = "Show the Day"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "A day as it is lived: its blocks in time order, each with the tasks in it (its sittings), the free time between them, and where now falls.",
         categoryName: "The Day",
         searchKeywords: ["today", "schedule", "agenda", "blocks", "plan"]
@@ -413,7 +413,7 @@ struct ShowDayIntent: OperationIntent {
 struct ListBlocksIntent: OperationIntent {
     static let persistentIdentifier = "list_blocks"
     static let title: LocalizedStringResource = "List Blocks"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Every time block, each with when it happens and how often.",
         categoryName: "The Day",
         searchKeywords: ["blocks", "routine", "schedule"]
@@ -436,7 +436,7 @@ struct ListBlocksIntent: OperationIntent {
 struct AssignIntent: OperationIntent {
     static let persistentIdentifier = "assign"
     static let title: LocalizedStringResource = "Put a Task in a Block"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Puts a task in a block, as a sitting: one session of work on it there.",
         categoryName: "The Day",
         searchKeywords: ["schedule", "block", "time block", "plan"]
@@ -466,7 +466,7 @@ struct AssignIntent: OperationIntent {
 struct UnassignIntent: OperationIntent {
     static let persistentIdentifier = "unassign"
     static let title: LocalizedStringResource = "Take a Task out of a Block"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Takes a sitting out of its block; the task itself stays.",
         categoryName: "The Day",
         searchKeywords: ["unschedule", "remove from block"]
@@ -487,7 +487,7 @@ struct UnassignIntent: OperationIntent {
 struct StartTimerIntent: OperationIntent {
     static let persistentIdentifier = "start_timer"
     static let title: LocalizedStringResource = "Start a Timer"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Starts, or resumes, a sitting's timer.",
         categoryName: "Timers",
         searchKeywords: ["start", "begin", "work on", "resume"]
@@ -506,7 +506,7 @@ struct StartTimerIntent: OperationIntent {
 struct PauseTimerIntent: OperationIntent {
     static let persistentIdentifier = "pause_timer"
     static let title: LocalizedStringResource = "Pause a Timer"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Pauses a sitting's timer, keeping what it has logged.",
         categoryName: "Timers",
         searchKeywords: ["pause", "break"]
@@ -525,7 +525,7 @@ struct PauseTimerIntent: OperationIntent {
 struct StopTimerIntent: OperationIntent {
     static let persistentIdentifier = "stop_timer"
     static let title: LocalizedStringResource = "Stop a Timer"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Stops a sitting's timer and logs its time.",
         categoryName: "Timers",
         searchKeywords: ["stop", "finish", "log time"]
@@ -551,7 +551,7 @@ struct StopTimerIntent: OperationIntent {
 struct WhatShouldIWorkOnIntent: OperationIntent {
     static let persistentIdentifier = "what_should_i_work_on"
     static let title: LocalizedStringResource = "What Should I Work On?"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "What to work on now, ranked, each choice with the reason it is offered: in a block under way its own unfinished sittings, then its suggestions; in free time, what fits before the next block. Starting on one is `start_on`.",
         categoryName: "Planning",
         searchKeywords: ["next", "focus", "now", "suggest"]
@@ -569,7 +569,7 @@ struct WhatShouldIWorkOnIntent: OperationIntent {
 struct StartOnIntent: OperationIntent {
     static let persistentIdentifier = "start_on"
     static let title: LocalizedStringResource = "Start on a Choice"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Starts on one of What Should I Work On?'s choices at once, its timer running: in the block under way, or in a block of its own in free time.",
         categoryName: "Planning",
         searchKeywords: ["start", "work on", "focus"]
@@ -588,7 +588,7 @@ struct StartOnIntent: OperationIntent {
 struct ProposeReplanIntent: OperationIntent {
     static let persistentIdentifier = "propose_replan"
     static let title: LocalizedStringResource = "Propose a Replan of Today"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Proposes how to replan the rest of today, when the day has slipped: every change as a whole sentence. Nothing changes until `apply_replan` is given the ones the person accepted; say them to the person first.",
         categoryName: "Planning",
         searchKeywords: ["replan", "behind", "reschedule", "running late"]
@@ -606,7 +606,7 @@ struct ProposeReplanIntent: OperationIntent {
 struct ProposeDayPlanIntent: OperationIntent {
     static let persistentIdentifier = "propose_day_plan"
     static let title: LocalizedStringResource = "Propose a Plan for a Day"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Proposes which tasks to put in each of a day's work blocks still to come, each with why. Nothing changes until `apply_day_plan` is given the sittings the person accepted.",
         categoryName: "Planning",
         searchKeywords: ["plan the day", "fill", "schedule"]
@@ -627,7 +627,7 @@ struct ProposeDayPlanIntent: OperationIntent {
 struct ApplyReplanIntent: OperationIntent {
     static let persistentIdentifier = "apply_replan"
     static let title: LocalizedStringResource = "Apply a Replan"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Makes the replan changes the person accepted, as one change they can undo, and proposes again around what they turned down.",
         categoryName: "Planning",
         searchKeywords: ["replan", "accept"]
@@ -654,7 +654,7 @@ struct ApplyReplanIntent: OperationIntent {
 struct ApplyDayPlanIntent: OperationIntent {
     static let persistentIdentifier = "apply_day_plan"
     static let title: LocalizedStringResource = "Apply a Day Plan"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Puts the sittings the person accepted into their blocks, as one change they can undo, and plans again around what they turned down.",
         categoryName: "Planning",
         searchKeywords: ["plan", "accept"]
@@ -687,7 +687,7 @@ struct ApplyDayPlanIntent: OperationIntent {
 struct UndoIntent: OperationIntent {
     static let persistentIdentifier = "undo"
     static let title: LocalizedStringResource = "Undo"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Undoes the last change made on this device, whoever made it: an app, `lum`, or an assistant.",
         categoryName: "Undo",
         searchKeywords: ["undo", "take back"]
@@ -703,7 +703,7 @@ struct UndoIntent: OperationIntent {
 struct RedoIntent: OperationIntent {
     static let persistentIdentifier = "redo"
     static let title: LocalizedStringResource = "Redo"
-    static let description = IntentDescription(
+    static let description: IntentDescription? = IntentDescription(
         "Redoes what was last undone.",
         categoryName: "Undo",
         searchKeywords: ["redo"]
