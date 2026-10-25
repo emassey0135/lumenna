@@ -126,7 +126,10 @@ pub fn show(app: &App, page: Page) {
         planning: Planning { hwnd: Cell::new(HWND::default()), described: described.clone() },
         devices: Devices { hwnd: Cell::new(HWND::default()), list: RefCell::new(Vec::new()), landing: Cell::new(0) },
         backups: Backups { hwnd: Cell::new(HWND::default()), described },
-        export: Export { offered: app.crux.view().settings.map(|settings| settings.offered).unwrap_or_default() },
+        export: app.crux.view().settings.map_or_else(
+            || Export { offered: Vec::new(), caption: String::new() },
+            |settings| Export { offered: settings.offered, caption: settings.offered_caption },
+        ),
         live: Cell::new(HWND::default()),
         refused: RefCell::new(BTreeMap::new()),
     });
@@ -913,7 +916,11 @@ impl Dialog for Devices {
                 Some(-2)
             }
             WM_VKEYTOITEM if controls::low_word(wparam.0) == VK_DELETE.0 => {
-                self.act(page, ActionKind::Unpair);
+                // What Delete runs is the core's (`keys::runs`): here, Unpair.
+                if let Some(device) = self.chosen(page) {
+                    app::send(ShellEvent::Hold(Side::Devices, device.node_id));
+                    app::send(ShellEvent::Key("delete".into()));
+                }
                 Some(-2)
             }
             WM_VKEYTOITEM => Some(-1),
@@ -1036,6 +1043,8 @@ const OFFERED: u16 = 520;
 struct Export {
     /// What the app offers to do to the store as a whole, a button each after the rest.
     offered: Vec<Offered>,
+    /// What they take, under their buttons.
+    caption: String,
 }
 
 impl Dialog for Export {
@@ -1052,13 +1061,21 @@ impl Dialog for Export {
             let label = keyed(&actions::label(action), &mut keys);
             template = template.item(Class::Button, &label, OFFERED + index as u16, BUTTON, 7, 97 + index as i16 * 18, 180, 14);
         }
+        let mut below = 97 + self.offered.len() as i16 * 18;
+        if !self.offered.is_empty() {
+            template = template.item(Class::Static, &self.caption, u16::MAX, SS_NOPREFIX.0, 7, below - 2, 238, 18);
+            below += 20;
+        }
         let footer = "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.";
-        let below = 100 + self.offered.len() as i16 * 18;
-        template.item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, below, 238, 36)
+        template.item(Class::Static, footer, u16::MAX, SS_NOPREFIX.0, 7, below + 3, 238, 36)
     }
 
     fn init(&self, page: HWND) -> bool {
         a11y::make_live(dialog::item(page, STATUS));
+        // The caption is said with each button, as a screen reader reads a button alone.
+        for index in 0..self.offered.len() {
+            a11y::set_description(dialog::item(page, OFFERED + index as u16), &self.caption);
+        }
         false
     }
 

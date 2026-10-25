@@ -205,7 +205,11 @@ impl Dialog for Reminders {
         match message {
             // Delete removes, as in every other list.
             WM_VKEYTOITEM if controls::low_word(wparam.0) == VK_DELETE.0 => {
-                self.act(hwnd, ActionKind::Delete);
+                // What Delete runs is the core's (`keys::runs`).
+                if let Some(reminder) = self.chosen(hwnd) {
+                    app::send(ShellEvent::Hold(Side::Reminders, reminder.id));
+                    app::send(ShellEvent::Key("delete".into()));
+                }
                 Some(-2)
             }
             WM_VKEYTOITEM => Some(-1),

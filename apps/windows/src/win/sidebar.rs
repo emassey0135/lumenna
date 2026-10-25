@@ -144,7 +144,14 @@ impl Sidebar {
                 // Inbox, the app says why.
                 let key = unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey;
                 let kind = match key {
-                    k if k == VK_DELETE.0 => ActionKind::Delete,
+                    // What Delete runs is the core's (`keys::runs`).
+                    k if k == VK_DELETE.0 => {
+                        if let Some(entry) = self.selected().filter(|entry| !entry.offered.is_empty()) {
+                            app.crux.send(ShellEvent::Hold(Side::Sidebar, entry.key()));
+                            app.crux.send(ShellEvent::Key("delete".into()));
+                        }
+                        return Some(1);
+                    }
                     k if k == VK_F2.0 => ActionKind::Rename,
                     _ => return Some(0),
                 };

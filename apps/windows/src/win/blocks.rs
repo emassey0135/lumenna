@@ -116,7 +116,7 @@ impl View for BlockList {
                 Some(0)
             }
             TVN_KEYDOWN if unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey == VK_DELETE.0 => {
-                app.crux.send(ShellEvent::Run(vec![ActionKind::Delete]));
+                app.crux.send(ShellEvent::Key("delete".into()));
                 Some(1)
             }
             NM_DBLCLK => {

@@ -17,7 +17,9 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
 - **A list's selection moves only when the app lands it** (`view.landing`, a side list's
   `*_held.landing`) or the rows were rebuilt, never for a sync or a minute; focus goes into the
   tree on landing only when it is lost. Selecting a row sends `Focus` (a side list's `Hold`), and
-  Space, Delete and the Task menu's commands run its action as the app's by kind (`Run`), and a
+  Space and Delete send the key (`Key("toggle")`, `Key("delete")`: what each runs is
+  `keys::runs`, the core's), a side list's after holding its row; the Task menu's commands run
+  their action as the app's by kind (`Run`); and a
   context menu, a button or Enter the one chosen (`ActOn`, naming the row), only `Asks::Form` the
   window's (the details pane). The sidebar's selection is its held row
   when the app lands it there, else the place shown; moving through it opens each place.
@@ -61,7 +63,8 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   app makes is saved where the person chooses, and an import is read and handed to the app.
   The store's own actions (`SettingsView::offered`, Erase Everything Deleted) are buttons on
   Export and Import after the rest, taken as the sheet opens, handed back with
-  `ActOn(ActingOn::Settings, …)`; their questions open over the sheet. Pairing (`pairing.rs`) is a dialog over `view.devices.pairing`, on the app's network. The
+  `ActOn(ActingOn::Settings, …)`, `offered_caption` under them and as each one's description;
+  their questions open over the sheet. Pairing (`pairing.rs`) is a dialog over `view.devices.pairing`, on the app's network. The
   shortcuts from anywhere, this PC's alone, stay the window's.
 - **Opening at sign-in is the app's background setting** (`background`, `WindowsSignIn`): the
   General page's box and the hint under it are the row's words, its toggle `SettingsEvent::Set`;
@@ -114,8 +117,8 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
 - **A row's actions are offered in one place** (`win/actions.rs`): the context menus, the
   Task menu, the details buttons and Delete, Space and Enter all take the row's core actions
   in short (`offered`, a list's by place in `ListView::offered`) by kind, and run them as the
-  app's with `ActOn`. Delete runs only Delete or Delete from Trash: a trashed task's Erase
-  Permanently is its menu's and the Task menu's alone, with no accelerator. A row the tree folds by a click is put in hand to fold it, and the
+  app's with `ActOn`, the keys excepted. A trashed task's Erase Permanently is its menu's and
+  the Task menu's alone, with no accelerator. A row the tree folds by a click is put in hand to fold it, and the
   selected row put back after (`actions::fold`).
 - **IsDialogMessage runs over the whole main window**, with the panes
   `WS_EX_CONTROLPARENT`, so menu command ids are never 1 or 2 (`IDOK`, `IDCANCEL`). Field
