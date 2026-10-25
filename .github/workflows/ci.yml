@@ -2,7 +2,9 @@
 # macOS and Windows, each on x86_64 and arm64; the GTK and Windows apps' UI tests; the
 # BTSpeak client on the app in-process and the Emacs client against a real `lum rpc`; the web client in a browser; the Apple
 # apps; and Android for both its ABIs. Several sessions work on this repository at once,
-# and this is what catches one breaking another.
+# and this is what catches one breaking another. A branch runs only what its changes can
+# break (`changes`, below), so one app's branch does not wait behind another's macOS jobs;
+# master runs everything.
 #
 # Two tiers. What blocks is what fails only for a reason: the Rust tests, every build, the
 # clients, the GTK and Windows UI tests, and a smoke set of the iOS and Android UI tests.
@@ -36,8 +38,55 @@ env:
   LUMENNA_BACKUP_DIR: ${{ github.workspace }}/../backups
 
 jobs:
+  # What a push changed, so a branch runs only the jobs its changes can break: a change to the
+  # core runs everything, one to an app its own jobs (and the Rust workspace's, for an app
+  # written in Rust). Master, a pull request and a run asked for test everything, since that
+  # is where branches meet. A job left out by this is skipped, not failed.
+  changes:
+    name: What changed
+    runs-on: ubuntu-24.04
+    outputs:
+      core: ${{ steps.groups.outputs.core }}
+      rust_apps: ${{ steps.groups.outputs.rust_apps }}
+      apple: ${{ steps.groups.outputs.apple }}
+      android: ${{ steps.groups.outputs.android }}
+      windows: ${{ steps.groups.outputs.windows }}
+      gtk: ${{ steps.groups.outputs.gtk }}
+      web: ${{ steps.groups.outputs.web }}
+      cli: ${{ steps.groups.outputs.cli }}
+      clients: ${{ steps.groups.outputs.clients }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: groups
+        run: |
+          groups="core rust_apps apple android windows gtk web cli clients"
+          if [ "$GITHUB_REF" = refs/heads/master ] || [ "$GITHUB_EVENT_NAME" != push ] || ! git rev-parse -q --verify origin/master >/dev/null; then
+            for group in $groups; do echo "$group=true" >> "$GITHUB_OUTPUT"; done
+            exit 0
+          fi
+          # Everything the branch changed since it left master, not only its last push: a run
+          # cancelled by a newer push tested nothing of the commits before it.
+          changed=$(git diff --name-only origin/master...HEAD)
+          echo "$changed"
+          has() { if echo "$changed" | grep -qE "$1"; then echo true; else echo false; fi; }
+          {
+            echo "core=$(has '^(crates/|Cargo\.(toml|lock)$|\.cargo/|\.github/workflows/ci\.yml$)')"
+            echo "rust_apps=$(has '^apps/(windows|gtk|cli|web/core)/')"
+            echo "apple=$(has '^apps/apple/')"
+            echo "android=$(has '^apps/android/')"
+            echo "windows=$(has '^apps/windows/')"
+            echo "gtk=$(has '^apps/gtk/')"
+            echo "web=$(has '^apps/web/')"
+            echo "cli=$(has '^apps/cli/')"
+            echo "clients=$(has '^apps/(btspeak|emacs)/')"
+          } | tee -a "$GITHUB_OUTPUT"
+
   rust:
     name: Rust (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.rust_apps == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -74,6 +123,8 @@ jobs:
 
   gtk-ui:
     name: GTK UI tests
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.gtk == 'true'
     runs-on: ubuntu-24.04
     # Arch, for a current GTK. What the tests check is what Orca is told, and GTK only tells
     # AT-SPI a tree item's level from 4.16 and its position among its siblings from 4.22;
@@ -89,6 +140,8 @@ jobs:
 
   windows-ui:
     name: Windows UI tests
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.windows == 'true' || needs.changes.outputs.cli == 'true'
     # The real app, driven through its message queue and read back through UI Automation:
     # what NVDA and Narrator are given. It needs the runner's interactive desktop.
     runs-on: windows-2025
@@ -103,6 +156,8 @@ jobs:
 
   clients:
     name: BTSpeak and Emacs clients
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.clients == 'true' || needs.changes.outputs.cli == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -128,6 +183,8 @@ jobs:
 
   web:
     name: Web client
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -220,6 +277,8 @@ jobs:
 
   mac:
     name: Mac app, Apple silicon and Intel
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.apple == 'true'
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v5
@@ -242,6 +301,8 @@ jobs:
 
   mac-ui:
     name: Mac app, every UI test
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.apple == 'true'
     # Reports without blocking, as the other full UI suites do. Locally they run with
     # VoiceOver on, which is why they enter text by pasting.
     runs-on: xcode-27
@@ -276,6 +337,8 @@ jobs:
 
   watch:
     name: Apple Watch app and its tests
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.apple == 'true'
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v5
@@ -339,6 +402,8 @@ jobs:
 
   ios-build:
     name: iOS app and its tests, built once
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.apple == 'true'
     # Xcode 27 and the iOS 27 simulator, which people run. iOS 26's audit judges text faded
     # under the navigation bar's scroll-edge blur as failing contrast (and reports it with
     # no element); iOS 27's judges only what is shown.
@@ -471,6 +536,8 @@ jobs:
 
   android-build:
     name: Android and Wear OS apps and their tests
+    needs: changes
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
