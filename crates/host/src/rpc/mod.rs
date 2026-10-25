@@ -19,6 +19,7 @@
 //! reply is framed the way its request was.
 
 pub mod api;
+pub mod assist;
 mod endpoint;
 mod server;
 

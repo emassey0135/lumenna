@@ -38,6 +38,15 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   numbering.
 - **`task.erase`, `task.erase_permanently` and `erase_everything_deleted` require
   `"confirm": true`**: nothing here can prompt.
+- **`assist {operation, args}` runs an operation of the assistant table** through
+  `Lumenna::assist`, its arguments read by `rpc::assist` (`arguments_of`, which `lum mcp` and
+  `lum assist` read theirs with too) and a name the operation does not take refused. One that
+  `confirms` needs `"confirm": true` among its `args`. `assist.list` is the table, the
+  `Operations` record `lum assist --list --json` writes (`api::Operations::all`, one for both,
+  and a test in `apps/cli/tests/rpc.rs` holds them equal). `complete {kind, text}` is
+  `Lumenna::complete_typed`: what could come next at the end of a line, a filter, a project's
+  or a label's name. The PowerShell module speaks only these three, over one `lum rpc` for its
+  session; a holder from before them (an app or daemon `lum rpc` relays to) answers none.
 - **A real erasure is followed by every process** (`follow_erasure`, around every operation in
   `Lumenna::with`): when the store's generation is not the one its automatic backups were last
   taken of (`backups-of`), they are deleted and one is taken afresh. It is refused while a

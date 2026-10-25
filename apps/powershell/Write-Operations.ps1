@@ -3,10 +3,11 @@
 Writes the module's cmdlets from the assistant table.
 
 .DESCRIPTION
-Reads every operation `lum assist --list` names, and the module's naming of each in
-Cmdlets.psd1, and writes Lumenna/Lumenna.Operations.ps1: a cmdlet per operation, its help the
-table's words, its parameters of the types the table's kinds say, -WhatIf and -Confirm on what
-changes the store. Run it again whenever the table changes.
+Reads every operation of the assistant table (`assist.list` over `lum rpc`, which is what
+`lum assist --list` writes too) and the module's naming of each in Cmdlets.psd1, and writes
+Lumenna/Lumenna.Operations.ps1: a cmdlet per operation, its help the table's words, its
+parameters of the types the table's kinds say, -WhatIf and -Confirm on what changes the store.
+Run it again whenever the table changes.
 
 With -Check it writes nothing, and fails if the file is not what it would write: the Pester
 tests run it so, so a cmdlet cannot fall behind the table.
@@ -29,16 +30,23 @@ Set-StrictMode -Version 2.0
 $target = Join-Path $PSScriptRoot 'Lumenna/Lumenna.Operations.ps1'
 $naming = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'Cmdlets.psd1')
 
-# The table, read as UTF-8 whatever the console's code page.
-$previous = [Console]::OutputEncoding
-try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }
+# The table, from `assist.list` as the module asks for it, through the module's own client: the
+# lum given first on PATH, and a profile of its own, so no real store is opened.
+. (Join-Path $PSScriptRoot 'Lumenna/Lumenna.Rpc.ps1')
+$found = @(Get-Command -Name $Lum -CommandType Application -ErrorAction Ignore)
+if (-not $found.Count) { throw "There is no $Lum to ask: build it (cargo build -p lumenna-cli) or pass -Lum." }
+$path = $env:PATH
+$scratch = Join-Path ([IO.Path]::GetTempPath()) "lumenna-operations-$([guid]::NewGuid())"
 try {
-    $text = & $Lum --json assist --list | Out-String
-    if ($LASTEXITCODE) { throw "$Lum --json assist --list failed" }
+    $env:PATH = (Split-Path -Parent $found[0].Path) + [IO.Path]::PathSeparator + $path
+    $reply = Invoke-LumennaRpc -Method 'assist.list' -ProfileDirectory $scratch
 } finally {
-    try { [Console]::OutputEncoding = $previous } catch { }
+    Stop-LumennaServers
+    $env:PATH = $path
+    Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
 }
-$operations = @(($text | ConvertFrom-Json).operations)
+if (-not $reply -or $reply.PSObject.Properties['error']) { throw "assist.list failed: $(if ($reply) { $reply.error.message })" }
+$operations = @($reply.result.operations)
 
 # Every operation has a cmdlet, every cmdlet an operation, and each verb is one PowerShell approves.
 $ids = @($operations | ForEach-Object { $_.id })
@@ -109,7 +117,7 @@ function Get-Taken($op) {
 $out = New-Object System.Text.StringBuilder
 function Add-Line([string] $line = '') { [void] $out.Append($line).Append("`n") }
 
-Add-Line '# Written by Write-Operations.ps1 from the assistant table (`lum assist --list`) and the'
+Add-Line '# Written by Write-Operations.ps1 from the assistant table (RPC''s `assist.list`) and the'
 Add-Line '# module''s naming of it (Cmdlets.psd1). Do not edit this: run that script again, which the'
 Add-Line '# Pester tests check was done.'
 Add-Line

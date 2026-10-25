@@ -1405,7 +1405,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         Command::Assist { operation, given, args, .. } => {
             return assist::run(profile, operation.as_deref().unwrap_or_default(), given, args.as_deref());
         }
-        Command::Complete { kind, text } => Response::new(complete::typed(profile, *kind, text)?),
+        Command::Complete { kind, text } => Response::new(profile.complete_typed((*kind).into(), text)?),
     })
 }
 

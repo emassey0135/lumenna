@@ -1,4 +1,4 @@
-﻿# Written by Write-Operations.ps1 from the assistant table (`lum assist --list`) and the
+﻿# Written by Write-Operations.ps1 from the assistant table (RPC's `assist.list`) and the
 # module's naming of it (Cmdlets.psd1). Do not edit this: run that script again, which the
 # Pester tests check was done.
 

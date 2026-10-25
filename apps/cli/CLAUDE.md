@@ -24,20 +24,19 @@ real profile.
 - **The shell completes names from the store** (`complete.rs`, clap_complete's dynamic mode):
   `lum completions <shell>` prints a registration that asks `lum` itself (`COMPLETE=bash lum`)
   as one types, so a project, label or saved filter argument offers the store's names.
-- **`lum assist` runs one operation of the assistant table** (`assist.rs`) through
-  `Lumenna::assist`, as `lum mcp` does, with the same reading of what it was given
-  (`arguments_of`, which `lum mcp` uses too): `name=value` pairs typed by each parameter's kind,
-  or one JSON object (`--args`, `-` for standard input, which the PowerShell module uses so no
-  quoting stands between it and the store). Unlike MCP, a name the operation does not take is
-  refused, since a script's typo should not pass for an empty parameter. Identifiers only: row
-  numbers are `lum task`'s. `--list` writes the table (`Operations` in the envelope), which the
-  PowerShell module is generated from and checked against. An operation that `confirms` refuses
-  without `confirm=true`, with the core's question.
+- **`lum assist` runs one operation of the assistant table** (`assist.rs`), for a shell
+  script, as RPC's `assist` runs it for a client that stays (`lumenna_host::rpc::assist`, whose
+  `arguments_of` `lum mcp` reads with too): `name=value` pairs typed by each parameter's kind,
+  or one JSON object (`--args`, `-` for standard input). Unlike MCP, a name the operation does
+  not take is refused, since a script's typo should not pass for an empty parameter.
+  Identifiers only: row numbers are `lum task`'s. `--list` writes the table (`Operations` in the
+  envelope), equal to RPC's `assist.list` (`tests/rpc.rs`). An operation that `confirms`
+  refuses without `confirm=true`, with the core's question.
 - **`lum complete line|filter|project|label TEXT`** says what could come next at the end of the
-  text (`Completions` in the envelope): a line's and a filter's from the parser's own completion,
-  a name's from the store. The shell's completion (`COMPLETE=`) is clap's and offers names
-  only; this is for a client completing what clap cannot see inside one argument, such as the
-  PowerShell module's argument completers.
+  text (`Completions` in the envelope, `Lumenna::complete_typed`, RPC's `complete`): a line's and
+  a filter's from the parser's own completion, a name's from the store. The shell's completion
+  (`COMPLETE=`) is clap's and offers names only; this is for a client completing what clap
+  cannot see inside one argument.
 - **`build.rs` gives `lum` an 8 MiB main-thread stack on Windows**, as Linux and macOS have:
   Windows' 1 MiB overflows in clap's derived parser in a debug build as commands are added.
 - **`lum daemon install` runs `lum sync-daemon` as a service** (`service.rs`), always with

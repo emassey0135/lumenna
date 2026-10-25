@@ -1,12 +1,16 @@
 # Lumenna in PowerShell: every operation an assistant can do (the core's assistant table) as a
-# cmdlet, over `lum assist --json`. The cmdlets themselves are written from the table into
-# Lumenna.Operations.ps1; what is here is what each of them shares: finding `lum`, running an
-# operation, its record as objects, a refusal as an error record, and completion through `lum`.
+# cmdlet, over one `lum rpc` for the module's session (Lumenna.Rpc.ps1). The cmdlets themselves
+# are written from the table into Lumenna.Operations.ps1; what is here is what each of them
+# shares: running an operation, its record as objects, a refusal as an error record, and
+# completion through `lum`.
 #
-# Windows PowerShell 5.1 and PowerShell 7 alike: no classes, no `??`, and `lum` started through
-# System.Diagnostics.Process, whose output is read as UTF-8 whatever the console's code page.
+# Windows PowerShell 5.1 and PowerShell 7 alike: no classes, no `??`.
 
+. (Join-Path $PSScriptRoot 'Lumenna.Rpc.ps1')
 . (Join-Path $PSScriptRoot 'Lumenna.Operations.ps1')
+
+# The servers stop with the module.
+$ExecutionContext.SessionState.Module.OnRemove = { Stop-LumennaServers }
 
 # The listings a record holds, by its `result`: each item is written to the pipeline by itself,
 # so `Get-LumennaTask | Complete-LumennaTask` binds each task's id.
@@ -15,78 +19,6 @@ $script:Listings = @{
     filters    = @{ Property = 'filters'; Type = 'Lumenna.Filter' }
     choices    = @{ Property = 'choices'; Type = 'Lumenna.Choice' }
     operations = @{ Property = 'operations'; Type = 'Lumenna.Operation' }
-}
-
-# Where `lum` is: on PATH, else beside the module, else where the Windows installer puts it.
-function Find-Lum {
-    # Indexed, not `Select-Object -First 1`, whose stopping the pipeline Windows PowerShell 5.1
-    # leaves in a caller's -ErrorVariable.
-    $onPath = @(Get-Command -Name lum -CommandType Application -ErrorAction Ignore)
-    if ($onPath.Count) { return $onPath[0].Path }
-    foreach ($name in 'lum.exe', 'lum') {
-        $beside = Join-Path $PSScriptRoot $name
-        if (Test-Path -LiteralPath $beside -PathType Leaf) { return $beside }
-    }
-    if ($env:LOCALAPPDATA) {
-        $installed = Join-Path $env:LOCALAPPDATA 'Programs\Lumenna\lum.exe'
-        if (Test-Path -LiteralPath $installed -PathType Leaf) { return $installed }
-    }
-    $null
-}
-
-# One argument as the Microsoft C runtime reads a command line, which is how Rust's and .NET's
-# own argument splitting read it on every platform.
-function ConvertTo-CommandLineArgument([string] $argument) {
-    if ($argument.Length -and $argument -notmatch '[\s"]') { return $argument }
-    $quoted = New-Object System.Text.StringBuilder '"'
-    $backslashes = 0
-    foreach ($character in $argument.ToCharArray()) {
-        if ($character -eq '\') { $backslashes++; continue }
-        if ($character -eq '"') { [void] $quoted.Append('\' * ($backslashes * 2 + 1)) } else { [void] $quoted.Append('\' * $backslashes) }
-        [void] $quoted.Append($character)
-        $backslashes = 0
-    }
-    [void] $quoted.Append('\' * ($backslashes * 2)).Append('"')
-    $quoted.ToString()
-}
-
-# Runs `lum` with these arguments and this text on its standard input, for the profile given
-# (else whatever LUMENNA_PROFILE or the platform's default says), and says what it wrote and
-# how it ended; $null when there is no `lum` to run.
-function Invoke-Lum {
-    param(
-        [string[]] $Arguments,
-        [string] $InputText = '',
-        [string] $ProfileDirectory
-    )
-    $lum = Find-Lum
-    if (-not $lum) { return $null }
-    $utf8 = New-Object System.Text.UTF8Encoding $false
-    $start = New-Object System.Diagnostics.ProcessStartInfo
-    $start.FileName = $lum
-    $start.Arguments = @($Arguments | ForEach-Object { ConvertTo-CommandLineArgument $_ }) -join ' '
-    $start.UseShellExecute = $false
-    $start.CreateNoWindow = $true
-    $start.RedirectStandardInput = $true
-    $start.RedirectStandardOutput = $true
-    $start.RedirectStandardError = $true
-    $start.StandardOutputEncoding = $utf8
-    $start.StandardErrorEncoding = $utf8
-    $start.EnvironmentVariables['NO_COLOR'] = '1'
-    if ($ProfileDirectory) { $start.EnvironmentVariables['LUMENNA_PROFILE'] = $ProfileDirectory }
-    $process = [System.Diagnostics.Process]::Start($start)
-    try {
-        $errors = $process.StandardError.ReadToEndAsync()
-        # Bytes, so the text is UTF-8 whatever Windows PowerShell's console encoding would make it.
-        $bytes = $utf8.GetBytes($InputText)
-        $process.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
-        $process.StandardInput.Close()
-        $output = $process.StandardOutput.ReadToEnd()
-        $process.WaitForExit()
-        [pscustomobject] @{ Output = $output; Errors = $errors.Result; ExitCode = $process.ExitCode }
-    } finally {
-        $process.Dispose()
-    }
 }
 
 # The profile a cmdlet was given, as a whole path: relative to PowerShell's location, which is
@@ -103,34 +35,31 @@ function New-LumennaError([string] $Reason, [string] $Id, [System.Management.Aut
     $record
 }
 
-# Runs `lum --json` with these arguments and writes its record to the pipeline as objects, or
-# its refusal as an error record carrying the core's sentence.
-function Invoke-LumennaJson {
+# Asks the profile's server, and gives back its record, or writes its refusal as an error record
+# carrying the core's sentence and gives back nothing.
+function Invoke-LumennaRequest {
     param(
         $Cmdlet,
-        [string[]] $Arguments,
-        [string] $InputText = '',
+        [string] $Method,
+        $Params = @{},
         [string] $ProfileDirectory,
         [string] $ErrorId,
         $Target
     )
-    $ran = Invoke-Lum -Arguments (@('--json') + $Arguments) -InputText $InputText -ProfileDirectory $ProfileDirectory
-    if (-not $ran) {
+    $reply = Invoke-LumennaRpc -Method $Method -Params $Params -ProfileDirectory $ProfileDirectory
+    if ($null -eq $reply) {
         $Cmdlet.ThrowTerminatingError((New-LumennaError 'lum was not found: install Lumenna, or put lum on PATH.' 'Lumenna.LumNotFound' ObjectNotFound $null))
     }
-    $said = @($ran.Errors -split '\r?\n' | Where-Object { $_ } | ForEach-Object { $_ -replace '^lum: ', '' })
-    if ($ran.ExitCode -ne 0) {
-        $reason = if ($said.Count) { $said -join ' ' } else { "lum ended with $($ran.ExitCode)" }
-        $Cmdlet.WriteError((New-LumennaError $reason $ErrorId InvalidOperation $Target))
+    if ($reply.PSObject.Properties['error']) {
+        $Cmdlet.WriteError((New-LumennaError $reply.error.message $ErrorId InvalidOperation $Target))
         return
     }
-    foreach ($line in $said) { $Cmdlet.WriteWarning($line) }
-    Write-LumennaRecord $Cmdlet ($ran.Output | ConvertFrom-Json)
+    $reply.result
 }
 
-# A record from the `--json` envelope as objects: a listing's items one by one, anything else
-# whole, each named `Lumenna.<Kind>` for its format. Notices are warnings; a listing's
-# announcement, and the filter's readback, are verbose.
+# A record from the envelope as objects: a listing's items one by one, anything else whole, each
+# named `Lumenna.<Kind>` for its format. Notices are warnings; a listing's announcement, and the
+# filter's readback, are verbose.
 function Write-LumennaRecord($Cmdlet, $Response) {
     $notices = $Response.PSObject.Properties['notices']
     if ($notices) { foreach ($notice in @($notices.Value)) { $Cmdlet.WriteWarning($notice) } }
@@ -175,14 +104,14 @@ function Invoke-LumennaAssist($Cmdlet, [string] $Operation, $Bound) {
         if (-not $asked) { return }
     }
     if ($op.Confirms) { $given['confirm'] = $true }
-    $json = ConvertTo-Json -InputObject $given -Depth 64 -Compress
-    Invoke-LumennaJson -Cmdlet $Cmdlet -Arguments @('assist', $Operation, '--args', '-') -InputText $json `
+    $record = Invoke-LumennaRequest -Cmdlet $Cmdlet -Method assist -Params @{ operation = $Operation; args = $given } `
         -ProfileDirectory (Resolve-LumennaProfile $Cmdlet $Bound['Profile']) -ErrorId "Lumenna.$Operation" -Target $target
+    if ($record) { Write-LumennaRecord $Cmdlet $record }
 }
 
-# Completes a quick-add line, a filter, a project's or a label's name through `lum complete`,
-# as one types: the whole argument offered again with the completion in place, quoted for
-# PowerShell. Nothing at all when `lum` cannot say.
+# Completes a quick-add line, a filter, a project's or a label's name through the server's
+# `complete`, as one types: the whole argument offered again with the completion in place,
+# quoted for PowerShell. Nothing at all when `lum` cannot say.
 function Complete-LumennaArgument {
     param([string] $Kind, $CommandName, $ParameterName, [string] $WordToComplete, $CommandAst, $FakeBoundParameters)
     try {
@@ -194,14 +123,16 @@ function Complete-LumennaArgument {
         if ($FakeBoundParameters -and $FakeBoundParameters.Contains('Profile')) {
             $profileDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($FakeBoundParameters['Profile'])
         }
-        $ran = Invoke-Lum -Arguments @('--json', 'complete', $Kind, $typed) -ProfileDirectory $profileDirectory
-        if (-not $ran -or $ran.ExitCode -ne 0) { return }
-        $found = $ran.Output | ConvertFrom-Json
+        $reply = Invoke-LumennaRpc -Method complete -Params @{ kind = $Kind; text = $typed } -ProfileDirectory $profileDirectory
+        if (-not $reply -or $reply.PSObject.Properties['error']) { return }
+        $found = $reply.result
         # The span is in UTF-8 bytes.
         $utf8 = New-Object System.Text.UTF8Encoding $false
         $bytes = $utf8.GetBytes($typed)
-        $before = $utf8.GetString($bytes, 0, [Math]::Min([int] $found.start, $bytes.Length))
-        $after = $utf8.GetString($bytes, [Math]::Min([int] $found.end, $bytes.Length), $bytes.Length - [Math]::Min([int] $found.end, $bytes.Length))
+        $start = [Math]::Min([int] $found.start, $bytes.Length)
+        $end = [Math]::Min([int] $found.end, $bytes.Length)
+        $before = $utf8.GetString($bytes, 0, $start)
+        $after = $utf8.GetString($bytes, $end, $bytes.Length - $end)
         foreach ($candidate in @($found.candidates)) {
             $whole = $before + $candidate.text + $after
             $text = if ($whole -match '^[\w.-]+$') { $whole } else { "'" + $whole.Replace("'", "''") + "'" }
@@ -235,14 +166,8 @@ function Get-LumennaOperation {
         [SupportsWildcards()]
         [string] $Name = '*'
     )
-    $ran = Invoke-Lum -Arguments @('--json', 'assist', '--list')
-    if (-not $ran) {
-        $PSCmdlet.ThrowTerminatingError((New-LumennaError 'lum was not found: install Lumenna, or put lum on PATH.' 'Lumenna.LumNotFound' ObjectNotFound $null))
-    }
-    if ($ran.ExitCode -ne 0) {
-        $PSCmdlet.ThrowTerminatingError((New-LumennaError (($ran.Errors -replace '^lum: ', '').Trim()) 'Lumenna.List' InvalidOperation $null))
-    }
-    foreach ($op in @(($ran.Output | ConvertFrom-Json).operations)) {
+    $table = Invoke-LumennaRequest -Cmdlet $PSCmdlet -Method 'assist.list' -ErrorId 'Lumenna.List'
+    foreach ($op in @($table.operations)) {
         $cmdlet = $null
         if ($script:Operations.Contains($op.id)) {
             $known = $script:Operations[$op.id]
@@ -292,9 +217,9 @@ function Invoke-LumennaOperation {
         [Parameter()]
         [string] $Profile
     )
-    $json = ConvertTo-Json -InputObject $Arguments -Depth 64 -Compress
-    Invoke-LumennaJson -Cmdlet $PSCmdlet -Arguments @('assist', $Operation, '--args', '-') -InputText $json `
+    $record = Invoke-LumennaRequest -Cmdlet $PSCmdlet -Method assist -Params @{ operation = $Operation; args = $Arguments } `
         -ProfileDirectory (Resolve-LumennaProfile $PSCmdlet $Profile) -ErrorId "Lumenna.$Operation" -Target $Operation
+    if ($record) { Write-LumennaRecord $PSCmdlet $record }
 }
 
 # The completers, registered here so that each runs in the module and can reach its functions,

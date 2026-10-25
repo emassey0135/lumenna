@@ -125,7 +125,7 @@ Each is a thin adapter over the command surface.
   taken within a second while it runs and at its next start otherwise, a complication on a face
   and in the Smart Stack), the Windows board drawing the cards and pressing Mark Done (`apps/windows/CLAUDE.md`),
   and VoiceOver, TalkBack and Narrator on each.
-- **The PowerShell module, shipped.** Built (`apps/powershell`, over `lum assist`): a cmdlet per
+- **The PowerShell module, shipped.** Built (`apps/powershell`, over `lum rpc`): a cmdlet per
   operation of the assistant table, checked against it in CI on Windows PowerShell 5.1 and
   PowerShell 7. Still to come: shipping it, since it is only in the repository now. The Windows
   installer and the MSIX putting it where PowerShell finds it (beside `lum`, which it looks for

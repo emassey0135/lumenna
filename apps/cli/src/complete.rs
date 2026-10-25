@@ -51,33 +51,13 @@ pub(crate) enum Typed {
     Label,
 }
 
-/// What could come next at the end of `text`: a line's or a filter's from the parser's own
-/// completion, which every app's quick-add field offers; a project's or a label's name from the
-/// store, starting with what was typed, ignoring case, as the shell's completion offers it.
-pub(crate) fn typed(profile: &Profile, kind: Typed, text: &str) -> lumenna_host::Result<lumenna_host::Completions> {
-    let cursor = u32::try_from(text.len()).unwrap_or(u32::MAX);
-    let (noun, rows) = match kind {
-        Typed::Line => return profile.complete_text(text, cursor, lumenna_host::Syntax::QuickAdd),
-        Typed::Filter => return profile.complete_text(text, cursor, lumenna_host::Syntax::Filter),
-        Typed::Project => ("project", profile.list_projects()?.rows),
-        Typed::Label => ("label", profile.list_labels()?.rows),
-    };
-    let typed = text.to_lowercase();
-    let candidates: Vec<lumenna_host::Candidate> = rows
-        .into_iter()
-        .filter(|row| row.title.to_lowercase().starts_with(&typed))
-        .map(|row| lumenna_host::Candidate { label: format!("{noun} {}", row.title), text: row.title, kind: noun.to_owned() })
-        .collect();
-    // Worded as the parser words its own.
-    let announcement = match candidates.as_slice() {
-        [only] => format!("1 completion, {}", only.label),
-        all => lumenna_host::words::count_line(all.len(), "completion"),
-    };
-    Ok(lumenna_host::Completions {
-        announcement,
-        notices: Vec::new(),
-        start: 0,
-        end: cursor,
-        candidates,
-    })
+impl From<Typed> for lumenna_host::Completing {
+    fn from(kind: Typed) -> Self {
+        match kind {
+            Typed::Line => Self::Line,
+            Typed::Filter => Self::Filter,
+            Typed::Project => Self::Project,
+            Typed::Label => Self::Label,
+        }
+    }
 }

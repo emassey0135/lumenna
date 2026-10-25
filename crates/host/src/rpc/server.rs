@@ -121,6 +121,11 @@ pub const METHODS: &[&str] = &[
     "reminder.rm",
     "reminder.dismiss",
     "reminder.snooze",
+    // The assistant table's operations, as `lum assist` runs them: for a client that offers
+    // every one, such as the PowerShell module.
+    "assist",
+    "assist.list",
+    "complete",
 ];
 
 /// What runs a round on the endpoint this process holds, when it holds one: a `sync` here is
@@ -633,6 +638,21 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
 
         "config.get" => Response::new(l.settings(maybe_text(params, "key"))?),
         "config.set" => Response::new(l.set_setting(&text_of(params, "key")?, &text_of(params, "value")?)?),
+        "assist" => {
+            let args = match params.get("args") {
+                None | Some(Value::Null) => serde_json::Map::new(),
+                Some(Value::Object(args)) => args.clone(),
+                Some(_) => return Err(invalid("'args' has to be an object, the operation's parameters by name")),
+            };
+            // One that confirms needs "confirm": true among them, as task.erase_permanently does.
+            Response::new(super::assist::assist(l, &text_of(params, "operation")?, args)?)
+        }
+        "assist.list" => Response::new(api::Operations::all()),
+        "complete" => {
+            let kind = serde_json::from_value(params.get("kind").cloned().unwrap_or(Value::Null))
+                .map_err(|_| invalid("'kind' is required: line, filter, project or label"))?;
+            Response::new(l.complete_typed(kind, &maybe_text(params, "text").unwrap_or_default())?)
+        }
         "undo" => Response::new(l.undo()?),
         "redo" => Response::new(l.redo()?),
 

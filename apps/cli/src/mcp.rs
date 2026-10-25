@@ -32,7 +32,7 @@ use lumenna_host::rpc::api::{Outcome, Response};
 use lumenna_host::Lumenna;
 use lumenna_records::assistant::AssistantOperation;
 
-use crate::assist::arguments_of;
+use lumenna_host::rpc::assist::arguments_of;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation, JsonObject, ListToolsResult, Tool, ToolAnnotations, ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParams,
     ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource, ResourceContents,

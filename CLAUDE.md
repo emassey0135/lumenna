@@ -46,8 +46,8 @@ crates/ffi/     the app for the Apple apps, Android and BTSpeak through BoltFFI,
                 without the screens. The web's is apps/web/core, through BoltFFI too.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
 apps/cli/       `lum`, `lum rpc` for clients that cannot link Rust, `lum mcp`, and `lum assist`.
-apps/powershell/ the PowerShell module: a cmdlet per assistant operation, over `lum assist`, for
-                Windows PowerShell 5.1 and PowerShell 7.
+apps/powershell/ the PowerShell module: a cmdlet per assistant operation, over one `lum rpc`,
+                for Windows PowerShell 5.1 and PowerShell 7.
 apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/ffi).
 apps/emacs/     the Emacs client, in Elisp, drawing the Crux app over `lum rpc` or the profile's
                 socket, a screen per buffer.
@@ -145,9 +145,9 @@ crosses the FFI.
   tools are built from it; App Intents (Siri, Shortcuts, Apple Intelligence) and Android App
   Functions (Gemini) are declared from it and checked against `assistant_operations()`, so an
   operation added there reaches every assistant and none is worded twice. `lum assist` runs one
-  from the command line, and the PowerShell module's cmdlets are written from `lum assist --list`
-  (`apps/powershell/Write-Operations.ps1`, run again when the table changes) and checked against
-  it.
+  from the command line and RPC's `assist` for a client that stays; the PowerShell module's
+  cmdlets are written from `assist.list` (`apps/powershell/Write-Operations.ps1`, run again when
+  the table changes) and checked against it.
 - **A glance is the core's** (`records::glance`, worded by `lumenna_app::glance`; `App::glance`
   in the platform's clock, `Device::glance` without the screens): what a widget, complication,
   tile or Smart Stack shows, as a timeline of moments. A platform draws it and decides nothing.

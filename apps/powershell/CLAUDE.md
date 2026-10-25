@@ -4,12 +4,24 @@ Read when working in `apps/powershell/`. The root `CLAUDE.md` holds what every p
 shares; this is what is easy to get wrong here.
 
 A script module for Windows PowerShell 5.1 and PowerShell 7 on every platform: a cmdlet per
-operation of the core's assistant table (`records::assistant`), each running `lum --json assist
-<operation> --args -`. `Lumenna/` is the module as it ships; `Cmdlets.psd1` and
-`Write-Operations.ps1` make it; `tests/` checks it.
+operation of the core's assistant table (`records::assistant`), each an RPC `assist` request to
+one `lum rpc` the module keeps for its session. `Lumenna/` is the module as it ships;
+`Cmdlets.psd1` and `Write-Operations.ps1` make it; `tests/` checks it.
 
-- **The cmdlets are written, not kept by hand.** `Write-Operations.ps1` reads `lum assist --list`
-  and `Cmdlets.psd1` and writes `Lumenna/Lumenna.Operations.ps1`: each cmdlet's help (the table's
+- **One `lum rpc` per profile, for the module's session** (`Lumenna.Rpc.ps1`), never a process
+  per call: started at the first request, keyed by the profile it serves (`-Profile`, else
+  `$env:LUMENNA_PROFILE` as it is at that request, else the platform's own), started again if it
+  has stopped, and stopped with the module (`OnRemove`). Newline-delimited JSON-RPC, as UTF-8
+  bytes whatever the console's code page; what it pushes unasked (`lumenna/changed`) is passed
+  over. A request whose server stops mid-way is not sent again, since it may have been done; one
+  whose pipe breaks as it is written is. Every request holds one lock, so two threads never
+  interleave on a pipe. When the app or `lum`'s daemon runs, `lum rpc` relays to it, so a write
+  goes through whatever holds the store, and that holder must be new enough to answer `assist`.
+- **It speaks three methods**: `assist {operation, args}`, `assist.list` and `complete {kind,
+  text}` (`crates/host/CLAUDE.md`). Anything else a cmdlet wants belongs in the assistant table
+  first.
+- **The cmdlets are written, not kept by hand.** `Write-Operations.ps1` reads `assist.list` (over
+  `lum rpc` against a throwaway profile, through `Lumenna.Rpc.ps1`) and `Cmdlets.psd1` and writes `Lumenna/Lumenna.Operations.ps1`: each cmdlet's help (the table's
   words, another operation named by its cmdlet), its parameters' types (by `ParameterKind`), which
   ones are mandatory and positional, which binds from the pipeline, and `-WhatIf`/`-Confirm`.
   When the table changes, add the operation's name to `Cmdlets.psd1` and to the manifest's
@@ -35,21 +47,18 @@ operation of the core's assistant table (`records::assistant`), each running `lu
   Each is named `Lumenna.<Kind>` for `Lumenna.Format.ps1xml`. Notices are warnings; a listing's
   announcement and a filter's readback are verbose. Nothing here composes a sentence of its own.
 - **A refusal is an error record, never a thrown string**: non-terminating, the core's sentence
-  (`lum`'s standard error without its `lum: `) as its message and `ErrorDetails`, `Lumenna.<id>`
-  its id, the identifier given its target.
-- **`lum` is started through `System.Diagnostics.Process`**, never `& lum`: Windows PowerShell
-  5.1 decodes a native command's output in the console's code page and turns its standard error
-  into error records. Arguments go on standard input as UTF-8 bytes (`--args -`), so no quoting
-  stands between a script and the store, and the profile goes in `LUMENNA_PROFILE`. The one
-  argument passed on the command line, `lum complete`'s text, is quoted as the C runtime reads
-  it, which is how both Rust and .NET split a command line on every platform.
+  (the RPC error's `message`) as its message and `ErrorDetails`, `Lumenna.<id>` its id, the
+  identifier given its target.
+- **`lum rpc` is started through `System.Diagnostics.Process`**, never `& lum`: Windows
+  PowerShell 5.1 decodes a native command's output in the console's code page and turns its
+  standard error into error records. Its standard error is drained as it comes
+  (`ReadToEndAsync`), so it never blocks on it, and said if it stops.
 - **Finding `lum`**: on `PATH`, else beside the module, else the Windows installer's
-  `%LOCALAPPDATA%\Programs\Lumenna`. `-Profile` on every cmdlet, else `$env:LUMENNA_PROFILE`, else
-  the platform's own; a relative `-Profile` is resolved against PowerShell's location, not the
-  process's.
+  `%LOCALAPPDATA%\Programs\Lumenna`. A relative `-Profile` is resolved against PowerShell's
+  location, not the process's.
 - **Completers are registered by the module** (`Register-ArgumentCompleter`, from
   `$script:Completed`), never in a parameter's `[ArgumentCompleter]`, whose scriptblock cannot see
-  the module's own functions. Each asks `lum complete` (a line, a filter, a project, a label), whose
+  the module's own functions. Each asks `complete` (a line, a filter, a project, a label), whose
   span is in UTF-8 bytes, and offers the whole argument again with the completion in place,
   quoted for PowerShell.
 - **Windows PowerShell 5.1 shapes what is written here**: no classes, no `??` or `?.`, no
@@ -62,4 +71,5 @@ operation of the core's assistant table (`records::assistant`), each running `lu
   or later from `-Modules` (5.1 ships Pester 3), against `target/debug/lum`
   (`cargo build -p lumenna-cli` first). CI's `powershell` job runs them on Windows in both
   editions and on Linux in PowerShell 7, for any change under `apps/powershell` or `apps/cli`.
-  Each round trip has a temporary profile of its own.
+  Each round trip has a temporary profile of its own, whose server is stopped before the profile
+  is deleted (Windows will not delete a database a process holds open).

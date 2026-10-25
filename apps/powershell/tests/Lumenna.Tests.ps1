@@ -1,4 +1,4 @@
-# The PowerShell module against the real `lum`: that its cmdlets are the assistant table's
+# The PowerShell module against the real `lum rpc`: that its cmdlets are the assistant table's
 # operations, every one, as AssistantIntentTests and AppFunctionsTest hold App Intents and App
 # Functions to it; and that they work, against a temporary profile. Pester 5, on Windows
 # PowerShell 5.1 and PowerShell 7 alike (run.ps1 runs it). ASCII only: 5.1 reads a file without a
@@ -12,9 +12,34 @@ BeforeAll {
     $script:lum = @(Get-Command -Name lum -CommandType Application)[0].Path
     $script:manifest = Join-Path $root 'apps/powershell/Lumenna/Lumenna.psd1'
     $script:module = Import-Module $manifest -Force -PassThru
-    $script:table = @((& $module { Invoke-Lum -Arguments '--json', 'assist', '--list' }).Output | ConvertFrom-Json | ForEach-Object { $_.operations })
-    $script:mapping = & $module { $script:Operations }
     $script:helpers = @('Get-LumennaOperation', 'Invoke-LumennaOperation')
+
+    function New-Profile {
+        $directory = Join-Path ([IO.Path]::GetTempPath()) "lumenna-pester-$([guid]::NewGuid())"
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $directory
+    }
+
+    # Stops the module's servers, so a profile's files can be deleted, and deletes it.
+    function Remove-Profile([string] $directory) {
+        & $module { Stop-LumennaServers }
+        Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # The module's servers' process ids.
+    function Get-ServerIds {
+        @(& $module { $script:Servers.Values | ForEach-Object { $_.Process.Id } })
+    }
+
+    $script:savedProfile = $env:LUMENNA_PROFILE
+    $script:savedBackups = $env:LUMENNA_BACKUP_DIR
+    # Never the person's own store, even for reading the table.
+    $env:LUMENNA_PROFILE = New-Profile
+    $env:LUMENNA_BACKUP_DIR = Join-Path $env:LUMENNA_PROFILE 'backups'
+    $script:tableProfile = $env:LUMENNA_PROFILE
+    # The table as the module reads it, over its own `lum rpc`.
+    $script:table = @((& $module { Invoke-LumennaRpc -Method 'assist.list' }).result.operations)
+    $script:mapping = & $module { $script:Operations }
 
     # The table's words as the help says them: another operation by its cmdlet.
     function ConvertTo-Help([string] $text) {
@@ -23,12 +48,6 @@ BeforeAll {
                 $known = $mapping[$match.Groups[1].Value]
                 if (-not $known) { $match.Value } elseif ($known.Switch) { "$($known.Cmdlet) -$($known.Switch)" } else { $known.Cmdlet }
             })
-    }
-
-    function New-Profile {
-        $directory = Join-Path ([IO.Path]::GetTempPath()) "lumenna-pester-$([guid]::NewGuid())"
-        New-Item -ItemType Directory -Path $directory | Out-Null
-        $directory
     }
 
     $script:shell = (Get-Process -Id $PID).Path
@@ -47,11 +66,10 @@ BeforeAll {
         }
     }
 
-    $script:savedProfile = $env:LUMENNA_PROFILE
-    $script:savedBackups = $env:LUMENNA_BACKUP_DIR
 }
 
 AfterAll {
+    Remove-Profile $tableProfile
     $env:LUMENNA_PROFILE = $savedProfile
     $env:LUMENNA_BACKUP_DIR = $savedBackups
 }
@@ -61,7 +79,7 @@ Describe 'The cmdlets are the assistant table''s operations' {
         { & (Join-Path $root 'apps/powershell/Write-Operations.ps1') -Lum $lum -Check } | Should -Not -Throw
     }
 
-    It 'has a cmdlet for every operation lum assist --list names' {
+    It 'has a cmdlet for every operation assist.list names' {
         $table.Count | Should -BeGreaterThan 20
         $missing = @($table | Where-Object { -not $mapping.Contains($_.id) } | ForEach-Object { $_.id })
         $missing | Should -BeNullOrEmpty -Because 'each operation needs a cmdlet in Cmdlets.psd1'
@@ -145,7 +163,7 @@ Describe 'Round trips' {
     }
 
     AfterEach {
-        Remove-Item -LiteralPath $env:LUMENNA_PROFILE -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Profile $env:LUMENNA_PROFILE
     }
 
     It 'adds, lists and completes down the pipeline, binding each task''s id' {
@@ -239,7 +257,7 @@ Describe 'Round trips' {
             @(Get-LumennaTask -Profile $other | ForEach-Object { $_.title }) | Should -Be @('somewhere else')
             @(Get-LumennaTask).Count | Should -Be 0
         } finally {
-            Remove-Item -LiteralPath $other -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Profile $other
         }
     }
 
@@ -277,5 +295,56 @@ Describe 'Round trips' {
         Complete-Typed 'Set-LumennaTask x -Project In' | Should -Be @('Inbox')
         Complete-Typed 'Set-LumennaTask x -Labels work,ca' | Should -Be @('calls')
         Complete-Typed 'Invoke-LumennaOperation complete_t' | Should -Be @('complete_task')
+    }
+}
+
+Describe 'One lum rpc for the module''s session' {
+    BeforeEach {
+        $env:LUMENNA_PROFILE = New-Profile
+        $env:LUMENNA_BACKUP_DIR = Join-Path $env:LUMENNA_PROFILE 'backups'
+    }
+
+    AfterEach {
+        Remove-Profile $env:LUMENNA_PROFILE
+    }
+
+    It 'answers every cmdlet from the one process' {
+        & $module { Stop-LumennaServers }
+        Add-LumennaTask 'one @calls' | Out-Null
+        $first = Get-ServerIds
+        $first.Count | Should -Be 1
+        (Get-Process -Id $first[0]).ProcessName | Should -Be 'lum'
+        Get-LumennaTask | Complete-LumennaTask | Out-Null
+        Add-LumennaTask 'two' | Out-Null
+        Get-LumennaDay | Out-Null
+        Get-LumennaOperation | Out-Null
+        Undo-LumennaChange | Out-Null
+        Get-LumennaTask -Filter 'nothing-like-this' -ErrorAction SilentlyContinue | Out-Null
+        $line = "Get-LumennaTask -Filter '@ca"
+        (TabExpansion2 -inputScript $line -cursorColumn $line.Length).CompletionMatches.Count | Should -Be 1
+        Get-ServerIds | Should -Be $first
+    }
+
+    It 'starts it again when it has stopped' {
+        Add-LumennaTask 'before' | Out-Null
+        $first = Get-ServerIds
+        Stop-Process -Id $first[0] -Force
+        Wait-Process -Id $first[0] -Timeout 10 -ErrorAction Ignore
+        @(Get-LumennaTask | ForEach-Object { $_.title }) | Should -Be @('before')
+        $again = Get-ServerIds
+        $again.Count | Should -Be 1
+        $again[0] | Should -Not -Be $first[0]
+    }
+
+    It 'stops it when the module is removed' {
+        Add-LumennaTask 'anything' | Out-Null
+        $ids = Get-ServerIds
+        $ids.Count | Should -Be 1
+        Remove-Module Lumenna
+        try {
+            Get-Process -Id $ids[0] -ErrorAction Ignore | Should -BeNullOrEmpty
+        } finally {
+            $script:module = Import-Module $manifest -Force -PassThru
+        }
     }
 }

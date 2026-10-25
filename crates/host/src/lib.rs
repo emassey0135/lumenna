@@ -56,6 +56,7 @@ mod settings;
 mod sync;
 mod tasks;
 mod text;
+pub use text::Completing;
 
 // The records, their actions and their words are a crate of their own, which the app builds
 // its view models from without a store; here under the paths they always had.

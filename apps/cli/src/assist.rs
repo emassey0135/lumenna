@@ -1,14 +1,15 @@
 //! `lum assist`: an operation of the assistant table (`lumenna_records::assistant`) run from the
 //! command line, through the dispatcher `lum mcp`, Siri and Gemini run it through
-//! (`Lumenna::assist`), for a script that wants what an assistant can do and nothing else: the
-//! PowerShell module's cmdlets are each one of these.
+//! (`Lumenna::assist`), for a script that wants what an assistant can do and nothing else.
 //!
-//! Its arguments are the operation's parameters by name, read as each parameter's kind says, so
-//! `lum assist` and `lum mcp` cannot read one differently.
+//! What it is given is read as RPC's `assist` reads it (`lumenna_host::rpc::assist`), the
+//! `name=value` pairs first typed by each parameter's kind, so `lum assist`, `lum rpc` and
+//! `lum mcp` cannot read one differently.
 
 use std::io::Read;
 
-use lumenna_records::assistant::{Argument, ArgumentValue, AssistantOperation, ParameterKind as K};
+use lumenna_host::rpc::assist::assist;
+use lumenna_records::assistant::ParameterKind as K;
 use serde_json::{Map, Value};
 
 use crate::api::{Operations, Response};
@@ -42,30 +43,19 @@ pub(crate) fn run(profile: &Profile, operation: &str, pairs: &[String], json: Op
         let Some((name, value)) = pair.split_once('=') else {
             return Err(CliError::Message(format!("{pair} needs a value, as name=value")));
         };
-        let kind = parameter(&op, name)?;
-        given.insert(name.to_owned(), typed(kind, name, value)?);
+        // A name the operation does not take is refused with the rest, in `assist`.
+        let value = match op.parameters.iter().find(|p| p.name == name) {
+            Some(parameter) => typed(parameter.kind, name, value)?,
+            None => Value::from(value),
+        };
+        given.insert(name.to_owned(), value);
     }
-    if let Some(name) = given.keys().find(|name| op.parameters.iter().all(|p| &p.name != *name)) {
-        parameter(&op, name)?;
-    }
-    let arguments = arguments_of(&op, given).map_err(CliError::Message)?;
-    Ok(Response::new(profile.assist(&op.id, arguments)?))
+    Ok(Response::new(assist(profile, &op.id, given)?))
 }
 
 /// Every operation and what it takes.
 pub(crate) fn list() -> Response {
     Response::new(Operations::all())
-}
-
-/// The kind of `op`'s parameter called `name`, or why there is none.
-fn parameter(op: &AssistantOperation, name: &str) -> Result<K> {
-    op.parameters.iter().find(|p| p.name == name).map(|p| p.kind).ok_or_else(|| {
-        let names: Vec<&str> = op.parameters.iter().map(|p| p.name.as_str()).collect();
-        CliError::Message(match names.as_slice() {
-            [] => format!("{} takes nothing, so not {name}", op.id),
-            _ => format!("{} takes no {name}; it takes {}", op.id, names.join(", ")),
-        })
-    })
 }
 
 /// A `name=value` pair's value, as its parameter's kind reads it: a flag `true` or `false`,
@@ -87,31 +77,4 @@ fn typed(kind: K, name: &str, value: &str) -> Result<Value> {
             Value::from(value)
         }
     })
-}
-
-/// What an operation was given, by name, as its arguments, each read as its parameter's kind.
-/// A name it does not take is left out: `lum mcp` ignores what a model adds, and `lum assist`
-/// refuses it before this.
-pub(crate) fn arguments_of(op: &AssistantOperation, mut given: Map<String, Value>) -> std::result::Result<Vec<Argument>, String> {
-    let mut arguments = Vec::new();
-    for parameter in &op.parameters {
-        let Some(value) = given.remove(&parameter.name).filter(|v| !v.is_null()) else { continue };
-        let wrong = |what: &str| format!("{} takes {what}", parameter.name);
-        let typed = |e: serde_json::Error| format!("{} is not as it was proposed: {e}", parameter.name);
-        let value = match (parameter.kind, value) {
-            (K::Replan, value) => ArgumentValue::Replan(serde_json::from_value(value).map_err(typed)?),
-            (K::DayPlan, value) => ArgumentValue::DayPlan(serde_json::from_value(value).map_err(typed)?),
-            (K::ReplanChanges, value) => ArgumentValue::ReplanChanges(serde_json::from_value(value).map_err(typed)?),
-            (K::DayPlanSittings, value) => ArgumentValue::DayPlanSittings(serde_json::from_value(value).map_err(typed)?),
-            (_, Value::String(text)) => ArgumentValue::Text(text),
-            (_, Value::Bool(flag)) => ArgumentValue::Flag(flag),
-            (_, Value::Number(n)) => ArgumentValue::Number(n.as_i64().ok_or_else(|| wrong("a whole number"))?),
-            (_, Value::Array(items)) => ArgumentValue::Texts(
-                items.into_iter().map(|item| item.as_str().map(str::to_owned).ok_or_else(|| wrong("names"))).collect::<std::result::Result<_, _>>()?,
-            ),
-            _ => return Err(wrong("something else")),
-        };
-        arguments.push(Argument { name: parameter.name.clone(), value });
-    }
-    Ok(arguments)
 }
