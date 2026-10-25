@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         // Siri, Shortcuts and Spotlight's intents run on this store.
-        Assistant.serve(core.app.device)
+        Assistant.serve(core.app.device) { [weak self] in self?.core.app.send(.launch($0)) }
         NSApp.mainMenu = MainMenu.build()
         showMainWindow(nil)
         installStatusItem()

@@ -110,7 +110,8 @@ struct ListProjectsIntent: OperationIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<[ProjectEntity]> & ProvidesDialog {
         let listed = try store.assist(Self.persistentIdentifier)
         guard case let .rows(rows) = listed else { return .result(value: [], dialog: IntentDialog(said: listed.said)) }
-        return .result(value: rows.rows.filter { $0.role == "project" }.map(ProjectEntity.init), dialog: IntentDialog(said: listed.said))
+        let documents = store.searchDocuments()
+        return .result(value: rows.rows.filter { $0.role == "project" }.map { ProjectEntity($0, found: documents) }, dialog: IntentDialog(said: listed.said))
     }
 }
 
@@ -128,7 +129,8 @@ struct ListLabelsIntent: OperationIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<[LabelEntity]> & ProvidesDialog {
         let listed = try store.assist(Self.persistentIdentifier)
         guard case let .rows(rows) = listed else { return .result(value: [], dialog: IntentDialog(said: listed.said)) }
-        return .result(value: rows.rows.filter { $0.role == "label" }.map(LabelEntity.init), dialog: IntentDialog(said: listed.said))
+        let documents = store.searchDocuments()
+        return .result(value: rows.rows.filter { $0.role == "label" }.map { LabelEntity($0, found: documents) }, dialog: IntentDialog(said: listed.said))
     }
 }
 
@@ -146,7 +148,8 @@ struct ListSavedFiltersIntent: OperationIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<[SavedFilterEntity]> & ProvidesDialog {
         let listed = try store.assist(Self.persistentIdentifier)
         guard case let .filters(filters) = listed else { return .result(value: [], dialog: IntentDialog(said: listed.said)) }
-        return .result(value: filters.filters.map(SavedFilterEntity.init), dialog: IntentDialog(said: listed.said))
+        let documents = store.searchDocuments()
+        return .result(value: filters.filters.map { SavedFilterEntity($0, found: documents) }, dialog: IntentDialog(said: listed.said))
     }
 }
 

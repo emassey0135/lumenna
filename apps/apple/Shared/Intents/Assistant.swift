@@ -30,10 +30,20 @@ final class AssistantStore: @unchecked Sendable {
         return shown.task
     }
 
+    /// Everything a platform's search indexes, the core's (`records::search`).
+    func searchDocuments() -> [LumennaApp.SearchDocument] {
+        (try? device.searchDocuments()) ?? []
+    }
+
+    /// What the core's search finds for `text`, most fitting first.
+    func found(_ text: String) -> [LumennaApp.SearchDocument] {
+        (try? device.searchResults(text: text)) ?? []
+    }
+
     /// What a platform's search finds of each open task, by the task's identifier: its line
     /// and the words it is found by, the core's.
     func documents() -> [String: LumennaApp.SearchDocument] {
-        let tasks = ((try? device.searchDocuments()) ?? []).filter { $0.kind == .task }
+        let tasks = searchDocuments().filter { $0.kind == .task }
         return Dictionary(tasks.map { (String($0.id.dropFirst("task:".count)), $0) }) { first, _ in first }
     }
 
@@ -74,16 +84,28 @@ final class AssistantStore: @unchecked Sendable {
     }
 }
 
+/// How a search result chosen reaches the app: its `launch`, handed to the app as
+/// `ShellEvent.launch`, which opens it.
+final class AssistantLauncher: @unchecked Sendable {
+    let open: @MainActor (String) -> Void
+
+    init(open: @escaping @MainActor (String) -> Void) {
+        self.open = open
+    }
+}
+
 enum Assistant {
-    /// Gives the intents this process's store: called by each app as it launches, before any
-    /// intent can run, since an intent may be what launched it. Where Spotlight is, the open
-    /// tasks are indexed for it, and again whenever the store changes.
-    static func serve(_ device: LumennaApp.Device) {
+    /// Gives the intents this process's store, and `launch`, which hands the app a search
+    /// result's launch: called by each app as it launches, before any intent can run, since an
+    /// intent may be what launched it. Where Spotlight is, the core's search documents are
+    /// indexed for it, and again whenever the store changes.
+    static func serve(_ device: LumennaApp.Device, launch: @escaping @MainActor (String) -> Void) {
         let store = AssistantStore(device: device)
         AppDependencyManager.shared.add(dependency: store)
+        AppDependencyManager.shared.add(dependency: AssistantLauncher(open: launch))
         #if !os(watchOS)
         if #available(iOS 18.0, macOS 15.0, *) {
-            TaskIndex.follow(store)
+            SearchIndex.follow(store)
         }
         #endif
     }

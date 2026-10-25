@@ -10,7 +10,7 @@ struct LumennaWatchApp: App {
 
     init() {
         // Siri and Shortcuts' intents run on this store, and may be what launched the app.
-        if let core = Opened.shared.core { Assistant.serve(core.app.device) }
+        if let core = Opened.shared.core { Assistant.serve(core.app.device) { core.app.send(.launch($0)) } }
     }
 
     var body: some Scene {

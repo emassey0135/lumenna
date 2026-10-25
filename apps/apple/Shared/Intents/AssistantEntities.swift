@@ -20,9 +20,14 @@ private func moment(_ day: String, _ time: String? = nil) -> Date? {
     return Calendar.current.date(from: components)
 }
 
-/// Whether `name` is what a person searching for `text` means: the platform's own match.
-private func matches(_ name: String, _ text: String) -> Bool {
-    name.localizedStandardContains(text)
+/// `entities` in the order the core's search found them for `text` (`Device.searchResults`),
+/// those it did not find left out: what matches is the core's, as on every platform. `key`
+/// names an entity as a document of `kind` names it.
+private func found<Entity>(
+    _ entities: [Entity], _ store: AssistantStore, _ text: String, _ kind: LumennaApp.SearchKind,
+    by key: (Entity) -> String, _ named: (LumennaApp.SearchDocument) -> String
+) -> [Entity] {
+    store.found(text).filter { $0.kind == kind }.flatMap { document in entities.filter { key($0) == named(document) } }
 }
 
 // MARK: - Tasks
@@ -44,11 +49,14 @@ struct TaskEntity: AppEntity {
     let line: String?
     /// The words a search finds it by beside its name: its notes, project and labels.
     let keywords: [String]
+    /// What opening it hands the app (`ShellEvent.launch`), as its search document has it.
+    let launch: String?
 
     init(_ task: LumennaApp.TaskDetail, found document: LumennaApp.SearchDocument? = nil) {
         id = task.id
         line = document.map(\.line).flatMap { $0.isEmpty ? nil : $0 }
         keywords = document?.keywords ?? []
+        launch = document?.launch
         title = task.title
         due = task.due.flatMap { moment($0, task.dueTime) }
         project = task.project
@@ -83,7 +91,10 @@ struct TaskQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [TaskEntity] {
-        store.tasks(try store.assist("search_tasks", ["text": .text(string)]))
+        let documents = store.documents()
+        return store.found(string).filter { $0.kind == .task }.compactMap { document in
+            store.entity(try? store.task(String(document.id.dropFirst("task:".count))), documents)
+        }
     }
 
     /// The open tasks, most urgent first, as every list orders them.
@@ -108,10 +119,13 @@ struct ProjectEntity: AppEntity {
     @Property(title: "Name") var name: String
     /// What the core says beside its name: how many tasks are in it.
     let value: String?
+    /// What a platform's search has of it, the core's.
+    let document: LumennaApp.SearchDocument?
 
-    init(_ row: LumennaApp.RowView) {
+    init(_ row: LumennaApp.RowView, found documents: [LumennaApp.SearchDocument] = []) {
         id = row.id
         value = row.value
+        document = documents.first { $0.kind == .project && $0.title == row.title }
         name = row.title
     }
 
@@ -124,7 +138,8 @@ struct ProjectQuery: EntityStringQuery {
     @AppDependency private var store: AssistantStore
 
     private func all() throws -> [ProjectEntity] {
-        rows(try store.assist("list_projects"), "project").map(ProjectEntity.init)
+        let documents = store.searchDocuments()
+        return rows(try store.assist("list_projects"), "project").map { ProjectEntity($0, found: documents) }
     }
 
     func entities(for identifiers: [ProjectEntity.ID]) async throws -> [ProjectEntity] {
@@ -132,7 +147,7 @@ struct ProjectQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [ProjectEntity] {
-        try all().filter { matches($0.name, string) }
+        found(try all(), store, string, .project, by: \.name, \.title)
     }
 
     func suggestedEntities() async throws -> [ProjectEntity] {
@@ -147,10 +162,13 @@ struct LabelEntity: AppEntity {
     let id: String
     @Property(title: "Name") var name: String
     let value: String?
+    /// What a platform's search has of it, the core's.
+    let document: LumennaApp.SearchDocument?
 
-    init(_ row: LumennaApp.RowView) {
+    init(_ row: LumennaApp.RowView, found documents: [LumennaApp.SearchDocument] = []) {
         id = row.id
         value = row.value
+        document = documents.first { $0.kind == .label && $0.title == row.title }
         name = row.title
     }
 
@@ -163,7 +181,8 @@ struct LabelQuery: EntityStringQuery {
     @AppDependency private var store: AssistantStore
 
     private func all() throws -> [LabelEntity] {
-        rows(try store.assist("list_labels"), "label").map(LabelEntity.init)
+        let documents = store.searchDocuments()
+        return rows(try store.assist("list_labels"), "label").map { LabelEntity($0, found: documents) }
     }
 
     func entities(for identifiers: [LabelEntity.ID]) async throws -> [LabelEntity] {
@@ -171,7 +190,7 @@ struct LabelQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [LabelEntity] {
-        try all().filter { matches($0.name, string) }
+        found(try all(), store, string, .label, by: \.name, \.title)
     }
 
     func suggestedEntities() async throws -> [LabelEntity] {
@@ -187,9 +206,12 @@ struct SavedFilterEntity: AppEntity {
     @Property(title: "Name") var name: String
     /// Its query in the filter language, which List Tasks takes.
     @Property(title: "Query") var query: String
+    /// What a platform's search has of it, the core's.
+    let document: LumennaApp.SearchDocument?
 
-    init(_ filter: LumennaApp.FilterView) {
+    init(_ filter: LumennaApp.FilterView, found documents: [LumennaApp.SearchDocument] = []) {
         id = filter.id
+        document = documents.first { $0.kind == .filter && $0.title == filter.name }
         name = filter.name
         query = filter.query
     }
@@ -204,7 +226,8 @@ struct SavedFilterQuery: EntityStringQuery {
 
     private func all() throws -> [SavedFilterEntity] {
         guard case let .filters(filters) = try store.assist("list_filters") else { return [] }
-        return filters.filters.map(SavedFilterEntity.init)
+        let documents = store.searchDocuments()
+        return filters.filters.map { SavedFilterEntity($0, found: documents) }
     }
 
     func entities(for identifiers: [SavedFilterEntity.ID]) async throws -> [SavedFilterEntity] {
@@ -212,7 +235,7 @@ struct SavedFilterQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [SavedFilterEntity] {
-        try all().filter { matches($0.name, string) }
+        found(try all(), store, string, .filter, by: \.name, \.title)
     }
 
     func suggestedEntities() async throws -> [SavedFilterEntity] {
@@ -220,14 +243,58 @@ struct SavedFilterQuery: EntityStringQuery {
     }
 }
 
+/// A block as the Blocks list has it, every day of it: what a platform's search indexes of
+/// blocks, built from its search document alone.
+struct BlockSeriesEntity: AppEntity {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Block"
+    static let defaultQuery = BlockSeriesQuery()
+
+    /// Its search document's: `block:<series>`.
+    let id: String
+    @Property(title: "Title") var title: String
+    let document: LumennaApp.SearchDocument
+
+    init(_ document: LumennaApp.SearchDocument) {
+        id = document.id
+        self.document = document
+        title = document.title
+    }
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(title)", subtitle: document.line.isEmpty ? nil : "\(document.line)")
+    }
+}
+
+struct BlockSeriesQuery: EntityStringQuery {
+    @AppDependency private var store: AssistantStore
+
+    private func all() -> [BlockSeriesEntity] {
+        store.searchDocuments().filter { $0.kind == .block }.map(BlockSeriesEntity.init)
+    }
+
+    func entities(for identifiers: [BlockSeriesEntity.ID]) async throws -> [BlockSeriesEntity] {
+        all().filter { identifiers.contains($0.id) }
+    }
+
+    func entities(matching string: String) async throws -> [BlockSeriesEntity] {
+        store.found(string).filter { $0.kind == .block }.map(BlockSeriesEntity.init)
+    }
+
+    func suggestedEntities() async throws -> [BlockSeriesEntity] {
+        all()
+    }
+}
+
 // MARK: - The day
 
 /// A block on a day, as the day lists it: its identifier is `<series>@<date>`.
 struct BlockEntity: AppEntity {
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Block"
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Block on a Day"
     static let defaultQuery = BlockQuery()
 
     let id: String
+    /// The block (series) it is a day of.
+    let series: String
     @Property(title: "Title") var title: String
     @Property(title: "Starts") var start: Date?
     @Property(title: "Ends") var end: Date?
@@ -238,6 +305,7 @@ struct BlockEntity: AppEntity {
 
     init(_ block: LumennaApp.PlanBlock, on date: String) {
         id = block.id
+        series = block.series
         times = (block.start, block.end)
         details = block.details
         title = block.title
@@ -282,7 +350,7 @@ struct BlockQuery: EntityStringQuery {
     }
 
     func entities(matching string: String) async throws -> [BlockEntity] {
-        try offered().filter { matches($0.title, string) }
+        found(try offered(), store, string, .block, by: { "block:\($0.series)" }, \.id)
     }
 
     func suggestedEntities() async throws -> [BlockEntity] {
@@ -296,6 +364,8 @@ struct SittingEntity: AppEntity {
     static let defaultQuery = SittingQuery()
 
     let id: String
+    /// The task it is a sitting of.
+    let taskID: String
     @Property(title: "Task") var task: String
     @Property(title: "Block") var block: String
     @Property(title: "Running") var running: Bool
@@ -305,6 +375,7 @@ struct SittingEntity: AppEntity {
 
     init(_ sitting: LumennaApp.PlanAssignment, in block: LumennaApp.PlanBlock) {
         id = sitting.id
+        taskID = sitting.task
         details = sitting.details
         task = sitting.title
         self.block = block.title
@@ -329,8 +400,9 @@ struct SittingQuery: EntityStringQuery {
         return identifiers.compactMap { id in found.first { $0.id == id } }
     }
 
+    /// Today's sittings of the tasks the core's search finds.
     func entities(matching string: String) async throws -> [SittingEntity] {
-        try await suggestedEntities().filter { matches($0.task, string) }
+        found(try await suggestedEntities(), store, string, .task, by: { "task:\($0.taskID)" }, \.id)
     }
 
     /// Today's sittings.
@@ -376,16 +448,13 @@ struct ChoiceEntity: AppEntity {
     }
 }
 
-struct ChoiceQuery: EntityStringQuery {
+/// Offered, not searched: the core's search covers no choice.
+struct ChoiceQuery: EntityQuery {
     @AppDependency private var store: AssistantStore
 
     func entities(for identifiers: [ChoiceEntity.ID]) async throws -> [ChoiceEntity] {
         let offered = try store.choices().map(ChoiceEntity.init)
         return identifiers.compactMap { id in offered.first { $0.id == id } }
-    }
-
-    func entities(matching string: String) async throws -> [ChoiceEntity] {
-        try await suggestedEntities().filter { matches($0.title, string) }
     }
 
     /// What it offers now, in its order.

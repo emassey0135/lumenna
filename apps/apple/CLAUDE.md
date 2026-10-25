@@ -198,13 +198,17 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   and ask before applying; what is accepted defaults to every change. Pause and Stop default to
   the sitting whose timer runs (`RunningSitting`). `LumennaShortcuts` is what Siri, Spotlight
   and the Action Button offer unasked (New Task, What Should I Work On?, start, pause and stop,
-  Today, Complete). The open tasks are in Spotlight as the core's search documents have them
-  (`TaskIndex`, `IndexedEntity`, iOS 18 and macOS 15; the watch has none: `searchDocuments`'
-  line under the name and its keywords, which are a task entity's subtitle too), indexed at
-  launch and a few seconds after each `Core.changed`, and the task whose details show is the current user activity with its
-  entity, for "this task" (`showingTask`). The SDK's Reminders schema (iOS and macOS 27, not
-  watchOS) is not adopted: its reminder carries a list, flags, URLs, images and location
-  triggers that no operation takes.
+  Today, Complete). What Spotlight, Siri and Shortcuts find is the core's search
+  (`records::search`), as on every platform: every search document (open tasks, projects,
+  labels, saved filters, blocks) is indexed as its entity, its attributes the document's title,
+  line and keywords (`SearchIndex`, `IndexedEntity`, iOS 18 and macOS 15; the watch has none),
+  at launch and a few seconds after each `Core.changed`; a string query answers from
+  `searchResults` in its order, never a match of Swift's (choices are only offered); and a
+  result chosen is opened by its document's `launch` through `ShellEvent.launch` (the Open
+  intents, the app's `launch` given to `Assistant.serve`). The task whose details show is the
+  current user activity with its entity, for "this task" (`showingTask`). The SDK's Reminders schema (iOS
+  and macOS 27, not watchOS) is not adopted: its reminder carries a list, flags, URLs, images
+  and location triggers that no operation takes.
 - **The iPad is the Mac's layout, not the iPhone's tabs** (`IPadRoot`, three columns): the
   app's places in a sidebar (`SidebarViewController`, from `ViewModel.sidebar`, plus
   Settings), the place chosen, and what was opened from it (`showBeside`, which pushes on

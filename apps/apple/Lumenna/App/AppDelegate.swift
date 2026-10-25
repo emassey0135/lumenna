@@ -30,7 +30,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         if case let .success(core) = AppDelegate.core {
             // Siri, Shortcuts and Spotlight's intents run on this store, and may be what
             // launched the app.
-            Assistant.serve(core.app.device)
+            Assistant.serve(core.app.device) { core.app.send(.launch($0)) }
             // What the Crux app's connection writes, the screens still on the surface redraw for.
             core.watchForChanges()
             watchLink = WatchLink(core: core)
