@@ -299,6 +299,9 @@ A test that has only failed for a reason can join the smoke set. **A branch runs
 changes can break** (the `changes` job: a change to `crates/`, `Cargo.*` or `ci.yml` runs
 everything, one to an app its own jobs, and the Rust workspace's for an app written in Rust);
 master, pull requests and runs asked for run everything. A new app's jobs join a group there.
+The suites that only report (the full iOS, Mac UI and Android suites), WebKit, and Rust on Intel
+macOS run on master alone (`full`), since most wait for one of the five macOS runners: a branch
+runs the builds and everything that blocks, Firefox included.
 
 `crates/core/tests/rows.rs` snapshots the row projection (each row's place, folding, checked
 state, speech and braille) in `tests/snapshots/`, rewritten with `UPDATE_SNAPSHOTS=1` once a
