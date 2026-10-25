@@ -21,15 +21,19 @@ test with a newer one (`PYTHON=…`).
   seconds (`TICK`).
 - **A row's context menu is its actions in short** (`actions.py`): the rows' actions merged into
   one list of commands that keeps each row's order, each offered where its row has it, a
-  letter per kind (`KEYS`), the delete keys for `DELETES`; a letter the row does not offer runs
-  there and the app says why. Running one is `ActOn`, naming the row (`acting_on`), which the
-  app puts in hand; `follow` then answers whatever the app opens, one after another, with the
-  device's dialogs: a question (a refusal staying in it), the block form, a proposal, a reminder
-  list. The task form registers in `actions.FORMS`. Erase Permanently is in neither `KEYS` nor
-  `DELETES`: only the context menu runs it, and the delete keys stay Delete from Trash's.
+  letter per kind (`KEYS`); a letter the row does not offer runs there and the app says why.
+  Running one is `ActOn`, naming the row (`acting_on`), which the app puts in hand; `follow` then
+  answers whatever the app opens, one after another, with the device's dialogs: a question (a
+  refusal staying in it), the block form, a proposal, a reminder list. The task form registers
+  in `actions.FORMS`. Erase Permanently has no letter: only the context menu runs it.
+- **The delete keys send `Key("delete")`** (`actions.press`, a command that is only the keys',
+  not `listed`): Control-D, the D chord and low-d. What it runs on the row (Delete, Delete from
+  trash, Unassign, Unpair) or why it runs nothing is the app's (`keys::runs`); never a list of
+  kinds here.
 - **Settings lists the store's own actions** (`SettingsView.offered`, Erase everything deleted)
   as rows after Export and import, with no shortcut, each handed back as `ActOn` with
-  `ActingOnSettings` (`preferences.store_items`); the app asks its Confirm question.
+  `ActingOnSettings` (`preferences.store_items`), the core's `offered_caption` its hint, which
+  the device says and pushes to the display after a pause; the app asks its Confirm question.
 - **Speech and braille come from one string** (`DynamicMenuDialog.draw()` sets both from it),
   but where the app shows a line apart in braille (`Line::braille`) it is the menu item's
   `braille_title`, as the device's own mail list shows its statuses short. Every short form is

@@ -121,13 +121,15 @@ def settings(session: Session) -> str:
 
 def store_items(session: Session) -> list:
     """What the app offers to do to the store as a whole (Erase everything deleted), a row
-    each beside backups and export, under the core's name. No shortcut: what it does cannot be
+    each beside backups and export, under the core's name, its caption the row's hint. No shortcut: what it does cannot be
     undone, so it is reached by moving to it, and the app asks first."""
     view = session.view().settings
     return [
         dialogs.DynamicMenuItem(
             title=actions.named(offered),
             action=lambda offered=offered: actions.act(session, offered, on=L.ActingOnSettings()),
+            # The core's caption for them, said and brailled as the device says a row's hint.
+            hint=view.offered_caption or None,
         )
         for offered in (view.offered if view is not None else [])
     ]

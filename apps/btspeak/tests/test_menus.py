@@ -230,10 +230,24 @@ class Menus(unittest.TestCase):
             [command.get_label(menu) for command in offered],
             ["Restore, r", "Delete from trash", "Erase permanently", "Details"],
         )
-        # The delete keys still do Delete from trash, and nothing is a key for erasing.
-        self.assertEqual([c.get_label(menu) for c in offered if c.on_delete_key], ["Delete from trash"])
+        # Nothing is a key for erasing: no letter, and the delete keys are the app's (below).
+        self.assertEqual([c.get_label(menu) for c in offered if c.on_delete_key], [])
         erasing = next(c for c in offered if c.get_label(menu) == "Erase permanently")
         self.assertEqual(erasing.key, "")
+
+    def test_the_delete_keys_do_what_the_app_says_delete_does_delete_from_trash_on_a_trashed_task(self):
+        self.call("task.add", text="open one")
+        self.call("task.rm", id=self.call("task.add", text="lose me")["task"]["id"])
+        script = self.run_script([("menu", "open one", "delete"), ("back",)], lambda: tasks.task_list(self.session))
+        self.assertEqual(script.confirmations, [], "an open task goes to the trash, asking nothing")
+        self.assertEqual(self.titles(), [])
+        script = self.run_script(
+            [("menu", "lose me", "delete"), ("confirm", True), ("back",)],
+            lambda: tasks.trash(self.session),
+        )
+        question, _ = script.confirmations[0]
+        self.assertTrue(question.startswith("Delete lose me from the trash? Undo can bring it back"), question)
+        self.assertEqual(self.titles("deleted"), ["open one"])
 
     def test_settings_offers_erase_everything_deleted_after_export_and_import_and_it_asks_first(self):
         self.call("task.add", text="still here")
@@ -250,6 +264,11 @@ class Menus(unittest.TestCase):
         )
         rows = script.menus[0]["rows"]
         self.assertEqual(rows.index("Erase everything deleted"), rows.index("Export and import") + 1, rows)
+        # The core's caption is said and brailled after the row, as the device gives a row's hint.
+        self.assertEqual(
+            script.menus[0]["hints"]["Erase everything deleted"],
+            "Takes what was deleted out of the history every device keeps, so nothing can bring it back.",
+        )
         self.assertEqual(self.titles(), ["still here"])
         self.assertEqual(self.titles("deleted"), [])
         question, default = script.confirmations[0]

@@ -1,11 +1,11 @@
 """What can be done to a row: the app's, offered as the device offers things.
 
 Every row the app shows carries its `actions` — which apply now, in order, under their spoken
-names. This file turns them into the row's context menu (M-Chord with Dot 7), its letters and
-its delete keys; running one sends it to the app with the row in hand, then answers whatever
-the app opens with the device's own dialogs, one after another, until nothing is open: a
-question (and the one a pick asks after, how long), the block form, a proposal, a reminder
-list. Which actions a row has, what each asks, what a pick offers and why an answer is refused
+names. This file turns them into the row's context menu (M-Chord with Dot 7) and its
+letters, and gives it its delete keys, which run what the app says the delete key does;
+running one sends it to the app with the row in hand, then answers whatever the app opens
+with the device's own dialogs, one after another, until nothing is open: a question (and the
+one a pick asks after, how long), the block form, a proposal, a reminder list. Which actions a row has, what each asks, what a pick offers and why an answer is refused
 are the app's, the same on every client.
 
 A letter stands for a kind of action (`KEYS`), so `c` is Mark Done on a task that is open
@@ -66,9 +66,6 @@ KEYS = {
 DAY_KEYS = {
     K.WHAT_NOW: "w",
 }
-
-#: The kinds the delete keys do — Control-D and the D chord.
-DELETES = {K.DELETE, K.DELETE_FOR_GOOD, K.UNASSIGN, K.UNPAIR}
 
 #: Folding, which is the left and right keys' rather than the context menu's.
 FOLDS = {K.EXPAND, K.COLLAPSE}
@@ -244,6 +241,18 @@ def not_offered(session: Session, kind, row) -> str:
     return joined(*said)
 
 
+def press(session: Session, key: str, row) -> str:
+    """A key of the shared table pressed on `row` (`"delete"`): the app puts the row in hand and
+    runs what that key runs there, or says why it does nothing; then whatever it opens is
+    answered."""
+    import proposals  # here: proposals imports this module
+
+    proposals.pin(session)
+    said = [session.send(held(row), L.ShellEventKey(key))]
+    said.append(follow(session, row))
+    return joined(*said)
+
+
 def _slots(rows) -> list:
     """Every `(kind, nth)` any row offers, merged so that each row's actions keep the core's
     order: a slot new to the list goes straight after the row's previous one. Folding is the
@@ -282,11 +291,13 @@ def commands(session: Session, rows, before=(), after=()) -> list[Command]:
             lambda row, kind=kind, nth=nth: act(session, _nth(row, kind, nth), row),
             key=key,
             applies=lambda row, kind=kind, nth=nth: _nth(row, kind, nth) is not None,
-            deletes=kind in DELETES and nth == 0,
             # A letter with several of its kind on the row asks which.
             by_key=(lambda row, kind=kind: run_kind(session, row, kind)) if key else None,
             refuse=(lambda row, kind=kind: not_offered(session, kind, row)) if key else None,
         ))
+    # The delete keys, Control-D and the D chord: what they do to the row is the app's, the same
+    # key on every platform (Delete, Delete from trash on a trashed task, Unassign, Unpair).
+    made.append(Command("Delete key", lambda row: press(session, "delete", row), deletes=True, listed=False))
     return [*before, *made, *after]
 
 

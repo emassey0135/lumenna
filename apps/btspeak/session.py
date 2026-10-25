@@ -231,10 +231,11 @@ class Command:
     `deletes` makes it what the delete keys do — Control-D and the D chord. `by_key`, when
     given, is what the letter does instead of `run`: asking which, where a row has several.
     `refuse(row)`, when given, says why the letter does nothing on a row it does not apply to.
+    A command that is not `listed` is only what its keys do, never an entry of the menu.
     """
 
     def __init__(self, label, run, key: str = "", applies=None, deletes: bool = False, by_key=None,
-                 refuse=None) -> None:
+                 refuse=None, listed: bool = True) -> None:
         self.label = label
         self.run = run
         self.key = key
@@ -242,6 +243,7 @@ class Command:
         self.deletes = deletes
         self.by_key = by_key or run
         self.refuse = refuse
+        self.listed = listed
 
     def label_for(self, row) -> str:
         return self.label(row) if callable(self.label) else self.label
@@ -365,6 +367,7 @@ def context_commands(context):
             on_delete_key=command.deletes,
         )
         for index, command in enumerate(context)
+        if command.listed
     ]
 
 
