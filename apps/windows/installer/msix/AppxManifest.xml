@@ -15,8 +15,9 @@
   xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap3 uap10 desktop rescap">
+  IgnorableNamespaces="uap uap3 uap10 desktop com rescap">
 
   <Identity Name="@IDENTITY_NAME@" Publisher="@PUBLISHER@" Version="@VERSION@" ProcessorArchitecture="@ARCH@" />
 
@@ -29,6 +30,10 @@
   <!-- Windows 10 2004, the first with console applications in a package (`uap10:Subsystem`). -->
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26200.0" />
+    <!-- The Windows App Runtime, for the Widgets board's API (`win/widgets`): a framework the
+         Store installs with the package, and `test.ps1` installs before it. -->
+    <PackageDependency Name="Microsoft.WindowsAppRuntime.2" MinVersion="2.0.1.0"
+      Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
   </Dependencies>
 
   <Resources>
@@ -48,6 +53,54 @@
         <desktop:Extension Category="windows.startupTask" Executable="lumenna.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="LumennaAtSignIn" Enabled="false" DisplayName="Lumenna" />
         </desktop:Extension>
+        <!-- The Widgets board's provider (`win/widgets`): the app, started with the argument
+             below as a COM server of this class, which the widget extension after it names. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="lumenna.exe" Arguments="--widgets" DisplayName="Lumenna">
+              <com:Class Id="18D24380-6221-4EAF-975D-40086936D300" DisplayName="Lumenna" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <!-- Its widget, small (what is happening now, and the timer running) and medium (that,
+             the next block, and what is due, each with its Mark Done). Its name and description
+             are the app's own, as above, which the core gives no words of its own for yet. -->
+        <uap3:Extension Category="windows.appExtension">
+          <uap3:AppExtension Name="com.microsoft.windows.widgets" Id="Lumenna" DisplayName="Lumenna">
+            <uap3:Properties>
+              <WidgetProvider>
+                <ProviderIcons>
+                  <Icon Path="Assets\WidgetIcon.png" />
+                </ProviderIcons>
+                <Activation>
+                  <CreateInstance ClassId="18D24380-6221-4EAF-975D-40086936D300" />
+                </Activation>
+                <Definitions>
+                  <Definition Id="Today" DisplayName="Lumenna" Description="Tasks, and the blocks of time they are worked in" AllowMultiple="true">
+                    <Capabilities>
+                      <Capability>
+                        <Size Name="small" />
+                      </Capability>
+                      <Capability>
+                        <Size Name="medium" />
+                      </Capability>
+                    </Capabilities>
+                    <ThemeResources>
+                      <Icons>
+                        <Icon Path="Assets\WidgetIcon.png" />
+                      </Icons>
+                      <Screenshots>
+                        <Screenshot Path="Assets\WidgetScreenshot.png" DisplayAltText="Lumenna" />
+                      </Screenshots>
+                      <DarkMode />
+                      <LightMode />
+                    </ThemeResources>
+                  </Definition>
+                </Definitions>
+              </WidgetProvider>
+            </uap3:Properties>
+          </uap3:AppExtension>
+        </uap3:Extension>
       </Extensions>
     </Application>
 

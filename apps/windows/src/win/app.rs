@@ -79,6 +79,8 @@ const TIMER_ASK: usize = 2;
 /// Looks every 50 milliseconds whether the app is still, to write the field being typed in
 /// where the app's value differs.
 const TIMER_SETTLE: usize = 3;
+/// Looks every 50 milliseconds whether the app is still, to do a way in from outside.
+const TIMER_LAUNCH: usize = 4;
 
 /// Something to do once the notification being handled has returned.
 type Deferred = Box<dyn FnOnce(&App)>;
@@ -166,6 +168,8 @@ pub struct App {
     quick_add: RefCell<Option<Rc<quick_add::QuickAdd>>>,
     /// Seconds since the app started, for what is done every few of them.
     ticks: Cell<u32>,
+    /// A way in from outside (`--launch`, a Jump List's task) waiting for the app to be still.
+    launching: RefCell<Option<String>>,
 }
 
 thread_local! {
@@ -187,12 +191,16 @@ pub fn run() {
         };
         let _ = InitCommonControlsEx(&controls);
     }
-    let arguments = profile::arguments(std::env::args().skip(1));
+    let mut arguments = profile::arguments(std::env::args().skip(1));
+    // A package's Jump List hands its arguments to Windows' activation, not the command line.
+    if arguments.launch.is_none() {
+        arguments.launch = profile::arguments(super::package::launched_with()).launch;
+    }
     let Some(directory) = profile::directory(arguments.profile) else {
         prompts::fail(HWND::default(), "Lumenna cannot find a folder for its data. Set LUMENNA_PROFILE to one.");
         return;
     };
-    let Some(_instance) = tray::claim(&directory) else { return };
+    let Some(_instance) = tray::claim(&directory, arguments.launch.as_deref()) else { return };
     let device = match lumenna_ffi::Device::new(directory.display().to_string()) {
         Ok(device) => device,
         Err(error) => {
@@ -206,7 +214,11 @@ pub fn run() {
         shortcuts::leave_to_another_copy();
     }
     // Opened at sign-in: by the Run key with `--background`, or by a package's startup task.
-    app.start(arguments.background || super::package::started_at_sign_in());
+    // A way in from outside is shown, whatever else it was started with.
+    app.start(arguments.launch.is_none() && (arguments.background || super::package::started_at_sign_in()));
+    if let Some(id) = arguments.launch {
+        app.launch(id);
+    }
     message_loop(&app);
     APP.with(|slot| slot.borrow_mut().take());
 }
@@ -388,6 +400,7 @@ impl App {
             reminder_list: RefCell::new(None),
             quick_add: RefCell::new(None),
             ticks: Cell::new(0),
+            launching: RefCell::new(None),
         });
         app.update_font();
         dark::window(main);
@@ -405,6 +418,7 @@ impl App {
             let _ = SetTimer(Some(self.main), TIMER_REFRESH, 1000, None);
         }
         tray::add_icon(self.main, self.icon);
+        super::jump_list::publish(self.directory.clone());
         let taken = shortcuts::register_all(self.main);
         self.back_up_if_due();
         self.give_reminders();
@@ -611,6 +625,36 @@ impl App {
             proposal::run(self, screen);
         } else if let Some(list) = now.reminders.filter(|_| self.reminder_list.borrow().is_none()) {
             reminders::run(self, list);
+        }
+    }
+
+    /// Does a way in from outside (`lumenna_records::launch`), with the window shown: once the
+    /// app is still, so it runs over the store the app has read.
+    pub fn launch(&self, id: String) {
+        self.show_window();
+        *self.launching.borrow_mut() = Some(id);
+        unsafe {
+            let _ = SetTimer(Some(self.main), TIMER_LAUNCH, 50, None);
+        }
+    }
+
+    /// Hands the app the way in waiting, once it is still; once still again, the app having
+    /// opened its quick-add line (New Task) opens the window's quick add, which draws it. Any
+    /// question it asked is asked as every question is.
+    fn launch_when_still(&self) {
+        if !self.crux.is_still() {
+            return;
+        }
+        let waiting = self.launching.borrow_mut().take();
+        if let Some(id) = waiting {
+            self.crux.send(ShellEvent::Launch(id));
+            return;
+        }
+        unsafe {
+            let _ = KillTimer(Some(self.main), TIMER_LAUNCH);
+        }
+        if self.crux.view().line.is_some() && self.quick_add.borrow().is_none() {
+            self.quick_add(false);
         }
     }
 
@@ -1468,6 +1512,7 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
             }
             WM_TIMER if wparam.0 == TIMER_ASK => app.ask_when_still(),
             WM_TIMER if wparam.0 == TIMER_SETTLE => app.settle_typing(),
+            WM_TIMER if wparam.0 == TIMER_LAUNCH => app.launch_when_still(),
             WM_TIMER => app.on_timer(),
             WM_TURN => app.take_turn(taken(lparam)),
             WM_SAY => app.say(&said(lparam)),
@@ -1486,6 +1531,13 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
             },
             WM_TRAY => app.on_tray(wparam, lparam),
             WM_SHOW_RUNNING => app.show_window(),
+            WM_COPYDATA => match tray::launch_handed(lparam) {
+                Some(id) => {
+                    app.launch(id);
+                    return LRESULT(1);
+                }
+                None => return DefWindowProcW(hwnd, message, wparam, lparam),
+            },
             WM_DESTROY => PostQuitMessage(0),
             other if other == app.taskbar_created && other != 0 => tray::add_icon(hwnd, app.icon),
             _ => return DefWindowProcW(hwnd, message, wparam, lparam),

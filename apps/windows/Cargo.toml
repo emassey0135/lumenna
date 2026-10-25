@@ -21,6 +21,13 @@ lumenna-ffi = { path = "../../crates/ffi", features = ["network", "rpc"] }
 lumenna-app = { path = "../../crates/app" }
 # The records the app's view is made of: rows, actions, questions, settings.
 lumenna-records.workspace = true
+# A widget's Adaptive Card data, and what its buttons send back.
+serde_json.workspace = true
+
+# The Widgets board's API, generated from the Windows App SDK (`src/win/widgets/bindings.rs`), is
+# written against windows-core by name.
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.62"
 
 # Everything that touches Win32 is behind `cfg(windows)`, so the workspace still builds and
 # tests on every other platform: the wording, the form and the places are tested there too.
@@ -36,6 +43,11 @@ features = [
     "Foundation",
     "Foundation_Collections",
     "UI_Notifications",
+    # The Jump List: a package's own, and the shell's for an ordinary install.
+    "UI_StartScreen",
+    "Win32_Storage_EnhancedStorage",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_UI_Shell_PropertiesSystem",
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Graphics_Dwm",

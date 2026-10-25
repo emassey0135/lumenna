@@ -39,11 +39,19 @@ $manifest = $manifest.Replace('@VERSION@', $packageVersion).Replace('@ARCH@', $A
 
 # The logos, square, from the largest of the icon's images (GTK's, which Windows' is drawn from).
 $icon = [Drawing.Image]::FromFile("$root\apps\gtk\data\icons\hicolor\512x512\apps\dev.emassey0135.Lumenna.png")
-foreach ($logo in @(@{ Name = 'StoreLogo'; Size = 50 }, @{ Name = 'Square44x44Logo'; Size = 44 }, @{ Name = 'Square150x150Logo'; Size = 150 })) {
-    $bitmap = New-Object Drawing.Bitmap $logo.Size, $logo.Size
+# The widget's icon, and its picture in the board's picker: the icon, centred on the small
+# widget's shape, 300 by 304.
+$logos = @(
+    @{ Name = 'StoreLogo'; Size = 50 }, @{ Name = 'Square44x44Logo'; Size = 44 }, @{ Name = 'Square150x150Logo'; Size = 150 },
+    @{ Name = 'WidgetIcon'; Size = 64 }, @{ Name = 'WidgetScreenshot'; Size = 150; Width = 300; Height = 304 }
+)
+foreach ($logo in $logos) {
+    $width = if ($logo.Width) { $logo.Width } else { $logo.Size }
+    $height = if ($logo.Height) { $logo.Height } else { $logo.Size }
+    $bitmap = New-Object Drawing.Bitmap $width, $height
     $graphics = [Drawing.Graphics]::FromImage($bitmap)
     $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-    $graphics.DrawImage($icon, 0, 0, $logo.Size, $logo.Size)
+    $graphics.DrawImage($icon, [int](($width - $logo.Size) / 2), [int](($height - $logo.Size) / 2), $logo.Size, $logo.Size)
     $graphics.Dispose()
     $bitmap.Save("$layout\Assets\$($logo.Name).png", [Drawing.Imaging.ImageFormat]::Png)
     $bitmap.Dispose()

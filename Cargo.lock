@@ -3154,8 +3154,10 @@ dependencies = [
  "lumenna-ffi",
  "lumenna-host",
  "lumenna-records",
+ "serde_json",
  "tempfile",
  "windows",
+ "windows-core",
 ]
 
 [[package]]

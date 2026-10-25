@@ -1,0 +1,93 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "${headline.title}",
+      "style": "heading",
+      "weight": "Bolder",
+      "wrap": true,
+      "maxLines": 2
+    },
+    {
+      "type": "TextBlock",
+      "$when": "${headline.shown}",
+      "text": "${headline.detail}",
+      "isSubtle": true,
+      "spacing": "None",
+      "wrap": true,
+      "maxLines": 2
+    },
+    {
+      "type": "TextBlock",
+      "$when": "${next.shown}",
+      "text": "${next.text}",
+      "spacing": "Small",
+      "wrap": true,
+      "maxLines": 2
+    },
+    {
+      "type": "TextBlock",
+      "text": "${due}",
+      "weight": "Bolder",
+      "spacing": "Medium",
+      "wrap": true
+    },
+    {
+      "type": "Container",
+      "$data": "${tasks}",
+      "spacing": "Small",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "stretch",
+              "verticalContentAlignment": "Center",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "${title}",
+                  "wrap": true,
+                  "maxLines": 2
+                },
+                {
+                  "type": "TextBlock",
+                  "$when": "${shown}",
+                  "text": "${detail}",
+                  "color": "${colour}",
+                  "isSubtle": true,
+                  "spacing": "None",
+                  "wrap": true,
+                  "maxLines": 1
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "verticalContentAlignment": "Center",
+              "items": [
+                {
+                  "type": "ActionSet",
+                  "actions": [
+                    {
+                      "type": "Action.Execute",
+                      "title": "${done}",
+                      "tooltip": "${title}",
+                      "verb": "complete",
+                      "data": { "id": "${id}" }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

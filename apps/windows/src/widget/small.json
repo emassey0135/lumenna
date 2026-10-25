@@ -1,0 +1,32 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "TextBlock",
+      "text": "${headline.title}",
+      "style": "heading",
+      "weight": "Bolder",
+      "wrap": true,
+      "maxLines": 2
+    },
+    {
+      "type": "TextBlock",
+      "$when": "${headline.shown}",
+      "text": "${headline.detail}",
+      "isSubtle": true,
+      "spacing": "None",
+      "wrap": true,
+      "maxLines": 2
+    },
+    {
+      "type": "TextBlock",
+      "$when": "${timer.shown}",
+      "text": "${timer.text}",
+      "size": "ExtraLarge",
+      "weight": "Bolder",
+      "spacing": "Medium"
+    }
+  ]
+}

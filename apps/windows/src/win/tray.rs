@@ -10,9 +10,10 @@ use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_SETVERSION,
     NOTIFYICON_VERSION_4, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
+use windows::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows::Win32::UI::WindowsAndMessaging::{
     AllowSetForegroundWindow, FindWindowW, GetWindowThreadProcessId, HICON, PostMessageW,
-    RegisterWindowMessageW, WM_APP,
+    RegisterWindowMessageW, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_APP, WM_COPYDATA,
 };
 use windows::core::{HSTRING, w};
 
@@ -20,6 +21,10 @@ use windows::core::{HSTRING, w};
 pub const WM_TRAY: u32 = WM_APP + 4;
 /// Sent by a second instance: show the window.
 pub const WM_SHOW_RUNNING: u32 = WM_APP + 5;
+
+/// What a second instance's `WM_COPYDATA` carries: a way in from outside (`--launch <id>`), as
+/// UTF-16, for the running one to show itself and do.
+pub const LAUNCH_DATA: usize = 0x4c75_6e63;
 
 fn icon_data(main: HWND, icon: HICON) -> NOTIFYICONDATAW {
     let mut data = NOTIFYICONDATAW {
@@ -73,9 +78,9 @@ pub fn class_name(profile: &std::path::Path) -> String {
     format!("{CLASS_PREFIX}{:016x}", fnv(&profile.display().to_string().to_lowercase()))
 }
 
-/// Becomes the profile's running instance, or — if there already is one — shows it and
-/// returns `None`.
-pub fn claim(profile: &std::path::Path) -> Option<Instance> {
+/// Becomes the profile's running instance, or — if there already is one — shows it, handing it
+/// the way in this one was started with, and returns `None`.
+pub fn claim(profile: &std::path::Path, launch: Option<&str>) -> Option<Instance> {
     let name = format!("Local\\Lumenna-{:016x}", fnv(&profile.display().to_string().to_lowercase()));
     let mutex = unsafe { CreateMutexW(None, true, &HSTRING::from(name)) }.ok()?;
     if unsafe { GetLastError() } != ERROR_ALREADY_EXISTS {
@@ -87,10 +92,46 @@ pub fn claim(profile: &std::path::Path) -> Option<Instance> {
             GetWindowThreadProcessId(running, Some(&mut process));
             // This process was just started by the person, so it may hand the foreground on.
             let _ = AllowSetForegroundWindow(process);
-            let _ = PostMessageW(Some(running), WM_SHOW_RUNNING, WPARAM(0), LPARAM(0));
+            match launch {
+                // Sent, not posted, as `WM_COPYDATA` must be: its data lives only for the call.
+                Some(id) => {
+                    let id: Vec<u16> = id.encode_utf16().collect();
+                    let data = COPYDATASTRUCT {
+                        dwData: LAUNCH_DATA,
+                        cbData: (id.len() * 2) as u32,
+                        lpData: id.as_ptr() as *mut _,
+                    };
+                    let _ = SendMessageTimeoutW(
+                        running,
+                        WM_COPYDATA,
+                        WPARAM(0),
+                        LPARAM(&raw const data as isize),
+                        SMTO_ABORTIFHUNG,
+                        5000,
+                        None,
+                    );
+                }
+                None => {
+                    let _ = PostMessageW(Some(running), WM_SHOW_RUNNING, WPARAM(0), LPARAM(0));
+                }
+            }
         }
     }
     None
+}
+
+/// The way in a second instance handed over (`WM_COPYDATA`'s `lparam`), if it is one.
+///
+/// # Safety
+///
+/// `lparam` must be what a `WM_COPYDATA` carried, during that message.
+pub unsafe fn launch_handed(lparam: LPARAM) -> Option<String> {
+    let data = unsafe { (lparam.0 as *const COPYDATASTRUCT).as_ref() }?;
+    if data.dwData != LAUNCH_DATA || data.lpData.is_null() {
+        return None;
+    }
+    let units = unsafe { std::slice::from_raw_parts(data.lpData as *const u16, data.cbData as usize / 2) };
+    Some(String::from_utf16_lossy(units))
 }
 
 /// FNV-1a, for a short stable name from a path.

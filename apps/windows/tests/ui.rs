@@ -518,6 +518,25 @@ fn quick_add_reads_back_what_it_will_add_before_adding_it() {
 
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn a_jump_lists_new_task_started_again_opens_quick_add_in_the_copy_already_running() {
+    let app = App::launch(|_| {});
+    // What a Jump List's task runs: the app again, which hands the way in to the copy running.
+    let status = Command::new(env!("CARGO_BIN_EXE_lumenna"))
+        .arg("--profile")
+        .arg(app.profile.path())
+        .arg("--no-shortcuts")
+        .args(["--launch", "new-task"])
+        .status()
+        .expect("the second copy starts");
+    assert!(status.success(), "the second copy hands over and leaves");
+    assert!(app.lands(|focus| focus.starts_with("Edit 'Task:'")), "{}", app.focus());
+    app.post(&["text:Call Sam", "enter"]);
+    assert!(app.says(|s| s.contains("Call Sam")), "{}", app.status());
+    assert!(app.store().list_tasks("").unwrap().rows.iter().any(|t| t.title == "Call Sam"));
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn completion_offers_only_what_fits_name_first_with_the_first_highlighted() {
     let app = App::launch(|lumenna| {
         lumenna.add_project("Work", None).unwrap();
