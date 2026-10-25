@@ -209,7 +209,8 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   where it did not wait. The variables are the core's (`automation_outputs`, declared to
   Tasker's picker as `%name` or `%name()`, given back as `%name1`, `%name2`…), the blurb its
   `automation_summary`. `TaskerTest` covers the list against the table, secrets refused, the
-  variables a firing answers, and the receiver itself; Tasker itself is checked by hand.
+  variables a firing answers, and the receiver itself, in the phone's smoke set so a branch runs
+  it; Tasker itself is checked by hand.
 - **The widgets, the watch's tile and its complications draw the core's glance** (shared's
   `Glances`: `Core.glance`, the app's while it runs, else the device's): the entry true now, drawn
   again when the store changes and at the next moment the timeline names (`GlanceWorker`, one
