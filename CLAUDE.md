@@ -45,7 +45,9 @@ crates/ffi/     the app for the Apple apps, Android and BTSpeak through BoltFFI,
                 and GTK linked as Rust: `App`, its turns, and `Device`, the store for what runs
                 without the screens. The web's is apps/web/core, through BoltFFI too.
 crates/sync/    Iroh endpoints, the document sync session, and pairing.
-apps/cli/       `lum`, `lum rpc` for clients that cannot link Rust, and `lum mcp`.
+apps/cli/       `lum`, `lum rpc` for clients that cannot link Rust, `lum mcp`, and `lum assist`.
+apps/powershell/ the PowerShell module: a cmdlet per assistant operation, over `lum assist`, for
+                Windows PowerShell 5.1 and PowerShell 7.
 apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/ffi).
 apps/emacs/     the Emacs client, in Elisp, drawing the Crux app over `lum rpc` or the profile's
                 socket, a screen per buffer.
@@ -142,7 +144,10 @@ crosses the FFI.
   store, run through one dispatcher (`Lumenna::assist`, over the FFI `Device::assist`). MCP's
   tools are built from it; App Intents (Siri, Shortcuts, Apple Intelligence) and Android App
   Functions (Gemini) are declared from it and checked against `assistant_operations()`, so an
-  operation added there reaches every assistant and none is worded twice.
+  operation added there reaches every assistant and none is worded twice. `lum assist` runs one
+  from the command line, and the PowerShell module's cmdlets are written from `lum assist --list`
+  (`apps/powershell/Write-Operations.ps1`, run again when the table changes) and checked against
+  it.
 - **A glance is the core's** (`records::glance`, worded by `lumenna_app::glance`; `App::glance`
   in the platform's clock, `Device::glance` without the screens): what a widget, complication,
   tile or Smart Stack shows, as a timeline of moments. A platform draws it and decides nothing.
@@ -301,7 +306,7 @@ PROPTEST_CASES=20000 cargo test -p lumenna-core --test properties
 
 CI (`.github/workflows/ci.yml`) builds each mobile app once and tests it on several devices in
 parallel jobs that share the build. **Two tiers**: the Rust tests, the builds, the clients, the
-GTK and Windows UI tests and a smoke set of iOS and Android UI tests block; the full iOS and
+PowerShell module, the GTK and Windows UI tests and a smoke set of iOS and Android UI tests block; the full iOS and
 Android suites report without blocking, since a slow runner fails them where nothing is wrong.
 A test that has only failed for a reason can join the smoke set. **A branch runs only what its
 changes can break** (the `changes` job: a change to `crates/`, `Cargo.*` or `ci.yml` runs
