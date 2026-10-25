@@ -220,7 +220,7 @@ class Notifications:
 class Session:
     """One run of the app on a store of its own."""
 
-    def __init__(self, seed=(), orca=None, environment=None, device_settings=None):
+    def __init__(self, seed=(), orca=None, environment=None, device_settings=None, arguments=()):
         self.directory = tempfile.mkdtemp(prefix="lumenna-ui-")
         self.environment = dict(
             os.environ,
@@ -248,7 +248,7 @@ class Session:
         self.orca = Orca(self.directory) if orca else None
         self.keyboard = Keyboard()
         # Never the person's global shortcuts, as the Windows tests do.
-        self.process = subprocess.Popen([str(APP), "--no-shortcuts"], env=self.environment,
+        self.process = subprocess.Popen([str(APP), "--no-shortcuts", *arguments], env=self.environment,
                                         stdout=subprocess.DEVNULL,
                                         stderr=open(Path(self.directory) / "app.log", "w"))
         self.app = None
@@ -274,6 +274,12 @@ class Session:
             if app and app.get_process_id() == self.process.pid:
                 return app
         return None
+
+    def start_again(self, *args):
+        """Starts the app again on this session's store, as a desktop entry's action does: the
+        copy already running is handed what it was started with, and this one ends."""
+        return subprocess.run([str(APP), "--no-shortcuts", *args], env=self.environment, capture_output=True,
+                              text=True, timeout=30)
 
     def lum(self, *args):
         """Runs `lum` on this session's store, as another process writing to it."""

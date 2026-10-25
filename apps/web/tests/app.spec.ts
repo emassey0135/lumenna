@@ -26,6 +26,23 @@ test("the store opens in the browser and the places are a tree", async ({ page }
   await expect(places.getByRole("row", { name: /^Inbox/ })).toBeVisible();
 });
 
+test("a launch shortcut in the address does what it says once, and leaves the address", async ({ page }) => {
+  await page.goto("/?launch=new-task");
+  const field = page.getByRole("combobox", { name: "Task" });
+  await expect(field).toBeFocused({ timeout: 30_000 });
+  await expect(page).toHaveURL((url) => !url.searchParams.has("launch"));
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeHidden();
+
+  await page.goto("/?launch=today");
+  await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveText("Today", { timeout: 30_000 });
+  await expect(page).toHaveURL((url) => !url.searchParams.has("launch"));
+  // Reloaded, the address no longer asks for anything: quick add stays closed.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Lumenna", level: 1 })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("dialog")).toBeHidden();
+});
+
 test("quick add reads back what it will add, and adds it", async ({ page }) => {
   await open(page);
   await page.getByRole("button", { name: "New task" }).click();

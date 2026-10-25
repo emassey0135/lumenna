@@ -170,6 +170,14 @@ pub fn receive(event: Event) {
     }
 }
 
+/// A launch shortcut chosen from outside (`--launch <id>`, a desktop entry's action), on the
+/// first start or from another: the window comes up and the app does it.
+pub fn launch(id: &str) {
+    let Some(app) = app() else { return };
+    app.show_window();
+    app.model.send(lumenna_ffi::ShellEvent::Launch(id.to_owned()));
+}
+
 /// The application was activated: the first time, opens the store and the window; after
 /// that — the app started again, which GApplication turns into this — shows the window.
 pub fn activate(application: &gtk::Application, directory: &Path, background: bool, shortcuts: bool) {
@@ -293,6 +301,7 @@ impl App {
         // Resident: closing the window does not end the app.
         std::mem::forget(self.application.hold());
         self.go(Place::Today, false);
+        crate::appimage::keep_current(&self.application);
         if !background {
             self.show_window();
         }
@@ -569,6 +578,8 @@ impl App {
 
     pub fn show_window(&self) {
         self.window.present();
+        // Run from an AppImage, the first window shown offers the applications menu, once.
+        crate::appimage::offer(&self.window);
     }
 
     fn quit(&self) {

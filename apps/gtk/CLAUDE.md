@@ -102,8 +102,52 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   starts slower). Built on Ubuntu 24.04, it needs glibc 2.39 (Ubuntu 24.04, Debian 13, Fedora 40 and
   later); older systems have the Flatpak. The job starts it under `xvfb-run` with
   `--background` and requires it still running, its store made. The tools run as AppImages
-  themselves, so the job sets `APPIMAGE_EXTRACT_AND_RUN`. Not yet: its updater, and offering a
-  desktop entry on first run, which the shortcuts portal needs for an unsandboxed app.
+  themselves, so the job sets `APPIMAGE_EXTRACT_AND_RUN`. Not yet: its updater.
+- **Run from an AppImage, the first window shown offers the applications menu, once**
+  (`appimage.rs`, the core's `launch::menu_entry_words`): on yes, the desktop entry the build was
+  made with (`include_str!`), every `Exec` naming the AppImage by its own path (`$APPIMAGE`, not
+  the program inside, whose mount is gone once it stops), its actions with it, a `TryExec` so the
+  entry hides while the file is gone, and `X-Lumenna-AppImage=true`; written to
+  `~/.local/share/applications` with the icon from the AppDir's hicolor theme, as `install.sh`
+  does, beside KRunner's runner and the search's D-Bus service naming the AppImage (not GNOME
+  Shell's provider: see the search below). The answer is kept in `~/.config/lumenna/applications-menu` (`added` or `declined`), so
+  it is never asked again; a failed write keeps nothing, and is offered again. Once added, each
+  start writes the entry again when it no longer says what it would (the AppImage moved, or a
+  newer one lists other actions), only if it is still the AppImage's own: one the person removed
+  stays gone, and one `install.sh` or a package wrote is never touched, nor offered over. Only
+  the usual profile's copy offers, since the entry is named by the plain identifier; one in
+  `--background` offers when its window is first shown. This entry is what the shortcuts portal
+  needs for an unsandboxed app. The autostart entry names the AppImage too
+  (`appimage::program`).
+- **The launch shortcuts are the desktop entry's actions** (`data/….desktop`, `Exec=lumenna-gtk
+  --launch <id>`, kept as `launch_shortcuts()` says by a test of the core): `--launch <id>`
+  (`profile::Arguments::launch`) is sent as `ShellEvent::Launch(id)` with the window shown
+  (`window::launch`), on a first start once the window is up, and from a later start through
+  the running copy's `app.launch` action (a string), which the second process activates over
+  the bus after `register` finds it remote, then ends. `install.sh` rewrites every `Exec`,
+  actions included; the Flatpak installs the entry as it is, and `flatpak build-export` rewrites
+  every group's `Exec` to `flatpak run --command=lumenna-gtk …`, the manifest's `command`, with
+  the arguments kept. `test_launch.py` starts the app with one and starts it again with another.
+- **The desktop's search is the core's** (`search.rs`, `records::search`): GNOME Shell's
+  `org.gnome.Shell.SearchProvider2` and KRunner's `org.kde.krunner1`, objects on the app's own
+  bus connection (`/dev/emassey0135/Lumenna/SearchProvider` and `/KRunner`), registered as it
+  starts up, before its name is answered on. Both answer from `Device::search_results` in its
+  order and words: a result's `title` is its name, its `line` the shell's description and
+  KRunner's subtext; KRunner's relevance falls from 1 down the core's order, every match a
+  possible one (category 30). Activating a result (`ActivateResult`, `Run`) sends
+  `Launch(document.launch)`; the shell's own Launch Search shows the window. The shell names
+  results by identifier alone, so what was found is kept (`FOUND`) for its `GetResultMetas`.
+  Their files are `data/`'s `…search-provider.ini`, `…krunner.desktop` (installed as
+  `krunner/dbusplugins/<id>.desktop`) and `….service`, a session D-Bus service that starts the
+  app with `--background` to answer when it is not running. **GNOME Shell reads providers only
+  from the system's data folders** (`collectFromDatadirs('search-providers', false)`:
+  `XDG_DATA_DIRS`, never `~/.local/share`), so only the Flatpak, whose exports are among them,
+  gets the GNOME provider; `install.sh` and the AppImage install KRunner's runner and the service,
+  which KRunner and the bus read from `~/.local/share`, and leave GNOME's out. Only the usual
+  profile's copy owns the name the files give; `test_search.py` asks another profile's by its own.
+- **No widgets on Linux**: GNOME has no desktop widgets, and KDE's are QML plasmoids, outside
+  GTK; so the glance (`records::glance`) has no client here. The ways in from outside are the
+  desktop entry's actions, the desktop's search, the tray and the shortcuts from anywhere.
 
 - **Every list is a `GtkListView` that says it is a tree** (`tree.rs`). `GtkTreeView`
   exposes no rows to AT-SPI in GTK 4, and a list view with `TreeExpander` reports a flat
@@ -200,7 +244,7 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
 - **First focus on an expandable row says "expanded" twice**: GTK reports the new
   accessible object's initial state as a change.
 - **The global shortcuts go through the GlobalShortcuts portal**, which knows an
-  unsandboxed app only by an installed desktop entry (`install.sh`), so it is always asked
+  unsandboxed app only by an installed desktop entry (`install.sh`, or the AppImage's own), so it is always asked
   under the app's own identifier. Without the portal, on X11 (Xfce, GNOME before 48), the same
   keys are grabbed on the root window over an X connection of the app's own (x11rb), Caps Lock
   and Num Lock either way. The tray (`ksni`) waits quietly for a host; GNOME has none without

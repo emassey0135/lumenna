@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+Name=Lumenna
+Comment=Tasks, projects, labels, saved filters and blocks in Lumenna
+Icon=dev.emassey0135.Lumenna
+X-KDE-ServiceTypes=Plasma/Runner
+X-KDE-PluginInfo-Name=dev.emassey0135.Lumenna
+X-KDE-PluginInfo-EnabledByDefault=true
+X-Plasma-API=DBus
+X-Plasma-DBusRunner-Service=dev.emassey0135.Lumenna
+X-Plasma-DBusRunner-Path=/dev/emassey0135/Lumenna/KRunner

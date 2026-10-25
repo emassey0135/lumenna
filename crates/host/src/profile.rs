@@ -14,6 +14,10 @@ pub struct Arguments {
     /// `--no-shortcuts`: leave the shortcuts from anywhere to another copy — one open on
     /// another profile, or the UI tests', which must not take the person's keys.
     pub no_shortcuts: bool,
+    /// `--launch <id>`: a launch shortcut chosen from outside (`lumenna_records::launch`): a
+    /// desktop entry's action, a Jump List's task. The app does it as it opens, or a copy already
+    /// running does.
+    pub launch: Option<String>,
 }
 
 /// Reads the arguments after the program's name. Anything not understood is ignored, so an
@@ -26,9 +30,12 @@ pub fn arguments(args: impl IntoIterator<Item = String>) -> Arguments {
             "--background" => parsed.background = true,
             "--no-shortcuts" => parsed.no_shortcuts = true,
             "--profile" => parsed.profile = args.next().map(PathBuf::from),
+            "--launch" => parsed.launch = args.next(),
             other => {
                 if let Some(path) = other.strip_prefix("--profile=") {
                     parsed.profile = Some(PathBuf::from(path));
+                } else if let Some(id) = other.strip_prefix("--launch=") {
+                    parsed.launch = Some(id.to_owned());
                 }
             }
         }
@@ -124,6 +131,13 @@ mod tests {
     fn a_copy_can_leave_the_shortcuts_to_another() {
         assert!(parse(&["--no-shortcuts"]).no_shortcuts);
         assert!(!parse(&[]).no_shortcuts, "the shortcuts are taken unless asked not to");
+    }
+
+    #[test]
+    fn a_launch_shortcut_can_be_named_either_way() {
+        assert_eq!(parse(&["--launch", "new-task"]).launch.as_deref(), Some("new-task"));
+        assert_eq!(parse(&["--launch=today", "--no-shortcuts"]).launch.as_deref(), Some("today"));
+        assert_eq!(parse(&[]).launch, None);
     }
 
     #[test]
