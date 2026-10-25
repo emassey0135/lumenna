@@ -5,8 +5,7 @@
 //! an audio session), and WatchConnectivity is a request and its answer, not a byte stream.
 //!
 //! It is the same Automerge sync protocol as [`session`](crate::session), with every
-//! document in each message rather than one document per frame, so a round trip does every
-//! document's round at once:
+//! document's round in each message, as a session's frames carry them (`crate::rounds`):
 //!
 //! 1. The side that starts sends a message marked *fresh*: the documents it holds, and its
 //!    first sync message for each. The other side begins a new exchange on seeing it.
@@ -18,9 +17,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lumenna_store::{Adopted, DocId, Store, SyncName, SyncState};
+use lumenna_store::{Adopted, DocId, Store, SyncName};
 
 use crate::error::{Result, SyncError};
+use crate::rounds::{Reader, Rounds, Said, put_bytes, put_len, put_said};
 
 /// The exchange's message format. Another is refused, saying which side to update.
 const PROTOCOL: u32 = 0;
@@ -32,7 +32,7 @@ pub const MAX_ROUNDS: usize = 1_000;
 /// One side of an exchange.
 #[derive(Default)]
 pub struct Exchange {
-    states: BTreeMap<SyncName, SyncState>,
+    rounds: Rounds,
     known: BTreeSet<SyncName>,
     sent: usize,
     answering: bool,
@@ -49,7 +49,7 @@ impl std::fmt::Debug for Exchange {
 struct Message {
     fresh: bool,
     documents: Vec<String>,
-    messages: Vec<(String, Vec<u8>)>,
+    messages: Said,
 }
 
 impl Exchange {
@@ -75,13 +75,7 @@ impl Exchange {
         // Only the newest generation either side holds, as in a session (`crate::session`).
         let newest = self.known.iter().map(|name| name.generation.clone()).max().flatten();
         self.known.retain(|name| name.generation == newest);
-        let mut messages = Vec::new();
-        for name in &self.known {
-            let state = self.states.entry(name.clone()).or_default();
-            if let Some(message) = store.sync_message(name, state)? {
-                messages.push((name.name(), message));
-            }
-        }
+        let messages = self.rounds.say(store, &self.known)?;
         let fresh = self.sent == 0 && !self.answering;
         self.sent += 1;
         self.sent_nothing = messages.is_empty();
@@ -104,16 +98,8 @@ impl Exchange {
         // A kind of document this version does not know is left alone, as in a session.
         self.known.extend(message.documents.iter().filter_map(|name| SyncName::parse(name)));
         self.heard_nothing = message.messages.is_empty();
-        let mut changed = Vec::new();
-        for (name, sync) in &message.messages {
-            let Some(name) = SyncName::parse(name) else { continue };
-            self.known.insert(name.clone());
-            let state = self.states.entry(name.clone()).or_default();
-            if store.receive_sync_message(&name, state, sync)? {
-                changed.push(name.id);
-            }
-        }
-        Ok(changed)
+        self.known.extend(message.messages.iter().filter_map(|(name, _)| SyncName::parse(name)));
+        self.rounds.hear(store, &message.messages, |_| true)
     }
 
     /// Whether both sides have nothing more to say: the last message sent was empty, and so
@@ -148,25 +134,12 @@ fn encode(message: &Message) -> Vec<u8> {
     for name in &message.documents {
         put_bytes(&mut out, name.as_bytes());
     }
-    put_len(&mut out, message.messages.len());
-    for (name, bytes) in &message.messages {
-        put_bytes(&mut out, name.as_bytes());
-        put_bytes(&mut out, bytes);
-    }
+    put_said(&mut out, &message.messages);
     out
 }
 
-fn put_len(out: &mut Vec<u8>, len: usize) {
-    out.extend_from_slice(&u32::try_from(len).unwrap_or(u32::MAX).to_be_bytes());
-}
-
-fn put_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
-    put_len(out, bytes.len());
-    out.extend_from_slice(bytes);
-}
-
 fn decode(bytes: &[u8]) -> Result<Message> {
-    let mut reader = Reader { bytes, at: 0 };
+    let mut reader = Reader::new(bytes);
     let protocol = reader.u32()?;
     if protocol != PROTOCOL {
         return Err(SyncError::Protocol(format!(
@@ -175,43 +148,9 @@ fn decode(bytes: &[u8]) -> Result<Message> {
     }
     let fresh = reader.take(1)?[0] != 0;
     let documents = (0..reader.u32()?).map(|_| reader.text()).collect::<Result<_>>()?;
-    let messages = (0..reader.u32()?)
-        .map(|_| Ok((reader.text()?, reader.chunk()?.to_vec())))
-        .collect::<Result<_>>()?;
-    if reader.at != bytes.len() {
-        return Err(SyncError::Protocol("a link message with something after its end".to_owned()));
-    }
+    let messages = reader.said()?;
+    reader.end()?;
     Ok(Message { fresh, documents, messages })
-}
-
-struct Reader<'a> {
-    bytes: &'a [u8],
-    at: usize,
-}
-
-impl<'a> Reader<'a> {
-    fn take(&mut self, len: usize) -> Result<&'a [u8]> {
-        let end = self.at.checked_add(len).filter(|end| *end <= self.bytes.len());
-        let end = end.ok_or_else(|| SyncError::Protocol("a link message cut short".to_owned()))?;
-        let taken = &self.bytes[self.at..end];
-        self.at = end;
-        Ok(taken)
-    }
-
-    fn u32(&mut self) -> Result<u32> {
-        let bytes = self.take(4)?;
-        Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-
-    fn chunk(&mut self) -> Result<&'a [u8]> {
-        let len = self.u32()? as usize;
-        self.take(len)
-    }
-
-    fn text(&mut self) -> Result<String> {
-        String::from_utf8(self.chunk()?.to_vec())
-            .map_err(|_| SyncError::Protocol("a link message naming a document in something not UTF-8".to_owned()))
-    }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -300,7 +239,7 @@ pub fn parcel(store: &mut Store) -> Result<Option<Vec<u8>>> {
 ///
 /// If the parcel does not read, comes from another format, or the store refuses a change.
 pub fn unparcel(store: &mut Store, bytes: &[u8]) -> Result<Vec<DocId>> {
-    let mut reader = Reader { bytes, at: 0 };
+    let mut reader = Reader::new(bytes);
     let protocol = reader.u32()?;
     if protocol != PROTOCOL || reader.take(1)?[0] != PARCEL {
         return Err(SyncError::Protocol(format!(

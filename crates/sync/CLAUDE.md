@@ -37,16 +37,19 @@ the CLI adds only the terminal prompt, the daemon's socket and signals.
 - **A round that misses a device is retried**, after 5 seconds and doubling to the full
   round's five minutes; otherwise a change sent while a device is briefly unreachable waits
   for the next full round.
-- **The session is lockstep per document**: both sides send one frame (a message, or empty)
-  then read one; both empty ends the document, so both stop together. Sync state is per
-  session, not saved.
+- **The session is lockstep, every document in each round** (`rounds.rs`, which the exchange
+  shares): both sides send one frame (every document's next message, or empty) then read one;
+  both empty ends the session, so both stop together. A round per document made a session
+  over a relay cost every document's round trips in turn. Sync state is per session, not
+  saved.
 - **Only the newest generation either side holds is synced** (a store erased for good,
   `crates/store/CLAUDE.md`), worked out alike on both sides from the hellos' names
   (`SyncName`), and the side holding the older takes the newer in when the session ends
   (`Summary::adopted`); the exchange does the same once settled (`Exchange::finish`), and a
-  parcel of another generation is ignored. A store erased says protocol 1 (`ERASED`), so a
-  build from before generations refuses it rather than feeding one history's frames into the
-  other's.
+  parcel of another generation is ignored, as is a session's message for a document the two
+  did not agree on. Every build speaking session protocol 2 knows generations; builds from
+  before (0, and 1 from an erased store) are refused, and refuse it, with "update the older
+  one".
 - **Local discovery is standard DNS-SD** (`discovery/`): `_lumenna._udp` (devices) and
   `_lumenna-pair._udp` (pairing), TXT `id` plus `a0`… addresses. Apple uses the system
   responder (on iOS, Bonjour, needing only `NSBonjourServices`, no multicast entitlement).
