@@ -19,11 +19,81 @@ struct LumennaWidgets: WidgetBundle {
 
     var body: some Widget {
         NowWidget()
-        #if !os(watchOS)
+        #if os(watchOS)
+        NewTaskComplication()
+        #else
         TodayWidget()
         #endif
+        // Control Center's, the core's (`controls()`).
+        if #available(iOS 18.0, macOS 26.0, watchOS 26.0, *) {
+            TimerControlWidget()
+        }
+        if #available(iOS 18.0, macOS 26.0, watchOS 26.0, *) {
+            NewTaskControlWidget()
+        }
     }
 }
+
+#if os(watchOS)
+/// New Task on a watch face: the core's launch shortcut (`LaunchComplication`), tapped to open quick
+/// add. It shows no glance, so it has a timeline of one entry, read again never.
+struct NewTaskComplication: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: LaunchComplication.kind, provider: LaunchProvider()) { _ in
+            LaunchComplicationView()
+        }
+        .configurationDisplayName(LaunchComplication.name)
+        .description(LaunchComplication.description)
+        .supportedFamilies(LaunchComplication.families)
+    }
+}
+
+struct LaunchEntry: TimelineEntry {
+    let date: Date
+}
+
+struct LaunchProvider: TimelineProvider {
+    func placeholder(in context: Context) -> LaunchEntry { LaunchEntry(date: Date()) }
+
+    func getSnapshot(in context: Context, completion: @escaping (LaunchEntry) -> Void) {
+        completion(LaunchEntry(date: Date()))
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<LaunchEntry>) -> Void) {
+        completion(Timeline(entries: [LaunchEntry(date: Date())], policy: .never))
+    }
+}
+
+/// A plus, and the core's name where there is room for it.
+struct LaunchComplicationView: View {
+    @Environment(\.widgetFamily) private var family
+
+    var body: some View {
+        Group {
+            switch family {
+            case .accessoryInline:
+                Label(LaunchComplication.name, systemImage: LaunchComplication.symbol)
+            case .accessoryCorner:
+                Image(systemName: LaunchComplication.symbol)
+                    .font(.title2.weight(.semibold))
+                    .widgetLabel(LaunchComplication.name)
+            default:
+                ZStack {
+                    AccessoryWidgetBackground()
+                    Image(systemName: LaunchComplication.symbol)
+                        .font(.title2.weight(.semibold))
+                }
+            }
+        }
+        .widgetAccentable()
+        .containerBackground(.clear, for: .widget)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(LaunchComplication.name)
+        .accessibilityAddTraits(.isButton)
+        .widgetURL(LaunchURL.of(LaunchComplication.launch))
+    }
+}
+#endif
 
 struct NowWidget: Widget {
     static let kind = "now"
@@ -123,6 +193,8 @@ enum WidgetStore {
             // What the widget reads next, written while the store is still open: the app may not
             // be running to write it.
             try? GlanceFile(device: device)?.writeNow()
+            // Done, a task's timer stops: the Timer's control reads again.
+            if #available(iOS 18.0, macOS 26.0, *) { ControlCenter.shared.reloadAllControls() }
         }
         AppDependencyManager.shared.add(dependency: store)
     }

@@ -117,9 +117,9 @@ struct RootView: View {
                 PlaceView(core: core, place: place)
             }
             .onOpenURL { url in
+                // A complication tapped, on one of the core's launches.
                 guard let id = LaunchURL.id(in: url) else { return }
-                core.app.send(.launch(id))
-                core.app.whenStill { launched = core.app.view.place }
+                Launches.shared.ask(id)
             }
             .onReceive(NotificationCenter.default.publisher(for: Opened.reminded)) { note in
                 guard let reminded = note.object as? RemindedOf else { return }
@@ -154,6 +154,15 @@ struct RootView: View {
                     }
                     questions.asking?.answeredElsewhere = RemindersModel.answersItself
                     questions.screens = WatchScreens(core: core, asker: asker)
+                }
+                // A complication's or a control's launch (`NewTaskControlIntent`), and any that
+                // came before this screen did: the app's place, or quick add straight away if the
+                // app opened its line (New Task).
+                Launches.shared.handle { id in
+                    core.app.send(.launch(id))
+                    core.app.whenStill {
+                        if core.app.view.line != nil { adding = true } else { launched = core.app.view.place }
+                    }
                 }
             }
             .alert("Could not do that", isPresented: failed) {

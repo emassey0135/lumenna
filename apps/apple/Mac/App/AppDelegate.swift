@@ -35,6 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Assistant.serve(core.app.device) { [weak self] in self?.core.app.send(.launch($0)) }
         NSApp.mainMenu = MainMenu.build()
         showMainWindow(nil)
+        // A widget's or a control's launch (`NewTaskControlIntent`), and any that came first.
+        Launches.shared.handle { [weak self] in self?.launch($0) }
         installStatusItem()
         quickAdd = QuickAddPanel(core: core)
         HotKeys.start(
@@ -66,11 +68,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         reminders?.now()
     }
 
-    /// A widget tapped: the window, on the core's launch, which the window follows.
+    /// A widget tapped: the core's launch it names.
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let core, let id = urls.lazy.compactMap(LaunchURL.id(in:)).first else { return }
+        guard let id = urls.lazy.compactMap(LaunchURL.id(in:)).first else { return }
+        Launches.shared.ask(id)
+    }
+
+    /// Launch `id`: the window, on the core's launch, which the window follows, and quick add
+    /// over it if the app opened its line (New Task).
+    private func launch(_ id: String) {
+        guard let core else { return }
         showMainWindow(nil)
         core.app.send(.launch(id))
+        core.app.whenStill { [weak self] in
+            if core.app.view.line != nil { self?.newTask(nil) }
+        }
     }
 
     /// Closing the window keeps the app running; clicking the Dock icon brings it back.

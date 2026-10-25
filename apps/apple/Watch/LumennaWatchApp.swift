@@ -1,9 +1,10 @@
+import LumennaApp
 import SwiftUI
 import UserNotifications
 import WatchKit
 
 @main
-struct LumennaWatchApp: App {
+struct LumennaWatchApp: SwiftUI.App {
     @WKApplicationDelegateAdaptor private var delegate: WatchDelegate
     @StateObject private var opened = Opened.shared
     @Environment(\.scenePhase) private var phase

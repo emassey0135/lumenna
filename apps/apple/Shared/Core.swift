@@ -92,6 +92,9 @@ final class Core {
         guard watcher == nil else { return }
         seenHeads = try? app.device.heads()
         watcher = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            #if os(macOS) && !APP_STORE
+            self?.glance?.tick()
+            #endif
             guard let self, let heads = try? self.app.device.heads(), heads != self.seenHeads else { return }
             self.seenHeads = heads
             let own = Date().timeIntervalSince(self.app.lastSent) < 3

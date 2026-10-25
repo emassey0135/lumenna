@@ -1,3 +1,4 @@
+import LumennaApp
 import UIKit
 
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -37,6 +38,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let url = connectionOptions.urlContexts.first?.url {
             DispatchQueue.main.async { [weak self] in self?.open(url) }
         }
+        // A control's launch (`NewTaskControlIntent`), and any that came before the window did.
+        DispatchQueue.main.async { [weak self] in
+            Launches.shared.handle { self?.launch($0) }
+        }
         core?.backUpIfDue(presentingFrom: window.rootViewController)
     }
 
@@ -45,12 +50,22 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let url = contexts.first?.url { open(url) }
     }
 
-    /// A launch the URL names (`LaunchURL`), which the app does, then the screen showing the
-    /// place it left, once it is still.
+    /// A launch the URL names (`LaunchURL`).
     private func open(_ url: URL) {
-        guard let id = LaunchURL.id(in: url), let core else { return }
+        guard let id = LaunchURL.id(in: url) else { return }
+        Launches.shared.ask(id)
+    }
+
+    /// Launch `id`, which the app does, then the screen showing the place it left, once it is
+    /// still, and quick add over it if the app opened its line (New Task).
+    private func launch(_ id: String) {
+        guard let core else { return }
         core.app.send(.launch(id))
-        core.app.whenStill { [weak self] in (self?.window?.rootViewController as? PlaceFollowing)?.showAppPlace() }
+        core.app.whenStill { [weak self] in
+            guard let root = self?.window?.rootViewController else { return }
+            (root as? PlaceFollowing)?.showAppPlace()
+            if core.app.view.line != nil { (root as? CommandActions)?.newTask?() }
+        }
     }
 
     /// The Home Screen's quick action, chosen while the app was running.

@@ -153,7 +153,9 @@ crosses the FFI.
   Center's, a Quick Settings tile, a watch's button or complication. The timer's shows
   `Device::timer_control` (running, what runs or would start, else why nothing would) and a press
   is `Device::toggle_timer`: it stops the timer running, else starts on What Should I Work On?'s
-  first choice. New Task is its launch shortcut. No platform decides what a press starts.
+  first choice. New Task is its launch shortcut. No platform decides what a press starts. A
+  control that cannot reach its store reads the app's `timer_control_file` instead, as a widget
+  reads the glance's.
 - **What a platform's search finds is the core's** (`records::search`: `search_documents` for an
   index such as Spotlight's or AppSearch, `search_results(text)` for one that asks as the person
   types, such as GNOME Shell or KRunner): each a `SearchDocument` opened by its `launch`

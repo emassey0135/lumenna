@@ -37,7 +37,7 @@ use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
 use lumenna_app::speech::{self, Clock, Spoken};
 use lumenna_records::assistant::AssistantOperation;
-use lumenna_records::controls::Control;
+use lumenna_records::controls::{Control, TimerControl};
 use lumenna_records::glance::GlanceWidget;
 use lumenna_records::launch::LaunchShortcut;
 use lumenna_records::{Completions, LumennaError, Syntax};
@@ -334,6 +334,25 @@ pub fn glance_from_file(contents: String) -> Result<Vec<GlanceEntry>, LumennaErr
     serde_json::from_str(&contents).map_err(|error| LumennaError::new(error.to_string()))
 }
 
+/// The timer's control (`Device::timer_control`) as the file an app hands a control that cannot
+/// reach its store: the Mac's direct download, whose Control Center control is sandboxed away from
+/// it. JSON in the record's own shape, as the glance's file is.
+#[export]
+pub fn timer_control_file(control: TimerControl) -> String {
+    serde_json::to_string(&control).unwrap_or_default()
+}
+
+/// The timer's control in a file `timer_control_file` wrote.
+///
+/// # Errors
+///
+/// If `contents` is not one: a file cut short, or written by a build whose control was shaped
+/// otherwise.
+#[export]
+pub fn timer_control_from_file(contents: String) -> Result<TimerControl, LumennaError> {
+    serde_json::from_str(&contents).map_err(|error| LumennaError::new(error.to_string()))
+}
+
 fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaError> {
     std::thread::Builder::new()
         .name(name.to_owned())
@@ -424,6 +443,19 @@ mod tests {
         fn day(&self, iso: &str) -> String {
             iso.to_owned()
         }
+    }
+
+    #[test]
+    fn a_timer_control_file_reads_back_as_the_control_written() {
+        let control = TimerControl {
+            running: true,
+            detail: "Essay".to_owned(),
+            action: "Stop Timer".to_owned(),
+            action_sentence: "Stop timer".to_owned(),
+            enabled: true,
+        };
+        assert_eq!(timer_control_from_file(timer_control_file(control.clone())).unwrap(), control);
+        assert!(timer_control_from_file("{\"running\":tr".to_owned()).is_err());
     }
 
     #[test]
