@@ -200,7 +200,11 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   `Device.assist("complete_task")`. Glance composes again only when its state changes, so a
   refresh moves `Widgets.REFRESH`. The two widgets are the core's (`glance_widgets()`: Now and
   Today), their names and descriptions in `strings.xml` as `widget_<id>` and
-  `widget_<id>_description`, which a test of the core checks.
+  `widget_<id>_description`, which a test of the core checks; each draws the parts the core lists
+  for it, in its order (`Widgets.parts`), so a widget short of room loses the last. Today's last
+  is New Task (`GlancePart.NEW_TASK`): Glance's `FilledButton` with a plus, in the `new-task`
+  launch shortcut's sentence and named by it, a TalkBack stop of its own as Mark done is, opening
+  the app on quick add as New Task's tile does.
 - **The ways in from outside are the core's** (`Launches`, shared's `Launching`): the icon's
   shortcuts are set at run time from `launch_shortcuts()` (`ShortcutManagerCompat`), and they, the
   Quick Settings tile, a widget, the tile and a complication open the app on a launch `id`, sent
