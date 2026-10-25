@@ -60,10 +60,44 @@ The order, and why:
   listing of the core's, read as one.
 - **A review**: every project looked at in turn at an interval of its own, as OmniFocus' weekly
   review is, each marked reviewed; the staleness question above is the same kind of asking.
+- **Habits, from what is kept already**: a repeating task already says its cadence (`every 2
+  days`, `every! 2 days` from when it is done, `every mon, wed, fri`), which stands in for a
+  target per period, and never piles up overdue copies, being one task whose date moves on.
+  Two things to add. A **streak**, counted from its completions (each records the occurrence
+  it completed) and said in words in its details and its glance line ("done 12 times running",
+  "missed Tuesday"). And, from the `postponed` tally, the planner asking of a task put off
+  again and again, repeating or not: "this has been put off five times; make it less often, or
+  drop it?", the staleness question's twin. No "3 times a week" of any days: a cadence says it
+  well enough.
+- **Energy, as the person rates it**: capacity for focus and for starting things, which ADHD
+  and other conditions make uneven, not calories, so it is estimated, as a length is, never
+  measured.
+  - **A task's energy** beside its estimate: low, medium or high. Unrated is medium, so rating
+    nothing changes nothing.
+  - **A day's capacity**: a usual amount, and a check-in to change today's ("I'm low today")
+    from a notification, a widget, the watch, or the app.
+  - **When energy is good**: a block, or a time of day, marked as the person's best or worst.
+  - **The planner uses them**, deterministically and only proposing, as everywhere: Plan the
+    Day stops before the day's capacity is spent and puts demanding tasks in the good hours;
+    saying one is low offers a lighter Replan from Now of the rest of the day. What it weighs
+    is said in the proposal's reasons, in words.
+  - Optional throughout: worth having with a few tasks rated, never a chore of rating them all.
+- **An emoji on a task, a block or a project**, drawn beside its name, as Structured and Tiimo
+  draw icons: any emoji, chosen with the platform's own picker (Win+. on Windows,
+  Control-Command-Space on a Mac, the keyboard on a phone, Ctrl+. in GNOME), so no app keeps a
+  set of icons of its own. The core keeps one emoji (a single grapheme it checks) and words it
+  nowhere: **left out of speech and braille**, since it is chosen to be seen and its name read
+  aloud before every title is noise; the details may name it. The CLI, Emacs and BTSpeak show
+  none.
 
 ## 4. Smaller gaps
 
 A day or less each, for between the larger pieces.
+
+- **A weekday of the month in a repetition**: "every first monday", "every last friday" and
+  "every month on the last friday" are misread (the line keeps "every" or "on the last friday"
+  in its title), though the model holds them already: a task's repetition is an RRULE
+  (`BYDAY=1MO`, `BYDAY=-1FR`). The parser's (`crates/parse`), with the words to say them back.
 
 ### Completion
 
@@ -513,6 +547,13 @@ What the web client gains from it:
   Lumenna is one person's tasks on that person's devices; the trust boundary (the device list),
   sync, erasure and the planner all assume it, and teams would multiply every one. Imports
   bring someone's tasks over from a team tool; they do not make Lumenna one.
+- **Calendar export** (decided 2026-10-25): every block mirrored onto a calendar would bury the
+  meetings there, and reminders already do the alerting. Calendar import, for the planner to
+  know real meetings, stays (Integrations).
+- **Contexts** (decided 2026-10-25), Taskwarrior's or OmniFocus' focus: one filter applied
+  everywhere until switched off. Saved filters are views a person chooses, and a block's task
+  filter is a context bound to the time it applies; a hidden filter left on would make every
+  list quietly show less than it says.
 - **A timeline of every field's history** (decided 2026-10-21): a task's history counts the one
   fact the records forget, how often its due date was moved later; the rest says nothing a
   person acts on.
