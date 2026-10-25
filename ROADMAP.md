@@ -94,8 +94,28 @@ Each is a thin adapter over the command surface.
   `AppShortcutsProvider` for Siri phrases with no setup. Add (in the quick-add grammar),
   complete, query by filter, today's plan, assign, start and stop. Hands-free capture is an
   accessibility feature. Check for an assistant-schema domain for tasks when building.
-- **A URL scheme** beside them, `lumenna://add?text=…` (one task per line, in the quick-add
-  grammar), so a Drafts action, or any app's x-callback-url, sends text in as tasks.
+- **A URL scheme**, `lumenna://`, on every platform, for Drafts, Scriptable, Keyboard Maestro,
+  Alfred and any app's x-callback-url:
+  - **Where:** Android's intent filter, Windows' protocol handler (the installer's and the
+    MSIX's), the desktop entry's `x-scheme-handler/lumenna`, and the web's `web+lumenna`
+    (browsers take only `web+` schemes). What a URL means and does is the core's, a records
+    module beside `launch`, so every platform only hands the URL over.
+  - **Without a token**, what is harmless and undoable: `open/<launch id>` (the core's launch
+    targets: `today`, `task:<id>`, …) and `add?text=…` (one task per line, in the quick-add
+    grammar), answering `x-success` with no data.
+  - **With a token**, every operation of the assistant table, as `lum mcp` has them
+    (`run/<operation>?<parameter>=…`), its record answered to `x-success`. The token is this
+    device's own, separate from `lum mcp`'s, made, shown and renewed in Settings, and this half
+    is off until it is turned on. An operation that asks first (erasing permanently) is never
+    run by a URL, token or not.
+  - **Why a token:** x-callback-url names no caller (iOS does not say which other developer's app
+    opened one), so a token is the only way to tell one apart, as Things and Bear do, and
+    `x-success` sends results wherever the caller says.
+- **Tasker on Android**: a Tasker plugin over the assistant table. Its action's own screen in
+  Lumenna chooses the operation and its parameters, which is the consent, and its results come
+  back as Tasker variables. Each firing carries a secret made when it was set up, so no other app
+  can fire it. App Functions are not Tasker's way in: only the system's assistant may call them.
+  Events reach Tasker by the hooks' broadcast (below).
 - **Android App Functions** (`androidx.appfunctions`, for Gemini) with AppSearch for
   retrieval; not the old App Actions. The same verbs as App Intents: add, what is next,
   start and stop a sitting's timer, complete. Through Gemini they reach the phone, the watch,
@@ -104,7 +124,17 @@ Each is a thin adapter over the command surface.
 - **Widgets**: WidgetKit (iOS, macOS) and Glance (Android): today's blocks and what is due.
   The watches' are widgets too: complications through WidgetKit on watchOS, with the running
   timer on the watch face, and tiles and complications on Wear OS.
-- **PowerShell module** wrapping `lum --json`; the same language as Windows hooks.
+- **A PowerShell module**: a script module (`.psm1`) in PowerShell over `lum --json`, for
+  Windows PowerShell 5.1 and PowerShell 7 on every platform, and the same language as Windows'
+  hooks. Unlike `lum`, it gives:
+  - objects rather than text, so the pipeline works: `Get-LumennaTask -Filter '@calls' | Complete-LumennaTask`
+  - verb-noun cmdlets with help
+  - `-WhatIf` and `-Confirm` on what removes, erasing permanently confirming by default
+  - errors as error records, and completion through `lum`'s own.
+
+  It offers the assistant table's operations, checked by a Pester test as App Intents and App
+  Functions are. Enough for scripting Windows: WSH and COM stay decided against (VBScript is on
+  its way out of Windows), and what cannot run PowerShell runs `lum` or opens a `lumenna://` URL.
 - **`lum mcp` without a command line.** Built: stdio and Streamable HTTP (`--listen`), tools,
   resources and their subscriptions, `--writes`. Still to come, so a person who never opens a
   terminal can add it: for Claude Desktop, a bundle (under Packaging); and for Claude on the web

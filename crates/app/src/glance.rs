@@ -20,6 +20,14 @@ pub struct GlanceEntry {
     pub next: Option<Line>,
     /// What is due: how many tasks, and how many overdue.
     pub due: Line,
+    /// Each task the moment names, as a task row says it: its title, then when it is due and
+    /// whether it is overdue.
+    pub tasks: Vec<Line>,
+    /// What a control that marks one of them done is called, in Title Case and in sentence
+    /// case, for a widget's button: the core's own action's name.
+    pub mark_done: String,
+    /// The same in sentence case.
+    pub mark_done_sentence: String,
     /// The whole glance as one sentence, for a screen reader's label of the widget.
     pub spoken: String,
 }
@@ -47,7 +55,33 @@ pub fn worded(moment: GlanceMoment, clock: &dyn Clock) -> GlanceEntry {
         said.push(format!("Next, {}", next.text));
     }
     said.push(due.text.clone());
-    GlanceEntry { spoken: said.join(". ") + ".", moment, headline, next, due }
+    let tasks = moment
+        .tasks
+        .iter()
+        .map(|task| {
+            let mut rest: Vec<String> = crate::speech::due_words(task.due.as_deref(), task.due_time.as_deref(), clock).into_iter().collect();
+            if task.overdue {
+                rest.push("overdue".to_owned());
+            }
+            Line::of(task.title.clone(), rest)
+        })
+        .collect();
+    let mark_done = lumenna_records::Action::new(
+        lumenna_records::ActionKind::MarkDone,
+        lumenna_records::Subject::Task,
+        lumenna_records::actions::MARK_DONE,
+        String::new(),
+    );
+    GlanceEntry {
+        spoken: said.join(". ") + ".",
+        moment,
+        headline,
+        next,
+        due,
+        tasks,
+        mark_done: mark_done.title,
+        mark_done_sentence: mark_done.sentence,
+    }
 }
 
 /// A block as the day says one: "<start> to <end>, <title>".
@@ -109,6 +143,24 @@ mod tests {
         assert_eq!(entry.next.unwrap().text, "12:00 to 13:00, Lunch");
         assert_eq!(entry.due.text, "3 tasks due, 1 overdue");
         assert_eq!(entry.spoken, "Deep work, until 11:00. Next, 12:00 to 13:00, Lunch. 3 tasks due, 1 overdue.");
+    }
+
+    #[test]
+    fn each_task_due_reads_as_a_task_row_says_it_and_its_button_is_the_cores_mark_done() {
+        let task = |title: &str, time: Option<&str>, overdue| lumenna_records::glance::GlanceTask {
+            id: title.to_owned(),
+            title: title.to_owned(),
+            due: Some("due today".to_owned()),
+            due_time: time.map(str::to_owned),
+            overdue,
+        };
+        let entry = worded(
+            GlanceMoment { tasks: vec![task("Call the bank", Some("15:00"), false), task("Pay rent", None, true)], due: 2, overdue: 1, ..moment() },
+            &TwentyFour,
+        );
+        let lines: Vec<&str> = entry.tasks.iter().map(|line| line.text.as_str()).collect();
+        assert_eq!(lines, ["Call the bank, due today at 15:00", "Pay rent, due today, overdue"]);
+        assert_eq!((entry.mark_done.as_str(), entry.mark_done_sentence.as_str()), ("Mark Done", "Mark done"));
     }
 
     #[test]
