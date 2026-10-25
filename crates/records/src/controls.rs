@@ -120,6 +120,30 @@ mod tests {
         assert_eq!((controls[1].name.as_str(), controls[1].kind), (new_task.title.as_str(), ControlKind::Button));
     }
 
+    /// The text of `<string name="{name}">` in the Android resources file at `path`.
+    fn android_string(path: &str, name: &str) -> String {
+        let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(path);
+        let strings = std::fs::read_to_string(&file).unwrap();
+        let element = format!("<string name=\"{name}\">");
+        let start = strings.find(&element).unwrap_or_else(|| panic!("no {name} in {path}")) + element.len();
+        strings[start..start + strings[start..].find("</string>").unwrap()].replace(r"\'", "'")
+    }
+
+    #[test]
+    fn android_names_its_controls_ahead_as_the_core_words_them() {
+        // The Quick Settings tiles' manifest labels, before a tile is first drawn, and the watch's
+        // New Task complication as the complication picker lists it: sentence case, as Android's.
+        for control in controls() {
+            let name = format!("control_{}", control.id.replace('-', "_"));
+            assert_eq!(android_string("apps/android/app/src/main/res/values/strings.xml", &name), control.sentence);
+        }
+        let new_task = controls().into_iter().find(|c| c.id == "new-task").unwrap();
+        assert_eq!(
+            android_string("apps/android/wear/src/main/res/values/strings.xml", "complication_new_task"),
+            new_task.sentence
+        );
+    }
+
     #[test]
     fn with_nothing_running_and_nothing_to_start_the_timer_says_why_and_does_nothing() {
         let snapshot = Snapshot::default();
