@@ -517,6 +517,13 @@ What the web client gains from it:
   Lumenna is one person's tasks on that person's devices; the trust boundary (the device list),
   sync, erasure and the planner all assume it, and teams would multiply every one. Imports
   bring someone's tasks over from a team tool; they do not make Lumenna one.
+- **Calendar export** (decided 2026-10-25): every block mirrored onto a calendar would bury the
+  meetings there, and reminders already do the alerting. Calendar import, for the planner to
+  know real meetings, stays (Integrations).
+- **Contexts** (decided 2026-10-25), Taskwarrior's or OmniFocus' focus: one filter applied
+  everywhere until switched off. Saved filters are views a person chooses, and a block's task
+  filter is a context bound to the time it applies; a hidden filter left on would make every
+  list quietly show less than it says.
 - **A timeline of every field's history** (decided 2026-10-21): a task's history counts the one
   fact the records forget, how often its due date was moved later; the rest says nothing a
   person acts on.
