@@ -279,6 +279,15 @@ pub fn parse_recurrence(words: &[Word], at: usize) -> Option<(RecurrenceSpec, bo
         return Some((RecurrenceSpec::Weekdays, from_completion, index + 1 - at));
     }
 
+    // "every first monday", "every last friday (of the month)"
+    if let Some((nth, weekday, used)) = nth_weekday(words, index) {
+        return Some((
+            RecurrenceSpec::Monthly { interval, day: Some(MonthDay::Weekday { nth, weekday }) },
+            from_completion,
+            index + used + of_the_month(words, index + used) - at,
+        ));
+    }
+
     // "every last day (of the month)"
     if word.is("last") && words.get(index + 1).is_some_and(|w| w.any_of(&["day"])) {
         let mut used = index + 2;
@@ -345,7 +354,11 @@ fn month_day(words: &[Word], at: usize) -> Option<(MonthDay, usize)> {
         index += 1;
     }
     let word = words.get(index)?;
-    let day = if word.is("last") && words.get(index + 1).is_some_and(|w| w.is("day")) {
+    let day = if let Some((nth, weekday, used)) = nth_weekday(words, index) {
+        // "on the first monday", "on the last friday"
+        index += used;
+        MonthDay::Weekday { nth, weekday }
+    } else if word.is("last") && words.get(index + 1).is_some_and(|w| w.is("day")) {
         index += 2;
         MonthDay::Last
     } else {
@@ -354,6 +367,23 @@ fn month_day(words: &[Word], at: usize) -> Option<(MonthDay, usize)> {
         MonthDay::Nth(i8::try_from(n).ok()?)
     };
     Some((day, index + of_the_month(words, index) - at))
+}
+
+/// A weekday counted within the month at `at`: "first monday" to "fifth monday", "1st" to
+/// "5th", or "last friday". Returns which (-1 for the last), the weekday and the words taken.
+fn nth_weekday(words: &[Word], at: usize) -> Option<(i8, Weekday, usize)> {
+    let word = words.get(at)?;
+    let nth = match word.lower.as_str() {
+        "first" => 1,
+        "second" => 2,
+        "third" => 3,
+        "fourth" => 4,
+        "fifth" => 5,
+        "last" => -1,
+        other => ordinal(other).filter(|n| (1..=5).contains(n)).and_then(|n| i8::try_from(n).ok())?,
+    };
+    let weekday = words.get(at + 1).and_then(|w| weekday_of(&w.lower))?;
+    Some((nth, weekday, 2))
 }
 
 /// How many words an optional "of the month" (or "of each month") takes at `at`.

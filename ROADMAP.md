@@ -94,11 +94,6 @@ The order, and why:
 
 A day or less each, for between the larger pieces.
 
-- **A weekday of the month in a repetition**: "every first monday", "every last friday" and
-  "every month on the last friday" are misread (the line keeps "every" or "on the last friday"
-  in its title), though the model holds them already: a task's repetition is an RRULE
-  (`BYDAY=1MO`, `BYDAY=-1FR`). The parser's (`crates/parse`), with the words to say them back.
-
 ### Completion
 
 - **BTSpeak**: Control-L (dots 7-8 with L) inside the input dialog completes at the cursor,

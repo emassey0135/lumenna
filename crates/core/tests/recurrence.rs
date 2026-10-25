@@ -667,3 +667,19 @@ proptest! {
         prop_assert_eq!(sorted.len(), seen.len());
     }
 }
+
+#[test]
+fn a_weekday_counted_within_the_month_comes_back_on_the_next_months_one() {
+    // The first Monday of November 2026 is the 2nd; of December, the 7th.
+    let first_monday = due_every("FREQ=MONTHLY;BYDAY=1MO", date(2026, 11, 2), false);
+    let Advanced::Next(next) = advance(&first_monday, date(2026, 11, 2), 1).unwrap() else {
+        panic!("should recur");
+    };
+    assert_eq!(next.date, date(2026, 12, 7));
+    // The last Friday of October 2026 is the 30th; of November, the 27th.
+    let last_friday = due_every("FREQ=MONTHLY;BYDAY=-1FR", date(2026, 10, 30), false);
+    let Advanced::Next(next) = advance(&last_friday, date(2026, 10, 30), 1).unwrap() else {
+        panic!("should recur");
+    };
+    assert_eq!(next.date, date(2026, 11, 27));
+}

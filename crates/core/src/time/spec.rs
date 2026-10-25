@@ -47,6 +47,53 @@ pub enum MonthDay {
     Nth(i8),
     /// The last day, whatever length the month is.
     Last,
+    /// A weekday counted within the month: the first Monday (`nth` 1, up to the fifth, 5), or
+    /// the last Friday (`nth` -1). RFC 5545's `BYDAY=1MO`, `BYDAY=-1FR`.
+    Weekday {
+        /// Which of the month's: 1 to 5 from its start, or -1 for its last.
+        nth: i8,
+        /// Which day of the week.
+        weekday: Weekday,
+    },
+}
+
+/// "first" to "fifth", or "last", of a weekday counted within the month.
+fn nth_word(nth: i8) -> &'static str {
+    match nth {
+        1 => "first",
+        2 => "second",
+        3 => "third",
+        4 => "fourth",
+        5 => "fifth",
+        _ => "last",
+    }
+}
+
+/// RFC 5545's two letters for a weekday.
+fn day_code(day: Weekday) -> &'static str {
+    match day {
+        Weekday::Monday => "MO",
+        Weekday::Tuesday => "TU",
+        Weekday::Wednesday => "WE",
+        Weekday::Thursday => "TH",
+        Weekday::Friday => "FR",
+        Weekday::Saturday => "SA",
+        Weekday::Sunday => "SU",
+    }
+}
+
+/// The weekday RFC 5545's two letters name.
+fn day_of_code(code: &str) -> Option<Weekday> {
+    Some(match code.to_ascii_uppercase().as_str() {
+        "MO" => Weekday::Monday,
+        "TU" => Weekday::Tuesday,
+        "WE" => Weekday::Wednesday,
+        "TH" => Weekday::Thursday,
+        "FR" => Weekday::Friday,
+        "SA" => Weekday::Saturday,
+        "SU" => Weekday::Sunday,
+        _ => return None,
+    })
 }
 
 /// A date named without being pinned down.
@@ -309,6 +356,12 @@ impl RecurrenceSpec {
             Self::Monthly { interval, day: Some(MonthDay::Last) } => {
                 format!("{} on the last day", every(*interval, "month"))
             }
+            Self::Monthly { interval: 0 | 1, day: Some(MonthDay::Weekday { nth, weekday }) } => {
+                format!("every {} {}", nth_word(*nth), weekday_name(*weekday))
+            }
+            Self::Monthly { interval, day: Some(MonthDay::Weekday { nth, weekday }) } => {
+                format!("{} on the {} {}", every(*interval, "month"), nth_word(*nth), weekday_name(*weekday))
+            }
             Self::Yearly { interval } => every(*interval, "year"),
         }
     }
@@ -321,17 +374,6 @@ impl RecurrenceSpec {
     pub fn to_rrule(&self) -> String {
         fn interval(n: u16) -> String {
             if n <= 1 { String::new() } else { format!(";INTERVAL={n}") }
-        }
-        fn day_code(day: Weekday) -> &'static str {
-            match day {
-                Weekday::Monday => "MO",
-                Weekday::Tuesday => "TU",
-                Weekday::Wednesday => "WE",
-                Weekday::Thursday => "TH",
-                Weekday::Friday => "FR",
-                Weekday::Saturday => "SA",
-                Weekday::Sunday => "SU",
-            }
         }
         match self {
             Self::Daily { interval: n } => format!("FREQ=DAILY{}", interval(*n)),
@@ -350,6 +392,9 @@ impl RecurrenceSpec {
             Self::Monthly { interval: n, day: Some(MonthDay::Last) } => {
                 format!("FREQ=MONTHLY{};BYMONTHDAY=-1", interval(*n))
             }
+            Self::Monthly { interval: n, day: Some(MonthDay::Weekday { nth, weekday }) } => {
+                format!("FREQ=MONTHLY{};BYDAY={nth}{}", interval(*n), day_code(*weekday))
+            }
             Self::Yearly { interval: n } => format!("FREQ=YEARLY{}", interval(*n)),
         }
     }
@@ -366,21 +411,17 @@ impl RecurrenceSpec {
                 "FREQ" => freq = Some(value.to_ascii_uppercase()),
                 "INTERVAL" => interval = value.parse().ok().filter(|n| *n >= 1)?,
                 "BYDAY" => {
-                    let parsed: Option<Vec<Weekday>> = value
-                        .split(',')
-                        .map(|code| {
-                            Some(match code.to_ascii_uppercase().as_str() {
-                                "MO" => Weekday::Monday,
-                                "TU" => Weekday::Tuesday,
-                                "WE" => Weekday::Wednesday,
-                                "TH" => Weekday::Thursday,
-                                "FR" => Weekday::Friday,
-                                "SA" => Weekday::Saturday,
-                                "SU" => Weekday::Sunday,
-                                _ => return None,
-                            })
-                        })
-                        .collect();
+                    // One weekday counted within the month, as `to_rrule` writes it: "1MO", "-1FR".
+                    let split = value.find(|c: char| c.is_ascii_alphabetic()).unwrap_or(0);
+                    if split > 0 {
+                        let nth = value[..split].trim_start_matches('+').parse::<i8>().ok()?;
+                        if !(nth == -1 || (1..=5).contains(&nth)) {
+                            return None;
+                        }
+                        month_day = Some(MonthDay::Weekday { nth, weekday: day_of_code(&value[split..])? });
+                        continue;
+                    }
+                    let parsed: Option<Vec<Weekday>> = value.split(',').map(day_of_code).collect();
                     days = Some(parsed?);
                 }
                 "BYMONTHDAY" => {
@@ -451,6 +492,12 @@ impl RecurrenceSpec {
             }
             Self::Monthly { interval, day: Some(MonthDay::Last) } => {
                 format!("{}last day", before_a_day(*interval)?)
+            }
+            Self::Monthly { interval: 0 | 1, day: Some(MonthDay::Weekday { nth, weekday }) } => {
+                format!("{} {}", nth_word(*nth), weekday_name(*weekday).to_lowercase())
+            }
+            Self::Monthly { interval, day: Some(MonthDay::Weekday { nth, weekday }) } => {
+                format!("{} on the {} {}", every(*interval, "month"), nth_word(*nth), weekday_name(*weekday).to_lowercase())
             }
             Self::Yearly { interval } => every(*interval, "year"),
         };

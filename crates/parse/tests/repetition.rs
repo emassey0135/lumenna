@@ -30,7 +30,47 @@ fn every_spec_the_grammar_writes() -> Vec<RecurrenceSpec> {
         }
         specs.push(Monthly { interval, day: Some(MonthDay::Last) });
     }
+    for interval in [1, 2, 3] {
+        for nth in [1, 2, 3, 4, 5, -1] {
+            for weekday in [Weekday::Monday, Weekday::Friday, Weekday::Sunday] {
+                specs.push(Monthly { interval, day: Some(MonthDay::Weekday { nth, weekday }) });
+            }
+        }
+    }
     specs
+}
+
+#[test]
+fn a_weekday_of_the_month_is_read_every_way_it_is_said() {
+    let last_friday = RecurrenceSpec::Monthly { interval: 1, day: Some(MonthDay::Weekday { nth: -1, weekday: Weekday::Friday }) };
+    for phrase in [
+        "every last friday",
+        "every last friday of the month",
+        "every month on the last friday",
+        "monthly on the last friday",
+        "each last friday",
+    ] {
+        let parsed = words(phrase);
+        let (spec, _, used) = parse_recurrence(&parsed, 0).unwrap_or_else(|| panic!("{phrase}"));
+        assert_eq!(spec, last_friday, "{phrase}");
+        assert_eq!(used, parsed.len(), "every word of '{phrase}' is taken");
+    }
+    let second_tuesday = parse_recurrence(&words("every 2nd tuesday"), 0).unwrap().0;
+    assert_eq!(
+        second_tuesday,
+        RecurrenceSpec::Monthly { interval: 1, day: Some(MonthDay::Weekday { nth: 2, weekday: Weekday::Tuesday }) }
+    );
+    assert_eq!(second_tuesday.to_rrule(), "FREQ=MONTHLY;BYDAY=2TU");
+    assert_eq!(second_tuesday.describe(), "every second Tuesday");
+    let other = parse_recurrence(&words("every other month on the first sunday"), 0).unwrap().0;
+    assert_eq!(other.to_rrule(), "FREQ=MONTHLY;INTERVAL=2;BYDAY=1SU");
+    assert_eq!(other.describe(), "every other month on the first Sunday");
+}
+
+#[test]
+fn a_last_day_is_still_the_last_day_and_not_a_weekday() {
+    let last = parse_recurrence(&words("every last day of the month"), 0).unwrap().0;
+    assert_eq!(last, RecurrenceSpec::Monthly { interval: 1, day: Some(MonthDay::Last) });
 }
 
 #[test]
