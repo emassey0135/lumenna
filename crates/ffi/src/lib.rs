@@ -283,6 +283,25 @@ pub fn launch_shortcuts() -> Vec<LaunchShortcut> {
     lumenna_records::launch::launch_shortcuts()
 }
 
+/// A glance (`App::glance`, `Device::glance`) as the file an app hands its widgets, which run
+/// apart from it: on Apple's platforms, written into the App Group container. JSON in the
+/// entries' own shape, so the file and the records cannot drift apart.
+#[export]
+pub fn glance_file(entries: Vec<GlanceEntry>) -> String {
+    serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_owned())
+}
+
+/// The glance in a file `glance_file` wrote, for a widget that links the core.
+///
+/// # Errors
+///
+/// If `contents` is not a glance: a file cut short, or written by a build whose glance was
+/// shaped otherwise.
+#[export]
+pub fn glance_from_file(contents: String) -> Result<Vec<GlanceEntry>, LumennaError> {
+    serde_json::from_str(&contents).map_err(|error| LumennaError::new(error.to_string()))
+}
+
 fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaError> {
     std::thread::Builder::new()
         .name(name.to_owned())
@@ -353,5 +372,43 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
         }
         // Handed on: the shell counts it from here until it is drawn.
         unsent.fetch_sub(batches, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use lumenna_app::glance::worded;
+    use lumenna_records::glance::GlanceMoment;
+
+    use super::*;
+
+    struct TwentyFour;
+
+    impl Clock for TwentyFour {
+        fn time(&self, clock: &str) -> String {
+            clock.to_owned()
+        }
+
+        fn day(&self, iso: &str) -> String {
+            iso.to_owned()
+        }
+    }
+
+    #[test]
+    fn a_glance_file_reads_back_as_the_entries_written() {
+        let moment = GlanceMoment {
+            at: "2026-10-25T09:30:00Z".to_owned(),
+            date: "2026-10-25".to_owned(),
+            current: None,
+            next: None,
+            timer: None,
+            tasks: Vec::new(),
+            due: 2,
+            overdue: 1,
+            blocks_left: 0,
+        };
+        let entries = vec![worded(moment, &TwentyFour)];
+        assert_eq!(glance_from_file(glance_file(entries.clone())).unwrap(), entries);
+        assert!(glance_from_file("[{\"cut".to_owned()).is_err());
     }
 }

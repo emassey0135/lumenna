@@ -2,7 +2,7 @@ import BackgroundTasks
 import UIKit
 
 /// Syncing while the app is not in front, within what iOS allows, and re-arming the reminders
-/// the system fires after each round.
+/// the system fires after each round (and, after a refresh, writing the widgets' glance).
 ///
 /// - **On leaving**, one round in the time iOS grants a backgrounded app to finish its work,
 ///   so what was just edited reaches the other devices now rather than at the next launch.
@@ -86,11 +86,16 @@ enum BackgroundSync {
                     core.app.tick()
                     NotificationCenter.default.post(name: Core.changed, object: core)
                 }
-                // Re-armed before the task ends, whatever the round did: a refresh is also what
-                // carries the two-day window forward while the app is not opened.
+                // Re-armed, and the widgets' glance written, before the task ends, whatever the
+                // round did: a refresh is also what carries the two-day window forward while the
+                // app is not opened.
+                let glanced = {
+                    guard let glance = core.glance else { return finish(synced) }
+                    glance.write { finish(synced) }
+                }
                 let reminders = AppDelegate.reminders
-                guard let reminders else { return finish(synced) }
-                reminders.rearm(catchingUp: true) { finish(synced) }
+                guard let reminders else { return glanced() }
+                reminders.rearm(catchingUp: true) { glanced() }
             }
         }
     }

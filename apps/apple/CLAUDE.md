@@ -97,6 +97,26 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
 - **No bottom toolbars**: inside a tab bar the floating bar sits over a toolbar's buttons,
   so a tap on Undo lands on the Today tab. Rows scrolled under the glass tab bar fail
   contrast, so pushed forms set `hidesBottomBarWhenPushed`.
+- **The store is in the App Group's container** (`Shared/AppGroup.swift`; the group
+  `group.dev.emassey0135.lumenna`, shared with the extensions, named once in project.yml's
+  `LUMENNA_APP_GROUP` and read from the Info.plist's `LumennaAppGroup`), where a widget or an
+  intent can reach it. At the first launch of a build with the group, `AppGroup.profile` moves
+  the profile there from Application Support, the app's own, before anything opens it: the
+  SQLite file with its `-wal` and `-shm`, the device settings, the whole directory. Within one
+  volume, as the two containers are, it is one rename; across volumes (`ProfileMove`) a copy
+  beside it under `.lumenna.moving`, renamed into place once whole, then the old one removed, so
+  a move cut short is made again. A profile already in the group is never replaced, and the old
+  one is then left as it is; the backups (`lumenna-backups`) follow the profile to stay beside
+  it, never in it. Without the group (an unsigned build, CI's; a UI test's store) or after a
+  failed move, the store stays where it was and the next launch tries again. **An extension
+  must never create a store in the group**: one found there first keeps the person's from
+  moving.
+- **The glance file** (`Shared/GlanceFile.swift`): `glance.json` in the group's container, the
+  core's `glanceFile` of `App.glance(48)` (read back with `glanceFromFile`, so a widget that links
+  the core decodes no shape of its own), written at launch, after every `Core.changed`, and in
+  the background refresh before its task ends; then `WidgetCenter.reloadAllTimelines()`. Every
+  Apple app writes it, the watch and both Mac editions too, since the direct download's widgets
+  cannot reach its store. Under `LUMENNA_TEST_PROFILE` nothing is written to the group.
 - **`TZ` is set from `TimeZone.current`** at launch and on returning to the foreground: jiff
   finds the zone through `TZ` or `/etc/localtime`, and the sandbox is no place to rely on
   the second.
@@ -272,9 +292,11 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
 `ChoiceSection`) or at the one row that differs, so a fix to a form lands on both. Scheme
 `LumennaMac`.
 
-- **Not sandboxed, and shares `lum`'s profile**: the app and the command line on one Mac
-  are one device with one store. The app ticks once a second, taking in what `lum` wrote.
-- **The app carries `lum`** in `Contents/MacOS`: `build-core.sh` builds it for the Mac's
+- **The direct download is not sandboxed, and shares `lum`'s profile**: the app and the
+  command line on one Mac are one device with one store. The app ticks once a second, taking in
+  what `lum` wrote. The App Store edition is sandboxed, with a store of its own (see "The two
+  Mac editions").
+- **The direct download carries `lum`** in `Contents/MacOS`: `build-core.sh` builds it for the Mac's
   architectures beside the core (`Generated/Mac/lum`), and the target's Put lum in the app
   phase copies it and signs it with the app's identity and the hardened runtime, before Xcode
   signs the app. Not Copy Files with Code Sign On Copy: its input would need naming as the
@@ -382,6 +404,53 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   in it, so a heading's is turned off on its label. Tests find a sidebar row by its
   identifier, the title.
 
+## The two Mac editions
+
+One target, `LumennaMac`, from the same sources, in two configurations, as ROADMAP's macOS
+packaging decided:
+
+- **The direct download** (Debug and Release; scheme `LumennaMac`): Developer ID, not
+  sandboxed, its store in `~/Library/Application Support/lumenna` (or `LUMENNA_PROFILE`'s),
+  shared with the `lum` inside it and with Emacs over its socket. Its App Group
+  (`Mac/Lumenna.entitlements`) holds the glance file alone: its widgets, sandboxed, cannot read
+  its store.
+- **The Mac App Store edition** (the `AppStore` configuration, scheme `LumennaMacAppStore`,
+  compiled with `APP_STORE`, `LUMENNA_EDITION=appstore` for the scripts): sandboxed
+  (`Mac/AppStore.entitlements`), its store in its App Group's container (`<group>/lumenna`),
+  where its widgets reach it. It has only ever kept it there, so nothing moves. Built into
+  `Build/Products/AppStore`, so the two `Lumenna.app`s never overwrite each other. The same
+  bundle identifier: one app, two ways to get it, not meant to be installed side by side.
+
+What the App Store edition does differently, and why:
+
+- **Network client and server entitlements**, for Iroh, which dials and listens, and for local
+  discovery through the system's responder; the local network's usage words and the Bonjour
+  services are the Info.plist's, both editions'.
+- **The store and the command socket are in the group** (`<group>/lumenna/lumenna.sock`), the
+  one place the sandbox shares with the extensions. The Mac's group is named short
+  (`<team>.lumenna`, both editions'), since a Unix socket's path holds at most 103 bytes and
+  the container's path is long. Nothing reads `~/Library/Application Support`: inside the
+  sandbox that is the app's own container.
+- **No `lum` inside** (`build-core.sh` builds none and Put lum in the app skips): a sandboxed
+  `lum` could open nothing named to it, nor be put on the path by the app. Whoever wants `lum`
+  installs it apart and pairs it with the app as another device. So nothing that offers it
+  either: no "Add to Claude Desktop" (it writes another app's settings, which the sandbox
+  forbids), and no Sparkle, since the store updates the app. Neither is in the app yet; when
+  they come they go under `#if !APP_STORE`, left out rather than replaced, so nothing needs words
+  in their place.
+- **A backup folder the person picks is kept as a security-scoped bookmark** (`BackupFolder`,
+  `files.bookmarks.app-scope`), taken up again at launch before the first backup: the open
+  panel's choice lasts only until the app quits. The default folder, beside the profile in the
+  group, needs none. On the Mac the folder is only ever chosen in its panel, in both editions,
+  so no path is typed that the sandbox would refuse. Exports, imports and restores go through
+  the save and open panels (`files.user-selected.read-write`), as in the direct download.
+- **The login item and the global shortcuts are the same code**: `SMAppService.mainApp` is the
+  sandbox's own way to open at login, and Carbon's `RegisterEventHotKey` needs no entitlement.
+- **Settings offers every setting in both**: none of the core's applies to one edition alone.
+- **CI builds both, unsigned**, and checks the App Store edition carries no `lum`. Unsigned,
+  neither is sandboxed and neither has its group: the sandbox, the group container and the
+  bookmark take effect only in a signed build, and are checked by hand.
+
 ## The Apple Watch app
 
 `apps/apple/Watch/`: SwiftUI, embedded in the iPhone app. Scheme `LumennaWatch`.
@@ -408,6 +477,10 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   reach, the phone when the watch app cannot answer. A newer parcel holds all an older one did,
   so one still waiting is cancelled, and a change taken twice is taken once. The watch holds
   the background task the system wakes it with until nothing more is pending.
+- **Its store and glance file are in an App Group of its own**
+  (`group.dev.emassey0135.lumenna.watch`: a group's container is one device's), moved there as
+  the iPhone's is (`AppGroup.profile`), the glance written for the complications after the
+  phone's changes and, by its heads, its own.
 - **The watch schedules its own reminders**, from its own store, as the iPhone does
   (`ReminderSchedule`, re-armed at launch, on becoming active, after each change and on a
   background refresh every six hours). A phone's notification goes to the watch when the phone

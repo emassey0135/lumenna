@@ -18,6 +18,14 @@ options:
   createIntermediateGroups: true
   developmentLanguage: en
 
+# AppStore is the Mac App Store edition's: the Mac app built sandboxed, its store in its App
+# Group container, without `lum` (apps/apple/CLAUDE.md, "The two Mac editions"). Release's
+# settings otherwise; the phone and the watch have it too, and nothing of theirs differs.
+configs:
+  Debug: debug
+  Release: release
+  AppStore: release
+
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -27,6 +35,11 @@ settings:
     # Signing for a device needs the team; the simulator needs none.
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 3QAJ2S64Z7
+    # Which Mac edition this configuration builds: build-core.sh and the Mac's phases read it.
+    LUMENNA_EDITION: direct
+  configs:
+    AppStore:
+      LUMENNA_EDITION: appstore
 
 targetTemplates:
   # The Rust core and the Crux app's Swift, as the module LumennaApp: a dynamic framework per
@@ -59,6 +72,8 @@ targetTemplates:
         Debug:
           RUST_PROFILE: debug
         Release:
+          RUST_PROFILE: release
+        AppStore:
           RUST_PROFILE: release
 
 targets:
@@ -149,6 +164,9 @@ targets:
       path: Lumenna/Info.plist
       properties:
         CFBundleDisplayName: Lumenna
+        # The App Group shared with the app's extensions, which holds the store and the glance
+        # (Shared/AppGroup.swift).
+        LumennaAppGroup: $(LUMENNA_APP_GROUP)
         # Iroh connects straight to paired devices on the same network when it can.
         NSLocalNetworkUsageDescription: Lumenna finds your other devices on this network and syncs with them directly.
         # The DNS-SD services Lumenna announces and browses (crates/sync/src/discovery). iOS
@@ -187,6 +205,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna
         TARGETED_DEVICE_FAMILY: "1,2"
+        LUMENNA_APP_GROUP: group.dev.emassey0135.lumenna
+        CODE_SIGN_ENTITLEMENTS: Lumenna/Lumenna.entitlements
         # The script writes into the source tree and runs Cargo, neither of which the
         # script sandbox allows.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -197,6 +217,8 @@ targets:
         Debug:
           RUST_PROFILE: debug
         Release:
+          RUST_PROFILE: release
+        AppStore:
           RUST_PROFILE: release
 
   # The Apple Watch app: SwiftUI over a core built without Iroh, since watchOS allows no
@@ -232,6 +254,11 @@ targets:
       # Every assistant operation as an App Intent, for Siri and Shortcuts.
       - path: Shared/Intents
         group: Shared
+      # The watch's own App Group, which holds its store and the complications' glance.
+      - path: Shared/AppGroup.swift
+        group: Shared
+      - path: Shared/GlanceFile.swift
+        group: Shared
       # The task, block and settings forms the iPhone and the Mac use, with the watch's
       # differences beside theirs (FormParts.swift).
       - path: Shared/Forms
@@ -257,10 +284,14 @@ targets:
         CFBundleDisplayName: Lumenna
         WKApplication: true
         WKCompanionAppBundleIdentifier: dev.emassey0135.lumenna
+        LumennaAppGroup: $(LUMENNA_APP_GROUP)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.watchkitapp
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # The watch's own: an App Group is one device's, and the watch's store is its own.
+        LUMENNA_APP_GROUP: group.dev.emassey0135.lumenna.watch
+        CODE_SIGN_ENTITLEMENTS: Watch/Watch.entitlements
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/Watch/App/include
         "EXCLUDED_ARCHS[sdk=watchsimulator*]": x86_64
 
@@ -309,9 +340,11 @@ targets:
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
 
-  # The Mac app: AppKit, with SwiftUI for leaf forms. Not sandboxed, so it shares
-  # `lum`'s profile in ~/Library/Application Support/lumenna — the app and the command line
-  # on one Mac are one device.
+  # The Mac app: AppKit, with SwiftUI for leaf forms. Two editions from these sources: the
+  # direct download (Debug, Release), not sandboxed, so it shares `lum`'s profile in
+  # ~/Library/Application Support/lumenna — the app and the command line on one Mac are one
+  # device; and the App Store edition (AppStore, scheme LumennaMacAppStore), sandboxed, its
+  # store in its App Group container, without `lum`.
   LumennaMac:
     type: application
     platform: macOS
@@ -327,6 +360,9 @@ targets:
       - name: Put lum in the app
         basedOnDependencyAnalysis: false
         script: |
+          # The App Store edition carries none: a sandboxed `lum` could not open what is named
+          # to it, nor be put on the path by the app.
+          [ "$LUMENNA_EDITION" = appstore ] && exit 0
           dest="$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/lum"
           cp -f "$SRCROOT/Generated/Mac/lum" "$dest"
           if [ "${CODE_SIGNING_ALLOWED:-YES}" = YES ] && [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
@@ -356,6 +392,7 @@ targets:
         CFBundleDisplayName: Lumenna
         LSApplicationCategoryType: public.app-category.productivity
         NSPrincipalClass: NSApplication
+        LumennaAppGroup: $(LUMENNA_APP_GROUP)
         NSLocalNetworkUsageDescription: Lumenna finds your other devices on this network and syncs with them directly.
         NSBonjourServices:
           - _lumenna._udp
@@ -367,6 +404,16 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
+        # One group for both editions, which hold the glance in it (and the App Store edition its
+        # store). On the Mac a group is named after the team; kept short, since the App Store
+        # edition's command socket is in it (<group>/lumenna/lumenna.sock), and a Unix socket's
+        # path holds at most 103 bytes.
+        LUMENNA_APP_GROUP: $(DEVELOPMENT_TEAM).lumenna
+        CODE_SIGN_ENTITLEMENTS: Mac/Lumenna.entitlements
+      configs:
+        AppStore:
+          CODE_SIGN_ENTITLEMENTS: Mac/AppStore.entitlements
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: APP_STORE
 
   LumennaMacUITests:
     type: bundle.ui-testing
@@ -408,3 +455,16 @@ schemes:
     test:
       targets:
         - LumennaMacUITests
+  # The Mac App Store edition: the same target, built in its own configuration.
+  LumennaMacAppStore:
+    build:
+      targets:
+        LumennaMac: all
+    run:
+      config: AppStore
+    profile:
+      config: AppStore
+    analyze:
+      config: AppStore
+    archive:
+      config: AppStore

@@ -11,6 +11,8 @@ final class Core {
 
     /// The Crux app over the store, which every screen draws.
     let app: AppModel
+    /// The glance written for the widgets (`GlanceFile`), where the build has an App Group.
+    private(set) lazy var glance: GlanceFile? = GlanceFile(app: app)
     // Foundation's, named in full: the core has a record called `Timer` too.
     private var watcher: Foundation.Timer?
     /// The store's heads at the last look.
@@ -28,17 +30,27 @@ final class Core {
 
     /// Where the store lives. A UI test names a fresh one, so every run starts empty.
     ///
-    /// - **iOS**: Application Support, the app's own and never synced by iCloud Drive.
-    /// - **macOS**: `~/Library/Application Support/lumenna` — where `lum` keeps it too, so the
-    ///   app and the command line on one Mac are one device with one store, not two that would
-    ///   have to pair with each other. `LUMENNA_PROFILE` names another, as it does for `lum`.
+    /// - **iOS**: the App Group's container (`AppGroup`), where the app's extensions reach it,
+    ///   moved there from Application Support, the app's own, where builds before kept it. Never
+    ///   synced by iCloud Drive either way.
+    /// - **macOS, the direct download**: `~/Library/Application Support/lumenna` — where `lum`
+    ///   keeps it too, so the app and the command line on one Mac are one device with one store,
+    ///   not two that would have to pair with each other. `LUMENNA_PROFILE` names another, as it
+    ///   does for `lum`.
+    /// - **macOS, the App Store edition**: the App Group's container, the one place the sandbox
+    ///   shares with the app's extensions. It has no `lum` to share a store with, and nothing to
+    ///   move: it has only ever kept it there.
     static func profileDirectory() throws -> URL {
         let manager = FileManager.default
         let environment = ProcessInfo.processInfo.environment
         if let test = environment["LUMENNA_TEST_PROFILE"] {
             return manager.temporaryDirectory.appendingPathComponent(test, isDirectory: true)
         }
-        #if os(macOS)
+        #if os(macOS) && APP_STORE
+        if let container = AppGroup.container {
+            return container.appendingPathComponent("lumenna", isDirectory: true)
+        }
+        #elseif os(macOS)
         if let explicit = environment["LUMENNA_PROFILE"], !explicit.isEmpty {
             return URL(fileURLWithPath: explicit, isDirectory: true)
         }
@@ -49,7 +61,12 @@ final class Core {
             appropriateFor: nil,
             create: true
         )
-        return support.appendingPathComponent("lumenna", isDirectory: true)
+        let own = support.appendingPathComponent("lumenna", isDirectory: true)
+        #if os(iOS)
+        return AppGroup.profile(movingFrom: own)
+        #else
+        return own
+        #endif
     }
 
     /// Tells the core which time zone "today" is in.
@@ -80,6 +97,9 @@ final class Core {
             let own = Date().timeIntervalSince(self.app.lastSent) < 3
             NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: own ? nil : ["arrived": true])
         }
+        // The widgets' glance, as the store is at launch and after every change.
+        glance?.follow()
+        glance?.write()
     }
 
     /// Takes a backup if one is due, off the main thread; `failed` hears why not.

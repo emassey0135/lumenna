@@ -49,6 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         reminders?.follow()
         reminders?.start()
         core.watchForChanges()
+        // The App Store edition's chosen backup folder, opened again before the first backup.
+        BackupFolder.resume()
         backUp()
         // Resident for days at a time, so a backup that falls due while it runs is taken:
         // it checks hourly, as `lum rpc` does.

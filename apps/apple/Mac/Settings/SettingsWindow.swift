@@ -72,7 +72,9 @@ extension SettingsModel {
         panel.message = "Backups hold your whole history, including everything you deleted."
         guard let window else { return }
         panel.beginSheetModal(for: window) { response in
-            if response == .OK, let url = panel.url { self.set("backup-dir", url.path) }
+            guard response == .OK, let url = panel.url else { return }
+            BackupFolder.chosen(url)
+            self.set("backup-dir", url.path)
         }
     }
 

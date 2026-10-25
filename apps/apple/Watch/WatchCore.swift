@@ -20,6 +20,8 @@ final class WatchCore: ObservableObject {
 
     /// The Crux app over the store, which every screen draws.
     let app: AppModel
+    /// The glance written for the complications (`GlanceFile`), where the build has an App Group.
+    private(set) var glance: GlanceFile?
     /// Moves with every turn of the app, so every SwiftUI view showing it draws it again.
     @Published private(set) var generation = 0
     /// Something that could not be done, in the core's words, for an alert.
@@ -41,13 +43,18 @@ final class WatchCore: ObservableObject {
         observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: app, queue: .main) { [weak self] _ in
             self?.generation += 1
         }
-        // What the app writes goes to the phone: its heads move with every write, looked at
-        // once a second, as cheap as reading them.
+        // The complications' glance, at launch and after what the phone brings.
+        glance = GlanceFile(app: app)
+        glance?.follow()
+        glance?.write()
+        // What the app writes goes to the phone, and into the glance: its heads move with every
+        // write, looked at once a second, as cheap as reading them.
         seenHeads = try? app.device.heads()
         watcher = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self, let heads = try? self.app.device.heads(), heads != self.seenHeads else { return }
             self.seenHeads = heads
             self.phone.syncNow()
+            self.glance?.soon()
         }
     }
 
@@ -56,7 +63,9 @@ final class WatchCore: ObservableObject {
         seenHeads = try? app.device.heads()
     }
 
-    /// Where the store lives: Application Support, or a fresh one a UI test names.
+    /// Where the store lives: the watch's App Group container, where its complications reach
+    /// it, moved there from Application Support, where builds before kept it (`AppGroup`); or a
+    /// fresh one a UI test names.
     static func profileDirectory() throws -> URL {
         let manager = FileManager.default
         if let test = ProcessInfo.processInfo.environment["LUMENNA_TEST_PROFILE"] {
@@ -65,7 +74,7 @@ final class WatchCore: ObservableObject {
         let support = try manager.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
         )
-        return support.appendingPathComponent("lumenna", isDirectory: true)
+        return AppGroup.profile(movingFrom: support.appendingPathComponent("lumenna", isDirectory: true))
     }
 }
 
