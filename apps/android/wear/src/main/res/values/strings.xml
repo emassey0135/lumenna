@@ -5,4 +5,7 @@
     <string name="tile_today">Today</string>
     <string name="tile_today_description">What is happening now, what is next, and the timer running</string>
     <string name="complication_now">Now</string>
+    <!-- New Task for a watch face, as the core names the control (`controls()`), which a test of
+         the core checks. -->
+    <string name="complication_new_task">New task</string>
 </resources>

@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Lumenna</string>
-    <!-- The Quick Settings tile's name until it is shown, when it takes the core's (Launches). -->
-    <string name="new_task">New task</string>
+    <!-- The Quick Settings tiles' names until each is shown, when it takes the core's
+         (`controls()`), which a test of the core checks these against. -->
+    <string name="control_timer">Timer</string>
+    <string name="control_new_task">New task</string>
     <!-- The widgets as the widget picker lists them, which a manifest names ahead. -->
     <string name="widget_now">Now</string>
     <string name="widget_now_description">What is happening now, and the timer running</string>

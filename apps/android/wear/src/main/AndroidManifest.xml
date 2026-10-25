@@ -84,6 +84,24 @@
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="0" />
         </service>
+        <!-- New Task for a watch face (Controls.kt): the core's control, an icon with or without
+             its words, opening quick add. It never changes, so it is never asked for again. -->
+        <service
+            android:name=".NewTaskComplication"
+            android:exported="true"
+            android:icon="@drawable/ic_new_task"
+            android:label="@string/complication_new_task"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="SHORT_TEXT,MONOCHROMATIC_IMAGE,SMALL_IMAGE" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="0" />
+        </service>
         <!-- Reminders' alarms and their notifications' Dismiss and Snooze: the app's own
              intents only. -->
         <receiver

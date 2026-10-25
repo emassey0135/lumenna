@@ -49,11 +49,30 @@
             android:name=".NewTaskTile"
             android:exported="true"
             android:icon="@drawable/ic_new_task"
-            android:label="@string/new_task"
+            android:label="@string/control_new_task"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
+        </service>
+        <!-- The timer in Quick Settings (TimerTile): the core's control, on while a timer runs.
+             Active: it draws itself when asked (requestListeningState) as the store changes,
+             not only when Quick Settings opens. -->
+        <service
+            android:name=".TimerTile"
+            android:exported="true"
+            android:icon="@drawable/ic_timer"
+            android:label="@string/control_timer"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
         </service>
         <!-- Gemini's App Functions (functions/LumennaFunctions): the service the library
              generates, bound only by the system for a caller allowed to execute app functions,

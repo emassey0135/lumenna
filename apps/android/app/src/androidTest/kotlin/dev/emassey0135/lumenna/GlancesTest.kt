@@ -1,5 +1,12 @@
 package dev.emassey0135.lumenna
 
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import androidx.datastore.preferences.core.emptyPreferences
+import androidx.glance.appwidget.compose
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -13,6 +20,10 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import dev.emassey0135.lumenna.app.GlancePart
+import dev.emassey0135.lumenna.widgets.TodayWidget
+import dev.emassey0135.lumenna.widgets.Widgets
+import kotlinx.coroutines.runBlocking
 import org.junit.runner.RunWith
 
 /** What the widgets, the tile and the complications show: the core's glance, at the moment it names. */
@@ -41,4 +52,31 @@ class GlancesTest {
         assertEquals("Deep work", then?.headline?.title)
         assertTrue("TalkBack hears it whole: ${then?.spoken}", then?.spoken.orEmpty().startsWith("Deep work"))
     }
+
+    @Test
+    fun todaysWidgetEndsInNewTaskAndNowsNeverHasIt() {
+        assertEquals(GlancePart.NEW_TASK, Widgets.parts("today").last())
+        assertTrue(GlancePart.NEW_TASK !in Widgets.parts("now"))
+        assertEquals(Launches.NEW_TASK, Launches.id(Widgets.newTask(context)))
+        assertEquals(Launches.shortcut(Launches.NEW_TASK)?.sentence, Widgets.newTaskWords())
+    }
+
+    @Test
+    fun todaysWidgetDrawsNewTaskAsAButtonOfItsOwnNamedByTheCore() {
+        val views = runBlocking { TodayWidget().compose(context, size = DpSize(320.dp, 480.dp), state = emptyPreferences()) }
+        var drawn: View? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            drawn = views.apply(context, FrameLayout(context))
+        }
+        val words = Widgets.newTaskWords()
+        val named = all(drawn!!).filter { it.contentDescription?.toString() == words }
+        assertTrue("a view named $words", named.isNotEmpty())
+        // Pressed by itself, not by the whole widget's tap that opens Today.
+        val widget = all(drawn!!).first { it.hasOnClickListeners() }
+        val pressed = named.mapNotNull { view -> generateSequence(view) { it.parent as? View }.firstOrNull { it.hasOnClickListeners() } }
+        assertTrue("its own press", pressed.any { it !== widget })
+    }
+
+    private fun all(view: View): List<View> =
+        listOf(view) + if (view is ViewGroup) (0 until view.childCount).flatMap { all(view.getChildAt(it)) } else emptyList()
 }

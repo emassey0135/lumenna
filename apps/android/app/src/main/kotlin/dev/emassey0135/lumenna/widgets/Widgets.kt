@@ -1,6 +1,7 @@
 package dev.emassey0135.lumenna.widgets
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -12,6 +13,8 @@ import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.ImageProvider
+import androidx.glance.appwidget.components.FilledButton
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
@@ -51,6 +54,8 @@ import dev.emassey0135.lumenna.R
 import dev.emassey0135.lumenna.app.Argument
 import dev.emassey0135.lumenna.app.ArgumentValue
 import dev.emassey0135.lumenna.app.GlanceEntry
+import dev.emassey0135.lumenna.app.GlancePart
+import dev.emassey0135.lumenna.app.glanceWidgets
 import dev.emassey0135.lumenna.app.GlanceTimer
 import dev.emassey0135.lumenna.app.LumennaError
 import dev.emassey0135.lumenna.sentence
@@ -62,11 +67,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * The home screen's widgets, drawn from the core's glance (`Glances`): what it says, in its
- * order, and nothing decided here. Each is one TalkBack stop named by the glance's `spoken`
- * sentence, opening Today when tapped; the larger one's tasks are each the core's line with the
- * core's Mark done beside it, which marks the task done through the core's assistant operation,
- * as Gemini would.
+ * The home screen's widgets, drawn from the core's glance (`Glances`): the parts the core gives
+ * each (`glanceWidgets()`), in its order, and nothing decided here. Each is one TalkBack stop named
+ * by the glance's `spoken` sentence, opening Today when tapped; the larger one's tasks are each the
+ * core's line with the core's Mark done beside it, which marks the task done through the core's
+ * assistant operation, as Gemini would, and its last part is New Task, a button of its own. A
+ * widget too small for every part loses the last first.
  */
 object Widgets {
     /** Moves whenever the glance may have changed, so a widget being shown composes again. */
@@ -107,6 +113,15 @@ object Widgets {
 
     /** Opens the app on Today, the core's launch shortcut. */
     fun openToday(context: Context) = actionStartActivity(Launches.intent(context, Launching.TODAY))
+
+    /** The parts the core's widget called [id] shows, in order. */
+    fun parts(id: String): List<GlancePart> = glanceWidgets().firstOrNull { it.id == id }?.parts.orEmpty()
+
+    /** What New Task opens: the app on quick add, as its Quick Settings tile does. */
+    fun newTask(context: Context): Intent = Launches.intent(context, Launches.NEW_TASK)
+
+    /** New Task's words, the core's launch shortcut's, in sentence case. */
+    fun newTaskWords(): String = Launches.shortcut(Launches.NEW_TASK)?.sentence.orEmpty()
 }
 
 /** The widget's frame: the background, Today when tapped, and the glance said as one sentence. */
@@ -153,8 +168,7 @@ class NowWidget : GlanceAppWidget() {
             val entry = remember(refreshed) { Widgets.entry(context) }
             Frame(context, entry) {
                 if (entry == null) return@Frame Unopened()
-                Headline(entry)
-                entry.moment.timer?.let { Timer(context, it) }
+                Parts(context, entry, Widgets.parts("now"))
             }
         }
     }
@@ -168,34 +182,69 @@ class TodayWidget : GlanceAppWidget() {
             val entry = remember(refreshed) { Widgets.entry(context) }
             Frame(context, entry) {
                 if (entry == null) return@Frame Unopened()
-                Headline(entry)
-                entry.moment.timer?.let { Timer(context, it) }
-                entry.next?.let {
-                    Spacer(GlanceModifier.height(8.dp))
-                    Text(it.text, style = TextStyle(color = Widgets.text, fontSize = 14.sp), maxLines = 1)
-                }
-                Spacer(GlanceModifier.height(8.dp))
-                Text(entry.due.text, style = TextStyle(color = Widgets.quiet, fontSize = 14.sp), maxLines = 1)
-                // Each task as the core words it, and its button the core's Mark done, named with
-                // the task's title so TalkBack says which task it marks.
-                for ((task, line) in entry.moment.tasks.zip(entry.tasks)) {
-                    Row(GlanceModifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(GlanceModifier.defaultWeight()) {
-                            Text(line.title, style = TextStyle(color = Widgets.text, fontSize = 14.sp), maxLines = 1)
-                            if (line.detail.isNotEmpty()) {
-                                Text(line.detail, style = TextStyle(color = Widgets.quiet, fontSize = 12.sp), maxLines = 1)
-                            }
-                        }
-                        Button(
-                            text = entry.markDoneSentence,
-                            onClick = actionRunCallback<MarkDone>(actionParametersOf(MarkDone.TASK to task.id)),
-                            modifier = GlanceModifier.semantics { contentDescription = "${entry.markDoneSentence}, ${line.title}" },
-                        )
-                    }
-                }
+                Parts(context, entry, Widgets.parts("today"))
             }
         }
     }
+}
+
+/** The [parts] of the glance a widget shows, each as the core words it, in the core's order. */
+@Composable
+private fun Parts(context: Context, entry: GlanceEntry, parts: List<GlancePart>) {
+    for (part in parts) {
+        when (part) {
+            GlancePart.HEADLINE -> {
+                Headline(entry)
+                entry.moment.timer?.let { Timer(context, it) }
+            }
+            GlancePart.NEXT -> entry.next?.let {
+                Spacer(GlanceModifier.height(8.dp))
+                Text(it.text, style = TextStyle(color = Widgets.text, fontSize = 14.sp), maxLines = 1)
+            }
+            GlancePart.DUE -> {
+                Spacer(GlanceModifier.height(8.dp))
+                Text(entry.due.text, style = TextStyle(color = Widgets.quiet, fontSize = 14.sp), maxLines = 1)
+            }
+            GlancePart.TASKS -> Tasks(entry)
+            GlancePart.NEW_TASK -> NewTask(context)
+        }
+    }
+}
+
+/**
+ * Each task as the core words it, and its button the core's Mark done, named with the task's
+ * title so TalkBack says which task it marks.
+ */
+@Composable
+private fun Tasks(entry: GlanceEntry) {
+    for ((task, line) in entry.moment.tasks.zip(entry.tasks)) {
+        Row(GlanceModifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(GlanceModifier.defaultWeight()) {
+                Text(line.title, style = TextStyle(color = Widgets.text, fontSize = 14.sp), maxLines = 1)
+                if (line.detail.isNotEmpty()) {
+                    Text(line.detail, style = TextStyle(color = Widgets.quiet, fontSize = 12.sp), maxLines = 1)
+                }
+            }
+            Button(
+                text = entry.markDoneSentence,
+                onClick = actionRunCallback<MarkDone>(actionParametersOf(MarkDone.TASK to task.id)),
+                modifier = GlanceModifier.semantics { contentDescription = "${entry.markDoneSentence}, ${line.title}" },
+            )
+        }
+    }
+}
+
+/** New Task, opening quick add: a button of its own in the core's words, with a plus. */
+@Composable
+private fun NewTask(context: Context) {
+    val words = Widgets.newTaskWords()
+    Spacer(GlanceModifier.height(8.dp))
+    FilledButton(
+        text = words,
+        onClick = actionStartActivity(Widgets.newTask(context)),
+        icon = ImageProvider(R.drawable.ic_new_task),
+        modifier = GlanceModifier.semantics { contentDescription = words },
+    )
 }
 
 /**

@@ -200,12 +200,31 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   `Device.assist("complete_task")`. Glance composes again only when its state changes, so a
   refresh moves `Widgets.REFRESH`. The two widgets are the core's (`glance_widgets()`: Now and
   Today), their names and descriptions in `strings.xml` as `widget_<id>` and
-  `widget_<id>_description`, which a test of the core checks.
+  `widget_<id>_description`, which a test of the core checks; each draws the parts the core lists
+  for it, in its order (`Widgets.parts`), so a widget short of room loses the last. Today's last
+  is New Task (`GlancePart.NEW_TASK`): Glance's `FilledButton` with a plus, in the `new-task`
+  launch shortcut's sentence and named by it, a TalkBack stop of its own as Mark done is, opening
+  the app on quick add as New Task's tile does.
 - **The ways in from outside are the core's** (`Launches`, shared's `Launching`): the icon's
   shortcuts are set at run time from `launch_shortcuts()` (`ShortcutManagerCompat`), and they, the
   Quick Settings tile, a widget, the tile and a complication open the app on a launch `id`, sent
   as `ShellEvent.Launch`; the screens follow the app once it is still (its line open is quick add,
   else its place, a task's details over the tasks). `NEW_TASK` stays for a shortcut pinned before.
+- **The timer's Quick Settings tile is the core's control** (`TimerTile`, `controls()`,
+  `Device.timerControl`): its label the Timer control's sentence, its subtitle the control's
+  `detail` (the task running, else what a press starts, else why nothing would), its state
+  `STATE_ACTIVE` while `running`, `STATE_UNAVAILABLE` when not `enabled`, else `STATE_INACTIVE`,
+  and TalkBack's description the name, `actionSentence` and detail (`TimerTile.shown`, which the
+  tests check). A press is `Device.toggleTimer` off the main thread; after it the subtitle is the
+  core's announcement until Quick Settings closes, since a tile has no announcement of its own.
+  It is an active tile, drawn when the store changes (`requestListeningState`, from
+  `showGlances`) and, while shown, as `Core.changes` moves. **A press works on a locked phone**:
+  it writes only the timer and is undone as any change is, so it gives nothing away and harms
+  nothing. What a task is called is behind the lock, so behind a secure lock screen (`isSecure`)
+  the tile shows and says only what a press does, never the task or the announcement, and a
+  press is told by its state. New Task's tile asks for the unlock, since quick add is the app.
+  The manifest names each tile ahead (`control_<id>` in `strings.xml`), which a test of the core
+  checks against `controls()`.
 - **The system's search index holds the core's search documents** (`SearchIndex`,
   `androidx.appsearch` platform storage, Android 12 and later): `Device.searchDocuments()`, one
   `GenericDocument` each under a schema of `SearchDocument`'s fields, written again as the store
@@ -261,6 +280,15 @@ phone does.
   `TimelineEntry` and a `ComplicationDataTimeline` entry for each moment, so the system switches
   between them itself. The ranged value is the block's progress from its start and end instants,
   counted by the watch where dynamic values exist (Wear OS 4 and later).
+- **New Task is the core's control on the watch too** (`Controls.kt`, `controls()`): a
+  complication (`NewTaskComplication`: short text in the core's sentence with its icon, or the
+  icon alone, named by the sentence; never asked for again, since it never changes) and an edge
+  button beneath the tile's glance (`newTaskButton`), a TalkBack stop of its own named by the
+  sentence, while a tap anywhere else still opens Today. Both open the app on `new-task`, which
+  is quick add with the system's input screen straight away. The complication's pending intent
+  has a request code of its own: an intent differing only in its extras is the same pending
+  intent, and the Now complication's would open on New Task. Its picker name
+  (`complication_new_task`) is checked by a test of the core. The timer is not on the watch.
 - The watch says it runs `wearos` (`PLATFORM`), in pairing and over the link.
 - **32-bit ARM too** (`armeabi-v7a`): many Wear OS watches run a 32-bit Android. The phone's
   APK leaves it out.

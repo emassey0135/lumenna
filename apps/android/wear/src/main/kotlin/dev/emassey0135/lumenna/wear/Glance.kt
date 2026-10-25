@@ -5,6 +5,8 @@ import android.content.ComponentName
 import android.content.Context
 import androidx.wear.protolayout.ActionBuilders
 import androidx.wear.protolayout.LayoutElementBuilders.LayoutElement
+import androidx.wear.protolayout.ModifiersBuilders.Clickable
+import androidx.wear.protolayout.ModifiersBuilders.SEMANTICS_ROLE_BUTTON
 import androidx.wear.protolayout.TypeBuilders.StringLayoutConstraint
 import androidx.wear.protolayout.expression.DynamicBuilders.DynamicInstant
 import androidx.wear.protolayout.expression.DynamicBuilders.DynamicInt32
@@ -14,10 +16,12 @@ import androidx.wear.protolayout.material3.MaterialScope
 import androidx.wear.protolayout.material3.Typography
 import androidx.wear.protolayout.material3.primaryLayout
 import androidx.wear.protolayout.material3.text
+import androidx.wear.protolayout.material3.textEdgeButton
 import androidx.wear.protolayout.modifiers.LayoutModifier
 import androidx.wear.protolayout.modifiers.clearSemantics
 import androidx.wear.protolayout.modifiers.clickable
 import androidx.wear.protolayout.modifiers.contentDescription
+import androidx.wear.protolayout.modifiers.semanticsRole
 import androidx.wear.protolayout.types.LayoutString
 import androidx.wear.protolayout.types.layoutString
 import androidx.wear.tiles.Material3TileService
@@ -72,17 +76,13 @@ private fun until(entries: List<GlanceEntry>, index: Int, start: Instant): Insta
 /**
  * Today on a tile: what is happening now, the next block, and a running timer counted by the
  * watch itself from the core's `countingFrom`. TalkBack hears the glance's `spoken` sentence;
- * tapped, it opens the app on Today.
+ * tapped, it opens the app on Today. Beneath it the core's New Task control, a button of its own
+ * (`newTaskButton`), opens quick add.
  */
 class LumennaTile : Material3TileService() {
     override suspend fun MaterialScope.tileResponse(requestParams: TileRequest): Tile {
         val entries = entries(this@LumennaTile)
-        val open = clickable(
-            ActionBuilders.launchAction(
-                ComponentName(this@LumennaTile, MainActivity::class.java),
-                mapOf(Launching.ID to ActionBuilders.stringExtra(Launching.TODAY)),
-            ),
-        )
+        val open = launching(this@LumennaTile, Launching.TODAY)
         // No store: the core's sentence for it, as the watch app says it.
         if (entries.isEmpty()) {
             val unopened = dev.emassey0135.lumenna.app.storeUnopened("")
@@ -93,41 +93,11 @@ class LumennaTile : Material3TileService() {
             val start = Glances.at(entry) ?: now
             val end = until(entries, index, start)
             timelineEntry(
-                layout(entry, open),
+                glanceLayout(entry, open, launching(this@LumennaTile, NewTaskComplication.NEW_TASK)),
                 timeInterval(Duration.between(Instant.EPOCH, start).toKotlinDuration(), Duration.between(Instant.EPOCH, end).toKotlinDuration()),
             )
         }
         return tile(timeline(*layouts.toTypedArray()))
-    }
-
-    private fun MaterialScope.layout(entry: GlanceEntry, open: androidx.wear.protolayout.ModifiersBuilders.Clickable): LayoutElement =
-        primaryLayout(
-            titleSlot = { text(entry.headline.title.layoutString, modifier = LayoutModifier.clearSemantics()) },
-            mainSlot = {
-                val lines = buildList {
-                    if (entry.headline.detail.isNotEmpty()) add(entry.headline.detail)
-                    entry.next?.let { add(it.text) }
-                }
-                val parts = lines.map { text(it.layoutString, typography = Typography.BODY_MEDIUM, maxLines = 2) }.toMutableList()
-                entry.moment.timer?.let { timer -> Glances.instant(timer.countingFrom)?.let { parts.add(timerText(it)) } }
-                column(*parts.toTypedArray(), modifier = LayoutModifier.contentDescription(entry.spoken))
-            },
-            onClick = open,
-        )
-
-    /** The time since [since], counted by the watch: hours, minutes and seconds. */
-    private fun MaterialScope.timerText(since: Instant): LayoutElement {
-        val elapsed = DynamicInstant.withSecondsPrecision(since).durationUntil(DynamicInstant.platformTimeWithSecondsPrecision())
-        val two = DynamicInt32.IntFormatter.Builder().setMinIntegerDigits(2).build()
-        val shown: DynamicString = elapsed.toIntHours().format()
-            .concat(DynamicString.constant(":")).concat(elapsed.minutesPart.format(two))
-            .concat(DynamicString.constant(":")).concat(elapsed.secondsPart.format(two))
-        val seconds = Duration.between(since, Instant.now()).seconds.coerceAtLeast(0)
-        val static = "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60)
-        return text(
-            LayoutString(static, shown, StringLayoutConstraint.Builder("00:00:00").build()),
-            typography = Typography.NUMERAL_MEDIUM,
-        )
     }
 
     companion object {
@@ -135,6 +105,59 @@ class LumennaTile : Material3TileService() {
         fun refresh(context: Context) = TileService.getUpdater(context).requestUpdate(LumennaTile::class.java)
     }
 }
+
+/**
+ * One entry of the tile: the glance, opening the app on Today ([open]), one TalkBack stop named by
+ * its `spoken`; beneath it New Task's button ([newTask]), a stop of its own named by the core.
+ */
+internal fun MaterialScope.glanceLayout(entry: GlanceEntry, open: Clickable, newTask: Clickable): LayoutElement =
+    primaryLayout(
+        titleSlot = { text(entry.headline.title.layoutString, modifier = LayoutModifier.clearSemantics()) },
+        mainSlot = {
+            val lines = buildList {
+                if (entry.headline.detail.isNotEmpty()) add(entry.headline.detail)
+                entry.next?.let { add(it.text) }
+            }
+            val parts = lines.map { text(it.layoutString, typography = Typography.BODY_MEDIUM, maxLines = 2) }.toMutableList()
+            entry.moment.timer?.let { timer -> Glances.instant(timer.countingFrom)?.let { parts.add(timerText(it)) } }
+            column(*parts.toTypedArray(), modifier = LayoutModifier.contentDescription(entry.spoken))
+        },
+        bottomSlot = { newTaskButton(newTask) },
+        onClick = open,
+    )
+
+/** New Task beneath the glance, in the core's words, which TalkBack hears as a button of its own. */
+internal fun MaterialScope.newTaskButton(newTask: Clickable): LayoutElement {
+    val words = newTaskControl().sentence
+    return textEdgeButton(
+        onClick = newTask,
+        modifier = LayoutModifier.contentDescription(words).semanticsRole(SEMANTICS_ROLE_BUTTON),
+    ) { text(words.layoutString) }
+}
+
+/** The time since [since], counted by the watch: hours, minutes and seconds. */
+private fun MaterialScope.timerText(since: Instant): LayoutElement {
+    val elapsed = DynamicInstant.withSecondsPrecision(since).durationUntil(DynamicInstant.platformTimeWithSecondsPrecision())
+    val two = DynamicInt32.IntFormatter.Builder().setMinIntegerDigits(2).build()
+    val shown: DynamicString = elapsed.toIntHours().format()
+        .concat(DynamicString.constant(":")).concat(elapsed.minutesPart.format(two))
+        .concat(DynamicString.constant(":")).concat(elapsed.secondsPart.format(two))
+    val seconds = Duration.between(since, Instant.now()).seconds.coerceAtLeast(0)
+    val static = "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60)
+    return text(
+        LayoutString(static, shown, StringLayoutConstraint.Builder("00:00:00").build()),
+        typography = Typography.NUMERAL_MEDIUM,
+    )
+}
+
+/** What opens the watch app on the launch shortcut [id], from the tile. */
+internal fun launching(context: Context, id: String): Clickable = clickable(
+    ActionBuilders.launchAction(
+        ComponentName(context, MainActivity::class.java),
+        mapOf(Launching.ID to ActionBuilders.stringExtra(id)),
+    ),
+    id,
+)
 
 /**
  * What is happening now, for a watch face: as short text, the glance's headline; as a ranged
