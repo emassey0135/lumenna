@@ -85,6 +85,9 @@ impl AssistantCategory {
 pub struct AssistantParameter {
     /// Its name: "id", "query".
     pub name: String,
+    /// What a person calls it, in Title Case: "Task", "Filter". A form that asks for it labels its
+    /// field with this, and its `description` is the field's hint.
+    pub title: String,
     /// What to give, for an assistant.
     pub description: String,
     /// What kind of thing it is.
@@ -232,7 +235,8 @@ struct Op {
 }
 
 /// A parameter as the table writes it.
-struct Param(&'static str, ParameterKind, bool, &'static str);
+/// Its name, its title, its kind, whether it may be left out, and what it means.
+struct Param(&'static str, &'static str, ParameterKind, bool, &'static str);
 
 const fn read(id: &'static str, title: &'static str, category: AssistantCategory, keywords: &'static [&'static str], parameters: &'static [Param], description: &'static str) -> Op {
     Op { id, title, description, category, keywords, writes: false, destructive: false, idempotent: true, confirms: false, parameters }
@@ -262,17 +266,17 @@ impl Op {
 use AssistantCategory as C;
 use ParameterKind as K;
 
-const ID: Param = Param("id", K::Task, false, "The task's identifier: a whole UUID, or a prefix that names one task.");
-const DAY: Param = Param("date", K::Date, true, "The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.");
-const SITTING: Param = Param("assignment", K::Sitting, false, "The sitting's identifier: a task's place in a block, as the day lists it.");
-const CONFIRM: Param = Param("confirm", K::Flag, true, "True only once the person has said yes to the question this asks without it.");
+const ID: Param = Param("id", "Task", K::Task, false, "The task's identifier: a whole UUID, or a prefix that names one task.");
+const DAY: Param = Param("date", "Day", K::Date, true, "The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.");
+const SITTING: Param = Param("assignment", "Sitting", K::Sitting, false, "The sitting's identifier: a task's place in a block, as the day lists it.");
+const CONFIRM: Param = Param("confirm", "Confirm", K::Flag, true, "True only once the person has said yes to the question this asks without it.");
 
 const OPERATIONS: &[Op] = &[
     read("list_tasks", "List Tasks", C::Tasks, &["tasks", "to do", "overdue", "due"], &[
-        Param("query", K::Query, true, "A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `p1`, or `search: words`; empty for every open task."),
+        Param("query", "Filter", K::Query, true, "A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `p1`, or `search: words`; empty for every open task."),
     ], "Lists tasks: by default every open task, most urgent first, subtasks under their task; or those a filter admits."),
     read("search_tasks", "Search Tasks", C::Tasks, &["find", "search"], &[
-        Param("text", K::Text, false, "Words to search titles and notes for."),
+        Param("text", "Words", K::Text, false, "Words to search titles and notes for."),
     ], "Searches task titles and notes for words."),
     read("show_task", "Show a Task", C::Tasks, &["details", "notes"], &[ID],
         "One task whole: its fields, states, subtasks, what it waits for, its sittings and its history."),
@@ -290,18 +294,18 @@ const OPERATIONS: &[Op] = &[
     read("propose_day_plan", "Propose a Plan for a Day", C::Planning, &["plan the day", "fill", "schedule"], &[DAY],
         "Proposes which tasks to put in each of a day's work blocks still to come, each with why. Nothing changes until `apply_day_plan` is given the sittings the person accepted."),
     write("add_task", "Add a Task", C::Tasks, &["new", "create", "remember", "capture", "remind"], &[
-        Param("text", K::Line, false, "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read."),
+        Param("text", "Line", K::Line, false, "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read."),
     ], "Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it."),
     write("edit_task", "Edit a Task", C::Tasks, &["change", "rename", "reschedule", "due date"], &[
         ID,
-        Param("title", K::Text, true, "A new title."),
-        Param("due", K::Date, true, "A date phrase (\"next monday\", \"in 3 days at 9am\"), or `none` to clear it."),
-        Param("repeat", K::Text, true, "A repetition (\"every monday\", \"every! 2 weeks\"), or `none` to stop it repeating."),
-        Param("priority", K::Priority, true, "1 to 4, where 1 is highest."),
-        Param("estimate", K::Text, true, "How long it should take (\"45m\", \"1h30m\"), or `none`."),
-        Param("notes", K::Text, true, "Its notes, whole."),
-        Param("project", K::Project, true, "The project to move it to, by name."),
-        Param("labels", K::Labels, true, "Its labels, all of them, by name."),
+        Param("title", "Title", K::Text, true, "A new title."),
+        Param("due", "Due", K::Date, true, "A date phrase (\"next monday\", \"in 3 days at 9am\"), or `none` to clear it."),
+        Param("repeat", "Repeats", K::Text, true, "A repetition (\"every monday\", \"every! 2 weeks\"), or `none` to stop it repeating."),
+        Param("priority", "Priority", K::Priority, true, "1 to 4, where 1 is highest."),
+        Param("estimate", "Estimate", K::Text, true, "How long it should take (\"45m\", \"1h30m\"), or `none`."),
+        Param("notes", "Notes", K::Text, true, "Its notes, whole."),
+        Param("project", "Project", K::Project, true, "The project to move it to, by name."),
+        Param("labels", "Labels", K::Labels, true, "Its labels, all of them, by name."),
     ], "Changes a task's fields: only those given."),
     write("complete_task", "Complete a Task", C::Tasks, &["done", "finish", "check off", "tick"], &[ID],
         "Marks a task done. A repeating one moves on to its next date.").idempotent(),
@@ -309,7 +313,7 @@ const OPERATIONS: &[Op] = &[
     write("trash_task", "Move a Task to the Trash", C::Trash, &["delete", "remove", "trash"], &[ID],
         "Moves a task to the trash, from which `restore_task` brings it back.").destructive().idempotent(),
     write("erase_task_permanently", "Erase a Task Permanently", C::Trash, &["erase", "permanently", "forever"], &[
-        Param("id", K::Task, false, "The identifier of a task in the trash."),
+        Param("id", "Task", K::Task, false, "The identifier of a task in the trash."),
         CONFIRM,
     ], "Erases a task in the trash permanently: from the history every device keeps, and with it the history of everything deleted before. Nothing can undo it, so without `confirm` it answers with the question to ask the person first.").destructive().confirms(),
     write("erase_everything_deleted", "Erase Everything Deleted", C::Trash, &["erase", "empty the trash", "permanently"], &[CONFIRM],
@@ -318,15 +322,15 @@ const OPERATIONS: &[Op] = &[
         "Brings a task back from the trash.").idempotent(),
     write("move_task", "Move a Task", C::Tasks, &["subtask", "project", "move"], &[
         ID,
-        Param("parent", K::Task, true, "A task to make it a subtask of, by identifier."),
-        Param("project", K::Project, true, "A project to move it to, by name."),
-        Param("top", K::Flag, true, "True to make it a task of its own again, under no other."),
+        Param("parent", "Parent Task", K::Task, true, "A task to make it a subtask of, by identifier."),
+        Param("project", "Project", K::Project, true, "A project to move it to, by name."),
+        Param("top", "A Task of Its Own", K::Flag, true, "True to make it a task of its own again, under no other."),
     ], "Makes a task a subtask of another, moves it to a project, or makes it a task of its own."),
     write("assign", "Put a Task in a Block", C::Day, &["schedule", "block", "time block", "plan"], &[
-        Param("task", K::Task, false, "The task's identifier."),
-        Param("block", K::Block, false, "The block's identifier, as the day lists it."),
-        Param("date", K::Date, true, "The day, for a block that repeats; the block's own day otherwise."),
-        Param("minutes", K::Minutes, true, "How long the sitting is planned to take, in minutes."),
+        Param("task", "Task", K::Task, false, "The task's identifier."),
+        Param("block", "Block", K::Block, false, "The block's identifier, as the day lists it."),
+        Param("date", "Day", K::Date, true, "The day, for a block that repeats; the block's own day otherwise."),
+        Param("minutes", "Minutes", K::Minutes, true, "How long the sitting is planned to take, in minutes."),
     ], "Puts a task in a block, as a sitting: one session of work on it there."),
     write("unassign", "Take a Task out of a Block", C::Day, &["unschedule", "remove from block"], &[SITTING],
         "Takes a sitting out of its block; the task itself stays.").destructive(),
@@ -335,18 +339,18 @@ const OPERATIONS: &[Op] = &[
     write("pause_timer", "Pause a Timer", C::Timers, &["pause", "break"], &[SITTING], "Pauses a sitting's timer, keeping what it has logged."),
     write("stop_timer", "Stop a Timer", C::Timers, &["stop", "finish", "log time"], &[
         SITTING,
-        Param("minutes", K::Minutes, true, "The minutes to log instead of the timer's, when it ran on by mistake."),
+        Param("minutes", "Minutes", K::Minutes, true, "The minutes to log instead of the timer's, when it ran on by mistake."),
     ], "Stops a sitting's timer and logs its time."),
     write("start_on", "Start on a Choice", C::Planning, &["start", "work on", "focus"], &[
-        Param("choice", K::Choice, false, "The `id` of one of the choices What Should I Work On? offered."),
+        Param("choice", "Choice", K::Choice, false, "The `id` of one of the choices What Should I Work On? offered."),
     ], "Starts on one of What Should I Work On?'s choices at once, its timer running: in the block under way, or in a block of its own in free time."),
     write("apply_replan", "Apply a Replan", C::Planning, &["replan", "accept"], &[
-        Param("proposal", K::Replan, false, "The proposal as `propose_replan` returned it, whole."),
-        Param("accepted", K::ReplanChanges, false, "Those of its `changes` the person accepted, each as it was proposed."),
+        Param("proposal", "Proposal", K::Replan, false, "The proposal as `propose_replan` returned it, whole."),
+        Param("accepted", "Accepted", K::ReplanChanges, false, "Those of its `changes` the person accepted, each as it was proposed."),
     ], "Makes the replan changes the person accepted, as one change they can undo, and proposes again around what they turned down."),
     write("apply_day_plan", "Apply a Day Plan", C::Planning, &["plan", "accept"], &[
-        Param("proposal", K::DayPlan, false, "The proposal as `propose_day_plan` returned it, whole."),
-        Param("accepted", K::DayPlanSittings, false, "Those of its `sittings` the person accepted, each as it was proposed."),
+        Param("proposal", "Proposal", K::DayPlan, false, "The proposal as `propose_day_plan` returned it, whole."),
+        Param("accepted", "Accepted", K::DayPlanSittings, false, "Those of its `sittings` the person accepted, each as it was proposed."),
     ], "Puts the sittings the person accepted into their blocks, as one change they can undo, and plans again around what they turned down."),
     write("undo", "Undo", C::Undo, &["undo", "take back"], &[], "Undoes the last change made on this device, whoever made it: an app, `lum`, or an assistant."),
     write("redo", "Redo", C::Undo, &["redo"], &[], "Redoes what was last undone."),
@@ -371,8 +375,9 @@ pub fn operations() -> Vec<AssistantOperation> {
             parameters: op
                 .parameters
                 .iter()
-                .map(|Param(name, kind, optional, description)| AssistantParameter {
+                .map(|Param(name, title, kind, optional, description)| AssistantParameter {
                     name: (*name).to_owned(),
+                    title: (*title).to_owned(),
                     description: (*description).to_owned(),
                     kind: *kind,
                     optional: *optional,

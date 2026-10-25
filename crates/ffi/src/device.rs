@@ -18,6 +18,7 @@ use lumenna_host::Reach;
 use lumenna_records::proposals::{DayPins, DayPlan, Replan, ReplanChange, ReplanPins, TimeStyle};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_records::assistant::{Argument, Assisted};
+use lumenna_records::automation::{Automated, AutomationChoice, AutomationGiven};
 use lumenna_records::controls::TimerControl;
 use lumenna_records::search::SearchDocument;
 use lumenna_records::reminders::DueReminders;
@@ -249,6 +250,27 @@ impl Device {
     /// in the core's question.
     pub fn assist(&self, operation: String, arguments: Vec<Argument>) -> Result<Assisted, LumennaError> {
         self.lumenna.assist(&operation, arguments)
+    }
+
+    /// Runs an action another app set up (`lumenna_records::automation`): the operation `id`,
+    /// each value given as text, answered as that app's variables. Never one that asks first.
+    ///
+    /// # Errors
+    ///
+    /// If the operation may not run unattended, a value is not what its parameter takes, or the
+    /// operation refuses.
+    pub fn automate(&self, operation: String, given: Vec<AutomationGiven>) -> Result<Automated, LumennaError> {
+        self.lumenna.automate(&operation, given)
+    }
+
+    /// What the parameter `name` of the operation `id` can be given, offered by the button beside
+    /// its line on the screen setting up an action.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn automation_choices(&self, operation: String, name: String) -> Result<Vec<AutomationChoice>, LumennaError> {
+        self.lumenna.automation_choices(&operation, &name)
     }
 
     /// What a widget, complication or tile shows for the next `hours`, worded in `locale`'s

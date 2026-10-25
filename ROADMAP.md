@@ -96,7 +96,8 @@ Each is a thin adapter over the command surface.
   - **Where:** Android's intent filter, Windows' protocol handler (the installer's and the
     MSIX's), the desktop entry's `x-scheme-handler/lumenna`, and the web's `web+lumenna`
     (browsers take only `web+` schemes). What a URL means and does is the core's, a records
-    module beside `launch`, so every platform only hands the URL over. The Apple apps already
+    module beside `launch`, so every platform only hands the URL over; `run/` takes its values as
+    text the way Tasker's actions do (`records::automation`). The Apple apps already
     answer `lumenna://launch/<id>`, which their widgets open; `open/` takes its place.
   - **Without a token**, what is harmless and undoable: `open/<launch id>` (the core's launch
     targets: `today`, `task:<id>`, …) and `add?text=…` (one task per line, in the quick-add
@@ -109,11 +110,6 @@ Each is a thin adapter over the command surface.
   - **Why a token:** x-callback-url names no caller (iOS does not say which other developer's app
     opened one), so a token is the only way to tell one apart, as Things and Bear do, and
     `x-success` sends results wherever the caller says.
-- **Tasker on Android**: a Tasker plugin over the assistant table. Its action's own screen in
-  Lumenna chooses the operation and its parameters, which is the consent, and its results come
-  back as Tasker variables. Each firing carries a secret made when it was set up, so no other app
-  can fire it. App Functions are not Tasker's way in: only the system's assistant may call them.
-  Events reach Tasker by the hooks' broadcast (below).
 - **Gemini through App Functions**: every assistant operation is an App Function
   (`apps/android/CLAUDE.md`), but Gemini calls only the apps in Google's early access programme
   (a private preview with trusted testers as of May 2026). Register interest; until then a

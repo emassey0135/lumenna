@@ -76,6 +76,26 @@
                 <action android:name="android.app.appfunctions.AppFunctionService" />
             </intent-filter>
         </service>
+        <!-- Tasker's action plugin (tasker/): the screen where an action is set up, which is the
+             person's consent, and the receiver Tasker fires it through. Both are exported, as
+             Tasker must reach them; the receiver runs only what carries a secret made when it was
+             set up on this device. -->
+        <activity
+            android:name=".tasker.TaskerEditActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <receiver
+            android:name=".tasker.TaskerFireReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.FIRE_SETTING" />
+            </intent-filter>
+        </receiver>
         <!-- The home screen's widgets (widgets/Widgets), drawn from the core's glance. -->
         <receiver
             android:name=".widgets.NowWidgetReceiver"

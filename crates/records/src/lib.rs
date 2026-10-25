@@ -9,6 +9,7 @@
 
 pub mod actions;
 pub mod assistant;
+pub mod automation;
 pub mod background;
 pub mod choices;
 pub mod colours;

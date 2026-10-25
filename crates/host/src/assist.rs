@@ -2,7 +2,8 @@
 //! `lumenna_records::assistant::operations` by its `id`, with what its parameters were given,
 //! for `lum mcp`, Siri and Shortcuts, and Gemini alike.
 
-use lumenna_records::assistant::{Argument, ArgumentValue, Assisted, operation};
+use lumenna_records::assistant::{Argument, ArgumentValue, Assisted, ParameterKind, operation};
+use lumenna_records::automation::{self, Automated, AutomationChoice, AutomationGiven};
 use lumenna_records::{ActionKind, LumennaError, MoveTarget, Question, Result, TaskEdit};
 
 use crate::Lumenna;
@@ -195,6 +196,58 @@ impl Lumenna {
     }
 }
 
+impl Lumenna {
+    /// Runs an action another app set up (`lumenna_records::automation`): the operation `id`,
+    /// given its values as text, answered as that app's variables. Never one that asks first.
+    ///
+    /// # Errors
+    ///
+    /// If the operation may not run unattended, a value is not what its parameter takes, or the
+    /// operation refuses.
+    pub fn automate(&self, id: &str, given: Vec<AutomationGiven>) -> Result<Automated> {
+        let op = automation::operation(id)?;
+        let arguments = automation::arguments(&op, given)?;
+        Ok(automation::automated(&self.assist(&op.id, arguments)?))
+    }
+
+    /// What the parameter `name` of the operation `id` can be given, as the button beside its
+    /// line offers it: the open tasks, the projects, the labels, the priorities, today's blocks
+    /// and sittings, what to work on now. Empty for a parameter that offers nothing.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn automation_choices(&self, id: &str, name: &str) -> Result<Vec<AutomationChoice>> {
+        let Some(kind) = automation::operation(id).ok().and_then(|op| op.parameters.into_iter().find(|p| p.name == name)).map(|p| p.kind)
+        else {
+            return Ok(Vec::new());
+        };
+        let choice = |value: &str, title: &str, detail: Option<String>| AutomationChoice {
+            value: value.to_owned(),
+            title: title.to_owned(),
+            detail: detail.filter(|d| !d.is_empty()),
+        };
+        Ok(match kind {
+            ParameterKind::Task => self.list_tasks("")?.rows.iter().map(|r| choice(&r.id, &r.title, r.due.clone())).collect(),
+            ParameterKind::Project => self.list_projects()?.rows.iter().map(|r| choice(&r.title, &r.title, None)).collect(),
+            ParameterKind::Labels => self.list_labels()?.rows.iter().map(|r| choice(&r.title, &r.title, None)).collect(),
+            ParameterKind::Priority => automation::priority_choices(),
+            ParameterKind::Flag => automation::flag_choices(),
+            ParameterKind::Block => self.plan(None)?.blocks.iter().map(|b| choice(&b.id, &b.title, Some(b.when.clone()))).collect(),
+            ParameterKind::Sitting => self
+                .plan(None)?
+                .blocks
+                .iter()
+                .flat_map(|b| b.assignments.iter().map(move |s| choice(&s.id, &s.title, Some(b.title.clone()))))
+                .collect(),
+            ParameterKind::Choice => {
+                self.what_should_i_work_on(None)?.choices.iter().map(|c| choice(&c.id, &c.title, c.reason.clone())).collect()
+            }
+            _ => Vec::new(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,5 +261,61 @@ mod tests {
                 assert!(!refused.message().contains("this is a bug"), "{}: {}", op.id, refused.message());
             }
         }
+    }
+
+    fn given(name: &str, text: &str) -> AutomationGiven {
+        AutomationGiven { name: name.to_owned(), text: text.to_owned() }
+    }
+
+    #[test]
+    fn every_operation_answers_what_its_variables_say() {
+        let directory = tempfile::tempdir().unwrap();
+        let lumenna = Lumenna::open(directory.path().to_str().unwrap()).unwrap();
+        let task = lumenna.add_task("Write the report p2").unwrap().task.unwrap().id;
+        let texts = |op: &lumenna_records::assistant::AssistantOperation| -> Vec<Argument> {
+            op.parameters
+                .iter()
+                .filter(|p| !p.optional)
+                .filter_map(|p| match p.kind {
+                    ParameterKind::Task => Some(Argument { name: p.name.clone(), value: ArgumentValue::Text(task.clone()) }),
+                    ParameterKind::Text | ParameterKind::Line => {
+                        Some(Argument { name: p.name.clone(), value: ArgumentValue::Text("report".to_owned()) })
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let mut answered = 0;
+        for op in automation::operations() {
+            if let Ok(answer) = lumenna.assist(&op.id, texts(&op)) {
+                assert_eq!(Some(automation::Answers::of(&answer)), automation::Answers::to(&op.id), "{}", op.id);
+                answered += 1;
+            }
+        }
+        assert!(answered >= 15, "only {answered} answered");
+    }
+
+    #[test]
+    fn an_action_set_up_runs_from_text_and_answers_as_variables() {
+        let directory = tempfile::tempdir().unwrap();
+        let lumenna = Lumenna::open(directory.path().to_str().unwrap()).unwrap();
+        let added = lumenna.automate("add_task", vec![given("text", "Buy milk tomorrow")]).unwrap();
+        let value = |name: &str| added.values.iter().find(|v| v.name == name).map(|v| v.values.clone());
+        assert_eq!(value("announcement"), Some(vec![added.announcement.clone()]));
+        assert_eq!(value("task_title"), Some(vec!["Buy milk".to_owned()]));
+        let id = value("task_id").unwrap().remove(0);
+
+        let listed = lumenna.automate("list_tasks", vec![given("query", "")]).unwrap();
+        let ids = listed.values.iter().find(|v| v.name == "ids").unwrap();
+        assert!(ids.several && ids.values == vec![id.clone()]);
+
+        lumenna.automate("edit_task", vec![given("id", &id), given("priority", "p1")]).unwrap();
+        assert_eq!(lumenna.show_task(&id).unwrap().task.priority, 1);
+        let choices = lumenna.automation_choices("complete_task", "id").unwrap();
+        assert_eq!((choices[0].value.as_str(), choices[0].title.as_str()), (id.as_str(), "Buy milk"));
+
+        let refused = lumenna.automate("erase_everything_deleted", vec![given("confirm", "yes")]).unwrap_err();
+        assert!(refused.message().contains("cannot run unattended"));
+        assert!(lumenna.automate("edit_task", vec![given("id", &id), given("priority", "9")]).is_err());
     }
 }

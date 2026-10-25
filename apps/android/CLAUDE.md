@@ -189,6 +189,27 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   or worded or parametered otherwise than the table: an operation added to the table needs its
   function. The records answered (`functions/Records.kt`) carry each answer's announcement and
   identifiers; a replan or day plan is carried field for field, since it goes back whole.
+- **Tasker's action plugin is the core's automation** (`tasker/`, `records::automation`), spoken
+  directly over Locale's API rather than through joaomgcd's Tasker Plugin library, which runs
+  every firing in a special-use foreground service with a notification. `TaskerEditActivity`
+  (`EDIT_SETTING`) is the setup and the person's consent: `automation_operations()` (the
+  assistant table less what `confirms`, since nobody is there to answer, and what takes a
+  proposal), each a button named by its sentence, description and, if `destructive`, the core's
+  "Removes something"; then the chosen one's `automation_fields`, each a line labelled and
+  described by the core (TalkBack reads the hint with the field), with the core's
+  `Device.automationChoices` behind a Choose button and a calendar for a day. A value may be a
+  Tasker variable (`%name`), so every value is text, typed by the core as it fires
+  (`Device.automate`); `automation_check` refuses Save beside the button, leaving a variable
+  until it fires. Saving makes a 256-bit secret, kept as its hash beside the operation in the
+  app's own preferences (`TaskerSecrets`) and in the bundle Tasker keeps, never among its
+  `VARIABLE_REPLACE_KEYS`; a firing (`TaskerFireReceiver`, `FIRE_SETTING`) whose secret was not
+  set up here for that operation is refused with the core's `notSetUp`. The receiver holds the
+  broadcast open (`goAsync`) while the core runs on a thread of its own, and answers Tasker's
+  ordered broadcast in its result code and extras (a refusal `%errmsg`), or its completion intent
+  where it did not wait. The variables are the core's (`automation_outputs`, declared to
+  Tasker's picker as `%name` or `%name()`, given back as `%name1`, `%name2`…), the blurb its
+  `automation_summary`. `TaskerTest` covers the list against the table, secrets refused, the
+  variables a firing answers, and the receiver itself; Tasker itself is checked by hand.
 - **The widgets, the watch's tile and its complications draw the core's glance** (shared's
   `Glances`: `Core.glance`, the app's while it runs, else the device's): the entry true now, drawn
   again when the store changes and at the next moment the timeline names (`GlanceWorker`, one
