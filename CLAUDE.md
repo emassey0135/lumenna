@@ -129,7 +129,21 @@ crosses the FFI.
   then `value`. An empty listing says `Rows::empty`.
 - **A setting describes itself** (`Setting::title`, `kind`, `options`, `syncs`, `hint`), and
   the priorities are `priorities()`: a settings screen or a priority picker builds its
-  controls from them, never from a table of its own.
+  controls from them, never from a table of its own. **Which page a setting is on is the
+  core's** (`settings_pages`, also `SettingsView::pages`): the pages in order with their titles,
+  descriptions, captions and buttons, every setting on exactly one, so a new setting reaches
+  every settings screen. A shell matches no key and keeps no page table.
+- **The task details' words are the core's** (`details_words`; `DetailsView::lines`, also
+  `Lines::details`: the state, a rule the form cannot say, what it waits for, its history). The
+  buttons a details pane shows by themselves are the task's `primary` offered actions, the rest a
+  menu away.
+- **Every other fixed word a shell used to write is the core's** too, in `records::fields` and
+  `records::words` (quick add's and the filter's, notifications', pairing's whole match sentence
+  `PairingView::matching` and `mine_line`, a reminder list's `reminders_title`, the backup's
+  failure, the app's `DESCRIPTION`, a browser's device name, a watch's sync with its phone,
+  `checked`, `fold_state`, `level`, `choice_count`), and the shortcuts from anywhere are
+  `lumenna_app::hotkeys`. A sidebar entry says its own folding (`hidden`, `expanded`, `level`), as
+  a list's rows and a pick's lines (`Line::level`) do.
 - **Colours are the core's palette** (`lumenna_core::colour`, `records::colours`): eleven named
   colours, each with a value for a light background and one for a dark, both of 3:1 contrast.
   A project, label or saved filter takes one by its Colour pick (`colour_choices`, "No colour"
@@ -154,6 +168,8 @@ crosses the FFI.
 - **A glance is the core's** (`records::glance`, worded by `lumenna_app::glance`; `App::glance`
   in the platform's clock, `Device::glance` without the screens): what a widget, complication,
   tile or Smart Stack shows, as a timeline of moments. A platform draws it and decides nothing.
+  Which moment to show now and when to draw again are the core's too (`glance::current`,
+  `redraw_at`, `logged`; `glance_current`, `glance_redraw_at` over the FFI).
   The widgets themselves are the core's too (`glance::widgets`, `glance_widgets()`): Now and
   Today, their names and descriptions in the picker and the parts each shows; a platform's
   files written ahead (Android's strings, Windows' manifest) are checked against them.
@@ -223,15 +239,28 @@ directly (8805659 is the last commit before the move). How the app works inside 
 - **Settings offer the store's own actions** (`SettingsView::offered`: Erase Everything
   Deleted), a button each under `offered_caption`, handed back with
   `Event::ActOn(ActingOn::Settings, offered)`; the app asks its question as any row's.
-- **What Delete and Space do to a row is the core's** (`keys::runs`): every app, whatever key
-  its platform calls Delete (the Mac's Delete, the iPad's Command-Delete, BTSpeak's chord), sends
-  `Event::Key("delete")` and never a list of kinds of its own, so the key does the same
-  everywhere.
+- **What every command does is the core's** (`keys::what_runs`): every app, whatever key its
+  platform calls Delete (the Mac's Delete, the iPad's Command-Delete, BTSpeak's chord), sends
+  `Event::Key("delete")`, Enter `Key("open")`, a menu's Mark Done `Key("mark-done")`, and never a
+  list of kinds of its own, so a command does the same everywhere: a row's action, the day's, or
+  the app's own (quick add, a place, undo, a day). One the row lacks is refused in
+  `not_offered`'s words; the details take `DetailsEvent::Key`. The menu bar and the tray's menu
+  are the core's (`keys::MENUS`, `TRAY`, `menus()`, `tray_menu()`), and each row or day command's
+  name and whether it applies now are `ViewModel::commands` (Mark Not Done on a task done). A
+  platform adds only what is its own (Cut, Copy and Paste).
+- **A reminder due carries its buttons in order** (`Due::buttons`), and a button pressed holds
+  the next reminder (`Side::Due`, `ViewModel::due_held`). An overrun's Replan is
+  `DueEvent::Replan(id)`: today, Replan from Now open, the warning dismissed once something is
+  replanned. A reminder dealt with elsewhere leaves the list once the store says so.
 - **Erasing permanently is never what deleting does**: a trashed task's Erase Permanently
   (`ErasePermanently`) is a menu away, after Delete from Trash, and no key runs it. It begins the
   store's history again without what it erased, on every device (`crates/store/CLAUDE.md`).
 - **A question says when it asks for a day** (`Asking::day`), with the day a calendar opens on,
-  so a shell offers its own picker beside the line without comparing questions.
+  so a shell offers its own picker beside the line without comparing questions. It says too
+  which question it is (`Asking::number`: a new number is a new question, the same one refused
+  is the same), what was typed in it (`typed`, where a refused field starts), and, when it asks
+  how long, the usual lengths in words (`lengths`): a shell neither waits for the app to be still
+  before asking nor keeps the text itself.
 - **A list's first row is in hand as soon as it opens**, so the details show it.
 - **The view says when focus is the app's to move** (`ViewModel::landing`, a count): it moves
   when a turn wrote or moved the row in hand, and never for `Event::Focus`, the person's own
@@ -249,6 +278,8 @@ directly (8805659 is the last commit before the move). How the app works inside 
   moment proposals are made against (`Event::PlanFrom`).
 - **So are its capitals** (`Event::Capitals`): a shell that writes sentence case says so and
   the view comes cased (`capitals.rs`).
+- **So is whether its list has checkboxes** (`Event::Checkboxes`): the list's lines then leave
+  "completed" to the checkbox.
 - **A sidebar entry carries its `title` and `detail` beside its one line** (`SidebarEntry`,
   `text`), so a sidebar that shows two lines never cuts the line apart; `SidebarEntry::key_of`
   names a row by its kind alone.

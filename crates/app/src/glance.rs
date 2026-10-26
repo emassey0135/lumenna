@@ -202,6 +202,18 @@ mod tests {
     }
 
     #[test]
+    fn a_widget_shows_the_last_moment_come_and_draws_again_at_the_next_or_a_timers_next_minute() {
+        let at = |at: &str| GlanceMoment { at: at.to_owned(), ..moment() };
+        let entries = vec![worded(at("2026-10-25T09:00:00Z"), &TwentyFour), worded(at("2026-10-25T10:00:00Z"), &TwentyFour)];
+        let now = |t: &str| t.parse::<jiff::Timestamp>().unwrap();
+        assert_eq!(current(&entries, now("2026-10-25T09:30:00Z")).unwrap().moment.at, "2026-10-25T09:00:00Z");
+        assert_eq!(current(&entries, now("2026-10-25T08:00:00Z")).unwrap().moment.at, "2026-10-25T09:00:00Z", "before the first, the first");
+        assert_eq!(redraw_at(&entries, now("2026-10-25T09:30:00Z")), Some(now("2026-10-25T10:00:00Z")));
+        assert_eq!(redraw_at(&entries, now("2026-10-25T10:30:00Z")), None);
+        assert_eq!(logged("2026-10-25T09:00:00Z", now("2026-10-25T09:25:30Z")).as_deref(), Some("25 minutes"));
+    }
+
+    #[test]
     fn free_time_says_until_the_next_block_and_an_empty_day_says_so() {
         let free = worded(GlanceMoment { next: Some(block("Meeting", "14:00", "15:00")), ..moment() }, &TwentyFour);
         assert_eq!(free.headline.text, "Free, until 14:00, then Meeting");

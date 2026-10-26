@@ -1660,3 +1660,507 @@ fn no_row_in_a_view_carries_its_actions_whole_only_in_short() {
     assert!(reminders.reminders.iter().all(|r| r.actions.is_empty()));
     assert_eq!(reminders.actions.len(), reminders.offered.len(), "Add Reminder, whole for its question's words, and in short");
 }
+
+// MARK: - Writes and what waits on them
+
+/// The core alone, its store requests answered by hand, so a write's answer can come after
+/// whatever the person does next.
+struct ByHand {
+    core: crux_core::Core<lumenna_app::Lumenna>,
+    lumenna: Arc<Lumenna>,
+    /// The writes and reads sent and not yet answered, in order.
+    held: Vec<Effect>,
+    _dir: tempfile::TempDir,
+}
+
+impl ByHand {
+    /// Started over a store `seed` has filled.
+    fn new(seed: impl FnOnce(&Lumenna)) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let lumenna = Lumenna::open(dir.path().join("profile").to_str().unwrap()).unwrap();
+        seed(&lumenna);
+        let mut app = Self { core: crux_core::Core::new(), lumenna, held: Vec::new(), _dir: dir };
+        app.send(Event::Start);
+        app.answer_all();
+        app
+    }
+
+    /// Takes in what the app asked: the store at once, the host's answers held.
+    fn run(&mut self, effects: Vec<Effect>) {
+        let mut effects = effects;
+        while !effects.is_empty() {
+            let mut next = Vec::new();
+            for effect in effects {
+                match effect {
+                    Effect::Watch(mut request) => {
+                        let (arrival, _) = lumenna_bridge::arrival(&self.lumenna).unwrap();
+                        next.extend(self.core.resolve(&mut request, arrival).unwrap());
+                    }
+                    Effect::Host(request) => self.held.push(Effect::Host(request)),
+                    _ => {}
+                }
+            }
+            effects = next;
+        }
+    }
+
+    fn send(&mut self, event: Event) {
+        let effects = self.core.process_event(event);
+        self.run(effects);
+    }
+
+    /// Answers the request held at `at`, as the host would.
+    fn answer(&mut self, at: usize) {
+        let Effect::Host(request) = self.held.remove(at) else { panic!("not a host request") };
+        let (operation, mut handle) = request.split();
+        let effects = self.core.resolve(&mut handle, lumenna_bridge::answer(&self.lumenna, operation)).unwrap();
+        self.run(effects);
+    }
+
+    fn answer_all(&mut self) {
+        while !self.held.is_empty() {
+            self.answer(0);
+        }
+    }
+
+    fn view(&self) -> ViewModel {
+        self.core.view().screen(0)
+    }
+
+    fn id_of(&self, title: &str) -> String {
+        self.view().list.unwrap().items.into_iter().find(|i| i.row.title == title).unwrap().row.id
+    }
+}
+
+#[test]
+fn a_write_answered_while_a_question_is_open_leaves_the_question_open_and_where_it_is() {
+    let mut app = ByHand::new(|store| {
+        store.add_project("Work", None).unwrap();
+        store.add_task("Buy milk").unwrap();
+    });
+    app.send(Event::Focus(app.id_of("Buy milk")));
+    app.send(Event::Run(vec![ActionKind::MarkDone]));
+    let entry = app.view().sidebar.into_iter().find(|e| e.title == "Work").unwrap();
+    let delete = entry.offered.iter().find(|o| o.kind == ActionKind::Delete).unwrap().clone();
+    app.send(Event::ActOn(ActingOn::Held(lumenna_app::Side::Sidebar, entry.key), delete));
+    assert!(app.view().asking.is_some(), "Delete asks first");
+    app.answer(0);
+    let view = app.view();
+    assert!(view.asking.is_some(), "Mark Done's answer leaves Delete's question open");
+    assert_eq!(view.place, Some(Place::Tasks));
+    assert!(view.list.unwrap().items.is_empty(), "the task was marked done");
+}
+
+#[test]
+fn a_write_answered_while_a_line_is_being_added_leaves_the_line_to_its_own_answer() {
+    let mut app = ByHand::new(|store| {
+        store.add_task("Buy milk").unwrap();
+    });
+    app.send(Event::Focus(app.id_of("Buy milk")));
+    app.send(Event::Run(vec![ActionKind::MarkDone]));
+    app.send(Event::Typing(Typing::Open));
+    app.send(Event::Typing(Typing::Text { text: "p1".to_owned(), cursor: 2 }));
+    app.send(Event::QuickAdd("p1".to_owned()));
+    app.answer(0);
+    assert!(app.view().line.is_some(), "Mark Done's answer takes nothing of quick add's");
+    app.answer(0);
+    assert!(app.view().line.is_none(), "its own answer takes the line it added");
+}
+
+#[test]
+fn a_failed_dismiss_says_why_and_leaves_the_reminder_listed_and_the_question_alone() {
+    let mut app = ByHand::new(|_| {});
+    let reminder = lumenna_records::reminders::DueReminder {
+        key: "not-a-reminder".to_owned(),
+        occurrence: "2030-01-15".to_owned(),
+        at: "2030-01-15T09:00:00Z".to_owned(),
+        target: "nothing".to_owned(),
+        kind: "task".to_owned(),
+        title: "Pay rent".to_owned(),
+        text: "Pay rent is due".to_owned(),
+        missed: String::new(),
+        dismiss: "Dismiss".to_owned(),
+        snooze: "Snooze".to_owned(),
+        carry: String::new(),
+        replan: String::new(),
+    };
+    app.send(Event::Answered(lumenna_app::HostAnswer::Found(Ok(lumenna_records::reminders::DueReminders {
+        announcement: String::new(),
+        notices: Vec::new(),
+        due: vec![reminder],
+        missed: Vec::new(),
+        missed_summary: String::new(),
+        elsewhere: false,
+    }))));
+    let due = app.view().due;
+    assert_eq!(due.len(), 1);
+    let ids: Vec<&str> = due[0].buttons.iter().map(|b| b.id.as_str()).collect();
+    assert_eq!(ids, ["dismiss", "snooze"], "in the order every platform shows them");
+    app.send(Event::Day(DayMove::Ask));
+    app.send(Event::Due(lumenna_app::DueEvent::Dismiss(due[0].id.clone())));
+    assert_eq!(app.view().due.len(), 1, "listed until the host has dealt with it");
+    app.answer(0);
+    let view = app.view();
+    assert_eq!(view.due.len(), 1, "it could not be dismissed, so it stays");
+    assert_eq!(view.asking.and_then(|a| a.refusal), None, "Go to Day's question is not where the failure goes");
+}
+
+#[test]
+fn deleting_a_place_from_the_sidebar_while_another_is_shown_stays_where_the_person_is() {
+    let mut app = App::new();
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Work", None).unwrap();
+    app.session.tick();
+    app.send(Event::Open(Place::Today));
+    app.send(sidebar_action(&app, "Work", ActionKind::Delete));
+    app.send(Event::Answer(Answer::Picked { id: "keep".to_owned(), length: None }));
+    assert!(app.view().sidebar.iter().all(|e| e.title != "Work"));
+    assert_eq!(app.view().place, Some(Place::Today), "Today was shown, not Work");
+}
+
+#[test]
+fn a_reminder_dismissed_on_another_device_leaves_the_list_when_the_store_says_so() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    let since = jiff::Timestamp::now().to_string();
+    let tz = jiff::tz::TimeZone::system();
+    let now = jiff::Zoned::now().date().tomorrow().unwrap().at(8, 56, 0, 0).to_zoned(tz).unwrap().timestamp().to_string();
+    app.send(Event::Due(lumenna_app::DueEvent::Look { since, now: Some(now) }));
+    let due = app.view().due;
+    assert_eq!(due.len(), 1);
+    let firing = &due[0].firings[0];
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().dismiss_reminder(firing.key.clone(), firing.occurrence.clone()).unwrap();
+    app.session.tick();
+    assert!(app.view().due.is_empty(), "dismissed elsewhere, dealt with here");
+}
+
+#[test]
+fn snoozing_a_reminder_takes_it_off_the_list_and_puts_what_took_its_place_in_hand_there() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    block(&mut app, "Writing", "09:00", "tomorrow", None);
+    let since = jiff::Timestamp::now().to_string();
+    let tz = jiff::tz::TimeZone::system();
+    let now = jiff::Zoned::now().date().tomorrow().unwrap().at(8, 56, 0, 0).to_zoned(tz).unwrap().timestamp().to_string();
+    app.send(Event::Due(lumenna_app::DueEvent::Look { since, now: Some(now) }));
+    let due = app.view().due;
+    assert_eq!(due.len(), 2, "{due:?}");
+    let landing = app.view().due_held.landing;
+    let shell = app.send(Event::Due(lumenna_app::DueEvent::Snooze(due[0].id.clone())));
+    assert!(!said(&shell).is_empty(), "the snooze is said");
+    let view = app.view();
+    assert_eq!(view.due.len(), 1);
+    assert_eq!(view.due_held.focus.as_deref(), Some(due[1].id.as_str()), "the next is in hand");
+    assert!(view.due_held.landing > landing, "and focus is the list's to move");
+}
+
+#[test]
+fn an_overruns_replan_opens_on_today_and_its_warning_stays_when_nothing_is_replanned() {
+    let mut app = ByHand::new(|_| {});
+    let overrun = lumenna_records::reminders::DueReminder {
+        key: "overrun".to_owned(),
+        occurrence: "2030-01-15".to_owned(),
+        at: "2030-01-15T09:00:00Z".to_owned(),
+        target: "series".to_owned(),
+        kind: "block".to_owned(),
+        title: "Deep work".to_owned(),
+        text: "Deep work's tasks need more time than it has".to_owned(),
+        missed: String::new(),
+        dismiss: "Dismiss".to_owned(),
+        snooze: "Snooze".to_owned(),
+        carry: String::new(),
+        replan: "Replan".to_owned(),
+    };
+    app.send(Event::Answered(lumenna_app::HostAnswer::Found(Ok(lumenna_records::reminders::DueReminders {
+        announcement: String::new(),
+        notices: Vec::new(),
+        due: vec![overrun],
+        missed: Vec::new(),
+        missed_summary: String::new(),
+        elsewhere: false,
+    }))));
+    let due = app.view().due;
+    assert_eq!(due[0].buttons[0].id, "replan", "what it offers of its own comes first");
+    app.send(Event::Open(Place::Tasks));
+    app.send(Event::Due(lumenna_app::DueEvent::Replan(due[0].id.clone())));
+    let view = app.view();
+    assert_eq!(view.place, Some(Place::Today), "Replan from Now is the day's");
+    assert_eq!(view.proposal.map(|p| p.kind), Some(ActionKind::Replan));
+    app.send(Event::Proposal(ProposalEvent::Close));
+    assert!(app.held.is_empty(), "nothing replanned, nothing dismissed");
+    assert_eq!(app.view().due.len(), 1);
+}
+
+#[test]
+fn a_task_deleted_on_one_screen_is_not_left_in_hand_on_another() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.add("Call Sam");
+    app.send(Event::Open(Place::Tasks));
+    let milk = app.id_of("Buy milk");
+    app.send(Event::Focus(milk.clone()));
+    app.send_on(1, Event::Open(Place::Tasks));
+    app.send_on(1, Event::Focus(milk.clone()));
+    app.send_on(1, Event::Key("delete".to_owned()));
+    let first = app.view();
+    assert!(first.list.unwrap().items.iter().all(|i| i.row.id != milk));
+    assert_eq!(first.focus, Some(app.id_of("Call Sam")), "the row that took its place is in hand");
+}
+
+#[test]
+fn redo_puts_back_what_undo_took() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Undo);
+    assert!(app.titles().is_empty());
+    let shell = app.send(Event::Redo);
+    assert_eq!(app.titles(), ["Buy milk"]);
+    assert!(!said(&shell).is_empty(), "the redo is said");
+}
+
+#[test]
+fn a_launch_opens_what_it_names_and_what_now_asks_its_question_on_today() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    store.add_filter("Urgent", "p1").unwrap();
+    app.session.tick();
+    app.add("Buy milk @errands");
+    app.send(Event::Launch("project:Work".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Project("Work".to_owned())));
+    app.send(Event::Launch("label:errands".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Label("errands".to_owned())));
+    app.send(Event::Launch("filter:Urgent".to_owned()));
+    assert!(matches!(app.view().place, Some(Place::Filter { name, .. }) if name == "Urgent"));
+    store.delete_filter("Urgent").unwrap();
+    app.session.tick();
+    app.send(Event::Open(Place::Tasks));
+    app.send(Event::Launch("filter:Urgent".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Tasks), "a filter deleted is no way in");
+    app.send(Event::Launch("what-now".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Today));
+}
+
+#[test]
+fn going_to_now_shows_today_from_any_day() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Day(DayMove::Next));
+    assert!(!app.view().day.unwrap().today);
+    app.send(Event::Day(DayMove::Now));
+    let view = app.view();
+    assert!(view.day.unwrap().today);
+    assert!(view.focus.is_some());
+}
+
+#[test]
+fn sync_now_says_so_and_then_what_the_round_found() {
+    let mut app = App::new();
+    app.network();
+    let shell = app.send(Event::Devices(lumenna_app::DevicesEvent::SyncNow));
+    assert_eq!(said(&shell), ["Syncing"]);
+    let asked = app.network();
+    let [(id, NetworkRequest::SyncNow)] = &asked[..] else { panic!("{asked:?}") };
+    let shell = app.answer_network(*id, NetworkAnswer::Said("Synced with Kitchen Mac.".to_owned()));
+    assert!(said(&shell).contains(&"Synced with Kitchen Mac."));
+}
+
+#[test]
+fn cancelling_a_pairing_gives_it_up_and_waiting_twice_waits_once() {
+    use lumenna_app::PairEvent;
+    let mut app = App::new();
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    pair(&mut app, PairEvent::Open("Test browser".to_owned()));
+    app.network();
+    pair(&mut app, PairEvent::Wait);
+    pair(&mut app, PairEvent::Wait);
+    let asked = app.network();
+    let [(wait, NetworkRequest::Pair { .. })] = &asked[..] else { panic!("one pairing at a time: {asked:?}") };
+    let wait = *wait;
+    app.answer_network(wait, NetworkAnswer::Code("ab12".to_owned()));
+    let pairing = app.view().devices.unwrap().pairing.unwrap();
+    assert!(pairing.mine_line.unwrap().ends_with(": ab12"));
+    app.answer_network(wait, NetworkAnswer::Words(vec!["apple".to_owned(), "river".to_owned(), "stone".to_owned()]));
+    assert!(app.view().devices.unwrap().pairing.unwrap().matching.unwrap().ends_with(" apple, river, stone."));
+    pair(&mut app, PairEvent::Cancel);
+    assert!(matches!(app.network()[..], [(_, NetworkRequest::CancelPairing)]));
+    app.answer_network(wait, NetworkAnswer::Paired(Err("The pairing was given up.".to_owned())));
+    let pairing = app.view().devices.unwrap().pairing.unwrap();
+    assert!(!pairing.running);
+    pair(&mut app, PairEvent::Cancel);
+    assert!(app.view().devices.unwrap().pairing.is_none(), "nothing under way: Cancel closes the screen");
+}
+
+#[test]
+fn a_new_reminder_from_its_list_is_in_hand_there_and_delete_there_never_trashes_the_task() {
+    let mut app = App::new();
+    app.add("Pay rent tomorrow");
+    app.send(Event::Run(vec![ActionKind::Reminders]));
+    let list = app.view().reminders.expect("the list is open");
+    assert_eq!(app.view().reminders_title.as_deref(), Some("Reminders for Pay rent"));
+    let landing = app.view().reminders_held.landing;
+    app.send(Event::ActOn(ActingOn::Reminders, list.offered[0].clone()));
+    app.send(Event::Answer(Answer::Text { text: "1h before".to_owned() }));
+    let view = app.view();
+    let added = view.reminders.unwrap().reminders.into_iter().find(|r| r.own).expect("its own reminder");
+    assert_eq!(view.reminders_held.focus, Some(added.id));
+    assert!(view.reminders_held.landing > landing, "it lands in the reminder list");
+    app.send(Event::Key("delete".to_owned()));
+    assert_eq!(app.titles(), ["Pay rent"], "Delete in the reminder list is the reminder's");
+}
+
+#[test]
+fn typing_in_one_tasks_details_keeps_anothers_and_typing_after_save_survives_its_answer() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.add("Call Sam");
+    let (milk, sam) = (app.id_of("Buy milk"), app.id_of("Call Sam"));
+    app.send(Event::Focus(milk.clone()));
+    app.send(Event::Details(DetailsEvent::Field { key: "notes".to_owned(), value: "semi-skimmed".to_owned() }));
+    app.send(Event::Focus(sam.clone()));
+    app.send(Event::Details(DetailsEvent::Field { key: "notes".to_owned(), value: "about the car".to_owned() }));
+    app.send(Event::Focus(milk));
+    let details = app.view().details.unwrap();
+    assert_eq!(details.fields.notes, "semi-skimmed");
+    assert!(details.dirty, "Buy milk's typing was kept");
+    app.send(Event::Details(DetailsEvent::Save));
+    assert!(!app.view().details.unwrap().dirty);
+    app.send(Event::Focus(sam));
+    assert_eq!(app.view().details.unwrap().fields.notes, "about the car");
+}
+
+#[test]
+fn a_question_is_numbered_as_it_opens_and_keeps_what_was_typed_beside_a_refusal() {
+    let mut app = App::new();
+    app.send(Event::Day(DayMove::Ask));
+    let first = app.view().asking.unwrap();
+    assert!(first.number > 0);
+    app.send(Event::Answer(Answer::Text { text: "the day after never".to_owned() }));
+    let refused = app.view().asking.unwrap();
+    assert_eq!(refused.number, first.number, "the same question, refused");
+    assert_eq!(refused.typed.as_deref(), Some("the day after never"));
+    app.send(Event::Cancel);
+    app.send(Event::Day(DayMove::Ask));
+    assert!(app.view().asking.unwrap().number > first.number, "asked again, it is a new question");
+}
+
+#[test]
+fn a_length_question_offers_the_usual_lengths_in_words() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.add("Write the report");
+    app.send(Event::Run(vec![ActionKind::PutInBlock]));
+    let choices = app.view().asking.unwrap().choices.unwrap();
+    let block = choices.choices.iter().find(|c| c.title == "Deep work").unwrap().id.clone();
+    app.send(Event::Answer(Answer::Picked { id: block, length: None }));
+    let asking = app.view().asking.unwrap();
+    assert!(asking.lengths.iter().any(|l| l.id == "45m" && l.title == "45 minutes"), "{:?}", asking.lengths);
+}
+
+#[test]
+fn every_command_key_runs_what_the_table_says_and_a_menu_names_mark_done_as_the_row_has_it() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Key("go-today".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Today));
+    app.send(Event::Key("go-tasks".to_owned()));
+    let mark = |app: &App| app.view().commands.into_iter().find(|c| c.id == "mark-done").unwrap();
+    assert_eq!(mark(&app).title, "Mark Done");
+    assert!(mark(&app).enabled);
+    app.send(Event::Key("mark-done".to_owned()));
+    assert!(app.titles().is_empty(), "done");
+    app.send(Event::Open(Place::History));
+    app.send(Event::Focus(app.id_of("Buy milk")));
+    assert_eq!(mark(&app).title, "Mark Not Done", "the row's own name for it");
+    let shell = app.send(Event::Key("stop-waiting".to_owned()));
+    assert!(!said(&shell).is_empty(), "a command the row does not offer is refused in the core's words");
+    app.send(Event::Key("new-task".to_owned()));
+    assert!(app.view().line.is_some(), "quick add opens");
+}
+
+#[test]
+fn the_details_run_a_command_of_the_table_on_the_task_they_show() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Details(DetailsEvent::Key("mark-done".to_owned())));
+    assert!(app.titles().is_empty(), "done");
+}
+
+#[test]
+fn every_setting_is_on_exactly_one_settings_page() {
+    let mut app = App::new();
+    app.send(Event::Background(lumenna_app::BackgroundEvent::Offered { kind: lumenna_records::background::BackgroundKind::WindowsSignIn, on: false }));
+    app.send(Event::Settings(SettingsEvent::Open));
+    let settings = app.view().settings.unwrap();
+    let pages = lumenna_records::fields::settings_pages(false, false);
+    assert!(settings.pages.iter().any(|p| p.keys.contains(&"clock".to_owned())), "a shell without a clock of its own is offered it");
+    for shown in &settings.settings {
+        let on: Vec<&str> = pages.iter().filter(|p| p.keys.contains(&shown.setting.key)).map(|p| p.id.as_str()).collect();
+        assert_eq!(on.len(), 1, "{} is on {on:?}", shown.setting.key);
+    }
+    for page in &pages {
+        for key in &page.keys {
+            assert!(settings.settings.iter().any(|s| &s.setting.key == key), "{} lists {key}, which is no setting", page.id);
+        }
+    }
+    app.send(Event::Clock(lumenna_records::proposals::TimeStyle::TwentyFourHour));
+    let pages = app.view().settings.unwrap().pages;
+    assert!(!pages.iter().any(|p| p.keys.contains(&"clock".to_owned())), "a shell with its own clock is not offered it");
+}
+
+#[test]
+fn a_sidebar_row_with_rows_under_it_says_whether_they_are_shown_and_its_level_where_it_changes() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    store.add_project("Reports", Some("Work".to_owned())).unwrap();
+    app.session.tick();
+    let entry = |app: &App, title: &str| app.view().sidebar.into_iter().find(|e| e.title == title).unwrap();
+    assert_eq!(entry(&app, "Work").expanded, Some(true));
+    assert_eq!(entry(&app, "Reports").level.as_deref(), Some("level 3"));
+    app.send(sidebar_action(&app, "Work", ActionKind::Collapse));
+    assert_eq!(entry(&app, "Work").expanded, Some(false));
+    assert!(entry(&app, "Reports").hidden);
+}
+
+#[test]
+fn another_option_of_replan_from_now_is_proposed_in_place_at_the_moment_pinned() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    let add = |title: &str, at: &str, minutes: u32, kind: &str| {
+        store
+            .add_block(lumenna_host::NewBlock {
+                title: title.to_owned(),
+                at: at.to_owned(),
+                minutes,
+                date: Some("2026-05-06".to_owned()),
+                kind: kind.to_owned(),
+                ..lumenna_host::NewBlock::default()
+            })
+            .unwrap();
+    };
+    add("Deep work", "09:00", 120, "work");
+    add("Lunch", "10:30", 30, "break");
+    add("Review", "11:00", 60, "work");
+    // Today has a block, so Today offers Replan from Now; its proposal is of the day pinned.
+    store
+        .add_block(lumenna_host::NewBlock {
+            title: "All day".to_owned(),
+            at: "00:00".to_owned(),
+            minutes: 1440,
+            date: Some("today".to_owned()),
+            kind: "work".to_owned(),
+            ..lumenna_host::NewBlock::default()
+        })
+        .unwrap();
+    app.session.tick();
+    app.send(Event::PlanFrom(Some("2026-05-06T10:40".to_owned())));
+    app.send(Event::Open(Place::Today));
+    app.send(day_action(&app, ActionKind::Replan));
+    let proposal = app.view().proposal.expect("Replan from Now's screen");
+    let skip = proposal.others.iter().position(|o| o.starts_with("Skip Lunch today")).expect("skipping Lunch is another option");
+    let shown = proposal.shown;
+    app.send(Event::Proposal(ProposalEvent::Take(skip as u32)));
+    let taken = app.view().proposal.unwrap();
+    assert!(taken.shown > shown, "a new proposal, in place");
+    assert!(taken.changes.iter().any(|c| c.sentence.starts_with("Lunch is skipped") && c.state == "checked"), "{:?}", taken.changes);
+}

@@ -31,6 +31,20 @@ contract with every shell; this is how the app keeps it.
   `Event::Focus` the person made since they last acted leaves the row they moved to in hand
   (`Screen::moves`, `acted_at`), rather than pulling them to the row the write would have put
   there.
+- **A write's answer goes only to what waits on it**: every write goes out with `write`, numbered
+  among the screen's (`Screen::writes`), and comes back as `Event::Wrote(Writing, answer)`. The
+  question it answered (`Open::writing`), the quick-add line (`adding`), the details' save, the
+  setting, the block form and the reminder being dealt with (`dealing`) each hold the number they
+  wait on, and only that answer closes, clears or refuses them; where a place renamed, made or
+  deleted now is comes from the question the write answered (`Writing::asked`), never from
+  whatever question is open when it comes back. `host` is for reads alone.
+- **What a turn reads again is read once per store** (`Screen::worked`): the listing of the
+  place shown and the day's plan, kept with the store they were read from until it, the place or
+  the query moves. `Views::one` builds one screen's view alone, for a shell drawing one of
+  several. When the store moves, every other screen settles its rows in hand (`Model::share`).
+- **A side list acted from holds what a write made there** (`settle_sides`), else the row in
+  hand, else its first; while the person acts from one, a key is that list's and never falls back
+  to the main list's row.
 - **A new effect or shell event reaches every shell's code at once**: `bridge::Shell`, the
   ffi's `Turn` and `deliver`, the RPC turn notification (`crates/ffi/src/rpc.rs`), the web's
   core (`apps/web/core/src/app.rs`) and the flow tests all match on them. BoltFFI cannot leave a

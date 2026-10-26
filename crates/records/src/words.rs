@@ -474,6 +474,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_desktop_entry_says_what_lumenna_is_in_the_cores_words() {
+        let entry = include_str!("../../../apps/gtk/data/dev.emassey0135.Lumenna.desktop");
+        assert!(entry.lines().any(|line| line == format!("Comment={DESCRIPTION}")), "{entry}");
+    }
+
+    #[test]
+    fn a_watch_says_how_it_stands_with_its_phone_naming_it_as_given() {
+        assert_eq!(phone_sync("the iPhone", &PhoneSync::NotYet), "Not synced with the iPhone yet");
+        assert_eq!(phone_sync("the iPhone", &PhoneSync::Synced { time: "9:41 AM".to_owned() }), "Synced with the iPhone at 9:41 AM");
+        assert_eq!(phone_sync("the iPhone", &PhoneSync::OutOfReach), "The iPhone is not in reach; changes go to it when it is");
+    }
+
+    #[test]
+    fn a_browser_is_named_by_what_it_is_and_where_it_runs() {
+        assert_eq!(browser_device_name("Firefox", "Windows"), "Firefox on Windows");
+        assert_eq!(browser_device_name("", ""), "Web browser");
+    }
+
+    #[test]
     fn a_store_that_would_not_open_is_said_with_its_reason_after_it_when_there_is_one() {
         assert_eq!(store_unopened(" "), "Lumenna could not open its store");
         assert_eq!(

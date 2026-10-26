@@ -48,6 +48,7 @@ class AppListViewController: UIViewController {
         case .sidebar: (core.app.view.sidebarHeld.focus, core.app.view.sidebarHeld.landing)
         case .reminders: (core.app.view.remindersHeld.focus, core.app.view.remindersHeld.landing)
         case .devices: (core.app.view.devicesHeld.focus, core.app.view.devicesHeld.landing)
+        case .due: (core.app.view.dueHeld.focus, core.app.view.dueHeld.landing)
         case nil: (core.app.view.focus, core.app.view.landing)
         }
     }

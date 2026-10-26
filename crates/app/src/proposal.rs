@@ -35,7 +35,9 @@ pub enum ProposalEvent {
     Take(u32),
     /// Close the screen.
     Close,
-    /// Open Replan from Now, from wherever it is asked for: an overrun warning's button.
+    /// Open Replan from Now over whatever is shown. An overrun warning's button is
+    /// `DueEvent::Replan`, which goes to today and dismisses the warning once something is
+    /// replanned; this one dismisses nothing.
     Replan,
 }
 
