@@ -55,5 +55,5 @@ pub type SharedStore = std::sync::Arc<std::sync::Mutex<lumenna_store::Store>>;
 /// Locks the shared store, turning a poisoned lock into an error rather than a panic.
 #[cfg(feature = "network")]
 pub(crate) fn lock(store: &SharedStore) -> Result<std::sync::MutexGuard<'_, lumenna_store::Store>> {
-    store.lock().map_err(|_| SyncError::Protocol("the store is wedged after an earlier failure".to_owned()))
+    store.lock().map_err(|_| SyncError::Local("the store is wedged after an earlier failure".to_owned()))
 }

@@ -6,7 +6,7 @@ use lumenna_core::ProjectId;
 use lumenna_core::edit::{create_task, purge_task, update_task};
 use lumenna_core::model::Task;
 use lumenna_core::order::OrderKey;
-use lumenna_store::{Documents, Store, SyncName, SyncState};
+use lumenna_store::{Adoption, Documents, Store, SyncName, SyncState};
 
 fn add(store: &mut Store, title: &str) -> Task {
     let task = Task::new(ProjectId::INBOX, title, OrderKey::middle());
@@ -34,29 +34,36 @@ fn titles(store: &mut Store) -> Vec<String> {
 /// Syncs two stores as a session does: every document of the newest generation either holds,
 /// then each takes in a newer one it was sent.
 fn sync(a: &mut Store, b: &mut Store) {
+    sync_only(a, b, |_| true);
+}
+
+/// [`sync`], but only the documents `only` picks are carried, as when a session is cut short:
+/// each side still names every document it holds.
+fn sync_only(a: &mut Store, b: &mut Store, only: impl Fn(&SyncName) -> bool) {
     let names: Vec<SyncName> = a.sync_documents().unwrap().into_iter().chain(b.sync_documents().unwrap()).collect();
     let newest = names.iter().map(|n| n.generation.clone()).max().unwrap();
     let mut documents: Vec<SyncName> = names.into_iter().filter(|n| n.generation == newest).collect();
     documents.sort();
     documents.dedup();
-    for name in &documents {
+    let (mut a_adopting, mut b_adopting) = (Adoption::default(), Adoption::default());
+    for name in documents.iter().filter(|name| only(name)) {
         let (mut to_b, mut to_a) = (SyncState::new(), SyncState::new());
         for _ in 0..100 {
-            let from_a = a.sync_message(name, &mut to_b).unwrap();
-            let from_b = b.sync_message(name, &mut to_a).unwrap();
+            let from_a = a.sync_message(name, &mut to_b, &mut a_adopting).unwrap();
+            let from_b = b.sync_message(name, &mut to_a, &mut b_adopting).unwrap();
             if from_a.is_none() && from_b.is_none() {
                 break;
             }
             if let Some(message) = from_a {
-                b.receive_sync_message(name, &mut to_a, &message).unwrap();
+                b.receive_sync_message(name, &mut to_a, &mut b_adopting, &message).unwrap();
             }
             if let Some(message) = from_b {
-                a.receive_sync_message(name, &mut to_b, &message).unwrap();
+                a.receive_sync_message(name, &mut to_b, &mut a_adopting, &message).unwrap();
             }
         }
     }
-    a.finish_adoption().unwrap();
-    b.finish_adoption().unwrap();
+    a.finish_adoption(a_adopting, &documents).unwrap();
+    b.finish_adoption(b_adopting, &documents).unwrap();
 }
 
 /// Whether any change in any document of `store`'s backup, its whole history, writes `text`.
@@ -273,4 +280,248 @@ fn a_device_that_missed_the_rebuild_takes_it_in_from_one_that_has_it() {
         assert_eq!(titles(store), ["the groceries", "the laundry"]);
         assert!(!history_holds(store, "the secret"));
     }
+}
+
+/// Three devices that share `the shared` and `the old secret`: what every scenario below starts from.
+fn three_devices() -> (Store, Store, Store, Task) {
+    let (mut a, mut b, mut c) = (Store::open_in_memory().unwrap(), Store::open_in_memory().unwrap(), Store::open_in_memory().unwrap());
+    add(&mut a, "the shared");
+    let secret = add(&mut a, "the old secret");
+    sync(&mut a, &mut b);
+    sync(&mut a, &mut c);
+    (a, b, c, secret)
+}
+
+/// Every pair of the three synced, twice over, so each has what any had.
+fn sync_all(a: &mut Store, b: &mut Store, c: &mut Store) {
+    for _ in 0..2 {
+        sync(a, b);
+        sync(b, c);
+        sync(a, c);
+    }
+}
+
+#[test]
+fn two_devices_taking_in_one_erasure_keep_a_rename_made_before_it_of_a_task_the_eraser_never_had() {
+    // Each device's actor is random, and two copies of one record lost one of them about half
+    // the time: tried often enough that a loss would show.
+    for _ in 0..12 {
+        let (mut a, mut b, mut c, secret) = three_devices();
+        let task = add(&mut a, "the essay");
+        sync(&mut a, &mut c);
+        erase(&mut b, &secret);
+        rename(&mut a, &task, "the essay, renamed");
+
+        sync(&mut a, &mut b);
+        sync(&mut c, &mut b);
+        sync_all(&mut a, &mut b, &mut c);
+        for store in [&mut a, &mut b, &mut c] {
+            assert_eq!(titles(store), ["the essay, renamed", "the shared"]);
+        }
+    }
+}
+
+#[test]
+fn two_devices_taking_in_one_erasure_keep_a_rename_made_after_it_of_a_task_the_eraser_never_had() {
+    for _ in 0..12 {
+        let (mut a, mut b, mut c, secret) = three_devices();
+        let task = add(&mut a, "the essay");
+        sync(&mut a, &mut c);
+        erase(&mut b, &secret);
+
+        sync(&mut a, &mut b);
+        sync(&mut c, &mut b);
+        rename(&mut a, &task, "the essay, renamed");
+        add(&mut c, "the laundry");
+        sync_all(&mut a, &mut b, &mut c);
+        for store in [&mut a, &mut b, &mut c] {
+            assert_eq!(titles(store), ["the essay, renamed", "the laundry", "the shared"]);
+        }
+    }
+}
+
+fn add_block(store: &mut Store, title: &str) -> lumenna_core::model::BlockSeries {
+    let block = lumenna_core::model::BlockSeries::one_off(
+        title,
+        lumenna_core::model::BlockKind::Work,
+        jiff::civil::date(2027, 4, 1),
+        jiff::civil::time(9, 0, 0, 0),
+        60,
+    )
+    .unwrap();
+    store.write(|docs| docs.put_series(&block, None)).unwrap();
+    block
+}
+
+fn block_titles(store: &mut Store) -> Vec<String> {
+    store.load_all_years().unwrap();
+    let mut titles: Vec<String> = store.snapshot().0.series.values().map(|s| s.title.clone()).collect();
+    titles.sort();
+    titles
+}
+
+#[test]
+fn a_newer_generation_synced_only_in_part_is_not_taken_in_until_it_is_whole() {
+    for _ in 0..12 {
+        let mut phone = Store::open_in_memory().unwrap();
+        let mut laptop = Store::open_in_memory().unwrap();
+        let secret = add(&mut phone, "the secret");
+        let block = add_block(&mut phone, "Retreat");
+        sync(&mut phone, &mut laptop);
+        erase(&mut phone, &secret);
+        let before = laptop.snapshot().0.series[&block.id].clone();
+        let after = lumenna_core::model::BlockSeries { title: "Retreat, moved".to_owned(), ..before.clone() };
+        laptop.write(|docs| docs.put_series(&after, Some(&before))).unwrap();
+
+        // Only the core and the devices of the newer generation arrive: the year never does.
+        sync_only(&mut phone, &mut laptop, |name| !matches!(name.id, lumenna_store::DocId::Blocks(_)));
+        assert_ne!(laptop.generation(), phone.generation(), "not whole, so not taken in");
+
+        sync(&mut phone, &mut laptop);
+        sync(&mut phone, &mut laptop);
+        assert_eq!(laptop.generation(), phone.generation());
+        for store in [&mut phone, &mut laptop] {
+            assert_eq!(block_titles(store), ["Retreat, moved"]);
+        }
+    }
+}
+
+#[test]
+fn two_sessions_taking_in_one_generation_each_keep_their_own_and_the_second_merges_into_the_first() {
+    let mut phone = Store::open_in_memory().unwrap();
+    let mut tablet = Store::open_in_memory().unwrap();
+    let mut laptop = Store::open_in_memory().unwrap();
+    let secret = add(&mut phone, "the secret");
+    sync(&mut phone, &mut laptop);
+    erase(&mut phone, &secret);
+    sync(&mut phone, &mut tablet);
+    add(&mut tablet, "written on the tablet since");
+
+    // The laptop hears the newer generation from the phone and the tablet at once, a session
+    // each; the phone's session is cut short after the core.
+    let names: Vec<SyncName> = phone.sync_documents().unwrap();
+    let (mut from_phone, mut from_tablet) = (Adoption::default(), Adoption::default());
+    let carry = |laptop: &mut Store, other: &mut Store, adoption: &mut Adoption, name: &SyncName| {
+        let (mut to_other, mut to_laptop) = (SyncState::new(), SyncState::new());
+        let mut theirs = Adoption::default();
+        for _ in 0..100 {
+            let mine = laptop.sync_message(name, &mut to_other, adoption).unwrap();
+            let back = other.sync_message(name, &mut to_laptop, &mut theirs).unwrap();
+            if mine.is_none() && back.is_none() {
+                break;
+            }
+            if let Some(message) = mine {
+                other.receive_sync_message(name, &mut to_laptop, &mut theirs, &message).unwrap();
+            }
+            if let Some(message) = back {
+                laptop.receive_sync_message(name, &mut to_other, adoption, &message).unwrap();
+            }
+        }
+    };
+    let core = names.iter().find(|n| n.id == lumenna_store::DocId::Core).unwrap();
+    carry(&mut laptop, &mut phone, &mut from_phone, core);
+    for name in &names {
+        carry(&mut laptop, &mut tablet, &mut from_tablet, name);
+    }
+    assert!(laptop.finish_adoption(from_tablet, &names).unwrap().is_some(), "the whole one is taken in");
+    assert!(laptop.finish_adoption(from_phone, &names).unwrap().is_none(), "the part is not, nor thrown into the other");
+    assert_eq!(laptop.generation(), phone.generation());
+    assert_eq!(titles(&mut laptop), ["written on the tablet since"]);
+}
+
+#[test]
+fn a_process_holding_the_history_before_cannot_compact_it_back_over_the_erasure() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.sqlite");
+    let mut app = Store::open(&path).unwrap();
+    let mut daemon = Store::open(&path).unwrap();
+    let secret = add(&mut app, "the secret");
+    add(&mut app, "the groceries");
+    daemon.refresh().unwrap();
+
+    erase(&mut app, &secret);
+    let refused = daemon.compact_document(lumenna_store::DocId::Core).unwrap_err();
+    assert!(matches!(refused, lumenna_store::StoreError::Rebuilt), "{refused}");
+    let mut reopened = Store::open(&path).unwrap();
+    assert!(!history_holds(&mut reopened, "the secret"));
+    // And the daemon has moved on to the new history, so its next write lands.
+    add(&mut daemon, "the laundry");
+    app.refresh().unwrap();
+    assert_eq!(titles(&mut app), ["the groceries", "the laundry"]);
+}
+
+#[test]
+fn a_write_refused_as_rebuilt_leaves_the_process_on_the_new_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.sqlite");
+    let mut app = Store::open(&path).unwrap();
+    let mut daemon = Store::open(&path).unwrap();
+    let secret = add(&mut app, "the secret");
+    add(&mut app, "the groceries");
+    daemon.refresh().unwrap();
+    erase(&mut app, &secret);
+
+    let task = Task::new(ProjectId::INBOX, "the laundry", OrderKey::middle());
+    let refused = daemon.apply(&create_task(task.clone())).unwrap_err();
+    assert!(matches!(refused, lumenna_store::StoreError::Rebuilt), "{refused}");
+    assert_eq!(daemon.generation(), app.generation());
+    assert_eq!(titles(&mut daemon), ["the groceries"]);
+    // Tried again, it lands, without a refresh in between.
+    daemon.apply(&create_task(task)).unwrap();
+    app.refresh().unwrap();
+    assert_eq!(titles(&mut app), ["the groceries", "the laundry"]);
+}
+
+#[test]
+fn a_rebuild_is_not_written_over_a_change_another_process_made_after_it_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.sqlite");
+    let mut app = Store::open(&path).unwrap();
+    add(&mut app, "the groceries");
+    let sequence = app.db().sequence().unwrap();
+    let mut daemon = Store::open(&path).unwrap();
+    add(&mut daemon, "the laundry");
+
+    let mut db = lumenna_store::Db::open(&path).unwrap();
+    assert!(!db.replace_generation(None, sequence, "rebuilt", &[], "").unwrap(), "the file moved on since it was read");
+    let mut reopened = Store::open(&path).unwrap();
+    assert_eq!(reopened.generation(), None);
+    assert_eq!(titles(&mut reopened), ["the groceries", "the laundry"]);
+}
+
+#[test]
+fn an_export_from_before_an_erasure_does_not_bring_back_what_was_erased() {
+    let mut store = Store::open_in_memory().unwrap();
+    let secret = add(&mut store, "the secret");
+    add(&mut store, "the groceries");
+    let completion = lumenna_core::model::TaskCompletion::new(secret.id, None);
+    store.write(|docs| docs.put_completion(&completion, None)).unwrap();
+    let json = lumenna_store::export::export_json(&store.snapshot().0, jiff::Timestamp::now());
+
+    erase(&mut store, &secret);
+    let report = store.import(&lumenna_store::export::parse_json(&json).unwrap()).unwrap();
+    assert_eq!(titles(&mut store), ["the groceries"]);
+    assert!(store.snapshot().0.completions.is_empty(), "nor anything of the erased task's");
+    assert_eq!(report.erased, 2, "{report:?}");
+    assert_eq!(report.skipped, 2, "{report:?}");
+    assert!(!history_holds(&mut store, "the secret"));
+}
+
+#[test]
+fn a_store_opened_again_still_counts_how_often_a_task_was_put_off() {
+    use jiff::civil::date;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("profile.sqlite");
+    let essay = {
+        let mut store = Store::open(&path).unwrap();
+        let essay = add(&mut store, "the essay");
+        for day in [10, 12] {
+            let before = store.snapshot().0.tasks[&essay.id].clone();
+            let after = Task { due: Some(lumenna_core::model::Due::on(date(2026, 5, day))), ..before.clone() };
+            store.apply_recorded(&update_task(before, after)).unwrap();
+        }
+        essay
+    };
+    let mut reopened = Store::open(&path).unwrap();
+    assert_eq!(reopened.snapshot().0.postponed.get(&essay.id).copied(), Some(1));
 }

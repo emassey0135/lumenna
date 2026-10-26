@@ -20,14 +20,12 @@
 use iroh::endpoint::Connection;
 use iroh::{Endpoint, EndpointAddr, SecretKey};
 use crate::discovery::LocalLookup;
-use lumenna_core::edit;
-use lumenna_core::model::Device;
 
 use crate::error::{Result, SyncError};
 use crate::node::{Network, finish};
 use crate::pairing::{self, Identity, Role};
 use crate::session::{self, Summary};
-use crate::{ALPN_PAIR, SharedStore, lock};
+use crate::{ALPN_PAIR, SharedStore};
 
 /// The mDNS service name pairing sessions advertise under. Distinct from paired devices',
 /// so a device going about its business never shows up as someone waiting to pair.
@@ -243,7 +241,7 @@ impl Invitation {
 
         let mut secret = [0u8; 32];
         conn.export_keying_material(&mut secret, EXPORTER_LABEL, b"")
-            .map_err(|_| SyncError::Protocol("the connection gave no secret to compare".to_owned()))?;
+            .map_err(|_| SyncError::Local("the connection gave no secret to compare".to_owned()))?;
         let words = pairing::compare(role, &mut recv, &mut send, &secret).await?;
         let accepted = confirm(words).await;
         let peer = match pairing::decide(&mut recv, &mut send, accepted, &me).await {
@@ -264,7 +262,7 @@ impl Invitation {
             ));
         }
 
-        enroll(store, &me, &peer)?;
+        pairing::enroll(store, &me, &peer)?;
         let summary = session::run(store, &mut recv, &mut send).await?;
         finish(&mut send, &mut recv).await?;
         close(conn, role).await;
@@ -286,31 +284,6 @@ async fn close(conn: &Connection, role: Role) {
             let _ = n0_future::time::timeout(std::time::Duration::from_secs(5), conn.closed()).await;
         }
     }
-}
-
-/// Writes both devices into `devices`, through the undo history: unpairing by mistake, or
-/// pairing by mistake, is the kind of thing a person wants back.
-fn enroll(store: &SharedStore, me: &Identity, peer: &Identity) -> Result<()> {
-    let now = lumenna_core::time::now();
-    let device = |identity: &Identity| -> Result<Device> {
-        Ok(Device {
-            node_id: identity.node_id.parse().map_err(|_| {
-                SyncError::Protocol(format!("'{}' is not a device key", identity.node_id))
-            })?,
-            name: identity.name.clone(),
-            platform: identity.platform.clone(),
-            paired_at: now,
-            last_seen: now,
-            schema: identity.schema,
-        })
-    };
-    let devices = [device(me)?, device(peer)?];
-    let mut store = lock(store)?;
-    let edit = edit::enroll_devices(&store.snapshot().0, &devices);
-    if !edit.is_empty() {
-        store.apply_recorded(&edit)?;
-    }
-    Ok(())
 }
 
 /// This device's identity for a pairing: its device key, and what to call it.

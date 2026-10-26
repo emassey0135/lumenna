@@ -136,6 +136,14 @@ fn provider_str(provider: ExternalProvider) -> &'static str {
 // Small composites, written wholesale (see Writer::set_nested).
 // ---------------------------------------------------------------------------------------
 
+/// The fields each small composite is written with, so an edit keeps any other a newer build
+/// wrote beside them (see `Writer::set_nested`).
+const DUE_FIELDS: &[&str] = &["date", "time", "timezone", "recurrence"];
+const EXTERNAL_FIELDS: &[&str] = &["provider", "external_id", "read_only", "last_synced"];
+const TRIGGER_FIELDS: &[&str] = &["at", "anchor", "offset_mins"];
+const DELIVERY_FIELDS: &[&str] = &["mode", "devices"];
+const BLOCK_REF_FIELDS: &[&str] = &["series", "date"];
+
 fn read_due<D: ReadDoc>(r: &Reader<'_, D>) -> Option<Due> {
     Some(Due {
         date: r.parsed("date")?,
@@ -316,11 +324,12 @@ impl Record for Task {
         )?;
         w.set_members("labels", was.map(|b| &b.labels), &self.labels)?;
         w.set_members("depends", was.map(|b| &b.depends), &self.depends)?;
-        w.set_nested("due", was.map(|b| b.due.as_ref()), self.due.as_ref(), write_due)?;
+        w.set_nested("due", DUE_FIELDS, was.map(|b| b.due.as_ref()), self.due.as_ref(), write_due)?;
         w.set_opt_u32("estimate_mins", was.map(|b| b.estimate_mins), self.estimate_mins)?;
         w.set_str("order", was.map(|b| &b.order), &self.order)?;
         w.set_nested(
             "external",
+            EXTERNAL_FIELDS,
             was.map(|b| b.external.as_ref()),
             self.external.as_ref(),
             write_external,
@@ -585,6 +594,7 @@ impl Record for BlockSeries {
         )?;
         w.set_nested(
             "external",
+            EXTERNAL_FIELDS,
             was.map(|b| b.external.as_ref()),
             self.external.as_ref(),
             write_external,
@@ -717,6 +727,7 @@ impl Record for BlockAssignment {
     fn write<T: Transactable>(&self, w: &mut Writer<'_, T>, was: Option<&Self>) -> Result<()> {
         w.set_nested(
             "block",
+            BLOCK_REF_FIELDS,
             was.map(|b| Some(&b.block_ref)),
             Some(&self.block_ref),
             write_block_ref,
@@ -786,16 +797,24 @@ impl Record for Reminder {
             ReminderTarget::Task(id) => ("task", id.to_string()),
             ReminderTarget::Block(id) => ("block", id.to_string()),
         };
-        w.set_string("target_kind", None, kind)?;
-        w.set_string("target_id", None, &id)?;
+        // Only what changed, as every field: rewritten on every edit, these won against a
+        // concurrent edit elsewhere for no reason.
+        let was_target = was.map(|b| match b.target {
+            ReminderTarget::Task(id) => ("task", id.to_string()),
+            ReminderTarget::Block(id) => ("block", id.to_string()),
+        });
+        w.set_string("target_kind", was_target.as_ref().map(|(kind, _)| *kind), kind)?;
+        w.set_string("target_id", was_target.as_ref().map(|(_, id)| id.as_str()), &id)?;
         w.set_nested(
             "trigger",
+            TRIGGER_FIELDS,
             was.map(|b| Some(&b.trigger)),
             Some(&self.trigger),
             write_trigger,
         )?;
         w.set_nested(
             "delivery",
+            DELIVERY_FIELDS,
             was.map(|b| Some(&b.delivery)),
             Some(&self.delivery),
             write_delivery,

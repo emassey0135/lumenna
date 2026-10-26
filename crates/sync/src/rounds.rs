@@ -9,17 +9,20 @@
 
 use std::collections::BTreeMap;
 
-use lumenna_store::{DocId, Store, SyncName, SyncState};
+use lumenna_store::{Adopted, Adoption, DocId, Store, SyncName, SyncState};
 
 use crate::error::{Result, SyncError};
 
 /// What one side says in a round: each document's next sync message, by name.
 pub(crate) type Said = Vec<(String, Vec<u8>)>;
 
-/// One side's sync state for every document, kept for the session or exchange it serves.
+/// One side's sync state for every document, kept for the session or exchange it serves, and
+/// the newer generation it is taking in, if the other side has one: its own, so it goes with
+/// the session or exchange, whole or not, and no other one touches it.
 #[derive(Default)]
 pub(crate) struct Rounds {
     states: BTreeMap<SyncName, SyncState>,
+    adoption: Adoption,
 }
 
 impl Rounds {
@@ -28,7 +31,7 @@ impl Rounds {
         let mut said = Vec::new();
         for name in documents {
             let state = self.states.entry(name.clone()).or_default();
-            if let Some(message) = store.sync_message(name, state)? {
+            if let Some(message) = store.sync_message(name, state, &mut self.adoption)? {
                 said.push((name.name(), message));
             }
         }
@@ -43,11 +46,17 @@ impl Rounds {
         for (name, message) in said {
             let Some(name) = SyncName::parse(name).filter(|name| taken(name)) else { continue };
             let state = self.states.entry(name.clone()).or_default();
-            if store.receive_sync_message(&name, state, message)? {
+            if store.receive_sync_message(&name, state, &mut self.adoption, message)? {
                 changed.push(name.id);
             }
         }
         Ok(changed)
+    }
+
+    /// Takes in the newer generation the other side sent, once every one of `agreed` of it has
+    /// arrived (`Store::finish_adoption`). It is used up either way.
+    pub(crate) fn adopt<'a>(&mut self, store: &mut Store, agreed: impl IntoIterator<Item = &'a SyncName>) -> Result<Option<Adopted>> {
+        Ok(store.finish_adoption(std::mem::take(&mut self.adoption), agreed)?)
     }
 }
 

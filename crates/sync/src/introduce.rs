@@ -74,11 +74,14 @@ where
         }
     };
     if enrolled {
-        enroll(store, me, &peer)?;
+        crate::pairing::enroll(store, me, &peer)?;
     }
+    // Introduced from the moment both are enrolled, before anything is synced: a session that
+    // fails after it, with the flag unset, would leave a watch unpaired later free to be
+    // enrolled again by the next link.
+    lock(store)?.set_local_flag(&local_key(&peer.node_id))?;
     let summary = session::run(store, reader, writer).await?;
     let mut held = lock(store)?;
-    held.set_local_flag(&local_key(&peer.node_id))?;
     held.note_linked(&peer.node_id);
     let _ = held.record_peer(&peer.node_id, None);
     Ok(Introduced { peer, enrolled, summary })
@@ -104,32 +107,8 @@ fn decide(store: &SharedStore, me: &Identity, peer: &Identity) -> std::result::R
     }
 }
 
-fn enroll(store: &SharedStore, me: &Identity, peer: &Identity) -> Result<()> {
-    let now = lumenna_core::time::now();
-    let device = |identity: &Identity| -> Result<lumenna_core::model::Device> {
-        Ok(lumenna_core::model::Device {
-            node_id: identity
-                .node_id
-                .parse()
-                .map_err(|_| SyncError::Protocol(format!("'{}' is not a device key", identity.node_id)))?,
-            name: identity.name.clone(),
-            platform: identity.platform.clone(),
-            paired_at: now,
-            last_seen: now,
-            schema: identity.schema,
-        })
-    };
-    let devices = [device(me)?, device(peer)?];
-    let mut held = lock(store)?;
-    let edit = lumenna_core::edit::enroll_devices(&held.snapshot().0, &devices);
-    if !edit.is_empty() {
-        held.apply_recorded(&edit)?;
-    }
-    Ok(())
-}
-
 fn encode(hello: &Hello) -> Result<Vec<u8>> {
-    serde_json::to_vec(hello).map_err(|e| SyncError::Protocol(format!("could not write an introduction: {e}")))
+    serde_json::to_vec(hello).map_err(|e| SyncError::Local(format!("could not write an introduction: {e}")))
 }
 
 fn decode(bytes: &[u8]) -> Result<Hello> {

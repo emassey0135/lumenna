@@ -28,6 +28,6 @@ mod value;
 pub use automerge::ChangeHash;
 pub use automerge::sync::State as SyncState;
 pub use db::{Db, PeerStatus};
-pub use doc::{Doc, DocId, Documents, HydrationReport, Skipped, SyncName};
-pub use store::{Adopted, Erasure, Imports, Restored, Store};
+pub use doc::{Doc, DocId, Documents, HydrationReport, Skipped, SyncName, heads_from_text, heads_to_text};
+pub use store::{Adopted, Adoption, Erasure, Imports, Restored, Store};
 pub use error::{Result, StoreError};

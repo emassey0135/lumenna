@@ -214,7 +214,7 @@ fn a_backup_restores_everything_including_the_trash() {
 
     let mut fresh = Store::open_in_memory().unwrap();
     let restored = fresh.restore(&bytes).unwrap();
-    assert_eq!(restored.documents, 4, "core, devices, and two years");
+    assert_eq!(restored.documents, 3, "core and two years: the device list stays out");
     assert!(restored.unknown.is_empty());
 
     let rebuilt = everything(&mut fresh);
@@ -224,6 +224,46 @@ fn a_backup_restores_everything_including_the_trash() {
 
     // Restoring the same backup again brings in nothing new.
     assert_eq!(fresh.restore(&bytes).unwrap().changed, 0);
+}
+
+fn a_device(byte: u8, name: &str) -> lumenna_core::model::Device {
+    lumenna_core::model::Device {
+        node_id: NodeId::from_bytes([byte; 32]),
+        name: name.to_owned(),
+        platform: "linux".to_owned(),
+        paired_at: now(),
+        last_seen: now(),
+        schema: lumenna_core::model::SCHEMA_VERSION,
+    }
+}
+
+#[test]
+fn a_backup_holds_no_devices_and_restoring_one_trusts_no_new_device() {
+    let mut store = Store::open_in_memory().unwrap();
+    store.write(|docs| docs.put_device(&a_device(1, "Laptop"), None)).unwrap();
+    let bytes = store.backup().unwrap();
+    let decoded = backup::decode(&bytes).unwrap();
+    assert!(decoded.documents.iter().all(|(name, _)| name.id != lumenna_store::DocId::Devices), "no device list");
+
+    let mut elsewhere = Store::open_in_memory().unwrap();
+    elsewhere.restore(&bytes).unwrap();
+    assert!(elsewhere.snapshot().0.devices.is_empty());
+}
+
+#[test]
+fn restoring_a_backup_from_before_leaves_its_device_list_out() {
+    let mut store = Store::open_in_memory().unwrap();
+    store.write(|docs| docs.put_device(&a_device(2, "Stranger"), None)).unwrap();
+    // A backup as builds before wrote them, the device list among its documents.
+    let older = backup::encode(&[(
+        lumenna_store::SyncName::new(lumenna_store::DocId::Devices, None),
+        store.write(|docs| Ok(docs.devices().save())).unwrap(),
+    )]);
+
+    let mut elsewhere = Store::open_in_memory().unwrap();
+    let restored = elsewhere.restore(&older).unwrap();
+    assert_eq!(restored.documents, 0);
+    assert!(elsewhere.snapshot().0.devices.is_empty(), "nobody compared words with it");
 }
 
 #[test]
@@ -353,7 +393,9 @@ fn backups_land_in_their_directory_and_are_taken_only_when_due() {
     assert!(store.back_up_if_due(&policy, now()).unwrap().is_some());
     assert!(store.back_up_if_due(&policy, now()).unwrap().is_none(), "not due again yet");
     let later = now() + jiff::SignedDuration::from_hours(25);
-    let path = store.back_up_if_due(&policy, later).unwrap().unwrap();
+    let written = store.back_up_if_due(&policy, later).unwrap().unwrap();
+    assert_eq!(written.pruning_failed, None);
+    let path = written.path;
 
     let bytes = std::fs::read(&path).unwrap();
     assert!(backup::is_backup(&bytes));

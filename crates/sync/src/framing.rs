@@ -17,7 +17,7 @@ pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(writer: &mut W, bytes: &[
     let length = u32::try_from(bytes.len())
         .ok()
         .filter(|n| (*n as usize) <= MAX_FRAME)
-        .ok_or_else(|| SyncError::Protocol("a message too large to send".to_owned()))?;
+        .ok_or_else(|| SyncError::Local("a message too large to send".to_owned()))?;
     writer.write_all(&length.to_be_bytes()).await?;
     writer.write_all(bytes).await?;
     writer.flush().await?;

@@ -116,7 +116,8 @@ async fn paired_devices_sync_later_through_their_device_keys() {
 
     let later = add(&b, "written after pairing");
     let summary = node_b.sync_with(node_a.addr()).await.unwrap();
-    assert!(summary.documents >= 2);
+    // Only what the two do not already hold alike: the core, not the device list.
+    assert!(summary.documents >= 1);
     assert!(has(&a, &later), "it reached the laptop");
 
     node_a.close().await;

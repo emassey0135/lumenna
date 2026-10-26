@@ -42,6 +42,7 @@ use automerge::transaction::Transactable;
 use automerge::{ObjId, ObjType, ReadDoc, ScalarValue, Value};
 use jiff::{Timestamp, civil};
 
+use crate::doc::Raw;
 use crate::error::Result;
 
 /// A view of one map in a document.
@@ -444,9 +445,14 @@ impl<'a, T: Transactable> Writer<'a, T> {
     /// disagreement to resolve, and last-write-wins over the whole object resolves it the
     /// way the user would expect. Sets get the opposite treatment for the opposite reason;
     /// see [`Writer::set_members`].
+    ///
+    /// `known` names every field this build writes there. Any other a newer build wrote is
+    /// carried into the new map as it stands, as a record moved elsewhere keeps what this build
+    /// cannot read: replaced wholesale, it would be dropped by every edit an older build made.
     pub(crate) fn set_nested<V, F>(
         &mut self,
         key: &str,
+        known: &[&str],
         before: Option<Option<&V>>,
         now: Option<&V>,
         write: F,
@@ -460,12 +466,52 @@ impl<'a, T: Transactable> Writer<'a, T> {
         }
         match now {
             Some(value) => {
+                let kept = self.unknown_within(key, known)?;
                 let mut nested = self.replace_map(key)?;
                 write(&mut nested, value)?;
+                for (field, raw) in kept {
+                    nested.put_raw(&field, &raw)?;
+                }
             }
             None => self.clear(key)?,
         }
         Ok(())
+    }
+
+    /// The fields of the nested map at `key` that `known` does not name, each by its key
+    /// within it (inline, the rest of its key after the map's prefix).
+    fn unknown_within(&self, key: &str, known: &[&str]) -> Result<Vec<(String, Raw)>> {
+        let full = self.full(key);
+        if self.prefix.is_some() {
+            let nested = format!("{full}.");
+            let mut kept = Vec::new();
+            for k in self.tx.keys(&self.obj).filter(|k| k.starts_with(&nested)) {
+                let rest = &k[nested.len()..];
+                if known.contains(&rest.split('.').next().unwrap_or(rest)) {
+                    continue;
+                }
+                if let Some((value, id)) = self.tx.get(&self.obj, k.as_str())? {
+                    kept.push((rest.to_owned(), Raw::read(&*self.tx, value, &id)));
+                }
+            }
+            return Ok(kept);
+        }
+        let Some((Value::Object(ObjType::Map), obj)) = self.tx.get(&self.obj, full.as_str())? else { return Ok(Vec::new()) };
+        Ok(match Raw::read_map(&*self.tx, &obj) {
+            Raw::Map(fields) => fields.into_iter().filter(|(field, _)| !known.contains(&field.as_str())).collect(),
+            _ => Vec::new(),
+        })
+    }
+
+    /// Writes a value as it stood elsewhere at `key`: whole, or inline as the key it had.
+    fn put_raw(&mut self, key: &str, raw: &Raw) -> Result<()> {
+        match (&self.prefix, raw) {
+            (Some(_), Raw::Scalar(scalar)) => self.put(key, scalar.clone()),
+            (Some(_), Raw::Text(text)) => self.put(key, text.as_str()),
+            // The inline form holds nothing else.
+            (Some(_), _) => Ok(()),
+            (None, raw) => raw.write_at(self.tx, &self.obj, key),
+        }
     }
 }
 

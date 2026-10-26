@@ -90,7 +90,7 @@ pub(crate) fn node_id(id: EndpointId) -> NodeId {
 /// The other way round.
 pub(crate) fn endpoint_id(id: NodeId) -> Result<EndpointId> {
     EndpointId::from_bytes(id.as_bytes())
-        .map_err(|_| SyncError::Protocol(format!("{id} is not a valid device key")))
+        .map_err(|_| SyncError::Local(format!("a paired device's key, {}, is not a valid one", short(&id.to_string()))))
 }
 
 /// This device's key, minted into the store the first time anything asks.
@@ -359,7 +359,8 @@ impl Node {
             Ok(())
         } else {
             Err(SyncError::Refused(format!(
-                "{peer} is not one of your paired devices, so nothing was synced with it"
+                "the device whose key begins {} is not one of your paired devices, so nothing was synced with it",
+                short(&peer.to_string())
             )))
         }
     }
@@ -399,6 +400,12 @@ pub(crate) async fn finish(send: &mut SendStream, recv: &mut RecvStream) -> Resu
     // `stopped` resolves once the peer has read this stream to its end.
     let _ = n0_future::time::timeout(Duration::from_secs(5), send.stopped()).await;
     Ok(())
+}
+
+/// The first few digits of a device key: enough to tell devices apart when said, where all 64
+/// are a minute of reading aloud.
+pub(crate) fn short(key: &str) -> &str {
+    key.get(..8).unwrap_or(key)
 }
 
 /// A paired device, by its key and what it is called.

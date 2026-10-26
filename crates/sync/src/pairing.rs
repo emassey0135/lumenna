@@ -30,6 +30,33 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::error::{Result, SyncError};
 use crate::framing::{read_frame, write_frame};
+use crate::{SharedStore, lock};
+
+/// Writes both devices into `devices`, through the undo history: unpairing by mistake, or
+/// pairing by mistake, is the kind of thing a person wants back. A pairing whose words matched
+/// and a Wear OS watch's first link to its phone both come here.
+pub(crate) fn enroll(store: &SharedStore, me: &Identity, peer: &Identity) -> Result<()> {
+    let now = lumenna_core::time::now();
+    let device = |identity: &Identity| -> Result<lumenna_core::model::Device> {
+        Ok(lumenna_core::model::Device {
+            node_id: identity.node_id.parse().map_err(|_| {
+                SyncError::Protocol(format!("'{}' is not a device key", identity.node_id))
+            })?,
+            name: identity.name.clone(),
+            platform: identity.platform.clone(),
+            paired_at: now,
+            last_seen: now,
+            schema: identity.schema,
+        })
+    };
+    let devices = [device(me)?, device(peer)?];
+    let mut store = lock(store)?;
+    let edit = lumenna_core::edit::enroll_devices(&store.snapshot().0, &devices);
+    if !edit.is_empty() {
+        store.apply_recorded(&edit)?;
+    }
+    Ok(())
+}
 
 /// How many words a person compares.
 pub const WORDS: usize = 3;
@@ -130,7 +157,7 @@ where
     }
     let mine = Decision { accepted, identity: accepted.then(|| me.clone()) };
     let encoded = serde_json::to_vec(&mine)
-        .map_err(|e| SyncError::Protocol(format!("could not write a decision: {e}")))?;
+        .map_err(|e| SyncError::Local(format!("could not write a decision: {e}")))?;
     write_frame(writer, &encoded).await?;
     let theirs: Decision = serde_json::from_slice(&read_frame(reader).await?)
         .map_err(|e| SyncError::Protocol(format!("a decision that does not read: {e}")))?;
@@ -172,7 +199,7 @@ fn commitment(nonce: &[u8; 32]) -> blake3::Hash {
 fn nonce() -> Result<[u8; 32]> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes)
-        .map_err(|e| SyncError::Protocol(format!("no randomness available: {e}")))?;
+        .map_err(|e| SyncError::Local(format!("no randomness available: {e}")))?;
     Ok(bytes)
 }
 

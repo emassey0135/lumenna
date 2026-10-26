@@ -140,6 +140,17 @@ pub fn export_json_keeping(snapshot: &Snapshot, now: Timestamp, docs: &crate::Do
     unknown.extend(
         snapshot.series.values().filter(|s| s.deleted_at.is_none()).filter_map(|s| docs.unknown_in(DocId::Blocks(s.start_date.year()), s)),
     );
+    unknown.extend(
+        snapshot
+            .reminders
+            .values()
+            .filter(|r| r.deleted_at.is_none())
+            .filter(|r| match r.target {
+                ReminderTarget::Task(id) => live_task(&id),
+                ReminderTarget::Block(id) => snapshot.series.get(&id).is_some_and(|s| s.deleted_at.is_none()),
+            })
+            .filter_map(|r| docs.unknown_in(DocId::Core, r)),
+    );
     file.unknown = unknown.iter().map(crate::doc::Removed::to_json).collect();
     serde_json::to_string_pretty(&file).unwrap_or_default()
 }

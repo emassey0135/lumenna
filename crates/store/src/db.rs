@@ -144,6 +144,19 @@ impl Db {
                  part   BLOB NOT NULL
              );
 
+             -- Each document's heads as last written, so a sync can say what a year holds
+             -- without loading it (`Store::sync_heads`). Local and rebuildable: `through` (the
+             -- highest change rowid of the document then) and `snapshot` (its snapshot's heads
+             -- then) say whether anything has written the document since without saying so,
+             -- such as a build from before this table, and a row that no longer matches is not
+             -- believed.
+             CREATE TABLE IF NOT EXISTS kept_heads (
+                 doc_id   TEXT PRIMARY KEY,
+                 heads    BLOB NOT NULL,
+                 through  INTEGER NOT NULL,
+                 snapshot BLOB NOT NULL
+             );
+
              CREATE TABLE IF NOT EXISTS undo (
                  seq         INTEGER PRIMARY KEY AUTOINCREMENT,
                  undone      INTEGER NOT NULL DEFAULT 0,
@@ -186,9 +199,7 @@ impl Db {
                 r.get(0)
             })
             .optional()?;
-        Ok(heads.map(|bytes| {
-            bytes.as_chunks::<32>().0.iter().map(|chunk| ChangeHash(*chunk)).collect()
-        }))
+        Ok(heads.map(|bytes| decode_heads(&bytes)))
     }
 
     /// A value that changes whenever another connection has modified the database.
@@ -209,7 +220,8 @@ impl Db {
     /// Appends changes for one document, ignoring any already stored.
     ///
     /// Returns the highest `rowid` written, which is a process's watch cursor: everything
-    /// past it is news from somewhere else.
+    /// past it is news from somewhere else. What it writes is not counted in the document's kept
+    /// heads, which it forgets, since nothing here says what they are now.
     ///
     /// # Errors
     ///
@@ -219,7 +231,7 @@ impl Db {
         doc: DocId,
         changes: &[(ChangeHash, Vec<u8>)],
     ) -> Result<Option<i64>> {
-        self.append(None, doc, changes)
+        self.append(None, &[Appending { doc, changes: changes.to_vec(), heads: None }], |_, _| false)
     }
 
     /// [`append_changes`](Self::append_changes) for a process holding `generation`'s
@@ -236,40 +248,126 @@ impl Db {
         doc: DocId,
         changes: &[(ChangeHash, Vec<u8>)],
     ) -> Result<Option<i64>> {
-        self.append(Some(generation), doc, changes)
+        self.append(Some(generation), &[Appending { doc, changes: changes.to_vec(), heads: None }], |_, _| false)
+    }
+
+    /// Appends every document's changes in one transaction, refused as a whole when the file
+    /// holds another generation than `generation`: one edit can touch several documents (a
+    /// series moved to another year), and a crash or a rebuild between them must not leave half
+    /// of it on disk.
+    ///
+    /// Each document's kept heads become the heads it has once its changes are written, when
+    /// the heads kept before are among what the writer holds (`holds`), which says nothing on
+    /// disk is news to it; otherwise they are forgotten, and found again by loading it.
+    ///
+    /// # Errors
+    ///
+    /// If the write fails, or the file holds another generation.
+    pub fn append_documents(
+        &mut self,
+        generation: Option<&str>,
+        documents: &[Appending],
+        holds: impl FnMut(DocId, &ChangeHash) -> bool,
+    ) -> Result<Option<i64>> {
+        self.append(Some(generation), documents, holds)
     }
 
     fn append(
         &mut self,
         generation: Option<Option<&str>>,
-        doc: DocId,
-        changes: &[(ChangeHash, Vec<u8>)],
+        documents: &[Appending],
+        mut holds: impl FnMut(DocId, &ChangeHash) -> bool,
     ) -> Result<Option<i64>> {
-        if changes.is_empty() {
+        if documents.iter().all(|d| d.changes.is_empty()) {
             return Ok(None);
         }
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if let Some(generation) = generation {
-            let held: Option<Vec<u8>> = tx
-                .query_row("SELECT value FROM local_state WHERE key = ?1", params![GENERATION], |r| r.get(0))
-                .optional()?;
-            if held.as_deref() != generation.map(str::as_bytes) {
-                return Err(StoreError::Rebuilt);
-            }
+            check_generation(&tx, generation)?;
         }
-        {
-            // A change is immutable and named by its hash, so re-appending one is a no-op.
-            // That is what makes replaying a sync exchange, or a crash mid-write, harmless.
-            let mut insert = tx.prepare(
-                "INSERT OR IGNORE INTO changes (doc_id, hash, data) VALUES (?1, ?2, ?3)",
-            )?;
-            for (hash, data) in changes {
-                insert.execute(params![doc.name(), &hash.0[..], data])?;
+        for appending in documents {
+            let doc = appending.doc;
+            // What was there before this write, so the heads kept can be believed after it.
+            let kept = read_kept(&tx, doc)?;
+            let fresh = kept.is_none() && max_rowid(&tx, doc)? == 0 && snapshot_heads_blob(&tx, doc)?.is_none();
+            {
+                // A change is immutable and named by its hash, so re-appending one is a no-op.
+                // That is what makes replaying a sync exchange, or a crash mid-write, harmless.
+                let mut insert = tx.prepare(
+                    "INSERT OR IGNORE INTO changes (doc_id, hash, data) VALUES (?1, ?2, ?3)",
+                )?;
+                for (hash, data) in &appending.changes {
+                    insert.execute(params![doc.name(), &hash.0[..], data])?;
+                }
+            }
+            let known = match (&appending.heads, kept) {
+                (Some(_), Some(kept)) => kept.iter().all(|head| holds(doc, head)),
+                (Some(_), None) => fresh,
+                (None, _) => false,
+            };
+            match &appending.heads {
+                Some(heads) if known => write_kept(&tx, doc, heads)?,
+                _ => {
+                    tx.execute("DELETE FROM kept_heads WHERE doc_id = ?1", params![doc.name()])?;
+                }
             }
         }
         let last = tx.query_row("SELECT max(rowid) FROM changes", [], |row| row.get(0))?;
         tx.commit()?;
         Ok(last)
+    }
+
+    /// The heads `doc` had as last written, when nothing has written it since without saying
+    /// so (see the `kept_heads` table): what a sync says it holds without loading it.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn kept_heads(&self, doc: DocId) -> Result<Option<Vec<ChangeHash>>> {
+        self.consistently(|db| read_kept(&db.conn, doc))
+    }
+
+    /// Keeps `heads` as `doc`'s, read by a process holding it whole: only when every change and
+    /// snapshot on disk for it is among what that process holds (`holds`), checked with the
+    /// write lock held, so nothing written meanwhile goes uncounted. Returns whether they were
+    /// kept.
+    ///
+    /// # Errors
+    ///
+    /// If the read or write fails.
+    pub fn note_heads(
+        &mut self,
+        doc: DocId,
+        heads: &[ChangeHash],
+        mut holds: impl FnMut(&ChangeHash) -> bool,
+    ) -> Result<bool> {
+        let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut on_disk: Vec<ChangeHash> = {
+            let mut stmt = tx.prepare("SELECT hash FROM changes WHERE doc_id = ?1")?;
+            let rows = stmt.query_map(params![doc.name()], |row| row.get::<_, Vec<u8>>(0))?;
+            rows.filter_map(|row| row.ok().and_then(|bytes| Some(ChangeHash(bytes.try_into().ok()?)))).collect()
+        };
+        on_disk.extend(snapshot_heads_blob(&tx, doc)?.map(|blob| decode_heads(&blob)).unwrap_or_default());
+        let held = on_disk.iter().all(&mut holds);
+        if held {
+            write_kept(&tx, doc, heads)?;
+        }
+        tx.commit()?;
+        Ok(held)
+    }
+
+    /// The highest change number the file has ever handed out: it moves with every append by
+    /// any process and never goes back, even when compaction deletes the newest rows.
+    ///
+    /// # Errors
+    ///
+    /// If the read fails.
+    pub fn sequence(&self) -> Result<i64> {
+        Ok(self.conn.query_row(
+            "SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'changes'), 0)",
+            [],
+            |row| row.get(0),
+        )?)
     }
 
     /// The stored snapshot for a document, if there is one.
@@ -358,7 +456,8 @@ impl Db {
         Ok(self.change_count(doc)? >= COMPACT_AFTER_CHANGES)
     }
 
-    /// Replaces a document's stored form with a fresh snapshot.
+    /// Replaces a document's stored form with a fresh snapshot, refused
+    /// ([`StoreError::Rebuilt`]) when the file no longer holds `generation`.
     ///
     /// `fold` is handed the stored snapshot and every stored change, applies them to the
     /// caller's document, and returns that document's heads and saved bytes. All of it
@@ -377,10 +476,14 @@ impl Db {
     /// Whatever `fold` returns, or a failed read or write.
     pub fn compact(
         &mut self,
+        generation: Option<&str>,
         doc: DocId,
         fold: impl FnOnce(Option<Vec<u8>>, Vec<Vec<u8>>) -> Result<(Vec<ChangeHash>, Vec<u8>)>,
     ) -> Result<()> {
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // A process still holding the history before a real erasure must not save it over the
+        // newer one, which it would bring back whole.
+        check_generation(&tx, generation)?;
         let snapshot: Option<Vec<u8>> = tx
             .query_row("SELECT data FROM snapshots WHERE doc_id = ?1", params![doc.name()], |r| {
                 r.get(0)
@@ -399,6 +502,8 @@ impl Db {
             params![doc.name(), encode_heads(&heads), data],
         )?;
         tx.execute("DELETE FROM changes WHERE doc_id = ?1", params![doc.name()])?;
+        // Everything on disk went into the snapshot, so its heads are the document's.
+        write_kept(&tx, doc, &heads)?;
         tx.commit()?;
         Ok(())
     }
@@ -419,24 +524,44 @@ impl Db {
     /// history (whose edits carry the records they removed), and what a watch link last agreed
     /// on. `began` is kept, for when a newer generation is taken in after this one.
     ///
+    /// Only when the file is still as the caller read it: generation `from`, and no change
+    /// appended since [`sequence`](Self::sequence) said `sequence`. Otherwise nothing is written
+    /// and it returns false: another process wrote meanwhile, and deleting the changes would
+    /// delete its edit, so the caller reads again and rebuilds.
+    ///
     /// # Errors
     ///
     /// If the write fails.
     pub fn replace_generation(
         &mut self,
+        from: Option<&str>,
+        sequence: i64,
         generation: &str,
         documents: &[(DocId, Vec<ChangeHash>, Vec<u8>)],
         began: &str,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let tx = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let held: Option<Vec<u8>> = tx
+            .query_row("SELECT value FROM local_state WHERE key = ?1", params![GENERATION], |r| r.get(0))
+            .optional()?;
+        let now: i64 = tx.query_row(
+            "SELECT coalesce((SELECT seq FROM sqlite_sequence WHERE name = 'changes'), 0)",
+            [],
+            |row| row.get(0),
+        )?;
+        if held.as_deref() != from.map(str::as_bytes) || now != sequence {
+            return Ok(false);
+        }
         tx.execute_batch(
-            "DELETE FROM changes; DELETE FROM snapshots; DELETE FROM hydrated; DELETE FROM undo;",
+            "DELETE FROM changes; DELETE FROM snapshots; DELETE FROM hydrated; DELETE FROM undo;
+             DELETE FROM kept_heads;",
         )?;
         for (doc, heads, data) in documents {
             tx.execute(
                 "INSERT INTO snapshots (doc_id, heads, data) VALUES (?1, ?2, ?3)",
                 params![doc.name(), encode_heads(heads), data],
             )?;
+            write_kept(&tx, *doc, heads)?;
         }
         for (key, value) in [(GENERATION, generation), (GENERATION_BEGAN, began)] {
             tx.execute(
@@ -447,7 +572,7 @@ impl Db {
         }
         tx.execute("DELETE FROM local_state WHERE key = 'link-agreed'", [])?;
         tx.commit()?;
-        Ok(())
+        Ok(true)
     }
 
     /// Which documents this file holds anything for.
@@ -464,9 +589,73 @@ impl Db {
     }
 }
 
-/// Heads, concatenated. Stored for staleness checks, never parsed back by this crate.
+/// Heads, concatenated.
 fn encode_heads(heads: &[ChangeHash]) -> Vec<u8> {
     heads.iter().flat_map(|h| h.0.to_vec()).collect()
+}
+
+fn decode_heads(bytes: &[u8]) -> Vec<ChangeHash> {
+    bytes.as_chunks::<32>().0.iter().map(|chunk| ChangeHash(*chunk)).collect()
+}
+
+/// One document's changes for [`Db::append_documents`], and its heads once they are written:
+/// `None` when the writer cannot say.
+#[derive(Debug, Clone)]
+pub struct Appending {
+    /// Which document.
+    pub doc: DocId,
+    /// Its changes to write, each with its hash.
+    pub changes: Vec<(ChangeHash, Vec<u8>)>,
+    /// Its heads with them.
+    pub heads: Option<Vec<ChangeHash>>,
+}
+
+/// Refuses, [`StoreError::Rebuilt`], when the file holds another generation than `generation`.
+fn check_generation(conn: &Connection, generation: Option<&str>) -> Result<()> {
+    let held: Option<Vec<u8>> = conn
+        .query_row("SELECT value FROM local_state WHERE key = ?1", params![GENERATION], |r| r.get(0))
+        .optional()?;
+    if held.as_deref() == generation.map(str::as_bytes) { Ok(()) } else { Err(StoreError::Rebuilt) }
+}
+
+/// The highest change rowid of `doc`, zero when it has none.
+fn max_rowid(conn: &Connection, doc: DocId) -> Result<i64> {
+    Ok(conn.query_row("SELECT coalesce(max(rowid), 0) FROM changes WHERE doc_id = ?1", params![doc.name()], |row| {
+        row.get(0)
+    })?)
+}
+
+/// `doc`'s snapshot's heads, as stored, if it has a snapshot.
+fn snapshot_heads_blob(conn: &Connection, doc: DocId) -> Result<Option<Vec<u8>>> {
+    Ok(conn
+        .query_row("SELECT heads FROM snapshots WHERE doc_id = ?1", params![doc.name()], |r| r.get(0))
+        .optional()?)
+}
+
+/// `doc`'s kept heads, when nothing has written it since they were kept: no change after the
+/// last one counted, and the snapshot they were kept beside.
+fn read_kept(conn: &Connection, doc: DocId) -> Result<Option<Vec<ChangeHash>>> {
+    let row: Option<(Vec<u8>, i64, Vec<u8>)> = conn
+        .query_row(
+            "SELECT heads, through, snapshot FROM kept_heads WHERE doc_id = ?1",
+            params![doc.name()],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?;
+    let Some((heads, through, snapshot)) = row else { return Ok(None) };
+    let current = snapshot_heads_blob(conn, doc)?.unwrap_or_default();
+    Ok((max_rowid(conn, doc)? <= through && current == snapshot).then(|| decode_heads(&heads)))
+}
+
+/// Keeps `heads` as `doc`'s, counting everything on disk for it now.
+fn write_kept(conn: &Connection, doc: DocId, heads: &[ChangeHash]) -> Result<()> {
+    let through = max_rowid(conn, doc)?;
+    let snapshot = snapshot_heads_blob(conn, doc)?.unwrap_or_default();
+    conn.execute(
+        "INSERT OR REPLACE INTO kept_heads (doc_id, heads, through, snapshot) VALUES (?1, ?2, ?3, ?4)",
+        params![doc.name(), encode_heads(heads), through, snapshot],
+    )?;
+    Ok(())
 }
 
 /// What is kept in `hydrated`: the build that wrote it, the heads it was read at, and itself.

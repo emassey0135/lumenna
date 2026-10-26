@@ -2,9 +2,12 @@
 //!
 //! Both sides run the same code; nothing here knows who dialled. A session is:
 //!
-//! 1. **Hello.** Each side sends the documents it holds. A document either side holds is
-//!    synced, so a year this device has never opened arrives from a peer that has — its
-//!    genesis is deterministic, so starting it from nothing here forks nothing.
+//! 1. **Hello.** Each side sends the documents it holds, and each one's heads. A document
+//!    either side holds is synced, so a year this device has never opened arrives from a peer
+//!    that has — its genesis is deterministic, so starting it from nothing here forks nothing —
+//!    unless both hold it at the same heads, which says they hold the same changes: it is left
+//!    out, so a year neither side needs anything in is never loaded (`Store::sync_heads`
+//!    answers without loading it), which is what keeps a watch's memory to the years it shows.
 //! 2. **Rounds, every document at once** (`crate::rounds`). In each round both sides send one
 //!    frame — the next Automerge sync message for every document that has one, or an empty
 //!    frame for "nothing to say" — and then read the other's. When both frames of a round were
@@ -20,7 +23,7 @@
 //! small; saving per-peer state would buy a round trip and cost a table of state that goes
 //! stale whenever a peer compacts.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -48,12 +51,16 @@ const MAX_ROUNDS: usize = 1_000;
 struct Hello {
     protocol: u32,
     documents: Vec<String>,
+    /// Each document's heads, by name: what a build from before them leaves out, and then
+    /// every document is synced, as it was.
+    #[serde(default)]
+    heads: BTreeMap<String, Vec<String>>,
 }
 
 /// What a session did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Summary {
-    /// The documents reconciled.
+    /// The documents reconciled: those the two sides did not already hold alike.
     pub documents: usize,
     /// The documents that changed on this side.
     pub changed: Vec<DocId>,
@@ -79,10 +86,12 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let mine: Vec<SyncName> = lock(store)?.sync_documents()?;
-    let hello = Hello { protocol: PROTOCOL, documents: mine.iter().map(SyncName::name).collect() };
-    let encoded = serde_json::to_vec(&hello)
-        .map_err(|e| SyncError::Protocol(format!("could not write a hello: {e}")))?;
+    let held = lock(store)?.sync_heads()?;
+    let heads: BTreeMap<String, Vec<String>> =
+        held.iter().map(|(name, heads)| (name.name(), heads.iter().map(ToString::to_string).collect())).collect();
+    let mine: Vec<SyncName> = held.into_iter().map(|(name, _)| name).collect();
+    let hello = Hello { protocol: PROTOCOL, documents: mine.iter().map(SyncName::name).collect(), heads };
+    let encoded = serde_json::to_vec(&hello).map_err(|e| SyncError::Local(format!("could not write a hello: {e}")))?;
     write_frame(writer, &encoded).await?;
 
     let theirs: Hello = serde_json::from_slice(&read_frame(reader).await?)
@@ -102,20 +111,23 @@ where
     documents.extend(theirs.documents.iter().filter_map(|name| SyncName::parse(name)));
     let newest = documents.iter().map(|name| name.generation.clone()).max().flatten();
     documents.retain(|name| name.generation == newest);
+    // Both at the same heads: the same changes, so nothing to say either way.
+    let alike = |name: &SyncName| {
+        let name = name.name();
+        matches!((hello.heads.get(&name), theirs.heads.get(&name)), (Some(a), Some(b)) if a == b)
+    };
+    documents.retain(|name| !alike(name));
     let documents: BTreeSet<SyncName> = documents.into_iter().collect();
 
+    // A newer generation being taken in goes with `rounds`: a session that fails or is
+    // cancelled drops what it held aside, and no other session sees it.
+    let mut rounds = Rounds::default();
     let mut changed = BTreeSet::new();
-    let rounds = match reconcile(store, &documents, &mut changed, reader, writer).await {
-        Ok(rounds) => rounds,
-        Err(error) => {
-            lock(store)?.discard_adoption();
-            return Err(error);
-        }
-    };
+    let count = reconcile(store, &mut rounds, &documents, &mut changed, reader, writer).await?;
     let mut summary =
-        Summary { documents: documents.len(), changed: changed.into_iter().collect(), rounds, adopted: None };
+        Summary { documents: documents.len(), changed: changed.into_iter().collect(), rounds: count, adopted: None };
     let mut store = lock(store)?;
-    summary.adopted = store.finish_adoption()?;
+    summary.adopted = rounds.adopt(&mut store, &documents)?;
     // Taking a newer generation in changes every document there is.
     if summary.adopted.is_some() {
         summary.changed = store.sync_documents()?.into_iter().map(|name| name.id).collect();
@@ -126,6 +138,7 @@ where
 /// The rounds, until a round in which neither side had anything to say. Returns how many it took.
 async fn reconcile<R, W>(
     store: &SharedStore,
+    rounds: &mut Rounds,
     documents: &BTreeSet<SyncName>,
     changed: &mut BTreeSet<DocId>,
     reader: &mut R,
@@ -135,7 +148,6 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let mut rounds = Rounds::default();
     for round in 0..MAX_ROUNDS {
         let said = rounds.say(&mut *lock(store)?, documents)?;
         let mut outgoing = Vec::new();
@@ -160,7 +172,7 @@ where
             return Ok(round + 1);
         }
     }
-    Err(SyncError::Protocol("the other device's sync did not settle".to_owned()))
+    Err(SyncError::Protocol("its sync never settled".to_owned()))
 }
 
 #[cfg(test)]
@@ -315,11 +327,88 @@ mod tests {
             run(&a_store, &mut r, &mut w).await
         });
         let (mut r, mut w) = tokio::io::split(&mut other_end);
-        let older = serde_json::to_vec(&Hello { protocol: 0, documents: vec!["core".to_owned()] }).unwrap();
+        let older = serde_json::to_vec(&Hello { protocol: 0, documents: vec!["core".to_owned()], heads: BTreeMap::new() }).unwrap();
         write_frame(&mut w, &older).await.unwrap();
         read_frame(&mut r).await.unwrap();
         let error = session.await.unwrap().unwrap_err();
         assert!(error.to_string().contains("update the older one"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_sync_between_two_stores_already_alike_loads_no_year() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a_path, b_path) = (dir.path().join("a.sqlite"), dir.path().join("b.sqlite"));
+        {
+            let a: SharedStore = Arc::new(Mutex::new(Store::open(&a_path).unwrap()));
+            let b: SharedStore = Arc::new(Mutex::new(Store::open(&b_path).unwrap()));
+            add(&a, "in the core");
+            for year in [2027, 2028] {
+                let block = BlockSeries::one_off(
+                    "Retreat",
+                    BlockKind::Work,
+                    jiff::civil::date(year, 4, 1),
+                    jiff::civil::time(9, 0, 0, 0),
+                    60,
+                )
+                .unwrap();
+                a.lock().unwrap().write(|docs| docs.put_series(&block, None)).unwrap();
+            }
+            sync(&a, &b).await;
+        }
+        // Each opened afresh, as a watch's app is: no year in memory.
+        let a: SharedStore = Arc::new(Mutex::new(Store::open(&a_path).unwrap()));
+        let b: SharedStore = Arc::new(Mutex::new(Store::open(&b_path).unwrap()));
+        let (left, right) = sync(&a, &b).await;
+        assert!(left.changed.is_empty() && right.changed.is_empty());
+        for side in [&a, &b] {
+            assert!(side.lock().unwrap().documents().loaded_years().is_empty(), "no year was loaded to sync");
+        }
+
+        // A change to one year loads that year on both, and only it.
+        let block = BlockSeries::one_off(
+            "Retreat again",
+            BlockKind::Work,
+            jiff::civil::date(2028, 6, 1),
+            jiff::civil::time(9, 0, 0, 0),
+            60,
+        )
+        .unwrap();
+        a.lock().unwrap().write(|docs| docs.put_series(&block, None)).unwrap();
+        let (_, right) = sync(&a, &b).await;
+        assert_eq!(right.changed, [DocId::Blocks(2028)]);
+        assert_eq!(b.lock().unwrap().documents().loaded_years(), [2028]);
+    }
+
+    #[tokio::test]
+    async fn a_session_cut_short_leaves_nothing_of_a_newer_generation_for_the_next() {
+        let (a, b, c) = (store(), store(), store());
+        let secret = add(&a, "the secret");
+        add(&a, "the groceries");
+        sync(&a, &b).await;
+        sync(&a, &c).await;
+        let edit = lumenna_core::edit::purge_task(&b.lock().unwrap().snapshot().0, secret.id).unwrap();
+        b.lock().unwrap().erase(lumenna_store::Documents::erased_by(&edit)).unwrap();
+
+        // A session with the erased store that hears its core and then is gone, as one cut off by
+        // a time limit: what it held aside goes with it.
+        {
+            let newer: BTreeSet<SyncName> =
+                b.lock().unwrap().sync_documents().unwrap().into_iter().filter(|n| n.id == DocId::Core).collect();
+            let (mut on_a, mut on_b) = (Rounds::default(), Rounds::default());
+            for _ in 0..4 {
+                let from_a = on_a.say(&mut a.lock().unwrap(), &newer).unwrap();
+                let from_b = on_b.say(&mut b.lock().unwrap(), &newer).unwrap();
+                on_b.hear(&mut b.lock().unwrap(), &from_a, |_| true).unwrap();
+                on_a.hear(&mut a.lock().unwrap(), &from_b, |_| true).unwrap();
+            }
+        }
+        // The next session, with a store of the same history as this one's, takes nothing in.
+        let (left, _) = sync(&a, &c).await;
+        assert!(left.adopted.is_none(), "{left:?}");
+        assert_eq!(a.lock().unwrap().generation(), None);
+        let mut titles: Vec<String> = a.lock().unwrap().snapshot().0.tasks.values().map(|t| t.title.clone()).collect();
+        titles.sort();
+        assert_eq!(titles, ["the groceries", "the secret"]);
     }
 
     #[tokio::test]

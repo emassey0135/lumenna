@@ -22,6 +22,13 @@ fn main() {
         file.strip_prefix(&manifest).unwrap_or(file).hash(&mut hasher);
         std::fs::read(file).expect("a source file reads").hash(&mut hasher);
     }
+    // The dependencies' versions too: a new Automerge, jiff or rrule can read the same document
+    // into other records, with not a line of this source changed.
+    let lock = manifest.join("../../Cargo.lock");
+    println!("cargo:rerun-if-changed={}", lock.display());
+    if let Ok(bytes) = std::fs::read(&lock) {
+        bytes.hash(&mut hasher);
+    }
     println!("cargo:rustc-env=LUMENNA_HYDRATION_BUILD={:016x}", hasher.finish());
 }
 
