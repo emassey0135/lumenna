@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
-import type { ShownLine } from "./core";
+import type { Offered, ShownLine } from "./core";
 import { Syntax } from "./core";
 import { CompletingField } from "./Completing";
 import { send, typed } from "./session";
@@ -49,14 +49,22 @@ function Line(props: { line: ShownLine | null; close: () => void }) {
     if (line && pending.current === 0) setText(line.text);
   }, [line?.text]);
 
-  /** Tells the app the line and where the cursor is, for its readback. */
-  const tell = (value: string) => {
-    const cursor = input.current?.selectionStart ?? value.length;
+  /** Tells the app the line and where the cursor is, which decides its readback and what fits
+   * there. */
+  const tell = (value: string, cursor = input.current?.selectionStart ?? value.length) => {
     pending.current++;
-    void typed(value, cursor).finally(() => {
+    return typed(value, cursor).finally(() => {
       pending.current--;
     });
   };
+
+  /** What fits at the cursor: the app's offer for the line as it is now, worded as its lines
+   * are ("Inbox, project"). */
+  const offers = (value: string, cursor: number): Promise<Offered> =>
+    tell(value, cursor).then((turn) => {
+      const offer = turn.screen.line?.offer;
+      return { announcement: "", start: offer?.start ?? 0, end: offer?.end ?? 0, candidates: offer?.candidates ?? [] };
+    });
 
   // Added, the app lets the line go and the dialog closes; refused, it stays with what was
   // typed, so it can be put right.
@@ -81,8 +89,9 @@ function Line(props: { line: ShownLine | null; close: () => void }) {
           value={text}
           onChange={(value) => {
             setText(value);
-            tell(value);
+            void tell(value);
           }}
+          offers={offers}
           description="Such as: write the chapter tomorrow p1 #Work."
           autoFocus
           inputRef={input}

@@ -40,8 +40,9 @@ pairing with `lum`.
   add, the list's filter, a saved filter's query (`Asking::syntax`) and a block's Tasks from
   (`FormField::syntax`), on Down or Ctrl+Space, never by itself, asking the core at the
   keystroke (`App::complete`) for where the cursor is *now*, the list opened once its candidates
-  have rendered (opened as they are set, it opens on none). Quick add tells the app the line as
-  typed only for its readback.
+  have rendered (opened as they are set, it opens on none). Quick add's offer is the app's own
+  (`offers`, from the line told it with the cursor), worded as its lines are ("Inbox, project");
+  the others' labels are the completion's own.
 - **What cannot be undone is an `alertdialog` with Cancel focused first**, never `confirm()`.
   A refused answer stays in its dialog.
 - **A row's action runs after its menu has closed** and focus is back on the row, so a

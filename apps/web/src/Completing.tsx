@@ -28,6 +28,9 @@ export function CompletingField(props: {
   onBlur?: () => void;
   error?: string | null;
   inputRef?: { current: HTMLInputElement | null };
+  /** What fits at `cursor` in `line`: the core's completion, unless the line's offer is the
+   * app's own (quick add's, worded as its lines are). */
+  offers?: (line: string, cursor: number) => Promise<Offered>;
 }) {
   const [offer, setOffer] = useState<Offered>(nothing);
   const combo = useRef<ContextType<typeof ComboBoxStateContext>>(null);
@@ -58,7 +61,8 @@ export function CompletingField(props: {
   const offerHere = () => {
     const line = input.current?.value ?? props.value;
     const cursor = input.current?.selectionStart ?? line.length;
-    void core.complete(line, cursor, props.syntax).then((found) => {
+    const asking = props.offers ? props.offers(line, cursor) : core.complete(line, cursor, props.syntax);
+    void asking.then((found) => {
       if (found.candidates.length > 0) opening.current = true;
       else say(found.announcement || "Nothing to complete here.");
       offeredFor.current = line;
