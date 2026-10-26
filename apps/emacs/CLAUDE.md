@@ -35,7 +35,9 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
   that kind (`lumenna-define-action`, `lumenna-act-kind`); `.` offers them all by title, and a
   key the row does not offer refuses with the app's sentence (`Run`, `lumenna--refuse`). A key
   of the shared table is the core's whole: `d` sends `Key("delete")` on the row put in hand
-  (`lumenna-press`), and what it runs (`keys::runs`) is never listed here. Sounds key on the
+  (`lumenna-press`), and what it runs (`keys::runs`) is never listed here. The key reaches only
+  a row in hand, so a task's own buffer runs the details' Delete or Delete from Trash, and a
+  refusal there is the details' (`Details(Run)`). Sounds key on the
   action's `subject/kind`; a key's is learnt from the question it opens (`asking.action`), so an
   immediate one plays none until a turn names what ran. Not transient: Emacsvox reads a transient by asking
   whether its command was called interactively, and Emacs 31's transient wraps each command, so
@@ -69,8 +71,18 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
   (`lumenna--daemon-changes`): the app would take it for the answer. Tests stand a script in
   for `lum daemon` (`lumenna--daemon-program`), so nothing is installed.
 - **Reminders are given through `reminder.deliver`** (`lumenna-reminders-mode`), which takes
-  this device's reminder lock, and dealt with through the store's own methods; a task's or
-  block's reminder list is the app's.
+  this device's reminder lock and says what came due; the app is then handed the same moments
+  (`Due(Look)`, from just before the earliest firing to the moment delivered at), and lists,
+  says and gives notices of what it finds (`ViewModel.due`). The due list draws that list from
+  screen 0, each notice is a desktop notification, and every button is a `DueEvent`, so which
+  are still listed is the app's. `lumenna-disconnect` stops the mode (`lumenna-disconnected-hook`),
+  whose timer would connect again at once; connecting starts it again. A task's or block's
+  reminder list is the app's.
+- **A new connection draws every buffer's screen again** (`lumenna--leave-screens`,
+  `lumenna--reopen-screens`): the new app has none of the old one's screens, so each buffer that
+  opened a screen sends the events that opened it (`lumenna--opened-with`) to the same number,
+  screen 0's buffers simply attach, and a buffer drawing what the app opened on another's (a
+  proposal, a reminder list) is closed.
 - **A choice's reason is its completion annotation**, never part of the line chosen.
 - **Tests seed the store through its own methods** (`lumenna-test--seed`), then tick the app
   and wait for it, as another client's write would reach it.

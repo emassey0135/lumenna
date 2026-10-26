@@ -106,13 +106,13 @@
 (ert-deftest lumenna-emacsvox-a-reminder-is-one-notification-with-its-event ()
   (skip-unless lumenna-emacsvox-test--lisp)
   (let ((lumenna-announce-function #'lumenna-emacsvox-announce)
-        (lumenna-reminders--waiting nil)
         submitted)
     (cl-letf (((symbol-function 'emacsvox-aural-submit-notification)
                (lambda (content &rest keys) (push (cons content keys) submitted)))
               ((symbol-function 'lumenna-reminders--desktop-p) #'ignore))
-      (lumenna-reminders--give '(:due [(:key "k" :occurrence "2030-01-15" :title "Deep work"
-                                         :text "Deep work starts in 5 minutes")])))
+      ;; The app's turn as a reminder comes due: said, and given as a notice.
+      (lumenna--turned '(:screen 0 :said ["Deep work starts in 5 minutes"]
+                         :notices [(:id "k-2030-01-15" :title "Deep work" :text "Deep work starts in 5 minutes")])))
     (should (equal submitted '(("Deep work starts in 5 minutes"
                                 :facts (:role lumenna-reminder :event lumenna-reminder-due)
                                 :module lumenna :occasion state-change))))))

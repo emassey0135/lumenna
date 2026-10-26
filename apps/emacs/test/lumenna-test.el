@@ -92,9 +92,14 @@ until the app has taken it in."
 ;;;; Reminders
 
 (defun lumenna-test--deliver ()
-  "Ask what came due, as the timer does, and wait for the answer."
+  "Ask what came due, as the timer does, and wait for the answer and the app's look."
   (lumenna-reminders-deliver)
-  (while lumenna-reminders--asking (accept-process-output nil 0.05)))
+  (while lumenna-reminders--asking (accept-process-output nil 0.05))
+  (lumenna--settle))
+
+(defun lumenna-test--due ()
+  "What the app lists as due."
+  (append (plist-get (buffer-local-value 'lumenna--view (lumenna--home-buffer)) :due) nil))
 
 (defmacro lumenna-test--reminding (&rest body)
   "Run BODY against a fresh store in UTC, delivering at `now', a variable BODY sets.
@@ -104,7 +109,6 @@ until the app has taken it in."
      (lumenna-test--with-store
        (let* ((now "2030-01-15T08:50:00Z")
               (lumenna-reminders--now (lambda () now))
-              (lumenna-reminders--waiting nil)
               said shown)
          (cl-letf (((symbol-function 'lumenna-reminders--desktop-p) (lambda () t))
                    ((symbol-function 'notifications-notify) (lambda (&rest params) (push params shown) 1)))
@@ -130,7 +134,7 @@ until the app has taken it in."
       (should (= (length said) 1))
       (funcall (plist-get notification :on-action) 1 "dismiss"))
     (should (equal (car said) "Dismissed"))
-    (should-not lumenna-reminders--waiting)
+    (should-not (lumenna-test--due))
     (should-not (append (plist-get (lumenna-call "reminder.due" :since "2030-01-15T08:50:00Z"
                                                  :now "2030-01-15T08:59:00Z")
                                    :due)
@@ -1169,7 +1173,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
                      '("dismiss" "Dismiss" "snooze" "Snooze 10 Minutes" "carry" "Carry Forward" "default" "Deep work")))
       (funcall (plist-get notification :on-action) 1 "carry"))
     (should (equal (car said) "Carried forward Essay to Admin"))
-    (should-not lumenna-reminders--waiting)
+    (should-not (lumenna-test--due))
     (let ((next (aref (plist-get (lumenna-call "plan" :date "2030-01-16") :blocks) 0)))
       (should (equal (plist-get (aref (plist-get next :assignments) 0) :planned_mins) 50)))))
 
@@ -1181,11 +1185,12 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (lumenna-test--deliver)
     (lumenna-reminders-due)
     (lumenna-test--goto "Deep work starts")
-    ;; Its own list, not the app's: a reminder without the button refuses its key plainly.
+    ;; The app's list: a reminder without the button refuses its key in the core's words.
     (should (equal (cadr (should-error (lumenna-reminders-carry) :type 'user-error))
-                   "Nothing to do here"))
+                   "That does not apply here."))
     (should (equal (cadr (should-error (lumenna-reminders-replan) :type 'user-error))
-                   "Nothing to do here"))))
+                   "That does not apply here."))
+    (should (equal (length (lumenna-test--due)) 1))))
 
 (ert-deftest lumenna-replan-offers-other-options-each-proposed-in-place-when-taken ()
   (lumenna-test--planning "2030-01-15T10:40"
@@ -1243,6 +1248,91 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (cl-letf (((symbol-function 'display-color-p) (lambda (&rest _) nil)))
       (should (equal (lumenna--swatch teal) "")))
     (should (equal (lumenna--swatch nil) ""))))
+
+;;;; Connections, keys and exports
+
+(ert-deftest lumenna-every-buffer-draws-its-screen-again-over-a-new-connection ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "task.add" :text "before")
+    (lumenna)
+    (lumenna-tasks)
+    (let ((tasks (current-buffer)))
+      ;; The server goes, as a daemon does when the background setting reinstalls it.
+      (jsonrpc-shutdown lumenna--connection)
+      (lumenna-test--seed "task.add" :text "after")
+      (with-current-buffer tasks
+        (goto-char (point-min))
+        (should (search-forward "before" nil t))
+        (should (search-forward "after" nil t)))
+      (with-current-buffer "*Lumenna*"
+        (goto-char (point-min))
+        (should (search-forward "Inbox" nil t))))))
+
+(ert-deftest lumenna-disconnecting-stops-the-reminders-until-lumenna-connects-again ()
+  (lumenna-test--with-store
+    (let ((lumenna-reminders-mode nil)
+          (lumenna-reminders--timer nil)
+          (lumenna-reminders--asking nil)
+          (lumenna-reminders--resume nil))
+      (unwind-protect
+          (progn
+            (lumenna-call "task.list")
+            (lumenna-reminders-mode 1)
+            (should lumenna-reminders--timer)
+            (lumenna-disconnect)
+            (should-not lumenna-reminders-mode)
+            (should-not lumenna-reminders--timer)
+            (should-not (advice-function-member-p #'lumenna-reminders--focus-changed after-focus-change-function))
+            (should-not lumenna--connection)
+            (lumenna-call "task.list")
+            (should lumenna-reminders-mode))
+        (lumenna-reminders-mode -1)))))
+
+(ert-deftest lumenna-a-new-saved-filters-query-is-read-in-the-filter-language ()
+  (lumenna-test--with-store
+    (let (read)
+      (cl-letf (((symbol-function 'lumenna-read-line)
+                 (lambda (prompt syntax &rest _) (push (cons prompt syntax) read) "p1"))
+                ((symbol-function 'read-from-minibuffer) (lambda (&rest _) "Urgent"))
+                ((symbol-function 'read-string) (lambda (&rest _) "Urgent")))
+        (lumenna-filters)
+        (lumenna-filter-add))
+      (should (equal read '(("New saved filter. A filter, such as p1 & due before: friday. Query: " . "filter")))))
+    (should (equal (plist-get (aref (plist-get (lumenna-call "filter.list") :filters) 0) :query) "p1"))))
+
+(ert-deftest lumenna-d-on-a-trashed-tasks-details-deletes-it-from-the-trash ()
+  (lumenna-test--with-store
+    (let ((id (plist-get (plist-get (lumenna-test--seed "task.add" :text "gone soon") :task) :id)))
+      (lumenna-test--seed "task.rm" :id id)
+      (lumenna-task-show id)
+      (lumenna-test--answering (t)
+        (lumenna-task-delete))
+      (should (equal (lumenna-test--titles "deleted") nil)))))
+
+(ert-deftest lumenna-a-project-and-a-saved-filter-take-a-colour-by-its-key-as-a-label-does ()
+  (dolist (map (list lumenna-projects-mode-map lumenna-labels-mode-map lumenna-filters-mode-map))
+    (should (eq (keymap-lookup map "C") #'lumenna-act-colour))))
+
+(ert-deftest lumenna-an-export-is-one-the-app-offers-saved-where-the-person-says ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "task.add" :text "exported")
+    (lumenna-settings)
+    (let ((file (expand-file-name "out.md" lumenna-profile))
+          offered)
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _)
+                   (setq offered (mapcar #'cdr choices))
+                   (car (rassoc "markdown" choices))))
+                ((symbol-function 'read-file-name) (lambda (&rest _) file)))
+        (lumenna-export)
+        ;; Where to keep it is asked once the turn that made it has been taken.
+        (let ((deadline (+ (float-time) 10)))
+          (while (and (not (file-exists-p file)) (< (float-time) deadline))
+            (accept-process-output nil 0.05))))
+      (should (equal offered '("json" "markdown" "org" "ics")))
+      (with-temp-buffer
+        (insert-file-contents file)
+        (should (search-forward "exported" nil t))))))
 
 (provide 'lumenna-test)
 

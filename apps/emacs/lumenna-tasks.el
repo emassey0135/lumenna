@@ -313,12 +313,17 @@ a major mode of its own, as `log-edit-mode' is for a commit message."
   (message "Notes unchanged"))
 
 (defun lumenna-task-delete ()
-  "Move this task to the trash, as it offers, and leave its buffer."
+  "Delete this task as it offers, and leave its buffer once it is gone.
+To the trash, or from the trash for one there already, as the delete key
+does on its row.  The shared key reaches only a row in hand, so here it is
+the details' own action of either kind."
   (interactive)
-  (lumenna-act-kind '("delete"))
-  ;; Gone to the trash, it no longer offers Move to Trash.
-  (unless (seq-find (lambda (a) (equal (plist-get a :kind) "delete")) (lumenna-actions))
-    (quit-window)))
+  (let ((before (lumenna-actions)))
+    (lumenna-act-kind '("delete" "delete_for_good"))
+    ;; Moved to the trash or out of it, what the task offers changed; refused or
+    ;; let go, it is as it was.
+    (unless (and (lumenna--details-task) (equal before (lumenna-actions)))
+      (quit-window))))
 
 ;; Field rows carry the field as a text property too, so e finds it.
 (add-hook 'lumenna-row-inserted-functions
@@ -380,7 +385,7 @@ it with \\[lumenna-act-at-point].
    ("w" "Wait For" lumenna-act-wait-for)
    ("W" "Stop Waiting" lumenna-act-stop-waiting)
    ("R" "Reminders" lumenna-act-reminders)
-   ("d" "Move to Trash" lumenna-task-delete)))
+   ("d" "Move to Trash, or Delete from Trash" lumenna-task-delete)))
 
 (lumenna-define-keys lumenna-trash-mode
   ("The task at point"

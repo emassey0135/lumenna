@@ -127,14 +127,15 @@ Once the app closes the screen, this buffer goes."
 (declare-function lumenna-today "lumenna-day" ())
 
 ;;;###autoload
-(defun lumenna-replan ()
+(defun lumenna-replan (&optional event)
   "Replan the rest of today: the core's proposal, to check and make.
-From anywhere, as an overrun warning's button opens it."
+From anywhere, as an overrun warning's button opens it: then EVENT is that
+button's, the app's, which dismisses the warning once something is replanned."
   (interactive)
   (unless (derived-mode-p 'lumenna-day-mode) (lumenna-today))
   (when lumenna-proposal--now
     (lumenna-send (list :PlanFrom (funcall lumenna-proposal--now))))
-  (lumenna-send (list :Proposal "Replan"))
+  (lumenna-send (or event (list :Proposal "Replan")))
   (lumenna--follow))
 
 ;;;###autoload

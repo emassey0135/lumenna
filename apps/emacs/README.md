@@ -105,9 +105,11 @@ Emacs has D-Bus and a notification service, shown as a desktop notification whos
 are the core's Dismiss and Snooze. It starts on the first connection unless
 `lumenna-reminders-start-automatically` is nil, and gives way to whatever else on the device
 already gives reminders — the Mac, GTK or Windows app, or `lum notify` — so a reminder is
-never said twice. What came while nothing ran is one summary.
+never said twice. What came while nothing ran is one summary. `lumenna-disconnect` stops
+them until Lumenna connects again.
 
-`C-c l r` (`lumenna-reminders-due`) lists what came due and was not dealt with: `d`
+`C-c l r` (`lumenna-reminders-due`) lists what came due and was not dealt with, as the app
+lists it on every device: `d`
 dismisses one and `z` snoozes it, on every device, and `c` carries forward what a block's
 end left short, where the reminder offers to, and `r` opens Replan from Now where a block's
 work outruns its time (each notification has its button too); RET
