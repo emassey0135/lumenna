@@ -99,6 +99,10 @@ final class SharedScreensTests: XCTestCase {
     }
 
     func testPairingOpensOnTheCoresWordsAndAnEmptyCodeIsRefusedInThem() throws {
+        // The Devices page first, as pairing is opened from it, once the app holds the store:
+        // pairing's words come with it.
+        core.app.send(.devices(.show))
+        settle { core.app.view.devices != nil }
         let pairing = PairingModel(core: core, thisDevice: "this iPhone", name: "Test iPhone")
         XCTAssertEqual(pairing.status, pairing.words.intro)
         var said: String?
@@ -109,6 +113,10 @@ final class SharedScreensTests: XCTestCase {
     }
 
     func testAnExportGoesToTheLatestRequestAlone() throws {
+        // Once the app holds the store: asked sooner, on a slow runner, there was nothing yet
+        // to export.
+        core.app.send(.open(.today))
+        settle { core.app.view.day != nil }
         var first = 0
         var latest: [LumennaApp.SaveFile] = []
         core.app.file(from: .settings(.export(.json))) { _ in first += 1 }
