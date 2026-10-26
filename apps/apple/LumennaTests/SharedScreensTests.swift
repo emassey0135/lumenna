@@ -42,7 +42,10 @@ final class SharedScreensTests: XCTestCase {
     func testGoToDayIsAskedWithTheDayShownAndARefusedDayIsAskedAgainWithWhy() throws {
         let asker = Asker()
         let questions = AppQuestions(app: core.app, asker: asker) { _ in }
+        // The day first, once the app holds the store: asked for at once, on a slow runner
+        // Go to Day came before the store, with no day to open on, and asked nothing.
         core.app.send(.open(.today))
+        settle { core.app.view.day != nil }
         core.app.send(.day(.ask))
         settle { !asker.asked.isEmpty }
         let first = try XCTUnwrap(asker.asked.first)

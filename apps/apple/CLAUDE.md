@@ -405,9 +405,9 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
 - **The app's questions are asked where the person is** (`FrontAsker`): over Settings while it
   is in front, else over the main window, so what Settings offers (Erase Everything Deleted,
   a device's Unpair) asks there. Asked over the main window, they opened behind Settings. The
-  store's own actions (`SettingsView.offered`) are destructive buttons under Backups
-  (`StoreActions`, shared with iOS), the core's `offeredCaption` beneath them; the watch has
-  no Backups page, so it offers none.
+  store's own actions (`SettingsView.offered`) are destructive buttons on Export and Import, the
+  page the core's words put erasing on (`StoreActions`, shared with iOS), the core's
+  `offeredCaption` beneath them; the watch has no such page, so it offers none.
 - **Global shortcuts through Carbon's `RegisterEventHotKey`**, which needs no accessibility
   permission. Never Control-Option: it is VoiceOver's. The recorder warns of clashes with
   VoiceOver, VOCR (Control-Command S, P, L, I; Shift-Control-Command more) and macOS

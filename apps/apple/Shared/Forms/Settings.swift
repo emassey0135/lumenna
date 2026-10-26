@@ -262,9 +262,13 @@ struct LineSetting: View {
     /// Why the line was refused, the app's, which it has said.
     private var problem: String? { model.problems[setting.key] }
 
+    /// Whether the line is long enough to wrap beside its name on a narrow phone (the urgency
+    /// weights): then the name goes above it, and it reads from the leading edge.
+    private var long: Bool { (model.values[setting.key] ?? setting.value).count > 24 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Named(setting.title) {
+            Named(setting.title, above: long) {
                 field
                     .focused($focused)
                     .onSubmit(commit)
@@ -308,7 +312,7 @@ struct LineSetting: View {
             // Leaving the field commits it.
             focused = false
         }), prompt: example("None"), axis: .vertical)
-        .multilineTextAlignment(.trailing)
+        .multilineTextAlignment(long ? .leading : .trailing)
         #else
         TextField("", text: $text, prompt: example("None"))
         #endif
