@@ -120,7 +120,7 @@ extension PhoneAsker: QuestionAsking {
 
     func pick(title: String, offered: [Offered], yes: String, answered: @escaping (Picked) -> Void) {
         guard let front else { return answered(.cancelled) }
-        let items = offered.map { AppItem(key: $0.id, title: $0.title, detail: $0.detail, depth: $0.depth, reason: $0.reason, swatch: $0.swatch) }
+        let items = offered.map { AppItem(key: $0.id, title: $0.title, detail: $0.detail, depth: $0.depth, level: $0.level, reason: $0.reason, swatch: $0.swatch) }
         let picker = ChoicePicker(core: core, title: title, items: items, chosen: { id in
             answered(.chose(id))
         }, cancelled: { answered(.cancelled) })

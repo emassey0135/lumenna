@@ -129,18 +129,6 @@ enum KeyboardCommands {
         ]
     }
 
-    /// The action kind each of the day's commands runs.
-    static func dayKind(_ selector: Selector) -> LumennaApp.ActionKind? {
-        switch selector {
-        case #selector(CommandActions.planTheDay): .planDay
-        case #selector(CommandActions.replanFromNow): .replan
-        case #selector(CommandActions.whatNow): .whatNow
-        case #selector(CommandActions.endTheDay): .endDay
-        case #selector(CommandActions.clearTheDay): .clearDay
-        default: nil
-        }
-    }
-
     /// The iPhone's: every command with a key.
     static var all: [UIKeyCommand] {
         [newItems, syncItems, settingsItems, undoItems, filterItems, viewItems, taskItems, dayItems, dayActionItems]

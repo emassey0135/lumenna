@@ -58,14 +58,11 @@ final class DevicesModel: ObservableObject {
         held.flatMap { held in devices.first { $0.device.nodeId == held }?.device }
     }
 
-    /// The device in hand's own action of `kind`, or the app says why it has none.
-    func run(_ kind: LumennaApp.ActionKind) {
+    /// The core's command `id` on the device in hand ("rename", "delete": Unpair), or the app
+    /// says why it has none.
+    func key(_ id: String) {
         guard let device = inHand else { return }
-        if let action = device.offered.first(where: { $0.kind == kind }) {
-            core.app.run(action, on: device.nodeId, side: .devices)
-        } else {
-            core.app.refuse([kind], on: device.nodeId, side: .devices)
-        }
+        core.app.key(id, on: device.nodeId, side: .devices)
     }
 }
 
@@ -102,8 +99,8 @@ struct DevicesScreen: View {
                 Button("Sync Now") { model.core.app.send(.devices(.syncNow)) }
                 Button("Pair a Device…") { pair() }
                 Spacer()
-                Button("Rename…") { model.run(.rename) }
-                Button("Unpair…") { model.run(.unpair) }
+                Button("Rename…") { model.key("rename") }
+                Button("Unpair…") { model.key("delete") }
             }
         }
         .padding(16)
@@ -114,7 +111,7 @@ struct DevicesScreen: View {
     func key(_ key: ListKey) -> Bool {
         guard let device = model.inHand else { return false }
         switch key {
-        case .returnKey: model.run(.rename)
+        case .returnKey: model.key("rename")
         case .delete: model.core.app.key("delete", on: device.nodeId, side: .devices)
         case .space: return false
         }

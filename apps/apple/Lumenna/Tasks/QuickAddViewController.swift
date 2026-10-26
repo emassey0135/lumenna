@@ -11,7 +11,7 @@ import UIKit
 final class QuickAddViewController: UIViewController {
     private let core: Core
 
-    private let field = LineEntry(name: "New task")
+    private let field = LineEntry(name: QuickAddText.label)
     private let readback = UILabel()
     private lazy var completions = CompletionBar(core: core, syntax: .quickAdd, field: field)
     private var addButton: UIBarButtonItem!
@@ -23,7 +23,7 @@ final class QuickAddViewController: UIViewController {
     init(core: Core) {
         self.core = core
         super.init(nibName: nil, bundle: nil)
-        title = "New Task"
+        title = QuickAddText.title
     }
 
     deinit {
@@ -52,7 +52,7 @@ final class QuickAddViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
 
-        field.placeholder = "write the chapter tomorrow p1 #Work"
+        field.placeholder = QuickAddText.example
         field.autocapitalizationType = .sentences
         field.inputAccessoryView = completions
         completions.offerList(on: field)
@@ -84,7 +84,7 @@ final class QuickAddViewController: UIViewController {
             systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) }
         )
         addButton = UIBarButtonItem(
-            title: "Add", primaryAction: UIAction { [weak self] _ in self?.add() }
+            title: QuickAddText.add, primaryAction: UIAction { [weak self] _ in self?.add() }
         )
         addButton.style = .done
         addButton.isEnabled = false
@@ -140,7 +140,7 @@ final class QuickAddViewController: UIViewController {
         // Down offers what fits, as on every keyboard: the line has no line below to move to.
         let down = UIKeyCommand(title: CompletionWords.show, action: #selector(showCompletions), input: UIKeyCommand.inputDownArrow)
         down.wantsPriorityOverSystemBehavior = true
-        return [UIKeyCommand(title: "Cancel", action: #selector(cancel), input: UIKeyCommand.inputEscape), down]
+        return [UIKeyCommand(title: QuickAddText.cancel, action: #selector(cancel), input: UIKeyCommand.inputEscape), down]
     }
 
     @objc private func showCompletions() {

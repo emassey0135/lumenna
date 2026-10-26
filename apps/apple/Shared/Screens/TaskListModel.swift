@@ -72,9 +72,11 @@ final class TaskListModel: ObservableObject {
     /// the app keeps them. Opening is the list coming to the front, which VoiceOver says itself:
     /// no landing.
     func appear() {
-        // As the app holds it now, ahead of any turn on its way, so a place the app has just
-        // gone to (a launch, a task's reminder) is not opened again over what was put in hand.
-        if core.app.current.view.place != place {
+        // Only where neither the last turn drawn nor the app as it is now shows this place: a
+        // place the app has just gone to (a launch, a task's reminder) is not opened again over
+        // what was put in hand, and a pane the Mac's window made for a place the app has since
+        // left (the first place, as the window opens on the day) does not pull the app back.
+        if !here, core.app.current.view.place != place {
             core.app.send(.open(place))
             landing = nil
         }
@@ -130,13 +132,10 @@ final class TaskListModel: ObservableObject {
         rows.first { $0.id == row.id }?.actions ?? []
     }
 
-    /// The row's action of one of `kinds`, or why it has none, in the core's words.
-    func run(_ kinds: [LumennaApp.ActionKind], on row: LumennaApp.RowView, saying kind: LumennaApp.ActionKind) {
-        if let action = actions(of: row).first(where: { kinds.contains($0.kind) }) {
-            run(action, on: row)
-        } else {
-            core.app.refuse([kind], on: row.id)
-        }
+    /// The core's command `id` on `row` ("open", "mark-done"): what it runs is the core's, or
+    /// it says why the row has none.
+    func key(_ id: String, on row: LumennaApp.RowView) {
+        core.app.key(id, on: row.id)
     }
 
     /// The row in hand, if it is listed.

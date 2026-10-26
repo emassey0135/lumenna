@@ -125,7 +125,7 @@ struct RootView: View {
                 guard let reminded = note.object as? RemindedOf else { return }
                 if reminded.replan {
                     // The overrun warning's Replan: Replan from Now, the phone's screen.
-                    core.app.replanFromNow()
+                    core.app.replan(from: reminded)
                 } else if reminded.kind == "task" {
                     remindedTask = TaskOpened(id: reminded.target)
                 } else {
@@ -165,10 +165,9 @@ struct RootView: View {
                     }
                 }
             }
-            .alert("Could not do that", isPresented: failed) {
+            // The core's sentence is the whole alert: what could not be done and why.
+            .alert(core.failure ?? "", isPresented: failed) {
                 Button("OK") { core.failure = nil }
-            } message: {
-                Text(core.failure ?? "")
             }
         }
         // What the app says, shown for sighted wearers; the asker's sheets show it over themselves.

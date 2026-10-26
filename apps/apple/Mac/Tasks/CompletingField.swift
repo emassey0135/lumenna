@@ -23,7 +23,7 @@ final class CompletingField: NSTextField, NSTextFieldDelegate {
         super.init(frame: .zero)
         delegate = self
         setAccessibilityLabel(name)
-        setAccessibilityHelp("Down arrow offers what could come next.")
+        setAccessibilityHelp(QuickAddText.completes)
         lineBreakMode = .byWordWrapping
         usesSingleLineMode = false
         cell?.wraps = true

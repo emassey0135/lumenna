@@ -3,8 +3,8 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Settings: a short list of pages — what syncs, what is this device's alone, and getting
-/// data in and out.
+/// Settings: a short list of pages, the core's — what syncs, what is this device's alone, and
+/// getting data in and out.
 ///
 /// Pages rather than one long form: a VoiceOver user reaches backups without swiping through
 /// every weekday, and a page pushed over the tab bar hides it, so no row is ever read through
@@ -18,52 +18,48 @@ final class SettingsViewController: AppListViewController {
     override var offersUndo: Bool { false }
 
     override func appear() {
-        // How syncing is going, the network's, for the Devices row.
+        // How syncing is going, the network's, for the Devices row; and the settings, so a page
+        // with none this device has is left out.
         core.app.send(.devices(.show))
+        core.app.send(.settings(.open))
+    }
+
+    /// The core's pages, in its order and words, those with something here: General holds what
+    /// a platform keeps running in the background, which an iPhone does not offer.
+    private var pages: [LumennaApp.SettingsPage] {
+        let view = core.app.view.settings
+        let here = Set(view?.settings.map(\.setting.key) ?? [])
+        return (view?.pages ?? LumennaApp.settingsPages(ownClock: true, sentence: false)).filter { page in
+            !page.buttons.isEmpty || page.id == "export" || page.keys.contains(where: here.contains)
+        }
     }
 
     override func rows() -> (items: [AppItem], count: String)? {
         let status = core.app.view.devices?.status ?? ""
-        return ([
-            AppItem(key: "devices", title: "Devices and Sync", detail: status.isEmpty ? nil : status),
-            AppItem(key: "planning", title: "Planning", detail: "The day, the week, completing subtasks, announcements"),
-            AppItem(key: "backups", title: "Backups", detail: "On this device only"),
-            AppItem(key: "export", title: "Export and Import", detail: "JSON, Markdown, org, calendar"),
-        ], "")
+        return (pages.map { page in
+            // The Devices row says how syncing is going, rather than what the page is.
+            let detail = page.id == "devices" && !status.isEmpty ? status : page.description
+            return AppItem(key: page.id, title: page.title, detail: detail.isEmpty ? nil : detail)
+        }, "")
     }
 
     override func open(_ item: AppItem) {
-        let next: UIViewController = switch item.key {
-        case "devices": DevicesViewController(core: core)
-        case "planning": SettingsPageViewController(core: core, page: .planning)
-        case "backups": SettingsPageViewController(core: core, page: .backups)
-        default: SettingsPageViewController(core: core, page: .export)
-        }
+        let next: UIViewController = item.key == "devices"
+            ? DevicesViewController(core: core)
+            : SettingsPageViewController(core: core, page: item.key, title: item.title)
         showBeside(next)
     }
 }
 
-/// One page of settings.
-enum SettingsTopic {
-    case planning, backups, export
-
-    var title: String {
-        switch self {
-        case .planning: "Planning"
-        case .backups: "Backups"
-        case .export: "Export and Import"
-        }
-    }
-}
-
-final class SettingsPageViewController: UIHostingController<SettingsView> {
+final class SettingsPageViewController: UIHostingController<SettingsPageForm> {
     private let model: SettingsModel
 
-    init(core: Core, page: SettingsTopic) {
+    /// The page `page` (the core's id), titled `title`.
+    init(core: Core, page: String, title: String) {
         let model = SettingsModel(core: core)
         self.model = model
-        super.init(rootView: SettingsView(model: model, page: page))
-        title = page.title
+        super.init(rootView: SettingsPageForm(model: model, id: page))
+        self.title = title
         model.host = self
         hidesBottomBarWhenPushed = true
     }
@@ -105,19 +101,5 @@ extension SettingsModel: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { return }
         importFile(at: url)
-    }
-}
-
-/// One page, from the shared ones in `Shared/Forms/Settings.swift`.
-struct SettingsView: View {
-    @ObservedObject var model: SettingsModel
-    let page: SettingsTopic
-
-    var body: some View {
-        switch page {
-        case .planning: PlanningSettings(model: model)
-        case .backups: BackupSettings(model: model)
-        case .export: ExportSettings(model: model)
-        }
     }
 }

@@ -104,11 +104,7 @@ struct RemindersForm: View {
                 FormParts.heading(model.list?.announcement ?? "Reminders")
             } footer: {
                 if model.silenced {
-                    #if os(macOS)
-                    FormParts.caption("Notifications for Lumenna are off in System Settings, so these are not shown.")
-                    #else
-                    FormParts.caption("Notifications for Lumenna are off in Settings, so these are not shown.")
-                    #endif
+                    FormParts.caption(LumennaApp.notificationWords(thisDevice: AppModel.thisDevice, sentence: false).off)
                 }
             }
             if let question = model.question, let adding = model.adding {

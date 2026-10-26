@@ -56,9 +56,11 @@ final class DayModel: ObservableObject {
     /// hand it was left with: the app keeps it. Opening is the screen coming to the front, which
     /// VoiceOver says itself: no landing.
     func appear() {
-        // As the app holds it now, ahead of any turn on its way: opened again after a reminder's
-        // block was shown (`ShowBlock`), the day would go back to today.
-        if core.app.current.view.place != .today {
+        // Only where neither the last turn drawn nor the app as it is now shows the day: opened
+        // again after a reminder's block was shown (`ShowBlock`), still on its way, the day went
+        // back to today; and a screen the window made to follow the app, which has since gone
+        // on, must not pull it back.
+        if !here, core.app.current.view.place != .today {
             core.app.send(.open(.today))
             landing = nil
         }
@@ -104,12 +106,16 @@ final class DayModel: ObservableObject {
         core.app.run(action, on: row.key)
     }
 
-    /// The row's action of one of `kinds`; false if it has none.
-    @discardableResult
-    func run(_ kinds: [LumennaApp.ActionKind], on row: LumennaApp.DayItem) -> Bool {
-        guard let action = row.offered.first(where: { kinds.contains($0.kind) }) else { return false }
-        run(action, on: row)
-        return true
+    /// The core's command `id` on `row` ("open": a block's Edit, free time's Add Block), or the
+    /// app says why the row has none.
+    func key(_ id: String, on row: LumennaApp.DayItem) {
+        core.app.key(id, on: row.key)
+    }
+
+    /// One of the day's own commands by its id ("plan-day"), on the day shown, or why it has none.
+    func key(_ id: String) {
+        appear()
+        core.app.key(id)
     }
 
     /// One of the day's own actions.

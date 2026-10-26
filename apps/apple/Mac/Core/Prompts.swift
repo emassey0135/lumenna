@@ -4,11 +4,12 @@ import LumennaApp
 /// The questions the app asks, as sheets on a window. Each is the system's own alert, which
 /// VoiceOver reads as a dialog with its message, field and buttons in order.
 extension NSWindow {
-    /// Says that something could not be done, with the core's own sentence.
-    func showFailure(_ message: String, title: String = "Could not do that") {
+    /// Says that something could not be done, with the core's own sentence: under `title`, the
+    /// question's own, or as the whole alert, which the sentence says by itself.
+    func showFailure(_ message: String, title: String? = nil) {
         let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
+        alert.messageText = title ?? message
+        alert.informativeText = title == nil ? "" : message
         alert.alertStyle = .warning
         alert.beginSheetModal(for: self)
     }

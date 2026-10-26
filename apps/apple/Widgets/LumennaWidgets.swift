@@ -165,10 +165,13 @@ enum GlanceSource {
         return ([GlanceTimelineEntry(date: now, glance: last)], false)
     }
 
-    /// The moment true now.
+    /// The moment true now, the core's (`glanceCurrent`: the last whose moment has come, else
+    /// the first).
     static func now() -> GlanceTimelineEntry {
         let entries = timeline().entries
-        return entries.last { $0.date <= Date() } ?? entries[0]
+        let now = Date()
+        guard let current = LumennaApp.glanceCurrent(entries: entries.map(\.glance), now: Instant.rfc3339(now)) else { return entries[0] }
+        return entries.first { $0.glance == current } ?? GlanceTimelineEntry(date: now, glance: current)
     }
 
     /// The core's words for a day with nothing in it, now.

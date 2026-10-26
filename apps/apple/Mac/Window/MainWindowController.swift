@@ -16,7 +16,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let split = NSSplitViewController()
     private(set) var sidebar: SidebarViewController!
     private let content = ContainerViewController(placeholder: "", name: "List")
-    private let detail = ContainerViewController(placeholder: "No task selected", name: "Task details")
+    private let detail = ContainerViewController(placeholder: LumennaApp.detailsWords(sentence: false).none, name: "Task details")
     private var questions: AppQuestions?
     /// What asks them, kept here: `AppQuestions` holds it weakly.
     private var asker: FrontAsker?

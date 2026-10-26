@@ -5,32 +5,28 @@ import UniformTypeIdentifiers
 
 /// Settings, in the Mac's own shape: a window of tabs, opened with ⌘,.
 final class SettingsWindowController: NSWindowController {
-    /// A page, by what it is rather than where it sits among the tabs.
-    enum Page: String {
-        case general, planning, devices, backups, export
-    }
-
-    private let tabs = NSTabViewController()
+    private let tabs: NSTabViewController
 
     init(core: Core) {
-        let tabs = tabs
+        let tabs = NSTabViewController()
+        self.tabs = tabs
         tabs.tabStyle = .toolbar
         let model = SettingsModel(core: core)
-        func tab(_ controller: NSViewController, _ label: String, _ symbol: String, _ page: Page) -> NSTabViewItem {
+        // The core's pages, in its order and words; what each draws beyond its settings is this
+        // app's: the login item and the shortcuts on General, the device list on Devices.
+        tabs.tabViewItems = model.pages.map { page in
+            let controller: NSViewController = switch page.id {
+            case "general": HostedForm(page.title, rootView: GeneralSettings(model: model))
+            // With a status line of its own: what the app says of a device, a refusal included.
+            case "devices": StatusLineController(content: DevicesViewController(core: core))
+            default: HostedForm(page.title, rootView: SettingsPageForm(model: model, id: page.id))
+            }
             let item = NSTabViewItem(viewController: controller)
-            item.identifier = page.rawValue
-            item.label = label
-            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+            item.identifier = page.id
+            item.label = page.title
+            item.image = NSImage(systemSymbolName: Self.symbol(page.id), accessibilityDescription: page.title)
             return item
         }
-        tabs.tabViewItems = [
-            tab(HostedForm("General", rootView: GeneralSettings(model: model)), "General", "gearshape", .general),
-            tab(HostedForm("Planning", rootView: PlanningSettings(model: model)), "Planning", "calendar", .planning),
-            // With a status line of its own: what the app says of a device, a refusal included.
-            tab(StatusLineController(content: DevicesViewController(core: core)), "Devices", "laptopcomputer.and.iphone", .devices),
-            tab(HostedForm("Backups", rootView: BackupSettings(model: model)), "Backups", "externaldrive", .backups),
-            tab(HostedForm("Export and Import", rootView: ExportSettings(model: model)), "Export and Import", "square.and.arrow.up", .export),
-        ]
         let window = NSWindow(contentViewController: tabs)
         window.title = "Settings"
         window.identifier = NSUserInterfaceItemIdentifier("settings")
@@ -39,12 +35,25 @@ final class SettingsWindowController: NSWindowController {
         model.window = window
     }
 
+    /// Each page's toolbar symbol, by what the page is.
+    private static func symbol(_ page: String) -> String {
+        switch page {
+        case "general": "gearshape"
+        case "planning": "calendar"
+        case "reminders": "bell"
+        case "devices": "laptopcomputer.and.iphone"
+        case "backups": "externaldrive"
+        case "export": "square.and.arrow.up"
+        default: "circle"
+        }
+    }
+
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// Shows `page`, wherever it sits among the tabs.
-    func show(_ page: Page) {
-        let index = tabs.tabView.indexOfTabViewItem(withIdentifier: page.rawValue)
+    /// Shows the page `id` (the core's), wherever it sits among the tabs.
+    func show(_ id: String) {
+        let index = tabs.tabView.indexOfTabViewItem(withIdentifier: id)
         if index != NSNotFound { tabs.selectedTabViewItemIndex = index }
     }
 }
@@ -128,6 +137,9 @@ extension SettingsModel {
 
 struct GeneralSettings: View {
     @ObservedObject var model: SettingsModel
+    /// The shortcuts' words, the core's. Its caption is about a PC's keys, so the Mac keeps its
+    /// own, about Control-Command and VoiceOver.
+    private let words = LumennaApp.hotkeyWords()
 
     var body: some View {
         Form {
@@ -147,17 +159,16 @@ struct GeneralSettings: View {
                     Named(kind.name) {
                         HStack {
                             Text(model.shortcutDescription(kind))
-                            Button("Change…") { model.recordShortcut(kind) }
-                                .accessibilityLabel("Change shortcut for \(kind.name)")
-                            Button(model.shortcutDescription(kind) == "Off" ? "Turn On" : "Turn Off") {
-                                model.toggleShortcut(kind)
-                            }
-                            .accessibilityLabel("\(model.shortcutDescription(kind) == "Off" ? "Turn on" : "Turn off") shortcut for \(kind.name)")
+                            Button(words.change + "…") { model.recordShortcut(kind) }
+                                .accessibilityLabel("\(words.change), \(kind.name)")
+                            let toggle = HotKeys.shortcut(kind) == nil ? words.turnOn : words.turnOff
+                            Button(toggle) { model.toggleShortcut(kind) }
+                                .accessibilityLabel("\(toggle), \(kind.name)")
                         }
                     }
                 }
             } header: {
-                FormParts.heading("Shortcuts from Anywhere")
+                FormParts.heading(words.heading)
             } footer: {
                 Text("These work in any app, so they take their keys from whatever app is in front. Control-Command, because Control-Option is VoiceOver's.")
                     .font(.footnote).foregroundStyle(Color.quietLabel)

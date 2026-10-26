@@ -106,16 +106,15 @@ final class RootTabs: UITabBarController, CommandActions, PlaceFollowing {
     @objc func syncNow() { syncAndSay(core) }
 
     // The day's own actions from anywhere else: today's, on the day.
-    @objc func planTheDay() { select(0) { $0.day.runDay(.planDay) } }
-    @objc func replanFromNow() { select(0) { $0.day.runDay(.replan) } }
-    @objc func whatNow() { select(0) { $0.day.runDay(.whatNow) } }
-    @objc func endTheDay() { select(0) { $0.day.runDay(.endDay) } }
-    @objc func clearTheDay() { select(0) { $0.day.runDay(.clearDay) } }
+    @objc func planTheDay() { select(0) { $0.day.runDay("plan-day") } }
+    @objc func replanFromNow() { select(0) { $0.day.runDay("replan") } }
+    @objc func whatNow() { select(0) { $0.day.runDay("what-now") } }
+    @objc func endTheDay() { select(0) { $0.day.runDay("end-day") } }
+    @objc func clearTheDay() { select(0) { $0.day.runDay("clear-day") } }
 
-    /// The overrun warning's Replan: today, with Replan from Now over it, the app's.
+    /// The overrun warning's Replan, which the app has taken: the day, Replan from Now over it.
     @objc func openReplan() {
         select(0)
-        core.app.replanFromNow()
     }
 
     /// A reminder chosen in Notification Center: its task, or its block on its day, in hand.

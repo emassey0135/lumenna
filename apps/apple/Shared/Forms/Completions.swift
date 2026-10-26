@@ -1,14 +1,18 @@
 import LumennaApp
 import SwiftUI
 
+/// The words of quick add, a list's filter and completing a line, the core's
+/// (`quickAddWords`), for every Apple app, in Title Case.
+let QuickAddText = LumennaApp.quickAddWords(sentence: false)
+
 /// The words of completing a line, one place for every Apple app.
 enum CompletionWords {
     /// The line's action and button that open the list.
-    static let show = "Show Completions"
-    /// The list's title.
-    static let title = "Completions"
+    static let show = QuickAddText.showCompletions
+    /// The list's title: what its button opens.
+    static let title = QuickAddText.showCompletions
     /// What the list says when nothing fits.
-    static let nothing = "Nothing completes here."
+    static let nothing = QuickAddText.nothingToComplete
 }
 
 #if !os(watchOS)

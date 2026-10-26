@@ -1897,6 +1897,20 @@ fn an_overruns_replan_opens_on_today_and_its_warning_stays_when_nothing_is_repla
 }
 
 #[test]
+fn an_overruns_replan_from_a_notification_the_system_showed_opens_replan_from_now_on_today() {
+    // A platform that schedules its reminders with the system never looks for them here, so the
+    // warning pressed is none the app holds.
+    let mut app = ByHand::new(|_| {});
+    app.send(Event::Open(Place::Tasks));
+    app.send(Event::Due(lumenna_app::DueEvent::Replan("overrun-2030-01-15".to_owned())));
+    let view = app.view();
+    assert_eq!(view.place, Some(Place::Today), "Replan from Now is the day's");
+    assert_eq!(view.proposal.map(|p| p.kind), Some(ActionKind::Replan));
+    app.send(Event::Proposal(ProposalEvent::Close));
+    assert!(app.held.is_empty(), "nothing of its own to dismiss");
+}
+
+#[test]
 fn a_task_deleted_on_one_screen_is_not_left_in_hand_on_another() {
     let mut app = App::new();
     app.add("Buy milk");

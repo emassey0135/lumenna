@@ -12,7 +12,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     // Kept, so coming back to them finds them as they were left.
     private lazy var day = DayViewController(core: core)
     private lazy var tasks = TaskListViewController(core: core, place: .tasks)
-    private var empty = "No task open"
+    private var empty = LumennaApp.detailsWords(sentence: false).none
 
     init(core: Core) {
         self.core = core
@@ -67,7 +67,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     func show(_ destination: Destination, then: ((UIViewController) -> Void)? = nil) {
         if let presented = presentedViewController { presented.dismiss(animated: false) }
         let screen = screen(for: destination)
-        empty = destination == .settings ? "No settings page open" : "No task open"
+        empty = destination == .settings ? "No settings page open" : LumennaApp.detailsWords(sentence: false).none
         list.setViewControllers([screen], animated: false)
         sidebar.current = destination
         close()
@@ -136,20 +136,19 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func syncNow() { syncAndSay(core) }
 
     // The day's own actions from anywhere else: today's, on the day.
-    @objc func planTheDay() { onToday(.planDay) }
-    @objc func replanFromNow() { onToday(.replan) }
-    @objc func whatNow() { onToday(.whatNow) }
-    @objc func endTheDay() { onToday(.endDay) }
-    @objc func clearTheDay() { onToday(.clearDay) }
+    @objc func planTheDay() { onToday("plan-day") }
+    @objc func replanFromNow() { onToday("replan") }
+    @objc func whatNow() { onToday("what-now") }
+    @objc func endTheDay() { onToday("end-day") }
+    @objc func clearTheDay() { onToday("clear-day") }
 
-    private func onToday(_ kind: LumennaApp.ActionKind) {
-        show(.place(.today)) { ($0 as? DayViewController)?.runDay(kind) }
+    private func onToday(_ id: String) {
+        show(.place(.today)) { ($0 as? DayViewController)?.runDay(id) }
     }
 
-    /// The overrun warning's Replan: today, with Replan from Now over it, the app's.
+    /// The overrun warning's Replan, which the app has taken: the day, Replan from Now over it.
     @objc func openReplan() {
         show(.place(.today))
-        core.app.replanFromNow()
     }
 
     /// A reminder chosen in Notification Center: its task beside the task list, or its

@@ -108,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func backUp() {
-        core.backUpIfDue { [weak self] message in self?.main?.window?.showFailure(message, title: "Backup") }
+        core.backUpIfDue { [weak self] message in self?.main?.window?.showFailure(message) }
     }
 
     // MARK: - Windows
@@ -199,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if reminded.replan {
             // The overrun warning's Replan: today, with Replan from Now over it, the app's; the
             // window follows.
-            core.app.replanFromNow()
+            core.app.replan(from: reminded)
         } else if reminded.kind == "task" {
             go(.tasks)
             core.app.send(.focus(reminded.target))
@@ -238,47 +238,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Each Task menu command is the in-hand task's own action of that kind — a task row's,
-    /// or the task's in the details beside a sitting — so the menu never offers what the
-    /// task's actions do not.
-    private static func kinds(_ command: Selector?) -> [LumennaApp.ActionKind] {
-        switch command {
-        case #selector(toggleDone(_:)): [.markDone, .markNotDone]
-        case #selector(putInBlock(_:)): [.putInBlock]
-        case #selector(moveToProject(_:)): [.moveToProject]
-        case #selector(makeSubtask(_:)): [.makeSubtaskOf]
-        case #selector(waitFor(_:)): [.waitFor]
-        case #selector(moveToTrash(_:)): [.delete]
-        default: []
+    /// Each Task menu command is the core's (`Event::Key`), by its id in the core's table: the
+    /// row in hand's own action of what the id runs, or the task's in the details beside a
+    /// sitting, or why it has none, in the core's words.
+    private static func command(_ selector: Selector?) -> String? {
+        switch selector {
+        case #selector(toggleDone(_:)): "mark-done"
+        case #selector(putInBlock(_:)): "put-in-block"
+        case #selector(moveToProject(_:)): "move-to-project"
+        case #selector(makeSubtask(_:)): "make-subtask"
+        case #selector(waitFor(_:)): "wait-for"
+        case #selector(moveToTrash(_:)): "delete"
+        default: nil
         }
     }
 
-    /// The task in hand's action for a Task menu command: its title, and running it on its row.
-    /// A list's row offers it in short, the details whole.
-    private func action(for command: Selector?) -> (title: String, run: () -> Void)? {
-        let kinds = Self.kinds(command)
-        let view = core.app.view
-        let app = core.app
-        if view.place != .today, view.place != .blocks, let focus = view.focus, let list = view.list,
-           let item = list.items.first(where: { $0.row.id == focus }),
-           let action = item.actions.lazy.compactMap({ Int($0) < list.offered.count ? list.offered[Int($0)] : nil })
-               .first(where: { kinds.contains($0.kind) }) {
-            return (action.title, { app.run(action, on: item.row.id) })
-        }
-        if let details = view.details, let action = details.task.offered.first(where: { kinds.contains($0.kind) }) {
-            return (action.title, { app.act(action, on: .details) })
-        }
-        return nil
-    }
-
-    /// The command's action, or, where the task in hand has none, the app says why in the
-    /// core's words: a menu item is never greyed out without a reason a screen reader can hear.
-    private func perform(_ command: Selector) {
-        if let found = action(for: command) { return found.run() }
-        let kinds = Self.kinds(command)
+    /// Runs the Task menu's command: on the details' task where the day or Blocks shows it beside
+    /// a row that is not a task, else on the row in hand.
+    private func perform(_ selector: Selector) {
+        guard let id = Self.command(selector) else { return }
         let view = core.app.view
         let onDetails = view.details != nil && (view.place == .today || view.place == .blocks)
-        core.app.send(onDetails ? .details(.run(kinds)) : .run(kinds))
+        core.app.send(onDetails ? .details(.key(id)) : .key(id))
     }
 
     @objc func toggleDone(_ sender: Any?) { perform(#selector(toggleDone(_:))) }
@@ -314,11 +295,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         core.app.act(action, on: .day)
     }
 
-    /// The day's action of `kind`, from its key with the menu closed: today first, from
-    /// anywhere else, then that action, or why the day has none, in the core's words.
-    func runDay(_ kind: LumennaApp.ActionKind) {
+    /// The day's command `id`, from its key with the menu closed: today first, from anywhere
+    /// else, then that action, or why the day has none, in the core's words.
+    func runDay(_ id: String) {
         go(.today)
-        core.app.send(.runDay([kind]))
+        core.app.key(id)
     }
 
     @objc func backUpNow(_ sender: Any?) {
@@ -327,15 +308,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func exportOrImport(_ sender: Any?) {
         showSettings(nil)
-        settings?.show(.export)
+        settings?.show("export")
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(toggleDone(_:)):
-            // Named for what it would do; kept on even where the task has no such action, so
-            // choosing it has the app say why.
-            item.title = action(for: item.action)?.title ?? "Mark Done"
+            // Named for what it would do, the app's ("Mark Not Done" on a done task); kept on
+            // even where the task has no such action, so choosing it has the app say why.
+            item.title = core.app.view.commands.first { $0.id == "mark-done" }?.title ?? item.title
             return true
         case #selector(previousDay(_:)), #selector(nextDay(_:)):
             return main?.day != nil

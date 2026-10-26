@@ -15,15 +15,13 @@ final class ChoicePicker: AppListViewController {
 
     /// What the app offers, as it words it.
     init(core: Core, title: String, items: [AppItem], chosen: @escaping (String) -> Void, cancelled: @escaping () -> Void) {
-        var previous: UInt32 = 0
+        // Each says its level where it changes, the app's.
         offered = items.map { item in
             var item = item
-            let level = item.depth != previous ? "level \(item.depth + 1)" : nil
-            previous = item.depth
-            item.spoken = AppModel.spoken(detail: item.detail, expanded: nil, level: level)
+            item.spoken = AppModel.spoken(detail: item.detail, expanded: nil, level: item.level)
             return item
         }
-        count = items.count == 1 ? "1 choice" : "\(items.count) choices"
+        count = LumennaApp.choiceCount(count: UInt32(items.count))
         self.chosen = chosen
         self.cancelled = cancelled
         super.init(core: core, title: title)

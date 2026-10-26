@@ -63,10 +63,10 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
         model.toggleDone()
     }
 
-    @objc func putInBlock() { model.run(.putInBlock) }
-    @objc func moveToProject() { model.run(.moveToProject) }
-    @objc func makeSubtask() { model.run(.makeSubtaskOf) }
-    @objc func waitFor() { model.run(.waitFor) }
+    @objc func putInBlock() { model.key("put-in-block") }
+    @objc func moveToProject() { model.key("move-to-project") }
+    @objc func makeSubtask() { model.key("make-subtask") }
+    @objc func waitFor() { model.key("wait-for") }
 
     @objc func moveToTrash() {
         model.trash()

@@ -126,7 +126,7 @@ final class LumennaUITests: XCTestCase {
 
     private func add(_ text: String) {
         app.buttons["Add task"].tap()
-        let field = app.textViews["New task"]
+        let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText(text)
         app.buttons["Add"].tap()
@@ -142,7 +142,7 @@ final class LumennaUITests: XCTestCase {
 
     func testAddingATaskReadsItBackAndListsIt() {
         app.buttons["Add task"].tap()
-        let field = app.textViews["New task"]
+        let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("write the chapter p1")
         // The readback names what will be saved before anything is.
@@ -382,8 +382,8 @@ final class LumennaUITests: XCTestCase {
 
     func testQuickAddPassesAnAccessibilityAudit() throws {
         app.buttons["Add task"].tap()
-        XCTAssertTrue(app.textViews["New task"].waitForExistence(timeout: 5))
-        app.textViews["New task"].typeText("call mum friday")
+        XCTAssertTrue(app.textViews["Task"].waitForExistence(timeout: 5))
+        app.textViews["Task"].typeText("call mum friday")
         // The iPad keyboard's suggestion bar is the system's, and the audit finds unnamed text
         // in it; the iPhone's is excused by name (TUIPredictionViewCell). Hidden, the sheet
         // is what is judged.
@@ -608,7 +608,7 @@ final class LumennaUITests: XCTestCase {
 
         cell(containing: "Work").tap()
         app.buttons["Add task"].tap()
-        let field = app.textViews["New task"]
+        let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         // Quick add starts with the project, so the task lands in it.
         field.typeText("ship the release")
@@ -681,13 +681,13 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(cell(containing: "Planning").waitForExistence(timeout: 5))
         try audit(.all, "settings")
 
-        for page in ["Planning", "Backups", "Export and Import"] {
+        for page in ["Planning", "Reminders", "Backups", "Export and Import"] {
             reveal(page).tap()
             XCTAssertTrue(app.navigationBars[page].waitForExistence(timeout: 5))
             settle()
             // Planning's times are `NamedDatePicker`s, whose visible names are hidden as a
             // `NamedRow`'s are: the picker carries the name.
-            try audit(.all, page, namedRows: page == "Planning")
+            try audit(.all, page, namedRows: ["Planning", "Reminders"].contains(page))
             goBack()
         }
 
@@ -756,8 +756,8 @@ final class LumennaUITests: XCTestCase {
     /// a time; one it refuses stays in its field with the core's reason beside it.
     func testADefaultReminderIsAPhraseSavedOnReturnAndARefusedOneStaysWithItsReason() {
         tab("Settings")
-        reveal("Planning").tap()
-        XCTAssertTrue(app.navigationBars["Planning"].waitForExistence(timeout: 5))
+        reveal("Reminders").tap()
+        XCTAssertTrue(app.navigationBars["Reminders"].waitForExistence(timeout: 5))
         let field = app.textFields["Reminders for a task with a due date"]
         for _ in 0..<6 where !(field.exists && field.isHittable) { app.swipeUp() }
         XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
@@ -779,7 +779,7 @@ final class LumennaUITests: XCTestCase {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         tab("Settings")
-        for page in ["Planning", "Backups", "Export and Import"] {
+        for page in ["Planning", "Reminders", "Backups", "Export and Import"] {
             reveal(page).tap()
             XCTAssertTrue(app.navigationBars[page].waitForExistence(timeout: 5))
             // The whole page, a screenful at a time.

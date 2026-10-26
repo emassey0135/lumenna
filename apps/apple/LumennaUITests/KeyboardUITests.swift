@@ -56,7 +56,7 @@ final class KeyboardUITests: XCTestCase {
 
     private func add(_ text: String) {
         press("n")
-        let field = app.textViews["New task"]
+        let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText(text)
         app.buttons["Add"].tap()
@@ -68,7 +68,7 @@ final class KeyboardUITests: XCTestCase {
     func testCommandNOpensQuickAddFromAnotherTab() {
         tab("Settings")
         press("n")
-        XCTAssertTrue(app.textViews["New task"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textViews["Task"].waitForExistence(timeout: 5))
     }
 
     func testCommandZUndoesAndShiftCommandZRedoes() {

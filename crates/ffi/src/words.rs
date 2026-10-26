@@ -8,7 +8,7 @@ use lumenna_app::hotkeys::{HotKeyWords, HotKind};
 use lumenna_app::keys::{MenuGroup, MenuItem};
 use lumenna_records::fields::{DetailsWords, NotificationWords, QuickAddWords, SettingWords, SettingsPage};
 use lumenna_records::words::PhoneSync;
-use lumenna_records::{Candidate, PickerWords, Question};
+use lumenna_records::{Candidate, PickerWords};
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
 #[export]
@@ -26,12 +26,6 @@ pub fn candidate_line(candidate: Candidate) -> String {
 #[export]
 pub fn sidebar_key(kind: SidebarKind) -> String {
     lumenna_records::places::SidebarEntry::key_of(&kind)
-}
-
-/// The question Go to Day asks, for a shell asking for a day itself: its own date picker.
-#[export]
-pub fn go_to_day_question() -> Question {
-    lumenna_records::go_to_day_question()
 }
 
 /// What a shell's own day or time picker says, beside the line it fills.
