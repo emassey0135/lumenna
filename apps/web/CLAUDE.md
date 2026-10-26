@@ -19,7 +19,9 @@ pairing with `lum`.
   `sahpool` VFS needs sync access handles, which only a dedicated worker may use, so the
   core runs in `src/worker.ts` behind Comlink. No WAL there.
 - **One tab owns a store** (a Web Lock named for the profile). Opening is idempotent per
-  worker, because React's development mode runs effects twice.
+  worker, because React's development mode runs effects twice. Another tab says where Lumenna is
+  open (`open`'s `waiting`) and waits its turn for the lock, opening the store once the first
+  tab is closed.
 - **Records are typed as BoltFFI writes them**, from the crates' own: fields in camelCase,
   data enums as tagged unions (`{ tag: "Open", value0: place }`), absent values `null`, and
   enums with no data as numbers (`ActionKind.MarkDone`), compared by their constants, never
@@ -33,12 +35,13 @@ pairing with `lum`.
 - **Spans cross as UTF-8 bytes**; the worker converts to the UTF-16 offsets an input counts.
 - **A React Aria tree builds its collection in a pass of its own**, so rows can lag the
   data by a render: focus after a change waits for current rows (`TaskList`).
-- **Quick add is a combobox completing mid-line**, its filter off (the core decides what
-  fits), and Down waits for the offer for where the cursor is *now*. Every other line in the
-  filter language completes the same way (`Completing.tsx`): the list's filter, a saved
-  filter's query (`Asking::syntax`) and a block's Tasks from (`FormField::syntax`), on Down or
-  Ctrl+Space, never by itself, asking the core at the keystroke (`App::complete`), the list
-  opened once its candidates have rendered (opened as they are set, it opens on none).
+- **Every line in the filter or quick-add language is one combobox** (`CompletingField`,
+  `Completing.tsx`), completing mid-line, its filter off (the core decides what fits): quick
+  add, the list's filter, a saved filter's query (`Asking::syntax`) and a block's Tasks from
+  (`FormField::syntax`), on Down or Ctrl+Space, never by itself, asking the core at the
+  keystroke (`App::complete`) for where the cursor is *now*, the list opened once its candidates
+  have rendered (opened as they are set, it opens on none). Quick add tells the app the line as
+  typed only for its readback.
 - **What cannot be undone is an `alertdialog` with Cancel focused first**, never `confirm()`.
   A refused answer stays in its dialog.
 - **A row's action runs after its menu has closed** and focus is back on the row, so a
@@ -49,7 +52,11 @@ pairing with `lum`.
   line of text with the app's refusal at the field, a pick from the lines the worker words), and
   answering it is another event. Space and Delete are the core's shared keys (`Key("toggle")`,
   `Key("delete")`, `keyPressed` in `actions.ts`), sent with the row in hand (a side list's held
-  first), so what they run is `keys::runs`, never a list of kinds here.
+  first), so what they run is `keys::runs`, never a list of kinds here. A Mac's Delete key is
+  Backspace to a browser: on a row there, it and Command+Backspace are the delete key too
+  (`isDelete`). A Task menu command on a row without its action is sent all the same (`Run`, or
+  the details' `Details(Run)`), for the app to refuse in the core's words; only with no task in
+  hand does the page say no task is selected.
   The forms are drawn from the app's: the details, the block form, quick add, Settings, a
   proposal, pairing's words.
 - **A dialog that is the app's is open while the screen says so**, and closes when the app lets
@@ -92,7 +99,12 @@ pairing with `lum`.
 - **Installed, it is a PWA** (`public/manifest.webmanifest`, `public/sw.js`, registered only in a
   production build): the page is fetched afresh while online and kept for when there is none, and
   every other file of the origin kept as first fetched, its name carrying its hash, so the app
-  opens offline with its store; other origins (the relays) are never touched. Notifications go
+  opens offline with its store; the manifest and the icons, named without a hash, are fetched
+  afresh too, and a page that is not a whole answer is never kept as the page. Each build
+  registers the worker as `/sw.js?build=<__BUILD__>` (`vite.config.ts`), so a new build installs
+  it afresh, its cache named by the build, and the caches before it are deleted as it activates:
+  they share the quota with the store, which a browser short of space may evict with them.
+  Other origins (the relays) are never touched. Notifications go
   through the service worker where there is one (an installed app on Android shows them no other
   way), a click handed back to the page; what is due is the app icon's badge. `npm run test:pwa`
   builds and tests it (`playwright.pwa.config.ts`, against `vite preview`); CI runs it on its
@@ -111,7 +123,9 @@ pairing with `lum`.
   it: beside the handle it keeps which generation its backups were taken of (`backed-up-of`,
   none being the first), and when the store's (`App::generation`, looked at every five seconds
   and before every backup) is another, every backup there (`folder_backups`, the core's naming)
-  is deleted and one taken afresh, one write to the folder at a time.
+  is deleted and one taken afresh, one write to the folder at a time. One whose removal fails (a
+  file another program holds) is kept beside the handle (`erasure-left`) and tried again at each
+  look, while backups go on.
 - **What is done to the store as a whole is Settings'** (`SettingsView::offered`: Erase
   Everything Deleted), a destructive button each on the Backups page, `offered_caption` beneath
   and describing each (`aria-describedby`), handed back as `ActOn(ActingOn::Settings, …)`; its
@@ -143,7 +157,9 @@ pairing with `lum`.
   with nothing to say, for a field that keeps its own value. Every turn is applied one way
   (`apply`): drawn, its files saved, its notifications shown, focus landed if `landing` went up,
   then said, after focus so the move does not cut it off. Turns are numbered (`seq`), and an
-  older screen is never drawn over a newer one. The one-second poll ticks the store, for another
+  older screen is never drawn over a newer one. The page listens before it reads the first
+  screen (`now`, numbered too), holding what arrives meanwhile until that is drawn, so a turn
+  between the two is not lost. The one-second poll ticks the store, for another
   tab's or process's writes and new minutes, one tick at a time: a clock that jumps would fire a
   burst that holds up what follows. Reminders' looks are never skipped by the page; the app takes
   those asked for while one is under way as one after it.

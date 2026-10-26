@@ -56,9 +56,10 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
   // The Task menu's commands on the task shown, wherever it was chosen: a list's own come
   // first (TaskList), so focus lands as its row's action does.
   const onTask = (...kinds: ActionKind[]) => () => {
-    const action = details && byKind(details.task.offered, ...kinds);
-    if (!action) return false;
-    void act(actOn({ tag: "Details" }, action));
+    if (!details) return false;
+    const action = byKind(details.task.offered, ...kinds);
+    // A task without the action is the app's to refuse, in the core's words.
+    void act(action ? actOn({ tag: "Details" }, action) : { tag: "Details", value0: { tag: "Run", value0: kinds } });
   };
   useCommand("mark-done", onTask(ActionKind.MarkDone, ActionKind.MarkNotDone));
   useCommand("put-in-block", onTask(ActionKind.PutInBlock));

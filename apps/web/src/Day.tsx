@@ -15,7 +15,7 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Collection, Toolbar, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import type { Screen, ShellEvent, ShownDayItem } from "./core";
-import { ActionKind, DayMove } from "./core";
+import { ActionKind, DayKind, DayMove } from "./core";
 import { actOn, byKind, keyPressed, rowShown, sharedKey } from "./actions";
 import { useCommand } from "./commands";
 import { rowKey } from "./landing";
@@ -26,9 +26,18 @@ import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
 
-/** What Space runs on a sitting: its timer. */
 /** What Enter runs: what a row is for. */
 const OPENING: ActionKind[] = [ActionKind.Edit, ActionKind.EditTask, ActionKind.AddBlock, ActionKind.RestoreDay];
+
+/** Each kind of row's class, for the styles: the kind crosses as a number. */
+const KIND_CLASS: Record<DayKind, string> = {
+  [DayKind.Summary]: "summary",
+  [DayKind.Block]: "block",
+  [DayKind.Sitting]: "sitting",
+  [DayKind.Free]: "free",
+  [DayKind.Now]: "now",
+  [DayKind.Cancelled]: "cancelled",
+};
 
 export function Day(props: { screen: Screen }) {
   const day = props.screen.day;
@@ -142,7 +151,7 @@ export function Day(props: { screen: Screen }) {
               <TreeItem id={node.id} textValue={node.item.text}>
                 <TreeItemContent>
                   {({ hasChildItems }) => (
-                    <div className={`row ${node.item.kind}`} ref={brailleOnRow(node.item.text, node.item.braille)}>
+                    <div className={`row ${KIND_CLASS[node.item.kind]}`} ref={brailleOnRow(node.item.text, node.item.braille)}>
                       {hasChildItems && (
                         <Button slot="chevron" className="chevron">
                           ›

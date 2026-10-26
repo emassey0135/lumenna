@@ -33,6 +33,7 @@ export const WEB: Record<string, string[]> = {
   "go-tasks": ["Alt+Shift+2"],
   "go-blocks": ["Alt+Shift+3"],
   "go-trash": ["Alt+Shift+4"],
+  "go-history": ["Alt+Shift+5"],
   "next-pane": ["Alt+Shift+Period"],
   "previous-pane": ["Alt+Shift+Comma"],
   "mark-done": ["Alt+Shift+K"],
@@ -68,14 +69,18 @@ const OWN: KeyGroup[] = [
     id: "dialogs",
     title: "In a dialog",
     commands: [
-      { id: "complete", title: "Offer what could go at the cursor, in quick add", keys: ["Down arrow"] },
+      {
+        id: "complete",
+        title: "Offer what could go at the cursor, in quick add, the list's filter, a saved filter's query or a block's Tasks from",
+        keys: ["Down arrow", "Ctrl+Space"],
+      },
       { id: "close-dialog", title: "Close the dialog", keys: ["Escape"] },
     ],
   },
 ];
 
 /** A Mac's browser takes Command where others take Ctrl, and calls Alt Option. */
-const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+export const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
 function spoken(key: string): string {
   return mac ? key.replace(/\bCtrl\+/g, "Command+").replace(/\bAlt\+/g, "Option+") : key;

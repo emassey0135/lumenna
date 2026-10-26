@@ -36,6 +36,10 @@ function database(): Promise<IDBDatabase> {
   });
 }
 
+/** The backups an erasure left in the folder because removing them failed (a file another
+ * program held), which every look tries again until they are gone. */
+const LEFT = "erasure-left";
+
 /** The folder this page last kept or read, so an hourly look reads nothing. */
 let held: Folder | undefined;
 
@@ -75,6 +79,19 @@ async function generationBackedUp(): Promise<string> {
     // Backups taken before generations were kept are of the first, as the store's history was.
     read.onsuccess = () => done((backedUpOf = typeof read.result === "string" ? read.result : ""));
     read.onerror = () => done("");
+  });
+}
+
+/** What an erasure left to remove, as this page last kept or read it. */
+let erasureLeft: string[] | undefined;
+
+async function leftByErasure(): Promise<string[]> {
+  if (erasureLeft !== undefined) return erasureLeft;
+  const db = await database();
+  return new Promise((done) => {
+    const read = db.transaction("handles").objectStore("handles").get(LEFT);
+    read.onsuccess = () => done((erasureLeft = Array.isArray(read.result) ? (read.result as string[]) : []));
+    read.onerror = () => done([]);
   });
 }
 
@@ -127,11 +144,13 @@ async function backUpNow(now: boolean): Promise<string | undefined> {
   for await (const name of handle.keys()) names.push(name);
   const generation = await core.generation();
   const erased = generation !== (await generationBackedUp());
-  if (erased) {
-    const gone = await core.folderBackups(names);
-    for (const old of gone) await handle.removeEntry(old);
-    names = names.filter((name) => !gone.includes(name));
-  }
+  // Every backup taken before an erasure holds what was erased: all of them go, and any whose
+  // removal failed is tried again at every look, while backups go on being taken.
+  const stale = (erased ? await core.folderBackups(names) : await leftByErasure()).filter((name) => names.includes(name));
+  const failed: string[] = [];
+  for (const old of stale) await handle.removeEntry(old).catch(() => failed.push(old));
+  names = names.filter((name) => !stale.includes(name) || failed.includes(name));
+  if (erased || (erasureLeft ?? []).length > 0) await put(LEFT, (erasureLeft = failed));
   if (!erased && !now && !(await core.backupDue(names, Date.now()))) return undefined;
   const file = await core.backupFile();
   // A writable stream writes beside the file and puts it in place on close: an interrupted
@@ -150,7 +169,7 @@ async function backUpNow(now: boolean): Promise<string | undefined> {
  * every few seconds, so what was erased does not wait an hour in them. */
 async function followErasure(): Promise<void> {
   if (!held && !(await kept().catch(() => undefined))) return;
-  if ((await core.generation()) !== (await generationBackedUp())) await backUp();
+  if ((await core.generation()) !== (await generationBackedUp()) || (await leftByErasure()).length > 0) await backUp();
 }
 
 /** Backs up when one is due, as the app opens and every hour while it is open, and follows an

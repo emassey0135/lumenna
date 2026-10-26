@@ -3,6 +3,7 @@
 // complementary, which screen readers move between with their own keys.
 
 import { useEffect, useRef, useState } from "react";
+import * as Comlink from "comlink";
 import { Button } from "react-aria-components";
 import { Questions } from "./Questions";
 import { Proposals } from "./Proposal";
@@ -55,9 +56,11 @@ export function App() {
   useFolderBackups(ready);
 
   useEffect(() => {
-    core.open(profile).then(
+    // Open in another tab, it says so until that tab is closed, then opens here.
+    core.open(profile, Comlink.proxy((why: string) => setFailure(why))).then(
       () =>
         start().then(() => {
+          setFailure(undefined);
           setReady(true);
           launchFromAddress();
         }),

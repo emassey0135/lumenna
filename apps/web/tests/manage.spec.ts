@@ -430,6 +430,8 @@ test("every shared command works on the web's key", async ({ page }) => {
   await expect(heading(page)).toHaveText("Blocks");
   await page.keyboard.press("Alt+Shift+Digit4");
   await expect(heading(page)).toHaveText("Trash");
+  await page.keyboard.press("Alt+Shift+Digit5");
+  await expect(heading(page)).toHaveText("History");
   await page.keyboard.press("Alt+Shift+Digit1");
   await expect(main.getByRole("toolbar", { name: "Day" })).toBeVisible();
   await page.keyboard.press("Alt+Shift+Digit2");

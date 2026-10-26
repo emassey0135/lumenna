@@ -11,7 +11,7 @@ import { Button, Input, Label, ListBox, ListBoxItem, Text, TextField } from "rea
 import type { Selection } from "react-aria-components";
 import type { PairEvent, PairingView, PairingWords, Screen, ShortAction } from "./core";
 import { Side } from "./core";
-import { actOn, keyPressed, rowHeld } from "./actions";
+import { actOn, isDelete, keyPressed, rowHeld } from "./actions";
 import { ChooseDialog } from "./Questions";
 import { say } from "./say";
 import { send } from "./session";
@@ -71,7 +71,7 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
 
   const keys = (event: KeyboardEvent) => {
     // Delete unpairs, as it removes in every other list: the core's, on the device held here.
-    if (event.key !== "Delete" || !chosen) return;
+    if (!isDelete(event) || !chosen) return;
     event.preventDefault();
     void send({ tag: "Hold", value0: Side.Devices, value1: chosen.nodeId }).then(() => send(keyPressed("delete")));
   };
