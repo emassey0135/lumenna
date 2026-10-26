@@ -16,6 +16,8 @@ pub enum Side {
     Reminders,
     /// The paired devices, while the Devices page is shown.
     Devices,
+    /// The reminders due, by `Due::id`: after a button, what took the reminder's place is in hand.
+    Due,
 }
 
 /// The row an action handed back in short is for (`Event::ActOn`).
@@ -88,28 +90,32 @@ impl Screen {
     /// The actions of a side list's row in hand, as the view offers them: what a key pressed
     /// there runs (`Event::Run`).
     pub(crate) fn side_actions(&self, side: Side) -> Option<Vec<lumenna_records::Action>> {
-        let view = crate::view::whole(self);
+        let store = self.store.as_ref()?;
         match side {
             Side::Sidebar => {
-                let key = view.sidebar_held.focus?;
-                view.sidebar.into_iter().find(|entry| entry.key == key).map(|entry| entry.actions)
+                let key = self.sidebar_held.key.as_ref()?;
+                let entries = crate::view::folded_sidebar(lumenna_records::places::sidebar(&store.snapshot, &store.now), &self.sidebar_folded);
+                entries.into_iter().find(|entry| &entry.key == key).map(|entry| entry.actions)
             }
             Side::Reminders => {
-                let id = view.reminders_held.focus?;
-                view.reminders?.reminders.into_iter().find(|reminder| reminder.id == id).map(|reminder| reminder.actions)
+                let id = self.reminders_held.key.as_ref()?;
+                let list = lumenna_records::reminders::reminders_of(&store.snapshot, self.reminders.as_ref()?).ok()?;
+                list.reminders.into_iter().find(|reminder| &reminder.id == id).map(|reminder| reminder.actions)
             }
+            // A reminder's buttons are its `DueEvent`s, no row action.
+            Side::Due => None,
             Side::Devices => {
-                let id = view.devices_held.focus?;
-                view.devices?.list?.devices.into_iter().find(|device| device.node_id == id).map(|device| device.actions)
+                let id = self.devices_held.key.as_ref()?;
+                let list = self.devices.as_ref()?.list.as_ref()?;
+                list.devices.iter().find(|device| &device.node_id == id).map(|device| device.actions.clone())
             }
         }
     }
 
     /// Whether the devices' row in hand is this device's own, which cannot unpair itself.
     pub(crate) fn holds_this_device(&self) -> bool {
-        let view = crate::view::whole(self);
-        let Some(id) = view.devices_held.focus else { return false };
-        view.devices.and_then(|d| d.list).is_some_and(|list| list.devices.iter().any(|d| d.node_id == id && d.this_device))
+        let Some(id) = &self.devices_held.key else { return false };
+        self.devices.as_ref().and_then(|d| d.list.as_ref()).is_some_and(|list| list.devices.iter().any(|d| &d.node_id == id && d.this_device))
     }
 
     pub(crate) fn held_mut(&mut self, side: Side) -> &mut Held {
@@ -117,6 +123,7 @@ impl Screen {
             Side::Sidebar => &mut self.sidebar_held,
             Side::Reminders => &mut self.reminders_held,
             Side::Devices => &mut self.devices_held,
+            Side::Due => &mut self.due_held,
         }
     }
 
@@ -146,6 +153,7 @@ impl Screen {
                 .and_then(|target| lumenna_records::reminders::reminders_of(&store.snapshot, target).ok())
                 .map(|list| list.reminders.into_iter().map(|r| r.id).collect())
                 .unwrap_or_default(),
+            Side::Due => self.due.iter().map(|due| due.id.clone()).collect(),
             Side::Devices => self
                 .devices
                 .as_ref()
@@ -156,18 +164,25 @@ impl Screen {
     }
 
     /// Keeps every side list's row in hand where it belongs after a change; the list acted on
-    /// last moves focus there.
-    pub(crate) fn settle_sides(&mut self, wrote: bool) {
-        for side in [Side::Sidebar, Side::Reminders, Side::Devices] {
-            if self.held_mut(side).key.is_none() {
+    /// last moves focus there. A write made from a side list holds what it made there, else
+    /// the row in hand, else the list's first: `before` is the list's rows before the write,
+    /// for telling what it made.
+    pub(crate) fn settle_sides(&mut self, wrote: bool, before: Option<&[String]>) {
+        for side in [Side::Sidebar, Side::Reminders, Side::Devices, Side::Due] {
+            let acted_here = self.acting == Some(side);
+            if self.held_mut(side).key.is_none() && !(acted_here && wrote) {
                 continue;
             }
             let keys = self.side_keys(side);
-            let acted_here = self.acting == Some(side);
+            let made = before.filter(|_| acted_here && wrote).and_then(|before| keys.iter().find(|key| !before.contains(key)).cloned());
             let held = self.held_mut(side);
-            let before = held.key.clone();
-            held.settle(&keys);
-            if acted_here && (wrote || held.key != before) {
+            let was = held.key.clone();
+            match made {
+                Some(key) => held.hold(&key, &keys),
+                None if held.key.is_none() => held.key = keys.first().cloned(),
+                None => held.settle(&keys),
+            }
+            if acted_here && (wrote || held.key != was) {
                 held.landing += 1;
             }
         }

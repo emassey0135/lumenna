@@ -98,9 +98,9 @@ class DayTest(unittest.TestCase):
         self.session.press("Return")
         self.session.wait_for_alert()
         self.assertEqual(self.session.focus(), "[button] 'Cancel'", "Cancel is the default")
-        self.session.tab_to("Today only")
+        self.session.tab_to("Today Only")
         self.session.press("Return")
-        self.session.wait_for_window("Change All day, this day only")
+        self.session.wait_for_window("Change All day, This Day Only")
         # Past the start and its clock, hours and minutes.
         self.session.press(*["Tab"] * 8)
         self.assertEqual(self.session.focus(), "[check box] 'Anchored, never moved when the day slips'")

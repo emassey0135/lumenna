@@ -155,6 +155,19 @@ impl Operation for HostRequest {
     type Output = HostAnswer;
 }
 
+/// What a write was sent for, carried back with its answer (`Event::Wrote`): only what is still
+/// waiting on that write takes it, so the answer to Mark Done never closes a question opened
+/// since, nor takes the quick-add line typed meanwhile.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Writing {
+    /// Its number among the screen's writes: what the question, the line, the form or the setting
+    /// waiting on it holds.
+    pub number: u64,
+    /// The question it answered as it was then, or the action it ran without asking: where a
+    /// place it renamed, made or removed is now.
+    pub asked: Option<crate::asking::Open>,
+}
+
 
 impl PartialEq for HostAnswer {
     fn eq(&self, other: &Self) -> bool {

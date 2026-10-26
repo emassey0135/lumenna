@@ -21,8 +21,6 @@ use lumenna_records::{ActionKind, Answer};
 // allocation to every event.
 #[allow(clippy::large_enum_variant)]
 pub enum ShellEvent {
-    /// The app has started: watch the store.
-    Start,
     /// Go to a place.
     Open(Place),
     /// The person moved to a row.
@@ -76,6 +74,8 @@ pub enum ShellEvent {
     Clock(TimeStyle),
     /// How this shell writes its buttons, headings and questions.
     Capitals(Capitals),
+    /// Whether this shell's list shows each task's checkbox, which says whether it is done.
+    Checkboxes(bool),
     /// What this shell is called in pairing's sentences ("this computer", "this watch"), and
     /// whether it finds devices on its own network or pairs only by code: for pairing's words.
     PairingAs {
@@ -100,7 +100,6 @@ pub enum ShellEvent {
 impl From<ShellEvent> for Event {
     fn from(event: ShellEvent) -> Self {
         match event {
-            ShellEvent::Start => Event::Start,
             ShellEvent::Open(place) => Event::Open(place),
             ShellEvent::Focus(key) => Event::Focus(key),
             ShellEvent::Hold(side, key) => Event::Hold(side, key),
@@ -124,6 +123,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Background(event) => Event::Background(event),
             ShellEvent::Clock(style) => Event::Clock(style),
             ShellEvent::Capitals(capitals) => Event::Capitals(capitals),
+            ShellEvent::Checkboxes(shown) => Event::Checkboxes(shown),
             ShellEvent::PairingAs { called, nearby } => Event::PairingAs { called, nearby },
             ShellEvent::PlanFrom(moment) => Event::PlanFrom(moment),
             ShellEvent::QuickAdd(line) => Event::QuickAdd(line),
@@ -140,7 +140,6 @@ impl TryFrom<Event> for ShellEvent {
     /// The shell's event an [`Event`] is, or the event back when it is one of the app's own.
     fn try_from(event: Event) -> Result<Self, Event> {
         Ok(match event {
-            Event::Start => ShellEvent::Start,
             Event::Open(place) => ShellEvent::Open(place),
             Event::Focus(key) => ShellEvent::Focus(key),
             Event::Hold(side, key) => ShellEvent::Hold(side, key),
@@ -164,6 +163,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Background(event) => ShellEvent::Background(event),
             Event::Clock(style) => ShellEvent::Clock(style),
             Event::Capitals(capitals) => ShellEvent::Capitals(capitals),
+            Event::Checkboxes(shown) => ShellEvent::Checkboxes(shown),
             Event::PairingAs { called, nearby } => ShellEvent::PairingAs { called, nearby },
             Event::PlanFrom(moment) => ShellEvent::PlanFrom(moment),
             Event::QuickAdd(line) => ShellEvent::QuickAdd(line),
@@ -171,7 +171,9 @@ impl TryFrom<Event> for ShellEvent {
             Event::Undo => ShellEvent::Undo,
             Event::Redo => ShellEvent::Redo,
             // A shell's events are screen 0's for now; another screen is the app's own to address.
-            Event::On(..)
+            // Start is the app's own too, sent once as it is made: a second would watch twice.
+            Event::Start
+            | Event::On(..)
             | Event::CloseScreen(_)
             | Event::SyncStarted(_)
             | Event::Synced(_)
@@ -179,6 +181,7 @@ impl TryFrom<Event> for ShellEvent {
             | Event::Pairing(_)
             | Event::Arrived(_)
             | Event::Answered(_)
+            | Event::Wrote(..)
             // A whole action is the app's own to run; a shell names a row's in short.
             | Event::Perform(_) => return Err(event),
         })

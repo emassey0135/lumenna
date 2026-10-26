@@ -1,18 +1,22 @@
 //! The task in hand's details, as a form: its fields as text, kept as typed until saved.
 //!
 //! The fields follow the store while nobody is editing them; typing not yet saved is kept when
-//! the store changes underneath. Saving sends only what changed, against the task as it was
-//! when the typing began (`task_edit`), so a concurrent edit to another field elsewhere holds.
+//! the store changes underneath, and for each task apart, so typing in one task's details keeps
+//! another's. Saving sends only what changed, against the task as it was when the typing began
+//! (`task_edit`), so a concurrent edit to another field elsewhere holds.
+
+use std::collections::BTreeMap;
 
 use crux_core::Command;
 use crux_core::render::render;
+use lumenna_records::fields::DetailsLine;
 use lumenna_records::types::TaskDetail;
 use lumenna_records::{ActionKind, Choice, FormField, TaskFields};
 use serde::{Deserialize, Serialize};
 
 use crate::host::HostRequest;
 use crate::model::Screen;
-use crate::{Effect, Event, Lumenna, host, say};
+use crate::{Effect, Event, Lumenna, say, write};
 
 /// What the person does in the details.
 #[boltffi::data]
@@ -32,6 +36,9 @@ pub enum DetailsEvent {
     /// Run the first of these kinds the task shown offers, or say why it has none: a key or a
     /// menu while the details show a sitting's task, whose row in hand is the sitting.
     Run(Vec<ActionKind>),
+    /// A command of the shared table (`keys::runs`) run on the task the details show, by its
+    /// `id`: what it runs is the core's, as `Event::Key` on a row.
+    Key(String),
 }
 
 /// Typing not yet saved.
@@ -45,15 +52,26 @@ pub struct Draft {
     pub fields: TaskFields,
 }
 
+/// A save on its way to the host.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Saving {
+    /// The task.
+    pub task: String,
+    /// The write it went out as.
+    pub number: u64,
+    /// The fields as they were sent: typing since is kept once the save is answered.
+    pub fields: TaskFields,
+}
+
 /// The details' state.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Details {
     /// A task asked for by name, in place of the one in hand, until focus moves.
     pub shown: Option<String>,
-    /// Typing not yet saved.
-    pub draft: Option<Draft>,
+    /// Typing not yet saved, by task.
+    pub drafts: BTreeMap<String, Draft>,
     /// A save on its way to the host.
-    pub saving: bool,
+    pub saving: Option<Saving>,
 }
 
 /// The details as shown.
@@ -70,6 +88,10 @@ pub struct DetailsView {
     pub form: Vec<FormField>,
     /// The projects the Project field offers.
     pub projects: Vec<Choice>,
+    /// What the details list besides the form, line by line, in the core's words: the task's
+    /// state, how it repeats when the form cannot say, what it waits for, its history.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<DetailsLine>,
 }
 
 /// `fields` with `key` set to `value`.
@@ -88,6 +110,23 @@ pub fn set(mut fields: TaskFields, key: &str, value: String) -> TaskFields {
     fields
 }
 
+impl Screen {
+    /// A save of the details answered: the draft goes, unless the person typed on since, whose
+    /// typing stays, compared from now on with the task as saved.
+    pub(crate) fn saved_details(&mut self, saving: Saving) {
+        let Some(draft) = self.details.drafts.remove(&saving.task) else { return };
+        if draft.fields == saving.fields {
+            return;
+        }
+        let original = self
+            .store
+            .as_ref()
+            .and_then(|store| lumenna_records::plan::task_shown(&store.snapshot, &saving.task, &store.now).ok())
+            .map_or(draft.original, |shown| shown.task);
+        self.details.drafts.insert(saving.task, Draft { original, ..draft });
+    }
+}
+
 impl Lumenna {
     pub(crate) fn details(&self, event: DetailsEvent, model: &mut Screen) -> Command<Effect, Event> {
         match event {
@@ -99,35 +138,40 @@ impl Lumenna {
                 let Some(task) = model.details_shown() else { return Command::done() };
                 self.run_among(&task.actions, &kinds, lumenna_records::Subject::Task, model)
             }
+            DetailsEvent::Key(id) => {
+                let Some(task) = model.details_shown() else { return Command::done() };
+                match crate::keys::runs(&id) {
+                    Some(kinds) => self.run_among(&task.actions, kinds, lumenna_records::Subject::Task, model),
+                    None => Command::done(),
+                }
+            }
             DetailsEvent::Field { key, value } => {
                 let Some(task) = model.details_shown() else { return Command::done() };
-                let draft = match model.details.draft.take() {
-                    Some(draft) if draft.task == task.id => draft,
-                    // Typing begins: what saving will compare with is the task as it is now.
-                    _ => Draft {
-                        task: task.id.clone(),
-                        fields: lumenna_records::task_fields(task.clone()),
-                        original: task,
-                    },
-                };
+                // Typing begins: what saving will compare with is the task as it is now.
+                let draft = model.details.drafts.remove(&task.id).unwrap_or_else(|| Draft {
+                    task: task.id.clone(),
+                    fields: lumenna_records::task_fields(task.clone()),
+                    original: task,
+                });
                 let fields = set(draft.fields, &key, value);
-                model.details.draft = Some(Draft { fields, ..draft });
+                model.details.drafts.insert(draft.task.clone(), Draft { fields, ..draft });
                 render()
             }
             DetailsEvent::Save => {
                 let Some(task) = model.details_shown() else { return Command::done() };
-                let (original, fields) = match &model.details.draft {
-                    Some(draft) if draft.task == task.id => (draft.original.clone(), draft.fields.clone()),
-                    _ => (task.clone(), lumenna_records::task_fields(task.clone())),
+                let (original, fields) = match model.details.drafts.get(&task.id) {
+                    Some(draft) => (draft.original.clone(), draft.fields.clone()),
+                    None => (task.clone(), lumenna_records::task_fields(task.clone())),
                 };
-                match lumenna_records::task_edit(original, fields) {
+                match lumenna_records::task_edit(original, fields.clone()) {
                     None => {
-                        model.details.draft = None;
-                        render().and(say("Nothing changed"))
+                        model.details.drafts.remove(&task.id);
+                        render().and(say(lumenna_records::fields::nothing_changed()))
                     }
                     Some(edit) => {
-                        model.details.saving = true;
-                        host(HostRequest::EditTask { id: task.id, edit })
+                        let (number, sent) = write(model, HostRequest::EditTask { id: task.id.clone(), edit }, None);
+                        model.details.saving = Some(Saving { task: task.id, number, fields });
+                        sent
                     }
                 }
             }

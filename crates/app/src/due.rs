@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::host::HostRequest;
 use crate::model::Screen;
-use crate::{Effect, Event, Lumenna, host, proposal, say};
+use crate::{Effect, Event, Lumenna, host, proposal, say, write};
 
 /// What the person, or the shell's clock, does about reminders due.
 #[boltffi::data]
@@ -64,6 +64,37 @@ pub struct Due {
     pub block: Option<String>,
     /// What dismissing it dismisses: itself, or for a summary, everything missed.
     pub firings: Vec<DueReminder>,
+    /// Its buttons, in the order every platform shows them: what it offers of its own (Carry
+    /// Forward, Replan) first, then Dismiss and Snooze. Each is handed back as its `DueEvent`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buttons: Vec<DueButton>,
+}
+
+/// One of a reminder's buttons.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DueButton {
+    /// Which: `carry`, `replan`, `dismiss`, `snooze`, as `DueEvent::Carry`, `Replan`, `Dismiss`,
+    /// `Snooze`.
+    pub id: String,
+    /// Its name, the core's, in the shell's capitals.
+    pub title: String,
+    /// What a notification's own button says once done, where the app is not there to say the
+    /// write's own sentence: empty for Replan, which opens a screen.
+    pub said: String,
+}
+
+/// A reminder's buttons, in order.
+fn buttons(carry: Option<&String>, replan: Option<&String>, dismiss: &str, snooze: Option<&String>) -> Vec<DueButton> {
+    let button = |id: &str, title: &str, said: String| DueButton { id: id.to_owned(), title: title.to_owned(), said };
+    let snoozed = format!("Snoozed for {}", lumenna_records::words::duration(lumenna_records::reminders::SNOOZE_MINS));
+    carry
+        .map(|title| button("carry", title, String::new()))
+        .into_iter()
+        .chain(replan.map(|title| button("replan", title, String::new())))
+        .chain([button("dismiss", dismiss, "Dismissed".to_owned())])
+        .chain(snooze.map(|title| button("snooze", title, snoozed.clone())))
+        .collect()
 }
 
 /// A notification to show as the platform shows one.
@@ -99,6 +130,7 @@ pub fn arrived(found: &DueReminders) -> Vec<Due> {
             replan: None,
             block: None,
             firings: found.missed.clone(),
+            buttons: buttons(None, None, &first.dismiss, None),
         });
     }
     for reminder in &found.due {
@@ -112,6 +144,12 @@ pub fn arrived(found: &DueReminders) -> Vec<Due> {
             replan: (!reminder.replan.is_empty()).then(|| reminder.replan.clone()),
             block: Some(format!("{}@{}", reminder.target, reminder.occurrence)),
             firings: vec![reminder.clone()],
+            buttons: buttons(
+                Some(&reminder.carry).filter(|c| !c.is_empty()),
+                Some(&reminder.replan).filter(|r| !r.is_empty()),
+                &reminder.dismiss,
+                Some(&reminder.snooze),
+            ),
         });
     }
     out
@@ -136,6 +174,23 @@ enum Deal {
     Carry,
 }
 
+/// Whether the store has an acknowledgement — dismissed, snoozed — of `firing`, from this
+/// device or another.
+fn acknowledged(snapshot: &lumenna_core::snapshot::Snapshot, firing: &DueReminder) -> bool {
+    let (Ok(id), Ok(date)) = (firing.key.trim().parse(), firing.occurrence.parse::<jiff::civil::Date>()) else { return false };
+    snapshot.acks.contains_key(&(id, date))
+}
+
+impl Screen {
+    /// Takes off the list every reminder due whose firings have all been dealt with, here or on
+    /// another device: the store says so, whoever dealt with it.
+    pub(crate) fn drop_acknowledged(&mut self) {
+        let Some(store) = &self.store else { return };
+        let snapshot = std::sync::Arc::clone(&store.snapshot);
+        self.due.retain(|due| due.firings.is_empty() || !due.firings.iter().all(|firing| acknowledged(&snapshot, firing)));
+    }
+}
+
 impl Lumenna {
     /// An overrun warning's Replan from Now closed: once something was replanned, the warning is
     /// dealt with.
@@ -147,17 +202,22 @@ impl Lumenna {
         self.deal(&id, Deal::Dismiss, model)
     }
 
-    /// Takes the reminder `id` off the list and does what its button asks.
+    /// Does what the reminder `id`'s button asks; it leaves the list once the host has done it,
+    /// and stays, its failure said, if the host could not. A second press meanwhile does nothing.
     fn deal(&self, id: &str, how: Deal, model: &mut Screen) -> Command<Effect, Event> {
-        let Some(at) = model.due.iter().position(|d| d.id == id) else { return Command::done() };
-        let item = model.due.remove(at);
+        let Some(item) = model.due.iter().find(|d| d.id == id).cloned() else { return Command::done() };
+        if model.dealing.iter().any(|(_, dealing)| dealing == id) {
+            return Command::done();
+        }
         let firings: Vec<(String, String)> = item.firings.iter().map(|f| (f.key.clone(), f.occurrence.clone())).collect();
         let request = match how {
             Deal::Dismiss => HostRequest::Dismiss(firings),
             Deal::Snooze => HostRequest::Snooze(firings),
             Deal::Carry => HostRequest::CarryForward { block: item.block.unwrap_or_default(), firings },
         };
-        render().and(host(request))
+        let (number, sent) = write(model, request, None);
+        model.dealing.push((number, item.id));
+        sent
     }
 
     pub(crate) fn due(&self, event: DueEvent, model: &mut Screen) -> Command<Effect, Event> {
@@ -179,10 +239,12 @@ impl Lumenna {
             DueEvent::Carry(id) if !offers(model, &id, |d| d.carry.is_some()) => say(not_offered(ActionKind::CarryRest)),
             DueEvent::Replan(id) if !offers(model, &id, |d| d.replan.is_some()) => say(not_offered(ActionKind::Replan)),
             DueEvent::Carry(id) => self.deal(&id, Deal::Carry, model),
-            // Cancelled, the warning stays; something replanned, it is dismissed.
+            // Today, with Replan from Now open over it. Cancelled, the warning stays; something
+            // replanned, it is dismissed.
             DueEvent::Replan(id) => {
+                let shown = model.show_day(None);
                 model.replanning = Some(id);
-                self.propose(proposal::Kind::Replan, model)
+                shown.and(self.propose(proposal::Kind::Replan, model))
             }
         }
     }

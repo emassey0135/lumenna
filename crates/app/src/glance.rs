@@ -3,7 +3,7 @@
 //! parts beside the lines, for a platform that draws a block's progress or counts a timer.
 
 use lumenna_records::glance::{GlanceBlock, GlanceMoment};
-use lumenna_records::words::count_line;
+use lumenna_records::words;
 
 use crate::speech::{Clock, Line};
 
@@ -36,23 +36,22 @@ pub struct GlanceEntry {
 #[must_use]
 pub fn worded(moment: GlanceMoment, clock: &dyn Clock) -> GlanceEntry {
     let headline = match (&moment.timer, &moment.current, &moment.next) {
-        (Some(timer), _, _) if timer.block.is_empty() => Line::of(timer.task.clone(), vec!["timer running".to_owned()]),
-        (Some(timer), _, _) => Line::of(timer.task.clone(), vec!["timer running".to_owned(), format!("in {}", timer.block)]),
-        (None, Some(block), _) => Line::of(block.title.clone(), vec![format!("until {}", clock.time(&block.end))]),
+        (Some(timer), _, _) if timer.block.is_empty() => Line::of(timer.task.clone(), vec![words::timer_running()]),
+        (Some(timer), _, _) => Line::of(timer.task.clone(), vec![words::timer_running(), words::in_block(&timer.block)]),
+        (None, Some(block), _) => Line::of(block.title.clone(), vec![words::until(&clock.time(&block.end))]),
         (None, None, Some(next)) => {
-            Line::of("Free".to_owned(), vec![format!("until {}", clock.time(&next.start)), format!("then {}", next.title)])
+            Line::of(words::free(), vec![words::until(&clock.time(&next.start)), words::then(&next.title)])
         }
-        (None, None, None) => Line::of("Nothing more planned today".to_owned(), Vec::new()),
+        (None, None, None) => Line::of(words::nothing_more_planned(), Vec::new()),
     };
     let next = moment.next.as_ref().map(|block| block_line(block, clock));
     let due = match (moment.due, moment.overdue) {
-        (0, _) => Line::of("Nothing due".to_owned(), Vec::new()),
-        (due, 0) => Line::of(format!("{} due", count_line(due as usize, "task")), Vec::new()),
-        (due, overdue) => Line::of(format!("{} due", count_line(due as usize, "task")), vec![format!("{overdue} overdue")]),
+        (0, _) | (_, 0) => Line::of(words::tasks_due(moment.due), Vec::new()),
+        (_, overdue) => Line::of(words::tasks_due(moment.due), vec![words::overdue_count(overdue)]),
     };
     let mut said = vec![headline.text.clone()];
     if let (Some(next), true) = (&next, moment.current.is_some() || moment.timer.is_some()) {
-        said.push(format!("Next, {}", next.text));
+        said.push(words::next(&next.text));
     }
     said.push(due.text.clone());
     let tasks = moment
@@ -94,6 +93,38 @@ pub fn empty(clock: &dyn Clock) -> GlanceEntry {
 /// A block as the day says one: "<start> to <end>, <title>".
 fn block_line(block: &GlanceBlock, clock: &dyn Clock) -> Line {
     Line::of(format!("{} to {}", clock.time(&block.start), clock.time(&block.end)), vec![block.title.clone()])
+}
+
+/// The moment of a timeline (`App::glance`, a widget's file) to show at `now`: the last whose
+/// moment has come, else the first. Every platform's widget picks it so.
+#[must_use]
+pub fn current(entries: &[GlanceEntry], now: jiff::Timestamp) -> Option<&GlanceEntry> {
+    entries.iter().rev().find(|entry| entry.moment.at.parse::<jiff::Timestamp>().is_ok_and(|at| at <= now)).or(entries.first())
+}
+
+/// When a widget showing `entries` at `now` is next to be drawn again: the next moment of the
+/// timeline, or sooner, the next whole minute of a timer the current moment shows running, for a
+/// widget that cannot count one itself. None when nothing more changes.
+#[must_use]
+pub fn redraw_at(entries: &[GlanceEntry], now: jiff::Timestamp) -> Option<jiff::Timestamp> {
+    let next = entries.iter().filter_map(|entry| entry.moment.at.parse::<jiff::Timestamp>().ok()).find(|at| *at > now);
+    let minute = current(entries, now)
+        .and_then(|entry| entry.moment.timer.as_ref())
+        .and_then(|timer| timer.counting_from.parse::<jiff::Timestamp>().ok())
+        .and_then(|from| {
+            let passed = now.duration_since(from).as_mins().max(0);
+            from.checked_add(jiff::SignedDuration::from_mins(passed + 1)).ok()
+        });
+    [next, minute].into_iter().flatten().min()
+}
+
+/// How long a timer counting from `counting_from` (RFC 3339) has run at `now`, in whole minutes,
+/// said: "25 minutes". None for a moment that does not read.
+#[must_use]
+pub fn logged(counting_from: &str, now: jiff::Timestamp) -> Option<String> {
+    let from: jiff::Timestamp = counting_from.parse().ok()?;
+    let minutes = now.duration_since(from).as_mins().max(0);
+    Some(words::duration(u32::try_from(minutes).unwrap_or(u32::MAX)))
 }
 
 #[cfg(test)]
@@ -168,6 +199,18 @@ mod tests {
         let lines: Vec<&str> = entry.tasks.iter().map(|line| line.text.as_str()).collect();
         assert_eq!(lines, ["Call the bank, due today at 15:00", "Pay rent, due today, overdue"]);
         assert_eq!((entry.mark_done.as_str(), entry.mark_done_sentence.as_str()), ("Mark Done", "Mark done"));
+    }
+
+    #[test]
+    fn a_widget_shows_the_last_moment_come_and_draws_again_at_the_next_or_a_timers_next_minute() {
+        let at = |at: &str| GlanceMoment { at: at.to_owned(), ..moment() };
+        let entries = vec![worded(at("2026-10-25T09:00:00Z"), &TwentyFour), worded(at("2026-10-25T10:00:00Z"), &TwentyFour)];
+        let now = |t: &str| t.parse::<jiff::Timestamp>().unwrap();
+        assert_eq!(current(&entries, now("2026-10-25T09:30:00Z")).unwrap().moment.at, "2026-10-25T09:00:00Z");
+        assert_eq!(current(&entries, now("2026-10-25T08:00:00Z")).unwrap().moment.at, "2026-10-25T09:00:00Z", "before the first, the first");
+        assert_eq!(redraw_at(&entries, now("2026-10-25T09:30:00Z")), Some(now("2026-10-25T10:00:00Z")));
+        assert_eq!(redraw_at(&entries, now("2026-10-25T10:30:00Z")), None);
+        assert_eq!(logged("2026-10-25T09:00:00Z", now("2026-10-25T09:25:30Z")).as_deref(), Some("25 minutes"));
     }
 
     #[test]

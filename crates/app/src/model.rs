@@ -1,6 +1,7 @@
 //! Everything the screens hold, and how the rows of whatever is shown are found again.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crux_core::Command;
 use crux_core::render::render;
@@ -42,11 +43,18 @@ impl Model {
         self.screens.get_mut(&id).expect("just opened")
     }
 
-    /// What the device holds alike, as screen `id` left it, given to every other screen.
+    /// What the device holds alike, as screen `id` left it, given to every other screen, each
+    /// keeping its rows in hand where they belong in the store as it now is: a task deleted on
+    /// one screen is not left in hand on another.
     pub(crate) fn share(&mut self, id: ScreenId) {
         let Some(from) = self.screens.remove(&id) else { return };
         for screen in self.screens.values_mut() {
+            let moved = screen.store != from.store;
             screen.share(&from);
+            if moved {
+                screen.settle();
+                screen.settle_sides(false, None);
+            }
         }
         self.screens.insert(id, from);
     }
@@ -72,8 +80,14 @@ pub struct Screen {
     pub filter: Option<String>,
     /// The last filter typed that read, whose rows stay shown while one being typed does not.
     pub read: Option<String>,
-    /// A quick-add line on its way to the host.
-    pub adding: bool,
+    /// A quick-add line on its way to the host, by the write it went out as.
+    pub adding: Option<u64>,
+    /// How many writes this screen has sent: each is numbered, so its answer goes only to what
+    /// waits on it.
+    pub writes: u64,
+    /// Reminders due being dealt with, by the write that deals with each: one leaves the list
+    /// once that write is answered, and stays if it failed.
+    pub dealing: Vec<(u64, String)>,
     /// Why the last quick-add line was refused: the line stays, to be put right.
     pub add_refused: Option<String>,
     /// What each place left held, put back when it opens again (`Screen::go`).
@@ -94,6 +108,8 @@ pub struct Screen {
     pub style: Option<lumenna_records::proposals::TimeStyle>,
     /// How the shell writes its buttons, headings and questions.
     pub capitals: crate::capitals::Capitals,
+    /// Whether the shell's list shows each task's checkbox.
+    pub checkboxes: bool,
     /// What the shell is called in pairing's sentences, and whether it finds devices nearby.
     pub pairing_as: Option<(String, bool)>,
     /// What the shell keeps running in the background and whether it is on, where it offers it.
@@ -114,6 +130,9 @@ pub struct Screen {
     pub syncing: bool,
     /// Whether keeping in sync has been asked for.
     pub sync_asked: bool,
+    /// Whether keeping in sync failed to start: asked again once the person shows the devices or
+    /// pairs one.
+    pub sync_failed: bool,
     /// Reminders due, not yet dealt with.
     pub due: Vec<due::Due>,
     /// The moment proposals are made against, when the shell pins it (`Event::PlanFrom`).
@@ -139,10 +158,40 @@ pub struct Screen {
     pub reminders_held: crate::held::Held,
     /// The devices list's row in hand.
     pub devices_held: crate::held::Held,
+    /// The reminders due's row in hand.
+    pub due_held: crate::held::Held,
+    /// How many questions this screen has asked: each is numbered as it is shown.
+    pub questions: u32,
     /// The side list the person last moved in, until they move in the main list or open a
     /// place: a change it makes lands there, not in the main list.
     pub acting: Option<crate::held::Side>,
+    /// What this screen read last from the store it holds: the listing and the day's plan.
+    pub(crate) worked: Worked,
 }
+
+/// What a store was read for: the store itself (held, so no other store is ever taken for it),
+/// the place, and the query or the day.
+#[derive(Debug)]
+pub(crate) struct Read {
+    store: Arrival,
+    place: Place,
+    query: String,
+}
+
+impl Read {
+    fn is(&self, store: &Arrival, place: &Place, query: &str) -> bool {
+        &self.store == store && &self.place == place && self.query == query
+    }
+}
+
+/// What a screen read last, kept until the store, the place or the query moves.
+#[derive(Debug, Default)]
+pub(crate) struct Worked {
+    listing: Mutex<Option<ListingRead>>,
+    plan: Mutex<Option<(Read, Arc<lumenna_records::types::Plan>)>>,
+}
+
+type ListingRead = (Read, Result<Arc<lumenna_records::Rows>, lumenna_records::LumennaError>);
 
 
 /// The rows a place shows, as its keys and their actions.
@@ -160,6 +209,7 @@ impl Screen {
         self.store.clone_from(&from.store);
         self.style = from.style;
         self.capitals = from.capitals;
+        self.checkboxes = from.checkboxes;
         self.pairing_as.clone_from(&from.pairing_as);
         self.background = from.background;
         self.plan_from.clone_from(&from.plan_from);
@@ -168,6 +218,7 @@ impl Screen {
         self.look_next.clone_from(&from.look_next);
         self.syncing = from.syncing;
         self.sync_asked = from.sync_asked;
+        self.sync_failed = from.sync_failed;
     }
 
     /// Pairing's words, as this shell is called in them.
@@ -198,16 +249,48 @@ impl Screen {
 
     /// The rows of the list shown, the task list's or a task place's.
     pub(crate) fn items(&self) -> Option<Vec<Item>> {
-        let store = self.store.as_ref()?;
-        let rows = view::listing(&store.snapshot, &self.place(), &self.shown_query(), &store.now)?.ok()?;
+        let rows = self.listing()?.ok()?;
         Some(list::items(&rows, &self.folded))
+    }
+
+    /// The rows the place shown lists under the query shown, worked out once for each store
+    /// that arrives: a turn asks for them several times, and a list of thousands of tasks costs
+    /// a small device (the BTSpeak's) dearly each time. `None` for the day.
+    pub(crate) fn listing(&self) -> Option<Result<Arc<lumenna_records::Rows>, lumenna_records::LumennaError>> {
+        let store = self.store.as_ref()?;
+        let place = self.place();
+        let query = self.shown_query();
+        let mut cached = self.worked.listing.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((read, rows)) = cached.as_ref()
+            && read.is(store, &place, &query)
+        {
+            return Some(rows.clone());
+        }
+        let rows = view::listing(&store.snapshot, &place, &query, &store.now)?.map(Arc::new);
+        *cached = Some((Read { store: store.clone(), place, query }, rows.clone()));
+        Some(rows)
+    }
+
+    /// The plan of the day shown, worked out once for each store that arrives.
+    fn plan(&self) -> Option<Arc<lumenna_records::types::Plan>> {
+        let store = self.store.as_ref()?;
+        let date = self.day_shown()?.to_string();
+        let mut cached = self.worked.plan.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((read, plan)) = cached.as_ref()
+            && read.is(store, &Place::Today, &date)
+        {
+            return Some(Arc::clone(plan));
+        }
+        let plan = Arc::new(lumenna_records::plan::plan(&store.snapshot, self.day_shown()?, &store.now).ok()?);
+        *cached = Some((Read { store: store.clone(), place: Place::Today, query: date }, Arc::clone(&plan)));
+        Some(plan)
     }
 
     /// The day shown, as rows.
     pub(crate) fn day_view(&self) -> Option<DayView> {
         let store = self.store.as_ref()?;
         let date = self.day_shown()?;
-        let plan = lumenna_records::plan::plan(&store.snapshot, date, &store.now).ok()?;
+        let plan = self.plan()?;
         Some(day::day(&plan, date == store.now.date(), &self.folded))
     }
 

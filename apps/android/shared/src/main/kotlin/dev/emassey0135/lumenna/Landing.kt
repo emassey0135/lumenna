@@ -77,6 +77,7 @@ fun rememberSideLanding(core: Core, side: Side, keys: List<String>, scrollTo: su
             Side.SIDEBAR -> it.sidebarHeld
             Side.REMINDERS -> it.remindersHeld
             Side.DEVICES -> it.devicesHeld
+            Side.DUE -> it.dueHeld
         }
     }
     val landing = held?.landing

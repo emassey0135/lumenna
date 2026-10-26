@@ -158,7 +158,20 @@ pub fn block_form() -> Vec<FormField> {
 #[must_use]
 pub fn unsayable_repeat_note(block: crate::BlockShown) -> Option<String> {
     let rule = block.rrule.filter(|_| block.repetition.is_none())?;
-    Some(format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it."))
+    Some(repeat_rule_note(&rule))
+}
+
+/// What a block's Repeats field says of a rule it repeats by that the repetition words cannot
+/// say, which an empty field keeps.
+#[must_use]
+pub fn repeat_rule_note(rule: &str) -> String {
+    format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it.")
+}
+
+/// The button that saves a form: "Add" for something new, "Save" for a change.
+#[must_use]
+pub fn form_yes(adding: bool) -> String {
+    if adding { "Add" } else { "Save" }.to_owned()
 }
 
 /// What the pairing screen says, every sentence and button of it. Only what names the
@@ -407,4 +420,408 @@ pub fn new_block_start(snapshot: &lumenna_core::snapshot::Snapshot, date: Option
         day_start
     };
     Ok(crate::words::time_text(start))
+}
+
+/// What saving a form says when nothing in it changed: the task details', the block form's.
+#[must_use]
+pub fn nothing_changed() -> String {
+    "Nothing changed".to_owned()
+}
+
+/// Which occurrences of the repeating block `block` a change is for, asked before its form
+/// opens: that day alone (`day`, as said: "Tomorrow", "Monday 5 October"), whose answer is
+/// `day`, or every occurrence, `every`. In Title Case, or sentence case where `sentence`; the
+/// block's name and the day keep their own capitals either way.
+#[must_use]
+pub fn edit_which_question(block: &str, day: &str, sentence: bool) -> crate::Question {
+    let cased = |text: &str| if sentence { sentence_case(text.to_owned()) } else { text.to_owned() };
+    crate::Question::Choose {
+        title: format!("{} {block}", cased("Change")),
+        message: cased("Which Occurrences?"),
+        answers: vec![
+            Choice { id: "day".to_owned(), title: format!("{day} {}", if sentence { "only" } else { "Only" }), ..Choice::default() },
+            Choice { id: "every".to_owned(), title: cased("Every Occurrence"), ..Choice::default() },
+        ],
+    }
+}
+
+/// The block form's heading for one day of a repeating block, for every occurrence of one, and
+/// for a block that does not repeat: "Change Standup, This Day Only", or in sentence case where
+/// `sentence`, the block's name keeping its own capitals.
+#[must_use]
+pub fn block_form_heading(block: &str, scope: BlockFormScope, sentence: bool) -> String {
+    let cased = |text: &str| if sentence { sentence_case(text.to_owned()) } else { text.to_owned() };
+    match scope {
+        BlockFormScope::New => cased("New Block"),
+        BlockFormScope::Day => format!("{} {block}, {}", cased("Change"), if sentence { "this day only" } else { "This Day Only" }),
+        BlockFormScope::Every => format!("{} {block}, {}", cased("Change"), if sentence { "every occurrence" } else { "Every Occurrence" }),
+        BlockFormScope::Whole => format!("{} {block}", cased("Change")),
+    }
+}
+
+/// What a block form is for, as its heading says it.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlockFormScope {
+    /// A new block.
+    New,
+    /// One day of a repeating block.
+    Day,
+    /// Every occurrence of a repeating block.
+    Every,
+    /// A block that does not repeat.
+    Whole,
+}
+
+/// One line the task details list besides their form: its label, then what it says.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetailsLine {
+    /// What it is: `state`, `rule`, `waits`, `history`, so a shell can place it.
+    pub key: String,
+    /// Its label: "State".
+    pub label: String,
+    /// What it says: "overdue, recurring".
+    pub value: String,
+}
+
+/// `text` as written where `sentence` says: sentence case, else as given (Title Case).
+fn cased(text: &str, sentence: bool) -> String {
+    if sentence { sentence_case(text.to_owned()) } else { text.to_owned() }
+}
+
+/// What the task details say around their form, every label and button: the same on every
+/// platform. The buttons a details pane shows by themselves are the task's `primary` offered
+/// actions, the rest a menu away, as on any row; Waits For's two are its own.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetailsWords {
+    /// The pane's name, for a screen reader: "Task Details".
+    pub title: String,
+    /// What it shows with no task in hand.
+    pub none: String,
+    /// What it says once the task it showed is gone: the core's [`no_longer_here`](crate::no_longer_here).
+    pub gone: String,
+    /// The list of what the task waits for: its label.
+    pub waits: String,
+    /// The same list's description.
+    pub waits_hint: String,
+    /// What that list says with nothing in it.
+    pub waits_none: String,
+    /// The button that adds something it waits for (`WaitFor`), which asks.
+    pub add_wait: String,
+    /// The button that stops it waiting for the task in hand in that list (`StopWaiting`).
+    pub stop_wait: String,
+    /// The heading over what it is: its state and history (`DetailsView::lines`).
+    pub about: String,
+    /// The heading over what can be done to it.
+    pub actions: String,
+    /// The button that saves what changed.
+    pub save: String,
+}
+
+/// The task details' words (`DetailsWords`), in sentence case where `sentence`.
+#[must_use]
+pub fn details_words(sentence: bool) -> DetailsWords {
+    let c = |text: &str| cased(text, sentence);
+    DetailsWords {
+        title: c("Task Details"),
+        none: "No task selected".to_owned(),
+        gone: crate::no_longer_here(),
+        waits: c("Waits For"),
+        waits_hint: "The tasks this one waits for. It is blocked until they are done.".to_owned(),
+        waits_none: "Nothing".to_owned(),
+        add_wait: c("Wait for Another Task"),
+        stop_wait: c("Stop Waiting for the Selected Task"),
+        about: c("About"),
+        actions: c("Actions"),
+        save: c("Save"),
+    }
+}
+
+/// What the details list of `task` besides its form, in order: its state ("open" when nothing
+/// is worth saying), the rule it repeats by when the Repeats field cannot say it, what it waits
+/// for, and its history. A line with nothing to say is left out, but for the state. Labels in
+/// sentence case where `sentence`.
+#[must_use]
+pub fn details_lines(task: &crate::types::TaskDetail, sentence: bool) -> Vec<DetailsLine> {
+    let line = |key: &str, label: &str, value: String| DetailsLine { key: key.to_owned(), label: cased(label, sentence), value };
+    let states: Vec<&str> = task.state.iter().map(String::as_str).filter(|state| *state != "ready").collect();
+    let mut lines = vec![line("state", "State", if states.is_empty() { "open".to_owned() } else { states.join(", ") })];
+    if task.repetition.is_none()
+        && let Some(rule) = &task.recurrence
+    {
+        lines.push(line("rule", "Repeats by the Rule", rule.clone()));
+    }
+    if !task.depends.is_empty() {
+        lines.push(line("waits", "Waits For", crate::words::listed(&task.depends.iter().map(|d| d.title.clone()).collect::<Vec<_>>())));
+    }
+    if !task.history.is_empty() {
+        lines.push(line("history", "History", task.history.join(", ")));
+    }
+    lines
+}
+
+/// Put in a Block's last choice, which asks for another day and offers that day's blocks.
+#[must_use]
+pub fn another_day() -> String {
+    "Another Day".to_owned()
+}
+
+/// A button a settings page offers beside its settings: Back Up Now, Import or Restore.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingsButton {
+    /// What it does: `back-up`, `restore-backup`, `import`, `sync-now`, `pair`.
+    pub id: String,
+    /// Its name.
+    pub title: String,
+    /// Whether it asks something first (a file, a folder), which a platform marks its own way.
+    pub asks: bool,
+}
+
+/// One page of settings, as every settings screen groups them: in order, each setting on
+/// exactly one page.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingsPage {
+    /// What it is: `general`, `planning`, `reminders`, `devices`, `backups`, `export`.
+    pub id: String,
+    /// Its title: "Planning".
+    pub title: String,
+    /// What is on it, for a list of pages that shows a second line: "The day, the week,
+    /// completing subtasks, announcements".
+    pub description: String,
+    /// What it says under its settings: "These sync to all your devices." Empty for nothing.
+    pub caption: String,
+    /// Its settings, by key, in order. One the store does not list here (the background
+    /// setting, where the shell keeps nothing running) is left out.
+    pub keys: Vec<String>,
+    /// Its buttons, in order.
+    pub buttons: Vec<SettingsButton>,
+}
+
+/// Every settings page, in order. `own_clock` leaves out the `clock` setting, for a shell that
+/// follows its platform's clock; a terminal, which has none, shows it. Titles and buttons in
+/// sentence case where `sentence`.
+#[must_use]
+pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
+    let c = |text: &str| cased(text, sentence);
+    let button = |id: &str, title: &str, asks: bool| SettingsButton { id: id.to_owned(), title: c(title), asks };
+    let keys = |keys: &[&str]| keys.iter().filter(|key| !(own_clock && **key == "clock")).map(|key| (*key).to_owned()).collect();
+    let page = |id: &str, title: &str, description: &str, caption: &str, members: Vec<String>, buttons: Vec<SettingsButton>| SettingsPage {
+        id: id.to_owned(),
+        title: c(title),
+        description: description.to_owned(),
+        caption: caption.to_owned(),
+        keys: members,
+        buttons,
+    };
+    vec![
+        page("general", "General", "On this device: running in the background, the clock", "These settings are this device's alone.", keys(&[crate::background::KEY, "clock"]), Vec::new()),
+        page(
+            "planning",
+            "Planning",
+            "The day, the week, completing subtasks, announcements",
+            "These sync to all your devices.",
+            keys(&[
+                "day-start",
+                "day-end",
+                "week-start",
+                "task-order",
+                "show-completed-subtasks",
+                "cascade-complete-subtasks",
+                "verbosity",
+                "urgency-weights",
+            ]),
+            Vec::new(),
+        ),
+        page(
+            "reminders",
+            "Reminders",
+            "When reminders come, and whether this device gives them",
+            "The defaults sync to all your devices. Whether reminders are given here is this device's alone.",
+            keys(&["reminders", "default-task-reminders", "default-block-reminders", "all-day-reminder-hour"]),
+            Vec::new(),
+        ),
+        page("devices", "Devices and Sync", "Paired devices and how syncing is going", "", Vec::new(), vec![button("sync-now", "Sync Now", false), button("pair", "Pair a Device", true)]),
+        page(
+            "backups",
+            "Backups",
+            "On this device only",
+            "These settings are this device's alone.",
+            keys(&["backup-every", "backup-keep", "backup-dir"]),
+            vec![button("back-up", "Back Up Now", false), button("restore-backup", "Restore from a Backup", true)],
+        ),
+        page(
+            "export",
+            "Export and Import",
+            "JSON, Markdown, org, calendar; erasing what was deleted",
+            &export_caption(),
+            Vec::new(),
+            vec![button("import", "Import or Restore", true)],
+        ),
+    ]
+}
+
+/// What the Export and Import page says under its buttons.
+#[must_use]
+pub fn export_caption() -> String {
+    "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this \
+     device lacks and removes nothing."
+        .to_owned()
+}
+
+/// What a setting of each shape says it takes, where a shell offers its own control: a time's
+/// hint and example, a number's.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingWords {
+    /// A time setting's hint, the same as its own: "A time, such as 8:00 or 8am."
+    pub time_hint: String,
+    /// A time setting's example, for a placeholder: "8am".
+    pub time_example: String,
+    /// A number setting's hint: "A whole number."
+    pub number_hint: String,
+    /// The button that applies a setting typed in a dialog of its own.
+    pub set: String,
+}
+
+/// What a setting's own control says (`SettingWords`).
+#[must_use]
+pub fn setting_words() -> SettingWords {
+    SettingWords {
+        time_hint: TIME_HINT.to_owned(),
+        time_example: "8am".to_owned(),
+        number_hint: "A whole number.".to_owned(),
+        set: "Set".to_owned(),
+    }
+}
+
+/// What every time setting says it takes.
+pub const TIME_HINT: &str = "A time, such as 8:00 or 8am.";
+
+/// What is said once a backup is taken into a folder: "Backed up to Documents as
+/// lumenna-2026-10-26.lumbak".
+#[must_use]
+pub fn backed_up_to(folder: &str, name: &str) -> String {
+    format!("Backed up to {folder} as {name}")
+}
+
+/// What quick add and a list's filter say, every label and button, the same on every platform.
+/// Title Case for headings and buttons; `quick_add_words(true)` for sentence case.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuickAddWords {
+    /// Quick add's title: "New Task".
+    pub title: String,
+    /// Its field's label: "Task".
+    pub label: String,
+    /// What its field takes, for under it or as its description.
+    pub hint: String,
+    /// The field's placeholder.
+    pub example: String,
+    /// The label of what it will add, read back as typed: "Will Add".
+    pub will_add: String,
+    /// The button that adds it.
+    pub add: String,
+    /// The button that closes it.
+    pub cancel: String,
+    /// A list's filter field: its label.
+    pub filter: String,
+    /// What the filter field takes, for its placeholder or description.
+    pub filter_hint: String,
+    /// What is said when completion offers nothing where the cursor is.
+    pub nothing_to_complete: String,
+    /// The button or menu that offers what could come next.
+    pub show_completions: String,
+}
+
+/// What quick add and a list's filter say (`QuickAddWords`), in sentence case where `sentence`.
+#[must_use]
+pub fn quick_add_words(sentence: bool) -> QuickAddWords {
+    let c = |text: &str| cased(text, sentence);
+    QuickAddWords {
+        title: c("New Task"),
+        label: "Task".to_owned(),
+        hint: "Such as: write the chapter tomorrow p1 #Work. Down arrow offers what could come next.".to_owned(),
+        example: "call the bank tomorrow at 3pm p1 #Home @calls".to_owned(),
+        will_add: c("Will Add"),
+        add: c("Add"),
+        cancel: c("Cancel"),
+        filter: c("Filter"),
+        filter_hint: "#Work & overdue, or search: words".to_owned(),
+        nothing_to_complete: "Nothing to complete here.".to_owned(),
+        show_completions: c("Show Completions"),
+    }
+}
+
+/// A completion offered as a button or a menu item names what it puts in: "Complete with Work,
+/// project", `line` being the completion's line (`speech::candidate`).
+#[must_use]
+pub fn complete_with(line: &str) -> String {
+    format!("Complete with {line}")
+}
+
+/// What a device says when it cannot give reminders as asked, and the buttons that fix it, for
+/// its reminders' settings; and its notification channel's name and description, where the
+/// platform has channels (Android).
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotificationWords {
+    /// Notifications are off for Lumenna on this device.
+    pub off: String,
+    /// The button that asks to allow them.
+    pub allow: String,
+    /// Alarms for an exact time are not allowed, so reminders may come late.
+    pub late: String,
+    /// The button that asks to allow exact alarms.
+    pub allow_exact: String,
+    /// The notification channel's name.
+    pub channel: String,
+    /// The notification channel's description.
+    pub channel_description: String,
+}
+
+/// What a device says of its notifications (`NotificationWords`), `this_device` being how it
+/// calls itself ("this device", "this watch"), buttons in sentence case where `sentence`.
+#[must_use]
+pub fn notification_words(this_device: &str, sentence: bool) -> NotificationWords {
+    let c = |text: &str| cased(text, sentence);
+    NotificationWords {
+        off: format!("Notifications are off for Lumenna, so no reminder can be shown on {this_device}."),
+        allow: c("Allow Notifications"),
+        late: "Reminders may come a few minutes late: Lumenna is not allowed to set alarms for an exact time.".to_owned(),
+        allow_exact: c("Allow Exact Alarms"),
+        channel: "Reminders".to_owned(),
+        channel_description: "Tasks coming due and blocks starting or ending, as you set them.".to_owned(),
+    }
+}
+
+/// The question pairing asks once both devices show their words, whole: what it says, then the
+/// words in order. "The other device shows three words too. … same order: apple, river, stone."
+#[must_use]
+pub fn pairing_match(words: &PairingWords, three: &[String]) -> String {
+    format!("{} {}.", words.match_message, three.join(", "))
+}
+
+/// This device's code, as a line: "This device's code: 1234-5678".
+#[must_use]
+pub fn my_code_line(words: &PairingWords, code: &str) -> String {
+    format!("{}: {code}", words.my_code)
+}
+
+/// The lengths a question asking how long offers, the usual ones a short list holds, each its
+/// answer (`45m`) and its words: and None first where the question may be left empty.
+#[must_use]
+pub fn usual_lengths(optional: bool) -> Vec<Choice> {
+    let none = optional.then(|| Choice { id: String::new(), title: "None".to_owned(), ..Choice::default() });
+    none.into_iter()
+        .chain([15, 25, 30, 45, 60, 90, 120].into_iter().map(|minutes| Choice {
+            id: format!("{minutes}m"),
+            title: crate::words::capitalised(&crate::words::duration(minutes)),
+            ..Choice::default()
+        }))
+        .collect()
 }

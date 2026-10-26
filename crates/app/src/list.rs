@@ -68,7 +68,7 @@ pub fn items(rows: &Rows, folded: &BTreeSet<String>) -> Vec<Item> {
             row.expanded = Some(!collapsed);
             row.actions.push(fold_action(&row, collapsed));
         }
-        let level = (!hidden && row.depth != previous).then(|| format!("level {}", row.depth + 1));
+        let level = (!hidden && row.depth != previous).then(|| lumenna_records::words::level(row.depth));
         if !hidden {
             previous = row.depth;
         }

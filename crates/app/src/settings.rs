@@ -9,11 +9,12 @@ use crux_core::render::render;
 use lumenna_records::{LumennaError, Offered};
 use lumenna_records::background::{BackgroundKind, KEY as BACKGROUND, background_words};
 use lumenna_records::types::{ExportFormat, Setting};
+use lumenna_records::fields::{SettingWords, SettingsPage};
 use serde::{Deserialize, Serialize};
 
 use crate::host::{Arrival, HostRequest};
 use crate::model::Screen;
-use crate::{Effect, Event, Lumenna, host, say};
+use crate::{Effect, Event, Lumenna, host, say, write};
 
 /// What the person does in Settings.
 #[boltffi::data]
@@ -95,8 +96,8 @@ pub struct Settings {
     pub typed: BTreeMap<String, String>,
     /// What was wrong with a line applied, by key.
     pub problems: BTreeMap<String, String>,
-    /// The setting on its way to the host.
-    pub setting: Option<String>,
+    /// The setting on its way to the host, and the write it went out as.
+    pub setting: Option<(String, u64)>,
 }
 
 /// One setting as shown.
@@ -138,6 +139,11 @@ pub struct SettingsView {
     pub offered: Vec<Offered>,
     /// What to say under them, as a caption: the core's, so every app says the same.
     pub offered_caption: String,
+    /// The pages settings are shown on, in order, each setting on one (`settings_pages`): a shell
+    /// that follows its platform's clock (one that sent `Event::Clock`) is not offered the clock.
+    pub pages: Vec<SettingsPage>,
+    /// What a setting's own control says.
+    pub words: SettingWords,
 }
 
 /// A file for the shell to save: a backup or an export.
@@ -162,7 +168,7 @@ impl crux_core::capability::Operation for SaveFile {
 /// Settings as shown, the exports named for `today`, with keeping Lumenna running in the
 /// background where the shell offers it (`background`, as the shell last said).
 #[must_use]
-pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, today: jiff::civil::Date) -> SettingsView {
+pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, today: jiff::civil::Date, own_clock: bool, sentence: bool) -> SettingsView {
     let offered = background.map(|(kind, on)| lumenna_records::background::background_setting(kind, on));
     let rows = settings
         .list
@@ -184,7 +190,14 @@ pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, tod
         })
         .collect();
     let offered = lumenna_records::actions::store_actions().iter().map(Offered::of).collect();
-    SettingsView { settings: rows, exports, offered, offered_caption: lumenna_records::actions::STORE_ACTIONS.to_owned() }
+    SettingsView {
+        settings: rows,
+        exports,
+        offered,
+        offered_caption: lumenna_records::actions::STORE_ACTIONS.to_owned(),
+        pages: lumenna_records::fields::settings_pages(own_clock, sentence),
+        words: lumenna_records::fields::setting_words(),
+    }
 }
 
 impl Lumenna {
@@ -219,8 +232,11 @@ impl Lumenna {
             SettingsEvent::Set { key, value } => {
                 let Some(settings) = &mut model.settings else { return Command::done() };
                 settings.typed.insert(key.clone(), value.clone());
-                settings.setting = Some(key.clone());
-                host(HostRequest::SetSetting { key, value })
+                let (number, sent) = write(model, HostRequest::SetSetting { key: key.clone(), value }, None);
+                if let Some(settings) = &mut model.settings {
+                    settings.setting = Some((key, number));
+                }
+                sent
             }
             SettingsEvent::Backup => host(HostRequest::Backup),
             SettingsEvent::Export(format) => host(HostRequest::Export(format)),
@@ -248,7 +264,7 @@ impl Lumenna {
             }
             BackgroundEvent::Failed { reason } => {
                 let kind = model.background_asked.take().map(|(kind, _)| kind).or(model.background.map(|(kind, _)| kind));
-                let failed = kind.map_or_else(|| "That could not be changed".to_owned(), |kind| background_words(kind).failed);
+                let failed = kind.map_or_else(lumenna_records::words::could_not_change, |kind| background_words(kind).failed);
                 let reason = reason.trim();
                 render().and(say(if reason.is_empty() { failed } else { format!("{failed}: {reason}") }))
             }

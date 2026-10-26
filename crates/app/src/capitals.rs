@@ -51,6 +51,9 @@ pub(crate) fn in_sentence_case(view: &mut ViewModel) {
     }
     for due in &mut view.due {
         due.dismiss = sentence_case(std::mem::take(&mut due.dismiss));
+        for button in &mut due.buttons {
+            button.title = sentence_case(std::mem::take(&mut button.title));
+        }
         for button in [&mut due.snooze, &mut due.carry, &mut due.replan].into_iter().flatten() {
             *button = sentence_case(std::mem::take(button));
         }
@@ -60,14 +63,8 @@ pub(crate) fn in_sentence_case(view: &mut ViewModel) {
             export.label = sentence_case(std::mem::take(&mut export.label));
         }
     }
-    if let Some(form) = &mut view.block_form {
-        // A new block's heading is fixed words; a change's names the block, which keeps its
-        // own capitals, after fixed words already in sentence case.
-        if form.fields.iter().any(|field| field.key == "date") {
-            form.heading = sentence_case(std::mem::take(&mut form.heading));
-        }
-        form.yes = sentence_case(std::mem::take(&mut form.yes));
-    }
+    // The block form comes worded in the shell's capitals already: its heading names the block,
+    // whose capitals are its own.
 }
 
 /// A question's title as its action's sentence-case name where it is that name, and a text
@@ -91,7 +88,9 @@ fn question(question: Question, action: Option<&Action>) -> Question {
             sentence,
         },
         Question::Pick { title, length, yes } => Question::Pick { title: asks(title), length, yes: sentence_case(yes) },
-        Question::Choose { title, message, answers } => Question::Choose {
+        // A row's action's answers are fixed words; the app's own question (which occurrences)
+        // comes in the shell's capitals already, naming a day whose capitals are its own.
+        Question::Choose { title, message, answers } if action.is_some() => Question::Choose {
             title: asks(title),
             message,
             answers: answers.into_iter().map(|answer| lumenna_records::Choice { title: sentence_case(answer.title.clone()), ..answer }).collect(),

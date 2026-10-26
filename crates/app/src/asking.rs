@@ -4,12 +4,12 @@
 use crux_core::Command;
 use crux_core::render::render;
 use lumenna_records::places::Place;
-use lumenna_records::{Action, ActionKind, Answer, Change, Choice, Choices, LumennaError, Offered, Question, Subject, not_offered};
+use lumenna_records::{Action, ActionKind, Answer, Change, Choices, LumennaError, Offered, Question, Subject, not_offered};
 
-use crate::host::{Arrival, HostRequest};
+use crate::host::{Arrival, HostRequest, Writing};
 use crate::model::Screen;
 use crate::network::NetworkRequest;
-use crate::{BlockEvent, Effect, Event, Lumenna, blockform, host, network_request, proposal, say, spoken};
+use crate::{BlockEvent, Effect, Event, Lumenna, blockform, host, network_request, proposal, say, spoken, write};
 
 /// What a question open is for.
 #[derive(Debug, Clone, PartialEq)]
@@ -48,12 +48,19 @@ pub struct Open {
     /// The answer last given, a line typed or a choice's identifier: where a place renamed or
     /// made is to be found.
     pub answered: Option<String>,
+    /// The write the answer went out as, until it is answered: only that write's answer closes
+    /// the question, or keeps it open with why.
+    pub writing: Option<u64>,
+    /// Which question this is among those the screen has asked, from one; none until it is shown.
+    pub number: u32,
+    /// The line last typed in answer, kept for the field when the answer is refused.
+    pub typed: Option<String>,
 }
 
 
 impl Open {
     pub(crate) fn new(purpose: Purpose) -> Self {
-        Self { purpose, choices: None, refusal: None, picked: None, answered: None }
+        Self { purpose, choices: None, refusal: None, picked: None, answered: None, writing: None, number: 0, typed: None }
     }
 
     /// The action asking, if it is one.
@@ -64,8 +71,8 @@ impl Open {
         }
     }
 
-    /// What to ask now.
-    pub(crate) fn question(&self) -> Question {
+    /// What to ask now, a question of the app's own in sentence case where `sentence`.
+    pub(crate) fn question(&self, sentence: bool) -> Question {
         match &self.purpose {
             Purpose::Action(_) if self.picked.is_some() => lumenna_records::length_question(),
             Purpose::Action(action) => action.question.clone(),
@@ -74,21 +81,27 @@ impl Open {
                 let mut steps = lumenna_records::new_filter_questions();
                 if name.is_some() { steps.swap_remove(1) } else { steps.swap_remove(0) }
             }
-            Purpose::EditWhich(block, day) => Question::Choose {
-                title: format!("Change {}", block.title),
-                message: "Which occurrences?".to_owned(),
-                answers: vec![
-                    Choice { id: "day".to_owned(), title: format!("{day} only"), ..Choice::default() },
-                    Choice { id: "every".to_owned(), title: "Every occurrence".to_owned(), ..Choice::default() },
-                ],
-            },
+            Purpose::EditWhich(block, day) => lumenna_records::fields::edit_which_question(&block.title, day, sentence),
         }
     }
 }
 
 
-/// Where a place renamed, made or removed is now, from the question that did it.
-fn after_place(open: &Open, store: &Arrival) -> Option<Place> {
+/// Whether `place` is a project, label or saved filter the store no longer has.
+fn gone(place: &Place, store: &Arrival) -> bool {
+    let snapshot = &store.snapshot;
+    match place {
+        Place::Project(name) => !snapshot.projects.values().any(|p| p.deleted_at.is_none() && &p.name == name),
+        Place::Label(name) => !snapshot.labels.values().any(|l| l.deleted_at.is_none() && &l.name == name),
+        Place::Filter { name, .. } => !snapshot.saved_filters.values().any(|f| f.deleted_at.is_none() && &f.name == name),
+        _ => false,
+    }
+}
+
+/// Where a place renamed, made or removed is now, from the question that did it, or the
+/// action that did it unasked; `shown` is the place shown. A place deleted goes to the tasks
+/// only when it was the one shown, or one the place shown was inside.
+fn after_place(open: &Open, store: &Arrival, shown: &Place) -> Option<Place> {
     let answered = open.answered.clone();
     let filter_named = |name: &str| {
         store.snapshot.saved_filters.values().find(|f| f.deleted_at.is_none() && f.name == name).map(|f| f.query.clone())
@@ -96,7 +109,7 @@ fn after_place(open: &Open, store: &Arrival) -> Option<Place> {
     match &open.purpose {
         Purpose::NewFilter(Some(name)) => Some(Place::Filter { name: name.clone(), query: answered? }),
         Purpose::Action(action) => match (action.subject, action.kind) {
-            (Subject::Project | Subject::Label | Subject::Filter, ActionKind::Delete) => Some(Place::Tasks),
+            (Subject::Project | Subject::Label | Subject::Filter, ActionKind::Delete) => gone(shown, store).then_some(Place::Tasks),
             (Subject::Project, ActionKind::New | ActionKind::NewInside | ActionKind::Rename) => Some(Place::Project(answered?)),
             (Subject::Label, ActionKind::New | ActionKind::Rename | ActionKind::MergeInto) => Some(Place::Label(answered?)),
             (Subject::Filter, ActionKind::Rename) => {
@@ -115,24 +128,24 @@ impl Lumenna {
         match action.kind {
             // A sidebar row folds in the sidebar: its key, not a row of the list.
             ActionKind::Expand | ActionKind::Collapse if action.target.starts_with("place:") || action.target.starts_with("group:") => {
-                let said = if action.kind == ActionKind::Expand {
+                let expand = action.kind == ActionKind::Expand;
+                if expand {
                     model.sidebar_folded.remove(&action.target);
-                    "Expanded"
                 } else {
                     model.sidebar_folded.insert(action.target.clone());
-                    "Collapsed"
-                };
+                }
+                let said = lumenna_records::words::folded_said(expand);
                 return render().and(say(said));
             }
             // Folding is the app's: nothing stored changes.
             ActionKind::Expand | ActionKind::Collapse => {
-                let said = if action.kind == ActionKind::Expand {
+                let expand = action.kind == ActionKind::Expand;
+                if expand {
                     model.folded.remove(&action.target);
-                    "Expanded"
                 } else {
                     model.folded.insert(action.target.clone());
-                    "Collapsed"
-                };
+                }
+                let said = lumenna_records::words::folded_said(expand);
                 model.focus = Some(action.target);
                 model.settle();
                 return render().and(say(said));
@@ -177,7 +190,10 @@ impl Lumenna {
             }
         }
         match &action.question {
-            Question::Immediate => host(HostRequest::Act { action, answer: Answer::Yes }),
+            Question::Immediate => {
+                let unasked = Open::new(Purpose::Action(action.clone()));
+                write(model, HostRequest::Act { action, answer: Answer::Yes }, Some(unasked)).1
+            }
             Question::Pick { .. } => {
                 let Some(store) = &model.store else { return Command::done() };
                 match lumenna_records::choices::offered(&store.snapshot, &action, &store.now) {
@@ -227,6 +243,9 @@ impl Lumenna {
 
     pub(crate) fn answer(&self, answer: Answer, model: &mut Screen) -> Command<Effect, Event> {
         let Some(open) = &mut model.open else { return Command::done() };
+        if let Answer::Text { text } = &answer {
+            open.typed = Some(text.clone());
+        }
         match open.purpose.clone() {
             Purpose::GoToDay => {
                 let Answer::Text { text } = answer else { return Command::done() };
@@ -245,7 +264,7 @@ impl Lumenna {
             Purpose::NewFilter(None) => {
                 let Answer::Text { text } = answer else { return Command::done() };
                 if text.trim().is_empty() {
-                    open.refusal = Some("A saved filter needs a name.".to_owned());
+                    open.refusal = Some(lumenna_records::words::filter_needs_name());
                     return render();
                 }
                 *open = Open::new(Purpose::NewFilter(Some(text.trim().to_owned())));
@@ -254,7 +273,12 @@ impl Lumenna {
             Purpose::NewFilter(Some(name)) => {
                 let Answer::Text { text } = answer else { return Command::done() };
                 open.answered = Some(text.clone());
-                host(HostRequest::AddFilter { name, query: text })
+                let asked = open.clone();
+                let (number, sent) = write(model, HostRequest::AddFilter { name, query: text }, Some(asked));
+                if let Some(open) = &mut model.open {
+                    open.writing = Some(number);
+                }
+                sent
             }
             Purpose::EditWhich(block, _) => {
                 let Answer::Picked { id, .. } = answer else { return Command::done() };
@@ -263,7 +287,8 @@ impl Lumenna {
                     let date = block.id.split('@').nth(1).unwrap_or_default().to_owned();
                     model.block_form = Some(blockform::Form::change(
                         blockform::Purpose::Occurrence { series: block.series.clone(), date },
-                        format!("Change {}, this day only", block.title),
+                        block.title.clone(),
+                        lumenna_records::fields::BlockFormScope::Day,
                         lumenna_records::day_block_fields(block),
                         None,
                     ));
@@ -280,6 +305,7 @@ impl Lumenna {
             Purpose::Action(_) if matches!(&answer, Answer::Picked { id, .. } if id == ANOTHER_DAY) => {
                 open.purpose = Purpose::PickDay(open.action().cloned().expect("an action's pick"));
                 open.refusal = None;
+                open.number = 0;
                 render()
             }
             Purpose::Action(action) => {
@@ -290,6 +316,8 @@ impl Lumenna {
                 {
                     open.picked = Some(id.clone());
                     open.refusal = None;
+                    // How long is a question of its own.
+                    open.number = 0;
                     return render();
                 }
                 open.answered = match &answer {
@@ -301,25 +329,48 @@ impl Lumenna {
                     (Some(id), Answer::Text { text }) => Answer::Picked { id: id.clone(), length: Some(text) },
                     (_, answer) => answer,
                 };
-                host(HostRequest::Act { action, answer })
+                let asked = open.clone();
+                let (number, sent) = write(model, HostRequest::Act { action, answer }, Some(asked));
+                if let Some(open) = &mut model.open {
+                    open.writing = Some(number);
+                }
+                sent
             }
         }
     }
 
-    pub(crate) fn wrote(&self, result: Result<Change, LumennaError>, store: Option<Arrival>, model: &mut Screen) -> Command<Effect, Event> {
+    /// What the write `writing` did. Only what waits on that write takes its answer: the
+    /// question it answered, the quick-add line, the details' save, the setting, the block form,
+    /// the reminder dealt with. Whatever was opened or typed since stays as it is.
+    pub(crate) fn wrote(&self, writing: &Writing, result: Result<Change, LumennaError>, store: Option<Arrival>, model: &mut Screen) -> Command<Effect, Event> {
         if let Some(store) = store {
             model.store = Some(store);
         }
-        let adding = std::mem::take(&mut model.adding);
-        let saving = std::mem::take(&mut model.details.saving);
-        let setting = model.settings.as_mut().and_then(|s| s.setting.take());
-        let block_saving = model.block_form.as_mut().is_some_and(|form| std::mem::take(&mut form.saving));
+        // Writes are numbered from one: an answer numbered none is nobody's.
+        let number = writing.number;
+        let mine = |waiting: Option<u64>| number != 0 && waiting == Some(number);
+        let adding = mine(model.adding);
+        if adding {
+            model.adding = None;
+        }
+        let saving = model.details.saving.take_if(|saving| mine(Some(saving.number)));
+        let setting = model.settings.as_mut().and_then(|s| s.setting.take_if(|(_, n)| mine(Some(*n)))).map(|(key, _)| key);
+        let block_saving = model.block_form.as_mut().is_some_and(|form| form.saving.take_if(|n| mine(Some(*n))).is_some());
+        let question = model.open.as_ref().is_some_and(|open| mine(open.writing));
+        let dealt = model.dealing.iter().position(|(n, _)| mine(Some(*n))).map(|at| model.dealing.remove(at).1);
         match result {
             Ok(change) => {
+                if question {
+                    model.open = None;
+                }
+                // Dealt with: off the list now, and not before, so a failure leaves it there.
+                if let Some(id) = dealt {
+                    model.due.retain(|due| due.id != id);
+                }
                 // A place renamed, made or removed: go to where it now is.
-                let open = model.open.take();
-                let deleted = open.as_ref().and_then(Open::action).is_some_and(|action| action.kind == ActionKind::Delete);
-                let after = open.and_then(|open| after_place(&open, model.store.as_ref()?));
+                let deleted = writing.asked.as_ref().and_then(Open::action).is_some_and(|action| action.kind == ActionKind::Delete);
+                let shown = model.place();
+                let after = writing.asked.as_ref().and_then(|open| after_place(open, model.store.as_ref()?, &shown));
                 if change.changed && let Some(place) = after {
                     // From the sidebar, its row in hand follows the place it acted on to where it
                     // now is; a place deleted leaves the row now in its place in hand instead.
@@ -330,8 +381,8 @@ impl Lumenna {
                     }
                     model.go(place);
                 }
-                if saving {
-                    model.details.draft = None;
+                if let Some(saving) = saving {
+                    model.saved_details(saving);
                 }
                 if let (Some(key), Some(settings)) = (&setting, &mut model.settings) {
                     settings.problems.remove(key);
@@ -377,8 +428,9 @@ impl Lumenna {
                     return render();
                 }
                 // A refused answer stays in its question, with the reason.
-                if let Some(open) = &mut model.open {
+                if question && let Some(open) = &mut model.open {
                     open.refusal = Some(error.message().to_owned());
+                    open.writing = None;
                     return render();
                 }
                 render().and(say(error.message()))
@@ -388,6 +440,9 @@ impl Lumenna {
 
     pub(crate) fn arrived(&self, store: Arrival, model: &mut Screen) -> Command<Effect, Event> {
         model.store = Some(store);
+        // Dismissed or snoozed elsewhere — another device, a notification's own button — is
+        // dealt with here too.
+        model.drop_acknowledged();
         model.settle();
         let mut more = render();
         // A setting synced from elsewhere is shown as it now is; so is a device, a round's
@@ -434,7 +489,9 @@ impl Lumenna {
             }
             ActingOn::Day => model.day_view().map(|day| day.actions),
             ActingOn::Details => model.details_shown().map(|task| task.actions),
-            ActingOn::Reminders => crate::view::whole(model).reminders.map(|list| list.actions),
+            ActingOn::Reminders => model.store.as_ref().zip(model.reminders.as_ref()).and_then(|(store, target)| {
+                lumenna_records::reminders::reminders_of(&store.snapshot, target).ok()
+            }).map(|list| list.actions),
             ActingOn::Settings => model.settings.as_ref().map(|_| lumenna_records::actions::store_actions()),
         };
         let Some(actions) = actions else { return say(lumenna_records::no_longer_here()) };
@@ -446,9 +503,13 @@ impl Lumenna {
     }
 
     pub(crate) fn run(&self, kinds: Vec<ActionKind>, model: &mut Screen) -> Command<Effect, Event> {
-        // A side list's row while the person acts from it, else the row in hand.
-        let held = model.acting.and_then(|side| model.side_actions(side));
-        let Some(actions) = held.or_else(|| model.actions_in_hand()) else { return Command::done() };
+        // A side list's row while the person acts from it, else the row in hand: never the main
+        // list's row for a key pressed in a side list, which would act on what is not there.
+        let actions = match model.acting {
+            Some(side) => model.side_actions(side),
+            None => model.actions_in_hand(),
+        };
+        let Some(actions) = actions else { return Command::done() };
         let found = kinds.iter().find_map(|kind| actions.iter().find(|a| a.kind == *kind));
         match (found, kinds.first()) {
             (Some(action), _) => self.perform(action.clone(), model),

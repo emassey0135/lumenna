@@ -392,7 +392,7 @@ fn changed_to(key: &str, value: &str) -> String {
 /// A setting with what every settings screen says of it: its name, its control, what it
 /// can be, whether it syncs. Nine clients each had their own copy of this table.
 /// What a time setting takes.
-const TIME: &str = "A time, such as 8:00 or 8am.";
+const TIME: &str = lumenna_records::fields::TIME_HINT;
 
 fn described(key: &str, value: String) -> Setting {
     use crate::types::SettingKind as K;

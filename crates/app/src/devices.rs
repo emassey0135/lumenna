@@ -2,16 +2,8 @@
 
 use lumenna_records::DeviceView;
 
-/// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5
-/// minutes ago" — its name and platform, then the status the core words for every app.
-/// `now` is kept for callers; the status was worded when the devices were listed.
-pub fn line(device: &DeviceView, _now: jiff::Timestamp) -> String {
-    let mut parts = vec![device.name.clone(), device.platform.clone()];
-    parts.extend(device.status.iter().cloned());
-    parts.join(", ")
-}
-
-/// [`line`], as the device's name and the rest.
+/// A paired device, as its line in the list reads: "Kitchen Mac, macos, last synced 5 minutes
+/// ago" — its name, then its platform and the status the core words for every app.
 pub fn parts(device: &DeviceView) -> crate::speech::Line {
     crate::speech::Line::of(device.name.clone(), std::iter::once(device.platform.clone()).chain(device.status.iter().cloned()).collect())
 }
@@ -74,15 +66,15 @@ mod tests {
     #[test]
     fn a_device_says_when_it_last_synced() {
         let synced = device(false, Some("2026-10-04T11:55:00Z"), None);
-        assert_eq!(line(&synced, now()), "Kitchen Mac, macos, last synced 5 minutes ago");
-        assert_eq!(line(&device(false, None, None), now()), "Kitchen Mac, macos, not synced yet");
-        assert_eq!(line(&device(true, None, None), now()), "Kitchen Mac, macos, this device");
+        assert_eq!(parts(&synced).text, "Kitchen Mac, macos, last synced 5 minutes ago");
+        assert_eq!(parts(&device(false, None, None)).text, "Kitchen Mac, macos, not synced yet");
+        assert_eq!(parts(&device(true, None, None)).text, "Kitchen Mac, macos, this device");
     }
 
     #[test]
     fn a_failure_is_said_before_the_last_success() {
         let failed = device(false, Some("2026-10-03T12:00:00Z"), Some("timed out"));
-        assert_eq!(line(&failed, now()), "Kitchen Mac, macos, last attempt failed: timed out, last synced 1 day ago");
+        assert_eq!(parts(&failed).text, "Kitchen Mac, macos, last attempt failed: timed out, last synced 1 day ago");
     }
 
     #[test]
