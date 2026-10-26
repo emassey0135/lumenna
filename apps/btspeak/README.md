@@ -89,7 +89,7 @@ subtasks. That is all the core's, so that every client behaves alike and none ca
 | `preferences.py` | Settings, devices, sync and pairing, backups, export and import. |
 | `reminder_lists.py` | A task's or block's reminders, what came due, and the Reminders settings page. |
 | `background.py` | The background service: keeping the device in sync and giving its reminders. |
-| `reminders.py` | Giving reminders, as the background service does. |
+| `reminders.py` | Giving reminders, as the app does while it runs and the background service while it is closed. |
 | `service.py` | Turning that service on and off, only when asked. |
 | `system/` | The service's systemd user unit, linked in from where it is. |
 
@@ -149,8 +149,10 @@ seconds it asks the core what came due (`Device::deliver_reminders`) and gives e
 `host.say()` and `brl.push_message()`, so a reminder reaches the display too. What fires, its
 words, and remembering what was given — so a restart does not say the day again, and what
 came while it was stopped is one summary — are the core's; there is no reminder logic here.
-The right to give them is one process's on the device, so the service and any other app never
-both say one.
+The app gives them the same way while it runs, on a thread of its own
+(`reminders.give_in_background`), so they come whether or not the service is on. The right to
+give them is one process's on the device, so the app, the service and any other app never both
+say one.
 
 It is a systemd user service, and nothing of it is written under `/BTSpeak`, which the device
 replaces on every release, or anywhere that needs an administrator. The unit,

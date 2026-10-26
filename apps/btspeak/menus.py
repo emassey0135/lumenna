@@ -36,6 +36,7 @@ import day
 import organise
 import preferences
 import reminder_lists
+import reminders
 import tasks
 
 
@@ -48,11 +49,14 @@ def run(core: Core) -> int:
         dialogs.show_message(error.message)
         return 1
     core.back_up_while_running()
-    # Syncing runs while the app does, beside the daemon or in its place.
+    # Syncing runs while the app does, beside the daemon or in its place; so does giving
+    # reminders, unless the background service already gives them.
     core.app.in_front(True)
+    giving = reminders.give_in_background(reminders.Giver(open_store=lambda: core.device))
     try:
         main_menu(session)
     finally:
+        giving()
         core.app.in_front(False)
     return 0
 
@@ -105,7 +109,7 @@ def main_menu(session: Session) -> None:
             item(title="Settings", shortcut="s", action=lambda: preferences.settings(session)),
         ]
 
-    live_menu(session, build, "Lumenna")
+    live_menu(session, build, "Lumenna", app_title="Lumenna menu")
 
 
 def add_task(session: Session) -> str:

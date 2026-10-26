@@ -18,7 +18,7 @@ from BTSpeak import clipboard, dialogs
 
 import actions
 from actions import L
-from core import refused
+from core import device_name, refused
 import options
 import reminder_lists
 from rows import Row, items
@@ -313,7 +313,7 @@ def pair(session: Session) -> str:
     if session.view().devices is None:
         # Pairing is the Devices page's, wherever it is asked for.
         session.send(L.ShellEventDevices(L.DevicesEventShow()))
-    session.send(L.ShellEventDevices(L.DevicesEventPair(L.PairEventOpen("this device"))))
+    session.send(L.ShellEventDevices(L.DevicesEventPair(L.PairEventOpen(device_name()))))
     if code:
         session.send(
             L.ShellEventDevices(L.DevicesEventPair(L.PairEventCode(code))),

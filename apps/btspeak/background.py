@@ -7,8 +7,8 @@ desktop app do: it keeps the device in sync (`Device::keep_in_sync`), holding it
 waiting its turn while another process holds it, and serving the command surface at the
 profile's address while it holds it, so the app's Sync now runs its round here; it gives the
 reminders as they come (`reminders.Giver`); and it takes the automatic backups when they are
-due. While the app runs, the app waits its turn for the endpoint and leaves the giving of
-reminders to this.
+due. While the app runs, the app waits its turn for the endpoint and for the right to give
+reminders, which the core gives one process at a time.
 
 It runs as a systemd user service (`system/lumenna-background.service`, which `service.py`
 links in only when it is turned on from the app's Settings), and is turned off there, which
@@ -19,7 +19,6 @@ to take. The app's Reminders on this device, which the core honours, turns remin
 from __future__ import annotations
 
 import signal
-import socket
 import sys
 import time
 from pathlib import Path
@@ -27,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import reminders  # noqa: E402
-from core import Core, LumennaError  # noqa: E402
+from core import Core, LumennaError, device_name  # noqa: E402
 
 #: What a client of the command surface is told is answering.
 PROCESS = "Lumenna background service"
@@ -35,14 +34,6 @@ PROCESS = "Lumenna background service"
 #: How often an automatic backup is looked for, in seconds, as the app does: whether one is
 #: due is the core's.
 BACKUP_EVERY = Core.BACKUP_EVERY
-
-
-def device_name() -> str:
-    """What a pairing asked for over the command surface calls this device, as `lum` names it:
-    the host's name without `.local`."""
-    name = socket.gethostname().strip()
-    name = name[: -len(".local")] if name.endswith(".local") else name
-    return name or "this device"
 
 
 def log(message: str) -> None:

@@ -72,7 +72,8 @@ class Session:
             ),
             # Every capital costs a braille cell, and the device's own menus are in sentence case.
             self.lumenna.ShellEventCapitals(self.lumenna.Capitals.SENTENCE),
-            # What pairing's sentences call this device, which finds others on its network.
+            # What pairing's sentences call this device, which finds others on its network: words
+            # said here, not the name others see, which is `device_name()`.
             self.lumenna.ShellEventPairingAs("this device", True),
             # Its background service, and whether it is on.
             self.background(),
@@ -324,7 +325,9 @@ def live_menu(
             default=min(selection, max(len(items) - 1, 0)),
             context_menu=context_commands(here),
             app_menu=app_commands(offered),
-            app_menu_title=app_title or f"{heading.split(',')[0]} menu",
+            # A heading says more than a name (a list's readback after it), so the screen names
+            # its menu; a title cut at its first comma broke a name like "Work, home".
+            app_menu_title=app_title or f"{heading} menu",
             global_keys=keys(here, offered),
             empty_message=empty() if callable(empty) else empty,
         )
