@@ -68,8 +68,13 @@ pub fn start(app: &Rc<App>) {
 }
 
 fn deliver(app: &App, found: &lumenna_records::reminders::DueReminders) {
-    for due in &found.due {
-        notify(app, due);
+    // Each with its buttons in the core's order (`Due::buttons`): what it offers of its own,
+    // then Dismiss and Snooze.
+    // The summary of what was missed, if any, comes before them, and is shown apart below.
+    let arrived = lumenna_app::due::arrived(found);
+    let from = arrived.len().saturating_sub(found.due.len());
+    for (due, firing) in arrived[from..].iter().zip(&found.due) {
+        notify(app, firing, &due.buttons);
     }
     if !found.missed_summary.is_empty() {
         let notification = gio::Notification::new("Lumenna");
@@ -79,24 +84,23 @@ fn deliver(app: &App, found: &lumenna_records::reminders::DueReminders) {
     }
 }
 
-/// One reminder as a notification: its title and message, the core's two buttons, and
-/// activating it opens what it is about.
-fn notify(app: &App, due: &DueReminder) {
+/// One reminder as a notification: its title and message, the core's buttons, and activating
+/// it opens what it is about.
+fn notify(app: &App, due: &DueReminder, buttons: &[lumenna_app::due::DueButton]) {
     let notification = gio::Notification::new(&due.title);
     notification.set_body(Some(&due.text));
     notification.set_priority(gio::NotificationPriority::High);
-    let which = (due.key.clone(), due.occurrence.clone()).to_variant();
-    notification.add_button_with_target_value(&due.dismiss, "app.reminder-dismiss", Some(&which));
-    notification.add_button_with_target_value(&due.snooze, "app.reminder-snooze", Some(&which));
-    // When a block's work outruns its time, the core's button that opens Replan from Now.
-    if !due.replan.is_empty() {
-        notification.add_button_with_target_value(&due.replan, "app.reminder-replan", Some(&which));
-    }
-    // At a block's end with work left short, the core's offer to carry it forward; the
-    // message already ends in the question.
-    if !due.carry.is_empty() {
-        let carry = (due.key.clone(), due.occurrence.clone(), due.target.clone()).to_variant();
-        notification.add_button_with_target_value(&due.carry, "app.reminder-carry", Some(&carry));
+    for button in buttons {
+        // What each button says once done goes with it: the app is not there to say it.
+        let (action, target) = match button.id.as_str() {
+            "dismiss" | "snooze" => (format!("app.reminder-{}", button.id), (due.key.clone(), due.occurrence.clone(), button.said.clone()).to_variant()),
+            // At a block's end with work left short; the message already ends in the question.
+            "carry" => ("app.reminder-carry".to_owned(), (due.key.clone(), due.occurrence.clone(), due.target.clone()).to_variant()),
+            // When a block's work outruns its time: Replan from Now.
+            "replan" => ("app.reminder-replan".to_owned(), (due.key.clone(), due.occurrence.clone()).to_variant()),
+            _ => continue,
+        };
+        notification.add_button_with_target_value(&button.title, &action, Some(&target));
     }
     let target = (due.kind.clone(), due.target.clone(), due.occurrence.clone()).to_variant();
     notification.set_default_action_and_target_value("app.reminder-open", Some(&target));
@@ -112,13 +116,15 @@ fn id(key: &str, occurrence: &str) -> String {
 fn add_actions(app: &App) {
     let pair = glib::VariantTy::new("(ss)").expect("a valid type");
     let answer = |name: &str, run: fn(&App, String, String) -> Result<Change, LumennaError>| {
-        let action = gio::SimpleAction::new(name, Some(pair));
+        let action = gio::SimpleAction::new(name, Some(glib::VariantTy::new("(sss)").expect("a valid type")));
         action.connect_activate(move |_, parameter| {
-            let (Some(app), Some((key, occurrence))) = (crate::window::app(), parameter.and_then(|p| p.get::<(String, String)>())) else {
+            let (Some(app), Some((key, occurrence, said))) =
+                (crate::window::app(), parameter.and_then(|p| p.get::<(String, String, String)>()))
+            else {
                 return;
             };
             app.application.withdraw_notification(&id(&key, &occurrence));
-            answered(&app, run(&app, key, occurrence));
+            answered(&app, run(&app, key, occurrence), &said);
         });
         action
     };
@@ -136,7 +142,7 @@ fn add_actions(app: &App) {
             return;
         };
         app.application.withdraw_notification(&id(&key, &occurrence));
-        answered(&app, app.model.device.carry_rest_forward(format!("{target}@{occurrence}")));
+        answered(&app, app.model.device.carry_rest_forward(format!("{target}@{occurrence}")), "");
     });
     app.application.add_action(&carry);
     let open = gio::SimpleAction::new("reminder-open", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
@@ -170,13 +176,18 @@ fn add_actions(app: &App) {
     app.application.add_action(&show);
 }
 
-/// What a notification's button did, said as any change is, or why it could not: a button
-/// pressed with nothing to say would leave the person wondering whether it took.
-fn answered(app: &App, done: Result<Change, LumennaError>) {
+/// What a notification's button did, or why it could not: a button pressed with nothing to say
+/// would leave the person wondering whether it took. `said` is the button's own sentence, where
+/// it has one ("Dismissed"), else the change's.
+fn answered(app: &App, done: Result<Change, LumennaError>, said: &str) {
     match done {
         Ok(change) => {
             app.model.tick();
-            app.say(&lumenna_records::words::spoken(&change.announcement, &change.notices));
+            if said.is_empty() {
+                app.say(&lumenna_records::words::spoken(&change.announcement, &change.notices));
+            } else {
+                app.say(said);
+            }
         }
         Err(error) => app.fail(error.message()),
     }
@@ -208,6 +219,7 @@ struct List {
     status: gtk::Label,
     tree: Rc<Tree>,
     add: gtk::Button,
+    remove: gtk::Button,
     shown: RefCell<Option<ReminderList>>,
     landing: Landing,
     /// What to say once the window is in front, until it is.
@@ -216,19 +228,12 @@ struct List {
 
 thread_local! {
     static OPEN: RefCell<Option<Rc<List>>> = const { RefCell::new(None) };
-    /// What the next list opened is called: "Reminders for Call the bank".
-    static TITLE: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 fn send(event: ShellEvent) {
     if let Some(app) = crate::window::app() {
         app.model.send(event);
     }
-}
-
-/// Names the reminder list about to open: `title` ("Reminders"), for what it is for.
-pub fn name(title: &str, of: Option<&str>) {
-    TITLE.set(of.map_or_else(|| title.to_owned(), |name| format!("{title} for {name}")));
 }
 
 /// The list's window, when it is in front: where its questions are asked from.
@@ -284,8 +289,16 @@ impl List {
                 ..Default::default()
             })
             .collect();
+        // The list's own buttons, as the core titles them: Add Reminder, and a reminder's
+        // Remove Reminder, where one offers it.
         if let Some(add) = actions::find(&reminders.offered, &[ActionKind::New]) {
             self.add.set_label(&format!("{}…", add.title.replace('_', "__")));
+        }
+        if let Some(remove) = reminders.reminders.iter().find_map(|reminder| actions::find(&reminder.offered, &[ActionKind::Delete])) {
+            self.remove.set_label(&remove.title.replace('_', "__"));
+        }
+        if let Some(title) = app.model.view().reminders_title.as_ref().filter(|title| self.window.title().is_none_or(|shown| shown != title.as_str())) {
+            self.window.set_title(Some(title));
         }
         let had_focus = self.tree.has_focus();
         let before: Vec<String> =
@@ -336,8 +349,8 @@ impl List {
 
 
 fn build(app: &App) -> Rc<List> {
-    let title = TITLE.take();
-    let title = if title.is_empty() { "Reminders".to_owned() } else { title };
+    // What it is for, as the core names it: "Reminders for Call the bank".
+    let title = app.model.view().reminders_title.clone().unwrap_or_else(|| "Reminders".to_owned());
     let status = gtk::Label::builder().xalign(0.0).wrap(true).build();
     let tree = Tree::new("Reminders");
     let add = gtk::Button::with_label("Add Reminder…");
@@ -374,6 +387,7 @@ fn build(app: &App) -> Rc<List> {
         status,
         tree,
         add: add.clone(),
+        remove: remove.clone(),
         shown: RefCell::new(None),
         landing: Landing::default(),
         waiting: RefCell::new(Some(Vec::new())),
@@ -429,7 +443,7 @@ fn build(app: &App) -> Rc<List> {
             } else {
                 (reminder.offered.clone(), ActingOn::Held(Side::Reminders, reminder.id.clone()))
             };
-            let (menu, group) = actions::menu(&offered, &on, None);
+            let (menu, group) = actions::menu(&offered, &on);
             app.popup(&menu, list.tree.view.upcast_ref(), point, Some(&group));
         });
     }

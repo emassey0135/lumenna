@@ -30,8 +30,12 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   menu's, which sends `RunDay` with each kind, going to Today first from another place.
 - **The details are the app's** (`view.details`): each field is sent as `Details(Field)` and
   refilled from the app except where focus is. Focus coming into them sends `Details(Show)`,
-  so they keep their task while the person works there. The Task menu runs the details'
-  task's actions with `ActOn(Details, …)` away from a task list's row.
+  so they keep their task while the person works there. Their words are `details_words`, what
+  they say of the task `DetailsView::lines` (a read-only line each under About), and their
+  buttons, after Save, the task's `primary` offered actions, the same button relabelled (Mark
+  Done, Mark Not Done); Actions… opens every action it offers, as a row's menu does. The Task
+  menu sends `DetailsEvent::Key` where focus is in them, or in the day, whose sitting's task
+  they show.
 - **The block form is a window the app opens and closes** (`view.block_form`): every field
   the core's form has for its purpose is made once, and shown or hidden as the app lists them
   (Until while it repeats). A refusal is told once.
@@ -40,8 +44,8 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   takes focus. What the app says while it is open is said on its own status line
   (`proposal::say`), the first held until the window is in front. An overrun's Replan button
   sends `Proposal(Replan)`.
-- **A reminder list is a dialog the app opens and closes** (`view.reminders`), named after
-  what it is for from the row it was opened on; its rows' actions are held there
+- **A reminder list is a dialog the app opens and closes** (`view.reminders`), named as
+  `view.reminders_title` names it; its buttons are titled from `offered`; its rows' actions are held there
   (`Hold(Side::Reminders, …)`), and focus goes to a reminder just added, or to Add Reminder
   once the last is removed.
 - **Quick add is a window the app opens and closes** (`view.line`): each keystroke is
@@ -50,9 +54,11 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
 - **Focus moves only when `view.landing` goes up** (`tree::Landing`, shared by every list; or
   once a list gone to from a key has rows), and only if focus is in the list or nowhere; a
   rebuild for a sync or a minute puts the selection back without moving focus.
-- **The app's open question is asked once the app is still** (`asking.rs`, polled every 50 ms
-  from a turn that has one): straight after an answer it is still open while the write is
-  under way. A refusal is said, then a line is asked again with what was typed. A key a row
+- **The app's open question is asked as it comes, by its number** (`asking.rs`,
+  `Asking::number`): one answered here and still open waits until the app is still (polled
+  every 50 ms), since it stays open while the write is under way; refused, the refusal is said
+  and it is asked again, a line starting from `Asking::typed`. A pick with nothing to offer says
+  `nothing_to_choose`. A key a row
   lacks is the app's to refuse: `Run` after a side list's `Hold`, `RunDay` for the day's own
   actions, `Details(Run)` for the details' task; nothing here words a refusal.
 - **The clock setting reaches the app's thread as a number** (`clock::Locale::twelve`, kept
@@ -71,8 +77,10 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   socket only while it syncs, so an unpaired app holds no endpoint and `lum rpc` answers
   itself (`test_commands.py`). Quit takes it out of the front first, which stops serving, then
   syncing. The automatic backup is the device's (`Device::back_up_if_due`), on a thread.
-- **Settings are the app's** (`view.settings`): each page's controls are made from the core's
-  descriptions, in the page's own order with this app's mnemonics; a toggle or choice is
+- **Settings are the app's** (`view.settings`): the pages are the core's (`settings_pages`,
+  their titles, buttons and captions; `SettingsView::pages` for which settings each holds, in
+  order), each control made from the setting's description with this app's mnemonics
+  (`settings::MNEMONICS`); a toggle or choice is
   `Settings(Set)` as it changes, a line `Settings(Type)` as typed and `Set` when left. The
   Devices page sends `Devices(Show)` as it is shown, its rows held there
   (`Hold(Side::Devices, …)`). Pairing is a dialog over `view.devices.pairing`: the words are
@@ -175,10 +183,15 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   level changes against the row shown before; position is left to the platform. Decided at
   run time; `LUMENNA_LEVEL_IN_TEXT=1` forces it for tests. CI runs the UI tests on Arch, so
   the native path is what it covers by default.
-- **Space and Delete are the core's keys** (`Key("toggle")`, `Key("delete")`, what
-  `keys::runs` names), in every list, the sidebar, a reminder list and the devices; Enter sends
-  `actions::ENTER` as `Run`. So the row in hand runs its own; the Task menu's commands each
-  `Run` their kinds, so Mark Done toggles. No key runs Erase Permanently: a trashed task's menu
+- **Space, Delete and Enter are the core's keys** (`Key("toggle")`, `Key("delete")`,
+  `Key("open")`, what `keys::what_runs` names), in every list, the sidebar, a reminder list and
+  the devices. So the row in hand runs its own. **Every command is the window's action
+  `win.<id>`** for each of `keys::COMMANDS` (`App::command`): a row's or the day's is handed on
+  as `Key(id)` (the day's going to Today first), the rest are this window's own. The menu bar is
+  `keys::menus` (`menus.rs`), made again when `ViewModel::commands` renames one (Mark Not
+  Done); its accelerators are the shared keys, plus GNOME's own for Properties and help; the
+  mnemonics are `menus::MNEMONICS`. The tray is `keys::tray`, with the timer's control
+  (`Device::timer_control`, read every two seconds off the main thread) before its separator. No key runs Erase Permanently: a trashed task's menu
   offers it, and so does the Task menu's item, which has no accelerator. A menu's item, folding, a details button and
   Add Reminder send the row's action in short with `ActOn`. The question it asks is asked over
   the window it came from.
@@ -240,7 +253,8 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   reads them as it reads any other; their buttons and opening are application actions
   (`app.reminder-dismiss`, `-snooze`, `-carry`, `-replan`, `-open`), which reach the app with
   its window closed, and answer through the device (`Device::dismiss_reminder` and the rest),
-  saying what each did, or why it could not, as any change is said. Opening a task's reminder is
+  their buttons the core's in its order (`due::arrived`'s `Due::buttons`: Carry Forward,
+  Replan, Dismiss, Snooze), each saying its `said` once done, else the change's sentence. Opening a task's reminder is
   the app's `Launch("task:<id>")`, a block's `ShowBlock`.
   It asks `Device::deliver_reminders` every five seconds while another process gives them
   (`elsewhere`), and every 20 once it gives them itself. The UI tests stand in for the shell with a

@@ -134,7 +134,8 @@ impl Autostart {
         std::fs::write(
             &self.file,
             format!(
-                "[Desktop Entry]\nType=Application\nName=Lumenna\nComment=Tasks and time blocks\nExec={exec}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n"
+                "[Desktop Entry]\nType=Application\nName=Lumenna\nComment={}\nExec={exec}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
+                lumenna_records::words::DESCRIPTION
             ),
         )
     }

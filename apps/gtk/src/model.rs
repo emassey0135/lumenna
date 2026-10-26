@@ -81,7 +81,7 @@ impl Model {
         let device = Arc::clone(&self.device);
         std::thread::spawn(move || {
             if let Err(error) = device.back_up_if_due() {
-                let said = format!("The automatic backup failed. {}", error.message());
+                let said = lumenna_records::words::backup_failed(error.message());
                 glib::MainContext::default().invoke(move || {
                     if let Some(app) = crate::window::app() {
                         app.say(&said);

@@ -3,10 +3,12 @@
 //! was refused are all the app's. A refused answer is said, then asked again with what was
 //! typed.
 //!
-//! It asks only once the app is still: right after an answer the question stays open until the
-//! store answers the write, and a turn drawn meanwhile would ask it again.
+//! A question is asked as soon as it comes: each has its number (`Asking::number`), so a new one
+//! is told from one already answered. One answered and still open waits until the app is
+//! still, since it stays open until the store answers the write; then, refused, it is asked
+//! again, the line starting from what was typed (`Asking::typed`).
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::rc::Rc;
 
 use gtk::glib;
@@ -23,17 +25,17 @@ thread_local! {
     static ASKING: Cell<bool> = const { Cell::new(false) };
     /// Whether a look waits for the app to be still.
     static WAITING: Cell<bool> = const { Cell::new(false) };
-    /// What was typed into the last line asked, and which question it was, for asking it again
-    /// when refused.
-    static TYPED: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+    /// The number of the question last answered here, or left.
+    static ANSWERED: Cell<u32> = const { Cell::new(0) };
 }
 
 /// Asks what the app has open, unless something is being asked already.
 pub fn update(app: &Rc<App>) {
-    if ASKING.get() || app.model.view().asking.is_none() {
+    if ASKING.get() {
         return;
     }
-    if !app.model.is_still() {
+    let Some(number) = app.model.view().asking.as_ref().map(|asking| asking.number) else { return };
+    if number == ANSWERED.get() && !app.model.is_still() {
         if !WAITING.replace(true) {
             glib::timeout_add_local_once(std::time::Duration::from_millis(50), || {
                 WAITING.set(false);
@@ -46,11 +48,16 @@ pub fn update(app: &Rc<App>) {
     }
     let (view, lines) = app.model.current();
     let Some(open) = view.asking else { return };
+    // Answered and still open, with the store done: asked again only if it was refused.
+    if open.number == ANSWERED.get() && open.refusal.is_none() {
+        return;
+    }
     ask(app, open, lines.choices.into_iter().map(|line| line.text).collect());
 }
 
 fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
     let action = open.action.clone();
+    let number = open.number;
     // Asked over the window the question came from: Settings, when it is in front.
     let window: gtk::Window = crate::reminders::in_front()
         .or_else(crate::settings::in_front)
@@ -61,22 +68,18 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
             if let Some(action) = action {
                 crate::actions::open_form(app, action);
             }
-            app.model.send(ShellEvent::Cancel);
+            answer(app, number, None);
         }
         Question::Confirm { title, message, yes } => {
             let destructive = action.as_ref().is_some_and(|a| a.destructive);
             asking(app, async move |app: Rc<App>| {
                 let yes = prompts::confirm(&window, &title, &message, &yes, destructive).await;
-                answer(&app, yes.then_some(Answer::Yes));
+                answer(&app, number, yes.then_some(Answer::Yes));
             });
         }
         Question::Text { title, label, initial, hint, yes, .. } => {
-            let which = format!("{} {title}", action.as_ref().map(|a| a.target.as_str()).unwrap_or_default());
-            let start = match &open.refusal {
-                Some(_) => TYPED.with_borrow(|typed| typed.as_ref().filter(|(q, _)| *q == which).map(|(_, t)| t.clone())),
-                None => None,
-            }
-            .unwrap_or(initial);
+            // Refused, the line starts from what was typed, which the app keeps.
+            let start = open.refusal.as_ref().and(open.typed.clone()).unwrap_or(initial);
             let refusal = open.refusal.clone();
             // A question that asks for a day has GTK's calendar beneath its line.
             let day = open.day.clone();
@@ -91,8 +94,7 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
                     (None, false) => prompts::Line::Words,
                 })
                 .await;
-                TYPED.set(text.clone().map(|text| (which, text)));
-                answer(&app, text.map(|text| Answer::Text { text }));
+                answer(&app, number, text.map(|text| Answer::Text { text }));
             });
         }
         Question::Pick { title, yes, .. } => {
@@ -108,8 +110,10 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
                     (text, choice.depth, choice.reason.clone().unwrap_or_default(), choice.swatch.clone())
                 })
                 .collect();
+            // Nothing to pick: said in the core's words, and the question left.
             if options.is_empty() {
-                app.model.send(ShellEvent::Cancel);
+                app.say(&lumenna_records::words::nothing_to_choose());
+                answer(app, number, None);
                 return;
             }
             let refusal = open.refusal.clone();
@@ -118,7 +122,7 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
                     prompts::tell(&window, &refusal).await;
                 }
                 let picked = prompts::pick(&window, &title, "C_hoices", &options, &yes).await.and_then(|index| offered.choices.get(index));
-                answer(&app, picked.map(|choice| Answer::Picked { id: choice.id.clone(), length: None }));
+                answer(&app, number, picked.map(|choice| Answer::Picked { id: choice.id.clone(), length: None }));
             });
         }
         Question::Choose { title, message, answers } => {
@@ -127,7 +131,7 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
                 let titles: Vec<&str> = answers.iter().map(|choice| choice.title.as_str()).collect();
                 let index = prompts::choose(&window, &title, &message, &titles, destructive).await;
                 let id = index.and_then(|index| answers.get(index)).map(|choice| choice.id.clone());
-                answer(&app, id.map(|id| Answer::Picked { id, length: None }));
+                answer(&app, number, id.map(|id| Answer::Picked { id, length: None }));
             });
         }
     }
@@ -140,21 +144,14 @@ fn asking(app: &Rc<App>, run: impl AsyncFnOnce(Rc<App>) + 'static) {
     spawn(async move { run(app).await });
 }
 
-/// Hands the answer back, or that the question was left.
-fn answer(app: &App, given: Option<Answer>) {
+/// Hands the answer to question `number` back, or that it was left.
+fn answer(app: &App, number: u32, given: Option<Answer>) {
     ASKING.set(false);
+    ANSWERED.set(number);
     app.model.send(match given {
         Some(answer) => ShellEvent::Answer(answer),
         None => ShellEvent::Cancel,
     });
 }
 
-/// Runs one of a row's actions through the app, in short, on the row `on` names; `name` is
-/// what that row is called, after which a reminder list it opens is named. A task's details are
-/// opened from the app's question.
-pub fn act_on(app: &App, on: lumenna_app::ActingOn, offered: lumenna_app::Offered, name: Option<&str>) {
-    if offered.kind == lumenna_records::ActionKind::Reminders {
-        crate::reminders::name(&offered.title, name);
-    }
-    app.model.act_on(on, offered);
-}
+

@@ -87,7 +87,9 @@ fn project_rows(choices: &Rc<RefCell<Vec<Choice>>>) -> gtk::SignalListItemFactor
         let choice = choices.borrow().iter().find(|choice| choice.id == name).cloned().unwrap_or_default();
         label.set_label(&name);
         label.set_margin_start(i32::try_from(choice.depth * 16).unwrap_or(0));
-        item.set_accessible_description(choice.reason.as_deref().or(choice.detail.as_deref()).unwrap_or_default());
+        // The level in the core's words, which the indent alone never says.
+        let level = (choice.depth > 0).then(|| lumenna_records::words::level(choice.depth));
+        item.set_accessible_description(choice.reason.as_deref().or(choice.detail.as_deref()).or(level.as_deref()).unwrap_or_default());
     });
     factory
 }
@@ -266,7 +268,7 @@ impl Detail {
         self.more.connect_clicked(move |button| {
             let (Some(detail), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(task) = detail.shown.borrow().clone() else { return };
-            let (menu, group) = actions::menu(&task.offered, &ActingOn::Details, Some(&task.title));
+            let (menu, group) = actions::menu(&task.offered, &ActingOn::Details);
             app.popup(&menu, button.upcast_ref(), None, Some(&group));
         });
         let weak = Rc::downgrade(self);
@@ -503,9 +505,8 @@ impl Detail {
                 button.connect_clicked(move |_| {
                     let Some(app) = crate::window::app() else { return };
                     let held = app.detail.primary.borrow().get(index).map(|(_, action)| action.clone());
-                    let title = app.detail.shown.borrow().as_ref().map(|task| task.title.clone());
                     if let Some(action) = held {
-                        crate::asking::act_on(&app, ActingOn::Details, action, title.as_deref());
+                        app.model.act_on(ActingOn::Details, action);
                     }
                 });
                 self.buttons.append(&button);
