@@ -452,7 +452,8 @@ class LumennaTest {
         row("draft report").performClick()
         rule.waitForIdle()
         replace("Project", "Nowhere")
-        rule.onNode(hasText("No project matches")).assertExists()
+        // Nothing the core would offer, in its words.
+        rule.onNode(hasText(dev.emassey0135.lumenna.app.nothingToChoose())).assertExists()
         field("Project").performImeAction()
         press("Save")
         assertEquals(before, core.device.showTask(core.device.listTasks("").rows.single().id).task.project)
@@ -756,7 +757,8 @@ class LumennaTest {
         rule.waitForIdle()
         rule.onNode(hasText("Day starts") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Role)).performClick()
         rule.waitForIdle()
-        replace("Time", "9:30am")
+        // The line is named as the setting is.
+        replace("Day starts", "9:30am")
         button("Set")
         assertEquals("09:30", core.device.settings("day-start").settings.single().value)
     }

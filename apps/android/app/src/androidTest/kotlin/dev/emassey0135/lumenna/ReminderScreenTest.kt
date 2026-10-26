@@ -180,9 +180,10 @@ class ReminderScreenTest {
     }
 
     @Test
-    fun theDefaultRemindersAreAPhraseOnPlanningAndARefusalStaysInItsDialog() {
+    fun theDefaultRemindersAreAPhraseOnTheRemindersPageAndARefusalStaysInItsDialog() {
         tab("Settings")
-        row("Planning").performClick()
+        // The core's Reminders page holds them, beside whether this device gives reminders.
+        row("Reminders").performClick()
         rule.waitForIdle()
         button("Reminders for a block")
         replace("Reminders for a block", "soon")
