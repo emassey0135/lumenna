@@ -74,6 +74,18 @@ impl<R: Clone> Rows<R> {
         self.offers.borrow().get(index).cloned()
     }
 
+    /// Enter or a double-click on the selected row: the core's Open (`keys::runs("open")`) as the
+    /// row offers it — a task's details, a block's form, a new block in free time, a cancelled
+    /// day restored — or, where it offers none, the app's refusal in its words.
+    pub fn open(&self, app: &App) {
+        let kinds = keys::runs("open").unwrap_or_default();
+        let action = self.selected_actions().and_then(|offered| actions::of_kind(&offered, kinds));
+        match (self.selected_key(), action) {
+            (Some(key), Some(action)) => actions::act_on_row(app, &key, &action),
+            _ => app.crux.send(ShellEvent::Key("open".into())),
+        }
+    }
+
     /// Whether the tree folded a row itself since this was last asked: the app's "Expanded" or
     /// "Collapsed" is then not said, since the tree reports the state.
     pub fn took_fold(&self) -> bool {

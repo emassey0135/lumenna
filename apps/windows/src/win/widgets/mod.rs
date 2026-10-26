@@ -21,6 +21,7 @@ use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::Duration;
 
 use jiff::Timestamp;
+use lumenna_app::glance;
 use lumenna_records::assistant::{Argument, ArgumentValue};
 use windows::Win32::Foundation::{CLASS_E_NOAGGREGATION, E_POINTER};
 use windows::Win32::System::Com::{
@@ -105,7 +106,7 @@ impl Shared {
         let entries = self.device.glance(HOURS, Arc::new(clock::Formats)).unwrap_or_default();
         let now = Timestamp::now();
         let empty;
-        let entry = match widget::current(&entries, now) {
+        let entry = match glance::current(&entries, now) {
             Some(entry) => entry,
             None => {
                 empty = lumenna_ffi::glance_empty(Arc::new(clock::Formats));
@@ -123,7 +124,7 @@ impl Shared {
                 });
             }
         }
-        widget::redraw_at(&entries, now)
+        glance::redraw_at(&entries, now)
     }
 
     /// Draws as the board and the store ask, until the last widget goes.

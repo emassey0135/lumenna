@@ -97,9 +97,9 @@ impl Pairing {
         {
             *self.asked.borrow_mut() = Some(words.clone());
             let said = self.words.clone();
-            let words = words.clone();
+            // The question whole, as the core words it: what it says, then the words.
+            let message = view.matching.clone().unwrap_or_default();
             app.defer(move |_| {
-                let message = format!("{} {}.", said.match_message, words.join(", "));
                 let answers = [said.match_yes.as_str(), said.match_no.as_str()];
                 let matched = prompts::choose(hwnd, &said.match_title, &message, &answers, false) == Some(0);
                 app::send(ShellEvent::Devices(DevicesEvent::Pair(PairEvent::Confirm(matched))));

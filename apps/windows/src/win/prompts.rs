@@ -243,7 +243,7 @@ impl Dialog for Pick<'_> {
 /// each is offered: its description, said after it as a hint is; `swatches`, each one's colour.
 pub fn pick(owner: HWND, title: &str, label: &str, items: &[String], reasons: &[String], swatches: &[Option<Swatch>], yes: &str) -> Option<usize> {
     if items.is_empty() {
-        fail(owner, &format!("{title}: there is nothing to choose from."));
+        fail(owner, &lumenna_records::words::nothing_to_choose());
         return None;
     }
     let pick = Pick { title, label, items, reasons, swatches, yes, chosen: RefCell::new(None) };

@@ -10,22 +10,22 @@ use windows::core::BOOL;
 
 use super::system;
 use super::tray::CLASS_PREFIX;
-use crate::shortcut::{self, Kind, Shortcut};
+use lumenna_app::hotkeys::{self, HotKeys, HotKind};
 
 const KEY: &str = "Software\\Lumenna\\Shortcuts";
 
 /// What a shortcut is now: its standard keys until the person changes them, or `None` when
 /// they turned it off.
-pub fn current(kind: Kind) -> Option<Shortcut> {
+pub fn current(kind: HotKind) -> Option<HotKeys> {
     match system::read_u32(KEY, kind.value_name()) {
         None => Some(kind.standard()),
-        Some(value) => Shortcut::decode(value),
+        Some(value) => HotKeys::decode(value),
     }
 }
 
 /// How it is described in Settings: its keys, or "Off".
-pub fn describe(kind: Kind) -> String {
-    current(kind).map_or_else(|| "Off".to_owned(), Shortcut::describe)
+pub fn describe(kind: HotKind) -> String {
+    current(kind).map_or_else(hotkeys::off, HotKeys::describe)
 }
 
 /// Whether this copy takes the shortcuts at all: not when started with `--no-shortcuts`.
@@ -36,12 +36,12 @@ pub fn leave_to_another_copy() {
     TAKEN_HERE.store(false, Ordering::Relaxed);
 }
 
-fn register(main: HWND, kind: Kind, shortcut: Shortcut) -> bool {
+fn register(main: HWND, kind: HotKind, shortcut: HotKeys) -> bool {
     if !TAKEN_HERE.load(Ordering::Relaxed) {
         return true;
     }
     let modifiers = HOT_KEY_MODIFIERS(shortcut.modifiers()) | MOD_NOREPEAT;
-    unsafe { RegisterHotKey(Some(main), kind.id(), modifiers, u32::from(shortcut.key)).is_ok() }
+    unsafe { RegisterHotKey(Some(main), kind.number(), modifiers, u32::from(shortcut.key)).is_ok() }
 }
 
 /// Whether another copy of Lumenna has a window open — one on another profile, since a
@@ -68,31 +68,31 @@ pub fn another_copy_open(main: HWND) -> bool {
     search.1
 }
 
-fn unregister(main: HWND, kind: Kind) {
+fn unregister(main: HWND, kind: HotKind) {
     unsafe {
-        let _ = UnregisterHotKey(Some(main), kind.id());
+        let _ = UnregisterHotKey(Some(main), kind.number());
     }
 }
 
 /// Registers every shortcut that is on, returning the descriptions of those something else
 /// already has.
 pub fn register_all(main: HWND) -> Vec<String> {
-    Kind::ALL
+    HotKind::ALL
         .into_iter()
         .filter_map(|kind| current(kind).filter(|shortcut| !register(main, kind, *shortcut)))
-        .map(Shortcut::describe)
+        .map(HotKeys::describe)
         .collect()
 }
 
 pub fn unregister_all(main: HWND) {
-    for kind in Kind::ALL {
+    for kind in HotKind::ALL {
         unregister(main, kind);
     }
 }
 
 /// Changes a shortcut, or turns it off with `None`, and keeps it. A combination another
 /// program already has is refused, and the old one stays.
-pub fn change(main: HWND, kind: Kind, to: Option<Shortcut>) -> Result<String, String> {
+pub fn change(main: HWND, kind: HotKind, to: Option<HotKeys>) -> Result<String, String> {
     unregister(main, kind);
     match to {
         Some(shortcut) => {
@@ -100,19 +100,19 @@ pub fn change(main: HWND, kind: Kind, to: Option<Shortcut>) -> Result<String, St
                 if let Some(old) = current(kind) {
                     register(main, kind, old);
                 }
-                return Err(shortcut::refused(&shortcut.describe(), another_copy_open(main)));
+                return Err(hotkeys::refused(&shortcut.describe(), another_copy_open(main)));
             }
             system::write_u32(KEY, kind.value_name(), shortcut.encode());
-            Ok(format!("{} is {}", kind.name(), shortcut.describe()))
+            Ok(hotkeys::changed(&kind.name(false), Some(&shortcut.describe())))
         }
         None => {
             system::write_u32(KEY, kind.value_name(), 0);
-            Ok(format!("{} is off", kind.name()))
+            Ok(hotkeys::changed(&kind.name(false), None))
         }
     }
 }
 
 /// Which shortcut a `WM_HOTKEY` is.
-pub fn kind_of(id: i32) -> Option<Kind> {
-    Kind::ALL.into_iter().find(|kind| kind.id() == id)
+pub fn kind_of(id: i32) -> Option<HotKind> {
+    HotKind::ALL.into_iter().find(|kind| kind.number() == id)
 }

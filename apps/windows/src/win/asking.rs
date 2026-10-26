@@ -3,8 +3,8 @@
 //!
 //! The app keeps the question open until it is answered: a refused answer comes back with
 //! `refusal` set, said first, and a line of text is asked again with what was typed, so a typo
-//! is fixed rather than retyped. Each is asked once the app is still, so a question is never
-//! asked again from a turn made before its answer arrived.
+//! is fixed rather than retyped. Each is asked by its number (`Asking::number`): a new number
+//! is a new question, and the same one is asked again only once its answer is refused.
 
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{Answer, Question};
@@ -37,24 +37,26 @@ pub fn ask(app: &App) {
                 .map(|index| Answer::Picked { id: answers[index].id.clone(), length: None })
         }
         Question::Text { initial, .. } => {
-            let start = if asking.refusal.is_some() { app.typed.borrow().clone() } else { initial.clone() };
+            // Refused, the line starts as it was typed, the app's to keep.
+            let start = asking.typed.clone().filter(|_| asking.refusal.is_some()).unwrap_or_else(|| initial.clone());
             let text = actions::ask(owner, &asking.question, &start, prompts::Takes { day: asking.day.as_deref(), syntax: asking.syntax });
-            if let Some(text) = &text {
-                *app.typed.borrow_mut() = text.clone();
-            }
             text.map(|text| Answer::Text { text })
         }
         Question::Pick { title, yes, .. } => {
             let Some(offered) = &asking.choices else { return };
             let lines = app.crux.lines();
-            // The core's words, then the level, which a list box has no other way to say.
+            // The core's words, then the level where it changes (`Line::level`), which a list box
+            // has no other way to say.
             // Put in a Block's ends in the app's own Another Day, which asks which day as a
             // question of its own and then offers that day's blocks here.
-            let texts: Vec<String> = offered
+            let texts: Vec<String> = lines
                 .choices
                 .iter()
-                .zip(&lines.choices)
-                .map(|(choice, line)| if choice.depth > 0 { format!("{}, level {}", line.text, choice.depth + 1) } else { line.text.clone() })
+                .take(offered.choices.len())
+                .map(|line| match &line.level {
+                    Some(level) => format!("{}, {level}", line.text),
+                    None => line.text.clone(),
+                })
                 .collect();
             let reasons: Vec<String> = offered.choices.iter().map(|choice| choice.reason.clone().unwrap_or_default()).collect();
             // A colour pick's marks, beside each colour's name.
@@ -64,5 +66,8 @@ pub fn ask(app: &App) {
                 .map(|index| Answer::Picked { id: offered.choices[index].id.clone(), length: None })
         }
     };
+    if answer.is_some() {
+        app.answered();
+    }
     app.crux.send(answer.map_or(ShellEvent::Cancel, ShellEvent::Answer));
 }

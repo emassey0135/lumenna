@@ -6,6 +6,7 @@
 //! buttons and its own activation come back here only while the app runs, which is whenever
 //! it gives reminders: one left in the notification centre after it exits does nothing.
 
+use lumenna_app::Due;
 use lumenna_records::reminders::DueReminder;
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::Foundation::TypedEventHandler;
@@ -46,13 +47,10 @@ pub const WM_REMINDER: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 6
 /// What was done with a toast.
 pub enum Answered {
     /// Its body: open what it is about.
-    Open(DueReminder),
-    Dismiss(DueReminder),
-    Snooze(DueReminder),
-    /// A block's end: the rest of what it left short, each to its next block.
-    Carry(DueReminder),
-    /// A block's work outrunning its time: the app, at Replan from Now.
-    Replan,
+    Open(Box<DueReminder>),
+    /// One of its buttons, by the core's id (`carry`, `replan`, `dismiss`, `snooze`), for the
+    /// firings it is about, with what the core says once it is done.
+    Button { id: String, said: String, firings: Vec<DueReminder> },
     /// The summary of what was missed: open the window.
     Summary,
 }
@@ -94,51 +92,33 @@ impl Toasts {
         Some(Self { notifier, shown: std::cell::RefCell::new(Vec::new()) })
     }
 
-    /// One reminder: its title, the whole message, and the core's Dismiss and Snooze, with Carry
-    /// Forward first at a block's end that left work short, whose question the message ends in,
-    /// or Replan where a block's work outruns its time.
-    /// It stays until answered, as a reminder does.
-    pub fn remind(&self, reminder: &DueReminder, window: Poster) {
-        let carry = if reminder.carry.is_empty() {
-            String::new()
-        } else {
-            format!(r#"<action content="{}" arguments="carry" activationType="foreground"/>"#, escape(&reminder.carry))
-        };
-        let replan = if reminder.replan.is_empty() {
-            String::new()
-        } else {
-            format!(r#"<action content="{}" arguments="replan" activationType="foreground"/>"#, escape(&reminder.replan))
-        };
+    /// One reminder, or the summary of what was missed (`summary`), as the app lists it
+    /// (`lumenna_app::due::arrived`): its title, the whole message, and its buttons in the core's
+    /// order and words — Carry Forward or Replan where it has them, whose question the message
+    /// ends in, then Dismiss and Snooze. A reminder stays until answered, as a reminder does.
+    pub fn remind(&self, due: &Due, summary: bool, window: Poster) {
+        let actions: String = due
+            .buttons
+            .iter()
+            .map(|button| format!(r#"<action content="{}" arguments="{}" activationType="foreground"/>"#, escape(&button.title), escape(&button.id)))
+            .collect();
+        let scenario = if summary { "" } else { r#" scenario="reminder""# };
+        let title = if summary { String::new() } else { format!("<text>{}</text>", escape(&due.title)) };
         let xml = format!(
-            r#"<toast scenario="reminder" launch="open"><visual><binding template="ToastGeneric"><text>{}</text><text>{}</text></binding></visual><actions>{}{}<action content="{}" arguments="dismiss" activationType="foreground"/><action content="{}" arguments="snooze" activationType="foreground"/></actions></toast>"#,
-            escape(&reminder.title),
-            escape(&reminder.text),
-            carry,
-            replan,
-            escape(&reminder.dismiss),
-            escape(&reminder.snooze),
+            r#"<toast{scenario} launch="open"><visual><binding template="ToastGeneric">{title}<text>{}</text></binding></visual><actions>{actions}</actions></toast>"#,
+            escape(&due.text),
         );
-        let reminder = reminder.clone();
+        let due = due.clone();
         self.show(&xml, move |arguments| {
-            let answered = match arguments {
-                "dismiss" => Answered::Dismiss(reminder.clone()),
-                "snooze" => Answered::Snooze(reminder.clone()),
-                "carry" => Answered::Carry(reminder.clone()),
-                "replan" => Answered::Replan,
-                _ => Answered::Open(reminder.clone()),
+            let answered = match due.buttons.iter().find(|button| button.id == arguments) {
+                Some(button) => Answered::Button { id: button.id.clone(), said: button.said.clone(), firings: due.firings.clone() },
+                None if summary => Answered::Summary,
+                None => match due.firings.first() {
+                    Some(reminder) => Answered::Open(Box::new(reminder.clone())),
+                    None => Answered::Summary,
+                },
             };
             window.send(WM_REMINDER, answered);
-        });
-    }
-
-    /// What came while nothing ran, said once.
-    pub fn summary(&self, text: &str, window: Poster) {
-        let xml = format!(
-            r#"<toast launch="open"><visual><binding template="ToastGeneric"><text>{}</text></binding></visual></toast>"#,
-            escape(text)
-        );
-        self.show(&xml, move |_| {
-            window.send(WM_REMINDER, Answered::Summary);
         });
     }
 

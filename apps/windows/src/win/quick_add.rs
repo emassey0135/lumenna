@@ -12,6 +12,7 @@ use std::rc::Rc;
 use lumenna_app::{LineView, Typing};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::Syntax;
+use lumenna_records::fields::QuickAddWords;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
 use windows::Win32::UI::Controls::{EM_GETSEL, EM_SETSEL};
@@ -23,7 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use super::app::{self, App};
 use super::dialog::{self, Class, Dialog, Template};
 use super::{completion, controls, prompts};
-use crate::speech;
+use crate::{devices, speech};
 
 const LINE: u16 = 100;
 const READBACK: u16 = 101;
@@ -31,7 +32,9 @@ const READBACK: u16 = 101;
 /// Quick add open, while it is.
 pub struct QuickAdd {
     hwnd: Cell<HWND>,
-    /// What the line starts with: the place's own (`#Work `), or nothing from anywhere.
+    /// Its words, the core's.
+    words: QuickAddWords,
+    /// What the line starts with: the app's, the place's own (`#Work `).
     initial: String,
     /// The refusal last said, so it is said once.
     refused: RefCell<Option<String>>,
@@ -95,23 +98,17 @@ impl QuickAdd {
 impl Dialog for QuickAdd {
     fn template(&self) -> Template {
         let readback = (ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
-        Template::new("New Task", 300, 128)
-            .item(Class::Static, "&Task:", u16::MAX, 0, 7, 7, 286, 9)
+        let words = &self.words;
+        // The core's words, with this dialog's access keys.
+        let label = |text: &str, letter| format!("{}:", devices::marked(text, letter, '&'));
+        Template::new(&words.title, 300, 128)
+            .item(Class::Static, &label(&words.label, 'T'), u16::MAX, 0, 7, 7, 286, 9)
             .item(Class::Edit, "", LINE, ES_AUTOHSCROLL as u32 | WS_BORDER.0 | WS_TABSTOP.0, 7, 17, 286, 14)
-            .item(
-                Class::Static,
-                "Such as: write the chapter tomorrow p1 #Work. Down arrow offers what could come next.",
-                u16::MAX,
-                SS_NOPREFIX.0,
-                7,
-                35,
-                286,
-                18,
-            )
-            .item(Class::Static, "&Will add:", u16::MAX, 0, 7, 56, 286, 9)
+            .item(Class::Static, &words.hint, u16::MAX, SS_NOPREFIX.0, 7, 35, 286, 18)
+            .item(Class::Static, &label(&words.will_add, 'W'), u16::MAX, 0, 7, 56, 286, 9)
             .item(Class::Edit, "", READBACK, readback, 7, 66, 286, 36)
-            .item(Class::Button, "Add", IDOK.0 as u16, BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 189, 108, 50, 14)
-            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 243, 108, 50, 14)
+            .item(Class::Button, &words.add.replace('&', "&&"), IDOK.0 as u16, BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 189, 108, 50, 14)
+            .item(Class::Button, &words.cancel.replace('&', "&&"), IDCANCEL.0 as u16, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 243, 108, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {
@@ -155,12 +152,15 @@ impl Dialog for QuickAdd {
     }
 }
 
-/// Asks for a task in quick-add words, starting from `initial`, and has the app add it.
-pub fn run(app: &App, owner: Option<HWND>, initial: &str) {
+/// Asks for a task in quick-add words, starting from the line the app opens (the place's own
+/// prefix), and has the app add it.
+pub fn run(app: &App, owner: Option<HWND>) {
     app.crux.send(ShellEvent::Typing(Typing::Open));
+    let initial = app.crux.view().line.map(|line| line.text).unwrap_or_default();
     let open = Rc::new(QuickAdd {
         hwnd: Cell::new(HWND::default()),
-        initial: initial.to_owned(),
+        words: lumenna_records::fields::quick_add_words(false),
+        initial,
         refused: RefCell::new(None),
         closed: Cell::new(false),
     });

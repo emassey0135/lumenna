@@ -7,7 +7,7 @@ use std::rc::Rc;
 use lumenna_app::{BlockEvent, ViewModel};
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{ActionKind, RowView};
+use lumenna_records::RowView;
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, WC_BUTTONW, WC_STATICW};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
@@ -63,13 +63,6 @@ impl BlockList {
         self.rows.draw(app, shown, view.focus.as_deref(), landed);
     }
 
-    /// The selected row's Edit, its form, as the app's.
-    fn edit(&self, app: &App) {
-        let action = self.rows.selected_actions().and_then(|offered| actions::of_kind(&offered, &[ActionKind::Edit]));
-        if let (Some(key), Some(action)) = (self.rows.selected_key(), action) {
-            actions::act_on_row(app, &key, &action);
-        }
-    }
 }
 
 impl View for BlockList {
@@ -98,7 +91,7 @@ impl View for BlockList {
         if header.hwndFrom == self.rows.tree.hwnd && header.code == NM_DBLCLK {
             app.defer(|app| {
                 if let Some(blocks) = app.blocks() {
-                    blocks.edit(app);
+                    blocks.rows.open(app);
                 }
             });
             return Some(1);
@@ -112,7 +105,7 @@ impl View for BlockList {
 
     fn enter(&self, app: &App, focus: HWND) -> bool {
         if focus == self.rows.tree.hwnd {
-            self.edit(app);
+            self.rows.open(app);
             return true;
         }
         false

@@ -18,22 +18,33 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   `*_held.landing`) or the rows were rebuilt, never for a sync or a minute; focus goes into the
   tree on landing only when it is lost. Selecting a row sends `Focus` (a side list's `Hold`), and
   Space and Delete send the key (`Key("toggle")`, `Key("delete")`: what each runs is
-  `keys::runs`, the core's), a side list's after holding its row; the Task menu's commands run
-  their action as the app's by kind (`Run` on a task list's row, else `Details(Run)`), and so does
-  Properties (`Run([Edit, EditTask])`), the app refusing a row without one; and a
-  context menu, a button or Enter the one chosen (`ActOn`, naming the row), only a task's own form
-  the window's (the details pane, also opened for a `Question::Form` the app leaves open). The
-  tasks, the Blocks list and the day are one tree of rows (`rows.rs`: drawing, landing, keys,
-  folding, the context menu), each view adding its own. The sidebar's selection is its held row
-  when the app lands it there, else the place shown; moving through it opens each place.
-- **The app's dialogs are opened once the app is still** (polled every 50 ms from a turn that
-  has one, `ask_when_still`): its open question (`asking.rs`), the block form (`block_form.rs`),
-  a proposal's screen (`proposal.rs`), a reminder list (`reminders.rs`). Straight after an answer
-  the question is still open while the write is under way, so asking then asks it twice. Only
-  a question counts as asking, since a dialog of the app's asks questions of its own. Each dialog
-  draws from the app's current view and closes when the app's screen does; a refusal is said
-  once and what was typed kept. Put in a Block's pick ends in the app's own Another Day, which
-  the app follows with Go to Day's question and that day's blocks.
+  `keys::runs`, the core's), a side list's after holding its row; Enter and a double-click run
+  the row's Open as it offers it (`keys::runs("open")`, `Rows::open`), else hand `Key("open")`
+  to the app to refuse; a context menu or a button the one chosen (`ActOn`, naming the row),
+  only a task's own form the window's (the details pane, also opened for a `Question::Form` the
+  app leaves open). The tasks, the Blocks list and the day are one tree of rows (`rows.rs`:
+  drawing, landing, keys, folding, the context menu), each view adding its own. The sidebar's
+  selection is its held row when the app lands it there, else the place shown; moving through
+  it opens each place.
+- **The menu bar, the tray's menu and the accelerators are the core's tables** (`menu.rs`:
+  `keys::menus`, `keys::tray`, `keys::SHARED`). What is Windows' own: each command's number
+  (`menu::NUMBERS`, which the UI tests post), its access key, Exit for Quit, the ellipsis where it
+  `asks`, Cut, Copy, Paste and Select All, and the keys a control answers written beside its
+  command (Enter, Delete, Alt+Enter). A command is run as its id (`App::run_command`): the
+  window's own, else `Key(id)`, a Task-menu row command `Details(Key)` away from a task list's
+  row. As a menu opens its items take the app's names and states (`ViewModel::commands`: Mark Not
+  Done), grey only where they act on what the app judged, and are enabled again as it closes,
+  since an accelerator does nothing while its item is grey. The tray adds the timer's control
+  (`Device::timer_control`, `toggle_timer`) before Exit.
+- **The app's dialogs are opened from the turn that has them** (`App::ask`, after the turn):
+  its open question (`asking.rs`), the block form (`block_form.rs`), a proposal's screen
+  (`proposal.rs`), a reminder list (`reminders.rs`). A question is asked by its number
+  (`Asking::number`): a new number is a new question, and the one last answered is asked again
+  only once refused, starting from what was typed (`Asking::typed`), so a turn made while its
+  answer is written never asks it twice. Only a question counts as asking, since a dialog of
+  the app's asks questions of its own. Each dialog draws from the app's current view and closes
+  when the app's screen does; a refusal is said once. Put in a Block's pick ends in the app's own
+  Another Day, which the app follows with Go to Day's question and that day's blocks.
 - **What the app says goes to the status line of the dialog in front** (`App::open_live`), a
   dialog hiding the window's: a proposal's screen, a settings page, pairing, a reminder list.
   What it says as the app closes that dialog is said where it goes next, once it has gone.
@@ -58,7 +69,13 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   runs, with `serve_commands("Lumenna for Windows", …)`. The app asks to keep in sync once
   another device is paired, and only then holds the endpoint and serves the pipe; unpaired,
   `lum rpc` answers on its own and `lum sync` says it is not paired.
-- **Settings is a property sheet over the app's Settings and Devices** (`settings.rs`): each
+- **Settings is a property sheet over the app's Settings and Devices** (`settings.rs`), its
+  pages the core's (`SettingsView::pages`): their titles, settings in order, buttons and captions,
+  each setting a control by its `kind` (a toggle a check box with its hint under it, a choice a
+  drop-down, a time a line with its clock, a number, a line, a folder with Choose), two short
+  ones to a row; access keys are given in reading order from each label's first free letter.
+  What only Windows has goes on its page: the shortcuts from anywhere on General (their words
+  `hotkey_words`), the devices on Devices and Sync, the exports on Export and Import. Each
   page draws `view.settings` and `view.devices` once it exists (a sheet makes a page the first
   time it is shown), a page coming to the front taking the app's sayings to its status line.
   A line is sent as typed (`SettingsEvent::Type`) and applied when left. Rename and Unpair hold
@@ -159,7 +176,10 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   in short (`offered`, a list's by place in `ListView::offered`) by kind, and run them as the
   app's with `ActOn`, the keys excepted. A trashed task's Erase Permanently is its menu's and
   the Task menu's alone, with no accelerator. A row the tree folds by a click is put in hand to fold it, and the
-  selected row put back after (`actions::fold`).
+  selected row put back after (`actions::fold`). The details pane's buttons are Save and the
+  task's `primary` actions as it offers them now (made again only when they change), then
+  Actions, a menu of every one; its words and its lines besides the form (`Lines::details`) are
+  the core's (`details_words`).
 - **IsDialogMessage runs over the whole main window**, with the panes
   `WS_EX_CONTROLPARENT`, so menu command ids are never 1 or 2 (`IDOK`, `IDCANCEL`). Field
   mnemonics avoid the menu bar's letters (F E V T D H): the dialog manager gives
@@ -171,8 +191,9 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   nowhere.
 - **The Notes field gives Tab and Escape back** (`WM_GETDLGCODE`), and panes ignore
   `WM_CLOSE`, which a multi-line edit sends its parent on Escape.
-- **Global shortcuts are this PC's** (`HKCU\Software\Lumenna\Shortcuts`, `shortcuts.rs`).
-  They are unregistered while new keys are chosen. Windows does not say who holds a refused
+- **Global shortcuts are this PC's** (`HKCU\Software\Lumenna\Shortcuts`, `shortcuts.rs`), what
+  they are, their keys until changed, their warnings and every word about them the core's
+  (`lumenna_app::hotkeys`). They are unregistered while new keys are chosen. Windows does not say who holds a refused
   shortcut, so another open Lumenna window (class `LumennaMain-`) is named rather than
   "another program". `--no-shortcuts` leaves them to another copy.
 - **One instance per profile** (a mutex and window class named from the profile path). The
@@ -198,8 +219,12 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
 - **Reminders are toasts** (`toast.rs`), given by the device's own delivery as the Mac's are
   (`Device::deliver_reminders`, asked off the window's thread and shown back on it, `WM_THEN`, as
   Back Up Now's backup is taken; their buttons writing through the device), under an app
-  identity of their own (`LUMENNA_APP_ID` for tests), their buttons the core's: Carry Forward and Replan where a
-  firing has them, then Dismiss and Snooze. Tests can read a shown toast's XML from the
+  identity of their own (`LUMENNA_APP_ID` for tests), each as the app lists it
+  (`lumenna_app::due::arrived`: the summary of what was missed, then each due) with its buttons
+  in the core's order and words (`Due::buttons`): Carry Forward and Replan where a firing has
+  them, then Dismiss and Snooze; a button's sentence is its change's, else the core's `said`.
+  An overrun's Replan is the app's Replan from Now over Today, not `DueEvent::Replan`, which
+  works on the reminders the app looked for itself. Tests can read a shown toast's XML from the
   notification history but cannot press its buttons, so what each button does is checked by
   hand.
 - **UI tests** (`tests/ui.rs`) drive the real app and assert on UI Automation. They take the

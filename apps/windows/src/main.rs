@@ -8,15 +8,14 @@
 //! moment anything is custom-drawn, its UI Automation provider is ours to write. Forms are
 //! edit controls, combo boxes and buttons, and dialogs are the dialog manager's own.
 //!
-//! How every line reads and how flat rows become a tree are the app's (`lumenna_app`), built
-//! and tested on every platform; so is what is decided here outside Win32, the shortcuts. The
-//! rest is in `win`, and exists only on Windows.
+//! How every line reads, how flat rows become a tree, the menus and the shortcuts from anywhere
+//! are the app's (`lumenna_app`), built and tested on every platform. The rest is in `win`,
+//! and exists only on Windows, but for the widget's cards (`widget`).
 
 #![cfg_attr(windows, windows_subsystem = "windows")]
 // Elsewhere the neutral modules are built for their tests alone, with nothing calling them.
 #![cfg_attr(not(windows), allow(dead_code))]
 
-mod shortcut;
 mod widget;
 
 // How every line reads, the keys and the tree are the app's, shared with every other.

@@ -16,8 +16,9 @@ use lumenna_app::details::DetailsEvent;
 use lumenna_app::lines::Lines;
 use lumenna_app::{ActingOn, DetailsView, ViewModel};
 use lumenna_ffi::ShellEvent;
+use lumenna_records::fields::{DetailsWords, details_words};
 use lumenna_records::{ActionKind, Asks, Choice, Offered, TaskDetail, priorities, task_form};
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
 use windows::Win32::UI::Controls::{WC_BUTTONW, WC_COMBOBOXW, WC_EDITW, WC_LISTBOXW, WC_STATICW};
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_TAB};
@@ -26,11 +27,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
     BN_CLICKED, BS_PUSHBUTTON, CB_ADDSTRING, CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CBN_SELCHANGE, CBS_DROPDOWNLIST,
     DLGC_WANTALLKEYS, DLGC_WANTMESSAGE, DLGC_WANTTAB, EN_CHANGE, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY,
     ES_WANTRETURN, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, LBS_NOINTEGRALHEIGHT, LBS_NOTIFY, MSG,
-    WM_GETDLGCODE, WM_KEYDOWN, WM_NCDESTROY, WS_EX_CLIENTEDGE, WS_TABSTOP, WS_VSCROLL,
+    DestroyWindow, GetWindowRect, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, WM_GETDLGCODE, WM_GETFONT, WM_KEYDOWN,
+    WM_NCDESTROY, WM_SETFONT, WS_EX_CLIENTEDGE, WS_TABSTOP, WS_VSCROLL,
 };
 use windows::core::HSTRING;
 
-use super::a11y;
+use super::{a11y, dark};
 use super::app::App;
 use super::controls::{self, rect};
 use super::view::Metrics;
@@ -46,8 +48,7 @@ const PROJECT: u16 = 305;
 const LABELS: u16 = 306;
 const NOTES: u16 = 307;
 const WAITS: u16 = 308;
-const STATE: u16 = 309;
-const HISTORY: u16 = 310;
+const ABOUT: u16 = 309;
 
 /// Where a field sits: across the pane, or in one of its two columns.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -65,16 +66,10 @@ struct Field {
     lines: i32,
 }
 
-/// What a button does: saving, the task's action of these kinds, or stopping waiting for the
-/// task chosen in the list above it.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Action {
-    Save,
-    Kinds(&'static [ActionKind]),
-    StopWaiting,
-}
-
 pub struct Detail {
+    pane: HWND,
+    /// Its words, the core's (`details_words`).
+    words: DetailsWords,
     placeholder: HWND,
     fields: Vec<Field>,
     title: HWND,
@@ -86,13 +81,20 @@ pub struct Detail {
     labels: HWND,
     notes: HWND,
     waits: HWND,
-    /// "Add…" and "Stop Waiting", under the list of what it waits for.
-    wait_buttons: Vec<(HWND, Action)>,
-    state: HWND,
-    /// What has happened to it: the core's lines, on the task's own screen and never in a list.
-    history: HWND,
-    /// Save, Mark Done and the rest, in rows of three.
-    buttons: Vec<(HWND, Action)>,
+    /// Wait for Another Task and Stop Waiting for the Selected Task, under the list of what it
+    /// waits for.
+    add_wait: HWND,
+    stop_wait: HWND,
+    /// What the details list besides the form, a line each (`Lines::details`): its state, what
+    /// it waits for, its history, on the task's own screen and never in a list.
+    about: HWND,
+    save: HWND,
+    /// The task's primary actions, as it offers them now, a button each after Save.
+    offered: RefCell<Vec<(HWND, Offered)>>,
+    /// Every action it offers, a menu away.
+    more: HWND,
+    /// Where the pane was last laid out, to lay it out again when its buttons change.
+    laid: Cell<Option<(i32, i32, Metrics)>>,
     shown: RefCell<Option<TaskDetail>>,
     /// What the Project list offers, as the core gives it.
     projects: RefCell<Vec<Choice>>,
@@ -102,7 +104,8 @@ pub struct Detail {
 
 impl Detail {
     pub fn create(pane: HWND) -> Self {
-        let placeholder = controls::create(pane, WC_STATICW, "No task selected", SS_CENTER.0 | SS_NOPREFIX.0, 0, 0);
+        let words = details_words(false);
+        let placeholder = controls::create(pane, WC_STATICW, &words.none, SS_CENTER.0 | SS_NOPREFIX.0, 0, 0);
         let mut fields = Vec::new();
         let mut field = |label: &str, class, style: u32, id: u16, column: Column, lines: i32, description: &str| {
             let label = controls::create(pane, WC_STATICW, label, 0, 0, 0);
@@ -142,25 +145,16 @@ impl Detail {
         let (label, hint) = named("notes", 'N');
         let notes = field(&label, WC_EDITW, multiline, NOTES, Column::Full, 4, &hint);
         let waits_style = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT) as u32 | WS_VSCROLL.0;
-        let waits = field("&Waits for:", WC_LISTBOXW, waits_style, WAITS, Column::Full, 3, "The tasks this one waits for. It is blocked until they are done.");
-        let button = |text: &str, action: Action| {
-            (controls::create(pane, WC_BUTTONW, text, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, 0), action)
-        };
-        let wait_buttons = vec![button("Add...", Action::Kinds(&[ActionKind::WaitFor])), button("Stop Waiting", Action::StopWaiting)];
-        a11y::set_name(wait_buttons[0].0, "Add something it waits for");
-        a11y::set_name(wait_buttons[1].0, "Stop waiting for the selected task");
-        let state = field("State:", WC_EDITW, line | ES_READONLY as u32, STATE, Column::Full, 1, "");
+        let waits = field(&format!("{}:", devices::marked(&words.waits, 'W', '&')), WC_LISTBOXW, waits_style, WAITS, Column::Full, 3, &words.waits_hint);
+        let button = |text: &str| controls::create(pane, WC_BUTTONW, text, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, 0);
+        // Wait for Another Task asks which: an ellipsis says so.
+        let add_wait = button(&format!("{}...", words.add_wait.replace('&', "&&")));
+        let stop_wait = button(&words.stop_wait.replace('&', "&&"));
         let read_only = (ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY) as u32 | WS_VSCROLL.0;
-        let history = field("Histor&y:", WC_EDITW, read_only, HISTORY, Column::Full, 3, "");
-        let buttons = vec![
-            button("&Save", Action::Save),
-            // Named again from the task's own actions whenever one is shown.
-            button("Mark Done", Action::Kinds(&[ActionKind::MarkDone, ActionKind::MarkNotDone])),
-            button("Put in a Block...", Action::Kinds(&[ActionKind::PutInBlock])),
-            button("Make Subtask Of...", Action::Kinds(&[ActionKind::MakeSubtaskOf])),
-            button("Move to Top Level", Action::Kinds(&[ActionKind::MoveToTopLevel])),
-            button("Move to Trash", Action::Kinds(&[ActionKind::Delete])),
-        ];
+        let about = field(&format!("{}:", devices::marked(&words.about, 'b', '&')), WC_EDITW, read_only, ABOUT, Column::Full, 4, "");
+        let save = button(&devices::marked(&words.save, 'S', '&'));
+        // Every action the task offers, as its row's menu offers them.
+        let more = button(&format!("{}...", devices::marked(&words.actions, 'A', '&')));
 
         // An example of what each line takes, greyed while it is empty.
         for (key, edit) in [("title", title), ("due", due), ("repeat", repeat), ("estimate", estimate), ("labels", labels)] {
@@ -174,9 +168,11 @@ impl Detail {
         }
         unsafe {
             let _ = SetWindowSubclass(notes, Some(leaves_on_tab), 1, 0);
-            let _ = SetWindowSubclass(history, Some(leaves_on_tab), 1, 0);
+            let _ = SetWindowSubclass(about, Some(leaves_on_tab), 1, 0);
         }
         let detail = Self {
+            pane,
+            words,
             placeholder,
             fields,
             title,
@@ -188,10 +184,13 @@ impl Detail {
             labels,
             notes,
             waits,
-            wait_buttons,
-            state,
-            history,
-            buttons,
+            add_wait,
+            stop_wait,
+            about,
+            save,
+            offered: RefCell::new(Vec::new()),
+            more,
+            laid: Cell::new(None),
             shown: RefCell::new(None),
             projects: RefCell::new(Vec::new()),
             filling: Cell::new(false),
@@ -216,8 +215,60 @@ impl Detail {
             controls::show(field.label, visible);
             controls::show(field.control, visible);
         }
-        for (button, _) in self.wait_buttons.iter().chain(&self.buttons) {
-            controls::show(*button, visible);
+        let offered: Vec<HWND> = self.offered.borrow().iter().map(|(button, _)| *button).collect();
+        for button in [self.add_wait, self.stop_wait, self.save, self.more].into_iter().chain(offered) {
+            controls::show(button, visible);
+        }
+    }
+
+    /// The buttons after Save: the task's primary actions as it offers them now, made again
+    /// only when they change, focus moving to the title first if it was on one going. What it
+    /// waits for has its own buttons, and its own form is this pane.
+    fn draw_offered(&self, task: &TaskDetail) {
+        let wanted: Vec<Offered> = task
+            .offered
+            .iter()
+            .filter(|action| action.primary && !matches!(action.kind, ActionKind::WaitFor | ActionKind::StopWaiting))
+            .filter(|action| !(action.asks == Asks::Form && matches!(action.kind, ActionKind::Edit | ActionKind::EditTask)))
+            .cloned()
+            .collect();
+        let same = {
+            let had = self.offered.borrow();
+            had.len() == wanted.len() && had.iter().zip(&wanted).all(|((_, a), b)| a.kind == b.kind && a.title == b.title)
+        };
+        if same {
+            // The same buttons, each now standing for the task's own.
+            for ((_, action), offered) in self.offered.borrow_mut().iter_mut().zip(wanted) {
+                *action = offered;
+            }
+            return;
+        }
+        let old: Vec<HWND> = self.offered.borrow_mut().drain(..).map(|(button, _)| button).collect();
+        if old.contains(&controls::focused()) {
+            controls::focus(self.title);
+        }
+        for button in old {
+            unsafe {
+                let _ = DestroyWindow(button);
+            }
+        }
+        let font = controls::send(self.save, WM_GETFONT, 0, 0);
+        let mut after = self.save;
+        let mut made = Vec::new();
+        for action in wanted {
+            let button = controls::create(self.pane, WC_BUTTONW, &actions::label(&action), BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, 0);
+            controls::send(button, WM_SETFONT, font as usize, 0);
+            // In Tab's order after Save, or the one before it, and before Actions.
+            unsafe {
+                let _ = SetWindowPos(button, Some(after), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
+            after = button;
+            made.push((button, action));
+        }
+        *self.offered.borrow_mut() = made;
+        dark::controls_in(self.pane);
+        if let Some((width, height, m)) = self.laid.get() {
+            self.layout(width, height, m);
         }
     }
 
@@ -267,31 +318,28 @@ impl Detail {
         let had: Vec<String> = self.shown.borrow().as_ref().map(|t| t.depends.iter().map(|d| d.title.clone()).collect()).unwrap_or_default();
         if had != waits || self.task_id().as_deref() != Some(task.id.as_str()) {
             controls::send(self.waits, LB_RESETCONTENT, 0, 0);
-            for title in &waits {
-                let text = HSTRING::from(*title);
+            // An empty list says so, in the core's word.
+            let listed = if waits.is_empty() { vec![self.words.waits_none.as_str()] } else { waits.clone() };
+            for title in listed {
+                let text = HSTRING::from(title);
                 controls::send(self.waits, LB_ADDSTRING, 0, text.as_ptr() as isize);
             }
             controls::send(self.waits, LB_SETCURSEL, 0, 0);
         }
-        if task.depends.is_empty() && controls::focused() == self.wait_buttons[1].0 {
-            controls::focus(self.waits);
-        }
-        controls::enable(self.wait_buttons[1].0, !task.depends.is_empty());
-        set_if_changed(self.state, &lines.task_state);
-        set_if_changed(self.history, &task.history.join("\r\n"));
-        for (button, action) in self.wait_buttons.iter().chain(&self.buttons) {
-            if let Action::Kinds(kinds) = action {
-                let offered = actions::of_kind(&task.offered, kinds);
-                // "Add…" beside the list it adds to says enough; the rest are named as offered.
-                if let Some(offered) = offered.as_ref().filter(|_| !self.wait_buttons.iter().any(|(b, _)| b == button)) {
-                    set_if_changed(*button, &actions::label(offered));
-                }
-                // Never the button that has focus: focus would go nowhere.
-                if offered.is_some() || controls::focused() != *button {
-                    controls::enable(*button, offered.is_some());
-                }
+        // Never disable the button that has focus: focus would go nowhere.
+        for (button, on) in [
+            (self.add_wait, actions::of_kind(&task.offered, &[ActionKind::WaitFor]).is_some()),
+            (self.stop_wait, !task.depends.is_empty()),
+        ] {
+            if !on && controls::focused() == button {
+                controls::focus(self.waits);
             }
+            controls::enable(button, on);
         }
+        // Its state, the rule it repeats by, what it waits for and its history, a line each.
+        let about: Vec<String> = lines.details.iter().map(|line| line.text.clone()).collect();
+        set_if_changed(self.about, &about.join("\r\n"));
+        self.draw_offered(task);
         held
     }
 
@@ -302,7 +350,7 @@ impl Detail {
         *self.projects.borrow_mut() = projects.to_vec();
         controls::send(self.project, CB_RESETCONTENT, 0, 0);
         for project in projects {
-            let text = if project.depth > 0 { format!("{}, level {}", project.title, project.depth + 1) } else { project.title.clone() };
+            let text = if project.depth > 0 { format!("{}, {}", project.title, lumenna_records::words::level(project.depth)) } else { project.title.clone() };
             let text = HSTRING::from(text);
             controls::send(self.project, CB_ADDSTRING, 0, text.as_ptr() as isize);
         }
@@ -356,21 +404,33 @@ impl Detail {
         if code != BN_CLICKED {
             return false;
         }
-        let action = self.wait_buttons.iter().chain(&self.buttons).find(|(b, _)| *b == control).map(|(_, a)| *a);
-        let Some(action) = action else { return false };
-        let Some(task) = self.shown.borrow().clone() else { return true };
-        let offered = match action {
-            Action::Save => {
-                self.save(app);
-                return true;
+        if control == self.save {
+            self.save(app);
+            return true;
+        }
+        let Some(task) = self.shown.borrow().clone() else {
+            return [self.add_wait, self.stop_wait, self.more].contains(&control) || self.offered.borrow().iter().any(|(b, _)| *b == control);
+        };
+        let offered = if control == self.add_wait {
+            actions::of_kind(&task.offered, &[ActionKind::WaitFor])
+        } else if control == self.stop_wait {
+            // The task chosen in the list, whose Stop Waiting names it.
+            let index = controls::send(self.waits, LB_GETCURSEL, 0, 0);
+            let other = usize::try_from(index).ok().and_then(|i| task.depends.get(i)).map(|d| d.id.clone());
+            task.offered.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other == other).cloned()
+        } else if control == self.more {
+            // Every action the task offers, as its row's menu offers them, under the button.
+            let mut placed = RECT::default();
+            unsafe {
+                let _ = GetWindowRect(self.more, &mut placed);
             }
-            Action::Kinds(kinds) => actions::of_kind(&task.offered, kinds),
-            Action::StopWaiting => {
-                // The task chosen in the list, whose Stop Waiting names it.
-                let index = controls::send(self.waits, LB_GETCURSEL, 0, 0);
-                let other = usize::try_from(index).ok().and_then(|i| task.depends.get(i)).map(|d| d.id.clone());
-                task.offered.iter().find(|a| a.kind == ActionKind::StopWaiting && a.other == other).cloned()
-            }
+            let items = actions::menu(&task.offered);
+            let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
+            app.popup(&items, POINT { x: placed.left, y: placed.bottom }).and_then(|command| actions::chosen(&task.offered, command))
+        } else {
+            let found = self.offered.borrow().iter().find(|(b, _)| *b == control).map(|(_, action)| action.clone());
+            let Some(found) = found else { return false };
+            Some(found)
         };
         if let Some(offered) = offered {
             self.act(app, offered);
@@ -380,19 +440,15 @@ impl Detail {
 
     /// Runs one of the task's own actions as the app's; its form is this pane.
     pub fn act(&self, app: &App, action: Offered) {
-        if action.asks == Asks::Form {
+        if action.asks == Asks::Form && action.kind != ActionKind::Reminders {
             app.open_detail();
         } else {
             app.crux.send(ShellEvent::ActOn(ActingOn::Details, action));
         }
     }
 
-    /// What can be done to the task shown: for the Task menu, while focus is here.
-    pub fn actions(&self) -> Option<Vec<Offered>> {
-        self.shown.borrow().as_ref().map(|task| task.offered.clone())
-    }
-
     pub fn layout(&self, width: i32, height: i32, m: Metrics) {
+        self.laid.set(Some((width, height, m)));
         let gap = m.gap();
         let inner = width - 2 * gap;
         let half = (inner - gap) / 2;
@@ -414,11 +470,17 @@ impl Detail {
                 y += m.line + m.px(2) + tall + m.px(6);
             }
             if field.control == self.waits {
-                row_of_buttons(&self.wait_buttons, gap, y - m.px(2), inner, m);
-                y += m.button + m.px(8);
+                // Their names are long: a row each.
+                for button in [self.add_wait, self.stop_wait] {
+                    controls::place(button, rect(gap, y - m.px(2), inner, m.button));
+                    y += m.button + m.px(6);
+                }
+                y += m.px(2);
             }
         }
-        for (row, chunk) in self.buttons.chunks(3).enumerate() {
+        let buttons: Vec<HWND> =
+            std::iter::once(self.save).chain(self.offered.borrow().iter().map(|(button, _)| *button)).chain([self.more]).collect();
+        for (row, chunk) in buttons.chunks(3).enumerate() {
             row_of_buttons(chunk, gap, y + row as i32 * (m.button + m.px(6)), inner, m);
         }
     }
@@ -432,9 +494,9 @@ fn set_if_changed(control: HWND, text: &str) {
 }
 
 /// Lays buttons out in a row, three to its width.
-fn row_of_buttons(buttons: &[(HWND, Action)], x: i32, y: i32, width: i32, m: Metrics) {
+fn row_of_buttons(buttons: &[HWND], x: i32, y: i32, width: i32, m: Metrics) {
     let each = (width - 2 * m.px(6)) / 3;
-    for (index, (button, _)) in buttons.iter().enumerate() {
+    for (index, button) in buttons.iter().enumerate() {
         controls::place(*button, rect(x + index as i32 * (each + m.px(6)), y, each, m.button));
     }
 }

@@ -8,7 +8,7 @@
 //! as typed rather than read as a binding.
 
 use jiff::Timestamp;
-use lumenna_app::glance::GlanceEntry;
+use lumenna_app::glance::{GlanceEntry, logged};
 use serde_json::{Value, json};
 
 /// The small card: what is happening now, and the timer running.
@@ -53,33 +53,6 @@ pub fn data(entry: &GlanceEntry, now: Timestamp) -> Value {
         })).collect::<Vec<_>>(),
         "new_task": new_task(),
     })
-}
-
-/// What a running timer has logged at `now`, counting from `counting_from`, as the core says a
-/// length: "25 minutes".
-fn logged(counting_from: &str, now: Timestamp) -> Option<String> {
-    let from: Timestamp = counting_from.parse().ok()?;
-    let minutes = now.duration_since(from).as_mins().max(0);
-    Some(lumenna_records::words::duration(u32::try_from(minutes).unwrap_or(u32::MAX)))
-}
-
-/// The entry to show at `now`: the last of the timeline's moments to have begun.
-pub fn current(entries: &[GlanceEntry], now: Timestamp) -> Option<&GlanceEntry> {
-    entries.iter().rev().find(|entry| entry.moment.at.parse::<Timestamp>().is_ok_and(|at| at <= now)).or(entries.first())
-}
-
-/// When the card must next be drawn again after `now`, the store unchanged: the timeline's next
-/// moment, or sooner the next minute a running timer reaches.
-pub fn redraw_at(entries: &[GlanceEntry], now: Timestamp) -> Option<Timestamp> {
-    let next = entries.iter().filter_map(|entry| entry.moment.at.parse::<Timestamp>().ok()).find(|at| *at > now);
-    let minute = current(entries, now)
-        .and_then(|entry| entry.moment.timer.as_ref())
-        .and_then(|timer| timer.counting_from.parse::<Timestamp>().ok())
-        .and_then(|from| {
-            let passed = now.duration_since(from).as_mins().max(0);
-            from.checked_add(jiff::SignedDuration::from_mins(passed + 1)).ok()
-        });
-    [next, minute].into_iter().flatten().min()
 }
 
 /// The task a Mark Done names, from the verb and data the card sent back.
@@ -194,21 +167,6 @@ mod tests {
         assert_eq!(card["colour"], "Attention");
         assert_eq!(card["done"], shown.mark_done);
         assert_eq!(card["done"], "Mark Done", "Title Case, as Windows writes a button");
-    }
-
-    #[test]
-    fn the_card_is_drawn_again_at_the_next_moment_or_sooner_at_the_timers_next_minute() {
-        let entries = vec![entry(moment("2026-10-25T09:00:00Z")), entry(moment("2026-10-25T11:00:00Z"))];
-        assert_eq!(redraw_at(&entries, at("2026-10-25T09:30:00Z")), Some(at("2026-10-25T11:00:00Z")));
-        assert_eq!(current(&entries, at("2026-10-25T11:30:00Z")).unwrap().moment.at, "2026-10-25T11:00:00Z");
-        let timer = GlanceTimer {
-            sitting: "s".to_owned(),
-            task: "Write".to_owned(),
-            block: String::new(),
-            counting_from: "2026-10-25T09:00:10Z".to_owned(),
-        };
-        let running = vec![entry(GlanceMoment { timer: Some(timer), ..moment("2026-10-25T09:00:00Z") })];
-        assert_eq!(redraw_at(&running, at("2026-10-25T09:30:20Z")), Some(at("2026-10-25T09:31:10Z")));
     }
 
     #[test]
