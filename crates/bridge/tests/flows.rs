@@ -1419,9 +1419,11 @@ fn put_in_a_block_ends_in_another_day_which_asks_the_day_and_offers_its_blocks()
     assert!(matches!(asking.question, Question::Text { .. }), "which day: {:?}", asking.question);
     app.send(Event::Answer(Answer::Text { text: "the twelfth of never".to_owned() }));
     assert!(app.view().asking.unwrap().refusal.is_some(), "a day it cannot read stays asked, with why");
+    let day = app.view().asking.unwrap().number;
     app.send(Event::Answer(Answer::Text { text: far }));
     let asking = app.view().asking.unwrap();
     assert!(matches!(asking.question, Question::Pick { .. }), "back to the pick");
+    assert!(asking.number > day, "the pick again is a new question, to be asked");
     let titles: Vec<String> = asking.choices.unwrap().choices.into_iter().map(|c| c.title).collect();
     assert!(titles.iter().any(|t| t == "Far off"), "{titles:?}");
 }
