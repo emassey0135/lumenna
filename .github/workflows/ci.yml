@@ -24,6 +24,8 @@ on:
     paths-ignore: ["**/CLAUDE.md", "**/README.md", "ROADMAP.md", ".github/workflows/release.yml"]
   pull_request:
     paths-ignore: ["**/CLAUDE.md", "**/README.md", "ROADMAP.md", ".github/workflows/release.yml"]
+  # A run asked for tests everything, as master does (`changes`).
+  workflow_dispatch:
 
 # A newer push replaces the run still going for the one before it, on master as on a pull
 # request: with several sessions pushing, a run per commit piled up and failure mail with
@@ -142,7 +144,8 @@ jobs:
   gtk-ui:
     name: GTK UI tests
     needs: changes
-    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.gtk == 'true'
+    # The tests build lum and reach the running app through it, so a change to lum runs them.
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.gtk == 'true' || needs.changes.outputs.cli == 'true'
     runs-on: ubuntu-24.04
     # Arch, for a current GTK. What the tests check is what Orca is told, and GTK only tells
     # AT-SPI a tree item's level from 4.16 and its position among its siblings from 4.22;
@@ -182,6 +185,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y emacs-nox
+      # The Python the BTSpeak devices run (Debian 12's), not the runner's newer one.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
       - name: Build lum
         run: cargo build -p lumenna-cli
       - name: BoltFFI
