@@ -172,11 +172,11 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   all, so the carry one is set from the last carry reminder seen whenever any is handed over:
   one already showing keeps its button. An overrun warning (`replan` set) is a third, its
   button the core's Replan, `.foreground`: `ReminderResponder` hands on a `RemindedOf` with
-  `replan`, and each app opens today with Replan from Now over it, one path for all three
-  (`AppModel.replanFromNow`: the day on now, then the proposal), the screens following. Not the
-  app's `DueEvent::Replan`: the app's due list is filled only by its own looks
-  (`DueEvent::Look`), which no Apple app sends, since the system holds the reminders, so the app
-  would refuse it. A reminder's block is the app's `ShowBlock` on every Apple app.
+  `replan`, and each app sends the app's `DueEvent::Replan` with the firing's id
+  (`AppModel.replan(from:)`, `<key>-<occurrence>`), which shows today with Replan from Now over
+  it, the screens following. The app opens it for a warning it never held, as no Apple app fills
+  its due list (`DueEvent::Look`): the system holds the reminders. A reminder's block is the
+  app's `ShowBlock` on every Apple app.
 - **The day's own actions** (`Plan.actions`) are a Day Actions menu button among the day's
   buttons (in the navigation bar it crowds the title, which the iPad's narrow column clips)
   and the heading's custom actions, which make the heading at least 44 points tall: an element
@@ -230,7 +230,26 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   the typing. Row commands act on the row with keyboard focus, else VoiceOver's (found
   through its containers when VoiceOver's element is not a view, as the iPad's is:
   `UIAccessibility.voiceOverView`), else the one open beside the list; the task open beside a
-  list answers them itself.
+  list answers them itself. **Every command is the core's by its id** (`Event::Key`, and
+  `DetailsEvent::Key` for the task the details show: "mark-done", "put-in-block", "plan-day"),
+  on every Apple app, a row's tap and Return ("open") and the Mac's menus included: what an id
+  runs, and why a row has none, are the core's, so no app keeps a list of action kinds. The
+  Mac's Mark Done takes its name from `ViewModel.commands` (Mark Not Done on a done task).
+- **Settings are the core's pages** (`SettingsView.pages`, `settingsPages`): the Mac's tabs, the
+  iPhone's and iPad's list and the watch's, each page the shared `SettingsPageForm` (its
+  settings in order, a choice a section of its own, its buttons, its caption), what is a
+  platform's own drawn beside: the Mac's login item and shortcuts on General, the exports and the
+  store's own actions on Export and Import. A page with nothing this device has is left out
+  (General on iOS; on the watch, every page with files).
+- **The words are the core's**: quick add's, the filter's and completion's (`quickAddWords`; the
+  quick-add field is named Task on every Apple app), the details' (`detailsWords`, and
+  `DetailsView.lines` under About), notifications off (`notificationWords`), a failure (the
+  core's sentence as the whole alert; `backupFailed`), the watch's sync (`phoneSync`), the
+  shortcuts' names and buttons (`hotkeyWords`; the Mac keeps its own caption, the core's being a
+  PC's). The sidebar's folding and levels are its entries' (`hidden`, `expanded`, `level`), a
+  pick's its lines', a count `choiceCount`. A widget's moment now is `glanceCurrent`;
+  `glance_redraw_at` and `glance_logged` are for a widget redrawn by hand, which WidgetKit's is
+  not: it takes every moment at once, and a timer counts by itself.
 - **Every assistant operation is an App Intent** (`Shared/Intents`, compiled into all three
   apps; the widgets compile Complete a Task alone, "The widgets"): one per operation of
   `assistantOperations()`, its `persistentIdentifier` the operation's `id`, each running
