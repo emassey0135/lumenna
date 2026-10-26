@@ -23,9 +23,9 @@ const WINDOWS: &[Shortcut] = &[
     Shortcut { group: Group::Lists, id: "properties", title: "Properties: the Task's Details, or the Block's Form", keys: &["Alt+Enter"] },
 ];
 
-/// A command's name as Windows words it: Windows says Exit where others say Quit.
+/// A command's name as Windows words it, as its menu does: Exit where others say Quit.
 fn title(shortcut: &Shortcut) -> &'static str {
-    if shortcut.id == "quit" { "Exit" } else { shortcut.title }
+    super::menu::windows_title(shortcut.id, shortcut.title)
 }
 
 /// Every shortcut, a group's heading and then a command a line: "New Task: Ctrl+N".

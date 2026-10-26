@@ -480,6 +480,13 @@ mod tests {
     }
 
     #[test]
+    fn the_windows_packages_app_says_what_lumenna_is_in_the_cores_words() {
+        let manifest = include_str!("../../../apps/windows/installer/msix/AppxManifest.xml");
+        let app = manifest.lines().find(|line| line.contains(r#"<uap:VisualElements DisplayName="Lumenna""#)).unwrap_or_default();
+        assert!(app.contains(&format!(r#"Description="{DESCRIPTION}""#)), "{app}");
+    }
+
+    #[test]
     fn a_watch_says_how_it_stands_with_its_phone_naming_it_as_given() {
         assert_eq!(phone_sync("the iPhone", &PhoneSync::NotYet), "Not synced with the iPhone yet");
         assert_eq!(phone_sync("the iPhone", &PhoneSync::Synced { time: "9:41 AM".to_owned() }), "Synced with the iPhone at 9:41 AM");

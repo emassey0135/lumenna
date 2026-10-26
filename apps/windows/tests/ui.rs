@@ -300,7 +300,7 @@ fn every_control_in_the_main_window_is_named() {
 fn every_settings_page_names_its_controls() {
     let app = App::launch(|_| {});
     app.post(&[SETTINGS]);
-    for page in ["General", "Planning", "Devices", "Backups", "Export and Import"] {
+    for page in lumenna_records::fields::settings_pages(true, false).into_iter().map(|page| page.title) {
         app.post(&[&format!("select:{page}")]);
         let lines = app.front();
         assert!(lines.iter().any(|l| l.contains(&format!("TabItem '{page}' selected"))), "{page} is shown");
@@ -508,7 +508,8 @@ fn the_keyboard_opens_a_rows_context_menu() {
 fn quick_add_reads_back_what_it_will_add_before_adding_it() {
     let app = App::launch(|_| {});
     app.post(&[NEW_TASK, "text:Call Sam tomorrow p1", "tab"]);
-    let read_back = |focus: &str| focus.starts_with("Edit 'Will add:'") && focus.contains("Call Sam") && focus.contains("priority 1");
+    let will_add = format!("Edit '{}:'", lumenna_records::fields::quick_add_words(false).will_add);
+    let read_back = |focus: &str| focus.starts_with(&will_add) && focus.contains("Call Sam") && focus.contains("priority 1");
     assert!(app.lands(read_back), "{}", app.focus());
     app.post(&["enter"]);
     assert!(app.says(|s| s.contains("Call Sam")), "{}", app.status());
@@ -827,7 +828,9 @@ fn a_blocks_reminders_are_listed_added_and_removed_as_the_core_offers_them() {
     let at = |name: &str| menu.iter().position(|m| m == name);
     assert!(at("Reminders...") < at("Delete Block..."), "{menu:?}");
     let dialog = app.front();
-    assert!(dialog.iter().any(|l| l.contains("Window 'Reminders'")), "{dialog:#?}");
+    // Named as the core names a block's list.
+    let title = lumenna_records::words::reminders_for("Deep work");
+    assert!(dialog.iter().any(|l| l.contains(&format!("Window '{title}'"))), "{dialog:#?}");
     assert!(dialog.iter().any(|l| l.contains(&defaults.reminders[0].words)), "the default is listed: {dialog:#?}");
     assert!(dialog.iter().any(|l| l.contains(&defaults.announcement)), "{dialog:#?}");
     assert!(unnamed(&dialog).is_empty(), "{:#?}", unnamed(&dialog));
@@ -981,7 +984,7 @@ fn windows_registry_forget(id: &str) {
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn the_pairing_dialog_asks_for_a_code_when_the_field_is_empty() {
     let app = App::launch(|_| {});
-    app.post(&[SETTINGS, "select:Devices", "invoke:Pair a Device..."]);
+    app.post(&[SETTINGS, "select:Devices and Sync", "invoke:Pair a Device..."]);
     let dialog = app.front();
     assert!(dialog.iter().any(|l| l.contains("Window 'Pair a Device'")), "{dialog:#?}");
     assert!(unnamed(&dialog).is_empty(), "{:#?}", unnamed(&dialog));
@@ -1132,11 +1135,11 @@ fn every_dialog_fits_the_screen_at_the_largest_text_size_with_nothing_overlappin
     app.post(&["esc", "cmd:185"]);
     fits_and_nothing_overlaps(&app, "Replan from Now");
     app.post(&["esc", SETTINGS]);
-    for page in ["General", "Planning", "Devices", "Backups", "Export and Import"] {
+    for page in lumenna_records::fields::settings_pages(true, false).into_iter().map(|page| page.title) {
         app.post(&[&format!("select:{page}")]);
         fits_and_nothing_overlaps(&app, &format!("Settings, {page}"));
     }
-    app.post(&["select:Devices", "invoke:Pair a Device..."]);
+    app.post(&["select:Devices and Sync", "invoke:Pair a Device..."]);
     fits_and_nothing_overlaps(&app, "Pair a Device");
     app.post(&["esc", "esc", "f1"]);
     fits_and_nothing_overlaps(&app, "Keyboard Shortcuts");
@@ -1323,9 +1326,11 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     );
     // Its own subtask is not somewhere it can go.
     app.post(&["cmd:164"]);
-    let offered: Vec<String> = app.front().into_iter().filter(|l| l.contains("ListItem")).collect();
-    assert!(offered.is_empty(), "Write report was offered as going under {offered:#?}");
     assert!(app.says(|s| s.contains("no task it could go under")), "{}", app.status());
+    // No pick opens at all: the main window stays in front, whose own lists (what the task waits
+    // for) are not a pick's.
+    let front = app.front();
+    assert!(!front.iter().any(|l| l.contains("Window 'Make Subtask Of")), "Write report was offered somewhere to go under: {front:#?}");
 
     // The Inbox keeps its name and place: only reordered and weighed.
     app.post(&["cmd:145", "select:Inbox, 2 open tasks", "context"]);
@@ -1686,7 +1691,9 @@ fn a_tasks_history_is_on_its_own_screen_and_never_in_the_list() {
     });
     app.post(&[GO_TASKS, "home"]);
     let window = app.front();
-    let history = window.iter().find(|l| l.trim_start().starts_with("Edit 'History:'")).unwrap_or_else(|| panic!("{window:#?}"));
+    // What the details list besides the form, under the core's heading, its history among them.
+    let about = format!("Edit '{}:'", lumenna_records::fields::details_words(false).about);
+    let history = window.iter().find(|l| l.trim_start().starts_with(&about)).unwrap_or_else(|| panic!("{window:#?}"));
     assert!(history.contains("1 sitting"), "{history}");
     assert!(app.focus().contains("Write report") && !app.focus().contains("sitting"), "{}", app.focus());
 }

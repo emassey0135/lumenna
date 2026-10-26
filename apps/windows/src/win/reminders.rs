@@ -40,6 +40,8 @@ const LISTS: u16 = 110;
 pub struct Reminders {
     hwnd: Cell<HWND>,
     status: Cell<HWND>,
+    /// Its title, the core's: "Reminders for Pay rent".
+    title: String,
     /// What it was first drawn from: which buttons it has.
     first: ReminderList,
     shown: RefCell<ReminderList>,
@@ -145,7 +147,7 @@ impl Dialog for Reminders {
         let list = (LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT) as u32 | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
         let button = BS_PUSHBUTTON as u32 | WS_TABSTOP.0;
         // The status line first, so Windows does not name it after the label before it.
-        let mut template = Template::new("Reminders", 260, 192)
+        let mut template = Template::new(&self.title, 260, 192)
             .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 148, 246, 18)
             .item(Class::Static, &self.first.announcement, ANNOUNCED, SS_NOPREFIX.0, 7, 7, 246, 9)
             .item(Class::Static, "&Reminders:", u16::MAX, 0, 7, 20, 246, 9)
@@ -221,6 +223,7 @@ impl Dialog for Reminders {
 /// Runs the app's open reminder list as a dialog until the app closes it or the person does.
 pub fn run(app: &App, list: ReminderList) {
     let reminders = Rc::new(Reminders {
+        title: app.crux.view().reminders_title.unwrap_or_default(),
         hwnd: Cell::new(HWND::default()),
         status: Cell::new(HWND::default()),
         shown: RefCell::new(ReminderList { reminders: Vec::new(), ..list.clone() }),

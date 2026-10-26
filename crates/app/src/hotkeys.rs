@@ -268,6 +268,22 @@ pub fn hotkey_words() -> HotKeyWords {
     }
 }
 
+/// How a shortcut turned off is shown where its keys would be.
+#[must_use]
+pub fn off() -> String {
+    "Off".to_owned()
+}
+
+/// What is said once the shortcut called `name` is changed: its keys now, `described` as
+/// [`HotKeys::describe`] says them, or that it is off.
+#[must_use]
+pub fn changed(name: &str, described: Option<&str>) -> String {
+    match described {
+        Some(keys) => format!("{name} is {keys}"),
+        None => format!("{name} is off"),
+    }
+}
+
 /// What the dialog for new keys asks, for the shortcut called `name`.
 #[must_use]
 pub fn press_keys_for(name: &str) -> String {
@@ -338,6 +354,12 @@ mod tests {
         assert!(altgr.warning().unwrap().contains("AltGr"));
         let bare = HotKeys { control: false, alt: false, shift: true, windows: false, key: u16::from(b'L') };
         assert!(bare.warning().unwrap().contains("typing"));
+    }
+
+    #[test]
+    fn a_shortcut_changed_says_its_keys_now_or_that_it_is_off() {
+        assert_eq!(changed("Show Lumenna", Some("Control+Alt+Shift+L")), "Show Lumenna is Control+Alt+Shift+L");
+        assert_eq!(changed("Show Lumenna", None), "Show Lumenna is off");
     }
 
     #[test]

@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use lumenna_records::{ActionKind, Change, Result};
+use lumenna_records::{Change, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     COLOR_BTNFACE, CreateFontIndirectW, DeleteObject, GetDC, GetTextMetricsW, HBRUSH, HFONT, LOGFONTW,
@@ -34,7 +34,7 @@ use windows::Win32::UI::Controls::{EM_SETSEL, EM_UNDO};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{HSTRING, PCWSTR, w};
 
-use lumenna_app::{Capitals, DayMove, DetailsEvent, Offered};
+use lumenna_app::{Capitals, DetailsEvent};
 use lumenna_ffi::ShellEvent;
 
 use super::asking;
@@ -55,16 +55,16 @@ use super::menu;
 use super::prompts;
 use super::quick_add;
 use super::sidebar::Sidebar;
-use super::actions;
 use super::tasks::TaskList;
-use super::settings::{self, Page};
+use super::settings;
 use super::shortcuts;
-use crate::shortcut::{self, Kind};
+use lumenna_app::hotkeys::{self, HotKind};
 use super::tray::{self, WM_SHOW_RUNNING, WM_TRAY};
 use super::view::{Metrics, View};
 use super::{a11y, core::sentence};
 use lumenna_records::places::{Place, SidebarGroup};
-use crate::{profile, speech};
+use crate::{keys, profile, speech};
+use lumenna_app::keys::Runs;
 
 /// Runs a deferred action: something a notification asked for that changes the window it
 /// came from, so it waits until that window has finished sending it.
@@ -78,8 +78,6 @@ const WM_THEN: u32 = WM_APP + 9;
 pub const ICON: u16 = 1;
 
 const TIMER_REFRESH: usize = 1;
-/// Looks every 50 milliseconds whether the app is still, to ask the question it has open.
-const TIMER_ASK: usize = 2;
 /// Looks every 50 milliseconds whether the app is still, to write the field being typed in
 /// where the app's value differs.
 const TIMER_SETTLE: usize = 3;
@@ -135,8 +133,10 @@ pub struct App {
     landing: Cell<u32>,
     /// Whether the app's open question is being asked now.
     asking: Cell<bool>,
-    /// The last line typed into a question, asked again with it when refused.
-    pub typed: RefCell<String>,
+    /// The number of the question last asked (`Asking::number`), and whether it has been
+    /// answered since: a new number is a new question, and a refusal of one answered asks again.
+    asked: Cell<u32>,
+    answered: Cell<bool>,
     /// The app's block form, while its dialog is open.
     block_form: RefCell<Option<Rc<block_form::Form>>>,
     /// The app's proposal screen, while its dialog is open.
@@ -372,6 +372,9 @@ impl App {
         let clock = lumenna_ffi::Locale::time(&Formats, 13, 0);
         // Title Case, as Windows writes its buttons and menus.
         crux.send(ShellEvent::Capitals(Capitals::Title));
+        // A task list's rows have the tree's checkboxes, which say a task is done: the app's
+        // lines leave it out.
+        crux.send(ShellEvent::Checkboxes(true));
         // How pairing's sentences call this device; it finds devices on its own network.
         crux.send(ShellEvent::PairingAs { called: "this PC".to_owned(), nearby: true });
         // Whether it opens at sign-in, the app's setting of keeping Lumenna running.
@@ -387,7 +390,8 @@ impl App {
             seq: Cell::new(0),
             landing: Cell::new(0),
             asking: Cell::new(false),
-            typed: RefCell::new(String::new()),
+            asked: Cell::new(0),
+            answered: Cell::new(false),
             block_form: RefCell::new(None),
             proposal: RefCell::new(None),
             live: RefCell::new(Vec::new()),
@@ -437,7 +441,7 @@ impl App {
         self.back_up_if_due();
         self.give_reminders();
         if !taken.is_empty() {
-            self.say(&shortcut::taken(&taken, shortcuts::another_copy_open(self.main)));
+            self.say(&hotkeys::taken(&taken, shortcuts::another_copy_open(self.main)));
         }
     }
 
@@ -579,10 +583,8 @@ impl App {
         let opens = (turn.view.block_form.is_some() && form.is_none())
             || (turn.view.proposal.is_some() && screen.is_none())
             || (turn.view.reminders.is_some() && open_list.is_none());
-        if (turn.view.asking.is_some() || opens) && !self.asking.get() {
-            unsafe {
-                let _ = SetTimer(Some(self.main), TIMER_ASK, 50, None);
-            }
+        if (self.to_ask(&now) || opens) && !self.asking.get() {
+            self.defer(App::ask);
         }
         // The tree says a row it folded itself is expanded or collapsed; a proposal about to
         // open is said by its screen, once it is up.
@@ -617,19 +619,30 @@ impl App {
         }
     }
 
-    /// Asks the app's open question once the app is still: not from a turn made before the
-    /// last answer reached it.
-    fn ask_when_still(&self) {
-        if !self.crux.is_still() || self.asking.get() {
+    /// Whether the app's open question is one to ask now: a new one, by its number, or the one
+    /// last answered, refused (`Asking::number`). The same question while its answer is written
+    /// is not asked again.
+    fn to_ask(&self, now: &lumenna_app::ViewModel) -> bool {
+        now.asking.as_ref().is_some_and(|asking| asking.number != self.asked.get() || (asking.refusal.is_some() && self.answered.get()))
+    }
+
+    /// The question it is answering has been answered: a refusal now asks it again.
+    pub fn answered(&self) {
+        self.answered.set(true);
+    }
+
+    /// Asks the app's open question, or opens the dialog of the app's it has open: the block
+    /// form, a proposal's screen, a reminder list.
+    fn ask(&self) {
+        if self.asking.get() {
             return;
-        }
-        unsafe {
-            let _ = KillTimer(Some(self.main), TIMER_ASK);
         }
         // Only a question counts as asking: a dialog of the app's — a reminder list — asks
         // questions of its own while it is open.
         let now = self.crux.view();
-        if now.asking.is_some() {
+        if let Some(asking) = now.asking.as_ref().filter(|_| self.to_ask(&now)) {
+            self.asked.set(asking.number);
+            self.answered.set(false);
             self.asking.set(true);
             asking::ask(self);
             self.asking.set(false);
@@ -727,7 +740,7 @@ impl App {
         let window = Poster::new(self.main);
         std::thread::spawn(move || {
             if let Err(error) = device.back_up_if_due() {
-                window.say(format!("The automatic backup failed. {}", sentence(&error)));
+                window.say(lumenna_records::words::backup_failed(&sentence(&error)));
             }
         });
     }
@@ -1034,14 +1047,13 @@ impl App {
         }
     }
 
-    /// Quick add: from New Task, starting with the place shown, so a task added while
-    /// looking at a project lands in it; or from anywhere — the global shortcut, or the
-    /// notification area's New Task — starting empty, over whatever is in front.
+    /// Quick add, its line the app's (starting with the place shown's own, so a task added while
+    /// looking at a project lands in it): from New Task, over the window; or from anywhere — the
+    /// global shortcut, or the notification area's New Task — over whatever is in front.
     fn quick_add(&self, from_anywhere: bool) {
-        let prefix = if from_anywhere { String::new() } else { self.task_list().map(|l| l.quick_add_prefix()).unwrap_or_default() };
         let owner = (!from_anywhere || controls::is_visible(self.main)).then_some(self.main);
         // The app adds it, holds what it made, and says so.
-        quick_add::run(self, owner, &prefix);
+        quick_add::run(self, owner);
     }
 
     // -------------------------------------------------------------------------------------
@@ -1084,112 +1096,96 @@ impl App {
         class.eq_ignore_ascii_case("Edit").then_some(focus)
     }
 
-    /// The task whose details Edit Details opens: the one in the details when focus is there,
-    /// else the one selected in the list, where the app offers its details (not in the trash),
-    /// or a sitting's in the day.
-    fn task_in_hand(&self) -> Option<String> {
-        if controls::within(self.panes[2], controls::focused()) {
-            return self.detail.task_id();
-        }
-        match self.content()? {
-            Content::Tasks(list) => {
-                let offered = list.rows.selected_actions()?;
-                actions::of_kind(&offered, &[ActionKind::Edit, ActionKind::EditTask])?;
-                list.rows.selected().map(|row| row.id)
-            }
-            Content::Day(day) => day.selected_task(),
-            Content::Blocks(_) => None,
-        }
+
+    /// Whether the Task menu acts on a task list's row in hand, rather than the task the details
+    /// show (focus is there, or the day or Blocks list is shown).
+    fn task_list_acts(&self) -> bool {
+        !controls::within(self.panes[2], controls::focused()) && self.task_list().is_some()
     }
 
-    /// What can be done to the task the Task menu acts on.
-    fn task_actions_in_hand(&self) -> Option<Vec<Offered>> {
-        if let Some(Content::Tasks(list)) = self.content()
-            && !controls::within(self.panes[2], controls::focused())
-        {
-            return list.rows.selected_actions();
-        }
-        self.detail_actions_in_hand()
-    }
-
-    /// What can be done to the task the details show, when the Task menu acts on it: focus is
-    /// there, or the day's sitting shows its task there.
-    fn detail_actions_in_hand(&self) -> Option<Vec<Offered>> {
-        if controls::within(self.panes[2], controls::focused()) {
-            return self.detail.actions();
-        }
-        match self.content()? {
-            Content::Day(day) => day.selected_task().and_then(|_| self.detail.actions()),
-            Content::Tasks(_) | Content::Blocks(_) => None,
-        }
-    }
-
-    /// A Task-menu command: the task in hand's action of that kind, as the core offers it, so
-    /// Mark Done marks a done task not done, and in the trash Restore restores.
-    fn act_on_task_in_hand(&self, kinds: &[ActionKind]) {
-        // A task list's row in hand is the app's, and so is saying when it has no such action.
-        if !controls::within(self.panes[2], controls::focused()) && self.task_list().is_some() {
-            return self.crux.send(ShellEvent::Run(kinds.to_vec()));
-        }
-        // Elsewhere the task the details show, beside the day a sitting's: the app runs its
-        // action, or says why it has none.
-        self.crux.send(ShellEvent::Details(DetailsEvent::Run(kinds.to_vec())));
-    }
-
-    /// Names the Task menu's Mark Done item as the task in hand's own, Mark Not Done when it
-    /// is done, as the menu opens.
-    fn name_task_menu(&self, popup: HMENU) {
-        let kinds = [ActionKind::MarkDone, ActionKind::MarkNotDone];
-        let Some(action) = self.task_actions_in_hand().and_then(|offered| actions::of_kind(&offered, &kinds)) else { return };
-        let text = HSTRING::from(format!("&{}\tCtrl+K", action.title));
-        unsafe {
-            let _ = ModifyMenuW(popup, u32::from(menu::MARK_DONE), MF_BYCOMMAND | MF_STRING, usize::from(menu::MARK_DONE), &text);
-        }
-    }
-    pub fn menu_command(&self, id: u16) {
-        match id {
-            1 => self.enter(),
-            2 => self.escape(),
-            menu::NEW_TASK => self.quick_add(false),
-            menu::NEW_BLOCK => {
-                // Added where blocks are shown, to land on: the day, or the Blocks list; else
-                // today.
-                if self.day().is_none() && self.blocks().is_none() {
-                    self.go(Place::Today, true);
+    /// Names the Task and Day menus' items as the app has them now, as a menu opens: Mark Not
+    /// Done on a task done; and greys what the row in hand or the day shown does not offer,
+    /// where the menu acts on them (`ViewModel::commands`).
+    fn name_menu(&self, popup: HMENU) {
+        let view = self.crux.view();
+        let today = self.day().is_some();
+        for state in &view.commands {
+            let Some(number) = menu::number(&state.id) else { continue };
+            let Some(command) = keys::command_of(&state.id) else { continue };
+            let keys: Vec<String> = keys::SHARED.iter().find(|s| s.id == state.id).map(|s| s.keys.iter().map(|&k| k.to_owned()).collect()).unwrap_or_default();
+            let text = HSTRING::from(menu::text(&state.id, &state.title, command.asks, &keys, &[]));
+            let applies = match keys::what_runs(&state.id) {
+                Runs::Day(_) => !today || state.enabled,
+                _ => !self.task_list_acts() || state.enabled,
+            };
+            unsafe {
+                if ModifyMenuW(popup, u32::from(number), MF_BYCOMMAND | MF_STRING, usize::from(number), &text).is_ok() {
+                    let _ = EnableMenuItem(popup, u32::from(number), MF_BYCOMMAND | if applies { MF_ENABLED } else { MF_GRAYED });
                 }
-                self.crux.send(ShellEvent::Block(lumenna_app::BlockEvent::New { start: None, minutes: None }));
             }
-            menu::NEW_PROJECT => self.sidebar.add(self, SidebarGroup::Projects),
-            menu::NEW_LABEL => self.sidebar.add(self, SidebarGroup::Labels),
-            menu::NEW_FILTER => self.sidebar.add(self, SidebarGroup::Filters),
-            menu::SYNC_NOW => self.crux.send(ShellEvent::Devices(lumenna_app::DevicesEvent::SyncNow)),
-            menu::BACK_UP => self.back_up(),
-            menu::SETTINGS => settings::show(self, Page::General),
-            menu::DEVICES => settings::show(self, Page::Devices),
-            menu::EXPORT_IMPORT => settings::show(self, Page::Export),
-            menu::RESTORE_BACKUP => settings::import(self.main, "Restore from a Backup", &settings::BACKUPS),
-            menu::CLOSE_WINDOW => self.hide_window(),
-            menu::EXIT => self.exit(),
+        }
+    }
 
-            menu::UNDO | menu::REDO => {
-                // In a field, its own typing; elsewhere, the store.
-                if let Some(field) = self.editing() {
-                    controls::send(field, EM_UNDO, 0, 0);
-                    return;
+    /// A menu closed: every item enabled again, since an accelerator does nothing while its item
+    /// is grey, and the app refuses in its own words what the row in hand does not offer.
+    fn unname_menu(&self, popup: HMENU) {
+        for state in &self.crux.view().commands {
+            if let Some(number) = menu::number(&state.id) {
+                unsafe {
+                    let _ = EnableMenuItem(popup, u32::from(number), MF_BYCOMMAND | MF_ENABLED);
                 }
-                self.crux.send(if id == menu::UNDO { ShellEvent::Undo } else { ShellEvent::Redo });
             }
+        }
+    }
+
+    /// A menu's command, by the number the menu sends.
+    pub fn menu_command(&self, number: u16) {
+        match number {
+            1 => return self.enter(),
+            2 => return self.escape(),
             menu::CUT | menu::COPY | menu::PASTE | menu::SELECT_ALL => {
                 if let Some(field) = self.editing() {
-                    match id {
+                    match number {
                         menu::CUT => controls::send(field, WM_CUT, 0, 0),
                         menu::COPY => controls::send(field, WM_COPY, 0, 0),
                         menu::PASTE => controls::send(field, WM_PASTE, 0, 0),
                         _ => controls::send(field, EM_SETSEL, 0, -1),
                     };
                 }
+                return;
             }
-            menu::FILTER => {
+            menu::TIMER => return self.toggle_timer(),
+            _ => {}
+        }
+        if let Some(id) = menu::command(number) {
+            self.run_command(id);
+        }
+    }
+
+    /// A command of the core's table, by its id (`keys::COMMANDS`): the window's own, or handed
+    /// to the app as its key (`Key`, `Details(Key)`), what it runs the core's.
+    fn run_command(&self, id: &str) {
+        let in_details = controls::within(self.panes[2], controls::focused());
+        match id {
+            "show" => self.show_window(),
+            "close-window" => self.hide_window(),
+            "quit" => self.exit(),
+            "next-pane" => self.move_pane(1),
+            "previous-pane" => self.move_pane(-1),
+            "keyboard-help" => help::show(self.main),
+            "about" => self.about(),
+            "settings" => settings::show(self, "general"),
+            "devices" => settings::show(self, "devices"),
+            "export-import" => settings::show(self, "export"),
+            "restore-backup" => settings::import(self.main, "Restore from a Backup", &settings::BACKUPS),
+            // This device's own backup, into its backups, as the automatic ones are.
+            "back-up" => self.back_up(),
+            "new-task" => self.quick_add(false),
+            // Held in the sidebar first, so what it makes lands there.
+            "new-project" => self.sidebar.add(self, SidebarGroup::Projects),
+            "new-label" => self.sidebar.add(self, SidebarGroup::Labels),
+            "new-filter" => self.sidebar.add(self, SidebarGroup::Filters),
+            "filter" => {
                 // The trash and History list what they hold, with no filter to change.
                 if self.task_list().is_none_or(|list| !list.has_filter()) {
                     self.go(Place::Tasks, false);
@@ -1198,68 +1194,83 @@ impl App {
                     list.focus_filter();
                 }
             }
-
-            menu::GO_TODAY => self.go(Place::Today, true),
-            menu::GO_TASKS => self.go(Place::Tasks, true),
-            menu::GO_BLOCKS => self.go(Place::Blocks, true),
-            menu::GO_TRASH => self.go(Place::Trash, true),
-            menu::GO_HISTORY => self.go(Place::History, true),
-            menu::NEXT_PANE => self.move_pane(1),
-            menu::PREVIOUS_PANE => self.move_pane(-1),
-
-            menu::OPEN_TASK => {
-                if self.task_in_hand().is_some() {
-                    self.open_detail();
+            // In a field, its own typing; elsewhere, the store.
+            "undo" | "redo" => match self.editing() {
+                Some(field) => {
+                    controls::send(field, EM_UNDO, 0, 0);
                 }
-            }
-            menu::SAVE_TASK => self.detail.save(self),
-            menu::PROPERTIES => {
-                // The row in hand's own form, as the app has it: a task's details, which the
-                // details pane already is while focus is there, or a block's form. A row without
-                // one is the app's to refuse.
-                if !controls::within(self.panes[2], controls::focused()) {
-                    self.crux.send(ShellEvent::Run(vec![ActionKind::Edit, ActionKind::EditTask]));
-                }
-            }
-            menu::KEYBOARD_HELP => help::show(self.main),
-            command if !task_kinds(command).is_empty() => self.act_on_task_in_hand(task_kinds(command)),
-            command if day_kind(command).is_some() => {
-                if self.day().is_none() {
+                None => self.crux.send(ShellEvent::Key(id.to_owned())),
+            },
+            // The details' fields as typed, saved as only what changed.
+            "save-task" => self.detail.save(self),
+            "go-today" => self.go(Place::Today, true),
+            "go-tasks" => self.go(Place::Tasks, true),
+            "go-blocks" => self.go(Place::Blocks, true),
+            "go-trash" => self.go(Place::Trash, true),
+            "go-history" => self.go(Place::History, true),
+            "new-block" => {
+                // Added where blocks are shown, to land on: the day, or the Blocks list; else
+                // today.
+                if self.day().is_none() && self.blocks().is_none() {
                     self.go(Place::Today, true);
                 }
-                if let (Some(day), Some(kind)) = (self.day(), day_kind(command)) {
-                    day.act_on_day(self, kind);
-                }
+                self.crux.send(ShellEvent::Key(id.to_owned()));
             }
-            menu::PREVIOUS_DAY | menu::NEXT_DAY | menu::GO_TO_NOW | menu::GO_TO_DAY => {
-                let step = match id {
-                    menu::PREVIOUS_DAY => DayMove::Previous,
-                    menu::NEXT_DAY => DayMove::Next,
-                    menu::GO_TO_NOW => DayMove::Now,
-                    _ => DayMove::Ask,
-                };
+            "previous-day" | "next-day" | "go-to-now" | "go-to-day" => {
                 // The app goes to the day from wherever it is, and the window with it.
-                self.crux.send(ShellEvent::Day(step));
+                self.crux.send(ShellEvent::Key(id.to_owned()));
                 self.follow_place();
                 if let Some(day) = self.day() {
                     controls::focus(day.rows.tree.hwnd);
                 }
             }
-
-            menu::SHOW_WINDOW => self.show_window(),
-            menu::ABOUT => {
-                let text = format!(
-                    "Lumenna {}\n\nA task manager and day planner.\nData folder: {}",
-                    env!("CARGO_PKG_VERSION"),
-                    self.directory.display()
-                );
-                unsafe {
-                    MessageBoxW(Some(self.main), &HSTRING::from(text), w!("About Lumenna"), MB_OK | MB_ICONINFORMATION);
+            // The details are already the task's own form while focus is there.
+            "open-task" | "properties" if in_details => self.open_detail(),
+            _ => match keys::what_runs(id) {
+                // The day's own, on the day shown, which is today from anywhere else.
+                Runs::Day(_) => {
+                    if self.day().is_none() {
+                        self.go(Place::Today, true);
+                    }
+                    self.crux.send(ShellEvent::Key(id.to_owned()));
                 }
-            }
-            _ => {}
+                // A row command: a task list's row in hand, or a block's or a day's row for
+                // Properties and Edit Details, else the task the details show; the app runs it, or
+                // says why not.
+                Runs::Row(_) if self.task_list_acts() || matches!(id, "open-task" | "properties") => {
+                    self.crux.send(ShellEvent::Key(id.to_owned()));
+                }
+                Runs::Row(_) => self.crux.send(ShellEvent::Details(DetailsEvent::Key(id.to_owned()))),
+                Runs::App | Runs::Shell => self.crux.send(ShellEvent::Key(id.to_owned())),
+            },
         }
     }
+
+    /// About Lumenna: its version, what it is in the core's words, and where its data is.
+    fn about(&self) {
+        let text = format!(
+            "Lumenna {}\n\n{}.\nData folder: {}",
+            env!("CARGO_PKG_VERSION"),
+            lumenna_records::words::DESCRIPTION,
+            self.directory.display()
+        );
+        unsafe {
+            MessageBoxW(Some(self.main), &HSTRING::from(text), w!("About Lumenna"), MB_OK | MB_ICONINFORMATION);
+        }
+    }
+
+    /// The tray's timer pressed: the device's own toggle (`Device::toggle_timer`), which stops
+    /// the timer running, else starts on what to work on now, its sentence said.
+    fn toggle_timer(&self) {
+        match self.device.toggle_timer() {
+            Ok(change) => {
+                self.store_changed();
+                self.say_change(&change);
+            }
+            Err(error) => self.fail(&sentence(&error)),
+        }
+    }
+
 
     fn on_command(&self, wparam: WPARAM, lparam: LPARAM) {
         let id = controls::low_word(wparam.0);
@@ -1337,20 +1348,31 @@ impl App {
                 unsafe {
                     let _ = SetForegroundWindow(self.main);
                 }
-                let items = [
-                    (menu::SHOW_WINDOW, "&Show Lumenna"),
-                    (menu::NEW_TASK, "&New Task..."),
-                    (menu::SYNC_NOW, "S&ync Now"),
-                    (0, ""),
-                    (menu::EXIT, "E&xit"),
-                ];
-                let chosen = self.popup(&items, at);
+                // The core's tray menu, with the timer's control as the device has it now:
+                // what a press does, beside what it runs or would start, or why nothing would.
+                let timer = self.device.timer_control().ok();
+                let name = timer.as_ref().map(|timer| if timer.detail.is_empty() { timer.action.clone() } else { format!("{}, {}", timer.action, timer.detail) });
+                let items = menu::tray(name.as_deref());
+                let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
+                let popup = menu::popup(&items);
+                if timer.is_some_and(|timer| !timer.enabled) {
+                    unsafe {
+                        let _ = EnableMenuItem(popup, u32::from(menu::TIMER), MF_BYCOMMAND | MF_GRAYED);
+                    }
+                }
+                let chosen = unsafe {
+                    let chosen = TrackPopupMenuEx(popup, (TPM_RETURNCMD | TPM_RIGHTBUTTON).0, at.x, at.y, self.main, None);
+                    let _ = DestroyMenu(popup);
+                    u16::try_from(chosen.0).ok().filter(|c| *c != 0)
+                };
                 unsafe {
                     let _ = PostMessageW(Some(self.main), WM_NULL, WPARAM(0), LPARAM(0));
                 }
-                match chosen {
-                    Some(menu::NEW_TASK) => self.quick_add(true),
-                    Some(command) => self.menu_command(command),
+                // New Task from the tray is quick add from anywhere, over whatever is in front.
+                match chosen.and_then(|number| menu::command(number).map(|id| (number, id))) {
+                    Some((_, "new-task")) => self.quick_add(true),
+                    Some((number, _)) => self.menu_command(number),
+                    None if chosen == Some(menu::TIMER) => self.toggle_timer(),
                     None => {}
                 }
             }
@@ -1400,35 +1422,48 @@ impl App {
         let (Some(toasts), Some(due)) = (&self.toasts, due) else { return };
         self.reminders.set(!due.elsewhere);
         let window = Poster::new(self.main);
-        for reminder in &due.due {
-            toasts.remind(reminder, window);
-        }
-        if !due.missed_summary.is_empty() {
-            toasts.summary(&due.missed_summary, window);
+        // As the app lists them: the summary of what was missed first, where there is one, then
+        // each due, each with its buttons in the core's order.
+        let summary = !due.missed_summary.is_empty() && !due.missed.is_empty();
+        for (index, item) in lumenna_app::due::arrived(&due).iter().enumerate() {
+            toasts.remind(item, summary && index == 0, window);
         }
     }
 
-    /// A toast answered: its button's dismissal or snooze, or what it is about opened.
+    /// A toast answered: one of its buttons, written through the device, or what it is about
+    /// opened.
     fn reminder_answered(&self, answered: Answered) {
-        let done = match answered {
-            Answered::Dismiss(reminder) => self.device.dismiss_reminder(reminder.key, reminder.occurrence),
-            Answered::Snooze(reminder) => self.device.snooze_reminder(reminder.key, reminder.occurrence, None),
-            Answered::Carry(reminder) => self.device.carry_rest_forward(format!("{}@{}", reminder.target, reminder.occurrence)),
-            other => return self.reminder_opened(other),
-        };
-        match done {
-            Ok(change) => {
-                self.store_changed();
-                self.say_change(&change);
+        let Answered::Button { id, said, firings } = answered else { return self.reminder_opened(answered) };
+        let done: Vec<Result<Change>> = match id.as_str() {
+            "dismiss" => firings.iter().map(|f| self.device.dismiss_reminder(f.key.clone(), f.occurrence.clone())).collect(),
+            "snooze" => firings.iter().map(|f| self.device.snooze_reminder(f.key.clone(), f.occurrence.clone(), None)).collect(),
+            "carry" => firings.iter().map(|f| self.device.carry_rest_forward(format!("{}@{}", f.target, f.occurrence))).collect(),
+            // Today, with the app's Replan from Now open over it, once the window is in front.
+            // Not the app's `DueEvent::Replan`, which also dismisses the warning once something is
+            // replanned: that works on the reminders the app looked for itself, and these are the
+            // device's own delivery.
+            "replan" => {
+                self.show_window();
+                self.go(Place::Today, true);
+                return self.crux.send(ShellEvent::Proposal(lumenna_app::ProposalEvent::Replan));
             }
-            Err(error) => self.fail(&sentence(&error)),
+            _ => return,
+        };
+        self.store_changed();
+        match done.as_slice() {
+            // One change: its own sentence, else what the core says of the button.
+            [Ok(change)] if !change.announcement.is_empty() => self.say_change(change),
+            _ => match done.iter().find_map(|done| done.as_ref().err()) {
+                Some(error) => self.fail(&sentence(error)),
+                None => self.say(&said),
+            },
         }
     }
 
-    /// A toast's body, or its Replan: the window, at what it is about.
+    /// A toast's body: the window, at what it is about.
     fn reminder_opened(&self, answered: Answered) {
         match answered {
-            Answered::Dismiss(_) | Answered::Snooze(_) | Answered::Carry(_) => {}
+            Answered::Button { .. } => {}
             Answered::Open(reminder) => {
                 self.show_window();
                 if reminder.kind == "block" {
@@ -1445,14 +1480,6 @@ impl App {
                 }
             }
             Answered::Summary => self.show_window(),
-            // The app's Replan from Now, once the window is in front. Not the app's
-            // `DueEvent::Replan`, which dismisses the warning once something is replanned:
-            // that works on the reminders the app looked for itself, and these are the
-            // device's own delivery.
-            Answered::Replan => {
-                self.show_window();
-                self.crux.send(ShellEvent::Proposal(lumenna_app::ProposalEvent::Replan));
-            }
         }
     }
 }
@@ -1489,7 +1516,8 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
             WM_COMMAND => app.on_command(wparam, lparam),
             WM_NOTIFY => return LRESULT(app.on_notify(lparam).unwrap_or(0)),
             WM_CONTEXTMENU => app.on_context_menu(HWND(wparam.0 as _), lparam),
-            WM_INITMENUPOPUP => app.name_task_menu(HMENU(wparam.0 as _)),
+            WM_INITMENUPOPUP => app.name_menu(HMENU(wparam.0 as _)),
+            WM_UNINITMENUPOPUP => app.unname_menu(HMENU(wparam.0 as _)),
             WM_SIZE => app.layout(),
             WM_SETTINGCHANGE => app.setting_changed(),
             WM_CTLCOLORSTATIC | WM_CTLCOLORBTN | WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
@@ -1550,7 +1578,6 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
                 app.hide_window();
                 return LRESULT(0);
             }
-            WM_TIMER if wparam.0 == TIMER_ASK => app.ask_when_still(),
             WM_TIMER if wparam.0 == TIMER_SETTLE => app.settle_typing(),
             WM_TIMER if wparam.0 == TIMER_LAUNCH => app.launch_when_still(),
             WM_TIMER => app.on_timer(),
@@ -1566,8 +1593,8 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
                 }
             }
             WM_HOTKEY => match shortcuts::kind_of(wparam.0 as i32) {
-                Some(Kind::Show) => app.show_window(),
-                Some(Kind::QuickAdd) => app.quick_add(true),
+                Some(HotKind::Show) => app.show_window(),
+                Some(HotKind::QuickAdd) => app.quick_add(true),
                 None => {}
             },
             WM_TRAY => app.on_tray(wparam, lparam),
@@ -1607,31 +1634,3 @@ unsafe extern "system" fn pane_procedure(hwnd: HWND, message: u32, wparam: WPARA
     }
 }
 
-/// The day's own action a Day-menu command means.
-fn day_kind(command: u16) -> Option<ActionKind> {
-    match command {
-        menu::PLAN_DAY => Some(ActionKind::PlanDay),
-        menu::REPLAN => Some(ActionKind::Replan),
-        menu::WHAT_NOW => Some(ActionKind::WhatNow),
-        menu::END_DAY => Some(ActionKind::EndDay),
-        menu::CLEAR_DAY => Some(ActionKind::ClearDay),
-        _ => None,
-    }
-}
-
-/// The kinds of action a Task-menu command means: none for any other command.
-fn task_kinds(command: u16) -> &'static [ActionKind] {
-    match command {
-        menu::MARK_DONE => &[ActionKind::MarkDone, ActionKind::MarkNotDone],
-        menu::PUT_IN_BLOCK => &[ActionKind::PutInBlock],
-        menu::MOVE_TO_PROJECT => &[ActionKind::MoveToProject],
-        menu::MAKE_SUBTASK => &[ActionKind::MakeSubtaskOf],
-        menu::MOVE_TO_TOP => &[ActionKind::MoveToTopLevel],
-        menu::WAIT_FOR => &[ActionKind::WaitFor],
-        menu::TRASH_TASK => &[ActionKind::Delete],
-        menu::RESTORE_TASK => &[ActionKind::Restore],
-        menu::ERASE_TASK => &[ActionKind::DeleteForGood],
-        menu::ERASE_PERMANENTLY => &[ActionKind::ErasePermanently],
-        _ => &[],
-    }
-}

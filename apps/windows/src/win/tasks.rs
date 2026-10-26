@@ -21,13 +21,11 @@ use windows::Win32::UI::WindowsAndMessaging::{EN_CHANGE, ES_AUTOHSCROLL, WS_EX_C
 
 use super::app::App;
 use super::controls::{self, rect};
-use super::clock::Locale;
 use super::rows::{Rows, Shown};
 use super::tree::Item;
 use super::view::{Metrics, View};
 use super::{actions, completion};
 use lumenna_records::places::Place;
-use crate::speech;
 
 const FILTER: u16 = 400;
 const TREE: u16 = 401;
@@ -52,8 +50,13 @@ impl TaskList {
     pub fn create(_app: &App, pane: HWND, place: Place) -> Rc<Self> {
         let trash = place == Place::Trash;
         let filtered = !matches!(place, Place::Trash | Place::History);
-        let label = controls::create(pane, WC_STATICW, "Filte&r:", 0, 0, 0);
+        // The core's words, with an access key clear of the menu bar's letters.
+        let words = lumenna_records::fields::quick_add_words(false);
+        let label = controls::create(pane, WC_STATICW, &format!("{}:", crate::devices::marked(&words.filter, 'r', '&')), 0, 0, 0);
         let filter = controls::create(pane, WC_EDITW, "", ES_AUTOHSCROLL as u32 | WS_TABSTOP.0, WS_EX_CLIENTEDGE.0, FILTER);
+        // What it takes, shown in it while it is empty and said after its name.
+        controls::cue(filter, &words.filter_hint);
+        super::a11y::set_description(filter, &words.filter_hint);
         completion::attach(filter, Syntax::Filter);
         let readback = controls::create(pane, WC_STATICW, "", SS_NOPREFIX.0, 0, 0);
         let rows = Rows::create(pane, TREE, &place.title(), !trash);
@@ -80,8 +83,9 @@ impl TaskList {
             .map(|(item, line)| Shown {
                 item: Item {
                     key: item.row.id.clone(),
-                    // The tree's checkbox says a task is done, so the line does not.
-                    text: if self.trash { line.text.clone() } else { speech::row(&item.row, true, &Locale) },
+                    // The tree's checkbox says a task is done, so the app's line does not
+                    // (`Checkboxes`).
+                    text: line.text.clone(),
                     depth: item.row.depth,
                     checked: (!self.trash).then_some(item.row.checked == Some(true)),
                     expanded: item.row.expanded,
@@ -92,11 +96,6 @@ impl TaskList {
             })
             .collect();
         self.rows.draw(app, shown, view.focus.as_deref(), landed);
-    }
-
-    /// What a new task typed here starts with.
-    pub fn quick_add_prefix(&self) -> String {
-        self.place.quick_add_prefix()
     }
 
     /// Whether it has a filter to change: not the trash, nor History.
@@ -145,9 +144,11 @@ impl View for TaskList {
 
     fn notify(&self, app: &App, header: &NMHDR, lparam: LPARAM) -> Option<isize> {
         if header.hwndFrom == self.rows.tree.hwnd && header.code == NM_DBLCLK {
-            if !self.trash && self.rows.selected().is_some() {
-                app.open_detail();
-            }
+            app.defer(|app| {
+                if let Some(list) = app.task_list() {
+                    list.rows.open(app);
+                }
+            });
             return Some(1);
         }
         self.rows.notify(app, header, lparam)
@@ -164,8 +165,8 @@ impl View for TaskList {
             controls::focus(self.rows.tree.hwnd);
             return true;
         }
-        if focus == self.rows.tree.hwnd && !self.trash && self.rows.selected().is_some() {
-            app.open_detail();
+        if focus == self.rows.tree.hwnd {
+            self.rows.open(app);
             return true;
         }
         false

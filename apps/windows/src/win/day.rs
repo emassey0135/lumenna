@@ -16,7 +16,6 @@ use std::rc::Rc;
 use lumenna_app::lines::Lines;
 use lumenna_app::{BlockEvent, DayItem, DayKind, DayMove, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::ActionKind;
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
 use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, WC_BUTTONW};
 use windows::Win32::UI::WindowsAndMessaging::{BN_CLICKED, BS_PUSHBUTTON, WS_TABSTOP};
@@ -51,11 +50,6 @@ impl DayView {
         Rc::new(Self { buttons, rows: Rows::create(pane, TREE, "The day", false) })
     }
 
-    /// The task a selected sitting is for: what the Task menu acts on from the day.
-    pub fn selected_task(&self) -> Option<String> {
-        self.rows.selected()?.sitting.map(|sitting| sitting.task)
-    }
-
     /// Draws the app's day: `landed` when the app moved the row in hand itself.
     pub fn draw(&self, app: &App, view: &ViewModel, lines: &Lines, landed: bool) {
         let Some(day) = &view.day else { return };
@@ -81,20 +75,6 @@ impl DayView {
         self.rows.draw(app, shown, view.focus.as_deref(), landed);
     }
 
-    /// The day's own action of `kind`, from the Day menu: run by the app, or why the day shown
-    /// has none, whatever row is in hand.
-    pub fn act_on_day(&self, app: &App, kind: ActionKind) {
-        app.crux.send(ShellEvent::RunDay(vec![kind]));
-    }
-
-    /// Enter or a double-click: the row's form, or a cancelled day's restoring.
-    fn activate(&self, app: &App) {
-        let kinds = [ActionKind::Edit, ActionKind::EditTask, ActionKind::AddBlock, ActionKind::RestoreDay];
-        let Some(row) = self.rows.selected() else { return };
-        if let Some(action) = actions::of_kind(&row.offered, &kinds) {
-            actions::act_on_row(app, &row.key, &action);
-        }
-    }
 }
 
 impl View for DayView {
@@ -132,7 +112,7 @@ impl View for DayView {
         if header.hwndFrom == self.rows.tree.hwnd && header.code == NM_DBLCLK {
             app.defer(|app| {
                 if let Some(day) = app.day() {
-                    day.activate(app);
+                    day.rows.open(app);
                 }
             });
             return Some(1);
@@ -146,7 +126,7 @@ impl View for DayView {
 
     fn enter(&self, app: &App, focus: HWND) -> bool {
         if focus == self.rows.tree.hwnd {
-            self.activate(app);
+            self.rows.open(app);
             return true;
         }
         false
