@@ -103,18 +103,14 @@ same reminders, and lists, says and shows each it does not list already."
 Its buttons are the core's words, and each is the app's to carry out."
   (when (lumenna-reminders--desktop-p)
     (let* ((id (plist-get due :id))
-           (first (aref (plist-get due :firings) 0))
-           (offer (lambda (button word) (and word (not (string-empty-p word)) (list button word)))))
+           (first (aref (plist-get due :firings) 0)))
       (ignore-errors
         (notifications-notify
          :title (plist-get due :title) :body (plist-get due :text) :app-name "Lumenna"
-         :actions (append (list "dismiss" (plist-get due :dismiss))
-                          (funcall offer "snooze" (plist-get due :snooze))
-                          ;; At a block's end with work left short, the text ends in the
-                          ;; question this button answers.
-                          (funcall offer "carry" (plist-get due :carry))
-                          ;; A block's work outrunning its time: Replan from Now.
-                          (funcall offer "replan" (plist-get due :replan))
+         ;; The app's buttons, in the order every platform shows them: what the reminder
+         ;; offers of its own (Carry Forward, Replan), then Dismiss and Snooze.
+         :actions (append (mapcan (lambda (button) (list (plist-get button :id) (plist-get button :title)))
+                                  (append (plist-get due :buttons) nil))
                           ;; What was missed, as one summary, is about nothing to open.
                           (and (plist-get due :snooze) (list "default" (plist-get first :title))))
          :on-action (lambda (_id action)
@@ -239,6 +235,8 @@ the reminder due ID.  The app takes it off the list and says what it did."
 
 \\{lumenna-reminders-due-mode-map}"
   (setq-local lumenna--draw #'lumenna-reminders--due-rows)
+  ;; The app's side list: after a button, the reminder that took its place is in hand.
+  (setq-local lumenna--held :due_held)
   (setq-local lumenna--activate (lambda (row) (lumenna-reminders--open (aref (plist-get (plist-get row :due) :firings) 0)))))
 
 (defun lumenna-reminders--due-rows ()

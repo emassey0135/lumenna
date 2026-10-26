@@ -59,7 +59,7 @@ SPC or RET turns one off or on;
                       ;; The reason is the change's description, so it follows its name and state.
                       (list :key (format "item %d" index) :role "change" :index index :on checked
                             :text (string-join (delq nil (list (plist-get change :sentence)
-                                                               (if checked "checked" "not checked")
+                                                               (plist-get change :state)
                                                                (plist-get change :reason)))
                                                ", ")
                             :face (unless checked 'lumenna-quiet))))
@@ -175,10 +175,12 @@ Each work block is given its most urgent tasks."
       (user-error "%s" (plist-get row :text)))
     (let ((on (not (plist-get row :on))))
       (lumenna-proposal--send (list :Check (list :index (plist-get row :index) :on (if on t :json-false))))
-      (funcall lumenna-announce-function
-               (format "%s, %s" (plist-get (plist-get (lumenna-proposal--view) :words) :item)
-                       (if on "checked" "not checked"))
-               nil))))
+      ;; Its state as the app now has it, in the app's words.
+      (when-let* ((proposal (lumenna-proposal--view))
+                  (change (nth (plist-get row :index) (append (plist-get proposal :changes) nil))))
+        (funcall lumenna-announce-function
+                 (format "%s, %s" (plist-get (plist-get proposal :words) :item) (plist-get change :state))
+                 nil)))))
 
 (defun lumenna-proposal-apply ()
   "Make the changes checked.

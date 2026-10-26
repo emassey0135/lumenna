@@ -1138,7 +1138,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (should-not (get-buffer "*Lumenna: Plan the Day*"))
     (should (equal (plist-get (aref (plist-get (lumenna-call "plan" :date "tomorrow") :blocks) 0) :assignments) []))))
 
-(ert-deftest lumenna-a-tasks-history-is-on-its-own-screen-under-a-heading-and-never-in-a-list ()
+(ert-deftest lumenna-a-tasks-history-is-the-last-line-of-its-own-screen-and-never-in-a-list ()
   (lumenna-test--with-store
     (lumenna-test--seed "task.add" :text "write the chapter")
     (lumenna-tasks)
@@ -1146,7 +1146,8 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (lumenna-test--goto "write the chapter")
     (lumenna-activate)
     (let ((lines (lumenna-test--lines)))
-      (should (equal (last lines 2) '("History" "  made today"))))))
+      (should (equal (car (last lines)) "History, made today"))
+      (should (member "State, open" lines)))))
 
 (ert-deftest lumenna-a-blocks-end-offers-to-carry-its-short-work-forward-from-the-notification ()
   (lumenna-test--reminding
@@ -1170,7 +1171,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (should (equal said '("Deep work is ending. Essay: 40 minutes of 1 hour 30 minutes. Carry the remaining 50 minutes to Admin tomorrow?")))
     (let ((notification (car shown)))
       (should (equal (plist-get notification :actions)
-                     '("dismiss" "Dismiss" "snooze" "Snooze 10 Minutes" "carry" "Carry Forward" "default" "Deep work")))
+                     '("carry" "Carry Forward" "dismiss" "Dismiss" "snooze" "Snooze 10 Minutes" "default" "Deep work")))
       (funcall (plist-get notification :on-action) 1 "carry"))
     (should (equal (car said) "Carried forward Essay to Admin"))
     (should-not (lumenna-test--due))
@@ -1228,7 +1229,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (let ((notification (car shown))
           (lumenna-proposal--now (lambda () "2030-01-15T09:01")))
       (should (equal (plist-get notification :actions)
-                     '("dismiss" "Dismiss" "snooze" "Snooze 10 Minutes" "replan" "Replan" "default" "Deep work")))
+                     '("replan" "Replan" "dismiss" "Dismiss" "snooze" "Snooze 10 Minutes" "default" "Deep work")))
       (funcall (plist-get notification :on-action) 1 "replan")
       (should (equal (buffer-name) "*Lumenna: Replan from Now*"))
       (lumenna-reminders-due)
