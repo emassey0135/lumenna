@@ -353,7 +353,7 @@ impl Occurrence {
     /// and would otherwise read as over all day.
     #[must_use]
     pub fn is_over_at(&self, time: civil::Time) -> bool {
-        let minutes = |t: civil::Time| i64::from(t.hour()) * 60 + i64::from(t.minute());
+        let minutes = crate::time::minutes_of_day;
         minutes(self.start_time) + i64::from(self.duration_mins) <= minutes(time)
     }
 }

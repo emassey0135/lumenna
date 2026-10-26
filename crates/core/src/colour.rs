@@ -43,12 +43,11 @@ impl Colour {
         PALETTE.into_iter().find(|c| c.name.eq_ignore_ascii_case(name))
     }
 
-    /// Every colour's name, for saying which there are: "red, orange, … and grey".
+    /// Every colour's name, for saying which there are: "red, orange, …, and grey".
     #[must_use]
     pub fn names() -> String {
         let names: Vec<&str> = PALETTE.iter().map(|c| c.name).collect();
-        let (last, rest) = names.split_last().expect("the palette has colours");
-        format!("{} and {last}", rest.join(", "))
+        crate::words::listed(&names)
     }
 }
 

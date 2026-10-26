@@ -147,7 +147,7 @@ fn meridiem(text: &str) -> Option<&'static str> {
 
 /// Minutes from `start` to `end` the same day; none if it does not come after.
 fn length(start: civil::Time, end: civil::Time) -> Option<u32> {
-    let minutes = (i32::from(end.hour()) * 60 + i32::from(end.minute())) - (i32::from(start.hour()) * 60 + i32::from(start.minute()));
+    let minutes = lumenna_core::time::minutes_of_day(end) - lumenna_core::time::minutes_of_day(start);
     u32::try_from(minutes).ok().filter(|m| *m > 0)
 }
 

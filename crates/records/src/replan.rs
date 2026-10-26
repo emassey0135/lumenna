@@ -24,19 +24,7 @@ const BREAK_FLOOR: u32 = 10;
 
 /// A time of day as said, in `style`'s clock.
 pub fn clock(minutes: i64, style: TimeStyle) -> String {
-    let (h, m) = (minutes.div_euclid(60).rem_euclid(24), minutes.rem_euclid(60));
-    match style {
-        TimeStyle::TwentyFourHour => format!("{h:02}:{m:02}"),
-        TimeStyle::TwelveHour => {
-            let (twelve, half) = match h {
-                0 => (12, "AM"),
-                1..=11 => (h, "AM"),
-                12 => (12, "PM"),
-                _ => (h - 12, "PM"),
-            };
-            format!("{twelve}:{m:02} {half}")
-        }
-    }
+    lumenna_core::time::clock_of_minutes(minutes, style == TimeStyle::TwelveHour)
 }
 
 fn title(snapshot: &Snapshot, series: SeriesId) -> String {

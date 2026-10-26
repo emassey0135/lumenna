@@ -397,7 +397,7 @@ impl Preview {
             parts.push(format!("in {project}"));
         }
         if !self.label_names.is_empty() {
-            parts.push(format!("labelled {}", self.label_names.join(", ")));
+            parts.push(format!("labelled {}", lumenna_core::words::listed(&self.label_names)));
         }
         if self.priority != Priority::P4 {
             parts.push(format!("priority {}", self.priority.as_u8()));

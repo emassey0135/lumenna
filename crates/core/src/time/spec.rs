@@ -364,11 +364,7 @@ impl RecurrenceSpec {
             Self::Weekly { interval, days } if days.is_empty() => every(*interval, "week"),
             Self::Weekly { interval, days } => {
                 let names: Vec<&str> = days.iter().copied().map(weekday_name).collect();
-                let list = match names.split_last() {
-                    Some((last, [])) => (*last).to_owned(),
-                    Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
-                    None => String::new(),
-                };
+                let list = crate::words::listed(&names);
                 match interval {
                     0 | 1 => format!("every {list}"),
                     2 => format!("every other {list}"),

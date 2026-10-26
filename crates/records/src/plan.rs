@@ -352,12 +352,12 @@ pub const fn kind_word(kind: BlockKind) -> &'static str {
 
 /// Minutes since midnight.
 pub fn minutes_of(time: jiff::civil::Time) -> i64 {
-    i64::from(time.hour()) * 60 + i64::from(time.minute())
+    lumenna_core::time::minutes_of_day(time)
 }
 
-/// Minutes since midnight as `HH:MM`.
+/// Minutes since midnight as `HH:MM`, the time it is then on the clock.
 pub fn clock(minutes: i64) -> String {
-    format!("{:02}:{:02}", minutes / 60, minutes % 60)
+    lumenna_core::time::clock_of_minutes(minutes, false)
 }
 
 /// Where now falls in today: in a block, or in the free time before the next one.
