@@ -56,9 +56,11 @@ final class DayModel: ObservableObject {
     /// hand it was left with: the app keeps it. Opening is the screen coming to the front, which
     /// VoiceOver says itself: no landing.
     func appear() {
-        // As the app holds it now, ahead of any turn on its way: opened again after a reminder's
-        // block was shown (`ShowBlock`), the day would go back to today.
-        if core.app.current.view.place != .today {
+        // Only where neither the last turn drawn nor the app as it is now shows the day: opened
+        // again after a reminder's block was shown (`ShowBlock`), still on its way, the day went
+        // back to today; and a screen the window made to follow the app, which has since gone
+        // on, must not pull it back.
+        if !here, core.app.current.view.place != .today {
             core.app.send(.open(.today))
             landing = nil
         }

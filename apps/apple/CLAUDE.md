@@ -90,9 +90,12 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   watch a sheet with its picker. A refused day is asked again in the sheet still up, its typing
   kept, so the iPhone's and the watch's sheet stays until the app takes an answer. Go to Day is
   the app's own question (`Day(DayMove::Ask)`), never asked by a shell for itself.
-- **A screen opening its place judges by the app as it is now** (`TaskListModel.appear`,
-  `DayModel.appear`, through `AppModel.current`), not the last turn drawn: opened again just
-  after the app went there itself (a reminder's block, `ShowBlock`), the day went back to today.
+- **A screen opens its place only where neither the last turn drawn nor the app as it is now
+  shows it** (`TaskListModel.appear`, `DayModel.appear`, through `AppModel.current`): judged by
+  the drawn turn alone, a day opened just after the app went there itself (a reminder's block,
+  `ShowBlock`) went back to today; judged by the app alone, the Tasks pane the Mac's window made
+  from the app's first turn, as it opened on the day, sent Tasks again and the window opened on
+  Tasks (`testAListMadeForAPlaceTheAppHasLeftDoesNotPullTheAppBack`).
 - **A list scrolls to the row the app lands on** before VoiceOver goes there (a
   `ScrollViewReader` round each list): a `List` row off the screen has no element to focus.
 - **What the app says is shown as well as spoken** (`Announcer` posts `Said`): a refusal or
@@ -351,6 +354,9 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   signs the app. Not Copy Files with Code Sign On Copy: its input would need naming as the
   framework's phase's output, a phase the phone and the watch share. `release.yml` checks both
   architectures are in it and that it runs, and makes `lum`'s own macOS tarball from it.
+- **The window opens on the day, deliberately**, as the iPad's columns do and the iPhone's first
+  tab is Today: the core's first place, Tasks, is only its default for a shell that names none.
+  `testTheAppOpensOnTheDay` holds it.
 - **The window follows the app**: the middle pane shows the app's place, so a place renamed,
   merged or deleted takes the window with it, and a command that goes somewhere and then acts
   there waits for the pane (`MainWindowController.go(_:then:)`, run once `follow` has shown it), and the right pane the details of the task in

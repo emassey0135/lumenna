@@ -117,6 +117,17 @@ final class SharedScreensTests: XCTestCase {
         XCTAssertFalse(latest[0].bytes.isEmpty)
     }
 
+    func testAListMadeForAPlaceTheAppHasLeftDoesNotPullTheAppBack() {
+        // As the Mac's window opens: its first turn shows the app's first place, Tasks, while
+        // the window has already asked for the day.
+        core.app.send(.open(.tasks))
+        settle { core.app.view.place == .tasks }
+        core.app.send(.open(.today))
+        TaskListModel(core: core, place: .tasks).appear()
+        settle()
+        XCTAssertEqual(core.app.view.place, .today, "the day the window asked for, not Tasks again")
+    }
+
     func testTheAppIconsQuickActionsAreTheCoresLaunchesAndHandEachBack() {
         let items = QuickActions.items
         XCTAssertEqual(items.map(\.localizedTitle), LumennaApp.launchShortcuts().map(\.title))

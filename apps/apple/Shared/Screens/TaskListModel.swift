@@ -72,9 +72,11 @@ final class TaskListModel: ObservableObject {
     /// the app keeps them. Opening is the list coming to the front, which VoiceOver says itself:
     /// no landing.
     func appear() {
-        // As the app holds it now, ahead of any turn on its way, so a place the app has just
-        // gone to (a launch, a task's reminder) is not opened again over what was put in hand.
-        if core.app.current.view.place != place {
+        // Only where neither the last turn drawn nor the app as it is now shows this place: a
+        // place the app has just gone to (a launch, a task's reminder) is not opened again over
+        // what was put in hand, and a pane the Mac's window made for a place the app has since
+        // left (the first place, as the window opens on the day) does not pull the app back.
+        if !here, core.app.current.view.place != place {
             core.app.send(.open(place))
             landing = nil
         }
