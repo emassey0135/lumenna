@@ -33,25 +33,25 @@ pub struct Lines {
 
 /// How a list's query was understood and what it found, or why it is not one yet: the
 /// refusal, the query described, the count (or, with nothing listed, the listing's own words
-/// for that), each name the query could not find, then the notices.
+/// for that), then the notices, which name what the query could not find in the core's words.
+/// Each is a sentence, joined as the core joins an announcement and its notices.
 fn readback(list: &crate::ListView, trash: bool) -> String {
     let query = list.query.as_ref();
     let found = if list.items.is_empty() && !list.empty.is_empty() { &list.empty } else { &list.announcement };
-    let unresolved = query.into_iter().flat_map(|query| &query.unresolved).map(|name| match &name.suggestion {
-        Some(suggestion) => format!("no {} called {}, did you mean {suggestion}?", name.kind, name.name),
-        None => format!("no {} called {}", name.kind, name.name),
-    });
     let parts: Vec<String> = list
         .refusal
         .iter()
         .cloned()
         .chain(query.filter(|_| !trash).map(|query| query.description.clone()))
         .chain([found.clone()])
-        .chain(unresolved)
         .chain(list.notices.iter().cloned())
-        .map(|part| part.trim_end_matches('.').to_owned())
+        .filter(|part| !part.trim().is_empty())
+        .map(|part| {
+            let part = speech::sentence(part.trim());
+            if part.ends_with(['.', '?', '!']) { part } else { format!("{part}.") }
+        })
         .collect();
-    speech::sentence(&speech::announcement("", &parts))
+    lumenna_records::words::spoken("", &parts)
 }
 
 /// `view`'s lines, in `clock`.
@@ -63,7 +63,7 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
             .map(|list| {
                 list.items
                     .iter()
-                    .map(|item| if trash { speech::trashed_line(&item.row, clock) } else { speech::row_line(&item.row, false, clock) })
+                    .map(|item| if trash { speech::trashed_line(&item.row, clock) } else { speech::row_line(&item.row, view.checkboxes, clock) })
                     .collect()
             })
             .unwrap_or_default(),

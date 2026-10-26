@@ -73,6 +73,7 @@ fn left(effects: Vec<Effect>, screen: Option<lumenna_app::ScreenId>) -> Vec<Shel
                 let said = request.operation;
                 shell.push(if said.heading { Shell::Heading(said.text) } else { Shell::Announce(said.text) });
             }
+            Effect::Save(request) if screen.is_some_and(|screen| screen != request.operation.screen) => {}
             Effect::Save(request) => shell.push(Shell::Save(request.operation)),
             Effect::Notify(request) => shell.push(Shell::Notify(request.operation)),
             Effect::Background(request) if screen.is_some_and(|screen| screen != request.operation.screen) => {}
@@ -98,10 +99,25 @@ pub fn arrival(lumenna: &Lumenna) -> lumenna_host::Result<(Arrival, Vec<ChangeHa
 
 /// What the host answers to one of the app's requests: the whole of the host's part.
 pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
-    let wrote = |result: lumenna_host::Result<lumenna_records::Change>| {
-        let after = arrival(lumenna).ok().map(|(arrival, _)| arrival);
-        HostAnswer::Wrote(Box::new(result), after)
+    answer_at(lumenna, request).0
+}
+
+/// [`answer`], with the heads the store was read at just after a write, an import or an
+/// apply: what the app now has, so the next tick does not read the store again to learn them.
+pub fn answer_at(lumenna: &Lumenna, request: HostRequest) -> (HostAnswer, Option<Vec<ChangeHash>>) {
+    let heads = std::cell::RefCell::new(None);
+    let after = || {
+        arrival(lumenna).ok().map(|(arrival, read_at)| {
+            *heads.borrow_mut() = Some(read_at);
+            arrival
+        })
     };
+    let answered = answer_with(lumenna, request, &after);
+    (answered, heads.take())
+}
+
+fn answer_with(lumenna: &Lumenna, request: HostRequest, after: &dyn Fn() -> Option<Arrival>) -> HostAnswer {
+    let wrote = |result: lumenna_host::Result<lumenna_records::Change>| HostAnswer::Wrote(Box::new(result), after());
     match request {
         HostRequest::Act { action, answer } => wrote(lumenna.act(action, answer)),
         HostRequest::AddTask { text } => wrote(lumenna.add_task(&text)),
@@ -126,8 +142,7 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
                 lumenna_records::types::Imported::Export { done } => spoken(&done.announcement, &done.notices),
                 lumenna_records::types::Imported::Backup { done } => spoken(&done.announcement, &done.notices),
             });
-            let after = arrival(lumenna).ok().map(|(arrival, _)| arrival);
-            HostAnswer::Imported(Box::new(done), after)
+            HostAnswer::Imported(Box::new(done), after())
         }
         HostRequest::Devices => HostAnswer::Devices(lumenna.devices()),
         HostRequest::RemindersDue { since, now } => HostAnswer::Found(lumenna.reminders_due(since, now)),
@@ -158,8 +173,7 @@ pub fn answer(lumenna: &Lumenna, request: HostRequest) -> HostAnswer {
                     })
                 }
             };
-            let after = arrival(lumenna).ok().map(|(arrival, _)| arrival);
-            HostAnswer::Applied(Box::new(applied), after)
+            HostAnswer::Applied(Box::new(applied), after())
         }
     }
 }
@@ -325,10 +339,8 @@ impl StoreWorker {
     fn answer(&mut self, job: Job) {
         match job {
             Job::Host(request, mut resolver) => {
-                let found = answer(&self.lumenna, *request);
-                if let HostAnswer::Wrote(_, Some(_)) | HostAnswer::Applied(_, Some(_)) | HostAnswer::Imported(_, Some(_)) = &found
-                    && let Ok((_, heads)) = self.lumenna.snapshot()
-                {
+                let (found, heads) = answer_at(&self.lumenna, *request);
+                if let Some(heads) = heads {
                     // The app has the store as this write left it.
                     self.sent = Some((heads, Zoned::now().minute()));
                 }

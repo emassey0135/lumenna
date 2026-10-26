@@ -733,10 +733,10 @@ fn a_repeating_block_asks_which_occurrences_and_one_days_form_changes_that_day_a
     app.send(Event::Run(vec![ActionKind::Edit]));
     let asking = app.view().asking.expect("which occurrences");
     let lumenna_records::Question::Choose { answers, .. } = asking.question else { panic!() };
-    assert_eq!(answers[0].title, "Tomorrow only");
+    assert_eq!(answers[0].title, "Tomorrow Only", "Title Case, the day keeping its own capitals");
     app.send(Event::Answer(Answer::Picked { id: "day".to_owned(), length: None }));
     let form = app.view().block_form.expect("one day's form");
-    assert_eq!(form.heading, "Change Standup, this day only");
+    assert_eq!(form.heading, "Change Standup, This Day Only");
     assert!(!form.fields.iter().any(|f| f.key == "repeat"));
     assert_eq!(form.second_column, None);
     field(&mut app, "minutes", "15");

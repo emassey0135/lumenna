@@ -306,3 +306,21 @@ mod tests {
         assert_eq!(suggested_because(&[], true), None);
     }
 }
+
+/// What Sync Now says when syncing stopped before its round could run.
+#[must_use]
+pub fn sync_stopped() -> String {
+    "Syncing has stopped.".to_owned()
+}
+
+/// What is said as a round of syncing starts.
+#[must_use]
+pub fn syncing() -> String {
+    "Syncing".to_owned()
+}
+
+/// What is said when keeping in sync could not start, and why.
+#[must_use]
+pub fn sync_not_started(why: &str) -> String {
+    format!("Syncing could not start: {why}")
+}

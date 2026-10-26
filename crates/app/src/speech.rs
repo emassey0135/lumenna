@@ -7,7 +7,6 @@
 //! is expanded, and whether a checkbox is checked. Saying those in the text as well would say
 //! them twice.
 
-use lumenna_records::words::duration;
 use lumenna_records::{Candidate, CancelledBlock, PlanAssignment, PlanBlock, RowView, TaskDetail};
 
 /// How this device says times and days. The core sends `HH:MM` and ISO dates, which are
@@ -89,12 +88,6 @@ impl Line {
     }
 }
 
-/// One thing a picker offers: a block as "Tomorrow, 9:00 AM to 11:00 AM, Deep work", in
-/// this device's clock; anything else as its title, then what tells it apart (a task's
-/// project). Depth is left to the list, which says a level as its platform does.
-pub fn choice(choice: &lumenna_records::Choice, clock: &dyn Clock) -> String {
-    choice_line(choice, clock).text()
-}
 
 /// [`choice`], as its first part and the rest: a block's whole line is its first.
 pub fn choice_line(choice: &lumenna_records::Choice, clock: &dyn Clock) -> Line {
@@ -142,10 +135,6 @@ fn short_forms(states: &[&str]) -> String {
         .join(" ")
 }
 
-/// A row in the trash, where every row is `deleted` and saying so on each is noise.
-pub fn trashed(row: &RowView, clock: &dyn Clock) -> String {
-    trashed_line(row, clock).text()
-}
 
 /// [`trashed`], as its title and the rest.
 pub fn trashed_line(row: &RowView, clock: &dyn Clock) -> Line {
@@ -181,16 +170,7 @@ pub fn task_state(task: &TaskDetail) -> String {
     text
 }
 
-/// A place in the sidebar, with what is in it: "Work, 3 tasks".
-pub fn place(title: &str, detail: &str) -> String {
-    lumenna_records::places::line(title, detail)
-}
 
-/// A block on the day: "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 3 tasks
-/// assigned" — the time and title, then the details the core words for every app.
-pub fn block(block: &PlanBlock, clock: &dyn Clock) -> String {
-    block_line(block, clock).text()
-}
 
 /// [`block`], as its times and title, then its details.
 pub fn block_line(block: &PlanBlock, clock: &dyn Clock) -> Line {
@@ -211,16 +191,7 @@ pub fn sitting_line(sitting: &PlanAssignment) -> Line {
     Line { braille, ..Line::of(sitting.title.clone(), sitting.details.clone()) }
 }
 
-/// Free time, which a timeline shows by empty space and a list has to say.
-pub fn free(start: &str, end: &str, minutes: u32, clock: &dyn Clock) -> String {
-    format!("Free, {}, {} to {}", duration(minutes), clock.time(start), clock.time(end))
-}
 
-/// Free time from its item, in the order every app says it: its title, its details, then
-/// its span in this device's clock.
-pub fn free_time(title: &str, details: &[String], start: &str, end: &str, clock: &dyn Clock) -> String {
-    free_line(title, details, start, end, clock).text()
-}
 
 /// [`free_time`], as its title, then its details and span.
 pub fn free_line(title: &str, details: &[String], start: &str, end: &str, clock: &dyn Clock) -> Line {
@@ -236,15 +207,7 @@ pub fn free_line_brailled(free: &crate::day::FreeTime, clock: &dyn Clock) -> Lin
     Line { braille, ..free_line(&free.title, &free.details, &free.start, &free.end, clock) }
 }
 
-/// Where the present falls: a position, not a highlight.
-pub fn now(time: &str, clock: &dyn Clock) -> String {
-    format!("Now, {}", clock.time(time))
-}
 
-/// A repeating block cancelled for this day alone.
-pub fn cancelled(block: &CancelledBlock, clock: &dyn Clock) -> String {
-    cancelled_line(block, clock).text()
-}
 
 /// [`cancelled`], as its time and title, then its details.
 pub fn cancelled_line(block: &CancelledBlock, clock: &dyn Clock) -> Line {
@@ -273,13 +236,9 @@ pub fn candidate(candidate: &Candidate) -> String {
     format!("{name}, {}", candidate.kind)
 }
 
-/// A result's announcement, then each notice.
+/// A result's announcement, then each notice, as the core joins them (`words::spoken`).
 pub fn announcement(announcement: &str, notices: &[String]) -> String {
-    std::iter::once(announcement)
-        .chain(notices.iter().map(String::as_str))
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join(". ")
+    lumenna_records::words::spoken(announcement, notices)
 }
 
 /// The first letter capitalised, as the core's sentences begin lower-case for embedding.
@@ -394,7 +353,7 @@ mod tests {
     fn the_trash_does_not_say_deleted_on_every_row() {
         let row = task("Buy milk", None, &["deleted", "completed"], true);
         let row = RowView { due: Some("due Monday".to_owned()), ..row };
-        assert_eq!(trashed(&row, &TwelveHour), "Buy milk, due Monday, completed");
+        assert_eq!(trashed_line(&row, &TwelveHour).text, "Buy milk, due Monday, completed");
     }
 
     #[test]
@@ -430,13 +389,13 @@ mod tests {
         };
         let block = PlanBlock { details: lumenna_records::words::block_details(&block), ..block };
         assert_eq!(
-            super::block(&block, &TwelveHour),
+            block_line(&block, &TwelveHour).text,
             "9:00 AM to 11:00 AM, Deep work, 2 hours, work block, now, 1 task assigned"
         );
         let line = block_line(&block, &TwelveHour);
         assert_eq!(line.title, "9:00 AM to 11:00 AM, Deep work");
         assert_eq!(line.detail, "2 hours, work block, now, 1 task assigned");
-        assert_eq!(line.text, super::block(&block, &TwelveHour));
+        assert_eq!(line.text, block_line(&block, &TwelveHour).text);
         // Braille: the length in hours and minutes, the kind short, the tasks counted short.
         assert_eq!(line.braille, "9:00 AM to 11:00 AM, Deep work, 2:00, wrk, now, 1 tsk");
         let sitting = sitting_line(&sitting_with("done", Some(75), 15));
@@ -507,22 +466,24 @@ mod tests {
             actions: Vec::new(),
         };
         let block = PlanBlock { details: lumenna_records::words::block_details(&block), ..block };
-        assert_eq!(super::block(&block, &TwelveHour), "12:30 PM to 1:15 PM, Lunch, 45 minutes, break block");
+        assert_eq!(block_line(&block, &TwelveHour).text, "12:30 PM to 1:15 PM, Lunch, 45 minutes, break block");
     }
 
     #[test]
     fn a_planned_length_never_reads_as_planned_twice() {
-        assert_eq!(super::sitting(&sitting_with("planned", Some(45), 0)), "Write report, planned for 45 minutes");
+        assert_eq!(sitting(&sitting_with("planned", Some(45), 0)), "Write report, planned for 45 minutes");
         assert_eq!(
-            super::sitting(&sitting_with("worked", Some(45), 50)),
+            sitting(&sitting_with("worked", Some(45), 50)),
             "Write report, worked, 45 minutes planned, 50 minutes logged"
         );
     }
 
     #[test]
-    fn free_time_and_now_are_rows_of_their_own() {
-        assert_eq!(free("10:15", "11:00", 45, &TwelveHour), "Free, 45 minutes, 10:15 AM to 11:00 AM");
-        assert_eq!(now("19:32", &TwelveHour), "Now, 7:32 PM");
+    fn free_time_says_its_title_its_length_then_its_span() {
+        assert_eq!(
+            free_line("Free", &["45 minutes".to_owned()], "10:15", "11:00", &TwelveHour).text,
+            "Free, 45 minutes, 10:15 AM to 11:00 AM"
+        );
     }
 
     #[test]
@@ -550,10 +511,10 @@ mod tests {
     }
 
     #[test]
-    fn an_announcement_is_followed_by_each_notice() {
+    fn an_announcement_is_followed_by_each_notice_as_the_core_joins_them() {
         assert_eq!(
-            announcement("Added Buy milk", &["new label 'shop'".to_owned()]),
-            "Added Buy milk. new label 'shop'"
+            announcement("Added Buy milk.", &["New label shop.".to_owned()]),
+            "Added Buy milk. New label shop."
         );
         assert_eq!(announcement("", &[]), "");
     }

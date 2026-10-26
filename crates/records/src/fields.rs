@@ -158,7 +158,20 @@ pub fn block_form() -> Vec<FormField> {
 #[must_use]
 pub fn unsayable_repeat_note(block: crate::BlockShown) -> Option<String> {
     let rule = block.rrule.filter(|_| block.repetition.is_none())?;
-    Some(format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it."))
+    Some(repeat_rule_note(&rule))
+}
+
+/// What a block's Repeats field says of a rule it repeats by that the repetition words cannot
+/// say, which an empty field keeps.
+#[must_use]
+pub fn repeat_rule_note(rule: &str) -> String {
+    format!("It repeats by the rule {rule}, which the repetition words cannot say. Leave Repeats empty to keep it.")
+}
+
+/// The button that saves a form: "Add" for something new, "Save" for a change.
+#[must_use]
+pub fn form_yes(adding: bool) -> String {
+    if adding { "Add" } else { "Save" }.to_owned()
 }
 
 /// What the pairing screen says, every sentence and button of it. Only what names the
@@ -407,4 +420,145 @@ pub fn new_block_start(snapshot: &lumenna_core::snapshot::Snapshot, date: Option
         day_start
     };
     Ok(crate::words::time_text(start))
+}
+
+/// What saving a form says when nothing in it changed: the task details', the block form's.
+#[must_use]
+pub fn nothing_changed() -> String {
+    "Nothing changed".to_owned()
+}
+
+/// Which occurrences of the repeating block `block` a change is for, asked before its form
+/// opens: that day alone (`day`, as said: "Tomorrow", "Monday 5 October"), whose answer is
+/// `day`, or every occurrence, `every`. In Title Case, or sentence case where `sentence`; the
+/// block's name and the day keep their own capitals either way.
+#[must_use]
+pub fn edit_which_question(block: &str, day: &str, sentence: bool) -> crate::Question {
+    let cased = |text: &str| if sentence { sentence_case(text.to_owned()) } else { text.to_owned() };
+    crate::Question::Choose {
+        title: format!("{} {block}", cased("Change")),
+        message: cased("Which Occurrences?"),
+        answers: vec![
+            Choice { id: "day".to_owned(), title: format!("{day} {}", if sentence { "only" } else { "Only" }), ..Choice::default() },
+            Choice { id: "every".to_owned(), title: cased("Every Occurrence"), ..Choice::default() },
+        ],
+    }
+}
+
+/// The block form's heading for one day of a repeating block, for every occurrence of one, and
+/// for a block that does not repeat: "Change Standup, This Day Only", or in sentence case where
+/// `sentence`, the block's name keeping its own capitals.
+#[must_use]
+pub fn block_form_heading(block: &str, scope: BlockFormScope, sentence: bool) -> String {
+    let cased = |text: &str| if sentence { sentence_case(text.to_owned()) } else { text.to_owned() };
+    match scope {
+        BlockFormScope::New => cased("New Block"),
+        BlockFormScope::Day => format!("{} {block}, {}", cased("Change"), if sentence { "this day only" } else { "This Day Only" }),
+        BlockFormScope::Every => format!("{} {block}, {}", cased("Change"), if sentence { "every occurrence" } else { "Every Occurrence" }),
+        BlockFormScope::Whole => format!("{} {block}", cased("Change")),
+    }
+}
+
+/// What a block form is for, as its heading says it.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlockFormScope {
+    /// A new block.
+    New,
+    /// One day of a repeating block.
+    Day,
+    /// Every occurrence of a repeating block.
+    Every,
+    /// A block that does not repeat.
+    Whole,
+}
+
+/// One line the task details list besides their form: its label, then what it says.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetailsLine {
+    /// What it is: `state`, `rule`, `waits`, `history`, so a shell can place it.
+    pub key: String,
+    /// Its label: "State".
+    pub label: String,
+    /// What it says: "overdue, recurring".
+    pub value: String,
+}
+
+/// `text` as written where `sentence` says: sentence case, else as given (Title Case).
+fn cased(text: &str, sentence: bool) -> String {
+    if sentence { sentence_case(text.to_owned()) } else { text.to_owned() }
+}
+
+/// What the task details say around their form, every label and button: the same on every
+/// platform. The buttons a details pane shows by themselves are the task's `primary` offered
+/// actions, the rest a menu away, as on any row; Waits For's two are its own.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetailsWords {
+    /// The pane's name, for a screen reader: "Task Details".
+    pub title: String,
+    /// What it shows with no task in hand.
+    pub none: String,
+    /// What it says once the task it showed is gone: the core's [`no_longer_here`](crate::no_longer_here).
+    pub gone: String,
+    /// The list of what the task waits for: its label.
+    pub waits: String,
+    /// The same list's description.
+    pub waits_hint: String,
+    /// What that list says with nothing in it.
+    pub waits_none: String,
+    /// The button that adds something it waits for (`WaitFor`), which asks.
+    pub add_wait: String,
+    /// The button that stops it waiting for the task in hand in that list (`StopWaiting`).
+    pub stop_wait: String,
+    /// The heading over what it is: its state and history (`DetailsView::lines`).
+    pub about: String,
+    /// The heading over what can be done to it.
+    pub actions: String,
+    /// The button that saves what changed.
+    pub save: String,
+}
+
+/// The task details' words (`DetailsWords`), in sentence case where `sentence`.
+#[must_use]
+pub fn details_words(sentence: bool) -> DetailsWords {
+    let c = |text: &str| cased(text, sentence);
+    DetailsWords {
+        title: c("Task Details"),
+        none: "No task selected".to_owned(),
+        gone: crate::no_longer_here(),
+        waits: c("Waits For"),
+        waits_hint: "The tasks this one waits for. It is blocked until they are done.".to_owned(),
+        waits_none: "Nothing".to_owned(),
+        add_wait: c("Wait for Another Task"),
+        stop_wait: c("Stop Waiting for the Selected Task"),
+        about: c("About"),
+        actions: c("Actions"),
+        save: c("Save"),
+    }
+}
+
+/// What the details list of `task` besides its form, in order: its state ("open" when nothing
+/// is worth saying), the rule it repeats by when the Repeats field cannot say it, what it waits
+/// for, and its history. A line with nothing to say is left out, but for the state. Labels in
+/// sentence case where `sentence`.
+#[must_use]
+pub fn details_lines(task: &crate::types::TaskDetail, sentence: bool) -> Vec<DetailsLine> {
+    let line = |key: &str, label: &str, value: String| DetailsLine { key: key.to_owned(), label: cased(label, sentence), value };
+    let states: Vec<&str> = task.state.iter().map(String::as_str).filter(|state| *state != "ready").collect();
+    let mut lines = vec![line("state", "State", if states.is_empty() { "open".to_owned() } else { states.join(", ") })];
+    if task.repetition.is_none()
+        && let Some(rule) = &task.recurrence
+    {
+        lines.push(line("rule", "Repeats by the Rule", rule.clone()));
+    }
+    if !task.depends.is_empty() {
+        lines.push(line("waits", "Waits For", crate::words::listed(&task.depends.iter().map(|d| d.title.clone()).collect::<Vec<_>>())));
+    }
+    if !task.history.is_empty() {
+        lines.push(line("history", "History", task.history.join(", ")));
+    }
+    lines
 }

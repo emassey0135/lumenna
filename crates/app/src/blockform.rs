@@ -13,13 +13,14 @@ use jiff::civil::Date;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_records::Action;
 use lumenna_records::places::Place;
+use lumenna_records::fields::BlockFormScope;
 use lumenna_records::{BlockFields, FormField};
 use serde::{Deserialize, Serialize};
 
 use crate::asking::Open;
 use crate::host::HostRequest;
 use crate::model::Screen;
-use crate::{DayKind, Effect, Event, Lumenna, host, say};
+use crate::{DayKind, Effect, Event, Lumenna, say, write};
 
 /// What the person does in the block form.
 #[boltffi::data]
@@ -70,8 +71,10 @@ pub enum Purpose {
 pub struct Form {
     /// What it is for.
     pub purpose: Purpose,
-    /// What it is called.
-    pub heading: String,
+    /// What it changes, by name, for its heading: empty for a new block.
+    pub block: String,
+    /// What it is for, as its heading says.
+    pub scope: BlockFormScope,
     /// What it started from: what saving compares with.
     pub initial: BlockFields,
     /// The fields as they now are.
@@ -84,8 +87,8 @@ pub struct Form {
     pub rule: Option<String>,
     /// Why saving was refused.
     pub refusal: Option<String>,
-    /// A save on its way to the host.
-    pub saving: bool,
+    /// A save on its way to the host, by the write it went out as.
+    pub saving: Option<u64>,
 }
 
 /// The form as shown.
@@ -105,6 +108,8 @@ pub struct BlockFormView {
     pub date: String,
     /// The button that saves: "Add" or "Save".
     pub yes: String,
+    /// Whether it adds a block, rather than changing one.
+    pub adding: bool,
     /// Why saving was refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
@@ -135,30 +140,32 @@ impl Form {
         let fields = fresh(start, minutes.min(720));
         Self {
             purpose: Purpose::Add { start_follows_day },
-            heading: "New Block".to_owned(),
+            block: String::new(),
+            scope: BlockFormScope::New,
             initial: fields.clone(),
             fields,
             date,
             offered,
             rule: None,
             refusal: None,
-            saving: false,
+            saving: None,
         }
     }
 
-    /// A form changing a block, from what it holds now.
+    /// A form changing the block called `block`, from what it holds now.
     #[must_use]
-    pub fn change(purpose: Purpose, heading: String, initial: BlockFields, rule: Option<String>) -> Self {
+    pub fn change(purpose: Purpose, block: String, scope: BlockFormScope, initial: BlockFields, rule: Option<String>) -> Self {
         Self {
             purpose,
-            heading,
+            block,
+            scope,
             fields: initial.clone(),
             initial,
             date: String::new(),
             offered: String::new(),
             rule,
             refusal: None,
-            saving: false,
+            saving: None,
         }
     }
 
@@ -205,9 +212,10 @@ impl Form {
         self.refusal = None;
     }
 
-    /// The form as shown: the fields this purpose has.
+    /// The form as shown, its heading and button in sentence case where `sentence`: the fields
+    /// this purpose has.
     #[must_use]
-    pub fn view(&self) -> BlockFormView {
+    pub fn view(&self, sentence: bool) -> BlockFormView {
         let once = matches!(self.purpose, Purpose::Occurrence { .. });
         let adding = matches!(self.purpose, Purpose::Add { .. });
         let kept_rule = self.rule.is_some() && self.initial.repeat.is_empty();
@@ -222,10 +230,7 @@ impl Form {
                     && kept_rule
                     && let Some(rule) = &self.rule
                 {
-                    field.hint = format!(
-                        "{} It repeats by the rule {rule}, which the repetition words cannot say; leave this empty to keep it.",
-                        field.hint
-                    );
+                    field.hint = format!("{} {}", field.hint, lumenna_records::fields::repeat_rule_note(rule));
                 }
                 field
             })
@@ -235,12 +240,13 @@ impl Form {
             .flatten()
             .and_then(|at| u32::try_from(at).ok());
         BlockFormView {
-            heading: self.heading.clone(),
+            heading: lumenna_records::fields::block_form_heading(&self.block, self.scope, sentence),
             fields,
             second_column,
             values: self.fields.clone(),
             date: self.date.clone(),
-            yes: if adding { "Add" } else { "Save" }.to_owned(),
+            yes: lumenna_records::fields::form_yes(adding),
+            adding,
             refusal: self.refusal.clone(),
         }
     }
@@ -276,12 +282,13 @@ impl Lumenna {
             Ok(shown) => {
                 // A rule is given exactly when the series repeats.
                 let rule = shown.repeats.then(|| shown.rrule.clone()).flatten();
-                let heading =
-                    if shown.repeats { format!("Change {}, every occurrence", shown.title) } else { format!("Change {}", shown.title) };
+                let scope = if shown.repeats { BlockFormScope::Every } else { BlockFormScope::Whole };
+                let block = shown.title.clone();
                 let series = shown.id.clone();
                 model.block_form = Some(Form::change(
                     Purpose::Series(series),
-                    heading,
+                    block,
+                    scope,
                     lumenna_records::block_fields(shown),
                     rule,
                 ));
@@ -338,11 +345,14 @@ impl Lumenna {
                     }
                     Ok(None) => {
                         model.block_form = None;
-                        render().and(say("Nothing changed"))
+                        render().and(say(lumenna_records::fields::nothing_changed()))
                     }
                     Ok(Some(request)) => {
-                        form.saving = true;
-                        host(request)
+                        let (number, sent) = write(model, request, None);
+                        if let Some(form) = &mut model.block_form {
+                            form.saving = Some(number);
+                        }
+                        sent
                     }
                 }
             }

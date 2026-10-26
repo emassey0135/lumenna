@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::host::{Arrival, HostRequest};
 use crate::model::Screen;
-use crate::{Effect, Event, Lumenna, host, say};
+use crate::{Effect, Event, Lumenna, host, say, write};
 
 /// What the person does in Settings.
 #[boltffi::data]
@@ -95,8 +95,8 @@ pub struct Settings {
     pub typed: BTreeMap<String, String>,
     /// What was wrong with a line applied, by key.
     pub problems: BTreeMap<String, String>,
-    /// The setting on its way to the host.
-    pub setting: Option<String>,
+    /// The setting on its way to the host, and the write it went out as.
+    pub setting: Option<(String, u64)>,
 }
 
 /// One setting as shown.
@@ -219,8 +219,11 @@ impl Lumenna {
             SettingsEvent::Set { key, value } => {
                 let Some(settings) = &mut model.settings else { return Command::done() };
                 settings.typed.insert(key.clone(), value.clone());
-                settings.setting = Some(key.clone());
-                host(HostRequest::SetSetting { key, value })
+                let (number, sent) = write(model, HostRequest::SetSetting { key: key.clone(), value }, None);
+                if let Some(settings) = &mut model.settings {
+                    settings.setting = Some((key, number));
+                }
+                sent
             }
             SettingsEvent::Backup => host(HostRequest::Backup),
             SettingsEvent::Export(format) => host(HostRequest::Export(format)),

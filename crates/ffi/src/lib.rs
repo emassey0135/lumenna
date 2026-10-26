@@ -145,7 +145,7 @@ impl App {
         let saying = Arc::clone(&clock);
         spawn("lumenna-shell", move || deliver(&delivering, &drawing, &*shell, &handed, &*saying))?;
         let app = App { lumenna, stack, store, network: handle, outbox: Mutex::new(outbox), unsent, clock, platform };
-        app.send(ShellEvent::Start);
+        app.update(lumenna_app::Event::Start);
         Ok(app)
     }
 
@@ -172,7 +172,7 @@ impl App {
 
     /// What screen `screen` shows now.
     pub fn view_on(&self, screen: u32) -> ViewModel {
-        self.stack.view().screen(screen)
+        lumenna_app::Views::one(screen, || self.stack.view())
     }
 
     /// The lines of what to draw now, in this device's clock.

@@ -192,11 +192,12 @@ impl Lumenna {
     pub(crate) fn devices(&self, event: DevicesEvent, model: &mut Screen) -> Command<Effect, Event> {
         match event {
             DevicesEvent::Show => {
+                model.sync_failed = false;
                 model.devices = Some(Devices::default());
                 model.devices_held = crate::held::Held::default();
                 render().and(host(HostRequest::Devices)).and(network_request(NetworkRequest::Status, Event::SyncStatus))
             }
-            DevicesEvent::SyncNow => say("Syncing").and(network_request(NetworkRequest::SyncNow, Event::Synced)),
+            DevicesEvent::SyncNow => say(lumenna_records::words::syncing()).and(network_request(NetworkRequest::SyncNow, Event::Synced)),
             DevicesEvent::Pair(event) => self.pair(event, model),
         }
     }
@@ -218,6 +219,8 @@ impl Lumenna {
                 pairing.theirs = code;
                 render()
             }
+            // One pairing at a time: waiting while one is under way does nothing.
+            PairEvent::Wait if pairing.running => Command::done(),
             PairEvent::Wait => start_pairing(pairing, None, &words),
             PairEvent::Join => {
                 let code = pairing.theirs.trim().to_owned();
@@ -262,6 +265,7 @@ impl Lumenna {
             }
             NetworkAnswer::Paired(Ok(said)) => {
                 model.pairing = None;
+                model.sync_failed = false;
                 render().and(say(said)).and(host(HostRequest::Devices))
             }
             NetworkAnswer::Paired(Err(why)) => {
@@ -279,7 +283,12 @@ impl Lumenna {
 
     pub(crate) fn sync_started(&self, answer: NetworkAnswer, model: &mut Screen) -> Command<Effect, Event> {
         match answer {
-        NetworkAnswer::Said(why) => say(format!("Syncing could not start: {why}")),
+        // Asked again when the person next shows the devices or pairs one, not at every refresh.
+        NetworkAnswer::Said(why) => {
+            model.sync_asked = false;
+            model.sync_failed = true;
+            say(lumenna_records::words::sync_not_started(&why))
+        }
         _ => {
             model.syncing = true;
             if model.devices.is_some() {
@@ -308,7 +317,7 @@ impl Lumenna {
     pub(crate) fn devices_listed(&self, result: Result<lumenna_records::types::DeviceList, LumennaError>, model: &mut Screen) -> Command<Effect, Event> {
         let Ok(list) = result else { return Command::done() };
         // Another device paired: keep in sync with it while the app runs.
-        let start = !model.sync_asked && list.devices.iter().any(|d| !d.this_device);
+        let start = !model.sync_asked && !model.sync_failed && list.devices.iter().any(|d| !d.this_device);
         if let Some(devices) = &mut model.devices {
             devices.list = Some(list);
         }

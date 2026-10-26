@@ -244,6 +244,9 @@ pub enum Event {
     Clock(lumenna_records::proposals::TimeStyle),
     /// How this shell writes its buttons, headings and questions.
     Capitals(capitals::Capitals),
+    /// Whether this shell's list shows each task's checkbox, which says whether it is done: then
+    /// the list's lines (`lines::Lines::list`) leave "completed" to it.
+    Checkboxes(bool),
     /// What this shell is called in pairing's sentences ("this computer", "this watch"), and
     /// whether it finds devices on its own network or pairs only by code: for pairing's words.
     PairingAs {
@@ -269,9 +272,13 @@ pub enum Event {
     /// The store as it now is.
     #[serde(skip)]
     Arrived(Arrival),
-    /// What a write did.
+    /// What the host answered to a request that is not a write: devices, settings, reminders
+    /// due, a file, an import, a proposal applied.
     #[serde(skip)]
     Answered(HostAnswer),
+    /// What a write did, and what it was for.
+    #[serde(skip)]
+    Wrote(Box<host::Writing>, HostAnswer),
 }
 
 /// The app.
@@ -289,6 +296,15 @@ pub(crate) fn say(text: impl Into<String>) -> Command<Effect, Event> {
 
 pub(crate) fn host(request: HostRequest) -> Command<Effect, Event> {
     Command::request_from_shell(request).then_send(Event::Answered)
+}
+
+/// A write, numbered among the screen's so that its answer goes to what waits on it alone:
+/// `asked` is the question it answers, or the action it runs unasked.
+pub(crate) fn write(model: &mut Screen, request: HostRequest, asked: Option<Open>) -> (u64, Command<Effect, Event>) {
+    model.writes += 1;
+    let writing = host::Writing { number: model.writes, asked };
+    let number = writing.number;
+    (number, Command::request_from_shell(request).then_send(move |answer| Event::Wrote(Box::new(writing), answer)))
 }
 
 /// A request of the network, its answer sent as `then`.
@@ -318,7 +334,7 @@ impl Event {
     /// What every screen takes in alike: the store, the clock and the capitals the shell says
     /// things in, the moment proposals are made against.
     fn is_everyones(&self) -> bool {
-        matches!(self, Event::Arrived(_) | Event::Clock(_) | Event::Capitals(_) | Event::PairingAs { .. } | Event::PlanFrom(_))
+        matches!(self, Event::Arrived(_) | Event::Clock(_) | Event::Capitals(_) | Event::Checkboxes(_) | Event::PairingAs { .. } | Event::PlanFrom(_))
     }
 
     /// Whether the person did it, rather than the store, the network or the shell's own clock.
@@ -328,6 +344,7 @@ impl Event {
             Event::Start
                 | Event::Arrived(_)
                 | Event::Answered(_)
+                | Event::Wrote(..)
                 | Event::SyncStarted(_)
                 | Event::Synced(_)
                 | Event::SyncStatus(_)
@@ -335,6 +352,7 @@ impl Event {
                 | Event::Background(_)
                 | Event::Clock(_)
                 | Event::Capitals(_)
+                | Event::Checkboxes(_)
                 | Event::PairingAs { .. }
                 | Event::PlanFrom(_)
                 | Event::Due(DueEvent::Look { .. })
@@ -352,6 +370,26 @@ impl Views {
     pub fn screen(mut self, screen: ScreenId) -> ViewModel {
         self.0.remove(&screen).unwrap_or_default()
     }
+
+    /// What screen `screen` shows, built alone: `view` is the core's view (`Core::view`, a
+    /// stack's), which builds only that screen's while it runs on this thread, so a shell drawing
+    /// one screen of several does not pay for every other's.
+    pub fn one(screen: ScreenId, view: impl FnOnce() -> Views) -> ViewModel {
+        struct Alone;
+        impl Drop for Alone {
+            fn drop(&mut self) {
+                ONE.set(None);
+            }
+        }
+        ONE.set(Some(screen));
+        let _alone = Alone;
+        view().screen(screen)
+    }
+}
+
+thread_local! {
+    /// The one screen a view is being built for on this thread (`Views::one`), if it is one.
+    static ONE: std::cell::Cell<Option<ScreenId>> = const { std::cell::Cell::new(None) };
 }
 
 impl App for Lumenna {
@@ -379,7 +417,15 @@ impl App for Lumenna {
     }
 
     fn view(&self, model: &Model) -> Views {
-        Views(model.screens.iter().map(|(id, screen)| (*id, view::view(screen))).collect())
+        let one = ONE.get();
+        Views(
+            model
+                .screens
+                .iter()
+                .filter(|(id, _)| one.is_none_or(|one| one == **id))
+                .map(|(id, screen)| (*id, view::view(screen)))
+                .collect(),
+        )
     }
 }
 
@@ -420,7 +466,7 @@ impl Lumenna {
                 }
                 Some(("filter", name)) => {
                     let query = model.store.as_ref().and_then(|store| {
-                        store.snapshot.saved_filters.values().find(|f| f.name == name).map(|f| f.query.clone())
+                        store.snapshot.saved_filters.values().find(|f| f.deleted_at.is_none() && f.name == name).map(|f| f.query.clone())
                     });
                     let Some(query) = query else { return Command::done() };
                     model.go(Place::Filter { name: name.to_owned(), query });
@@ -462,7 +508,7 @@ impl Lumenna {
         let reported = matches!(event, Event::Focus(_));
         let wrote = matches!(
             event,
-            Event::Answered(HostAnswer::Wrote(..) | HostAnswer::Applied(..) | HostAnswer::Imported(..))
+            Event::Wrote(..) | Event::Answered(HostAnswer::Applied(..) | HostAnswer::Imported(..))
         );
         // The store answers off the shell's thread, so the person can move on before a write's
         // answer comes back: then the row they moved to stays in hand, not the one the write
@@ -479,30 +525,27 @@ impl Lumenna {
             other if other.is_the_persons() => model.acting = None,
             _ => {}
         }
+        // What the person does sets where a later answer leaves the row in hand; their own moves,
+        // and what the store, the network and the shell's clock say (its look for reminders
+        // among them), do not.
         match &event {
             Event::Focus(_) => model.moves += 1,
             Event::Hold(..) => {}
-            Event::Arrived(_)
-            | Event::Answered(_)
-            | Event::SyncStarted(_)
-            | Event::Synced(_)
-            | Event::SyncStatus(_)
-            | Event::Pairing(_)
-            | Event::Background(_)
-            | Event::Clock(_)
-            | Event::Capitals(_)
-            | Event::PairingAs { .. }
-            | Event::PlanFrom(_) => {}
-            _ => model.acted_at = model.moves,
+            other if other.is_the_persons() => model.acted_at = model.moves,
+            _ => {}
         }
+        // What the side list acted from held before a write, for telling what the write made.
+        let side_before = model.acting.filter(|_| wrote).map(|side| model.side_keys(side));
         let command = first.and(self.dispatch(event, model));
-        if moved_since && model.place == place && before.is_some() {
+        // The person's own row put back is where focus is already: nothing lands.
+        let put_back = moved_since && model.place == place && before.is_some();
+        if put_back {
             model.focus = before.clone();
             model.settle();
         }
-        model.settle_sides(wrote);
+        model.settle_sides(wrote, side_before.as_deref());
         // A change made in a side list lands there; the main list's row moves on quietly.
-        if !reported && model.acting.is_none() && (wrote || model.focus != before) {
+        if !reported && !put_back && model.acting.is_none() && (wrote || model.focus != before) {
             model.landing += 1;
         }
         command
@@ -579,6 +622,10 @@ impl Lumenna {
                 model.style = Some(style);
                 Command::done()
             }
+            Event::Checkboxes(shown) => {
+                model.checkboxes = shown;
+                render()
+            }
             Event::Capitals(capitals) => {
                 model.capitals = capitals;
                 render()
@@ -588,13 +635,17 @@ impl Lumenna {
                 render()
             }
             Event::QuickAdd(text) => {
-                model.adding = true;
                 model.add_refused = None;
-                host(HostRequest::AddTask { text })
+                let (number, sent) = write(model, HostRequest::AddTask { text }, None);
+                model.adding = Some(number);
+                sent
             }
-            Event::Undo => host(HostRequest::Undo),
-            Event::Redo => host(HostRequest::Redo),
-            Event::Answered(HostAnswer::Wrote(result, store)) => self.wrote(*result, store, model),
+            Event::Undo => write(model, HostRequest::Undo, None).1,
+            Event::Redo => write(model, HostRequest::Redo, None).1,
+            Event::Wrote(writing, HostAnswer::Wrote(result, store)) => self.wrote(&writing, *result, store, model),
+            // Every write goes out with `write`, so its answer is `Wrote`; anything else is a read's.
+            Event::Wrote(_, answer) => self.dispatch(Event::Answered(answer), model),
+            Event::Answered(HostAnswer::Wrote(result, store)) => self.wrote(&host::Writing::default(), *result, store, model),
         }
     }
 }

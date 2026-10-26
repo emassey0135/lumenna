@@ -44,6 +44,10 @@ pub struct ViewModel {
     /// Counted: when this moves, the shell puts focus on `focus` — if focus is in that list, or
     /// lost, or coming back to it from a dialog. It does not move for the person's own moves.
     pub landing: u32,
+    /// Whether the shell's list shows each task's checkbox (`Event::Checkboxes`): its lines then
+    /// leave "completed" to it.
+    #[serde(default)]
+    pub checkboxes: bool,
     /// The question an action is asking.
     pub asking: Option<Asking>,
     /// What a new task typed here starts with: `#Work ` in the Work project.
@@ -144,7 +148,7 @@ pub fn listing(snapshot: &Snapshot, place: &Place, query: &str, now: &Zoned) -> 
 }
 
 /// The sidebar with Expand or Collapse on each row that has rows under it.
-fn folded_sidebar(mut entries: Vec<SidebarEntry>, folded: &std::collections::BTreeSet<String>) -> Vec<SidebarEntry> {
+pub(crate) fn folded_sidebar(mut entries: Vec<SidebarEntry>, folded: &std::collections::BTreeSet<String>) -> Vec<SidebarEntry> {
     let depths: Vec<u32> = entries.iter().map(|e| e.depth).collect();
     for (at, entry) in entries.iter_mut().enumerate() {
         if depths.get(at + 1).is_some_and(|next| *next > entry.depth) {
@@ -227,7 +231,7 @@ fn shown(model: &Screen) -> ViewModel {
     let refusal = (place != Place::Blocks)
         .then(|| lumenna_records::resolve::list_query(&store.snapshot, &model.query()).err().map(|e| e.message().to_owned()))
         .flatten();
-    let list = listing(&store.snapshot, &place, &model.shown_query(), &store.now).map(|found| match found {
+    let list = model.listing().map(|found| match found {
         Ok(rows) => {
             let mut items = list::items(&rows, &model.folded);
             let offered = list::offer(&mut items);
@@ -258,16 +262,17 @@ fn shown(model: &Screen) -> ViewModel {
         add_refused: model.add_refused.clone(),
         day: (place == Place::Today).then(|| model.day_view()).flatten(),
         details: model.details_shown().map(|task| {
-            let draft = model.details.draft.as_ref().filter(|d| d.task == task.id);
+            let draft = model.details.drafts.get(&task.id);
             DetailsView {
                 fields: draft.map_or_else(|| lumenna_records::task_fields(task.clone()), |d| d.fields.clone()),
                 dirty: draft.is_some_and(|d| d.fields != lumenna_records::task_fields(d.original.clone())),
                 projects: projects_for(&task, &store.snapshot),
+                lines: lumenna_records::fields::details_lines(&task, model.capitals == crate::Capitals::Sentence),
                 task,
                 form: lumenna_records::task_form(),
             }
         }),
-        block_form: model.block_form.as_ref().map(crate::blockform::Form::view),
+        block_form: model.block_form.as_ref().map(|form| form.view(model.capitals == crate::Capitals::Sentence)),
         proposal: model.proposal.as_ref().map(crate::proposal::view),
         proposal_made: model.proposal_made,
         settings: model.settings.as_ref().map(|s| crate::settings::view(s, model.background, store.now.date())),
@@ -305,6 +310,7 @@ fn shown(model: &Screen) -> ViewModel {
         reminders_held: model.reminders_held.view(),
         devices_held: model.devices_held.view(),
         landing: model.landing,
+        checkboxes: model.checkboxes,
         asking: model.open.as_ref().map(|open| asking(open, model)),
     }
 }
@@ -334,7 +340,8 @@ fn asking(open: &crate::Open, model: &Screen) -> Asking {
         _ => open.action().is_some_and(|a| a.kind == lumenna_records::ActionKind::ChangeQuery),
     };
     let syntax = query.then_some(Syntax::Filter);
-    Asking { action: open.action().cloned(), question: open.question(), choices, refusal: open.refusal.clone(), day, syntax }
+    let question = open.question(model.capitals == crate::Capitals::Sentence);
+    Asking { action: open.action().cloned(), question, choices, refusal: open.refusal.clone(), day, syntax }
 }
 
 /// The projects a task's Project field offers: every one not archived, in tree order, and the

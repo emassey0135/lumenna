@@ -257,6 +257,10 @@ impl Runner {
             }
             NetworkRequest::CancelPairing => {
                 self.syncing.cancelled.set(true);
+                // A pairing waiting on the words gives up too, as the native runner's does.
+                if let Some(answer) = self.confirm.borrow_mut().take() {
+                    let _ = answer.send(false);
+                }
                 NetworkAnswer::Done
             }
         };
@@ -281,9 +285,16 @@ impl Runner {
     }
 
     async fn sync_now(&self) -> NetworkAnswer {
+        // Not syncing yet: start, as a native app opens an endpoint for the round, and run the
+        // round on it.
+        if !self.syncing.running.borrow().as_ref().is_some_and(SyncLoop::is_running)
+            && let NetworkAnswer::Said(why) = self.start_sync().await
+        {
+            return NetworkAnswer::Said(why);
+        }
         let running = self.syncing.running.borrow().clone();
         let Some(handle) = running.filter(SyncLoop::is_running) else {
-            return NetworkAnswer::Said("Sync is not running.".to_owned());
+            return NetworkAnswer::Said(lumenna_records::words::sync_stopped());
         };
         match handle.sync_now().await {
             Ok(report) => {
