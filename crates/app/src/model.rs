@@ -158,6 +158,10 @@ pub struct Screen {
     pub reminders_held: crate::held::Held,
     /// The devices list's row in hand.
     pub devices_held: crate::held::Held,
+    /// The reminders due's row in hand.
+    pub due_held: crate::held::Held,
+    /// How many questions this screen has asked: each is numbered as it is shown.
+    pub questions: u32,
     /// The side list the person last moved in, until they move in the main list or open a
     /// place: a change it makes lands there, not in the main list.
     pub acting: Option<crate::held::Side>,

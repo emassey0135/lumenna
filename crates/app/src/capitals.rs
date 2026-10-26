@@ -51,6 +51,9 @@ pub(crate) fn in_sentence_case(view: &mut ViewModel) {
     }
     for due in &mut view.due {
         due.dismiss = sentence_case(std::mem::take(&mut due.dismiss));
+        for button in &mut due.buttons {
+            button.title = sentence_case(std::mem::take(&mut button.title));
+        }
         for button in [&mut due.snooze, &mut due.carry, &mut due.replan].into_iter().flatten() {
             *button = sentence_case(std::mem::take(button));
         }

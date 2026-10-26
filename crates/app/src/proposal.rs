@@ -159,6 +159,8 @@ pub struct ChangeView {
     pub reason: Option<String>,
     /// Whether it is to be made.
     pub checked: bool,
+    /// Whether it is to be made, said: "checked", "not checked".
+    pub state: String,
 }
 
 /// A proposal's screen as shown.
@@ -200,7 +202,7 @@ pub fn view(screen: &Sheet) -> ProposalView {
         None => (String::new(), Vec::new(), Vec::new(), Vec::new()),
         Some(p @ Proposal::Replan(r)) => (
             p.spoken(),
-            r.changes.iter().enumerate().map(|(at, c)| ChangeView { sentence: c.sentence.clone(), reason: None, checked: checked(at) }).collect(),
+            r.changes.iter().enumerate().map(|(at, c)| ChangeView { sentence: c.sentence.clone(), reason: None, checked: checked(at), state: lumenna_records::words::checked(checked(at)) }).collect(),
             r.unplaceable.clone(),
             r.alternatives.iter().map(|a| a.sentence.clone()).collect(),
         ),
@@ -209,7 +211,7 @@ pub fn view(screen: &Sheet) -> ProposalView {
             d.sittings
                 .iter()
                 .enumerate()
-                .map(|(at, s)| ChangeView { sentence: s.sentence.clone(), reason: s.reason.clone(), checked: checked(at) })
+                .map(|(at, s)| ChangeView { sentence: s.sentence.clone(), reason: s.reason.clone(), checked: checked(at), state: lumenna_records::words::checked(checked(at)) })
                 .collect(),
             d.unfit.clone(),
             Vec::new(),

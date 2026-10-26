@@ -562,3 +562,266 @@ pub fn details_lines(task: &crate::types::TaskDetail, sentence: bool) -> Vec<Det
     }
     lines
 }
+
+/// Put in a Block's last choice, which asks for another day and offers that day's blocks.
+#[must_use]
+pub fn another_day() -> String {
+    "Another Day".to_owned()
+}
+
+/// A button a settings page offers beside its settings: Back Up Now, Import or Restore.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingsButton {
+    /// What it does: `back-up`, `restore-backup`, `import`, `sync-now`, `pair`.
+    pub id: String,
+    /// Its name.
+    pub title: String,
+    /// Whether it asks something first (a file, a folder), which a platform marks its own way.
+    pub asks: bool,
+}
+
+/// One page of settings, as every settings screen groups them: in order, each setting on
+/// exactly one page.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingsPage {
+    /// What it is: `general`, `planning`, `reminders`, `devices`, `backups`, `export`.
+    pub id: String,
+    /// Its title: "Planning".
+    pub title: String,
+    /// What is on it, for a list of pages that shows a second line: "The day, the week,
+    /// completing subtasks, announcements".
+    pub description: String,
+    /// What it says under its settings: "These sync to all your devices." Empty for nothing.
+    pub caption: String,
+    /// Its settings, by key, in order. One the store does not list here (the background
+    /// setting, where the shell keeps nothing running) is left out.
+    pub keys: Vec<String>,
+    /// Its buttons, in order.
+    pub buttons: Vec<SettingsButton>,
+}
+
+/// Every settings page, in order. `own_clock` leaves out the `clock` setting, for a shell that
+/// follows its platform's clock; a terminal, which has none, shows it. Titles and buttons in
+/// sentence case where `sentence`.
+#[must_use]
+pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
+    let c = |text: &str| cased(text, sentence);
+    let button = |id: &str, title: &str, asks: bool| SettingsButton { id: id.to_owned(), title: c(title), asks };
+    let keys = |keys: &[&str]| keys.iter().filter(|key| !(own_clock && **key == "clock")).map(|key| (*key).to_owned()).collect();
+    let page = |id: &str, title: &str, description: &str, caption: &str, members: Vec<String>, buttons: Vec<SettingsButton>| SettingsPage {
+        id: id.to_owned(),
+        title: c(title),
+        description: description.to_owned(),
+        caption: caption.to_owned(),
+        keys: members,
+        buttons,
+    };
+    vec![
+        page("general", "General", "On this device: running in the background, the clock", "These settings are this device's alone.", keys(&[crate::background::KEY, "clock"]), Vec::new()),
+        page(
+            "planning",
+            "Planning",
+            "The day, the week, completing subtasks, announcements",
+            "These sync to all your devices.",
+            keys(&[
+                "day-start",
+                "day-end",
+                "week-start",
+                "task-order",
+                "show-completed-subtasks",
+                "cascade-complete-subtasks",
+                "verbosity",
+                "urgency-weights",
+            ]),
+            Vec::new(),
+        ),
+        page(
+            "reminders",
+            "Reminders",
+            "When reminders come, and whether this device gives them",
+            "The defaults sync to all your devices. Whether reminders are given here is this device's alone.",
+            keys(&["reminders", "default-task-reminders", "default-block-reminders", "all-day-reminder-hour"]),
+            Vec::new(),
+        ),
+        page("devices", "Devices and Sync", "Paired devices and how syncing is going", "", Vec::new(), vec![button("sync-now", "Sync Now", false), button("pair", "Pair a Device", true)]),
+        page(
+            "backups",
+            "Backups",
+            "On this device only",
+            "These settings are this device's alone.",
+            keys(&["backup-every", "backup-keep", "backup-dir"]),
+            vec![button("back-up", "Back Up Now", false), button("restore-backup", "Restore from a Backup", true)],
+        ),
+        page(
+            "export",
+            "Export and Import",
+            "JSON, Markdown, org, calendar; erasing what was deleted",
+            &export_caption(),
+            Vec::new(),
+            vec![button("import", "Import or Restore", true)],
+        ),
+    ]
+}
+
+/// What the Export and Import page says under its buttons.
+#[must_use]
+pub fn export_caption() -> String {
+    "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this \
+     device lacks and removes nothing."
+        .to_owned()
+}
+
+/// What a setting of each shape says it takes, where a shell offers its own control: a time's
+/// hint and example, a number's.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingWords {
+    /// A time setting's hint, the same as its own: "A time, such as 8:00 or 8am."
+    pub time_hint: String,
+    /// A time setting's example, for a placeholder: "8am".
+    pub time_example: String,
+    /// A number setting's hint: "A whole number."
+    pub number_hint: String,
+    /// The button that applies a setting typed in a dialog of its own.
+    pub set: String,
+}
+
+/// What a setting's own control says (`SettingWords`).
+#[must_use]
+pub fn setting_words() -> SettingWords {
+    SettingWords {
+        time_hint: TIME_HINT.to_owned(),
+        time_example: "8am".to_owned(),
+        number_hint: "A whole number.".to_owned(),
+        set: "Set".to_owned(),
+    }
+}
+
+/// What every time setting says it takes.
+pub const TIME_HINT: &str = "A time, such as 8:00 or 8am.";
+
+/// What is said once a backup is taken into a folder: "Backed up to Documents as
+/// lumenna-2026-10-26.lumbak".
+#[must_use]
+pub fn backed_up_to(folder: &str, name: &str) -> String {
+    format!("Backed up to {folder} as {name}")
+}
+
+/// What quick add and a list's filter say, every label and button, the same on every platform.
+/// Title Case for headings and buttons; `quick_add_words(true)` for sentence case.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuickAddWords {
+    /// Quick add's title: "New Task".
+    pub title: String,
+    /// Its field's label: "Task".
+    pub label: String,
+    /// What its field takes, for under it or as its description.
+    pub hint: String,
+    /// The field's placeholder.
+    pub example: String,
+    /// The label of what it will add, read back as typed: "Will Add".
+    pub will_add: String,
+    /// The button that adds it.
+    pub add: String,
+    /// The button that closes it.
+    pub cancel: String,
+    /// A list's filter field: its label.
+    pub filter: String,
+    /// What the filter field takes, for its placeholder or description.
+    pub filter_hint: String,
+    /// What is said when completion offers nothing where the cursor is.
+    pub nothing_to_complete: String,
+    /// The button or menu that offers what could come next.
+    pub show_completions: String,
+}
+
+/// What quick add and a list's filter say (`QuickAddWords`), in sentence case where `sentence`.
+#[must_use]
+pub fn quick_add_words(sentence: bool) -> QuickAddWords {
+    let c = |text: &str| cased(text, sentence);
+    QuickAddWords {
+        title: c("New Task"),
+        label: "Task".to_owned(),
+        hint: "Such as: write the chapter tomorrow p1 #Work. Down arrow offers what could come next.".to_owned(),
+        example: "call the bank tomorrow at 3pm p1 #Home @calls".to_owned(),
+        will_add: c("Will Add"),
+        add: c("Add"),
+        cancel: c("Cancel"),
+        filter: c("Filter"),
+        filter_hint: "#Work & overdue, or search: words".to_owned(),
+        nothing_to_complete: "Nothing to complete here.".to_owned(),
+        show_completions: c("Show Completions"),
+    }
+}
+
+/// A completion offered as a button or a menu item names what it puts in: "Complete with Work,
+/// project", `line` being the completion's line (`speech::candidate`).
+#[must_use]
+pub fn complete_with(line: &str) -> String {
+    format!("Complete with {line}")
+}
+
+/// What a device says when it cannot give reminders as asked, and the buttons that fix it, for
+/// its reminders' settings; and its notification channel's name and description, where the
+/// platform has channels (Android).
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotificationWords {
+    /// Notifications are off for Lumenna on this device.
+    pub off: String,
+    /// The button that asks to allow them.
+    pub allow: String,
+    /// Alarms for an exact time are not allowed, so reminders may come late.
+    pub late: String,
+    /// The button that asks to allow exact alarms.
+    pub allow_exact: String,
+    /// The notification channel's name.
+    pub channel: String,
+    /// The notification channel's description.
+    pub channel_description: String,
+}
+
+/// What a device says of its notifications (`NotificationWords`), `this_device` being how it
+/// calls itself ("this device", "this watch"), buttons in sentence case where `sentence`.
+#[must_use]
+pub fn notification_words(this_device: &str, sentence: bool) -> NotificationWords {
+    let c = |text: &str| cased(text, sentence);
+    NotificationWords {
+        off: format!("Notifications are off for Lumenna, so no reminder can be shown on {this_device}."),
+        allow: c("Allow Notifications"),
+        late: "Reminders may come a few minutes late: Lumenna is not allowed to set alarms for an exact time.".to_owned(),
+        allow_exact: c("Allow Exact Alarms"),
+        channel: "Reminders".to_owned(),
+        channel_description: "Tasks coming due and blocks starting or ending, as you set them.".to_owned(),
+    }
+}
+
+/// The question pairing asks once both devices show their words, whole: what it says, then the
+/// words in order. "The other device shows three words too. … same order: apple, river, stone."
+#[must_use]
+pub fn pairing_match(words: &PairingWords, three: &[String]) -> String {
+    format!("{} {}.", words.match_message, three.join(", "))
+}
+
+/// This device's code, as a line: "This device's code: 1234-5678".
+#[must_use]
+pub fn my_code_line(words: &PairingWords, code: &str) -> String {
+    format!("{}: {code}", words.my_code)
+}
+
+/// The lengths a question asking how long offers, the usual ones a short list holds, each its
+/// answer (`45m`) and its words: and None first where the question may be left empty.
+#[must_use]
+pub fn usual_lengths(optional: bool) -> Vec<Choice> {
+    let none = optional.then(|| Choice { id: String::new(), title: "None".to_owned(), ..Choice::default() });
+    none.into_iter()
+        .chain([15, 25, 30, 45, 60, 90, 120].into_iter().map(|minutes| Choice {
+            id: format!("{minutes}m"),
+            title: crate::words::capitalised(&crate::words::duration(minutes)),
+            ..Choice::default()
+        }))
+        .collect()
+}

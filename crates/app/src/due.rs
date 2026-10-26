@@ -64,6 +64,37 @@ pub struct Due {
     pub block: Option<String>,
     /// What dismissing it dismisses: itself, or for a summary, everything missed.
     pub firings: Vec<DueReminder>,
+    /// Its buttons, in the order every platform shows them: what it offers of its own (Carry
+    /// Forward, Replan) first, then Dismiss and Snooze. Each is handed back as its `DueEvent`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buttons: Vec<DueButton>,
+}
+
+/// One of a reminder's buttons.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DueButton {
+    /// Which: `carry`, `replan`, `dismiss`, `snooze`, as `DueEvent::Carry`, `Replan`, `Dismiss`,
+    /// `Snooze`.
+    pub id: String,
+    /// Its name, the core's, in the shell's capitals.
+    pub title: String,
+    /// What a notification's own button says once done, where the app is not there to say the
+    /// write's own sentence: empty for Replan, which opens a screen.
+    pub said: String,
+}
+
+/// A reminder's buttons, in order.
+fn buttons(carry: Option<&String>, replan: Option<&String>, dismiss: &str, snooze: Option<&String>) -> Vec<DueButton> {
+    let button = |id: &str, title: &str, said: String| DueButton { id: id.to_owned(), title: title.to_owned(), said };
+    let snoozed = format!("Snoozed for {}", lumenna_records::words::duration(lumenna_records::reminders::SNOOZE_MINS));
+    carry
+        .map(|title| button("carry", title, String::new()))
+        .into_iter()
+        .chain(replan.map(|title| button("replan", title, String::new())))
+        .chain([button("dismiss", dismiss, "Dismissed".to_owned())])
+        .chain(snooze.map(|title| button("snooze", title, snoozed.clone())))
+        .collect()
 }
 
 /// A notification to show as the platform shows one.
@@ -99,6 +130,7 @@ pub fn arrived(found: &DueReminders) -> Vec<Due> {
             replan: None,
             block: None,
             firings: found.missed.clone(),
+            buttons: buttons(None, None, &first.dismiss, None),
         });
     }
     for reminder in &found.due {
@@ -112,6 +144,12 @@ pub fn arrived(found: &DueReminders) -> Vec<Due> {
             replan: (!reminder.replan.is_empty()).then(|| reminder.replan.clone()),
             block: Some(format!("{}@{}", reminder.target, reminder.occurrence)),
             firings: vec![reminder.clone()],
+            buttons: buttons(
+                Some(&reminder.carry).filter(|c| !c.is_empty()),
+                Some(&reminder.replan).filter(|r| !r.is_empty()),
+                &reminder.dismiss,
+                Some(&reminder.snooze),
+            ),
         });
     }
     out

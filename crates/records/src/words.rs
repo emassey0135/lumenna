@@ -276,6 +276,198 @@ pub fn spoken(announcement: &str, notices: &[String]) -> String {
 pub fn to_u32(n: usize) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
+/// What Sync Now says when syncing stopped before its round could run.
+#[must_use]
+pub fn sync_stopped() -> String {
+    "Syncing has stopped.".to_owned()
+}
+
+/// What is said as a round of syncing starts.
+#[must_use]
+pub fn syncing() -> String {
+    "Syncing".to_owned()
+}
+
+/// What is said when keeping in sync could not start, and why.
+#[must_use]
+pub fn sync_not_started(why: &str) -> String {
+    format!("Syncing could not start: {why}")
+}
+
+/// What is said once a row is folded or unfolded: "Expanded", "Collapsed".
+#[must_use]
+pub fn folded_said(expanded: bool) -> String {
+    if expanded { "Expanded" } else { "Collapsed" }.to_owned()
+}
+
+/// A row with rows under it, as its state is said where the platform's control does not say it:
+/// "expanded", "collapsed".
+#[must_use]
+pub fn fold_state(expanded: bool) -> String {
+    if expanded { "expanded" } else { "collapsed" }.to_owned()
+}
+
+/// How deep a row sits, said where it changes from the row before: "level 2" for `depth` 1.
+#[must_use]
+pub fn level(depth: u32) -> String {
+    format!("level {}", depth + 1)
+}
+
+/// How many a pick offers: "1 choice", "3 choices", "no choices".
+#[must_use]
+pub fn choice_count(count: usize) -> String {
+    count_line(count, "choice")
+}
+
+/// What a pick says that has nothing to offer, where a shell shows it at all: the core closes
+/// such a question and says why, so this is for a list a shell offers of its own.
+#[must_use]
+pub fn nothing_to_choose() -> String {
+    "There is nothing to choose from.".to_owned()
+}
+
+/// A reminder that is a default rather than its own, as its line says it.
+#[must_use]
+pub fn default_reminder() -> String {
+    "a default".to_owned()
+}
+
+/// A proposal's change, or anything checked, as its state is said: "checked", "not checked".
+#[must_use]
+pub fn checked(on: bool) -> String {
+    if on { "checked" } else { "not checked" }.to_owned()
+}
+
+/// Why a new saved filter's name is refused when it has none.
+#[must_use]
+pub fn filter_needs_name() -> String {
+    "A saved filter needs a name.".to_owned()
+}
+
+/// What is said when a change the platform was asked for failed and the platform gave no words.
+#[must_use]
+pub fn could_not_change() -> String {
+    "That could not be changed".to_owned()
+}
+
+/// What an app says when its automatic backup failed, and why (`reason`, a sentence).
+#[must_use]
+pub fn backup_failed(reason: &str) -> String {
+    let reason = reason.trim();
+    if reason.is_empty() { "The automatic backup failed.".to_owned() } else { format!("The automatic backup failed. {}", capitalised(reason)) }
+}
+
+/// The title of the list of `name`'s reminders: "Reminders for Pay rent".
+#[must_use]
+pub fn reminders_for(name: &str) -> String {
+    format!("Reminders for {name}")
+}
+
+/// What Lumenna is, in one line: the About box, the store's listing, the desktop entry's comment.
+pub const DESCRIPTION: &str = "Tasks, and the time blocks you work through them in";
+
+/// What Lumenna is, in one line (`DESCRIPTION`).
+#[must_use]
+pub fn app_description() -> String {
+    DESCRIPTION.to_owned()
+}
+
+/// What a browser calls itself when it pairs, from what it runs as: "Firefox on Windows", or
+/// the browser alone when the system is not known. `browser` and `system` are the platform's
+/// names for them, found from its user agent.
+#[must_use]
+pub fn browser_device_name(browser: &str, system: &str) -> String {
+    let browser = if browser.trim().is_empty() { "Web browser" } else { browser.trim() };
+    if system.trim().is_empty() { browser.to_owned() } else { format!("{browser} on {}", system.trim()) }
+}
+
+/// How a watch that syncs through its phone stands with it, `phone` being what the phone is
+/// called ("the iPhone"): not yet synced, out of reach, synced at `time` (the watch's clock),
+/// or failed for `reason`.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PhoneSync {
+    /// Not synced since the watch started.
+    NotYet,
+    /// The phone cannot be reached; changes go when it can.
+    OutOfReach,
+    /// Synced, at this time as the watch says one.
+    Synced {
+        /// The time, in the watch's clock.
+        time: String,
+    },
+    /// The last sync failed.
+    Failed {
+        /// Why, as a sentence.
+        reason: String,
+    },
+}
+
+/// A watch's sync with its phone, said: "Synced with the iPhone at 9:41 AM".
+#[must_use]
+pub fn phone_sync(phone: &str, status: &PhoneSync) -> String {
+    match status {
+        PhoneSync::NotYet => format!("Not synced with {phone} yet"),
+        PhoneSync::OutOfReach => format!("{} is not in reach; changes go to it when it is", capitalised(phone)),
+        PhoneSync::Synced { time } => format!("Synced with {phone} at {time}"),
+        PhoneSync::Failed { reason } => format!("Could not sync with {phone}. {}", capitalised(reason.trim())),
+    }
+}
+
+/// A timer running, as a glance says it beside its task.
+#[must_use]
+pub fn timer_running() -> String {
+    "timer running".to_owned()
+}
+
+/// Where something happens, as a glance says it: "in Deep work".
+#[must_use]
+pub fn in_block(title: &str) -> String {
+    format!("in {title}")
+}
+
+/// Until when, as a glance says it: "until 11:00", the time in the device's clock.
+#[must_use]
+pub fn until(time: &str) -> String {
+    format!("until {time}")
+}
+
+/// What comes after, as a glance says it: "then Meeting".
+#[must_use]
+pub fn then(title: &str) -> String {
+    format!("then {title}")
+}
+
+/// What follows the moment a glance shows, as it says it: "Next, 12:00 to 13:00, Lunch".
+#[must_use]
+pub fn next(line: &str) -> String {
+    format!("Next, {line}")
+}
+
+/// A glance with nothing more planned today.
+#[must_use]
+pub fn nothing_more_planned() -> String {
+    "Nothing more planned today".to_owned()
+}
+
+/// Free time, as a glance names it.
+#[must_use]
+pub fn free() -> String {
+    "Free".to_owned()
+}
+
+/// How many tasks are due, as a glance says it: "3 tasks due", or "Nothing due".
+#[must_use]
+pub fn tasks_due(count: u32) -> String {
+    if count == 0 { "Nothing due".to_owned() } else { format!("{} due", count_line(count as usize, "task")) }
+}
+
+/// How many of them are overdue: "1 overdue".
+#[must_use]
+pub fn overdue_count(count: u32) -> String {
+    format!("{count} overdue")
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -305,22 +497,4 @@ mod tests {
         assert_eq!(suggested_because(&[R::Blocked], true).unwrap(), "It waits on another task.");
         assert_eq!(suggested_because(&[], true), None);
     }
-}
-
-/// What Sync Now says when syncing stopped before its round could run.
-#[must_use]
-pub fn sync_stopped() -> String {
-    "Syncing has stopped.".to_owned()
-}
-
-/// What is said as a round of syncing starts.
-#[must_use]
-pub fn syncing() -> String {
-    "Syncing".to_owned()
-}
-
-/// What is said when keeping in sync could not start, and why.
-#[must_use]
-pub fn sync_not_started(why: &str) -> String {
-    format!("Syncing could not start: {why}")
 }

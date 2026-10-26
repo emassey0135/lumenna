@@ -140,6 +140,12 @@ pub struct PairingView {
     /// What went wrong.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
+    /// This device's code as a line, while it waits: "This device's code: 1234-5678".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mine_line: Option<String>,
+    /// The question about the words, whole, while asked: what it says, then the words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matching: Option<String>,
 }
 
 /// The Devices page as shown.
@@ -163,7 +169,7 @@ pub struct DevicesView {
 impl Pairing {
     /// As shown.
     #[must_use]
-    pub fn view(&self) -> PairingView {
+    pub fn view(&self, words: &PairingWords) -> PairingView {
         PairingView {
             name: self.name.clone(),
             theirs: self.theirs.clone(),
@@ -172,6 +178,8 @@ impl Pairing {
             waiting: self.waiting,
             words: self.words.clone(),
             problem: self.problem.clone(),
+            mine_line: self.mine.as_ref().map(|code| lumenna_records::fields::my_code_line(words, code)),
+            matching: self.words.as_ref().map(|three| lumenna_records::fields::pairing_match(words, three)),
         }
     }
 }

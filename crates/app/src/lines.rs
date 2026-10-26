@@ -29,6 +29,9 @@ pub struct Lines {
     pub candidates: Vec<String>,
     /// The task in hand's state, for its details.
     pub task_state: String,
+    /// What the details list besides their form (`DetailsView::lines`): each its label, then
+    /// what it says.
+    pub details: Vec<Line>,
 }
 
 /// How a list's query was understood and what it found, or why it is not one yet: the
@@ -63,7 +66,10 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
             .map(|list| {
                 list.items
                     .iter()
-                    .map(|item| if trash { speech::trashed_line(&item.row, clock) } else { speech::row_line(&item.row, view.checkboxes, clock) })
+                    .map(|item| {
+                        let line = if trash { speech::trashed_line(&item.row, clock) } else { speech::row_line(&item.row, view.checkboxes, clock) };
+                        Line { level: item.level.clone(), ..line }
+                    })
                     .collect()
             })
             .unwrap_or_default(),
@@ -75,7 +81,7 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
             .map(|day| {
                 day.items
                     .iter()
-                    .map(|item| match item.kind {
+                    .map(|item| Line { level: item.level.clone(), ..match item.kind {
                         DayKind::Summary => Line {
                             braille: speech::summary(&day.date, &day.summary_braille, clock),
                             ..Line::of(speech::summary(&day.date, &day.summary, clock), Vec::new())
@@ -93,7 +99,7 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
                             .map(|now| Line::of(format!("{}, {}", now.title, clock.time(&now.time)), Vec::new()))
                             .unwrap_or_default(),
                         DayKind::Cancelled => item.cancelled.as_ref().map(|c| speech::cancelled_line(c, clock)).unwrap_or_default(),
-                    })
+                    } })
                     .collect()
             })
             .unwrap_or_default(),
@@ -101,7 +107,18 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
             .asking
             .as_ref()
             .and_then(|asking| asking.choices.as_ref())
-            .map(|offered| offered.choices.iter().map(|choice| speech::choice_line(choice, clock)).collect())
+            .map(|offered| {
+                let mut previous = 0;
+                offered
+                    .choices
+                    .iter()
+                    .map(|choice| {
+                        let level = (choice.depth != previous).then(|| lumenna_records::words::level(choice.depth));
+                        previous = choice.depth;
+                        speech::Line { level, ..speech::choice_line(choice, clock) }
+                    })
+                    .collect()
+            })
             .unwrap_or_default(),
         devices: view
             .devices
@@ -121,7 +138,7 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
                             (Some(day), Some(time)) => format!("{} at {}", clock.day(day), clock.time(time)),
                             _ => speech::sentence(&reminder.words),
                         };
-                        let rest = if reminder.own { vec![reminder.delivery.clone()] } else { vec!["a default".to_owned()] };
+                        let rest = if reminder.own { vec![reminder.delivery.clone()] } else { vec![lumenna_records::words::default_reminder()] };
                         Line::of(words, rest.into_iter().filter(|part| !part.is_empty()).collect())
                     })
                     .collect()
@@ -133,5 +150,10 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
             .map(|line| line.offer.candidates.iter().map(speech::candidate).collect())
             .unwrap_or_default(),
         task_state: view.details.as_ref().map(|details| speech::task_state(&details.task)).unwrap_or_default(),
+        details: view
+            .details
+            .as_ref()
+            .map(|details| details.lines.iter().map(|line| Line::of(line.label.clone(), vec![line.value.clone()])).collect())
+            .unwrap_or_default(),
     }
 }

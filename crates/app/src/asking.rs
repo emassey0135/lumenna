@@ -51,12 +51,16 @@ pub struct Open {
     /// The write the answer went out as, until it is answered: only that write's answer closes
     /// the question, or keeps it open with why.
     pub writing: Option<u64>,
+    /// Which question this is among those the screen has asked, from one; none until it is shown.
+    pub number: u32,
+    /// The line last typed in answer, kept for the field when the answer is refused.
+    pub typed: Option<String>,
 }
 
 
 impl Open {
     pub(crate) fn new(purpose: Purpose) -> Self {
-        Self { purpose, choices: None, refusal: None, picked: None, answered: None, writing: None }
+        Self { purpose, choices: None, refusal: None, picked: None, answered: None, writing: None, number: 0, typed: None }
     }
 
     /// The action asking, if it is one.
@@ -124,24 +128,24 @@ impl Lumenna {
         match action.kind {
             // A sidebar row folds in the sidebar: its key, not a row of the list.
             ActionKind::Expand | ActionKind::Collapse if action.target.starts_with("place:") || action.target.starts_with("group:") => {
-                let said = if action.kind == ActionKind::Expand {
+                let expand = action.kind == ActionKind::Expand;
+                if expand {
                     model.sidebar_folded.remove(&action.target);
-                    "Expanded"
                 } else {
                     model.sidebar_folded.insert(action.target.clone());
-                    "Collapsed"
-                };
+                }
+                let said = lumenna_records::words::folded_said(expand);
                 return render().and(say(said));
             }
             // Folding is the app's: nothing stored changes.
             ActionKind::Expand | ActionKind::Collapse => {
-                let said = if action.kind == ActionKind::Expand {
+                let expand = action.kind == ActionKind::Expand;
+                if expand {
                     model.folded.remove(&action.target);
-                    "Expanded"
                 } else {
                     model.folded.insert(action.target.clone());
-                    "Collapsed"
-                };
+                }
+                let said = lumenna_records::words::folded_said(expand);
                 model.focus = Some(action.target);
                 model.settle();
                 return render().and(say(said));
@@ -239,6 +243,9 @@ impl Lumenna {
 
     pub(crate) fn answer(&self, answer: Answer, model: &mut Screen) -> Command<Effect, Event> {
         let Some(open) = &mut model.open else { return Command::done() };
+        if let Answer::Text { text } = &answer {
+            open.typed = Some(text.clone());
+        }
         match open.purpose.clone() {
             Purpose::GoToDay => {
                 let Answer::Text { text } = answer else { return Command::done() };
@@ -257,7 +264,7 @@ impl Lumenna {
             Purpose::NewFilter(None) => {
                 let Answer::Text { text } = answer else { return Command::done() };
                 if text.trim().is_empty() {
-                    open.refusal = Some("A saved filter needs a name.".to_owned());
+                    open.refusal = Some(lumenna_records::words::filter_needs_name());
                     return render();
                 }
                 *open = Open::new(Purpose::NewFilter(Some(text.trim().to_owned())));
@@ -298,6 +305,7 @@ impl Lumenna {
             Purpose::Action(_) if matches!(&answer, Answer::Picked { id, .. } if id == ANOTHER_DAY) => {
                 open.purpose = Purpose::PickDay(open.action().cloned().expect("an action's pick"));
                 open.refusal = None;
+                open.number = 0;
                 render()
             }
             Purpose::Action(action) => {
@@ -308,6 +316,8 @@ impl Lumenna {
                 {
                     open.picked = Some(id.clone());
                     open.refusal = None;
+                    // How long is a question of its own.
+                    open.number = 0;
                     return render();
                 }
                 open.answered = match &answer {

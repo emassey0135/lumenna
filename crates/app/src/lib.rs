@@ -34,6 +34,7 @@ pub mod devices;
 pub mod due;
 pub mod glance;
 pub mod host;
+pub mod hotkeys;
 pub mod list;
 mod model;
 pub mod network;
@@ -482,6 +483,51 @@ impl Lumenna {
         }
     }
 
+    /// What the command `id` of the shared table does (`keys::what_runs`): a row's action, the
+    /// day's, or the app's own; one that is the shell's does nothing here.
+    fn command(&self, id: &str, model: &mut Screen) -> Command<Effect, Event> {
+        use lumenna_records::places::SidebarGroup;
+        let new_in = |group: SidebarGroup| lumenna_records::actions::heading(group).into_iter().next();
+        match keys::what_runs(id) {
+            keys::Runs::Row(kinds) => self.run(kinds.to_vec(), model),
+            keys::Runs::Day(kinds) => {
+                let actions = model.day_view().map(|day| day.actions).unwrap_or_default();
+                self.run_among(&actions, kinds, lumenna_records::Subject::Day, model)
+            }
+            keys::Runs::Shell => Command::done(),
+            keys::Runs::App => match id {
+                "new-task" => self.typing(Typing::Open, model),
+                "new-block" => self.block(BlockEvent::New { start: None, minutes: None }, model),
+                "new-project" => new_in(SidebarGroup::Projects).map_or_else(Command::done, |action| self.perform(action, model)),
+                "new-label" => new_in(SidebarGroup::Labels).map_or_else(Command::done, |action| self.perform(action, model)),
+                "new-filter" => new_in(SidebarGroup::Filters).map_or_else(Command::done, |action| self.perform(action, model)),
+                "sync-now" => self.devices(DevicesEvent::SyncNow, model),
+                "settings" => self.settings(SettingsEvent::Open, model),
+                "back-up" => self.settings(SettingsEvent::Backup, model),
+                "undo" => write(model, HostRequest::Undo, None).1,
+                "redo" => write(model, HostRequest::Redo, None).1,
+                "save-task" => self.details(DetailsEvent::Save, model),
+                "previous-day" => self.day_move(DayMove::Previous, model),
+                "next-day" => self.day_move(DayMove::Next, model),
+                "go-to-now" => self.day_move(DayMove::Now, model),
+                "go-to-day" => self.day_move(DayMove::Ask, model),
+                go => {
+                    let place = match go {
+                        "go-today" => Place::Today,
+                        "go-tasks" => Place::Tasks,
+                        "go-blocks" => Place::Blocks,
+                        "go-trash" => Place::Trash,
+                        "go-history" => Place::History,
+                        _ => return Command::done(),
+                    };
+                    model.open = None;
+                    model.go(place);
+                    render()
+                }
+            },
+        }
+    }
+
     /// `event` on screen `id`: what it asks for comes back to the same screen, and what it
     /// says is that screen's to say. What the device holds alike goes to every other screen.
     fn on(&self, id: ScreenId, event: Event, model: &mut Model) -> Command<Effect, Event> {
@@ -520,6 +566,12 @@ impl Lumenna {
         match &event {
             Event::Hold(side, _) | Event::ActOn(ActingOn::Held(side, _), _) => model.acting = Some(*side),
             Event::ActOn(ActingOn::Reminders, _) => model.acting = Some(Side::Reminders),
+            // A reminder's button acts from the reminders due: what takes its place lands there.
+            Event::Due(DueEvent::Dismiss(id) | DueEvent::Snooze(id) | DueEvent::Carry(id)) => {
+                model.acting = Some(Side::Due);
+                let keys = model.side_keys(Side::Due);
+                model.due_held.hold(id, &keys);
+            }
             Event::ActOn(ActingOn::Row(_), _) => {}
             Event::Perform(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) | Event::Key(_) => {}
             other if other.is_the_persons() => model.acting = None,
@@ -544,6 +596,13 @@ impl Lumenna {
             model.settle();
         }
         model.settle_sides(wrote, side_before.as_deref());
+        // A question newly open, or asking something new, takes the next number.
+        if let Some(open) = &mut model.open
+            && open.number == 0
+        {
+            model.questions += 1;
+            open.number = model.questions;
+        }
         // A change made in a side list lands there; the main list's row moves on quietly.
         if !reported && !put_back && model.acting.is_none() && (wrote || model.focus != before) {
             model.landing += 1;
@@ -576,10 +635,7 @@ impl Lumenna {
             Event::Filter(text) => self.filter(text, model),
             Event::Perform(action) => self.perform(action, model),
             Event::Run(kinds) => self.run(kinds, model),
-            Event::Key(id) => match keys::runs(&id) {
-                Some(kinds) => self.run(kinds.to_vec(), model),
-                None => Command::done(),
-            },
+            Event::Key(id) => self.command(&id, model),
             Event::ActOn(on, offered) => self.act_on(on, &offered, model),
             Event::Answer(answer) => self.answer(answer, model),
             Event::Cancel => {

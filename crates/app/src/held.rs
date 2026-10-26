@@ -16,6 +16,8 @@ pub enum Side {
     Reminders,
     /// The paired devices, while the Devices page is shown.
     Devices,
+    /// The reminders due, by `Due::id`: after a button, what took the reminder's place is in hand.
+    Due,
 }
 
 /// The row an action handed back in short is for (`Event::ActOn`).
@@ -100,6 +102,8 @@ impl Screen {
                 let list = lumenna_records::reminders::reminders_of(&store.snapshot, self.reminders.as_ref()?).ok()?;
                 list.reminders.into_iter().find(|reminder| &reminder.id == id).map(|reminder| reminder.actions)
             }
+            // A reminder's buttons are its `DueEvent`s, no row action.
+            Side::Due => None,
             Side::Devices => {
                 let id = self.devices_held.key.as_ref()?;
                 let list = self.devices.as_ref()?.list.as_ref()?;
@@ -119,6 +123,7 @@ impl Screen {
             Side::Sidebar => &mut self.sidebar_held,
             Side::Reminders => &mut self.reminders_held,
             Side::Devices => &mut self.devices_held,
+            Side::Due => &mut self.due_held,
         }
     }
 
@@ -148,6 +153,7 @@ impl Screen {
                 .and_then(|target| lumenna_records::reminders::reminders_of(&store.snapshot, target).ok())
                 .map(|list| list.reminders.into_iter().map(|r| r.id).collect())
                 .unwrap_or_default(),
+            Side::Due => self.due.iter().map(|due| due.id.clone()).collect(),
             Side::Devices => self
                 .devices
                 .as_ref()
@@ -162,7 +168,7 @@ impl Screen {
     /// the row in hand, else the list's first: `before` is the list's rows before the write,
     /// for telling what it made.
     pub(crate) fn settle_sides(&mut self, wrote: bool, before: Option<&[String]>) {
-        for side in [Side::Sidebar, Side::Reminders, Side::Devices] {
+        for side in [Side::Sidebar, Side::Reminders, Side::Devices, Side::Due] {
             let acted_here = self.acting == Some(side);
             if self.held_mut(side).key.is_none() && !(acted_here && wrote) {
                 continue;

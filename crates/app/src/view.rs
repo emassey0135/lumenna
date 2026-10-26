@@ -6,10 +6,11 @@ use lumenna_records::Offered;
 use jiff::Zoned;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_records::places::{Place, SidebarEntry, sidebar};
-use lumenna_records::{Action, Choices, LumennaError, Query, Question, Rows, lists};
+use lumenna_records::{Action, Choice, Choices, LumennaError, Query, Question, Rows, lists};
 use serde::{Deserialize, Serialize};
 
 use crate::list::{self, Item};
+use crate::keys::CommandState;
 use crate::{DayView, DetailsView, LineView, Screen};
 
 /// Everything on screen.
@@ -41,6 +42,8 @@ pub struct ViewModel {
     pub reminders_held: crate::HeldView,
     /// The devices list's row in hand.
     pub devices_held: crate::HeldView,
+    /// The reminders due's row in hand: after a button, what took its place.
+    pub due_held: crate::HeldView,
     /// Counted: when this moves, the shell puts focus on `focus` — if focus is in that list, or
     /// lost, or coming back to it from a dialog. It does not move for the person's own moves.
     pub landing: u32,
@@ -83,6 +86,13 @@ pub struct ViewModel {
     /// A task's or block's reminders, while their list is open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reminders: Option<ReminderList>,
+    /// The open reminder list's title: "Reminders for Pay rent".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reminders_title: Option<String>,
+    /// Every row and day command of the shared table (`keys::COMMANDS`) as it stands: its name now
+    /// (Mark Not Done on a task done) and whether what is in hand offers it, for a menu to draw.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commands: Vec<CommandState>,
 }
 
 /// A list of tasks as shown.
@@ -135,6 +145,17 @@ pub struct Asking {
     /// shell offers completion in, as it does in the list's filter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub syntax: Option<Syntax>,
+    /// Which question this is, from one: a new number is a new question to ask, the same one
+    /// the question still open, its refusal shown in it. A shell need not wait for the app to be
+    /// still before asking, nor keep what was typed.
+    pub number: u32,
+    /// The line last typed in answer: where a field starts once its answer is refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub typed: Option<String>,
+    /// When it asks how long (a pick's length, Planned Length, Log Time): the usual lengths, each
+    /// its answer and words, for a shell that offers a short list (a watch) beside the line.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lengths: Vec<Choice>,
 }
 
 /// The rows a place lists under `query`: tasks, or the block series; `None` for the day.
@@ -148,12 +169,25 @@ pub fn listing(snapshot: &Snapshot, place: &Place, query: &str, now: &Zoned) -> 
 }
 
 /// The sidebar with Expand or Collapse on each row that has rows under it.
+/// Each row with rows under it says whether they are shown (`expanded`), what is folded away is
+/// marked `hidden`, and the level is said where it changes from the row shown before.
 pub(crate) fn folded_sidebar(mut entries: Vec<SidebarEntry>, folded: &std::collections::BTreeSet<String>) -> Vec<SidebarEntry> {
     let depths: Vec<u32> = entries.iter().map(|e| e.depth).collect();
+    let mut hidden_below: Option<u32> = None;
+    let mut previous = 0;
     for (at, entry) in entries.iter_mut().enumerate() {
+        if hidden_below.is_some_and(|depth| entry.depth <= depth) {
+            hidden_below = None;
+        }
+        entry.hidden = hidden_below.is_some();
         if depths.get(at + 1).is_some_and(|next| *next > entry.depth) {
             let key = entry.key();
-            let (kind, title) = if folded.contains(&key) {
+            let collapsed = folded.contains(&key);
+            entry.expanded = Some(!collapsed);
+            if collapsed && !entry.hidden {
+                hidden_below = Some(entry.depth);
+            }
+            let (kind, title) = if collapsed {
                 (lumenna_records::ActionKind::Expand, "Expand")
             } else {
                 (lumenna_records::ActionKind::Collapse, "Collapse")
@@ -162,6 +196,10 @@ pub(crate) fn folded_sidebar(mut entries: Vec<SidebarEntry>, folded: &std::colle
             let mut fold = Action::new(kind, subject, title, key);
             fold.question = Question::Immediate;
             entry.actions.push(fold);
+        }
+        if !entry.hidden {
+            entry.level = (entry.depth != previous).then(|| lumenna_records::words::level(entry.depth));
+            previous = entry.depth;
         }
     }
     entries
@@ -275,19 +313,26 @@ fn shown(model: &Screen) -> ViewModel {
         block_form: model.block_form.as_ref().map(|form| form.view(model.capitals == crate::Capitals::Sentence)),
         proposal: model.proposal.as_ref().map(crate::proposal::view),
         proposal_made: model.proposal_made,
-        settings: model.settings.as_ref().map(|s| crate::settings::view(s, model.background, store.now.date())),
+        settings: model.settings.as_ref().map(|s| crate::settings::view(s, model.background, store.now.date(), model.style.is_some(), model.capitals == crate::Capitals::Sentence)),
         devices: model.devices.as_ref().map(|d| crate::DevicesView {
+            pairing: model.pairing.as_ref().map(|pairing| pairing.view(&model.pairing_words())),
             words: model.pairing_words(),
             list: d.list.clone(),
             status: d.status.clone().unwrap_or_default(),
             syncing: model.syncing,
-            pairing: model.pairing.as_ref().map(crate::network::Pairing::view),
         }),
         due: model.due.clone(),
         reminders: model
             .reminders
             .as_ref()
             .and_then(|target| lumenna_records::reminders::reminders_of(&store.snapshot, target).ok()),
+        reminders_title: model.reminders.as_ref().map(|target| {
+            let name = lumenna_records::plan::task_shown(&store.snapshot, target, &store.now)
+                .map(|shown| shown.task.title)
+                .or_else(|_| lumenna_records::plan::block_shown(&store.snapshot, target).map(|shown| shown.title))
+                .unwrap_or_default();
+            lumenna_records::words::reminders_for(&name)
+        }),
         line: model.line.as_ref().map(|line| {
             let preview = lumenna_records::text::preview(&store.snapshot, &line.text, &store.now);
             crate::typing::LineView {
@@ -309,9 +354,19 @@ fn shown(model: &Screen) -> ViewModel {
         sidebar_held: model.sidebar_held.view(),
         reminders_held: model.reminders_held.view(),
         devices_held: model.devices_held.view(),
+        due_held: model.due_held.view(),
         landing: model.landing,
         checkboxes: model.checkboxes,
         asking: model.open.as_ref().map(|open| asking(open, model)),
+        commands: crate::keys::states(
+            &match model.acting {
+                Some(side) => model.side_actions(side),
+                None => model.actions_in_hand(),
+            }
+            .unwrap_or_default(),
+            &model.day_view().filter(|_| model.place() == Place::Today).map(|day| day.actions).unwrap_or_default(),
+            model.capitals == crate::Capitals::Sentence,
+        ),
     }
 }
 
@@ -326,7 +381,7 @@ fn asking(open: &crate::Open, model: &Screen) -> Asking {
     {
         choices.choices.push(lumenna_records::Choice {
             id: crate::asking::ANOTHER_DAY.to_owned(),
-            title: "Another Day".to_owned(),
+            title: lumenna_records::fields::another_day(),
             ..lumenna_records::Choice::default()
         });
     }
@@ -341,7 +396,24 @@ fn asking(open: &crate::Open, model: &Screen) -> Asking {
     };
     let syntax = query.then_some(Syntax::Filter);
     let question = open.question(model.capitals == crate::Capitals::Sentence);
-    Asking { action: open.action().cloned(), question, choices, refusal: open.refusal.clone(), day, syntax }
+    // How long: once a pick that asks it has its choice, or an action whose line is a length.
+    let length = open.picked.is_some()
+        || open.action().is_some_and(|a| matches!(a.kind, lumenna_records::ActionKind::PlannedLength | lumenna_records::ActionKind::LogMinutes));
+    let lengths = match &question {
+        Question::Text { optional, .. } if length => lumenna_records::fields::usual_lengths(*optional),
+        _ => Vec::new(),
+    };
+    Asking {
+        action: open.action().cloned(),
+        question,
+        choices,
+        refusal: open.refusal.clone(),
+        day,
+        syntax,
+        number: open.number,
+        typed: open.typed.clone(),
+        lengths,
+    }
 }
 
 /// The projects a task's Project field offers: every one not archived, in tree order, and the

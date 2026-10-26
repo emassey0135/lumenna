@@ -146,13 +146,39 @@ pub struct SidebarEntry {
     /// empty outside a view, where `actions` are whole.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub offered: Vec<crate::actions::Offered>,
+    /// Folded away under a collapsed row, in a view: a tree control that folds by itself takes
+    /// every row, a flat list shows only the rows not hidden.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+    /// For a row with rows under it, in a view: whether they are shown. None for a row with
+    /// none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expanded: Option<bool>,
+    /// In a view, "level 2" where the level differs from the row shown before, as a list's rows
+    /// say it (`words::level`); depth said on every row says too much.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
 }
 
 impl SidebarEntry {
     /// A row: its line is its title, then what is in it.
     #[must_use]
     pub fn new(kind: SidebarKind, title: &str, detail: &str, depth: u32, actions: Vec<crate::actions::Action>) -> Self {
-        Self { key: Self::key_of(&kind), text: line(title, detail), title: title.to_owned(), detail: detail.to_owned(), kind, depth, archived: false, swatch: None, actions, offered: Vec::new() }
+        Self {
+            key: Self::key_of(&kind),
+            text: line(title, detail),
+            title: title.to_owned(),
+            detail: detail.to_owned(),
+            kind,
+            depth,
+            archived: false,
+            swatch: None,
+            actions,
+            offered: Vec::new(),
+            hidden: false,
+            expanded: None,
+            level: None,
+        }
     }
 
     /// What identifies it across a reload, so the selection stays put.

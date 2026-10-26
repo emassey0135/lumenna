@@ -70,6 +70,10 @@ pub struct Line {
     /// `braille_title`): a list row's states as their short forms ("ovd rec"), as BTSpeak's
     /// own mail list shows its statuses; else the line as said.
     pub braille: String,
+    /// "level 2", where the line sits deeper or shallower than the one before it (a pick's
+    /// projects, a list's subtasks): a flat list says it, a tree reports it itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
 }
 
 impl Line {
@@ -78,7 +82,7 @@ impl Line {
     pub fn of(title: String, rest: Vec<String>) -> Self {
         let detail = join(rest);
         let text = join(vec![title.clone(), detail.clone()]);
-        Self { braille: text.clone(), text, title, detail }
+        Self { braille: text.clone(), text, title, detail, level: None }
     }
 
     /// The whole line: the title, then the rest.

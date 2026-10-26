@@ -204,7 +204,7 @@ pub fn day(plan: &Plan, today: bool, folded: &BTreeSet<String>) -> DayView {
             continue;
         }
         if item.depth != previous {
-            item.level = Some(format!("level {}", item.depth + 1));
+            item.level = Some(lumenna_records::words::level(item.depth));
         }
         previous = item.depth;
     }
