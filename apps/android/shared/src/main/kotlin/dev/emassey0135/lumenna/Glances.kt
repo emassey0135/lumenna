@@ -43,9 +43,16 @@ object Glances {
     /** An instant the core gives (a block's start or end, a timer's counting from). */
     fun instant(text: String): Instant? = runCatching { Instant.parse(text) }.getOrNull()
 
-    /** The entry true at [now]: the last that starts by then, else the first. */
+    /** The entry true at [now], the core's: the last whose moment has come, else the first. */
     fun now(entries: List<GlanceEntry>, now: Instant = Instant.now()): GlanceEntry? =
-        entries.lastOrNull { at(it)?.let { start -> !start.isAfter(now) } ?: false } ?: entries.firstOrNull()
+        dev.emassey0135.lumenna.app.glanceCurrent(entries, now.toString())
+
+    /**
+     * When what shows [entries] is next drawn again, the core's: the next moment, or a running
+     * timer's next minute, so what is said of it stays true. Null when nothing more changes.
+     */
+    fun next(entries: List<GlanceEntry>, now: Instant = Instant.now()): Instant? =
+        dev.emassey0135.lumenna.app.glanceRedrawAt(entries, now.toString())?.let(::instant)
 
     /**
      * Draws every glance again whenever the store changes, a moment after the last change of a
@@ -67,8 +74,7 @@ object Glances {
         (app as? GlanceShower)?.showGlances(app)
         // The next moment, worked out off the main thread: the core reads the store.
         Thread {
-            val next = runCatching { entries(app, core) }.getOrNull()
-                ?.mapNotNull(::at)?.firstOrNull { it.isAfter(Instant.now()) }
+            val next = runCatching { entries(app, core) }.getOrNull()?.let { next(it) }
             schedule(app, next)
         }.start()
     }

@@ -111,8 +111,8 @@ sealed interface Screen {
     /** Pairing another device. */
     data object Pairing : Screen
 
-    /** The day, the week, subtasks, announcements: what syncs. */
-    data object Planning : Screen
+    /** One of the core's pages of settings, by its id: Planning, General. */
+    data class SettingsPage(val id: String) : Screen
 
     /** This device's backups. */
     data object Backups : Screen
@@ -290,9 +290,9 @@ fun LumennaApp(
                 when (val reminded = tapped?.second?.reminded) {
                     is Reminded.Task -> go(Tab.TASKS, Screen.Task(reminded.id))
                     is Reminded.Block -> reminded.on?.let { go(Tab.TODAY, Screen.Day(it)) } ?: go(Tab.TODAY)
-                    Reminded.Replan -> {
+                    is Reminded.Replan -> {
                         go(Tab.TODAY)
-                        core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Proposal(dev.emassey0135.lumenna.app.ProposalEvent.Replan))
+                        core.app.replan(reminded)
                     }
                     null -> {}
                 }
@@ -302,14 +302,14 @@ fun LumennaApp(
             Offer(Command.NEW_TASK) { go(Tab.TASKS, Screen.QuickAdd) }
             Offer(Command.NEW_BLOCK) {
                 go(Tab.TODAY)
-                core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Block(dev.emassey0135.lumenna.app.BlockEvent.New(null, null)))
+                core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("new-block"))
             }
             Offer(Command.FILTER) {
                 go(Tab.TASKS)
                 shortcuts.filterAsked.value = true
             }
-            Offer(Command.UNDO) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Undo) }
-            Offer(Command.REDO) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Redo) }
+            Offer(Command.UNDO) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("undo")) }
+            Offer(Command.REDO) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("redo")) }
             Offer(Command.GO_TODAY) { go(Tab.TODAY) }
             Offer(Command.GO_TASKS) { go(Tab.TASKS) }
             Offer(Command.GO_BLOCKS) { go(Tab.BROWSE, Screen.Blocks) }
@@ -460,7 +460,7 @@ private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: L
         Screen.Settings -> SettingsScreen(core, navigator)
         Screen.Devices -> DevicesScreen(core, navigator)
         Screen.Pairing -> PairingScreen(core, navigator)
-        Screen.Planning -> PlanningScreen(core, navigator)
+        is Screen.SettingsPage -> SettingsPageScreen(core, navigator, screen.id)
         Screen.Backups -> BackupsScreen(core, navigator)
         Screen.Export -> ExportScreen(core, navigator)
         Screen.Reminders -> RemindersScreen(core, navigator)

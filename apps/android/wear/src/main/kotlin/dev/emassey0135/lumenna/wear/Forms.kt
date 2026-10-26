@@ -1,5 +1,11 @@
 package dev.emassey0135.lumenna.wear
 
+import dev.emassey0135.lumenna.quickWords
+import dev.emassey0135.lumenna.app.completeWith
+import dev.emassey0135.lumenna.app.detailsWords
+import androidx.compose.ui.semantics.semantics
+import dev.emassey0135.lumenna.app.durationWords
+import dev.emassey0135.lumenna.leveled
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.ShowingBlockForm
 import dev.emassey0135.lumenna.text
@@ -67,10 +73,10 @@ fun AddTaskScreen(core: Core, navigator: Navigator) {
     val text = line?.text.orEmpty()
     val set = { value: String -> app.send(ShellEvent.Typing(Typing.Text(value, TextOffsets.bytes(value.length, value)))) }
     // Straight to the input screen, as the phone's quick add opens with the keyboard up.
-    LaunchedEffect(opened) { if (opened && text.isBlank()) entry?.ask("New task") { set(it) } }
+    LaunchedEffect(opened) { if (opened && text.isBlank()) entry?.ask(quickWords.title) { set(it) } }
     WearList {
-        item { Heading("New task") }
-        item { TextFieldButton("Task", text, "call the bank tomorrow") { set(it) } }
+        item { Heading(quickWords.title) }
+        item { TextFieldButton(quickWords.label, text, quickWords.example) { set(it) } }
         if (text.isNotBlank()) {
             item {
                 Button(onClick = { entry?.ask("Add to the line") { more -> set("${text.trimEnd()} ${more.trim()}") } }, modifier = Modifier.fillMaxWidth(), label = { Text("Add to the line") })
@@ -82,7 +88,7 @@ fun AddTaskScreen(core: Core, navigator: Navigator) {
                     onClick = { app.send(ShellEvent.Typing(Typing.Choose(index.toUInt()))) },
                     // Named as the core says it, name first: "Work, project", not "#Work".
                     modifier = Modifier.fillMaxWidth().semantics {
-                        contentDescription = "Complete with ${lines?.candidates?.getOrNull(index) ?: candidate.label}"
+                        contentDescription = completeWith(candidate)
                     },
                     label = { Text(candidate.text) },
                 )
@@ -97,7 +103,7 @@ fun AddTaskScreen(core: Core, navigator: Navigator) {
                 onClick = { app.send(ShellEvent.QuickAdd(text)) },
                 enabled = text.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Add") },
+                label = { Text(quickWords.add) },
             )
         }
     }
@@ -119,7 +125,7 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
     val set = { key: String, value: String -> app.send(ShellEvent.Details(DetailsEvent.Field(key, value))) }
     WearList {
         if (details == null) {
-            if (shown) item { Text("This task is no longer here.") }
+            if (shown) item { Text(detailsWords.gone) }
             return@WearList
         }
         val current = details.task
@@ -134,7 +140,7 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
                 // order, each saying its level where it changes.
                 item {
                     Button(
-                        onClick = { navigator.choose(field.label, details.projects.map(::option)) { set("project", it.key) } },
+                        onClick = { navigator.choose(field.label, details.projects.map(::option).leveled()) { set("project", it.key) } },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(field.label) },
                         secondaryLabel = { Text(form.project) },
@@ -161,35 +167,26 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
                 }
             }
         }
-        item { Button(onClick = { app.send(ShellEvent.Details(DetailsEvent.Save)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Save") }) }
+        item { Button(onClick = { app.send(ShellEvent.Details(DetailsEvent.Save)) }, modifier = Modifier.fillMaxWidth(), label = { Text(detailsWords.save) }) }
 
-        if (current.depends.isNotEmpty()) {
-            item { Heading("Waits for") }
-            current.depends.forEach { other -> item { Text(other.title) } }
-        }
-
-        item { Heading("About") }
-        if (current.repetition == null && current.recurrence != null) item { Text("Repeats by the rule ${current.recurrence}") }
-        item { Text("State: ${current.state.joinToString(", ")}") }
-
-        // What the records hold of it, the core's lines: on its own screen only, never a list.
-        if (current.history.isNotEmpty()) {
-            item { Heading("History") }
-            current.history.forEach { line -> item { Text(line) } }
+        // What it is, the core's lines: its state, the rule it repeats by, what it waits for, and
+        // what the records hold of it. On its own screen only, never a list.
+        item { Heading(detailsWords.about) }
+        details.lines.forEach { line ->
+            item {
+                androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
+                    Text(line.label, style = androidx.wear.compose.material3.MaterialTheme.typography.labelSmall)
+                    Text(line.value)
+                }
+            }
         }
 
         // The app's, in the core's order: this screen is the task's form, so no Edit Details.
-        item { Heading("Actions") }
+        item { Heading(detailsWords.actions) }
         current.offered.forEach { action ->
             item { Button(onClick = { app.send(ShellEvent.ActOn(ActingOn.Details, action)) }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
         }
     }
-}
-
-/** A length in minutes, from the lengths a sitting usually takes, or, given [without], none. */
-fun chooseLength(navigator: Navigator, title: String, without: String?, cancelled: () -> Unit = {}, chosen: (UInt?) -> Unit) {
-    val lengths = listOf(15, 25, 30, 45, 60, 90, 120).map { Option(it.toString(), Clock.length(it.toUInt())) }
-    navigator.choose(title, lengths + listOfNotNull(without?.let { Option("", it) }), cancelled = cancelled) { choice -> chosen(choice.key.toUIntOrNull()) }
 }
 
 /** A block, added or changed: the app's block form, as the phone has it. */
@@ -231,7 +228,7 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
                         // A new block's day is the form's; the length is said in words beside it.
                         val value = when (field.key) {
                             "date" -> form.date
-                            "minutes" -> fields.minutes.trim().toUIntOrNull()?.let { "${fields.minutes}, ${Clock.length(it)}" } ?: fields.minutes
+                            "minutes" -> fields.minutes.trim().toUIntOrNull()?.let { "${fields.minutes}, ${durationWords(it)}" } ?: fields.minutes
                             else -> fields.text(field.key)
                         }
                         TextFieldButton(field.label, value, field.example) { set(field.key, if (field.key == "minutes") it.trim() else it) }
@@ -255,3 +252,6 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
 private fun Flag(name: String, on: Boolean, changed: (Boolean) -> Unit) {
     SwitchButton(checked = on, onCheckedChange = changed, modifier = Modifier.fillMaxWidth(), label = { Text(name) })
 }
+
+/** The task details' words, the core's, in sentence case. */
+private val detailsWords by lazy { detailsWords(true) }

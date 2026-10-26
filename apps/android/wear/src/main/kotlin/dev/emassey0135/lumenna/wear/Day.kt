@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna.wear
 
+import dev.emassey0135.lumenna.app.foldState
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.rememberLanding
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
@@ -76,7 +77,7 @@ fun DayScreen(core: Core, navigator: Navigator, block: dev.emassey0135.lumenna.B
                 RowButton(
                     title,
                     detail = line?.detail.orEmpty(),
-                    state = listOfNotNull(item.expanded?.let { if (it) "expanded" else "collapsed" }, item.level).joinToString(", ").ifEmpty { null },
+                    state = listOfNotNull(item.expanded?.let(::foldState), item.level).joinToString(", ").ifEmpty { null },
                     actions = actions,
                     onLongClick = { navigator.actions(title, actions) },
                     key = item.key,

@@ -1,5 +1,7 @@
 package dev.emassey0135.lumenna.wear
 
+import dev.emassey0135.lumenna.on
+import dev.emassey0135.lumenna.SettingsPages
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.name
@@ -38,12 +40,29 @@ import androidx.wear.compose.material3.RadioButton
 
 /** Settings, as the phone groups them: what syncs, the devices, backups. */
 @Composable
-fun SettingsScreen(navigator: Navigator) {
+fun SettingsScreen(core: Core, navigator: Navigator) {
+    val listed = appSettings(core)
     WearList {
         item { Heading(commandTitle("settings")) }
-        item { Button(onClick = { navigator.open(Screen.Planning) }, modifier = Modifier.fillMaxWidth(), label = { Text("Planning") }) }
-        item { Button(onClick = { navigator.open(Screen.Devices) }, modifier = Modifier.fillMaxWidth(), label = { Text("Devices and sync") }) }
-        item { Button(onClick = { navigator.open(Screen.ReminderSettings) }, modifier = Modifier.fillMaxWidth(), label = { Text("Reminders") }) }
+        // The core's pages, but Export and Import: a watch has nowhere to save a file or pick one.
+        SettingsPages.shown(listed).filter { it.id != "export" }.forEach { page ->
+            item {
+                Button(
+                    onClick = {
+                        navigator.open(
+                            when (page.id) {
+                                "devices" -> Screen.Devices
+                                "reminders" -> Screen.ReminderSettings
+                                else -> Screen.SettingsPage(page.id)
+                            },
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(page.title) },
+                    secondaryLabel = { Text(page.description) },
+                )
+            }
+        }
     }
 }
 
@@ -57,23 +76,24 @@ fun appSettings(core: Core): List<SettingView> {
 }
 
 /**
- * What syncs to every device, as the phone shows it; and this watch's backups. Each setting's
- * name, options and what it does are the core's; applying it is the app's.
+ * One of the core's pages of settings (Planning, Backups, General), as the phone shows it:
+ * each setting's name, options and what it does are the core's; applying it is the app's.
+ * Backups' Back Up Now is into this watch's backups, beside the others; restoring one is the
+ * phone's, which can pick a file.
  */
 @Composable
-fun PlanningScreen(core: Core) {
+fun SettingsPageScreen(core: Core, id: String) {
+    val page = SettingsPages.of(id)
     val all = appSettings(core)
     val view by core.app.view.collectAsState()
     WearList {
-        item { Heading("Planning") }
-        all.filter { it.setting.syncs }.forEach { setting(core, it) }
-        item { Text("These sync to all your devices.") }
-        item { Heading("Backups") }
-        all.filter { !it.setting.syncs && it.setting.key.startsWith("backup-") && it.setting.kind != SettingKind.FOLDER }.forEach { setting(core, it) }
-        item {
-            // Into this watch's backups, beside the others.
-            Button(onClick = { core.backUpNow() }, modifier = Modifier.fillMaxWidth(), label = { Text("Back up now") })
+        item { Heading(page?.title.orEmpty()) }
+        all.on(page).filter { it.setting.kind != SettingKind.FOLDER }.forEach { setting(core, it) }
+        page?.buttons.orEmpty().filter { it.id == "back-up" }.forEach { button ->
+            item { Button(onClick = { core.backUpNow() }, modifier = Modifier.fillMaxWidth(), label = { Text(button.title) }) }
         }
+        page?.caption?.takeIf { it.isNotEmpty() }?.let { item { Text(it) } }
+        if (id != "backups") return@WearList
         // What is done to the store as a whole, the core's (Erase everything deleted), beside the
         // backups it takes with it: a watch is a peer, its store whole. The app asks its question.
         view?.settings?.offered.orEmpty().forEach { action ->
@@ -107,9 +127,10 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
     val devices = view?.devices
     val lines by app.lines.collectAsState()
     WearList {
-        item { Heading("Devices and sync") }
+        item { Heading(SettingsPages.of("devices")?.title.orEmpty()) }
         devices?.status?.takeIf { it.isNotEmpty() }?.let { item { Text(it) } }
-        item { Button(onClick = { app.syncNow() }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("sync-now")) }) }
+        val syncing = SettingsPages.of("devices")?.buttons?.firstOrNull { it.id == "sync-now" }?.title ?: commandTitle("sync-now")
+        item { Button(onClick = { app.syncNow() }, modifier = Modifier.fillMaxWidth(), label = { Text(syncing) }) }
         devices?.list?.devices.orEmpty().forEachIndexed { index, device ->
             item {
                 // The core's: Rename, and Unpair on every row but this watch's own. Sync Now is
@@ -158,7 +179,7 @@ private fun PairingButtons(core: Core) {
             else -> words.introSentence.ifEmpty { words.intro }
         }
         Text(status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        pairing?.mine?.let { Text("${words.myCode}: $it") }
+        pairing?.mineLine?.let { Text(it) }
         Button(onClick = { pair(PairEvent.Wait) }, enabled = pairing?.running != true, modifier = Modifier.fillMaxWidth(), label = { Text(words.wait) })
         if (pairing?.running != true || pairing.waiting) {
             TextFieldButton(words.theirCode, "") { code ->
@@ -167,15 +188,18 @@ private fun PairingButtons(core: Core) {
             }
         }
         pairing?.words?.let { three ->
-            Text("${words.matchTitle} ${words.matchMessage} ${three.joinToString(", ")}.", Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
+            Text("${words.matchTitle} ${pairing.matching ?: three.joinToString(", ")}", Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
             Button(onClick = { pair(PairEvent.Confirm(true)) }, modifier = Modifier.fillMaxWidth(), label = { Text(words.matchYes) })
             Button(onClick = { pair(PairEvent.Confirm(false)) }, modifier = Modifier.fillMaxWidth(), label = { Text(words.matchNo) })
         }
     }
 }
 
+/** A time setting's example, the core's. */
+private val timeExample by lazy { dev.emassey0135.lumenna.app.settingWords().timeExample }
+
 /** One setting, by the control its kind asks for; applied through the app. */
-private fun ScalingLazyListScope.setting(core: Core, shown: SettingView) {
+internal fun ScalingLazyListScope.setting(core: Core, shown: SettingView) {
     val setting = shown.setting
     val set = { value: String -> core.app.send(ShellEvent.Settings(SettingsEvent.Set(setting.key, value))) }
     when (setting.kind) {
@@ -203,7 +227,7 @@ private fun ScalingLazyListScope.setting(core: Core, shown: SettingView) {
         SettingKind.TIME, SettingKind.NUMBER, SettingKind.FOLDER, SettingKind.LINE -> {
             item {
                 val said = if (setting.kind == SettingKind.TIME) Clock.time(setting.value) else setting.value
-                TextFieldButton(setting.title, said) { set(it.trim()) }
+                TextFieldButton(setting.title, said, if (setting.kind == SettingKind.TIME) timeExample else "") { set(it.trim()) }
             }
             // A time has the watch's own clock beside its line, named for the setting beneath, as
             // there are several.

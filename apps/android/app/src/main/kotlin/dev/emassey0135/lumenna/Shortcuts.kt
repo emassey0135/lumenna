@@ -7,7 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
-import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.keyboardShortcuts
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -63,7 +62,13 @@ enum class Place(private val group: String?) {
  * between devices keeps the keys they know. Ctrl, not Alt: TalkBack's keyboard commands are
  * on Alt, or on Search, which Android also reserves for the system.
  */
-enum class Command(val id: String?, val place: Place, private val own: List<Keys> = emptyList(), private val ownTitle: String? = null) {
+enum class Command(
+    val id: String?,
+    val place: Place,
+    private val ownKeys: List<Keys> = emptyList(),
+    private val ownTitle: String? = null,
+    private val own: String? = null,
+) {
     NEW_TASK("new-task", Place.APP),
     NEW_BLOCK("new-block", Place.APP),
     FILTER("filter", Place.APP),
@@ -88,10 +93,14 @@ enum class Command(val id: String?, val place: Place, private val own: List<Keys
     MOVE_TO_PROJECT("move-to-project", Place.ROW),
     DELETE("delete", Place.ROW),
     ACTIONS("actions", Place.ROW),
-    // Android's own: a tree control's folding keys, which a Compose list does not give.
-    EXPAND(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_RIGHT)), "Expand"),
-    COLLAPSE(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_LEFT)), "Collapse"),
+    // Android's own keys, a tree control's folding, which a Compose list does not give; what
+    // they run is the core's Expand and Collapse.
+    EXPAND(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_RIGHT)), "Expand", "expand"),
+    COLLAPSE(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_LEFT)), "Collapse", "collapse"),
     ;
+
+    /** What the app runs for it (`ShellEvent.Key`): the shared table's command, or the core's of Android's own keys. */
+    val runs: String? get() = id ?: own
 
     // The keyboard commands every desktop app shares (`lumenna_app::keys`, through the core), by
     // their identifiers: the keys Windows, GTK and the web bind, and their names, so a keyboard
@@ -101,7 +110,7 @@ enum class Command(val id: String?, val place: Place, private val own: List<Keys
     val title: String by lazy { id?.let { sharedCommands[it]?.title } ?: ownTitle ?: name }
 
     /** The keys that run it: the shared table's, read as Android's key codes. */
-    val keys: List<Keys> by lazy { id?.let { sharedCommands[it]?.keys?.mapNotNull(::keysOf) } ?: own }
+    val keys: List<Keys> by lazy { id?.let { sharedCommands[it]?.keys?.mapNotNull(::keysOf) } ?: ownKeys }
 
     fun matches(event: KeyEvent) = keys.any { it.matches(event) }
 
@@ -112,29 +121,6 @@ enum class Command(val id: String?, val place: Place, private val own: List<Keys
             else entries.firstOrNull { it.matches(event) }
     }
 }
-
-/**
- * The row's action a row command runs: by the core's kind, so Mark Done is Mark Done on
- * whatever row is in hand; folding too, which is among a row's actions. Delete is not here:
- * what it does to a row is the core's (`RowKeys.key`).
- */
-fun Command.rowAction(actions: List<RowAction>): RowAction? = when (this) {
-    Command.MARK_DONE -> actions.ofKind(ActionKind.MARK_DONE, ActionKind.MARK_NOT_DONE)
-    Command.PUT_IN_BLOCK -> actions.ofKind(ActionKind.PUT_IN_BLOCK)
-    Command.MOVE_TO_PROJECT -> actions.ofKind(ActionKind.MOVE_TO_PROJECT)
-    Command.EXPAND -> actions.ofKind(ActionKind.EXPAND)
-    Command.COLLAPSE -> actions.ofKind(ActionKind.COLLAPSE)
-    else -> null
-}
-
-/** The kind of action a row command asks for, to say why a row without one does nothing. */
-val Command.kind: ActionKind?
-    get() = when (this) {
-        Command.MARK_DONE -> ActionKind.MARK_DONE
-        Command.PUT_IN_BLOCK -> ActionKind.PUT_IN_BLOCK
-        Command.MOVE_TO_PROJECT -> ActionKind.MOVE_TO_PROJECT
-        else -> null
-    }
 
 /**
  * What each command does now. A screen offers a command while it is shown ([Offer]); the most

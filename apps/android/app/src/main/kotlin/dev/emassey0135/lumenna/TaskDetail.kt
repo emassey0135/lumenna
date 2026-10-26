@@ -1,5 +1,8 @@
 package dev.emassey0135.lumenna
 
+import dev.emassey0135.lumenna.app.DetailsLine
+import dev.emassey0135.lumenna.app.detailsWords
+import dev.emassey0135.lumenna.app.nothingToChoose
 import dev.emassey0135.lumenna.app.ActingOn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -85,14 +88,20 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
     FollowReminders(core, navigator)
 
     Offer(Command.SAVE) { save() }
+    // A row's commands, with no row focused, are the details' task's: the core's to run.
+    for (command in listOf(Command.MARK_DONE, Command.PUT_IN_BLOCK, Command.MOVE_TO_PROJECT, Command.DELETE)) {
+        androidx.compose.runtime.key(command) {
+            Offer(command) { command.runs?.let { app.send(ShellEvent.Details(DetailsEvent.Key(it))) } }
+        }
+    }
 
-    ScreenFrame(details?.task?.title ?: "Task", core, navigator, actions = {
+    ScreenFrame(details?.task?.title ?: detailsWords.title, core, navigator, actions = {
         if (details != null) {
-            IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = "Save") }
+            IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = detailsWords.save) }
         }
     }) {
         if (details == null || form == null) {
-            Text(if (shown) "This task is no longer here." else "", Modifier.padding(16.dp), color = quiet())
+            Text(if (shown) detailsWords.gone else "", Modifier.padding(16.dp), color = quiet())
             return@ScreenFrame
         }
         val current = details.task
@@ -135,25 +144,13 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
                 }
             }
 
-            if (current.depends.isNotEmpty()) {
-                Heading("Waits for")
-                current.depends.forEach { other -> Text(other.title, Modifier.padding(vertical = 4.dp)) }
-            }
-
-            Heading("About")
-            if (current.repetition == null && current.recurrence != null) {
-                Text("Repeats by the rule ${current.recurrence}")
-            }
-            Text("State: ${current.state.joinToString(", ")}")
-
-            // What the records hold of it, the core's lines: on its own screen only, never a list.
-            if (current.history.isNotEmpty()) {
-                Heading("History")
-                current.history.forEach { line -> Text(line, Modifier.padding(vertical = 4.dp)) }
-            }
+            // What it is, the core's lines: its state, the rule it repeats by, what it waits for,
+            // and what the records hold of it. On its own screen only, never a list.
+            Heading(detailsWords.about)
+            details.lines.forEach { line -> DetailsLineText(line) }
 
             // The core's, in its order: this screen is the task's form, so no Edit Details.
-            Heading("Actions")
+            Heading(detailsWords.actions)
             current.offered.forEach { action ->
                 TextButton(modifier = Target, onClick = { app.send(ShellEvent.ActOn(ActingOn.Details, action)) }) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
@@ -236,7 +233,7 @@ private fun ProjectField(label: String, value: String, options: List<Option>, ch
             typed = value
         }) {
             if (shown.isEmpty()) {
-                DropdownMenuItem(text = { Text("No project matches") }, onClick = {}, enabled = false)
+                DropdownMenuItem(text = { Text(nothingToChoose()) }, onClick = {}, enabled = false)
             }
             shown.forEachIndexed { index, option ->
                 val level = levelChange(shown, index)
@@ -263,4 +260,16 @@ fun Heading(text: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 24.dp, bottom = 4.dp).semantics { heading() },
     )
+}
+
+/** The task details' words, the core's, in sentence case. */
+private val detailsWords by lazy { detailsWords(true) }
+
+/** One of the details' lines: its label, then what it says, one stop for TalkBack. */
+@Composable
+private fun DetailsLineText(line: DetailsLine) {
+    Column(Modifier.padding(vertical = 4.dp).semantics(mergeDescendants = true) {}) {
+        Text(line.label, style = MaterialTheme.typography.labelLarge, color = quiet())
+        Text(line.value)
+    }
 }

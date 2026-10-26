@@ -18,6 +18,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.emassey0135.lumenna.app.sentenceCase
 import dev.emassey0135.lumenna.app.DueReminder
+import dev.emassey0135.lumenna.app.DueEvent
+import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Device
 import dev.emassey0135.lumenna.app.LumennaError
 import java.time.Duration
@@ -180,14 +182,17 @@ data class ReminderAccess(val notifications: Boolean, val exact: Boolean, val gr
 /** How a screen learns what Android allows: the system's answer, unless a test says otherwise. */
 val LocalReminderAccess = staticCompositionLocalOf<(Context) -> ReminderAccess> { Reminders::access }
 
-/** What a reminder's notification opens: a task, or a block's day. */
-data class ReminderOpened(val kind: String, val target: String, val occurrence: String) {
+/**
+ * What a reminder's notification opens: a task, or a block's day; for an overrun's Replan, the
+ * firing it warned of too ([key], and the moment it fired, [at]).
+ */
+data class ReminderOpened(val kind: String, val target: String, val occurrence: String, val key: String = "", val at: String = "") {
     /** Where the screens go for it, on the phone and the watch alike. */
     val reminded: Reminded?
         get() = when (kind) {
             "task" -> Reminded.Task(target)
             "block" -> Reminded.Block(occurrence.takeIf { it.isNotEmpty() }?.let { BlockOn(target, it) })
-            Reminders.REPLAN -> Reminded.Replan
+            Reminders.REPLAN -> Reminded.Replan(key, occurrence, at)
             else -> null
         }
 }
@@ -204,11 +209,10 @@ sealed interface Reminded {
     data class Block(val on: BlockOn?) : Reminded
 
     /**
-     * An overrun's Replan button: the rest of today, worked out again. As the app's own
-     * Replan from Now, since the app's reminder button (`DueEvent.Replan`) acts only on a
-     * reminder in its own list, which Android's alarms never fill.
+     * An overrun's Replan button: the rest of today, worked out again, the warning of [key] at
+     * [occurrence], which fired [at], dismissed once something is replanned ([replan]).
      */
-    data object Replan : Reminded
+    data class Replan(val key: String, val occurrence: String, val at: String) : Reminded
 }
 
 object Reminders {
@@ -235,6 +239,8 @@ object Reminders {
     private const val OPEN_KIND = "dev.emassey0135.lumenna.open.kind"
     private const val OPEN_TARGET = "dev.emassey0135.lumenna.open.target"
     private const val OPEN_OCCURRENCE = "dev.emassey0135.lumenna.open.occurrence"
+    private const val OPEN_KEY = "dev.emassey0135.lumenna.open.key"
+    private const val OPEN_AT = "dev.emassey0135.lumenna.open.at"
     /** The notification to take away once the app has opened for it: a button's, which does not cancel itself. */
     private const val OPEN_CANCEL = "dev.emassey0135.lumenna.open.cancel"
 
@@ -486,6 +492,8 @@ object Reminders {
                         putExtra(OPEN_KIND, REPLAN)
                         putExtra(OPEN_TARGET, due.target)
                         putExtra(OPEN_OCCURRENCE, due.occurrence)
+                        putExtra(OPEN_KEY, due.key)
+                        putExtra(OPEN_AT, due.at)
                         putExtra(OPEN_CANCEL, id)
                     }
                     replan?.let {
@@ -509,7 +517,10 @@ object Reminders {
     fun opened(intent: Intent?): ReminderOpened? {
         val kind = intent?.getStringExtra(OPEN_KIND) ?: return null
         val target = intent.getStringExtra(OPEN_TARGET) ?: return null
-        return ReminderOpened(kind, target, intent.getStringExtra(OPEN_OCCURRENCE).orEmpty())
+        return ReminderOpened(
+            kind, target, intent.getStringExtra(OPEN_OCCURRENCE).orEmpty(),
+            intent.getStringExtra(OPEN_KEY).orEmpty(), intent.getStringExtra(OPEN_AT).orEmpty(),
+        )
     }
 
     private fun uri(id: String): Uri = Uri.fromParts("lumenna-reminder", id, null)
@@ -568,9 +579,11 @@ object Reminders {
     fun channel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL) != null) return
+        // Its name and description, the core's words.
+        val words = dev.emassey0135.lumenna.app.notificationWords("this device", true)
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Tasks coming due and blocks starting or ending, as you set them."
+            NotificationChannel(CHANNEL, words.channel, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = words.channelDescription
             },
         )
     }
@@ -645,4 +658,22 @@ class ReminderRearmReceiver : BroadcastReceiver() {
         Intent.ACTION_TIMEZONE_CHANGED,
         "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED",
     )
+}
+
+/**
+ * Replan from Now for an overrun warning, as its button asks (`DueEvent.Replan`), so that once
+ * something is replanned the warning is dismissed on every device. The app acts only on a
+ * reminder in its own list, which Android's alarms do not fill, so it first looks at the one
+ * moment the warning fired; one dealt with elsewhere since is not found, and the day is
+ * replanned all the same.
+ */
+suspend fun AppModel.replan(warning: Reminded.Replan) {
+    val at = runCatching { Instant.parse(warning.at) }.getOrNull()
+    val id = "${warning.key}-${warning.occurrence}"
+    if (at != null && warning.key.isNotEmpty()) {
+        send(ShellEvent.Due(DueEvent.Look(at.minusSeconds(1).toString(), at.toString())))
+        settle()
+    }
+    if (view.value?.due.orEmpty().any { it.id == id }) send(ShellEvent.Due(DueEvent.Replan(id)))
+    else send(ShellEvent.Proposal(dev.emassey0135.lumenna.app.ProposalEvent.Replan))
 }

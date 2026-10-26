@@ -1,5 +1,7 @@
 package dev.emassey0135.lumenna
 
+import dev.emassey0135.lumenna.app.settingWords
+import dev.emassey0135.lumenna.app.notificationWords
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.collectionInfo
@@ -85,24 +87,22 @@ fun SettingsScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     LaunchedEffect(Unit) { app.send(ShellEvent.Devices(DevicesEvent.Show)) }
+    val listed = appSettings(core)
     val status = view?.devices?.status.orEmpty()
+    // The core's pages, each with what is on it; the devices' with how syncing is going.
+    val items = SettingsPages.shown(listed).map { page ->
+        Item(page.id, page.title, if (page.id == "devices") status.ifEmpty { page.description } else page.description)
+    }
     MenuScreen(
-        "Settings", core, navigator,
-        listOf(
-            Item("devices", "Devices and sync", status),
-            Item("planning", "Planning", "The day, the week, completing subtasks, announcements"),
-            Item("reminders", "Reminders", "On this device: notifications and alarms"),
-            Item("backups", "Backups", "On this device only"),
-            Item("export", "Export and import", "JSON, Markdown, org, calendar; erasing what was deleted"),
-        ),
+        Command.SETTINGS.title, core, navigator, items,
         open = { item ->
             navigator.push(
                 when (item.key) {
                     "devices" -> Screen.Devices
-                    "planning" -> Screen.Planning
                     "reminders" -> Screen.ReminderSettings
                     "backups" -> Screen.Backups
-                    else -> Screen.Export
+                    "export" -> Screen.Export
+                    else -> Screen.SettingsPage(item.key)
                 },
             )
         },
@@ -189,6 +189,7 @@ private fun SettingControl(core: Core, shown: SettingView, turnedOn: () -> Unit 
     val app = core.app
     val setting = shown.setting
     val set = { value: String -> app.send(ShellEvent.Settings(SettingsEvent.Set(setting.key, value))) }
+    val words = remember { settingWords() }
     var asking by remember { mutableStateOf(false) }
     var sent by remember { mutableStateOf<String?>(null) }
     // Applied as typed, the dialog closes; refused, it stays with the app's reason.
@@ -230,10 +231,15 @@ private fun SettingControl(core: Core, shown: SettingView, turnedOn: () -> Unit 
             if (asking) {
                 val time = setting.kind == SettingKind.TIME
                 AskText(
-                    setting.title, if (time) "Time" else setting.title, "Set",
+                    // What a time or a number takes, and the button, in the core's words.
+                    setting.title, setting.title, words.set,
                     initial = setting.value,
-                    example = if (time) "9am" else "",
-                    hint = shown.problem ?: if (time) "Such as 8am or 21:30." else null,
+                    example = if (time) words.timeExample else "",
+                    hint = shown.problem ?: when (setting.kind) {
+                        SettingKind.TIME -> words.timeHint
+                        SettingKind.NUMBER -> words.numberHint
+                        else -> null
+                    },
                     number = setting.kind == SettingKind.NUMBER,
                     time = time,
                     dismiss = {
@@ -250,22 +256,28 @@ private fun SettingControl(core: Core, shown: SettingView, turnedOn: () -> Unit 
     }
 }
 
-/** What syncs to every device: the core's settings that sync, in its order. */
+/** One of the core's pages of settings (Planning, General): its settings in its order, then what it says of them. */
 @Composable
-fun PlanningScreen(core: Core, navigator: Navigator) {
-    val shown = appSettings(core).filter { it.setting.syncs }
-    ScreenFrame("Planning", core, navigator) {
+fun SettingsPageScreen(core: Core, navigator: Navigator, id: String) {
+    val page = SettingsPages.of(id)
+    val shown = appSettings(core).on(page)
+    ScreenFrame(page?.title.orEmpty(), core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             shown.forEach { key(it.setting.key) { SettingControl(core, it) } }
-            Text(
-                "These sync to all your devices.",
-                style = MaterialTheme.typography.bodySmall,
-                color = quiet(),
-                modifier = Modifier.padding(16.dp),
-            )
+            Caption(page?.caption.orEmpty())
         }
     }
 }
+
+/** What a page says under its settings, the core's words. */
+@Composable
+private fun Caption(text: String) {
+    if (text.isEmpty()) return
+    Text(text, style = MaterialTheme.typography.bodySmall, color = quiet(), modifier = Modifier.padding(16.dp))
+}
+
+/** The notifications' words, as this device calls itself in them. */
+val phoneNotificationWords by lazy { notificationWords("this device", true) }
 
 /**
  * Reminders on this device: the core's setting for whether it gives them, then what Android
@@ -275,42 +287,32 @@ fun PlanningScreen(core: Core, navigator: Navigator) {
 @Composable
 fun ReminderSettingsScreen(core: Core, navigator: Navigator, changes: Long) {
     val context = LocalContext.current
-    val shown = appSettings(core).filter { it.setting.key == "reminders" }
+    val page = SettingsPages.of("reminders")
+    val shown = appSettings(core).on(page)
+    val words = phoneNotificationWords
     // Read again whenever the app comes back, as from the system's settings (`changes` moves).
     val access = LocalReminderAccess.current
     val (allowed, exact, grant) = remember(changes) { access(context) }
     val ask = rememberNotificationAsk()
-    ScreenFrame("Reminders", core, navigator) {
+    ScreenFrame(page?.title.orEmpty(), core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
-            shown.forEach { key(it.setting.key) { SettingControl(core, it, turnedOn = ask) } }
+            shown.forEach { key(it.setting.key) { SettingControl(core, it, turnedOn = if (it.setting.key == "reminders") ask else ({})) } }
             if (!allowed) {
-                Text(
-                    "Notifications are off for Lumenna, so no reminder can be shown on this device.",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+                Text(words.off, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 OutlinedButton(
                     modifier = Target.padding(horizontal = 16.dp),
                     onClick = { if (Reminders.shouldAsk(context)) ask() else context.startActivity(Reminders.notificationSettings(context)) },
-                ) { Text("Allow notifications") }
+                ) { Text(words.allow) }
             }
             if (!exact) {
-                Text(
-                    "Reminders may come a few minutes late: Lumenna is not allowed to set alarms for an exact time.",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+                Text(words.late, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 grant?.let { intent ->
                     OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { context.startActivity(intent) }) {
-                        Text("Allow exact alarms")
+                        Text(words.allowExact)
                     }
                 }
             }
-            Text(
-                "When reminders come is set in Planning, and on a task or block in its Reminders; those sync to all " +
-                    "your devices. This page is this device's own.",
-                style = MaterialTheme.typography.bodySmall,
-                color = quiet(),
-                modifier = Modifier.padding(16.dp),
-            )
+            Caption(page?.caption.orEmpty())
         }
     }
 }
@@ -321,23 +323,51 @@ fun ReminderSettingsScreen(core: Core, navigator: Navigator, changes: Long) {
  */
 @Composable
 fun BackupsScreen(core: Core, navigator: Navigator) {
-    val shown = appSettings(core).filter { !it.setting.syncs && it.setting.key.startsWith("backup-") && it.setting.kind != SettingKind.FOLDER }
-    ScreenFrame("Backups", core, navigator) {
+    val page = SettingsPages.of("backups")
+    val shown = appSettings(core).on(page).filter { it.setting.kind != SettingKind.FOLDER }
+    val restore = rememberImport(core)
+    ScreenFrame(page?.title.orEmpty(), core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             shown.forEach { key(it.setting.key) { SettingControl(core, it) } }
-            Button(
-                modifier = Target.padding(16.dp),
-                // Into this device's backups, beside the others: the app's backup is a file to keep elsewhere.
-                onClick = { core.backUpNow() },
-            ) { Text("Back up now") }
-            Text(
-                "These settings are this device's own. Restore a backup from Export and import.",
-                style = MaterialTheme.typography.bodySmall,
-                color = quiet(),
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
+            page?.buttons.orEmpty().forEach { button ->
+                OutlinedButton(
+                    modifier = Target.padding(horizontal = 16.dp, vertical = 4.dp),
+                    onClick = {
+                        when (button.id) {
+                            // Into this device's backups, beside the others: the app's backup is a file to keep elsewhere.
+                            "back-up" -> core.backUpNow()
+                            // A backup is restored as an import is, from a file chosen.
+                            else -> restore()
+                        }
+                    },
+                ) { Text(if (button.asks) "${button.title}…" else button.title) }
+            }
+            Caption(page?.caption.orEmpty())
         }
     }
+}
+
+/**
+ * Choosing a file to import or restore, through Android's own picker: read off the main thread,
+ * since the provider chosen (Drive) can be slow, then handed to the app.
+ */
+@Composable
+private fun rememberImport(core: Core): () -> Unit {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val resolver = context.contentResolver
+    val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val name = runCatching {
+                resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { if (it.moveToFirst()) it.getString(0) else null }
+            }.getOrNull() ?: "import"
+            val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull() ?: return@launch
+            core.app.send(ShellEvent.Settings(SettingsEvent.Import(name, bytes)))
+        }
+    }
+    return { open.launch(arrayOf("*/*")) }
 }
 
 /**
@@ -372,31 +402,20 @@ fun ExportScreen(core: Core, navigator: Navigator) {
             save.launch(file.name)
         }
     }
-    val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch(Dispatchers.IO) {
-            val name = runCatching {
-                resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
-                    ?.use { if (it.moveToFirst()) it.getString(0) else null }
-            }.getOrNull() ?: "import"
-            val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull() ?: return@launch
-            app.send(ShellEvent.Settings(SettingsEvent.Import(name, bytes)))
-        }
-    }
-    ScreenFrame("Export and import", core, navigator) {
+    val import = rememberImport(core)
+    val page = SettingsPages.of("export")
+    ScreenFrame(page?.title.orEmpty(), core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             view?.settings?.exports.orEmpty().forEach { export ->
                 OutlinedButton(modifier = Target, onClick = { app.send(ShellEvent.Settings(SettingsEvent.Export(export.format))) }) {
                     Text("${export.label}…")
                 }
             }
-            OutlinedButton(modifier = Target, onClick = { open.launch(arrayOf("*/*")) }) { Text("Import or restore…") }
-            Text(
-                "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a " +
-                    "backup adds what this device lacks and removes nothing.",
-                style = MaterialTheme.typography.bodySmall,
-                color = quiet(),
-            )
+            // The page's own buttons, the core's: Import or restore, which asks for a file.
+            page?.buttons.orEmpty().forEach { button ->
+                OutlinedButton(modifier = Target, onClick = import) { Text(if (button.asks) "${button.title}…" else button.title) }
+            }
+            page?.caption?.takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = quiet()) }
             // What is done to the store as a whole, the core's (Erase everything deleted): the
             // app asks its question as any row's, at the root.
             view?.settings?.offered.orEmpty().forEach { action ->
@@ -419,8 +438,12 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
     val view by app.view.collectAsState()
     LaunchedEffect(Unit) { app.send(ShellEvent.Devices(DevicesEvent.Show)) }
     val devices = view?.devices
-    ScreenFrame("Devices and sync", core, navigator, actions = {
-        IconButton(onClick = { navigator.push(Screen.Pairing) }) { Icon(Icons.Filled.Add, contentDescription = "Pair a device") }
+    // The page's buttons, the core's: Pair a device in the bar, Sync now beneath the status.
+    val page = SettingsPages.of("devices")
+    val pair = page?.buttons?.firstOrNull { it.id == "pair" }
+    val syncing = page?.buttons?.firstOrNull { it.id == "sync-now" }
+    ScreenFrame(page?.title.orEmpty(), core, navigator, actions = {
+        IconButton(onClick = { navigator.push(Screen.Pairing) }) { Icon(Icons.Filled.Add, contentDescription = pair?.title) }
     }) {
         Text(
             devices?.status.orEmpty(),
@@ -429,7 +452,7 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
         // Syncing is with every device at once, so it is the screen's, not a row's.
-        OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { core.app.syncNow() }) { Text(Command.SYNC_NOW.title) }
+        OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { core.app.syncNow() }) { Text(syncing?.title ?: Command.SYNC_NOW.title) }
         val list = devices?.list
         val rows = list?.devices.orEmpty()
         val state = rememberLazyListState()
@@ -503,7 +526,8 @@ fun PairingScreen(core: Core, navigator: Navigator) {
             Text(status, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             Button(modifier = Target, onClick = { pair(PairEvent.Wait) }, enabled = !pairing.running) { Text(words.wait) }
             pairing.mine?.let { code ->
-                Text("${words.myCode}: $code", fontFamily = FontFamily.Monospace)
+                // The core's line for it: "This device's code: 1234-5678".
+                Text(pairing.mineLine ?: code, fontFamily = FontFamily.Monospace)
                 OutlinedButton(modifier = Target, onClick = {
                     val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     // Marked sensitive, so the system's copied preview and keyboard suggestions do
@@ -533,7 +557,7 @@ fun PairingScreen(core: Core, navigator: Navigator) {
             AlertDialog(
                 onDismissRequest = {},
                 title = { Text(words.matchTitle) },
-                text = { Text("${words.matchMessage} ${three.joinToString(", ")}.") },
+                text = { Text(pairing.matching ?: three.joinToString(", ")) },
                 confirmButton = { TextButton(modifier = Target, onClick = { pair(PairEvent.Confirm(true)) }) { Text(words.matchYes) } },
                 dismissButton = { TextButton(modifier = Target, onClick = { pair(PairEvent.Confirm(false)) }) { Text(words.matchNo) } },
             )

@@ -15,6 +15,7 @@ import dev.emassey0135.lumenna.app.SidebarKind
 import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.app.KeyCommand
 import dev.emassey0135.lumenna.app.keyboardShortcuts
+import dev.emassey0135.lumenna.app.foldState
 import dev.emassey0135.lumenna.app.sidebarKey
 
 // What Android adds to the lines the core words (crates/app, through the turn's `lines`):
@@ -29,12 +30,15 @@ val sharedCommands: Map<String, KeyCommand> by lazy { keyboardShortcuts().flatMa
  */
 fun commandTitle(id: String): String = sharedCommands[id]?.title ?: id
 
+/** What quick add and a list's filter say, the core's words in sentence case. */
+val quickWords: dev.emassey0135.lumenna.app.QuickAddWords by lazy { dev.emassey0135.lumenna.app.quickAddWords(true) }
+
 /** An action's name in this platform's capitals: sentence case, as Material and Wear OS write. */
 val Action.name: String get() = sentence.ifEmpty { title }
 
 /** A choice the app offers, as its [line] reads, with why it is offered. */
 fun option(choice: Choice, line: Line): Option =
-    Option(choice.id, line.title, line.detail, choice.depth.toInt(), choice.reason.orEmpty(), choice.swatch)
+    Option(choice.id, line.title, line.detail, choice.depth.toInt(), choice.reason.orEmpty(), choice.swatch, line.level)
 
 /** A choice that is a name and what tells it apart: a project in the details' picker. */
 fun option(choice: Choice): Option =
@@ -96,11 +100,11 @@ fun AppModel.rowKeys(row: String, side: Side? = null): RowKeys = RowKeys(this, r
 
 /**
  * Everything a row says after its title: the core's line, then whether what is under it is
- * folded away, and the level where it changes from the row shown before (the app's word for
- * it, which folding keeps right). A tree control would say those two itself.
+ * folded away, and the level where it changes from the row shown before, both in the core's
+ * words, which folding keeps right. A tree control would say those two itself.
  */
 fun spoken(line: Line?, expanded: Boolean?, level: String?): String =
-    listOfNotNull(line?.detail?.ifEmpty { null }, expanded?.let { if (it) "expanded" else "collapsed" }, level).joinToString(", ")
+    listOfNotNull(line?.detail?.ifEmpty { null }, expanded?.let(::foldState), level).joinToString(", ")
 
 /** A list's rows not folded away, each with its line. */
 fun shownRows(items: List<Item>, lines: List<Line>): List<Pair<Item, Line?>> =
@@ -123,10 +127,23 @@ data class PlaceRow(
     val hidden: Boolean,
     /** For a row with something under it: whether that is shown, as its Collapse says. */
     val expanded: Boolean?,
+    /** "level 2" where its level changes from the row shown before, in the core's words. */
+    val level: String? = null,
 )
 
-/** The app's sidebar [entries] as rows, folded as the app has them: a row is open while it offers Collapse. */
-fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> {
+/** The app's sidebar [entries] as rows, folded and their levels said as the app has them. */
+fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> = entries.map { entry ->
+    PlaceRow(entry.key, entry, entry.title, entry.detail, entry.depth.toInt(), entry.hidden, entry.expanded, entry.level)
+}
+
+/**
+ * Some of the sidebar's [entries] as a list of their own (the projects alone, a level up), the
+ * folding and levels worked out among themselves: the app's are the whole sidebar's, where a
+ * folded heading hides them all. A row is open while it offers Collapse; [word] is the core's
+ * "level 2".
+ */
+fun placeRowsWithin(entries: List<SidebarEntry>, word: (UInt) -> String = { dev.emassey0135.lumenna.app.levelWords(it) }): List<PlaceRow> {
+    var previous = 0u
     var hiddenBelow: UInt? = null
     return entries.map { entry ->
         val below = hiddenBelow
@@ -140,6 +157,8 @@ fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> {
             }
         }
         if (expanded == false && !hidden) hiddenBelow = entry.depth
-        PlaceRow(entry.key, entry, entry.title, entry.detail, entry.depth.toInt(), hidden, expanded)
+        val level = if (!hidden && entry.depth != previous) word(entry.depth) else null
+        if (!hidden) previous = entry.depth
+        PlaceRow(entry.key, entry, entry.title, entry.detail, entry.depth.toInt(), hidden, expanded, level)
     }
 }

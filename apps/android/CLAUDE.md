@@ -79,6 +79,15 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
 - **What decides nothing about Android is tested on the JVM** (`src/test` in `shared` and
   `app`: `./gradlew :shared:testDebugUnitTest :app:testDebugUnitTest`), with the core's records
   built by hand: there is no native library there, so nothing a test calls may reach it.
+- **Settings are the core's pages** (`SettingsPages`, `settings_pages`): each page's title,
+  description, settings in order, caption and buttons; a page with nothing the store lists here is
+  left out, Export and Import on the watch, which has nowhere to save a file. Where they are
+  Android's own (whether notifications and exact alarms are allowed), the words are
+  `notification_words`.
+- **An overrun's Replan** is the app's `DueEvent.Replan`, so replanning dismisses the warning on
+  every device: the notification carries its firing, and the app looks at that one moment first
+  (`DueEvent.Look`), since its own list of what is due is not filled by Android's alarms
+  (`AppModel.replan`).
 - **Material's text and outlined buttons are 40dp**, and a radio row is as tall as its
   padding: both fail the touch-target check. `Target` gives 48dp.
 - **A row is one node** (`ListRow`: `clearAndSetSemantics`, custom actions) with one
@@ -106,12 +115,13 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   (`keyboard_shortcuts()`, `lumenna_app::keys`) by each command's id, keys and name both;
   only the folding arrows are Android's own (`Shortcuts.kt`). On Ctrl: TalkBack's are on Alt
   or Search. A screen offers a command while shown (`Offer`), the newest winning, and the
-  system's shortcuts helper (Meta+/) lists what is offered now. Delete is the core's: the row
-  put in hand, then `ShellEvent.Key("delete")` (`RowKeys.key`), which runs what
-  `keys::runs("delete")` names that the row offers, or says why not. Ctrl+K and Shift+F10 run
-  the row's action of that `ActionKind` (`Command.rowAction`), so a key never does what the
-  row's action list does not; on a row without one the app says the core's reason
-  (`RowKeys.refuse`: the row in hand, then `Run`). Space is not bound: on a row it is a click. Compose's root takes the keys while
+  system's shortcuts helper (Meta+/) lists what is offered now. A row's keys are the core's:
+  the row put in hand, then `ShellEvent.Key(id)` (`RowKeys.key`), which runs what
+  `keys::what_runs(id)` names that the row offers, or says why not; the folding arrows
+  (`Command.runs`: `expand`, `collapse`) go on to the list where the row does not fold. Shift+F10
+  opens the row's own menu. With no row focused they are the details' task's
+  (`DetailsEvent.Key`); the day's moves, New Block, Undo and Redo are `ShellEvent.Key` too, and a
+  block's Enter is `open`. Space is not bound: on a row it is a click. Compose's root takes the keys while
   anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
 - **Erasing for good is a menu away, never a key's**: a trashed task's Erase Permanently is
   in its long-press menu and custom actions with the rest, and Delete, the core's key, runs
