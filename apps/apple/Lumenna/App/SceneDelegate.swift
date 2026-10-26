@@ -30,7 +30,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
         // What the app says, shown for a moment, for a person who reads rather than listens.
         SaidBanner.install(on: window)
-        // Launched by the Home Screen's New Task.
+        // The app icon's quick actions: the core's launches.
+        UIApplication.shared.shortcutItems = QuickActions.items
+        // Launched by one of them.
         if let shortcut = connectionOptions.shortcutItem {
             DispatchQueue.main.async { [weak self] in _ = self?.perform(shortcut) }
         }
@@ -77,16 +79,13 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         completionHandler(perform(shortcutItem))
     }
 
-    /// New Task, from the app icon's quick actions (long press, or VoiceOver's actions rotor):
-    /// quick add, without first finding the Tasks tab.
+    /// One of the app icon's quick actions (long press, or VoiceOver's actions rotor): the core's
+    /// launch it names, taken where every way in from outside goes.
     private func perform(_ shortcut: UIApplicationShortcutItem) -> Bool {
-        guard shortcut.type == Self.newTask, let root = window?.rootViewController as? CommandActions else { return false }
-        root.newTask?()
+        guard let id = QuickActions.launch(of: shortcut) else { return false }
+        Launches.shared.ask(id)
         return true
     }
-
-    /// Also under `UIApplicationShortcutItems` in Info.plist.
-    static let newTask = "dev.emassey0135.lumenna.new-task"
 
     func sceneWillEnterForeground(_ scene: UIScene) {
         core?.timeZoneMayHaveChanged()
@@ -101,9 +100,35 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         core?.app.inFront(true)
     }
 
+    func sceneDidDisconnect(_ scene: UIScene) {
+        // A launch asked for from now on waits for the next scene, not this one's window.
+        Launches.shared.letGo()
+    }
+
     func sceneDidEnterBackground(_ scene: UIScene) {
         // One last round before stopping, so what was just edited is sent now.
         if let core { BackgroundSync.leaving(core) }
+    }
+}
+
+/// The app icon's quick actions: the core's launches (`Launches.shortcuts`), each handed back as
+/// its launch, so what each opens is the core's.
+enum QuickActions {
+    /// What a quick action's type starts with; its launch's id follows.
+    static let prefix = "dev.emassey0135.lumenna.launch."
+
+    static var items: [UIApplicationShortcutItem] {
+        Launches.shortcuts.map { shortcut in
+            UIApplicationShortcutItem(
+                type: prefix + shortcut.id, localizedTitle: shortcut.title, localizedSubtitle: nil,
+                icon: UIApplicationShortcutIcon(systemImageName: Launches.symbol(shortcut.icon))
+            )
+        }
+    }
+
+    /// The launch a quick action asks for, if it is one of these.
+    static func launch(of item: UIApplicationShortcutItem) -> String? {
+        item.type.hasPrefix(prefix) ? String(item.type.dropFirst(prefix.count)) : nil
     }
 }
 

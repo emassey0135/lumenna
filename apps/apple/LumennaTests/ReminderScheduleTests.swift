@@ -109,7 +109,7 @@ final class ReminderScheduleTests: XCTestCase {
         let now = Date()
         let due = (-5..<70).map { minutes in
             LumennaApp.DueReminder(
-                key: "key\(minutes)", occurrence: "2026-10-10", at: Reminders.rfc3339(now.addingTimeInterval(TimeInterval(minutes * 60 + 30))),
+                key: "key\(minutes)", occurrence: "2026-10-10", at: Instant.rfc3339(now.addingTimeInterval(TimeInterval(minutes * 60 + 30))),
                 target: "t", kind: "block", title: "T", text: "T starts", missed: "T started", dismiss: "Dismiss", snooze: "Snooze",
                 carry: "", replan: ""
             )
@@ -155,13 +155,13 @@ final class ReminderScheduleTests: XCTestCase {
 
     func testAProcessThatRunsShowsWhatCameDueOnceAndThenNothingMore() throws {
         try block("Deep work", inMinutes: 60)
-        let fire = try XCTUnwrap(Reminders.moment(core.app.device.upcomingReminders(until: Reminders.rfc3339(Date().addingTimeInterval(3 * 3600))).due[0].at))
+        let fire = try XCTUnwrap(Instant.parse(core.app.device.upcomingReminders(until: Instant.rfc3339(Date().addingTimeInterval(3 * 3600))).due[0].at))
         let delivery = ReminderDelivery(device: core.app.device, centre: centre)
-        XCTAssertTrue(delivery.deliver(now: Reminders.rfc3339(fire.addingTimeInterval(-120))).isEmpty, "nothing owed from before it ran")
-        let shown = delivery.deliver(now: Reminders.rfc3339(fire.addingTimeInterval(60)))
+        XCTAssertTrue(delivery.deliver(now: Instant.rfc3339(fire.addingTimeInterval(-120))).isEmpty, "nothing owed from before it ran")
+        let shown = delivery.deliver(now: Instant.rfc3339(fire.addingTimeInterval(60)))
         XCTAssertEqual(shown.map(\.content.title), ["Deep work"])
         XCTAssertNil(shown.first?.trigger, "shown at once")
-        XCTAssertTrue(delivery.deliver(now: Reminders.rfc3339(fire.addingTimeInterval(120))).isEmpty, "given once")
+        XCTAssertTrue(delivery.deliver(now: Instant.rfc3339(fire.addingTimeInterval(120))).isEmpty, "given once")
     }
 
     /// Sets this device's own settings as an earlier run left them, in the file the core
@@ -183,7 +183,7 @@ final class ReminderScheduleTests: XCTestCase {
         try block("Deep work", inMinutes: -25)
         let schedule = ReminderSchedule(device: core.app.device, centre: centre)
         XCTAssertTrue(schedule.catchUp().isEmpty, "the first time, nothing is owed")
-        let hoursAgo = { (hours: Double) in Reminders.rfc3339(Date().addingTimeInterval(-hours * 3600)) }
+        let hoursAgo = { (hours: Double) in Instant.rfc3339(Date().addingTimeInterval(-hours * 3600)) }
         // As if last armed two hours ago, for a window that ran out an hour ago.
         try deviceSettings(["reminders-caught-up": hoursAgo(2), "reminders-armed-until": hoursAgo(1)])
         let shown = schedule.catchUp()
@@ -200,7 +200,7 @@ final class ReminderScheduleTests: XCTestCase {
         try block("Stand-up", inMinutes: 2)
         let schedule = ReminderSchedule(device: core.app.device, centre: centre)
         schedule.catchUp()
-        let hoursAgo = { (hours: Double) in Reminders.rfc3339(Date().addingTimeInterval(-hours * 3600)) }
+        let hoursAgo = { (hours: Double) in Instant.rfc3339(Date().addingTimeInterval(-hours * 3600)) }
         try deviceSettings(["reminders-caught-up": hoursAgo(2), "reminders-armed-until": hoursAgo(-40)])
         XCTAssertTrue(schedule.catchUp().isEmpty, "the system kept what it was handed")
     }

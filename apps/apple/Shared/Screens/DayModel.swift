@@ -56,7 +56,9 @@ final class DayModel: ObservableObject {
     /// hand it was left with: the app keeps it. Opening is the screen coming to the front, which
     /// VoiceOver says itself: no landing.
     func appear() {
-        if !here {
+        // As the app holds it now, ahead of any turn on its way: opened again after a reminder's
+        // block was shown (`ShowBlock`), the day would go back to today.
+        if core.app.current.view.place != .today {
             core.app.send(.open(.today))
             landing = nil
         }
@@ -119,17 +121,6 @@ final class DayModel: ObservableObject {
     func move(_ step: LumennaApp.DayMove) {
         appear()
         core.app.send(.day(step))
-    }
-
-    /// Goes to the day named, as Go to Day's answer: nil if the app read it, else why not, the
-    /// question put away again.
-    func goTo(_ named: String) -> String? {
-        appear()
-        core.app.send(.day(.ask))
-        core.app.send(.answer(.text(text: named)))
-        guard let refusal = core.app.current.view.asking?.refusal else { return nil }
-        core.app.send(.cancel)
-        return refusal
     }
 
     /// The row in hand, if it is shown.

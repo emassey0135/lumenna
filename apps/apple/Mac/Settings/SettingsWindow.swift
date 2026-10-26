@@ -5,23 +5,31 @@ import UniformTypeIdentifiers
 
 /// Settings, in the Mac's own shape: a window of tabs, opened with ⌘,.
 final class SettingsWindowController: NSWindowController {
+    /// A page, by what it is rather than where it sits among the tabs.
+    enum Page: String {
+        case general, planning, devices, backups, export
+    }
+
+    private let tabs = NSTabViewController()
+
     init(core: Core) {
-        let tabs = NSTabViewController()
+        let tabs = tabs
         tabs.tabStyle = .toolbar
         let model = SettingsModel(core: core)
-        func tab(_ controller: NSViewController, _ label: String, _ symbol: String) -> NSTabViewItem {
+        func tab(_ controller: NSViewController, _ label: String, _ symbol: String, _ page: Page) -> NSTabViewItem {
             let item = NSTabViewItem(viewController: controller)
+            item.identifier = page.rawValue
             item.label = label
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
             return item
         }
         tabs.tabViewItems = [
-            tab(HostedForm("General", rootView: GeneralSettings(model: model)), "General", "gearshape"),
-            tab(HostedForm("Planning", rootView: PlanningSettings(model: model)), "Planning", "calendar"),
+            tab(HostedForm("General", rootView: GeneralSettings(model: model)), "General", "gearshape", .general),
+            tab(HostedForm("Planning", rootView: PlanningSettings(model: model)), "Planning", "calendar", .planning),
             // With a status line of its own: what the app says of a device, a refusal included.
-            tab(StatusLineController(content: DevicesViewController(core: core)), "Devices", "laptopcomputer.and.iphone"),
-            tab(HostedForm("Backups", rootView: BackupSettings(model: model)), "Backups", "externaldrive"),
-            tab(HostedForm("Export and Import", rootView: ExportSettings(model: model)), "Export and Import", "square.and.arrow.up"),
+            tab(StatusLineController(content: DevicesViewController(core: core)), "Devices", "laptopcomputer.and.iphone", .devices),
+            tab(HostedForm("Backups", rootView: BackupSettings(model: model)), "Backups", "externaldrive", .backups),
+            tab(HostedForm("Export and Import", rootView: ExportSettings(model: model)), "Export and Import", "square.and.arrow.up", .export),
         ]
         let window = NSWindow(contentViewController: tabs)
         window.title = "Settings"
@@ -33,6 +41,12 @@ final class SettingsWindowController: NSWindowController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Shows `page`, wherever it sits among the tabs.
+    func show(_ page: Page) {
+        let index = tabs.tabView.indexOfTabViewItem(withIdentifier: page.rawValue)
+        if index != NSNotFound { tabs.selectedTabViewItemIndex = index }
+    }
 }
 
 extension SettingsModel {

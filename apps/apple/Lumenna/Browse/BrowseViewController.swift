@@ -32,11 +32,12 @@ final class BrowseViewController: AppListViewController {
             case let .group(group):
                 let count = LumennaApp.groupCount(group: group, count: under(group))
                 items.append(AppItem(key: entry.key, title: entry.title, detail: count, swatch: entry.swatch))
-            case .place(.blocks), .place(.trash):
-                items.append(AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, swatch: entry.swatch))
-            case .place:
-                // Today and Tasks are tabs of their own.
+            case .place(.today), .place(.tasks):
+                // Tabs of their own.
                 continue
+            case .place:
+                // Every other place the app lists at the top: Blocks, Trash, History.
+                items.append(AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, swatch: entry.swatch))
             }
         }
         return (items, "")

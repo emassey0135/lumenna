@@ -1,3 +1,4 @@
+import LumennaApp
 import SwiftUI
 import UIKit
 
@@ -61,6 +62,11 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
     @objc func toggleDone() {
         model.toggleDone()
     }
+
+    @objc func putInBlock() { model.run(.putInBlock) }
+    @objc func moveToProject() { model.run(.moveToProject) }
+    @objc func makeSubtask() { model.run(.makeSubtaskOf) }
+    @objc func waitFor() { model.run(.waitFor) }
 
     @objc func moveToTrash() {
         model.trash()

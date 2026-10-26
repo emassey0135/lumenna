@@ -5,7 +5,7 @@ import SwiftUI
 /// anything is saved, as on every app. Dictation, Scribble and the keyboard all come with the
 /// text field.
 struct QuickAddView: View {
-    @EnvironmentObject private var core: WatchCore
+    @EnvironmentObject private var core: Core
     @Environment(\.dismiss) private var dismiss
     /// Whether the line starts empty, whatever the place shown adds: from the places.
     var fresh = false

@@ -21,6 +21,10 @@ import UIKit
     @objc optional func goToTrash()
     @objc optional func goToHistory()
     @objc optional func toggleDone()
+    @objc optional func putInBlock()
+    @objc optional func moveToProject()
+    @objc optional func makeSubtask()
+    @objc optional func waitFor()
     @objc optional func moveToTrash()
     @objc optional func saveChanges()
     @objc optional func previousDay()
@@ -93,6 +97,11 @@ enum KeyboardCommands {
     static var taskItems: [UIMenuElement] {
         [
             command("Mark Done", #selector(CommandActions.toggleDone), "k"),
+            // The Mac's Task menu, with its keys: each asks first, so its name ends in "…".
+            command("Put in a Block…", #selector(CommandActions.putInBlock), "b"),
+            command("Move to Project…", #selector(CommandActions.moveToProject), "m", [.command, .shift]),
+            item("Make Subtask Of…", #selector(CommandActions.makeSubtask)),
+            item("Wait For…", #selector(CommandActions.waitFor)),
             command("Save Changes", #selector(CommandActions.saveChanges), "s"),
             command("Move to Trash", #selector(CommandActions.moveToTrash), "\u{8}"),
         ]

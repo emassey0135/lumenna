@@ -24,6 +24,8 @@ extension UIViewController {
 final class PhoneAsker {
     private let core: Core
     private weak var presenter: UIViewController?
+    /// The day asked for, while its sheet is up.
+    private weak var dayPicker: DayPickerViewController?
 
     init(core: Core, from presenter: UIViewController) {
         self.core = core
@@ -72,7 +74,23 @@ extension PhoneAsker: QuestionAsking {
         present(alert) { answered(false) }
     }
 
-    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, answered: @escaping (String?) -> Void) {
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, day: String?, answered: @escaping (String?) -> Void) {
+        // A day (Go to Day, Another Day): the line, and the system's calendar beside it. Asked
+        // again after a refusal, the sheet still up says why, the typing kept.
+        if let day {
+            if let open = dayPicker, open.isOpen, !open.model.waiting {
+                open.model.askAgain(problem: problem, answered: answered)
+                return
+            }
+            guard let front else { return answered(nil) }
+            let picker = DayPickerViewController(
+                app: core.app, title: title, label: label, hint: hint, typed: initial, problem: problem,
+                day: Clock.day(day) ?? .now, yes: yes, answered: answered
+            )
+            dayPicker = picker
+            front.present(UINavigationController(rootViewController: picker), animated: true)
+            return
+        }
         let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
         // The filter language completes, which an alert's field cannot: a sheet of its own.
         if let syntax, let front {

@@ -92,6 +92,8 @@ targetTemplates:
       # Where the glance is, how it is written again after a Mark Done, and the device's clock.
       - path: Shared/AppGroup.swift
         group: Shared
+      - path: Shared/Instant.swift
+        group: Shared
       - path: Shared/GlanceFile.swift
         group: Shared
       - path: Shared/Clock.swift
@@ -227,11 +229,6 @@ targets:
           - fetch
         BGTaskSchedulerPermittedIdentifiers:
           - dev.emassey0135.lumenna.sync
-        # New Task on the app icon's quick actions (SceneDelegate).
-        UIApplicationShortcutItems:
-          - UIApplicationShortcutItemType: dev.emassey0135.lumenna.new-task
-            UIApplicationShortcutItemTitle: New Task
-            UIApplicationShortcutItemIconType: UIApplicationShortcutIconTypeAdd
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -312,8 +309,10 @@ targets:
     platform: watchOS
     sources:
       - path: Watch
-      # What the phone and the watch word alike: times, text offsets and errors.
+      # What the phone and the watch word alike: times, instants, text offsets and errors.
       - path: Shared/Clock.swift
+        group: Shared
+      - path: Shared/Instant.swift
         group: Shared
       - path: Shared/Words.swift
         group: Shared
@@ -321,6 +320,12 @@ targets:
       - path: Shared/AppModel.swift
         group: Shared
       - path: Shared/AppQuestions.swift
+        group: Shared
+      # The open store, as the phone and the Mac hold it, with the watch's link to its phone;
+      # and saying what happened, as every Apple app says it.
+      - path: Shared/Core.swift
+        group: Shared
+      - path: Shared/Announcer.swift
         group: Shared
       # Reminders as the system's notifications, scheduled as the phone schedules them.
       - path: Shared/Reminders.swift
@@ -457,6 +462,9 @@ targets:
         includes:
           - GlanceWidgets.swift
           - ControlModel.swift
+      # How the widgets' model reads an instant, as the app reads one.
+      - path: Shared/Instant.swift
+        group: Shared
     dependencies:
       - target: Lumenna
     settings:

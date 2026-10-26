@@ -9,7 +9,7 @@ import SwiftUI
 /// filter read back; a project, label or filter's own actions are at the foot, as Browse
 /// offers them.
 struct TaskListView: View {
-    @EnvironmentObject private var core: WatchCore
+    @EnvironmentObject private var core: Core
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model: TaskListModel
     @State private var adding = false
@@ -18,55 +18,58 @@ struct TaskListView: View {
     @State private var acted = false
     @AccessibilityFocusState private var spoken: String?
 
-    init(core: WatchCore, place: LumennaApp.Place) {
+    init(core: Core, place: LumennaApp.Place) {
         _model = StateObject(wrappedValue: TaskListModel(core: core, place: place))
     }
 
     private var place: LumennaApp.Place { model.place }
 
     var body: some View {
-        List {
-            // On Tasks alone: on a watch's screen a place's own list is short enough to read.
-            if place == .tasks {
-                TextField("Filter", text: $model.filter, prompt: example("#Work & overdue"))
-                    .textInputAutocapitalization(.never)
-                    .accessibilityLabel("Filter")
-                CompletionOffer(text: $model.filter, syntax: .filter)
+        ScrollViewReader { scroller in
+            List {
+                // Wherever the phone has one: every place of tasks but the trash.
+                if model.filters {
+                    TextField("Filter", text: $model.filter, prompt: example("#Work & overdue"))
+                        .textInputAutocapitalization(.never)
+                        .accessibilityLabel("Filter")
+                    CompletionOffer(text: $model.filter, syntax: .filter)
+                }
+                // The readback: how the query was understood and how many it found, or what is
+                // empty, in the core's words. A misread filter shows wrong results silently.
+                Text(model.readback).font(.footnote)
+                if !model.trash {
+                    Button("New Task") { adding = true }
+                }
+                ForEach(model.shown) { row in
+                    taskRow(row)
+                }
+                if model.here { PlaceActions(place: place, acted: $acted) }
             }
-            // The readback: how the query was understood and how many it found, or what is
-            // empty, in the core's words. A misread filter shows wrong results silently.
-            Text(model.readback).font(.footnote)
-            if !model.trash {
-                Button("New Task") { adding = true }
+            .navigationTitle(model.title)
+            .navigationDestination(for: TaskOpened.self) { opened in
+                TaskView(id: opened.id)
             }
-            ForEach(model.shown) { row in
-                taskRow(row)
+            .sheet(isPresented: $adding) {
+                QuickAddView().showsWhatIsSaid()
             }
-            if model.here { PlaceActions(place: place, acted: $acted) }
-        }
-        .navigationTitle(model.title)
-        .navigationDestination(for: TaskOpened.self) { opened in
-            TaskView(id: opened.id)
-        }
-        .sheet(isPresented: $adding) {
-            QuickAddView().showsWhatIsSaid()
-        }
-        // Coming back from a task's details keeps the place, its filter and the row in hand;
-        // from anywhere else it opens again with them.
-        .onAppear { model.appear() }
-        .onChange(of: core.app.view.place) { _, shown in
-            if acted, shown != place {
-                acted = false
-                dismiss()
+            // Coming back from a task's details keeps the place, its filter and the row in hand;
+            // from anywhere else it opens again with them.
+            .onAppear { model.appear() }
+            .onChange(of: core.app.view.place) { _, shown in
+                if acted, shown != place {
+                    acted = false
+                    dismiss()
+                }
             }
-        }
-        .onChange(of: model.landed?.count) { _, _ in
-            // The app moved the row in hand: VoiceOver goes there, once the row is drawn.
-            guard let key = model.landed?.key else { return }
-            DispatchQueue.main.async { spoken = key }
-        }
-        .onChange(of: spoken) { _, key in
-            if let key { model.moved(to: key) }
+            .onChange(of: model.landed?.count) { _, _ in
+                // The app moved the row in hand: VoiceOver goes there, once the row is drawn.
+                guard let key = model.landed?.key else { return }
+                scroller.scrollTo(key, anchor: .center)
+                DispatchQueue.main.async { spoken = key }
+            }
+            .onChange(of: spoken) { _, key in
+                if let key { model.moved(to: key) }
+            }
         }
     }
 
@@ -114,7 +117,7 @@ struct TaskOpened: Hashable {
 /// Browse and the sidebar offer them on the phone, held in the sidebar's hand. At the foot of
 /// its list, as buttons, since a watch's row has room for few swipes.
 private struct PlaceActions: View {
-    @EnvironmentObject private var core: WatchCore
+    @EnvironmentObject private var core: Core
     let place: LumennaApp.Place
     @Binding var acted: Bool
 
@@ -147,61 +150,66 @@ private struct PlaceActions: View {
 }
 
 /// Every block series, each with when it happens, as Browse lists them: the app's Blocks
-/// place. Each opens the form for every occurrence (its Edit Block); its other actions, the
-/// app's, are its swipes.
+/// place. Tapped, a row offers every one of its actions, the app's — Edit Block, its time zone,
+/// its reminders — as the day's rows do, since a watch's row has room for few swipes; its
+/// primary ones are its swipes too.
 struct BlockListView: View {
+    @EnvironmentObject private var asker: WatchAsker
     @StateObject private var model: TaskListModel
     @AccessibilityFocusState private var spoken: String?
 
-    init(core: WatchCore) {
+    init(core: Core) {
         _model = StateObject(wrappedValue: TaskListModel(core: core, place: .blocks))
     }
 
     var body: some View {
-        List {
-            if model.shown.isEmpty {
-                Text(model.readback)
-            }
-            ForEach(model.shown) { shown in
-                let row = shown.row
-                // Said as a task row is: when, in this watch's clock, then how long.
-                let detail = shown.line?.detail ?? ""
-                Button {
-                    model.run([.edit], on: row, saying: .edit)
-                } label: {
-                    HStack {
-                        SwatchMark(swatch: row.swatch)
-                        VStack(alignment: .leading) {
-                            Text(row.title)
-                            if !detail.isEmpty {
-                                Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
+        ScrollViewReader { scroller in
+            List {
+                if model.shown.isEmpty {
+                    Text(model.readback)
+                }
+                ForEach(model.shown) { shown in
+                    let row = shown.row
+                    // Said as a task row is: when, in this watch's clock, then how long.
+                    let detail = shown.line?.detail ?? ""
+                    Button {
+                        asker.offer(row.title, shown.actions, on: row.id)
+                    } label: {
+                        HStack {
+                            SwatchMark(swatch: row.swatch)
+                            VStack(alignment: .leading) {
+                                Text(row.title)
+                                if !detail.isEmpty {
+                                    Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
+                                }
                             }
                         }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(row.title)
+                        .accessibilityValue(detail)
                     }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(row.title)
-                    .accessibilityValue(detail)
+                    .accessibilityFocused($spoken, equals: row.id)
+                    .swipeActions(edge: .trailing) {
+                        // The primary ones; every one is the row's tap.
+                        ForEach(shown.actions.filter(\.primary), id: \.self) { action in
+                            Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: row) }
+                        }
+                    }
                 }
-                .accessibilityFocused($spoken, equals: row.id)
-                .swipeActions(edge: .trailing) {
-                    // The primary ones and Reminders; Edit Block is the row's tap.
-                    ForEach(shown.actions.filter { ($0.primary && $0.kind != .edit) || $0.kind == .reminders }, id: \.self) { action in
-                        Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: row) }
-                    }
+                Section {
+                    Button("Add Block") { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
                 }
             }
-            Section {
-                Button("Add Block") { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
+            .navigationTitle("Blocks")
+            .onAppear { model.appear() }
+            .onChange(of: model.landed?.count) { _, _ in
+                guard let key = model.landed?.key else { return }
+                scroller.scrollTo(key, anchor: .center)
+                DispatchQueue.main.async { spoken = key }
             }
-        }
-        .navigationTitle("Blocks")
-        .onAppear { model.appear() }
-        .onChange(of: model.landed?.count) { _, _ in
-            guard let key = model.landed?.key else { return }
-            DispatchQueue.main.async { spoken = key }
-        }
-        .onChange(of: spoken) { _, key in
-            if let key { model.moved(to: key) }
+            .onChange(of: spoken) { _, key in
+                if let key { model.moved(to: key) }
+            }
         }
     }
 }

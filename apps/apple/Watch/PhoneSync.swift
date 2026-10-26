@@ -17,13 +17,13 @@ import WatchKit
 final class PhoneSync: NSObject, ObservableObject {
     /// How the last attempt went, said in the settings row.
     @Published private(set) var status = "Not synced with the iPhone yet"
-    private weak var core: WatchCore?
+    private weak var core: Core?
     private var running = false
     private var again = false
     /// Background tasks held while the phone's parcels are delivered.
     private var waiting: [WKWatchConnectivityRefreshBackgroundTask] = []
 
-    init(core: WatchCore) {
+    init(core: Core) {
         self.core = core
         super.init()
         // The UI tests' copy: syncing would bring the paired phone's store into theirs.

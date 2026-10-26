@@ -5,13 +5,15 @@ import SwiftUI
 /// phone's alerts and pickers are. The root holds one and shows its `asked`.
 final class WatchAsker: ObservableObject {
     @Published var asked: Asked?
-    private let core: WatchCore
+    private let core: Core
     /// The sheet shown, which `dismissed` hears close.
     private var showing: Asked?
     /// What to show once the sheet in front has gone.
     private var next: Asked?
+    /// The day asked for, while its sheet is up.
+    private weak var dayAsked: DayAsked?
 
-    init(core: WatchCore) {
+    init(core: Core) {
         self.core = core
     }
 
@@ -53,17 +55,13 @@ final class WatchAsker: ObservableObject {
         core.failure = sentence
     }
 
-    /// A row's actions, the app's, offered when it is tapped, with any of the row's own after
-    /// them: the row's primary ones first, as the phone swipes them, then the rest in the app's
-    /// order, and whatever removes something last, never the first thing under a finger. Each
-    /// runs on the row `key`, held where `side` says.
+    /// A row's actions, the app's, offered when it is tapped, in the app's order, with any of the
+    /// row's own after them. Each runs on the row `key`, held where `side` says.
     func offer(
         _ title: String, _ actions: [LumennaApp.Offered], on key: String, side: LumennaApp.Side? = nil,
         extra: [(String, () -> Void)] = []
     ) {
-        let kept = actions.filter { !$0.destructive }
-        let ordered = kept.filter(\.primary) + kept.filter { !$0.primary } + actions.filter(\.destructive)
-        show(ChoicePrompt(title: title, choices: ordered.map { action in
+        show(ChoicePrompt(title: title, choices: actions.map { action in
             (action.title, { [weak self] in self?.core.app.run(action, on: key, side: side) })
         } + extra))
     }
@@ -84,10 +82,24 @@ extension WatchAsker: QuestionAsking {
         ask(ChoicePrompt(title: title, message: message, cancel: true, choices: [(yes, { reply(true) })]), gone: { reply(false) })
     }
 
-    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, answered: @escaping (String?) -> Void) {
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, day: String?, answered: @escaping (String?) -> Void) {
         let reply = Once(answered)
+        // A day (Go to Day, Another Day): the line and the watch's own picker. Asked again after
+        // a refusal, the sheet still up says why, the typing kept.
+        if let day {
+            if let open = dayAsked, open.shown, !open.waiting {
+                open.askAgain(problem: problem) { reply($0) }
+                return
+            }
+            let asked = DayAsked(app: core.app, label: label, hint: hint, typed: initial, problem: problem, day: Clock.day(day) ?? .now) { reply($0) }
+            asked.close = { [weak self] in self?.close() }
+            dayAsked = asked
+            ask(DayChoice(asked: asked, title: title, yes: yes), gone: { asked.cancel() })
+            return
+        }
         let message = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: " ")
-        ask(TextPrompt(title, message: message.isEmpty ? nil : message, initial: initial, placeholder: label, action: yes, allowsEmpty: true) { text in
+        // A line in the filter language has the core's completions after it.
+        ask(TextPrompt(title, message: message.isEmpty ? nil : message, initial: initial, placeholder: label, action: yes, syntax: syntax, allowsEmpty: true) { text in
             reply(text)
         }, gone: { reply(nil) })
     }
@@ -150,6 +162,98 @@ private struct OfferedPrompt: View {
                 .accessibilityLabel(choice.title)
                 .accessibilityValue([choice.detail, level].compactMap { $0 }.joined(separator: ", "))
                 .accessibilityHint(choice.reason ?? "")
+            }
+        }
+        .navigationTitle(title)
+    }
+}
+
+/// A question asking for a day — Go to Day, Another Day's — the app's, its words the core's: the
+/// day typed or said, the picker's, and why the last answer was refused. It stays up while the
+/// app refuses what was given, and goes once the app has taken an answer.
+final class DayAsked: ObservableObject {
+    let label: String
+    let hint: String
+    @Published var typed: String
+    @Published var day: Date
+    @Published var problem: String?
+    /// Whether its sheet is up.
+    var shown = true
+    var close: () -> Void = {}
+    private var answer: ((String?) -> Void)?
+    private let app: AppModel
+
+    init(app: AppModel, label: String, hint: String, typed: String, problem: String?, day: Date, answered: @escaping (String?) -> Void) {
+        self.app = app
+        self.label = label
+        self.hint = hint
+        self.typed = typed
+        self.problem = problem
+        self.day = day
+        answer = answered
+    }
+
+    /// Whether it waits for an answer: false once one is given, until asked again.
+    var waiting: Bool { answer != nil }
+
+    func askAgain(problem: String?, answered: @escaping (String?) -> Void) {
+        self.problem = problem
+        answer = answered
+        if let problem { Announcer.say(problem) }
+    }
+
+    /// The day typed if there is one, else the picker's. A day the app cannot read is asked
+    /// again (`askAgain`); once it asks nothing more, the sheet goes.
+    func go() {
+        guard waiting else { return }
+        let typed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        give(typed.isEmpty ? Clock.isoDay(day) : typed)
+        app.whenStill { [weak self] in
+            guard let self, !self.waiting else { return }
+            self.shown = false
+            self.close()
+        }
+    }
+
+    /// Closed without an answer.
+    func cancel() {
+        shown = false
+        give(nil)
+    }
+
+    private func give(_ given: String?) {
+        let answer = self.answer
+        self.answer = nil
+        answer?(given)
+    }
+}
+
+/// A day to go to, chosen as the phone chooses one: a day said or typed in the core's words
+/// ("next friday", "12 October") from the system's input screen, or a date picker, then the
+/// question's own answer.
+private struct DayChoice: View {
+    @ObservedObject var asked: DayAsked
+    let title: String
+    let yes: String
+
+    var body: some View {
+        List {
+            Section {
+                TextField(asked.label, text: $asked.typed)
+                    .textInputAutocapitalization(.never)
+                    // Named explicitly: with text in it, a field's title gives way to the text.
+                    .accessibilityLabel(asked.label)
+                    .accessibilityHint(asked.hint)
+                    .onSubmit { asked.go() }
+                if let problem = asked.problem {
+                    Text(problem).foregroundStyle(Color.warningLabel)
+                }
+            } footer: {
+                FormParts.caption(asked.hint)
+            }
+            Section {
+                NamedDatePicker(asked.label, selection: $asked.day, displayedComponents: .date)
+                Button(yes) { asked.go() }
             }
         }
         .navigationTitle(title)

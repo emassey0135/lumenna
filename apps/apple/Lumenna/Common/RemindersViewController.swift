@@ -73,22 +73,3 @@ final class RemindersViewController: AppListViewController {
         }
     }
 }
-
-extension UIViewController {
-    /// Opens a task's or block's reminders: pushed over a task's details, which are already
-    /// the thing open; beside the list otherwise, as a task's details are.
-    func openReminders(_ action: Action, core: Core) {
-        openReminders(of: action.target, core: core)
-    }
-
-    /// The reminder list of the task or block `target`: pushed over a task's details, else
-    /// beside the list it was asked from.
-    func openReminders(of target: String, core: Core) {
-        let reminders = RemindersViewController(core: core)
-        if self is TaskDetailViewController, let navigation = navigationController {
-            navigation.pushViewController(reminders, animated: true)
-        } else {
-            showBeside(reminders)
-        }
-    }
-}

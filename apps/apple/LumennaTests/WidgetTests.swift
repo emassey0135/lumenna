@@ -81,11 +81,11 @@ final class WidgetTests: XCTestCase {
     }
 
     func testAnInstantReadsToTheNanosecondOrTheSecond() throws {
-        let whole = try XCTUnwrap(GlanceWidgets.instant("2026-10-25T09:30:00Z"))
+        let whole = try XCTUnwrap(Instant.parse("2026-10-25T09:30:00Z"))
         XCTAssertEqual(whole.timeIntervalSince1970, 1_792_920_600)
-        let fine = try XCTUnwrap(GlanceWidgets.instant("2026-10-25T09:30:00.123456789Z"))
+        let fine = try XCTUnwrap(Instant.parse("2026-10-25T09:30:00.123456789Z"))
         XCTAssertEqual(fine.timeIntervalSince(whole), 0.123456789, accuracy: 0.000_001)
-        XCTAssertNil(GlanceWidgets.instant("soon"))
+        XCTAssertNil(Instant.parse("soon"))
     }
 
     func testATimerRunningCountsFromTheCoresInstantAndIsWorthShowing() throws {
@@ -95,7 +95,7 @@ final class WidgetTests: XCTestCase {
         XCTAssertEqual(quiet.relevance?.score, 0)
         entry.moment.timer = LumennaApp.GlanceTimer(sitting: "s", task: "Essay", block: "Deep work", countingFrom: "2026-10-25T09:00:00Z")
         let timing = GlanceTimelineEntry(date: Date(), glance: entry)
-        XCTAssertEqual(timing.timerStart, GlanceWidgets.instant("2026-10-25T09:00:00Z"))
+        XCTAssertEqual(timing.timerStart, Instant.parse("2026-10-25T09:00:00Z"))
         XCTAssertEqual(timing.relevance?.score, 1)
     }
 
@@ -107,8 +107,8 @@ final class WidgetTests: XCTestCase {
         )
         let block = GlanceTimelineEntry(date: Date(), glance: entry)
         XCTAssertEqual(block.relevance?.score, 1)
-        XCTAssertEqual(block.blockUnderWay?.lowerBound, GlanceWidgets.instant("2026-10-25T09:00:00Z"))
-        XCTAssertEqual(block.blockUnderWay?.upperBound, GlanceWidgets.instant("2026-10-25T11:00:00Z"))
+        XCTAssertEqual(block.blockUnderWay?.lowerBound, Instant.parse("2026-10-25T09:00:00Z"))
+        XCTAssertEqual(block.blockUnderWay?.upperBound, Instant.parse("2026-10-25T11:00:00Z"))
     }
 
     func testWithNoGlanceYetAWidgetSaysTheCoresEmptyDay() {

@@ -13,19 +13,31 @@ enum Clock {
         return formatter
     }()
 
-    private static let speaker: DateFormatter = {
+    // Made again when the locale changes: a formatter keeps the clock it was made with, so a
+    // person turning on the 24-hour clock went on hearing "2:30 PM".
+    private static var speaker = makeSpeaker()
+    private static var lengths = makeLengths()
+
+    private static func makeSpeaker() -> DateFormatter {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter
-    }()
+    }
 
-    private static let lengths: DateComponentsFormatter = {
+    private static func makeLengths() -> DateComponentsFormatter {
         let formatter = DateComponentsFormatter()
         formatter.unitsStyle = .full
         formatter.allowedUnits = [.hour, .minute]
         return formatter
-    }()
+    }
+
+    /// The person changed the region, the language or the 12- or 24-hour clock: times and
+    /// lengths are said in it from now on. On the main thread, as every wording here is.
+    static func localeChanged() {
+        speaker = makeSpeaker()
+        lengths = makeLengths()
+    }
 
     /// `14:30` as this device says it: "2:30 PM", or "14:30".
     static func time(_ clock: String) -> String {
@@ -46,13 +58,22 @@ enum Clock {
 
     /// A day as the core reads it back: an ISO date in the phone's own time zone.
     static func isoDay(_ date: Date) -> String {
-        date.formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day())
+        date.formatted(isoDays)
+    }
+
+    /// The day an ISO date names, at its start in this device's time zone: a calendar opened on
+    /// the day the core gives.
+    static func day(_ iso: String) -> Date? {
+        try? isoDays.parse(iso)
+    }
+
+    private static var isoDays: Date.ISO8601FormatStyle {
+        Date.ISO8601FormatStyle(timeZone: .current).year().month().day()
     }
 
     /// An ISO date as a person would say it: "Monday 5 October".
     static func spokenDay(_ iso: String) -> String {
-        guard let date = try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse(iso)
-        else { return iso }
+        guard let date = day(iso) else { return iso }
         if Calendar.current.isDateInToday(date) { return "Today" }
         if Calendar.current.isDateInTomorrow(date) { return "Tomorrow" }
         if Calendar.current.isDateInYesterday(date) { return "Yesterday" }

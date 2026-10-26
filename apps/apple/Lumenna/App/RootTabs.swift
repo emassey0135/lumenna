@@ -112,17 +112,19 @@ final class RootTabs: UITabBarController, CommandActions, PlaceFollowing {
     @objc func endTheDay() { select(0) { $0.day.runDay(.endDay) } }
     @objc func clearTheDay() { select(0) { $0.day.runDay(.clearDay) } }
 
-    /// The overrun warning's Replan: today, with Replan from Now over it.
+    /// The overrun warning's Replan: today, with Replan from Now over it, the app's.
     @objc func openReplan() {
-        select(0) { $0.day.openReplan() }
+        select(0)
+        core.app.replanFromNow()
     }
 
-    /// A reminder chosen in Notification Center: its task, or its block on its day.
+    /// A reminder chosen in Notification Center: its task, or its block on its day, in hand.
     @objc func openReminded(kind: String, target: String, day: String) {
         if kind == "task" {
             select(1) { $0.tasks.showBeside(TaskDetailViewController(core: $0.core, id: target)) }
         } else {
-            select(0) { $0.day.show(day: day, series: target) }
+            core.app.send(.showBlock(series: target, date: day))
+            select(0)
         }
     }
 }

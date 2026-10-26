@@ -4,7 +4,7 @@ import SwiftUI
 /// every field, saved as only what changed, then what can be done to it, the core's, its
 /// questions asked by the root as sheets.
 struct TaskView: View {
-    @EnvironmentObject private var core: WatchCore
+    @EnvironmentObject private var core: Core
     let id: String
 
     var body: some View {
@@ -17,7 +17,7 @@ struct TaskView: View {
         @State private var host = TaskSheets()
         @Environment(\.dismiss) private var dismiss
 
-        init(core: WatchCore, id: String) {
+        init(core: Core, id: String) {
             _model = StateObject(wrappedValue: TaskDetailModel(core: core, id: id))
         }
 
@@ -40,31 +40,5 @@ final class TaskSheets: TaskFormHost {
 
     func trashed() {
         left()
-    }
-}
-
-/// A length in minutes, from the lengths a sitting usually takes, or none.
-struct LengthChoice: View {
-    @Environment(\.dismiss) private var dismiss
-    let title: String
-    let without: String?
-    let chosen: (UInt32?) -> Void
-
-    var body: some View {
-        List {
-            ForEach([15, 25, 30, 45, 60, 90, 120], id: \.self) { minutes in
-                Button(Clock.length(UInt32(minutes))) {
-                    dismiss()
-                    chosen(UInt32(minutes))
-                }
-            }
-            if let without {
-                Button(without) {
-                    dismiss()
-                    chosen(nil)
-                }
-            }
-        }
-        .navigationTitle(title)
     }
 }
