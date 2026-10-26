@@ -1147,7 +1147,8 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (lumenna-activate)
     (let ((lines (lumenna-test--lines)))
       (should (equal (car (last lines)) "History, made today"))
-      (should (member "State, open" lines)))))
+      ;; Its state is the core's line, its label then what it says.
+      (should (seq-find (lambda (l) (string-prefix-p "State, unassigned" l)) lines)))))
 
 (ert-deftest lumenna-a-blocks-end-offers-to-carry-its-short-work-forward-from-the-notification ()
   (lumenna-test--reminding
