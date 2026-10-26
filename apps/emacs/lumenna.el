@@ -394,8 +394,9 @@ EVENT is the app's in its JSON shape: \"Undo\", (:Focus ID),
         (setcdr (last lumenna--heard) said)
         (setq said nil))
       (when said
-        (cond ((plist-get turn :notices)
+        (cond ((not (seq-empty-p (plist-get turn :notices)))
                ;; A notice is a reminder come due: what is said is it, with its sound.
+               ;; Every turn carries the list, an empty vector when there is none.
                (run-hook-with-args 'lumenna-changed-functions "reminder/due" nil))
               (lumenna--acting
                (run-hook-with-args 'lumenna-changed-functions lumenna--acting nil)
