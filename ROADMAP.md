@@ -626,6 +626,11 @@ What the web client gains from it:
 - **Reordering tasks among siblings** (decided 2026-10-20): task lists are most urgent
   first, or in the order added (`task-order`, `sort:`), so a task has no place of its own to
   move to. Projects, labels, saved filters and a block's sittings are reordered.
+- **Windows search integration** (decided 2026-10-26): Windows has no supported way for an
+  app's own records to appear in Start's search, as Spotlight, AppSearch, GNOME Shell and
+  KRunner allow. The Windows App SDK's App Content Search is limited-access and searches inside
+  the app, and a Windows Search protocol handler reaches File Explorer, not Start. The Jump
+  List covers the ways in Windows offers; revisit if App Content Search reaches Start.
 - **AppleScript, WSH/COM**: Shortcuts, PowerShell and `lum --json` cover scripting.
 - **A hosted MCP endpoint that can read the store**: cloud MCP is forwarded to the person's own
   device or run in the enclave peer (under Integrations), never on a server its operator reads.
