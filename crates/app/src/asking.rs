@@ -246,6 +246,9 @@ impl Lumenna {
         if let Answer::Text { text } = &answer {
             open.typed = Some(text.clone());
         }
+        // What was wrong with the last answer is gone with a new one: a refusal from here on is
+        // this answer's, so a shell asks again only when it comes.
+        open.refusal = None;
         match open.purpose.clone() {
             Purpose::GoToDay => {
                 let Answer::Text { text } = answer else { return Command::done() };

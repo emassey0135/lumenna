@@ -686,9 +686,17 @@ pub struct SettingWords {
     pub number_hint: String,
     /// The button that applies a setting typed in a dialog of its own.
     pub set: String,
+    /// The button beside a folder setting that opens the platform's folder dialog.
+    pub choose: String,
+    /// That dialog's title.
+    pub choose_folder: String,
+    /// The Devices page's line of how syncing is going (`DevicesView::status`): its label.
+    pub sync_status: String,
+    /// The Devices page's list of devices: its label.
+    pub devices: String,
 }
 
-/// What a setting's own control says (`SettingWords`).
+/// What a setting's own control says (`SettingWords`), Title Case.
 #[must_use]
 pub fn setting_words() -> SettingWords {
     SettingWords {
@@ -696,6 +704,10 @@ pub fn setting_words() -> SettingWords {
         time_example: "8am".to_owned(),
         number_hint: "A whole number.".to_owned(),
         set: "Set".to_owned(),
+        choose: "Choose".to_owned(),
+        choose_folder: "Choose a Folder".to_owned(),
+        sync_status: "Sync Status".to_owned(),
+        devices: "Paired Devices".to_owned(),
     }
 }
 
