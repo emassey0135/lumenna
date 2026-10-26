@@ -46,7 +46,7 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
         val cancel = { app.send(ShellEvent.Cancel) }
         // Asked again after a refusal, the input screen's label says why first: on the
         // watch's own screen behind it, the reason was never seen.
-        val label = { title: String -> listOfNotNull(asked.refusal, title).joinToString(". ") }
+        val label = { title: String -> listOfNotNull(asked.refusal?.trimEnd('.'), title).joinToString(". ") }
         val answer = { given: Answer -> app.send(ShellEvent.Answer(given)) }
         when (val question = asked.question) {
             Question.Immediate -> {}
