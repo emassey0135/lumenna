@@ -247,12 +247,14 @@ class Reminders(unittest.TestCase):
         config = service.config()
         script = self.run_script(
             [
+                ("menu", "General"),
                 ("menu", "Background reminders and sync, Off"),
                 ("choose", "Off"),
                 ("menu", "Background reminders and sync, Off"),
                 ("choose", "On"),
                 ("menu", "Background reminders and sync, On"),
                 ("choose", "On"),
+                ("back",),
                 ("back",),
             ],
             lambda: preferences.settings(self.session),
@@ -275,7 +277,7 @@ class Reminders(unittest.TestCase):
         self.session.send(self.session.background())
         self.ran.clear()
         script = self.run_script(
-            [("menu", "Background reminders and sync, On"), ("choose", "Off"), ("back",)],
+            [("menu", "General"), ("menu", "Background reminders and sync, On"), ("choose", "Off"), ("back",), ("back",)],
             lambda: preferences.settings(self.session),
         )
         self.assertIn("Background reminders and sync are off", script.said)
@@ -307,11 +309,12 @@ class Reminders(unittest.TestCase):
         self.assertNotIn("/BTSpeak", unit)
 
     def test_reminders_on_this_device_is_on_the_reminders_page_not_with_the_backups(self):
-        backups = [item.get_title() for item in preferences.setting_items(self.session, preferences.on_this_device)]
+        with preferences.opened(self.session):
+            backups = [item.get_title() for item in preferences.setting_items(self.session, "backups")]
         self.assertFalse(any(title.startswith("Reminders on this device") for title in backups), backups)
         self.run_script(
             [("menu", "Reminders on this device, On"), ("choose", "Off"), ("back",)],
-            lambda: reminder_lists.settings_page(self.session),
+            lambda: preferences.setting_page(self.session, "reminders"),
         )
         self.assertEqual(self.client.call("config.get", key="reminders")["settings"][0]["value"], "false")
 
@@ -323,7 +326,7 @@ class Reminders(unittest.TestCase):
                 ("input", "at end"),
                 ("back",),
             ],
-            lambda: preferences.setting_page(self.session, "Planning", preferences.planning),
+            lambda: preferences.setting_page(self.session, "reminders"),
         )
         self.assertTrue(script.prompts[1].startswith("'at the end of time' is not a reminder"), script.prompts)
         value = self.client.call("config.get", key="default-block-reminders")["settings"][0]["value"]

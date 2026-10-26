@@ -133,16 +133,17 @@ class Core:
     #: core's, by the device's `backup-every`.
     BACKUP_EVERY = 3600
 
-    def back_up_while_running(self) -> None:
+    def back_up_while_running(self, failed=lambda said: None) -> None:
         """Takes the automatic backups, as `lum` does before a command: one at start if one is
-        due, then looked for every hour, off the menus' thread since a Pi takes a while."""
+        due, then looked for every hour, off the menus' thread since a Pi takes a while. One that
+        fails is said through `failed`, in the core's words, and tried again next hour."""
 
         def run() -> None:
             while True:
                 try:
                     self.device.back_up_if_due()
-                except Exception:  # noqa: BLE001 - a backup that fails is tried again next hour
-                    pass
+                except Exception as error:  # noqa: BLE001 - the core's refusal
+                    failed(native().backup_failed(refused(error)))
                 time.sleep(self.BACKUP_EVERY)
 
         threading.Thread(target=run, name="lumenna-backups", daemon=True).start()

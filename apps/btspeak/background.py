@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import reminders  # noqa: E402
-from core import Core, LumennaError, device_name  # noqa: E402
+from core import Core, LumennaError, device_name, native  # noqa: E402
 
 #: What a client of the command surface is told is answering.
 PROCESS = "Lumenna background service"
@@ -62,7 +62,7 @@ def run(device, giver: reminders.Giver) -> None:
                 try:
                     device.back_up_if_due()
                 except Exception as error:  # noqa: BLE001 - tried again next hour
-                    log(f"the automatic backup failed: {reminders.refused(error)}")
+                    log(native().backup_failed(reminders.refused(error)))
                 backed_up = time.monotonic()
             try:
                 giver.once()

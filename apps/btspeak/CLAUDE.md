@@ -26,12 +26,18 @@ test with a newer one (`PYTHON=…`).
   answers whatever the app opens, one after another, with the device's dialogs: a question (a
   refusal staying in it), the block form, a proposal, a reminder list. The task form registers
   in `actions.FORMS`. Erase Permanently has no letter: only the context menu runs it.
-- **The delete keys send `Key("delete")`** (`actions.press`, a command that is only the keys',
+- **Enter and the letters run the shared table's commands** (`Key`, `actions.press`): Enter on the
+  day and the Blocks list is `open`, on the trash `restore-task`, on a device `rename`; a letter
+  whose kind the table has a command for runs it (`actions.COMMANDS`), the rest the row's action
+  of that kind. **The delete keys send `Key("delete")`** (a command that is only the keys',
   not `listed`): Control-D, the D chord and low-d. What it runs on the row (Delete, Delete from
   trash, Unassign, Unpair) or why it runs nothing is the app's (`keys::runs`); never a list of
   kinds here.
-- **Settings lists the store's own actions** (`SettingsView.offered`, Erase everything deleted)
-  as rows after Export and import, with no shortcut, each handed back as `ActOn` with
+- **Settings are the core's pages** (`SettingsView.pages`): each page's settings, caption and
+  buttons are the core's, its letter this app's (`preferences.PAGE_KEYS`, `BUTTON_KEYS`); a time or
+  number line says the setting's own hint, else `SettingsView.words`.
+- **The Export and import page lists the store's own actions** (`SettingsView.offered`, Erase
+  everything deleted) as rows after its buttons, with no shortcut, each handed back as `ActOn` with
   `ActingOnSettings` (`preferences.store_items`), the core's `offered_caption` its hint, which
   the device says and pushes to the display after a pause; the app asks its Confirm question.
 - **Speech and braille come from one string** (`DynamicMenuDialog.draw()` sets both from it),
@@ -43,7 +49,9 @@ test with a newer one (`PYTHON=…`).
   (`session._menu`, a `DynamicMenuDialog` subclass, as the device's file manager does) with the
   summary short.
 - **Depth is never indentation**: it says nothing in speech. The app says the level only where
-  it *changes*, against the previous *visible* row, so folding keeps it right.
+  it *changes*, against the previous *visible* row, so folding keeps it right. The projects,
+  labels and filters screens each list one heading's places, so their level counts from there:
+  folding is the app's (`hidden`, `expanded`), the level worded by `level_words`.
 - **A menu reopens on the app's row in hand** (`live_menu`'s `focus`), and is drawn after it is
   built, the arrival flag cleared then (`session.settle`): building sends (a place opened), and
   a flag left set draws every screen twice.

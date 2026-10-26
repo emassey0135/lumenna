@@ -6,7 +6,7 @@ Press Enter on a task to read its details. Press Z-Chord to leave the list.
 
 ## A task's context menu, M-Chord with Dot 7
 
-It holds what can be done to the task now, as every Lumenna app offers it, then Details:
+It holds what can be done to the task now, as every Lumenna app offers it, then Task details:
 
 - Mark done, c; or Mark not done, for a finished one.
 - Edit details, e: the title, due date, repetition, priority, estimate, project, labels and notes, one form.
@@ -16,7 +16,7 @@ It holds what can be done to the task now, as every Lumenna app offers it, then 
 - Wait for, w; Stop waiting for each task it waits for, n.
 - Reminders, r, for a task with a due date. See [Lumenna Reminders](help:lumenna-reminders).
 - Move to trash. Control-D and the D chord do the same.
-- Details: everything about the task, to pan through.
+- Task details: everything about the task, to pan through.
 
 ## The list's main menu, M-Chord
 

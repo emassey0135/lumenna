@@ -97,7 +97,9 @@ def task_list(
 
 def query_tasks(session: Session) -> str:
     """A filter typed now rather than saved; `search: words` looks through titles and notes."""
-    query = assisted_input(session, "Filter, or search: and words", L.Syntax.FILTER, history_key="lumenna-filter")
+    words = L.quick_add_words(True)
+    query = assisted_input(session, actions.prompt(words.filter, words.filter_hint), L.Syntax.FILTER,
+                           history_key="lumenna-filter")
     if not query:
         return ""
     return task_list(session, L.PlaceTasks(), "Query", query=query)
@@ -105,7 +107,7 @@ def query_tasks(session: Session) -> str:
 
 def task_commands(session: Session, rows) -> list[Command]:
     """What can be done to a task: the app's actions for it, then its details."""
-    return actions.commands(session, rows, after=[Command("Details", lambda row: show(session, row))])
+    return actions.commands(session, rows, after=[Command(L.details_words(True).title, lambda row: show(session, row))])
 
 
 def history(session: Session) -> str:
@@ -119,7 +121,7 @@ def trash(session: Session) -> str:
     or the delete keys'."""
     return task_list(
         session, L.PlaceTrash(), "Trash",
-        main=lambda row: actions.run_kind(session, row, K.RESTORE),
+        main=lambda row: actions.press(session, "restore-task", row),
     )
 
 
@@ -139,51 +141,24 @@ def show(session: Session, row) -> str:
     details = details_of(session, row.key)
     if details is None:
         return ""
-    return task_details(details, session.lines().task_state)
+    return task_details(details, session.lines().details)
 
 
-def task_details(details, state: str = "") -> str:
-    """Everything about one task, as lines to pan through, each named as the task form names
-    its field. A detail view is where the near-universal states are worth having, so this
-    shows the core's whole state line rather than the notable ones a list line carries."""
+def task_details(details, about=()) -> str:
+    """Everything about one task, as lines to pan through: its title, each field of the task
+    form that holds something, named as the form names it and said as the form offers it, then
+    what the core says about it besides (`about`, the details' `lines`: its state, a rule it
+    repeats by, what it waits for, its history), each its label then what it says."""
     task = details.task
-    labels = {field.key: field.label for field in details.form}
-    priorities = {
-        choice.id: choice.title
-        for field in details.form if field.key == "priority"
-        for choice in field.options
-    }
-
-    def line(key: str, value: str) -> str:
-        return f"{labels.get(key, key.capitalize())}: {value}"
-
     lines = [task.title]
-    if task.project:
-        lines.append(line("project", task.project))
-    if task.priority != 4:
-        lines.append(priorities.get(str(task.priority), line("priority", str(task.priority))))
-    if task.due:
-        import rows
-
-        due = f"{task.due} at {rows.clock(task.due_time)}" if task.due_time else task.due
-        lines.append(line("due", due))
-    if task.repetition:
-        lines.append(line("repeat", task.repetition))
-    elif task.recurrence:
-        lines.append(line("repeat", f"by the rule {task.recurrence}"))
-    if task.estimate_mins:
-        lines.append(line("estimate", f"{task.estimate_mins} minutes"))
-    if task.labels:
-        lines.append(line("labels", ", ".join(task.labels)))
-    for dependency in task.depends:
-        lines.append(f"Waits for: {dependency.title}")
-    if state:
-        lines.append(f"State: {state}")
-    if task.notes:
-        lines.append(line("notes", task.notes))
-    if task.history:
-        # What the records hold of it, said about one task here and never in a list.
-        lines.extend(["History", *task.history])
+    for field in details.form:
+        value = str(getattr(details.fields, field.key, "") or "")
+        if field.key == "title" or not value:
+            continue
+        options = details.projects if field.key == "project" else field.options
+        named = {option.id: option.title for option in options}
+        lines.append(f"{field.label}: {named.get(value, value)}")
+    lines.extend(line.text for line in about)
     dialogs.view_lines(lines, wrap=True)
     return ""
 
@@ -203,7 +178,7 @@ def edit_task(session: Session, task: str) -> str:
             # Chosen from the projects the app offers, by name, each with its level where it
             # sits under another, since a list says nothing of indentation.
             choices = {
-                choice.id: choice.title if not choice.depth else f"{choice.title}, level {choice.depth + 1}"
+                choice.id: choice.title if not choice.depth else f"{choice.title}, {L.level_words(choice.depth)}"
                 for choice in details.projects
             }
             fields.append(form_field(field, value, choices=choices))
@@ -257,7 +232,7 @@ def add_task(session: Session, prefix: str = "", refusal: str = "") -> str:
     refuses — an unknown project — is asked again as typed, the app's sentence first, rather
     than retyped on a braille keyboard.
     """
-    text = assisted_input(session, actions.prompt(refusal, "Task"), L.Syntax.QUICK_ADD,
+    text = assisted_input(session, actions.prompt(refusal, L.quick_add_words(True).label), L.Syntax.QUICK_ADD,
                           history_key="lumenna-add", default=prefix)
     if not text or not text.strip():
         return ""
@@ -309,11 +284,12 @@ def completing_key(session: Session, syntax) -> dict:
             cursor = dialog.cursor() if dialog.input_grade == 0 else len(text)
             found = session.app.complete(text, len(text[:cursor].encode("utf-8")), syntax)
         except Exception:  # noqa: BLE001 - a line that cannot be completed is still a line
-            return "Nothing to complete here."
+            return L.quick_add_words(True).nothing_to_complete
         if not found.candidates:
-            return found.announcement or "Nothing to complete here."
+            return found.announcement or L.quick_add_words(True).nothing_to_complete
         start, end = char_offset(text, found.start), char_offset(text, found.end)
-        choice = choose({c.text: L.candidate_line(c) for c in found.candidates}, found.announcement or "Completions")
+        choice = choose({c.text: L.candidate_line(c) for c in found.candidates},
+                        found.announcement or L.quick_add_words(True).show_completions)
         if choice is None:
             return None
         line = text[:start] + choice + text[end:]
@@ -352,7 +328,7 @@ def assisted_input(session: Session, prompt: str, syntax, history_key: str | Non
         return text
     choice = choose(
         {candidate.text: L.candidate_line(candidate) for candidate in candidates},
-        found.announcement or "Completions",
+        found.announcement or L.quick_add_words(True).show_completions,
     )
     if choice is None:
         return text

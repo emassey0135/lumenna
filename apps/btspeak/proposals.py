@@ -4,7 +4,9 @@ The app's proposal screen (`ViewModel::proposal`), drawn as a menu of the device
 title is the whole proposal in one sentence, which the menu says as it opens, since for someone
 who cannot glance at a timeline the sentence is the check. Each change is a row, checked as the
 app has it; Enter turns it off or on. The apply row makes what is checked, its hint saying what
-becomes of a change left unchecked, and Cancel leaves making nothing. Every word is the core's.
+becomes of a change left unchecked, and Cancel leaves making nothing. Every word is the core's,
+whether a change is checked too (`ChangeView.state`); only the main menu's name ("… menu") is
+this app's, as on every screen here.
 
 A change taken alone can leave the day crowded, so applying shows the app's next proposal,
 worked out around what was left unchecked, in place of the last; the screen closes once nothing
@@ -41,10 +43,11 @@ def proposal_screen(session: Session) -> str:
 
     def toggle(index: int, checked: bool) -> str:
         send(L.ProposalEventCheck(index, not checked))
-        # Said as a check box says itself, by the core's name for a change.
+        # Said as a check box says itself, by the core's name for a change and its state.
         proposal = session.view().proposal
-        item = proposal.words.item if proposal is not None else ""
-        return f"{item}, {'not checked' if checked else 'checked'}"
+        if proposal is None or index >= len(proposal.changes):
+            return ""
+        return f"{proposal.words.item}, {proposal.changes[index].state}"
 
     def apply(menu=None) -> str:
         made = send(L.ProposalEventApply())
@@ -72,7 +75,7 @@ def proposal_screen(session: Session) -> str:
         if proposal is None or index >= len(proposal.changes):
             return ""
         change = proposal.changes[index]
-        return f"{change.sentence}, {'checked' if change.checked else 'not checked'}"
+        return f"{change.sentence}, {change.state}"
 
     def which():
         """What tells one proposal shown from the next: a new proposal, or a refusal."""
