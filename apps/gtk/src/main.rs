@@ -22,6 +22,7 @@ mod core;
 mod day;
 mod detail;
 mod help;
+mod menus;
 mod model;
 mod pairing;
 mod pickers;

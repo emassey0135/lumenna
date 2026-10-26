@@ -5,14 +5,10 @@ use gtk::glib;
 /// Something from another thread for the window: the tray's.
 #[derive(Debug)]
 pub enum Event {
-    /// Show the window.
-    ShowWindow,
-    /// Quick add, over whatever is in front.
-    QuickAdd,
-    /// Sync now.
-    SyncNow,
-    /// Quit.
-    Quit,
+    /// A command of the core's tray menu (`keys::tray`), by its id.
+    Command(String),
+    /// The timer's control pressed.
+    ToggleTimer,
 }
 
 /// Hands an event to the main thread, which gives it to the window.

@@ -5,8 +5,10 @@
 //! the field's Alt shortcut. The mnemonics avoid the menu bar's letters (F E V T D H). What a
 //! field takes is its accessible description. Which task is shown, the typing not yet saved and
 //! what saving sends are the app's: each field typed goes to it (`DetailsEvent::Field`), and it
-//! keeps the draft through a change elsewhere and saves only what changed. The buttons run the
-//! task's own actions, as the Task menu does: each is there only while the task offers it.
+//! keeps the draft through a change elsewhere and saves only what changed. The buttons are the
+//! task's primary actions as it offers them now (Mark Done or Mark Not Done, Move to Trash),
+//! after Save; Actions… opens every one it offers, as a row's menu does. Every word around the
+//! form is the core's (`details_words`), and what it says of the task its `DetailsView::lines`.
 //!
 //! While focus is here the details keep their task (`DetailsEvent::Show`), whatever the list
 //! does: a change made here can move the list's row in hand off a task that leaves it (Mark
@@ -17,8 +19,9 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_app::DetailsEvent;
+use lumenna_app::{ActingOn, Asks, DetailsEvent, Offered};
 use lumenna_ffi::ShellEvent;
+use lumenna_records::fields::DetailsLine;
 use lumenna_records::{ActionKind, Choice, FormField, TaskDetail, TaskFields};
 
 use crate::actions;
@@ -43,13 +46,17 @@ pub struct Detail {
     notes: gtk::TextView,
     waits: Rc<Tree>,
     waits_label: gtk::Label,
+    add_wait: gtk::Button,
     stop_waiting: gtk::Button,
-    state: gtk::Entry,
-    /// What has happened to it, under a History heading; hidden when nothing has.
-    history_heading: gtk::Label,
-    history: gtk::TextView,
-    /// Each button and the kinds of action it runs.
-    buttons: Vec<(gtk::Button, &'static [ActionKind])>,
+    /// What the core says of the task (`DetailsView::lines`), under About: each line's key,
+    /// its label and its text.
+    about: gtk::Box,
+    lines: RefCell<Vec<(String, gtk::Label, gtk::TextView)>>,
+    /// The task's primary actions, each a button after Save, as last drawn.
+    buttons: gtk::Box,
+    primary: RefCell<Vec<(gtk::Button, Offered)>>,
+    /// Every action the task offers, as a menu.
+    more: gtk::Button,
     shown: RefCell<Option<TaskDetail>>,
     /// Whether the fields are being filled from the app, not typed.
     filling: Cell<bool>,
@@ -131,22 +138,18 @@ impl Detail {
         // not get out.
         let notes = gtk::TextView::builder().accepts_tab(false).wrap_mode(gtk::WrapMode::WordChar).build();
         crate::prompts::leaves_on_tab(&notes);
-        let waits = Tree::new("Waits for");
+        let said = lumenna_records::fields::details_words(false);
+        let waits = Tree::new(&said.waits);
         waits.fit(120);
-        describe(&waits.view, "The tasks this one waits for. It is blocked until they are done.");
+        describe(&waits.view, &said.waits_hint);
         // Said in full on the buttons themselves: GTK names a button by its text, whatever
         // accessible label it is given.
-        let add_wait = gtk::Button::builder().label("Wait for Another Task…").action_name("win.wait-for").build();
-        let stop_waiting = gtk::Button::builder().label("Stop Waiting for the Selected Task").build();
-        let state = gtk::Entry::builder().editable(false).build();
+        let add_wait = gtk::Button::builder().label(format!("{}…", said.add_wait)).action_name("win.wait-for").build();
+        let stop_waiting = gtk::Button::builder().label(&said.stop_wait).build();
 
-        let save = gtk::Button::with_mnemonic("_Save");
+        let save = gtk::Button::with_mnemonic(&lumenna_app::devices::marked(&said.save, 'S', '_'));
         save.set_action_name(Some("win.save-task"));
-        let mark_done = gtk::Button::builder().label("Mark Done").action_name("win.mark-done").build();
-        let put_in_block = gtk::Button::builder().label("Put in a Block…").action_name("win.put-in-block").build();
-        let make_subtask = gtk::Button::builder().label("Make Subtask Of…").action_name("win.make-subtask").build();
-        let move_to_top = gtk::Button::builder().label("Move to Top Level").action_name("win.move-to-top").build();
-        let trash = gtk::Button::builder().label("Move to Trash").action_name("win.trash-task").build();
+        let more = gtk::Button::with_label(&format!("{}…", said.actions));
 
         // In reading order, which is also Tab's.
         let grid = gtk::Grid::builder().row_spacing(4).column_spacing(12).column_homogeneous(true).build();
@@ -179,43 +182,28 @@ impl Detail {
             .build();
         grid.attach(&named(notes.upcast_ref(), &words("notes", 'N')), 0, 8, 2, 1);
         grid.attach(&notes_scroll, 0, 9, 2, 1);
-        let waits_label = label("_Waits for", &waits.view);
+        let waits_label = label(&lumenna_app::devices::marked(&said.waits, 'W', '_'), &waits.view);
         grid.attach(&waits_label, 0, 10, 2, 1);
         grid.attach(&waits.widget, 0, 11, 2, 1);
         grid.attach(&add_wait, 0, 12, 1, 1);
         grid.attach(&stop_waiting, 1, 12, 1, 1);
-        let state_label = gtk::Label::builder().label("State").xalign(0.0).build();
-        state.update_relation(&[gtk::accessible::Relation::LabelledBy(&[state_label.upcast_ref()])]);
-        grid.attach(&state_label, 0, 13, 2, 1);
-        grid.attach(&state, 0, 14, 2, 1);
-        // Read-only lines, named by the heading over them: Tab reaches them, the arrows read
-        // them a line at a time.
-        let history_heading = gtk::Label::builder()
-            .label("History")
+        // What the core says of the task, a read-only line each, named by its label: Tab
+        // reaches them, the arrows read a long one a line at a time.
+        let about_heading = gtk::Label::builder()
+            .label(&said.about)
             .xalign(0.0)
             .margin_top(6)
             .accessible_role(gtk::AccessibleRole::Heading)
             .build();
-        history_heading.add_css_class("heading");
-        let history = gtk::TextView::builder().editable(false).cursor_visible(false).wrap_mode(gtk::WrapMode::WordChar).build();
-        history.update_relation(&[gtk::accessible::Relation::LabelledBy(&[history_heading.upcast_ref()])]);
-        crate::prompts::leaves_on_tab(&history);
-        grid.attach(&history_heading, 0, 15, 2, 1);
-        grid.attach(&history, 0, 16, 2, 1);
-        let buttons = gtk::FlowBox::builder()
-            .selection_mode(gtk::SelectionMode::None)
-            .min_children_per_line(2)
-            .max_children_per_line(3)
-            .homogeneous(true)
-            .column_spacing(6)
-            .row_spacing(6)
-            .build();
-        for button in [&save, &mark_done, &put_in_block, &make_subtask, &move_to_top, &trash] {
-            // A flow box's children are focusable themselves; the button inside should be
-            // the only stop.
-            let child = gtk::FlowBoxChild::builder().child(button).focusable(false).build();
-            buttons.append(&child);
-        }
+        about_heading.add_css_class("heading");
+        let about = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).build();
+        grid.attach(&about_heading, 0, 13, 2, 1);
+        grid.attach(&about, 0, 14, 2, 1);
+        let buttons = gtk::Box::builder().spacing(6).build();
+        let bar = gtk::Box::builder().spacing(6).build();
+        bar.append(&save);
+        bar.append(&buttons);
+        bar.append(&more);
         let form = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(12)
@@ -225,10 +213,13 @@ impl Detail {
             .margin_end(8)
             .build();
         form.append(&grid);
-        form.append(&buttons);
+        form.append(&bar);
+        // Named, so Orca says whose fields these are as focus comes in from the list.
+        form.set_accessible_role(gtk::AccessibleRole::Group);
+        form.update_property(&[gtk::accessible::Property::Label(&said.title)]);
         let scrolled = gtk::ScrolledWindow::builder().child(&form).hscrollbar_policy(gtk::PolicyType::Never).build();
 
-        let placeholder = gtk::Label::builder().label("No task selected").build();
+        let placeholder = gtk::Label::builder().label(&said.none).build();
         let widget = gtk::Stack::new();
         widget.add_named(&placeholder, Some("none"));
         widget.add_named(&scrolled, Some("task"));
@@ -248,18 +239,13 @@ impl Detail {
             notes,
             waits,
             waits_label,
+            add_wait,
             stop_waiting,
-            state,
-            history_heading,
-            history,
-            buttons: vec![
-                (add_wait.clone(), &[ActionKind::WaitFor]),
-                (mark_done.clone(), &[ActionKind::MarkDone, ActionKind::MarkNotDone]),
-                (put_in_block.clone(), &[ActionKind::PutInBlock]),
-                (make_subtask.clone(), &[ActionKind::MakeSubtaskOf]),
-                (move_to_top.clone(), &[ActionKind::MoveToTopLevel]),
-                (trash.clone(), &[ActionKind::Delete]),
-            ],
+            about,
+            lines: RefCell::new(Vec::new()),
+            buttons,
+            primary: RefCell::new(Vec::new()),
+            more,
             shown: RefCell::new(None),
             filling: Cell::new(false),
             focus_wanted: RefCell::new(None),
@@ -275,6 +261,14 @@ impl Detail {
                 let _ = entry.activate_action("win.save-task", None);
             });
         }
+        // Every action the task offers, as its row's menu offers them.
+        let weak = Rc::downgrade(self);
+        self.more.connect_clicked(move |button| {
+            let (Some(detail), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
+            let Some(task) = detail.shown.borrow().clone() else { return };
+            let (menu, group) = actions::menu(&task.offered, &ActingOn::Details, Some(&task.title));
+            app.popup(&menu, button.upcast_ref(), None, Some(&group));
+        });
         let weak = Rc::downgrade(self);
         self.stop_waiting.connect_clicked(move |_| {
             let (Some(detail), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
@@ -427,41 +421,99 @@ impl Detail {
         // An empty list is not worth a stop: Wait for Another Task says what to do.
         self.waits_label.set_visible(!task.depends.is_empty());
         self.waits.widget.set_visible(!task.depends.is_empty());
-        // The last wait stopped from this button: focus goes beside it, to Wait for Another
-        // Task, else the title, never nowhere.
-        let beside: Vec<&gtk::Widget> =
-            self.buttons.iter().filter(|(_, kinds)| kinds.contains(&ActionKind::WaitFor)).map(|(button, _)| button.upcast_ref()).collect();
-        let then: Vec<&gtk::Widget> = beside.into_iter().chain([self.title.upcast_ref()]).collect();
-        crate::prompts::set_sensitive(&self.stop_waiting, !task.depends.is_empty(), &then);
-        let state = app.model.lines().task_state.clone();
-        if self.state.text() != state {
-            self.state.set_text(&state);
-        }
-        let history = task.history.join("\n");
-        let buffer = self.history.buffer();
-        if buffer.text(&buffer.start_iter(), &buffer.end_iter(), false) != history.as_str() {
-            buffer.set_text(&history);
-        }
-        self.history_heading.set_visible(!task.history.is_empty());
-        self.history.set_visible(!task.history.is_empty());
-        // A button is there while the task offers its action, and says it as the core titles
-        // it: Mark Done is Mark Not Done on a done task.
-        for (button, kinds) in &self.buttons {
-            let action = actions::find(&task.offered, kinds);
-            crate::prompts::set_sensitive(button, action.is_some(), &[self.title.upcast_ref()]);
-            if let Some(action) = action {
-                let asks = action.asks != lumenna_app::Asks::Nothing;
-                let label = if asks { format!("{}…", action.title) } else { action.title.clone() };
-                if button.label().is_none_or(|shown| shown != label.as_str()) {
-                    button.set_label(&label);
-                }
-            }
-        }
+        // Wait for Another Task while the task offers it; the last wait stopped from Stop
+        // Waiting, focus goes beside it, else to the title, never nowhere.
+        let waits_for = task.offered.iter().any(|action| action.kind == ActionKind::WaitFor);
+        crate::prompts::set_sensitive(&self.add_wait, waits_for, &[self.title.upcast_ref()]);
+        crate::prompts::set_sensitive(&self.stop_waiting, !task.depends.is_empty(), &[self.add_wait.upcast_ref(), self.title.upcast_ref()]);
+        self.draw_lines(&details.lines);
+        self.draw_buttons(&task.offered);
         *self.shown.borrow_mut() = Some(task.clone());
         let wanted = self.focus_wanted.borrow().clone();
         if wanted.as_deref() == Some(task.id.as_str()) {
             self.focus_wanted.take();
             self.focus();
+        }
+    }
+
+    /// What the core says of the task, each line kept where its label is the same, so a line
+    /// being read is not made again under the reader.
+    fn draw_lines(&self, said: &[DetailsLine]) {
+        let same = {
+            let lines = self.lines.borrow();
+            lines.len() == said.len() && lines.iter().zip(said).all(|((key, label, _), line)| *key == line.key && label.label() == line.label.as_str())
+        };
+        if !same {
+            while let Some(child) = self.about.first_child() {
+                self.about.remove(&child);
+            }
+            let made = said
+                .iter()
+                .map(|line| {
+                    let label = gtk::Label::builder().label(&line.label).xalign(0.0).build();
+                    let text = gtk::TextView::builder().editable(false).cursor_visible(false).wrap_mode(gtk::WrapMode::WordChar).build();
+                    text.update_relation(&[gtk::accessible::Relation::LabelledBy(&[label.upcast_ref()])]);
+                    crate::prompts::leaves_on_tab(&text);
+                    self.about.append(&label);
+                    self.about.append(&text);
+                    (line.key.clone(), label, text)
+                })
+                .collect();
+            *self.lines.borrow_mut() = made;
+        }
+        for ((_, _, text), line) in self.lines.borrow().iter().zip(said) {
+            let buffer = text.buffer();
+            if buffer.text(&buffer.start_iter(), &buffer.end_iter(), false) != line.value.as_str() {
+                buffer.set_text(&line.value);
+            }
+        }
+    }
+
+    /// The task's primary actions as buttons, each named as the core titles it now: Mark Done
+    /// is Mark Not Done on a done task, the same button. Waits For's own are beside its list.
+    fn draw_buttons(&self, offered: &[Offered]) {
+        let primary: Vec<Offered> = offered
+            .iter()
+            .filter(|action| action.primary && !matches!(action.kind, ActionKind::WaitFor | ActionKind::StopWaiting))
+            .cloned()
+            .collect();
+        let label = |action: &Offered| if action.asks == Asks::Nothing { action.title.clone() } else { format!("{}…", action.title) };
+        let mut shown = self.primary.borrow_mut();
+        if shown.len() == primary.len() {
+            for ((button, held), action) in shown.iter_mut().zip(&primary) {
+                if button.label().is_none_or(|text| text != label(action).as_str()) {
+                    button.set_label(&label(action));
+                }
+                set_destructive(button, action.destructive);
+                *held = action.clone();
+            }
+            return;
+        }
+        // Made again: focus on one that goes moves to the first that comes, else the title.
+        let had_focus = shown.iter().any(|(button, _)| within(button));
+        while let Some(child) = self.buttons.first_child() {
+            self.buttons.remove(&child);
+        }
+        *shown = primary
+            .into_iter()
+            .map(|action| {
+                let button = gtk::Button::with_label(&label(&action));
+                set_destructive(&button, action.destructive);
+                let index = self.buttons.observe_children().n_items() as usize;
+                button.connect_clicked(move |_| {
+                    let Some(app) = crate::window::app() else { return };
+                    let held = app.detail.primary.borrow().get(index).map(|(_, action)| action.clone());
+                    let title = app.detail.shown.borrow().as_ref().map(|task| task.title.clone());
+                    if let Some(action) = held {
+                        crate::asking::act_on(&app, ActingOn::Details, action, title.as_deref());
+                    }
+                });
+                self.buttons.append(&button);
+                (button, action)
+            })
+            .collect();
+        if had_focus && !shown.first().is_some_and(|(button, _)| button.grab_focus()) {
+            self.title.grab_focus();
         }
     }
 
@@ -498,6 +550,15 @@ impl Detail {
         if self.shown.borrow().is_some() {
             app.model.send(ShellEvent::Details(DetailsEvent::Save));
         }
+    }
+}
+
+/// Draws `button` as libadwaita draws what removes something, or not.
+fn set_destructive(button: &gtk::Button, destructive: bool) {
+    if destructive {
+        button.add_css_class("destructive-action");
+    } else {
+        button.remove_css_class("destructive-action");
     }
 }
 

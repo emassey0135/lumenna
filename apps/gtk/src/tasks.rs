@@ -23,7 +23,6 @@ use crate::window::App;
 
 pub struct TaskList {
     pub place: Place,
-    trash: bool,
     /// Whether it has a filter to change: not the trash, History or the block series.
     filtered: bool,
     pub widget: gtk::Box,
@@ -42,7 +41,6 @@ pub struct TaskList {
 
 impl TaskList {
     pub fn new(place: Place) -> Rc<Self> {
-        let trash = place == Place::Trash;
         // The block series have no filter either, and a button to add one.
         let blocks = place == Place::Blocks;
         let filtered = !matches!(place, Place::Trash | Place::History | Place::Blocks);
@@ -77,7 +75,6 @@ impl TaskList {
         widget.append(&tree.widget);
         let list = Rc::new(Self {
             place,
-            trash,
             filtered,
             widget,
             filter,
@@ -133,7 +130,7 @@ impl TaskList {
         });
         self.tree.connect_activate(move |_| {
             if let Some(app) = crate::window::app() {
-                app.model.send(ShellEvent::Run(actions::ENTER.to_vec()));
+                app.model.send(ShellEvent::Key("open".to_owned()));
             }
         });
         self.tree.connect_key(move |key, modifiers, _| {
@@ -180,12 +177,6 @@ impl TaskList {
         Some((row.row, actions))
     }
 
-    /// The row selected, if any.
-    pub fn selected(&self) -> Option<RowView> {
-        let index = self.tree.selected()?;
-        self.rows.borrow().get(index).map(|row| row.row.clone())
-    }
-
     /// Draws what the app last left, if it is this place's list. Focus goes to the row in hand
     /// when the app moved it — if focus is in the list, or nowhere — and stays put for a redraw.
     pub fn draw(&self, app: &App) {
@@ -220,11 +211,6 @@ impl TaskList {
         *self.offered.borrow_mut() = list.offered.clone();
         let rebuilt = self.tree.set(items);
         self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
-    }
-
-    /// Whether this is the trash, where only restoring and erasing apply.
-    pub fn is_trash(&self) -> bool {
-        self.trash
     }
 
     /// Whether it has a filter to change.

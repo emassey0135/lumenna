@@ -76,7 +76,7 @@ impl DayView {
         });
         self.tree.connect_activate(move |_| {
             if let Some(app) = crate::window::app() {
-                app.model.send(ShellEvent::Run(actions::ENTER.to_vec()));
+                app.model.send(ShellEvent::Key("open".to_owned()));
             }
         });
         self.tree.connect_key(move |key, modifiers, _| {
@@ -140,16 +140,6 @@ impl DayView {
         app.set_title(&lines.day_title);
         let rebuilt = self.tree.set(items);
         self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
-    }
-
-    fn selected(&self) -> Option<DayItem> {
-        let index = self.tree.selected()?;
-        self.rows.borrow().get(index).cloned()
-    }
-
-    /// The task a selected sitting is for: what the Task menu acts on from the day.
-    pub fn selected_task(&self) -> Option<String> {
-        self.selected()?.sitting.map(|sitting| sitting.task)
     }
 
     /// Moves focus into the day, once it is drawn.

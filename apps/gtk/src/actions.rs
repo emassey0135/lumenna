@@ -11,9 +11,6 @@ use lumenna_records::{Action, ActionKind, Subject};
 
 use crate::window::{App, spawn};
 
-/// What Enter does: open it, or what free time and a cancelled day are for.
-pub const ENTER: &[ActionKind] = &[ActionKind::Edit, ActionKind::EditTask, ActionKind::AddBlock, ActionKind::RestoreDay];
-
 /// The first of `offered` of one of `kinds`.
 pub fn find<'a>(offered: &'a [Offered], kinds: &[ActionKind]) -> Option<&'a Offered> {
     kinds.iter().find_map(|kind| offered.iter().find(|action| action.kind == *kind))
