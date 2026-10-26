@@ -10,6 +10,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use gtk::gio;
 use gtk::glib::{self, Variant, VariantTy};
@@ -90,12 +91,17 @@ pub fn export(application: &gtk::Application) {
         let registered = connection
             .register_object(path, &info)
             .method_call(|_, _, _, interface, method, parameters, invocation| {
-                let answer = match interface {
-                    Some("org.gnome.Shell.SearchProvider2") => gnome(method, &parameters),
-                    Some("org.kde.krunner1") => krunner(method, &parameters),
-                    _ => None,
-                };
-                invocation.return_value(answer.as_ref());
+                // Answered once the store has been searched on another thread: the shell asks
+                // at every keystroke, and the window must not wait on it.
+                let (interface, method) = (interface.map(str::to_owned), method.to_owned());
+                glib::spawn_future_local(async move {
+                    let answer = match interface.as_deref() {
+                        Some("org.gnome.Shell.SearchProvider2") => gnome(&method, &parameters).await,
+                        Some("org.kde.krunner1") => krunner(&method, &parameters).await,
+                        _ => None,
+                    };
+                    invocation.return_value(answer.as_ref());
+                });
             })
             .build();
         if let Err(error) = registered {
@@ -105,9 +111,9 @@ pub fn export(application: &gtk::Application) {
 }
 
 /// What the core finds for `text`, kept for the calls that name a result by its identifier.
-fn search(text: &str) -> Vec<SearchDocument> {
-    let Some(app) = crate::window::app() else { return Vec::new() };
-    let found = app.model.device.search_results(text.to_owned()).unwrap_or_default();
+async fn search(text: String) -> Vec<SearchDocument> {
+    let Some(device) = device() else { return Vec::new() };
+    let found = crate::off_main(move || device.search_results(text).unwrap_or_default()).await;
     FOUND.with_borrow_mut(|kept| {
         // Kept across searches as the shell narrows one, and forgotten once there are many.
         if kept.len() > 1000 {
@@ -119,17 +125,22 @@ fn search(text: &str) -> Vec<SearchDocument> {
 }
 
 /// A result found before, by its identifier; else looked for among everything the search holds.
-fn found(id: &str) -> Option<SearchDocument> {
-    if let Some(document) = FOUND.with_borrow(|kept| kept.get(id).cloned()) {
+async fn found(id: String) -> Option<SearchDocument> {
+    if let Some(document) = FOUND.with_borrow(|kept| kept.get(&id).cloned()) {
         return Some(document);
     }
-    let app = crate::window::app()?;
-    app.model.device.search_documents().ok()?.into_iter().find(|document| document.id == id)
+    let device = device()?;
+    crate::off_main(move || device.search_documents().ok()?.into_iter().find(|document| document.id == id)).await
+}
+
+/// The store, for a thread of its own.
+fn device() -> Option<Arc<lumenna_ffi::Device>> {
+    crate::window::app().map(|app| Arc::clone(&app.model.device))
 }
 
 /// Opens a result chosen, as the core's launch says.
-fn open(id: &str) {
-    if let Some(document) = found(id) {
+async fn open(id: String) {
+    if let Some(document) = found(id).await {
         crate::window::launch(&document.launch);
     }
 }
@@ -143,21 +154,24 @@ fn icon() -> String {
     crate::ID.to_owned()
 }
 
-fn gnome(method: &str, parameters: &Variant) -> Option<Variant> {
+async fn gnome(method: &str, parameters: &Variant) -> Option<Variant> {
     match method {
         "GetInitialResultSet" => {
             let (terms,) = parameters.get::<(Vec<String>,)>()?;
-            Some(identifiers(&search(&terms.join(" "))))
+            Some(identifiers(&search(terms.join(" ")).await))
         }
         "GetSubsearchResultSet" => {
             let (_, terms) = parameters.get::<(Vec<String>, Vec<String>)>()?;
-            Some(identifiers(&search(&terms.join(" "))))
+            Some(identifiers(&search(terms.join(" ")).await))
         }
         "GetResultMetas" => {
             let (ids,) = parameters.get::<(Vec<String>,)>()?;
-            let metas: Vec<Variant> = ids
-                .iter()
-                .filter_map(|id| found(id))
+            let mut documents = Vec::with_capacity(ids.len());
+            for id in ids {
+                documents.extend(found(id).await);
+            }
+            let metas: Vec<Variant> = documents
+                .into_iter()
                 .map(|document| {
                     let meta = glib::VariantDict::new(None);
                     meta.insert("id", &document.id);
@@ -171,7 +185,7 @@ fn gnome(method: &str, parameters: &Variant) -> Option<Variant> {
         }
         "ActivateResult" => {
             let (id, _, _) = parameters.get::<(String, Vec<String>, u32)>()?;
-            open(&id);
+            open(id).await;
             None
         }
         // The search's own button: the app, shown.
@@ -185,7 +199,7 @@ fn gnome(method: &str, parameters: &Variant) -> Option<Variant> {
     }
 }
 
-fn krunner(method: &str, parameters: &Variant) -> Option<Variant> {
+async fn krunner(method: &str, parameters: &Variant) -> Option<Variant> {
     match method {
         "Actions" => Some(Variant::tuple_from_iter([Variant::array_from_iter_with_type(
             VariantTy::new("(sss)").expect("a type"),
@@ -194,7 +208,7 @@ fn krunner(method: &str, parameters: &Variant) -> Option<Variant> {
         "Config" => Some(Variant::tuple_from_iter([glib::VariantDict::new(None).end()])),
         "Match" => {
             let (query,) = parameters.get::<(String,)>()?;
-            let found = search(&query);
+            let found = search(query).await;
             let count = found.len().max(1) as f64;
             let matches: Vec<Variant> = found
                 .iter()
@@ -221,7 +235,7 @@ fn krunner(method: &str, parameters: &Variant) -> Option<Variant> {
         }
         "Run" => {
             let (id, _) = parameters.get::<(String, String)>()?;
-            open(&id);
+            open(id).await;
             None
         }
         _ => None,

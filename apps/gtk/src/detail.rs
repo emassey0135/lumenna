@@ -19,7 +19,7 @@ use gtk::prelude::*;
 use gtk::{gdk, glib};
 use lumenna_app::DetailsEvent;
 use lumenna_ffi::ShellEvent;
-use lumenna_records::{ActionKind, FormField, TaskDetail, TaskFields};
+use lumenna_records::{ActionKind, Choice, FormField, TaskDetail, TaskFields};
 
 use crate::actions;
 use crate::tree::{Item, Tree};
@@ -36,8 +36,9 @@ pub struct Detail {
     estimate: gtk::Entry,
     project: gtk::DropDown,
     projects: gtk::StringList,
-    /// How deep each of `projects` sits, for indenting it in the open list.
-    depths: Rc<RefCell<Vec<(String, u32)>>>,
+    /// What the core says of each of `projects`: how deep it sits, for indenting it in the
+    /// open list, and its description.
+    choices: Rc<RefCell<Vec<Choice>>>,
     labels: gtk::Entry,
     notes: gtk::TextView,
     waits: Rc<Tree>,
@@ -56,16 +57,17 @@ pub struct Detail {
     focus_wanted: RefCell<Option<String>>,
 }
 
-/// The open project list's rows: each name, indented as deep as it sits in the tree. Indent
-/// alone: the names are unique, and a row's name is what is read.
-fn project_rows(depths: &Rc<RefCell<Vec<(String, u32)>>>) -> gtk::SignalListItemFactory {
+/// The open project list's rows: each name, indented as deep as it sits in the tree, and
+/// described as the core describes its choice, since Orca hears no indent. The names are
+/// unique, and a row's name is what is read.
+fn project_rows(choices: &Rc<RefCell<Vec<Choice>>>) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
         if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
             item.set_child(Some(&gtk::Label::builder().xalign(0.0).build()));
         }
     });
-    let depths = Rc::clone(depths);
+    let choices = Rc::clone(choices);
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else { return };
         let (Some(label), Some(text)) =
@@ -75,9 +77,10 @@ fn project_rows(depths: &Rc<RefCell<Vec<(String, u32)>>>) -> gtk::SignalListItem
         };
         let name = text.string();
         // Found by name: a search filters the list, so positions no longer match.
-        let depth = depths.borrow().iter().find(|(n, _)| *n == name).map_or(0, |(_, d)| *d);
+        let choice = choices.borrow().iter().find(|choice| choice.id == name).cloned().unwrap_or_default();
         label.set_label(&name);
-        label.set_margin_start(i32::try_from(depth * 16).unwrap_or(0));
+        label.set_margin_start(i32::try_from(choice.depth * 16).unwrap_or(0));
+        item.set_accessible_description(choice.reason.as_deref().or(choice.detail.as_deref()).unwrap_or_default());
     });
     factory
 }
@@ -121,8 +124,8 @@ impl Detail {
             .search_match_mode(gtk::StringFilterMatchMode::Substring)
             .expression(gtk::PropertyExpression::new(gtk::StringObject::static_type(), None::<gtk::Expression>, "string"))
             .build();
-        let depths = Rc::new(RefCell::new(Vec::new()));
-        project.set_list_factory(Some(&project_rows(&depths)));
+        let choices = Rc::new(RefCell::new(Vec::new()));
+        project.set_list_factory(Some(&project_rows(&choices)));
         let labels = gtk::Entry::new();
         // Tab leaves the notes rather than being typed into them, or a keyboard user could
         // not get out.
@@ -240,7 +243,7 @@ impl Detail {
             estimate,
             project,
             projects,
-            depths,
+            choices,
             labels,
             notes,
             waits,
@@ -355,12 +358,20 @@ impl Detail {
     /// Shows a task's details, whatever is in hand, and puts focus in them once they do: a
     /// task opened from a row, a reminder.
     pub fn open(&self, app: &App, id: &str) {
+        if self.focus_when_shown(id) {
+            app.model.send(ShellEvent::Details(DetailsEvent::Show(id.to_owned())));
+        }
+    }
+
+    /// Puts focus in the details once they show task `id`, now if they do: whether they do not
+    /// yet, and something must have the app show it.
+    pub fn focus_when_shown(&self, id: &str) -> bool {
         if self.task_id().as_deref() == Some(id) {
             self.focus();
-            return;
+            return false;
         }
         *self.focus_wanted.borrow_mut() = Some(id.to_owned());
-        app.model.send(ShellEvent::Details(DetailsEvent::Show(id.to_owned())));
+        true
     }
 
     /// Draws the details the app last left. A field is refilled only where it differs from
@@ -378,9 +389,10 @@ impl Detail {
         self.filling.set(true);
         let names: Vec<&str> = details.projects.iter().map(|o| o.id.as_str()).collect();
         let listed: Vec<String> = (0..self.projects.n_items()).filter_map(|i| self.projects.string(i).map(|s| s.to_string())).collect();
+        // Kept before the list is spliced, which binds its rows again.
+        self.choices.borrow_mut().clone_from(&details.projects);
         if listed != names {
             self.projects.splice(0, self.projects.n_items(), &names);
-            *self.depths.borrow_mut() = details.projects.iter().map(|o| (o.id.clone(), o.depth)).collect();
         }
         let refill = |entry: &gtk::Entry, text: &str| {
             if entry.text() != text && !within(entry) {
@@ -415,7 +427,12 @@ impl Detail {
         // An empty list is not worth a stop: Wait for Another Task says what to do.
         self.waits_label.set_visible(!task.depends.is_empty());
         self.waits.widget.set_visible(!task.depends.is_empty());
-        self.stop_waiting.set_sensitive(!task.depends.is_empty());
+        // The last wait stopped from this button: focus goes beside it, to Wait for Another
+        // Task, else the title, never nowhere.
+        let beside: Vec<&gtk::Widget> =
+            self.buttons.iter().filter(|(_, kinds)| kinds.contains(&ActionKind::WaitFor)).map(|(button, _)| button.upcast_ref()).collect();
+        let then: Vec<&gtk::Widget> = beside.into_iter().chain([self.title.upcast_ref()]).collect();
+        crate::prompts::set_sensitive(&self.stop_waiting, !task.depends.is_empty(), &then);
         let state = app.model.lines().task_state.clone();
         if self.state.text() != state {
             self.state.set_text(&state);
@@ -431,7 +448,7 @@ impl Detail {
         // it: Mark Done is Mark Not Done on a done task.
         for (button, kinds) in &self.buttons {
             let action = actions::find(&task.offered, kinds);
-            button.set_sensitive(action.is_some());
+            crate::prompts::set_sensitive(button, action.is_some(), &[self.title.upcast_ref()]);
             if let Some(action) = action {
                 let asks = action.asks != lumenna_app::Asks::Nothing;
                 let label = if asks { format!("{}…", action.title) } else { action.title.clone() };

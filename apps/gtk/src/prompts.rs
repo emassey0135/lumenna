@@ -206,6 +206,22 @@ pub fn focus_on(widget: &impl IsA<gtk::Widget>) {
     }
 }
 
+/// Turns `widget` on or off, moving focus first to the first of `then` that takes it when
+/// focus is in what is turned off: GTK leaves focus nowhere then (`gtk_root_set_focus` with
+/// none), and Orca says nothing until the person finds their way back.
+pub fn set_sensitive(widget: &impl IsA<gtk::Widget>, sensitive: bool, then: &[&gtk::Widget]) {
+    if !sensitive && holds_focus(widget) {
+        let _ = then.iter().any(|next| next.is_sensitive() && next.is_visible() && next.grab_focus());
+    }
+    widget.set_sensitive(sensitive);
+}
+
+/// Whether focus is on `widget` or inside it.
+fn holds_focus(widget: &impl IsA<gtk::Widget>) -> bool {
+    let widget = widget.upcast_ref::<gtk::Widget>();
+    widget.root().and_then(|root| root.focus()).is_some_and(|focus| focus == *widget || focus.is_ancestor(widget))
+}
+
 /// Gives Tab and Shift+Tab back from a text view, to move between fields: GTK keeps them in
 /// one even when it does not accept tabs, and a keyboard user could not get out.
 pub fn leaves_on_tab(view: &gtk::TextView) {

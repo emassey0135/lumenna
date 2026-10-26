@@ -56,8 +56,16 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   lacks is the app's to refuse: `Run` after a side list's `Hold`, `RunDay` for the day's own
   actions, `Details(Run)` for the details' task; nothing here words a refusal.
 - **The clock setting reaches the app's thread as a number** (`clock::Locale::twelve`, kept
-  from GSettings' change signal): the app's `Locale` is called off the main thread, where a
-  `gio::Settings` cannot go.
+  from GSettings' change signal): the app's `Locale` (`clock::Formats`) is called off the main
+  thread, where a `gio::Settings` cannot go. A change sends `Clock` again, so the core's whole
+  sentences follow it. Only a time and a date are written here (`speech::Formats`); "Today",
+  "Tomorrow" and when to give the year are `speech::Spoken`'s, which `clock::Locale` wraps.
+- **What reads the store at length runs off the main thread** (`crate::off_main`, GIO's
+  blocking pool, answered back on it): Back Up Now, the look for reminders due, and every
+  search the desktop asks for at each keystroke, whose D-Bus call is answered once it is done.
+- **A control turned off while focus is in it hands focus on first** (`prompts::set_sensitive`):
+  GTK 4 leaves focus nowhere then (`gtk_root_set_focus` with none). Apply while the store
+  works and pairing's buttons go to Cancel; a details button to the title.
 - **Syncing and the command surface are the app's** (`in_front(true)` for as long as it runs,
   `serve_commands`): it syncs once the device list shows another device, and serves the
   socket only while it syncs, so an unpaired app holds no endpoint and `lum rpc` answers
@@ -118,7 +126,9 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   the usual profile's copy offers, since the entry is named by the plain identifier; one in
   `--background` offers when its window is first shown. This entry is what the shortcuts portal
   needs for an unsandboxed app. The autostart entry names the AppImage too
-  (`appimage::program`).
+  (`appimage::program`). Once the AppImage an entry of its own names is gone, a start that is
+  not an AppImage (a checkout's build) takes away the entry, KRunner's runner, the service and the
+  answer (`forget_if_gone`): the entry hid itself, but KRunner went on starting a missing program.
 - **The launch shortcuts are the desktop entry's actions** (`data/….desktop`, `Exec=lumenna-gtk
   --launch <id>`, kept as `launch_shortcuts()` says by a test of the core): `--launch <id>`
   (`profile::Arguments::launch`) is sent as `ShellEvent::Launch(id)` with the window shown
@@ -229,7 +239,9 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
 - **Reminders are `GNotification`s** (`reminders.rs`), so GNOME Shell shows them and Orca
   reads them as it reads any other; their buttons and opening are application actions
   (`app.reminder-dismiss`, `-snooze`, `-carry`, `-replan`, `-open`), which reach the app with
-  its window closed, and answer through the device (`Device::dismiss_reminder` and the rest).
+  its window closed, and answer through the device (`Device::dismiss_reminder` and the rest),
+  saying what each did, or why it could not, as any change is said. Opening a task's reminder is
+  the app's `Launch("task:<id>")`, a block's `ShowBlock`.
   It asks `Device::deliver_reminders` every five seconds while another process gives them
   (`elsewhere`), and every 20 once it gives them itself. The UI tests stand in for the shell with a
   notification server on the private bus (`harness.Notifications`), started before the app,

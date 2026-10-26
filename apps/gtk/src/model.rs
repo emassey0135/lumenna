@@ -8,12 +8,11 @@
 
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
 
 use gtk::glib;
 use lumenna_app::lines::Lines;
 use lumenna_app::{Capitals, ViewModel};
-use lumenna_ffi::{App, Device, Locale, Shell, ShellEvent, Turn};
+use lumenna_ffi::{App, Device, Shell, ShellEvent, Turn};
 use lumenna_records::LumennaError;
 
 /// The app over this device's store, and what it last left to draw.
@@ -31,8 +30,7 @@ impl Model {
     /// whether it opens at sign-in (`autostart`).
     pub fn open(directory: &std::path::Path, clock: &crate::clock::Locale, autostart: &crate::autostart::Autostart) -> Result<Self, LumennaError> {
         let device = Arc::new(Device::new(directory.display().to_string())?);
-        let writing = Arc::new(Writing { twelve: Arc::clone(&clock.twelve) });
-        let app = App::new(&device, "linux".to_owned(), writing, Arc::new(Relay))?;
+        let app = App::new(&device, "linux".to_owned(), Arc::new(clock.formats()), Arc::new(Relay))?;
         let view = app.view();
         let lines = app.lines();
         app.send(ShellEvent::Clock(clock.style()));
@@ -93,6 +91,13 @@ impl Model {
         });
     }
 
+    /// Takes a backup now, off the main thread, and hands what it did to `done` back on it:
+    /// a backup saves every document whole, too long for the window to wait on.
+    pub fn back_up(&self, done: impl FnOnce(Result<lumenna_records::BackupDone, LumennaError>) + 'static) {
+        let device = Arc::clone(&self.device);
+        glib::spawn_future_local(async move { done(crate::off_main(move || device.backup()).await) });
+    }
+
     /// Whether the app keeps the device in sync: it does only while in front.
     pub fn in_front(&self, in_front: bool) {
         self.app.in_front(in_front);
@@ -133,27 +138,5 @@ struct Relay;
 impl Shell for Relay {
     fn turn(&self, turn: Turn) {
         glib::MainContext::default().invoke(move || crate::window::take(turn));
-    }
-}
-
-/// This desktop's way of writing a time and a date, for the lines the core words. "Today",
-/// "Tomorrow" and when to give the year are the core's.
-///
-/// Called on the app's own thread, so it holds the desktop's clock setting as a number the
-/// main thread keeps current (`clock::Locale::twelve`), not the settings object.
-struct Writing {
-    twelve: Arc<AtomicU8>,
-}
-
-impl Locale for Writing {
-    fn time(&self, hour: i8, minute: i8) -> String {
-        crate::clock::time(i32::from(hour), i32::from(minute), crate::clock::twelve_from(self.twelve.load(Ordering::Relaxed)))
-    }
-
-    fn date(&self, year: i16, month: i8, day: i8, with_year: bool) -> String {
-        let format = if with_year { "%A %-d %B %Y" } else { "%A %-d %B" };
-        glib::DateTime::from_local(i32::from(year), i32::from(month), i32::from(day), 12, 0, 0.0)
-            .and_then(|date| date.format(format))
-            .map_or_else(|_| format!("{year}-{month:02}-{day:02}"), |text| text.to_string())
     }
 }

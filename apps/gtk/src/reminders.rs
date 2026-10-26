@@ -34,20 +34,31 @@ pub fn start(app: &Rc<App>) {
     // looks every few seconds for its turn.
     let since = Rc::new(Cell::new(DELIVER_EVERY));
     let giving = Rc::new(Cell::new(false));
+    // A look still under way: the next waits for it rather than asking twice at once.
+    let looking = Rc::new(Cell::new(false));
     let tick = move || {
         let Some(app) = crate::window::app() else { return };
         since.set(since.get() + ASK_EVERY);
-        if giving.get() && since.get() < DELIVER_EVERY {
+        if looking.get() || (giving.get() && since.get() < DELIVER_EVERY) {
             return;
         }
         since.set(0);
-        match app.model.device.deliver_reminders(crate::clock::pinned_instant()) {
-            Ok(found) => {
-                giving.set(!found.elsewhere);
-                deliver(&app, &found);
+        looking.set(true);
+        // Off the main thread: a look reads the store, and the window must not wait on it.
+        let device = std::sync::Arc::clone(&app.model.device);
+        let (giving, looking) = (Rc::clone(&giving), Rc::clone(&looking));
+        glib::spawn_future_local(async move {
+            let found = crate::off_main(move || device.deliver_reminders(crate::clock::pinned_instant())).await;
+            looking.set(false);
+            let Some(app) = crate::window::app() else { return };
+            match found {
+                Ok(found) => {
+                    giving.set(!found.elsewhere);
+                    deliver(&app, &found);
+                }
+                Err(error) => eprintln!("Reminders: {}", error.message()),
             }
-            Err(error) => eprintln!("Reminders: {}", error.message()),
-        }
+        });
     };
     tick();
     glib::timeout_add_seconds_local(ASK_EVERY, move || {
@@ -107,10 +118,7 @@ fn add_actions(app: &App) {
                 return;
             };
             app.application.withdraw_notification(&id(&key, &occurrence));
-            match run(&app, key, occurrence) {
-                Ok(_) => app.model.tick(),
-                Err(error) => eprintln!("Reminders: {}", error.message()),
-            }
+            answered(&app, run(&app, key, occurrence));
         });
         action
     };
@@ -128,13 +136,7 @@ fn add_actions(app: &App) {
             return;
         };
         app.application.withdraw_notification(&id(&key, &occurrence));
-        match app.model.device.carry_rest_forward(format!("{target}@{occurrence}")) {
-            Ok(change) => {
-                app.model.tick();
-                app.say(&lumenna_records::words::spoken(&change.announcement, &change.notices));
-            }
-            Err(error) => app.fail(error.message()),
-        }
+        answered(&app, app.model.device.carry_rest_forward(format!("{target}@{occurrence}")));
     });
     app.application.add_action(&carry);
     let open = gio::SimpleAction::new("reminder-open", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
@@ -168,13 +170,29 @@ fn add_actions(app: &App) {
     app.application.add_action(&show);
 }
 
-/// Opens what a reminder is about: a task's details, or the block on its day.
-fn open_target(app: &Rc<App>, kind: &str, target: &str, occurrence: &str) {
+/// What a notification's button did, said as any change is, or why it could not: a button
+/// pressed with nothing to say would leave the person wondering whether it took.
+fn answered(app: &App, done: Result<Change, LumennaError>) {
+    match done {
+        Ok(change) => {
+            app.model.tick();
+            app.say(&lumenna_records::words::spoken(&change.announcement, &change.notices));
+        }
+        Err(error) => app.fail(error.message()),
+    }
+}
+
+/// Opens what a reminder is about, as the app opens it: a task in hand in the list with its
+/// details beside (the launch a search result gives), or the block on its day. `kind` is the
+/// core's.
+fn open_target(app: &App, kind: &str, target: &str, occurrence: &str) {
     app.show_window();
     if kind == "block" {
         app.show_block(target, occurrence.get(..10).unwrap_or(occurrence));
     } else {
-        app.detail.open(app, target);
+        // The task in hand in the list, and focus in its details, where its due time is.
+        app.detail.focus_when_shown(target);
+        app.model.send(ShellEvent::Launch(format!("task:{target}")));
     }
 }
 
