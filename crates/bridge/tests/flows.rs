@@ -1427,6 +1427,24 @@ fn put_in_a_block_ends_in_another_day_which_asks_the_day_and_offers_its_blocks()
 }
 
 #[test]
+fn another_days_question_and_the_pick_it_leads_back_to_are_each_a_new_question() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    let far = jiff::Zoned::now().date().checked_add(jiff::Span::new().days(20)).unwrap().to_string();
+    block(&mut app, "Far off", "10:00", &far, None);
+    app.add("Write the report");
+    app.send(Event::Run(vec![ActionKind::PutInBlock]));
+    let pick = app.view().asking.unwrap().number;
+    app.send(Event::Answer(Answer::Picked { id: lumenna_app::ANOTHER_DAY.to_owned(), length: None }));
+    let day = app.view().asking.unwrap().number;
+    assert!(day > pick, "which day is asked as a question of its own");
+    app.send(Event::Answer(Answer::Text { text: far }));
+    let again = app.view().asking.unwrap();
+    assert!(again.number > day, "the pick it leads back to is asked anew, not taken for the day's answered");
+    assert_eq!(again.refusal, None);
+}
+
+#[test]
 fn a_key_a_side_lists_row_does_not_offer_is_refused_there_in_the_cores_words() {
     let mut app = App::new();
     app.send(Event::Hold(lumenna_app::Side::Sidebar, "place:Project(\"Inbox\")".to_owned()));

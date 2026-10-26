@@ -227,10 +227,11 @@ impl Lumenna {
                 let said = choices.announcement.clone();
                 open.refusal = None;
                 open.choices = Some(choices);
-                // Back to the pick, which now offers that day's blocks.
+                // Back to the pick, which now offers that day's blocks: a question of its own.
                 if let Purpose::PickDay(action) = &open.purpose {
                     open.purpose = Purpose::Action(action.clone());
                 }
+                open.number = 0;
                 render().and(say(said))
             }
             // A day that does not read stays a question, with why.
