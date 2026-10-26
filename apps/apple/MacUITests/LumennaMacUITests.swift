@@ -831,11 +831,12 @@ final class LumennaMacUITests: XCTestCase {
         app.typeKey(",", modifierFlags: .command)
         let settings = app.windows["settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
-        settings.toolbars.buttons["Backups"].click()
+        // On Export and Import, where the core's pages put erasing what was deleted.
+        settings.toolbars.buttons["Export and Import"].click()
         let erase = settings.buttons["Erase Everything Deleted…"]
         XCTAssertTrue(erase.waitForExistence(timeout: 5), settings.debugDescription)
         XCTAssertTrue(text(containing: "Takes what was deleted out of the history", in: settings).exists, "the core's caption beneath it")
-        try audit("settings, Backups with erasing", in: settings)
+        try audit("settings, Export and Import with erasing", in: settings)
         erase.click()
         // Over Settings, where it was asked for, not over the main window behind it.
         let sheet = settings.sheets.firstMatch

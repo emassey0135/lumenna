@@ -50,13 +50,17 @@ func example(_ text: String) -> Text {
 ///   both on one line.
 struct Named<Control: View>: View {
     let name: String
+    /// Whether the name always goes above the control, on iOS: for a line long enough to wrap
+    /// into a narrow column beside its name, whose text the audit found did not scale.
+    var above = false
     @ViewBuilder var control: Control
     #if os(iOS)
     @Environment(\.dynamicTypeSize) private var size
     #endif
 
-    init(_ name: String, @ViewBuilder control: () -> Control) {
+    init(_ name: String, above: Bool = false, @ViewBuilder control: () -> Control) {
         self.name = name
+        self.above = above
         self.control = control()
     }
 
@@ -68,7 +72,7 @@ struct Named<Control: View>: View {
             Text(name).accessibilityHidden(true)
             control.accessibilityLabel(name)
         }
-        if size.isAccessibilitySize {
+        if size.isAccessibilitySize || above {
             stacked
         } else {
             ViewThatFits(in: .horizontal) {

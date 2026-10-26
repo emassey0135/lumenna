@@ -42,7 +42,10 @@ final class SharedScreensTests: XCTestCase {
     func testGoToDayIsAskedWithTheDayShownAndARefusedDayIsAskedAgainWithWhy() throws {
         let asker = Asker()
         let questions = AppQuestions(app: core.app, asker: asker) { _ in }
+        // The day first, once the app holds the store: asked for at once, on a slow runner
+        // Go to Day came before the store, with no day to open on, and asked nothing.
         core.app.send(.open(.today))
+        settle { core.app.view.day != nil }
         core.app.send(.day(.ask))
         settle { !asker.asked.isEmpty }
         let first = try XCTUnwrap(asker.asked.first)
@@ -96,6 +99,10 @@ final class SharedScreensTests: XCTestCase {
     }
 
     func testPairingOpensOnTheCoresWordsAndAnEmptyCodeIsRefusedInThem() throws {
+        // The Devices page first, as pairing is opened from it, once the app holds the store:
+        // pairing's words come with it.
+        core.app.send(.devices(.show))
+        settle { core.app.view.devices != nil }
         let pairing = PairingModel(core: core, thisDevice: "this iPhone", name: "Test iPhone")
         XCTAssertEqual(pairing.status, pairing.words.intro)
         var said: String?
@@ -106,6 +113,10 @@ final class SharedScreensTests: XCTestCase {
     }
 
     func testAnExportGoesToTheLatestRequestAlone() throws {
+        // Once the app holds the store: asked sooner, on a slow runner, there was nothing yet
+        // to export.
+        core.app.send(.open(.today))
+        settle { core.app.view.day != nil }
         var first = 0
         var latest: [LumennaApp.SaveFile] = []
         core.app.file(from: .settings(.export(.json))) { _ in first += 1 }
