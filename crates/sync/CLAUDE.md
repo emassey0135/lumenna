@@ -10,10 +10,15 @@ to its iPhone, and `introduce` a Wear OS watch's to its phone. Driving sync (pai
 `PairingPrompt`, `sync_now`, status, devices, the `SyncService` loop) is the host's `sync.rs`;
 the CLI adds only the terminal prompt, the daemon's socket and signals.
 
+- **Say whose failure it was**: `SyncError::Protocol` is the other device's ("sent something
+  unexpected"), `SyncError::Local` this one's. A refusal names a device by its key's first eight
+  digits, not all 64.
 - **Membership in `devices` is the trust boundary.** `Node` refuses, in both directions, any
   key not listed there. The ways in are a pairing whose words were confirmed on both sides
   (`edit::enroll_devices`), and the first sync over a Wear OS watch's link to its phone, which
-  only Google's pairing of the two can open (`introduce`).
+  only Google's pairing of the two can open (`introduce`). Both go through `pairing::enroll`. A
+  link marks the peer introduced as it enrolls it, before syncing, so a session that fails
+  after can never leave a watch unpaired since free to be enrolled again.
 - **A connection to each device is kept between sessions** (`Node::kept`), whichever side
   dialled it, and both sides answer the streams the other opens on it (`answer_streams`), so
   either side's next session skips a new connection's handshake. Trust is asked again at each
@@ -49,13 +54,18 @@ the CLI adds only the terminal prompt, the daemon's socket and signals.
   shares): both sides send one frame (every document's next message, or empty) then read one;
   both empty ends the session, so both stop together. A round per document made a session
   over a relay cost every document's round trips in turn. Sync state is per session, not
-  saved.
+  saved. **A document both sides hold at the same heads is left out**: the hello names each
+  document's heads (a build from before them sends none, and everything is synced), and the
+  exchange's messages do too (link protocol 1), so a year neither side needs anything in is
+  never loaded (`Store::sync_heads`, `crates/store/CLAUDE.md`).
 - **Only the newest generation either side holds is synced** (a store erased for good,
   `crates/store/CLAUDE.md`), worked out alike on both sides from the hellos' names
   (`SyncName`), and the side holding the older takes the newer in when the session ends
   (`Summary::adopted`); the exchange does the same once settled (`Exchange::finish`), and a
-  parcel of another generation is ignored, as is a session's message for a document the two
-  did not agree on. Every build speaking session protocol 2 knows generations; builds from
+  parcel of another generation is ignored, as is a session's or an exchange's message for a
+  document the two did not agree on. What a newer generation sends is held aside by that
+  session or exchange alone (`Rounds`' `Adoption`): a fresh exchange, a failed or cancelled
+  session, drops it. Every build speaking session protocol 2 knows generations; builds from
   before (0, and 1 from an erased store) are refused, and refuse it, with "update the older
   one".
 - **Local discovery is standard DNS-SD** (`discovery/`): `_lumenna._udp` (devices) and

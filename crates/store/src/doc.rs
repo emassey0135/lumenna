@@ -1415,33 +1415,67 @@ impl Doc {
     }
 
     /// What changed in `mine` since `base`, written into this document, another history of the
-    /// same records, field by field: a device taking in a newer generation keeps what it did
-    /// that the rebuild never saw. Where this document changed a field too, its value stands,
-    /// as the newer history's. Each record `keep` refuses is left alone.
-    pub(crate) fn fold(&mut self, base: &Self, mine: &Self, keep: Keep<'_>) -> Result<()> {
+    /// same records, field by field: a device taking in a newer generation, `generation`, keeps
+    /// what it did that the rebuild never saw. Where this document changed a field too, its
+    /// value stands, as the newer history's. Each record `keep` refuses is left alone.
+    ///
+    /// Every device taking the same generation in folds into the same history, so what it writes
+    /// there is written by changes every device makes alike ([`Maker`]): written with this
+    /// device's own actor, a record another device folded too would be two maps, of which merge
+    /// keeps one and loses whatever was written into the other, and each field two values, of
+    /// which an edit made after on one device would replace only its own.
+    pub(crate) fn fold(&mut self, base: &mut Self, mine: &mut Self, keep: Keep<'_>, generation: &str) -> Result<()> {
+        let since = mine.doc.get_changes(&base.heads());
+        let mut maker = Maker::new(self.id, generation, &since);
         let roots: std::collections::BTreeSet<String> = base.doc.keys(ROOT).chain(mine.doc.keys(ROOT)).collect();
         for root in roots {
             if GENERATION_KEYS.contains(&root.as_str()) {
                 continue;
             }
             let (Some(was), Some(now)) = (base.entries(&root), mine.entries(&root)) else { continue };
-            let keys: std::collections::BTreeSet<&String> = was.keys().chain(now.keys()).collect();
-            let target = self.collection_for_write(&root)?;
+            let keys: Vec<&String> = was
+                .keys()
+                .chain(now.keys())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .filter(|key| {
+                    let (b, m) = (was.get(*key), now.get(*key));
+                    b != m && m.or(b).is_some_and(|raw| keep(&root, key, raw))
+                })
+                .collect();
+            if keys.is_empty() {
+                continue;
+            }
+            let target = maker.map_at(&mut self.doc, &ROOT, &root)?;
+            let from = match mine.doc.get(ROOT, root.as_str())? {
+                Some((Value::Object(ObjType::Map), id)) => Some(id),
+                _ => None,
+            };
             for key in keys {
-                let (b, m) = (was.get(key), now.get(key));
-                if b == m || m.or(b).is_some_and(|raw| !keep(&root, key, raw)) {
-                    continue;
-                }
                 let t = self.doc.get(&target, key.as_str())?.map(|(value, id)| Raw::read(&self.doc, value, &id));
-                fold_value(&mut self.doc, &target, key, b, m, t.as_ref())?;
+                let at = Mine { doc: &mine.doc, obj: from.clone() };
+                maker.fold_value(&mut self.doc, &target, key, was.get(key), now.get(key), t.as_ref(), &at)?;
             }
         }
         Ok(())
     }
 
+    /// Every change of this document's made by the genesis actor, as its bytes: the genesis, the
+    /// schema changes, and any a newer build adds the same way, which a rebuild or a fold must
+    /// carry over as they are rather than make again under an actor of its own.
+    pub(crate) fn genesis_changes(&mut self) -> Vec<u8> {
+        let actor = ActorId::from(GENESIS_ACTOR);
+        self.doc
+            .get_changes(&[])
+            .iter()
+            .filter(|change| *change.actor_id() == actor)
+            .flat_map(|change| change.raw_bytes().to_vec())
+            .collect()
+    }
+
     /// The entries of the map at the root's `key`, read whole; none when it is no map (an
     /// empty map when there is nothing there).
-    fn entries(&self, key: &str) -> Option<BTreeMap<String, Raw>> {
+    pub(crate) fn entries(&self, key: &str) -> Option<BTreeMap<String, Raw>> {
         match self.doc.get(ROOT, key).ok()? {
             None => Some(BTreeMap::new()),
             Some((Value::Object(ObjType::Map), id)) => match Raw::read_map(&self.doc, &id) {
@@ -1453,39 +1487,289 @@ impl Doc {
     }
 }
 
-/// One value of a three-way fold (see [`Doc::fold`]): as it was at the base, as this device
-/// has it, and as the newer history has it.
-fn fold_value(doc: &mut AutoCommit, obj: &ObjId, key: &str, base: Option<&Raw>, mine: Option<&Raw>, theirs: Option<&Raw>) -> Result<()> {
-    match (mine, theirs) {
-        // Already alike.
-        (m, t) if m == t => Ok(()),
-        // A record both have: field by field, so a change of one field never undoes another's.
-        (Some(Raw::Map(m)), Some(Raw::Map(t))) => {
-            let Some((Value::Object(ObjType::Map), id)) = doc.get(obj, key)? else { return Ok(()) };
-            let b: BTreeMap<&str, &Raw> = match base {
-                Some(Raw::Map(b)) => b.iter().map(|(k, v)| (k.as_str(), v)).collect(),
-                _ => BTreeMap::new(),
-            };
-            let m: BTreeMap<&str, &Raw> = m.iter().map(|(k, v)| (k.as_str(), v)).collect();
-            let t: BTreeMap<&str, &Raw> = t.iter().map(|(k, v)| (k.as_str(), v)).collect();
-            let fields: std::collections::BTreeSet<&str> = b.keys().chain(m.keys()).copied().collect();
-            for field in fields {
-                let (bf, mf) = (b.get(field).copied(), m.get(field).copied());
-                if bf != mf {
-                    fold_value(doc, &id, field, bf, mf, t.get(field).copied())?;
+/// Where a value being folded stands in this device's own document: the object holding it
+/// there, so its history can be found.
+struct Mine<'a> {
+    doc: &'a AutoCommit,
+    obj: Option<ObjId>,
+}
+
+impl Mine<'_> {
+    /// The object at `key` within this one.
+    fn child(&self, key: &str) -> Self {
+        let obj = self.obj.as_ref().and_then(|obj| match self.doc.get(obj, key) {
+            Ok(Some((Value::Object(_), id))) => Some(id),
+            _ => None,
+        });
+        Mine { doc: self.doc, obj }
+    }
+}
+
+/// What writes a fold into the newer history (see [`Doc::fold`]), by changes every device
+/// taking the same generation in makes byte for byte alike.
+///
+/// A change is the same everywhere when its actor, its dependencies, its time and its
+/// operations are. So each is made on the document as it stood at a change every device holds
+/// alike, by an actor of its own, named from all it depends on and all it writes and used for
+/// that one change, at time zero:
+///
+/// - **A map** is made empty, on the change that made the object it goes into, its actor named
+///   from the generation, the document, that object and the key. Two devices folding the same
+///   record make the same map.
+/// - **A field's value** is written as the chain of values this device's history gave it since
+///   the base, each link on the one before (the first on the change that made its map), its
+///   actor named from the link before and the value. Two devices whose histories gave the field
+///   the same values make the same links, and where one has gone further (a rename the other
+///   never heard of) its later links stand on the shared ones and replace them, as the rename
+///   replaced the name in the history before.
+/// - **A list or a text** is made whole, its contents in the change and in its actor's name.
+///
+/// Only where the newer history has written the field since its own rebuild does this
+/// device's value go on top with its own actor, as any edit does.
+struct Maker {
+    doc: DocId,
+    generation: String,
+    /// The values each field took in this device's history since the base, by the object
+    /// holding it there and its key, oldest first.
+    history: BTreeMap<(String, String), Vec<automerge::ScalarValue>>,
+    /// The change that made each object this has made.
+    made: BTreeMap<ObjId, ChangeHash>,
+    /// The document as it stood at each change built on.
+    states: BTreeMap<ChangeHash, AutoCommit>,
+    /// Which change made which operations, by actor and range, read once when first needed.
+    made_by: Option<Vec<(ActorId, u64, u64, ChangeHash)>>,
+}
+
+impl Maker {
+    fn new(doc: DocId, generation: &str, since: &[automerge::Change]) -> Self {
+        let mut history: BTreeMap<(String, String), Vec<automerge::ScalarValue>> = BTreeMap::new();
+        for change in since {
+            for op in change.decode().operations {
+                if let (automerge::legacy::OpType::Put(value), automerge::legacy::Key::Map(key)) = (&op.action, &op.key) {
+                    history.entry((op.obj.to_string(), key.to_string())).or_default().push(value.clone());
                 }
             }
-            Ok(())
         }
-        // The newer history left it as it was at the base: this device's change stands.
-        (Some(m), t) if t == base => m.write_into(doc, obj, key),
-        (None, Some(_)) if theirs == base => {
-            doc.delete(obj, key)?;
-            Ok(())
-        }
-        // Both changed it: the newer history's stands.
-        _ => Ok(()),
+        Self { doc, generation: generation.to_owned(), history, made: BTreeMap::new(), states: BTreeMap::new(), made_by: None }
     }
+
+    /// One value of a three-way fold: as it was at the base, as this device has it (`at`, its
+    /// place in this device's document), and as the newer history has it.
+    #[expect(clippy::too_many_arguments, reason = "the three sides of one value, and where it is")]
+    fn fold_value(
+        &mut self,
+        doc: &mut AutoCommit,
+        obj: &ObjId,
+        key: &str,
+        base: Option<&Raw>,
+        mine: Option<&Raw>,
+        theirs: Option<&Raw>,
+        at: &Mine<'_>,
+    ) -> Result<()> {
+        match (mine, theirs) {
+            // Already alike.
+            (m, t) if m == t => Ok(()),
+            // A record both have: field by field, so a change of one field never undoes another's.
+            (Some(Raw::Map(m)), Some(Raw::Map(t))) => {
+                let Some((Value::Object(ObjType::Map), id)) = doc.get(obj, key)? else { return Ok(()) };
+                let b: BTreeMap<&str, &Raw> = match base {
+                    Some(Raw::Map(b)) => b.iter().map(|(k, v)| (k.as_str(), v)).collect(),
+                    _ => BTreeMap::new(),
+                };
+                let m: BTreeMap<&str, &Raw> = m.iter().map(|(k, v)| (k.as_str(), v)).collect();
+                let t: BTreeMap<&str, &Raw> = t.iter().map(|(k, v)| (k.as_str(), v)).collect();
+                let fields: std::collections::BTreeSet<&str> = b.keys().chain(m.keys()).copied().collect();
+                let within = at.child(key);
+                for field in fields {
+                    let (bf, mf) = (b.get(field).copied(), m.get(field).copied());
+                    if bf != mf {
+                        self.fold_value(doc, &id, field, bf, mf, t.get(field).copied(), &within)?;
+                    }
+                }
+                Ok(())
+            }
+            // The newer history left it as it was at the base: this device's change stands.
+            (Some(m), t) if t == base => self.write(doc, obj, key, m, at),
+            (None, Some(_)) if theirs == base => {
+                doc.delete(obj, key)?;
+                Ok(())
+            }
+            // Both changed it: the newer history's stands.
+            _ => Ok(()),
+        }
+    }
+
+    /// Writes `raw` at `key` of `obj`: a map into the map already there, field by field, as
+    /// [`Raw::write_into`] does, everything as every device writes it.
+    fn write(&mut self, doc: &mut AutoCommit, obj: &ObjId, key: &str, raw: &Raw, at: &Mine<'_>) -> Result<()> {
+        match raw {
+            Raw::Scalar(scalar) => self.put(doc, obj, key, scalar, at),
+            Raw::Map(fields) => {
+                let target = self.map_at(doc, obj, key)?;
+                let within = at.child(key);
+                for (field, value) in fields {
+                    self.write(doc, &target, field, value, &within)?;
+                }
+                Ok(())
+            }
+            Raw::List(_) | Raw::Text(_) => {
+                self.make(doc, obj, key, Some(raw))?;
+                Ok(())
+            }
+        }
+    }
+
+    /// Puts `value` at `key` of `obj` as the chain of the values this device's history gave it
+    /// since the base, ending in `value`.
+    fn put(&mut self, doc: &mut AutoCommit, obj: &ObjId, key: &str, value: &automerge::ScalarValue, at: &Mine<'_>) -> Result<()> {
+        let mut values = at
+            .obj
+            .as_ref()
+            .and_then(|mine| self.history.get(&(mine.to_string(), key.to_owned())))
+            .cloned()
+            .unwrap_or_default();
+        if values.last() != Some(value) {
+            values.push(value.clone());
+        }
+        let mut state = self.base(doc, obj)?;
+        let mut before = state.get_heads().first().map(ToString::to_string).unwrap_or_default();
+        for link in &values {
+            let name = format!(
+                "lumenna-fold-put\0{}\0{}\0{obj}\0{key}\0{before}\0{}",
+                self.generation,
+                self.doc.name(),
+                Raw::Scalar(link.clone()).to_json()
+            );
+            let mut next = state.fork();
+            next.set_actor(actor_named(&name));
+            next.put(obj, key, link.clone())?;
+            let hash = self.take(doc, &mut next, key)?;
+            before = hash.to_string();
+            state = next;
+        }
+        // An edit the newer history made since its rebuild, back to the value it had at the
+        // base, stands beside the chain rather than under it; this device's value goes over it.
+        let standing = match doc.get(obj, key)? {
+            Some((Value::Scalar(standing), _)) => Some(standing.into_owned()),
+            _ => None,
+        };
+        if standing.as_ref() != Some(value) {
+            doc.put(obj, key, value.clone())?;
+        }
+        Ok(())
+    }
+
+    /// The map at `key` of `obj`, made if it is not there.
+    fn map_at(&mut self, doc: &mut AutoCommit, obj: &ObjId, key: &str) -> Result<ObjId> {
+        if let Some((Value::Object(ObjType::Map), id)) = doc.get(obj, key)? {
+            return Ok(id);
+        }
+        self.make(doc, obj, key, None)
+    }
+
+    /// Makes an empty map at `key` of `obj`, or `whole` there with everything in it, by the
+    /// change every device makes alike, and takes it into `doc`. Returns what stands there
+    /// after.
+    fn make(&mut self, doc: &mut AutoCommit, obj: &ObjId, key: &str, whole: Option<&Raw>) -> Result<ObjId> {
+        let mut state = self.base(doc, obj)?;
+        let mut name = format!("lumenna-fold\0{}\0{}\0{obj}\0{key}", self.generation, self.doc.name());
+        if let Some(raw) = whole {
+            name.push('\0');
+            name.push_str(&raw.to_json().to_string());
+        }
+        state.set_actor(actor_named(&name));
+        match whole {
+            Some(raw) => raw.write_at(&mut state, obj, key)?,
+            None => {
+                state.put_object(obj, key, ObjType::Map)?;
+            }
+        }
+        let hash = self.take(doc, &mut state, key)?;
+        if let Some((Value::Object(_), ours)) = state.get(obj, key)? {
+            self.made.insert(ours, hash);
+            self.states.insert(hash, state);
+        }
+        match doc.get(obj, key)? {
+            Some((Value::Object(_), id)) => Ok(id),
+            _ => Err(self.cannot(key)),
+        }
+    }
+
+    /// Commits what `state` was given, at time zero, and takes the change into `doc`.
+    fn take(&self, doc: &mut AutoCommit, state: &mut AutoCommit, key: &str) -> Result<ChangeHash> {
+        let hash = state.commit_with(CommitOptions::default().with_time(0)).ok_or_else(|| self.cannot(key))?;
+        let change = state.get_change_by_hash(&hash).ok_or_else(|| self.cannot(key))?;
+        doc.load_incremental(change.raw_bytes())?;
+        Ok(hash)
+    }
+
+    fn cannot(&self, key: &str) -> StoreError {
+        StoreError::MalformedDocument { doc: self.doc.name(), detail: format!("could not write {key} into the newer history") }
+    }
+
+    /// The document as it stood at the change that made `obj`, to build a change on that every
+    /// device builds alike: the genesis for the root.
+    fn base(&mut self, doc: &mut AutoCommit, obj: &ObjId) -> Result<AutoCommit> {
+        let hash = match obj {
+            ObjId::Root => Doc::new(self.doc).heads().first().copied(),
+            ObjId::Id(counter, actor, _) => match self.made.get(obj) {
+                Some(hash) => Some(*hash),
+                None => {
+                    let made_by = self.made_by.get_or_insert_with(|| {
+                        doc.get_changes(&[])
+                            .iter()
+                            .map(|change| (change.actor_id().clone(), change.start_op().get(), change.max_op(), change.hash()))
+                            .collect()
+                    });
+                    made_by
+                        .iter()
+                        .find(|(by, start, end, _)| by == actor && start <= counter && counter <= end)
+                        .map(|(.., hash)| *hash)
+                }
+            },
+        };
+        let Some(hash) = hash else {
+            return Err(StoreError::MalformedDocument { doc: self.doc.name(), detail: format!("no change made {obj}") });
+        };
+        if let std::collections::btree_map::Entry::Vacant(vacant) = self.states.entry(hash) {
+            vacant.insert(doc.fork_at(&[hash])?);
+        }
+        Ok(self.states.get_mut(&hash).map(AutoCommit::fork).unwrap_or_default())
+    }
+}
+
+/// An actor of its own for one change a fold makes, named by everything the change is: the same
+/// name on every device, so the same actor.
+fn actor_named(name: &str) -> ActorId {
+    ActorId::from(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, name.as_bytes()).as_bytes().as_slice())
+}
+
+/// Heads by document, as text kept in a device's local state: a line each, the document's name
+/// and then each head, separated by spaces.
+#[must_use]
+pub fn heads_to_text<'a>(documents: impl IntoIterator<Item = (String, &'a [ChangeHash])>) -> String {
+    let mut text = String::new();
+    for (name, heads) in documents {
+        text.push_str(&name);
+        for head in heads {
+            text.push(' ');
+            text.push_str(&head.to_string());
+        }
+        text.push('\n');
+    }
+    text
+}
+
+/// What [`heads_to_text`] wrote, by name; a head that does not read is left out.
+#[must_use]
+pub fn heads_from_text(text: &str) -> Vec<(String, Vec<ChangeHash>)> {
+    text.lines()
+        .filter_map(|line| {
+            let mut words = line.split(' ');
+            let name = words.next().filter(|name| !name.is_empty())?.to_owned();
+            Some((name, words.filter_map(|head| head.parse().ok()).collect()))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -1715,7 +1999,7 @@ impl Raw {
         })
     }
 
-    fn read_map(doc: &AutoCommit, obj: &ObjId) -> Self {
+    pub(crate) fn read_map<D: ReadDoc>(doc: &D, obj: &ObjId) -> Self {
         Self::Map(
             doc.keys(obj)
                 .filter_map(|key| doc.get(obj, key.as_str()).ok().flatten().map(|v| (key, v)))
@@ -1724,7 +2008,7 @@ impl Raw {
         )
     }
 
-    fn read(doc: &AutoCommit, value: Value<'_>, id: &ObjId) -> Self {
+    pub(crate) fn read<D: ReadDoc>(doc: &D, value: Value<'_>, id: &ObjId) -> Self {
         match value {
             Value::Scalar(scalar) => Self::Scalar(scalar.into_owned()),
             Value::Object(ObjType::Text) => Self::Text(doc.text(id).unwrap_or_default()),
@@ -1739,7 +2023,7 @@ impl Raw {
     }
 
     /// Writes this at `key` of `obj`: a map becomes a map, and so on.
-    fn write_at(&self, doc: &mut AutoCommit, obj: &ObjId, key: &str) -> Result<()> {
+    pub(crate) fn write_at<T: Transactable>(&self, doc: &mut T, obj: &ObjId, key: &str) -> Result<()> {
         match self {
             Self::Scalar(scalar) => {
                 doc.put(obj, key, scalar.clone())?;
@@ -1789,7 +2073,7 @@ impl Raw {
         }
     }
 
-    fn insert_into(&self, doc: &mut AutoCommit, list: &ObjId, index: usize) -> Result<()> {
+    fn insert_into<T: Transactable>(&self, doc: &mut T, list: &ObjId, index: usize) -> Result<()> {
         match self {
             Self::Scalar(scalar) => {
                 doc.insert(list, index, scalar.clone())?;
@@ -1845,7 +2129,7 @@ mod unknown_fields {
     use automerge::{ObjType, ROOT, ReadDoc, Value};
     use jiff::civil::{date, time};
     use lumenna_core::id::NodeId;
-    use lumenna_core::model::{BlockKind, BlockSeries, Device, Project, Task};
+    use lumenna_core::model::{BlockKind, BlockSeries, Device, Due, Project, Task};
     use lumenna_core::order::OrderKey;
 
     use super::{Doc, Documents};
@@ -1876,6 +2160,34 @@ mod unknown_fields {
         let edited = Task { title: "the essay".to_owned(), ..task.clone() };
         docs.core().put(&edited, Some(&task)).unwrap();
         assert_eq!(string_at(&docs.core, &obj, "written_by_a_newer_build").as_deref(), Some("keep me"));
+    }
+
+    #[test]
+    fn a_due_date_edited_keeps_a_field_a_newer_build_wrote_inside_it() {
+        let mut docs = Documents::new();
+        let task = Task { due: Some(Due::on(date(2026, 5, 10))), ..Task::new(Project::inbox().id, "essay", OrderKey::middle()) };
+        docs.core().put(&task, None).unwrap();
+        let obj = record_map::<Task>(&docs.core, &task.id);
+        let Some((Value::Object(ObjType::Map), due)) = docs.core.doc.get(&obj, "due").unwrap() else { panic!("no due map") };
+        docs.core.doc.put(&due, "written_by_a_newer_build", "keep me").unwrap();
+
+        let edited = Task { due: Some(Due::on(date(2026, 5, 12))), ..task.clone() };
+        docs.core().put(&edited, Some(&task)).unwrap();
+        let Some((Value::Object(ObjType::Map), due)) = docs.core.doc.get(&obj, "due").unwrap() else { panic!("no due map") };
+        assert_eq!(string_at(&docs.core, &due, "written_by_a_newer_build").as_deref(), Some("keep me"));
+        assert_eq!(string_at(&docs.core, &due, "date").as_deref(), Some("2026-05-12"), "the edit itself lands");
+    }
+
+    #[test]
+    fn a_due_time_taken_away_is_not_brought_back_as_a_field_this_build_does_not_know() {
+        let mut docs = Documents::new();
+        let mut due = Due::on(date(2026, 5, 10));
+        due.time = Some(time(9, 0, 0, 0));
+        let task = Task { due: Some(due), ..Task::new(Project::inbox().id, "essay", OrderKey::middle()) };
+        docs.core().put(&task, None).unwrap();
+        let edited = Task { due: Some(Due::on(date(2026, 5, 10))), ..task.clone() };
+        docs.core().put(&edited, Some(&task)).unwrap();
+        assert_eq!(docs.snapshot().0.tasks[&task.id].due, edited.due);
     }
 
     #[test]

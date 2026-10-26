@@ -15,6 +15,11 @@ pub enum SyncError {
     #[error("the other device sent something unexpected: {0}")]
     Protocol(String),
 
+    /// Something went wrong on this device, whatever the other said: not to be told as the
+    /// other device's doing.
+    #[error("{0}")]
+    Local(String),
+
     /// The peer is not one of this person's devices.
     #[error("{0}")]
     Refused(String),

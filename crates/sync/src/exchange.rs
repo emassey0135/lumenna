@@ -7,23 +7,27 @@
 //! It is the same Automerge sync protocol as [`session`](crate::session), with every
 //! document's round in each message, as a session's frames carry them (`crate::rounds`):
 //!
-//! 1. The side that starts sends a message marked *fresh*: the documents it holds, and its
-//!    first sync message for each. The other side begins a new exchange on seeing it.
+//! 1. The side that starts sends a message marked *fresh*: the documents it holds with each
+//!    one's heads, and its first sync message for each. The other side begins a new exchange on
+//!    seeing it, dropping whatever the last one was taking in.
 //! 2. Each answer takes in what arrived and says the next sync message for every document
-//!    either side holds, or nothing for one already settled.
+//!    either side holds, or nothing for one already settled, nor for one both sides last said
+//!    they hold at the same heads: a year neither needs anything in is never loaded.
 //! 3. When a message that said nothing is answered by one that says nothing, the two agree.
 //!
 //! Sync state lasts the exchange, not longer, as in a session.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lumenna_store::{Adopted, DocId, Store, SyncName};
+use lumenna_store::{Adopted, ChangeHash, DocId, Store, SyncName};
 
 use crate::error::{Result, SyncError};
 use crate::rounds::{Reader, Rounds, Said, put_bytes, put_len, put_said};
 
 /// The exchange's message format. Another is refused, saying which side to update.
-const PROTOCOL: u32 = 0;
+///
+/// 0 named the documents alone; 1 names each with its heads.
+const PROTOCOL: u32 = 1;
 
 /// The most messages one side sends in an exchange: Automerge settles in a handful, so this
 /// guards against a side that never stops, and is not a tuning parameter.
@@ -34,6 +38,8 @@ pub const MAX_ROUNDS: usize = 1_000;
 pub struct Exchange {
     rounds: Rounds,
     known: BTreeSet<SyncName>,
+    /// Each document's heads as the other side last said it holds it.
+    theirs: BTreeMap<SyncName, Vec<ChangeHash>>,
     sent: usize,
     answering: bool,
     sent_nothing: bool,
@@ -48,7 +54,7 @@ impl std::fmt::Debug for Exchange {
 
 struct Message {
     fresh: bool,
-    documents: Vec<String>,
+    documents: Vec<(String, Vec<ChangeHash>)>,
     messages: Said,
 }
 
@@ -68,18 +74,39 @@ impl Exchange {
     /// If a document cannot be read, or one side has gone past [`MAX_ROUNDS`].
     pub fn outgoing(&mut self, store: &mut Store) -> Result<Vec<u8>> {
         if self.sent >= MAX_ROUNDS {
-            return Err(SyncError::Protocol("the other device's sync did not settle".to_owned()));
+            return Err(SyncError::Protocol("its sync never settled".to_owned()));
         }
-        let mine = store.sync_documents()?;
-        self.known.extend(mine.iter().cloned());
-        // Only the newest generation either side holds, as in a session (`crate::session`).
-        let newest = self.known.iter().map(|name| name.generation.clone()).max().flatten();
-        self.known.retain(|name| name.generation == newest);
-        let messages = self.rounds.say(store, &self.known)?;
+        let mine = store.sync_heads()?;
+        self.known.extend(mine.iter().map(|(name, _)| name.clone()));
+        self.newest_only();
+        // Both last said the same heads: the same changes, nothing to say. Before the other side
+        // has said its heads, only what is in memory already: a year would be loaded to say it,
+        // and the other side, told this side's heads, speaks for any it holds otherwise.
+        let held: BTreeMap<&SyncName, &Vec<ChangeHash>> = mine.iter().map(|(name, heads)| (name, heads)).collect();
+        let loaded = store.documents().loaded_years();
+        let saying: Vec<&SyncName> = self
+            .known
+            .iter()
+            .filter(|name| match self.theirs.get(*name) {
+                Some(theirs) => held.get(name) != Some(&theirs),
+                None => !matches!(name.id, DocId::Blocks(year) if !loaded.contains(&year)),
+            })
+            .collect();
+        let messages = self.rounds.say(store, saying)?;
         let fresh = self.sent == 0 && !self.answering;
         self.sent += 1;
         self.sent_nothing = messages.is_empty();
-        Ok(encode(&Message { fresh, documents: mine.iter().map(SyncName::name).collect(), messages }))
+        Ok(encode(&Message {
+            fresh,
+            documents: mine.into_iter().map(|(name, heads)| (name.name(), heads)).collect(),
+            messages,
+        }))
+    }
+
+    /// Keeps only the newest generation either side holds, as a session does (`crate::session`).
+    fn newest_only(&mut self) {
+        let newest = self.known.iter().map(|name| name.generation.clone()).max().flatten();
+        self.known.retain(|name| name.generation == newest);
     }
 
     /// Takes in a message from the other side. Returns the documents that changed here.
@@ -93,13 +120,23 @@ impl Exchange {
     pub fn incoming(&mut self, store: &mut Store, bytes: &[u8]) -> Result<Vec<DocId>> {
         let message = decode(bytes)?;
         if message.fresh {
+            // What the last exchange was taking in goes with it.
             *self = Self { answering: true, ..Self::default() };
         }
         // A kind of document this version does not know is left alone, as in a session.
-        self.known.extend(message.documents.iter().filter_map(|name| SyncName::parse(name)));
+        for (name, heads) in &message.documents {
+            if let Some(name) = SyncName::parse(name) {
+                self.known.insert(name.clone());
+                self.theirs.insert(name, heads.clone());
+            }
+        }
+        self.known.extend(store.sync_documents()?);
+        self.newest_only();
         self.heard_nothing = message.messages.is_empty();
-        self.known.extend(message.messages.iter().filter_map(|(name, _)| SyncName::parse(name)));
-        self.rounds.hear(store, &message.messages, |_| true)
+        // Only the documents of the generation agreed on, as in a session: a message for an older
+        // generation's must never reach this store.
+        let known = &self.known;
+        self.rounds.hear(store, &message.messages, |name| known.contains(name))
     }
 
     /// Whether both sides have nothing more to say: the last message sent was empty, and so
@@ -119,7 +156,7 @@ impl Exchange {
         if !self.settled() {
             return Ok(None);
         }
-        Ok(store.finish_adoption()?)
+        self.rounds.adopt(store, &self.known)
     }
 }
 
@@ -131,8 +168,12 @@ fn encode(message: &Message) -> Vec<u8> {
     out.extend_from_slice(&PROTOCOL.to_be_bytes());
     out.push(u8::from(message.fresh));
     put_len(&mut out, message.documents.len());
-    for name in &message.documents {
+    for (name, heads) in &message.documents {
         put_bytes(&mut out, name.as_bytes());
+        put_len(&mut out, heads.len());
+        for head in heads {
+            out.extend_from_slice(&head.0);
+        }
     }
     put_said(&mut out, &message.messages);
     out
@@ -147,7 +188,15 @@ fn decode(bytes: &[u8]) -> Result<Message> {
         )));
     }
     let fresh = reader.take(1)?[0] != 0;
-    let documents = (0..reader.u32()?).map(|_| reader.text()).collect::<Result<_>>()?;
+    let documents = (0..reader.u32()?)
+        .map(|_| {
+            let name = reader.text()?;
+            let heads = (0..reader.u32()?)
+                .map(|_| Ok(ChangeHash(reader.take(32)?.try_into().unwrap_or([0; 32]))))
+                .collect::<Result<_>>()?;
+            Ok((name, heads))
+        })
+        .collect::<Result<_>>()?;
     let messages = reader.said()?;
     reader.end()?;
     Ok(Message { fresh, documents, messages })
@@ -170,15 +219,8 @@ const AGREED: &str = "link-agreed";
 ///
 /// If the store cannot be read or written.
 pub fn note_agreed(store: &mut Store) -> Result<()> {
-    let mut text = String::new();
-    for (name, heads) in store.sync_heads()? {
-        text.push_str(&name.name());
-        for head in heads {
-            text.push(' ');
-            text.push_str(&head.to_string());
-        }
-        text.push('\n');
-    }
+    let heads = store.sync_heads()?;
+    let text = lumenna_store::heads_to_text(heads.iter().map(|(name, heads)| (name.name(), heads.as_slice())));
     store.set_local_value(AGREED, text.as_bytes())?;
     Ok(())
 }
@@ -187,13 +229,9 @@ pub fn note_agreed(store: &mut Store) -> Result<()> {
 /// when nothing ever settled.
 fn agreed(store: &Store) -> Result<BTreeMap<SyncName, Vec<lumenna_store::ChangeHash>>> {
     let text = store.local_value(AGREED)?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()).unwrap_or_default();
-    Ok(text
-        .lines()
-        .filter_map(|line| {
-            let mut words = line.split(' ');
-            let name = SyncName::parse(words.next()?)?;
-            Some((name, words.filter_map(|head| head.parse().ok()).collect()))
-        })
+    Ok(lumenna_store::heads_from_text(&text)
+        .into_iter()
+        .filter_map(|(name, heads)| Some((SyncName::parse(&name)?, heads)))
         .collect())
 }
 
@@ -309,6 +347,51 @@ mod tests {
 
         assert_eq!(titles(&mut watch), ["from the phone", "from the watch"]);
         assert_eq!(titles(&mut phone), ["from the phone", "from the watch"]);
+    }
+
+    #[test]
+    fn an_exchange_between_stores_already_alike_loads_no_year() {
+        let dir = tempfile::tempdir().unwrap();
+        let (watch_path, phone_path) = (dir.path().join("watch.sqlite"), dir.path().join("phone.sqlite"));
+        {
+            let (mut watch, mut phone) = (Store::open(&watch_path).unwrap(), Store::open(&phone_path).unwrap());
+            add(&mut watch, "water the plants");
+            for year in [2027, 2028] {
+                let block = lumenna_core::model::BlockSeries::one_off(
+                    "Retreat",
+                    lumenna_core::model::BlockKind::Work,
+                    jiff::civil::date(year, 4, 1),
+                    jiff::civil::time(9, 0, 0, 0),
+                    60,
+                )
+                .unwrap();
+                phone.write(|docs| docs.put_series(&block, None)).unwrap();
+            }
+            exchange(&mut watch, &mut phone);
+        }
+        // Opened afresh, as the watch's app is: no year in memory on either side.
+        let (mut watch, mut phone) = (Store::open(&watch_path).unwrap(), Store::open(&phone_path).unwrap());
+        exchange(&mut watch, &mut phone);
+        assert!(watch.documents().loaded_years().is_empty(), "the watch loaded a year it needed nothing in");
+        assert!(phone.documents().loaded_years().is_empty(), "the phone loaded a year the watch needed nothing in");
+        note_agreed(&mut watch).unwrap();
+        assert!(parcel(&mut watch).unwrap().is_none());
+        assert!(watch.documents().loaded_years().is_empty(), "nor to make a parcel");
+    }
+
+    #[test]
+    fn a_message_for_a_document_of_an_older_generation_is_left_alone() {
+        let (mut watch, mut phone) = (Store::open_in_memory().unwrap(), Store::open_in_memory().unwrap());
+        add(&mut watch, "the secret");
+        exchange(&mut watch, &mut phone);
+        let task = watch.snapshot().0.tasks.values().next().unwrap().clone();
+        // The phone erases for good; the watch, behind, starts an exchange in the history before.
+        let edit = lumenna_core::edit::purge_task(&phone.snapshot().0, task.id).unwrap();
+        phone.erase(lumenna_store::Documents::erased_by(&edit)).unwrap();
+        let mut theirs = Exchange::new();
+        let changed = theirs.incoming(&mut phone, &Exchange::new().outgoing(&mut watch).unwrap()).unwrap();
+        assert!(changed.is_empty());
+        assert!(phone.snapshot().0.tasks.is_empty(), "nothing of the history before came back");
     }
 
     #[test]

@@ -15,7 +15,8 @@ rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-uuid.workspace = true
+# Version 5, for the actors of the containers a fold makes, the same on every device.
+uuid = { workspace = true, features = ["v5"] }
 
 # In the browser, randomness and the clock come from JavaScript; elsewhere these
 # features are not wanted.

@@ -54,9 +54,12 @@ pub struct Store {
     /// Which generation of the store's history the documents are (`crate::generation`):
     /// `None` for the first.
     generation: Option<String>,
-    /// A newer generation a peer is syncing to this device, held aside until it is whole
-    /// and can be taken in ([`Store::finish_adoption`]).
-    staging: Option<Staging>,
+    /// The newest generation any sync has offered this device, held aside or not: an erasure
+    /// made here meanwhile is newer still, so it is the one every device keeps.
+    newest_seen: Option<String>,
+    /// The core document's heads when the postponements were last counted: counted again only
+    /// once they move.
+    tallied: Vec<ChangeHash>,
 }
 
 /// Where a synced document of some generation goes ([`Store::route`]).
@@ -69,11 +72,32 @@ enum Route {
     Older,
 }
 
+/// A newer generation one sync session or exchange is taking in, held aside until it is whole
+/// ([`Store::finish_adoption`]). Each session holds its own, so one session never takes in, or
+/// throws away, what another is filling, and a session cut short, cancelled or abandoned drops
+/// it with itself.
+#[derive(Default)]
+pub struct Adoption {
+    staging: Option<Staging>,
+}
+
+impl std::fmt::Debug for Adoption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Adoption").field("generation", &self.staging.as_ref().map(|s| &s.generation)).finish()
+    }
+}
+
 /// A newer generation on its way in.
 struct Staging {
     generation: Option<String>,
     docs: Documents,
+    /// The documents a message has arrived for.
+    heard: std::collections::BTreeSet<DocId>,
 }
+
+/// How often a rebuild is tried before giving up, when another process keeps writing while it
+/// is made: each try reads the store again.
+const REBUILD_TRIES: usize = 5;
 
 /// What a real erasure did ([`Store::erase`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +177,8 @@ impl Store {
             postponements: BTreeMap::new(),
             hydrated: BTreeMap::new(),
             generation: None,
-            staging: None,
+            newest_seen: None,
+            tallied: Vec::new(),
         };
         store.load()?;
         Ok(store)
@@ -171,6 +196,7 @@ impl Store {
         store.hydrated.clear();
         store.postponed = crate::postponed::Postponed::default();
         store.postponements.clear();
+        store.tallied.clear();
         // `core` and `devices` are small and needed on every device; years are not loaded
         // until asked for.
         for id in [DocId::Core, DocId::Devices] {
@@ -296,8 +322,14 @@ impl Store {
         (snapshot, report)
     }
 
-    /// Reads the core document's new changes into how often each task's date was moved later.
+    /// Reads the core document's new changes into how often each task's date was moved later,
+    /// when it has moved since it was last read.
     fn tally(&mut self) {
+        let heads = self.docs.core().heads();
+        if heads == self.tallied {
+            return;
+        }
+        self.tallied = heads;
         let mut counts = self.postponed.update(self.docs.core().automerge_mut());
         // What the history before this generation counted, which it no longer holds.
         for (task, before) in crate::generation::postponed_before(&self.docs) {
@@ -364,14 +396,23 @@ impl Store {
     /// operations, and leaving them only in memory would be the more surprising outcome.
     pub fn write<R>(&mut self, edit: impl FnOnce(&mut Documents) -> Result<R>) -> Result<R> {
         let result = edit(&mut self.docs);
-        self.persist()?;
+        match self.persist() {
+            // Another process rebuilt the store for a real erasure: what this one holds is the
+            // history before, which nothing on disk follows on from, so it reads the new one,
+            // and the write is to be made again over it.
+            Err(StoreError::Rebuilt) => {
+                self.load()?;
+                return Err(StoreError::Rebuilt);
+            }
+            written => written?,
+        }
         result
     }
 
-    /// Appends every loaded document's new changes, then compacts anything that has grown
-    /// enough to be worth it.
+    /// Appends every loaded document's new changes, all in one transaction, then compacts
+    /// anything that has grown enough to be worth it.
     fn persist(&mut self) -> Result<()> {
-        let mut compact = Vec::new();
+        let mut appending = Vec::new();
         for doc in self.docs.iter_mut() {
             let id = doc.id();
             let known = self.persisted.get(&id).cloned().unwrap_or_default();
@@ -382,10 +423,20 @@ impl Store {
             doc.stamp_version()?;
             let heads = doc.heads();
             let changes = doc.changes_since(&known);
-            self.db.append_changes_of(self.generation.as_deref(), id, &changes)?;
-            self.persisted.insert(id, heads);
-            if self.db.needs_compaction(id)? {
-                compact.push(id);
+            appending.push(crate::db::Appending { doc: id, changes, heads: Some(heads) });
+        }
+        if appending.is_empty() {
+            // Nothing new, but a store just opened still counts its postponements once.
+            self.tally();
+            return Ok(());
+        }
+        let Self { db, docs, persisted, generation, .. } = self;
+        db.append_documents(generation.as_deref(), &appending, |id, head| docs.get_mut(id).has_change(head))?;
+        let mut compact = Vec::new();
+        for appended in appending {
+            persisted.insert(appended.doc, appended.heads.unwrap_or_default());
+            if db.needs_compaction(appended.doc)? {
+                compact.push(appended.doc);
             }
         }
         for id in compact {
@@ -415,9 +466,18 @@ impl Store {
     ///
     /// # Errors
     ///
-    /// If the document is not loaded, or the write fails.
+    /// If the write fails, or [`StoreError::Rebuilt`] when another process has rebuilt the store
+    /// for a real erasure: saving this one's history over it would bring back what it erased.
+    /// This one reads the new history then.
     pub fn compact_document(&mut self, id: DocId) -> Result<()> {
-        self.compact(id)
+        match self.compact(id) {
+            // As for a write: the history held here is the one before, so the new one is read.
+            Err(StoreError::Rebuilt) => {
+                self.load()?;
+                Err(StoreError::Rebuilt)
+            }
+            compacted => compacted,
+        }
     }
 
     fn compact(&mut self, id: DocId) -> Result<()> {
@@ -428,7 +488,7 @@ impl Store {
         // Everything on disk goes into the document before it is saved over the changes:
         // another process may have written since this one last refreshed, or compacted
         // changes this one never saw into the snapshot being replaced. See `Db::compact`.
-        self.db.compact(id, |snapshot, changes| {
+        self.db.compact(self.generation.as_deref(), id, |snapshot, changes| {
             if let Some(bytes) = snapshot {
                 doc.load_incremental(&bytes)?;
             }
@@ -465,19 +525,17 @@ impl Store {
             return Ok(unreported);
         }
         self.data_version = version;
-        // Another process took in a real erasure: what this one holds is the history before,
-        // which nothing on disk follows on from any more.
-        if self.db.generation()? != self.generation {
-            self.load()?;
-            return Ok(true);
-        }
 
         let cursor = self.cursor;
-        let Self { db, docs, persisted, .. } = self;
+        let Self { db, docs, persisted, generation, .. } = self;
         // One read transaction, so a compaction by another process cannot land between
         // reading the snapshot and reading the changes after the cursor (see
-        // `Db::consistently`).
-        let (changed, highest) = db.consistently(|db| {
+        // `Db::consistently`), nor a real erasure between asking which generation the file
+        // holds and reading its changes into the history before.
+        let read = db.consistently(|db| {
+            if db.generation()? != *generation {
+                return Ok(None);
+            }
             let mut changed = false;
             for doc in docs.iter_mut() {
                 let before = doc.heads();
@@ -504,8 +562,14 @@ impl Store {
                     }
                 }
             }
-            Ok((changed, db.cursor()?))
+            Ok(Some((changed, db.cursor()?)))
         })?;
+        // Another process took in a real erasure: what this one holds is the history before,
+        // which nothing on disk follows on from any more.
+        let Some((changed, highest)) = read else {
+            self.load()?;
+            return Ok(true);
+        };
         self.cursor = highest.max(cursor);
         if changed {
             self.tally();
@@ -526,9 +590,14 @@ impl Store {
         self.refresh()?;
         self.load_all_years()?;
         let generation = self.generation.clone();
+        // The device list stays out: a backup never holds this device's key, so the devices it
+        // would bring back could not sync until paired again, and pairing again with any one of
+        // them brings the list back. Merged into another store, it would only add devices to
+        // trust that nobody compared words with.
         let documents: Vec<(SyncName, Vec<u8>)> = self
             .docs
             .iter_mut()
+            .filter(|doc| doc.id() != DocId::Devices)
             .map(|doc| (SyncName::new(doc.id(), generation.as_deref()), doc.save()))
             .collect();
         Ok(crate::backup::encode(&documents))
@@ -543,7 +612,7 @@ impl Store {
         &mut self,
         policy: &crate::backup::Policy,
         now: jiff::Timestamp,
-    ) -> Result<std::path::PathBuf> {
+    ) -> Result<crate::backup::Written> {
         let bytes = self.backup()?;
         crate::backup::write(policy, &bytes, now)
     }
@@ -560,7 +629,7 @@ impl Store {
         &mut self,
         policy: &crate::backup::Policy,
         now: jiff::Timestamp,
-    ) -> Result<Option<std::path::PathBuf>> {
+    ) -> Result<Option<crate::backup::Written>> {
         if !crate::backup::is_due(policy, now)? {
             return Ok(None);
         }
@@ -580,7 +649,10 @@ impl Store {
     ///
     /// If the file is not a readable backup, or a document in it will not load.
     pub fn restore(&mut self, bytes: &[u8]) -> Result<Restored> {
-        let decoded = crate::backup::decode(bytes)?;
+        let mut decoded = crate::backup::decode(bytes)?;
+        // An older backup's device list is left out, as backups now leave it out (see
+        // `Store::backup`).
+        decoded.documents.retain(|(name, _)| name.id != DocId::Devices);
         self.refresh()?;
         // Another generation's history never meets this one's: merged in, a backup from before
         // an erasure would bring back everything it erased.
@@ -603,11 +675,7 @@ impl Store {
         self.write(|docs| {
             for (name, data) in &decoded.documents {
                 let id = name.id;
-                let doc = match id {
-                    DocId::Core => docs.core(),
-                    DocId::Devices => docs.devices(),
-                    DocId::Blocks(year) => docs.blocks(year),
-                };
+                let doc = docs.get_mut(id);
                 let before = doc.heads();
                 doc.load_incremental(data)?;
                 restored.documents += 1;
@@ -642,6 +710,12 @@ impl Store {
         self.load_all_years()?;
         let (current, _) = self.docs.snapshot();
         let mut report = Imports::default();
+        // What was erased for good stays erased: an export taken before brings none of it back,
+        // nor anything of an erased task's.
+        let erased = crate::generation::erased(&self.docs);
+        let gone = crate::generation::Gone::of(&erased, &self.docs);
+        let erased_task = |task: &lumenna_core::id::TaskId| erased.contains(&format!("tasks/{task}"));
+        let left = |collection: &str, key: String| erased.contains(&format!("{collection}/{key}"));
 
         fn tally<T: PartialEq>(report: &mut Imports, before: Option<&T>, after: &T) -> bool {
             match before {
@@ -662,43 +736,50 @@ impl Store {
 
         // What the export held beyond the model goes back into each record it creates.
         self.docs.revive(imported.unknown.clone());
+        let mut erased_out = 0;
+        let mut out = |gone: bool| {
+            if gone {
+                erased_out += 1;
+            }
+            gone
+        };
         let written = self.write(|docs| {
             if let Some(settings) = &imported.settings
                 && settings != &current.settings
             {
                 docs.put_settings(settings, Some(&current.settings))?;
             }
-            for p in &imported.projects {
+            for p in imported.projects.iter().filter(|p| !out(left("projects", p.id.to_string()))) {
                 let before = current.projects.get(&p.id);
                 if tally(&mut report, before, p) {
                     docs.put_project(p, before)?;
                 }
             }
-            for l in &imported.labels {
+            for l in imported.labels.iter().filter(|l| !out(left("labels", l.id.to_string()))) {
                 let before = current.labels.get(&l.id);
                 if tally(&mut report, before, l) {
                     docs.put_label(l, before)?;
                 }
             }
-            for f in &imported.filters {
+            for f in imported.filters.iter().filter(|f| !out(left("filters", f.id.to_string()))) {
                 let before = current.saved_filters.get(&f.id);
                 if tally(&mut report, before, f) {
                     docs.put_filter(f, before)?;
                 }
             }
-            for t in &imported.tasks {
+            for t in imported.tasks.iter().filter(|t| !out(erased_task(&t.id))) {
                 let before = current.tasks.get(&t.id);
                 if tally(&mut report, before, t) {
                     docs.put_task(t, before)?;
                 }
             }
-            for c in &imported.completions {
+            for c in imported.completions.iter().filter(|c| !out(left("completions", c.id.to_string()) || erased_task(&c.task_id))) {
                 let before = current.completions.get(&c.id);
                 if tally(&mut report, before, c) {
                     docs.put_completion(c, before)?;
                 }
             }
-            for s in &imported.series {
+            for s in imported.series.iter().filter(|s| !out(left("series", s.id.to_string()))) {
                 let before = current.series.get(&s.id);
                 if tally(&mut report, before, s) {
                     docs.put_series(s, before)?;
@@ -710,7 +791,7 @@ impl Store {
                     docs.put_exception(e, before)?;
                 }
             }
-            for a in &imported.assignments {
+            for a in imported.assignments.iter().filter(|a| !out(left("assignments", a.id.to_string()) || erased_task(&a.task_id))) {
                 // A one-off block's assignment lives in its series' year, and the series is in
                 // the file or in the store; with neither there is no telling which document it
                 // belongs to, and guessing would leave a fragment in the wrong one.
@@ -728,7 +809,7 @@ impl Store {
                     docs.put_assignment(year, a, before)?;
                 }
             }
-            for r in &imported.reminders {
+            for r in imported.reminders.iter().filter(|r| !out(!gone.keeps_reminder(&r.id.to_string()))) {
                 let before = current.reminders.get(&r.id);
                 if tally(&mut report, before, r) {
                     docs.put_reminder(r, before)?;
@@ -738,6 +819,8 @@ impl Store {
         });
         self.docs.forget_revived();
         written?;
+        report.erased = erased_out;
+        report.skipped += erased_out;
         Ok(report)
     }
 
@@ -789,28 +872,36 @@ impl Store {
         Ok(ids.into_iter().map(|id| SyncName::new(id, self.generation())).collect())
     }
 
-    /// Where a document of `generation` goes: this device's, the newer generation held aside
-    /// (begun now if this is the first word of it), or nowhere, for an older one, whose
-    /// history must never reach this one's.
-    fn route(&mut self, generation: &Option<String>) -> Route {
+    /// Where a document of `generation` goes: this device's, the newer generation `adoption`
+    /// holds aside (begun now if this is the first word of it), or nowhere, for an older one,
+    /// whose history must never reach this one's.
+    fn route(&mut self, generation: &Option<String>, adoption: &mut Adoption) -> Route {
         if *generation == self.generation {
             return Route::Current;
         }
         if *generation < self.generation {
             return Route::Older;
         }
-        match &self.staging {
+        if *generation > self.newest_seen {
+            self.newest_seen.clone_from(generation);
+        }
+        match &adoption.staging {
             Some(staging) if staging.generation == *generation => Route::Staging,
             Some(staging) if staging.generation > *generation => Route::Older,
             _ => {
-                self.staging = Some(Staging { generation: generation.clone(), docs: Documents::new() });
+                adoption.staging = Some(Staging {
+                    generation: generation.clone(),
+                    docs: Documents::new(),
+                    heard: std::collections::BTreeSet::new(),
+                });
                 Route::Staging
             }
         }
     }
 
     /// The next sync message for one document, loading it first if it is a year not yet
-    /// opened. Nothing for a document of an older generation.
+    /// opened; for a newer generation's, from what `adoption` holds aside. Nothing for a
+    /// document of an older generation.
     ///
     /// # Errors
     ///
@@ -819,21 +910,22 @@ impl Store {
         &mut self,
         name: &SyncName,
         state: &mut automerge::sync::State,
+        adoption: &mut Adoption,
     ) -> Result<Option<Vec<u8>>> {
-        match self.route(&name.generation) {
+        match self.route(&name.generation, adoption) {
             Route::Current => {
                 self.open_for_sync(name.id)?;
                 Ok(self.docs.get_mut(name.id).sync_message(state))
             }
-            Route::Staging => Ok(self.staging.as_mut().and_then(|s| s.docs.get_mut(name.id).sync_message(state))),
+            Route::Staging => Ok(adoption.staging.as_mut().and_then(|s| s.docs.get_mut(name.id).sync_message(state))),
             Route::Older => Ok(None),
         }
     }
 
     /// Takes in a peer's sync message for one document and persists what it brought, so
     /// every other process on the device sees it through the ordinary change path. A
-    /// newer generation's is held aside until [`finish_adoption`](Self::finish_adoption); an
-    /// older one's is left alone.
+    /// newer generation's is held aside in `adoption` until
+    /// [`finish_adoption`](Self::finish_adoption); an older one's is left alone.
     ///
     /// Returns whether the document changed.
     ///
@@ -844,10 +936,11 @@ impl Store {
         &mut self,
         name: &SyncName,
         state: &mut automerge::sync::State,
+        adoption: &mut Adoption,
         bytes: &[u8],
     ) -> Result<bool> {
         let id = name.id;
-        match self.route(&name.generation) {
+        match self.route(&name.generation, adoption) {
             Route::Current => {
                 self.open_for_sync(id)?;
                 self.write(|docs| {
@@ -858,7 +951,8 @@ impl Store {
                 })
             }
             Route::Staging => {
-                let Some(staging) = self.staging.as_mut() else { return Ok(false) };
+                let Some(staging) = adoption.staging.as_mut() else { return Ok(false) };
+                staging.heard.insert(id);
                 let doc = staging.docs.get_mut(id);
                 let before = doc.heads();
                 doc.receive_sync_message(state, bytes)?;
@@ -868,38 +962,66 @@ impl Store {
         }
     }
 
-    /// Takes in the newer generation a peer synced to this device, once whole: what this device
-    /// changed that it lacks is written into it (`crate::generation`), it replaces this
-    /// device's documents, and anything this device had erased that it had not is erased again
-    /// on top of it. Nothing when no newer generation arrived, or one arrived without its
-    /// `core` saying it is that generation: a sync cut short, which the next one finishes.
+    /// Takes in the newer generation a peer synced to this device into `adoption`, once whole:
+    /// what this device changed that it lacks is written into it (`crate::generation`), it
+    /// replaces this device's documents, and anything this device had erased that it had not
+    /// is erased again on top of it.
+    ///
+    /// Whole means every document of that generation among `agreed` (the documents the two
+    /// sides named) has been heard from, and its `core` says it is that generation. Nothing
+    /// otherwise, nor when no newer generation arrived: a sync cut short, which the next one
+    /// finishes.
     ///
     /// # Errors
     ///
-    /// If a document cannot be read or written.
-    pub fn finish_adoption(&mut self) -> Result<Option<Adopted>> {
-        let Some(mut staging) = self.staging.take() else { return Ok(None) };
+    /// If a document cannot be read or written, or the store kept changing meanwhile
+    /// ([`StoreError::Busy`]).
+    pub fn finish_adoption<'a>(
+        &mut self,
+        adoption: Adoption,
+        agreed: impl IntoIterator<Item = &'a SyncName>,
+    ) -> Result<Option<Adopted>> {
+        let Some(mut staging) = adoption.staging else { return Ok(None) };
         let Some(generation) = staging.generation.clone() else { return Ok(None) };
-        if crate::generation::of(&staging.docs).as_deref() != Some(generation.as_str()) {
+        let whole = agreed
+            .into_iter()
+            .filter(|name| name.generation == staging.generation)
+            .all(|name| staging.heard.contains(&name.id));
+        if !whole || crate::generation::of(&staging.docs).as_deref() != Some(generation.as_str()) {
             return Ok(None);
         }
-        self.refresh()?;
-        self.load_all_years()?;
-        let began = self.began()?;
-        crate::generation::fold_in(&mut staging.docs, &mut self.docs, &began)?;
-        let mine = crate::generation::erased(&self.docs);
-        let theirs = crate::generation::erased(&staging.docs);
-        self.replace(staging.docs, &generation)?;
-        let erased_again = !mine.is_subset(&theirs);
-        if erased_again {
-            self.erase(mine)?;
+        for _ in 0..REBUILD_TRIES {
+            let seen = self.db.sequence()?;
+            self.refresh()?;
+            self.load_all_years()?;
+            // Another process here took it in, or one newer, meanwhile.
+            if self.generation.as_deref() > Some(generation.as_str()) {
+                return Ok(None);
+            }
+            if self.generation.as_deref() == Some(generation.as_str()) {
+                self.write(|docs| {
+                    for doc in staging.docs.iter_mut() {
+                        docs.get_mut(doc.id()).merge(doc)?;
+                    }
+                    Ok(())
+                })?;
+                return Ok(None);
+            }
+            let began = self.began()?;
+            let from = self.generation.clone();
+            crate::generation::fold_in(&mut staging.docs, &mut self.docs, &began)?;
+            let mine = crate::generation::erased(&self.docs);
+            let theirs = crate::generation::erased(&staging.docs);
+            if !self.replace(&mut staging.docs, &generation, from.as_deref(), seen)? {
+                continue;
+            }
+            let erased_again = !mine.is_subset(&theirs);
+            if erased_again {
+                self.erase(mine)?;
+            }
+            return Ok(Some(Adopted { generation: self.generation.clone().unwrap_or(generation), erased_again }));
         }
-        Ok(Some(Adopted { generation: self.generation.clone().unwrap_or(generation), erased_again }))
-    }
-
-    /// Forgets a newer generation partly synced: a session that ended before it was whole.
-    pub fn discard_adoption(&mut self) {
-        self.staging = None;
+        Err(StoreError::Busy)
     }
 
     /// Erases for good: every document begun again as a new generation holding what it holds
@@ -908,71 +1030,74 @@ impl Store {
     /// this device, its undo history with it; every other device takes the new generation in
     /// as it next syncs with one that has it.
     ///
+    /// Made again from what is on disk when another process writes while it is made, since
+    /// replacing the documents then would lose that write.
+    ///
     /// # Errors
     ///
-    /// If a document cannot be read or written.
+    /// If a document cannot be read or written, or the store kept changing meanwhile
+    /// ([`StoreError::Busy`]).
     pub fn erase(&mut self, erased: impl IntoIterator<Item = String>) -> Result<Erasure> {
-        self.refresh()?;
-        self.load_all_years()?;
-        let mut all = crate::generation::erased(&self.docs);
-        let before = all.len();
-        all.extend(erased);
-        let tasks: std::collections::BTreeSet<String> =
-            all.iter().filter_map(|key| key.strip_prefix("tasks/")).map(str::to_owned).collect();
-        let postponed: BTreeMap<String, u32> = self
-            .postponements
-            .iter()
-            .map(|(task, count)| (task.to_string(), *count))
-            .filter(|(task, _)| !tasks.contains(task))
-            .collect();
-        let after = self.staging.as_ref().and_then(|s| s.generation.clone()).max(self.generation.clone());
-        let generation = crate::generation::mint(after.as_deref());
-        let fresh = crate::generation::rebuild(&mut self.docs, &generation, &all, &postponed)?;
-        self.replace(fresh, &generation)?;
-        Ok(Erasure { generation, erased: all.len() - before })
+        let erased: Vec<String> = erased.into_iter().collect();
+        for _ in 0..REBUILD_TRIES {
+            let seen = self.db.sequence()?;
+            self.refresh()?;
+            self.load_all_years()?;
+            let mut all = crate::generation::erased(&self.docs);
+            let before = all.len();
+            all.extend(erased.iter().cloned());
+            let tasks: std::collections::BTreeSet<String> =
+                all.iter().filter_map(|key| key.strip_prefix("tasks/")).map(str::to_owned).collect();
+            let postponed: BTreeMap<String, u32> = self
+                .postponements
+                .iter()
+                .map(|(task, count)| (task.to_string(), *count))
+                .filter(|(task, _)| !tasks.contains(task))
+                .collect();
+            let from = self.generation.clone();
+            let generation = crate::generation::mint(self.newest_seen.clone().max(from.clone()).as_deref());
+            let mut fresh = crate::generation::rebuild(&mut self.docs, &generation, &all, &postponed)?;
+            if self.replace(&mut fresh, &generation, from.as_deref(), seen)? {
+                return Ok(Erasure { generation, erased: all.len() - before });
+            }
+        }
+        Err(StoreError::Busy)
     }
 
     /// Where this device's generation began, by document.
     fn began(&self) -> Result<BTreeMap<DocId, Vec<ChangeHash>>> {
         let text = self.db.local_value(crate::db::GENERATION_BEGAN)?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
-        Ok(text
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|line| {
-                let mut words = line.split(' ');
-                let id = DocId::parse(words.next()?)?;
-                Some((id, words.filter_map(|head| head.parse().ok()).collect()))
-            })
+        Ok(crate::doc::heads_from_text(&text.unwrap_or_default())
+            .into_iter()
+            .filter_map(|(name, heads)| Some((DocId::parse(&name)?, heads)))
             .collect())
     }
 
-    /// Makes `docs`, generation `generation`, the store's, on disk and here.
-    fn replace(&mut self, mut docs: Documents, generation: &str) -> Result<()> {
+    /// Makes `docs`, generation `generation`, the store's, on disk and here, when the file
+    /// still holds generation `from` and nothing has been appended since `sequence`
+    /// ([`Db::replace_generation`]); false, and nothing done, otherwise.
+    fn replace(&mut self, docs: &mut Documents, generation: &str, from: Option<&str>, sequence: i64) -> Result<bool> {
         let mut saved = Vec::new();
-        let mut began = String::new();
         for doc in docs.iter_mut() {
             doc.stamp_version()?;
             let heads = doc.heads();
-            began.push_str(&doc.id().name());
-            for head in &heads {
-                began.push(' ');
-                began.push_str(&head.to_string());
-            }
-            began.push('\n');
             saved.push((doc.id(), heads, doc.save()));
         }
-        self.db.replace_generation(generation, &saved, &began)?;
+        let began = crate::doc::heads_to_text(saved.iter().map(|(id, heads, _)| (id.name(), heads.as_slice())));
+        if !self.db.replace_generation(from, sequence, generation, &saved, &began)? {
+            return Ok(false);
+        }
         self.generation = Some(generation.to_owned());
-        self.staging = None;
         self.persisted = saved.iter().map(|(id, heads, _)| (*id, heads.clone())).collect();
-        self.docs = docs;
+        self.docs = std::mem::take(docs);
         self.hydrated.clear();
         self.postponed = crate::postponed::Postponed::default();
+        self.tallied.clear();
         self.linked.clear();
         self.cursor = self.db.cursor()?.max(self.cursor);
         self.unreported = true;
         self.tally();
-        Ok(())
+        Ok(true)
     }
 
     fn open_for_sync(&mut self, id: DocId) -> Result<()> {
@@ -1137,7 +1262,10 @@ impl Store {
         self.db.set_local_value(key, value)
     }
 
-    /// Each document synced and its heads, as this device has them.
+    /// Each document synced and its heads, as this device has them: a year not loaded, from
+    /// the heads kept as it was last written (`Db::kept_heads`), so asking loads nothing; only a
+    /// year whose heads were never kept, or were written since by a build that keeps none, is
+    /// loaded, once, and its heads kept from then on.
     ///
     /// # Errors
     ///
@@ -1145,21 +1273,49 @@ impl Store {
     pub fn sync_heads(&mut self) -> Result<Vec<(SyncName, Vec<automerge::ChangeHash>)>> {
         let mut heads = Vec::new();
         for name in self.sync_documents()? {
-            self.open_for_sync(name.id)?;
-            let doc_heads = self.docs.get_mut(name.id).heads();
-            heads.push((name, doc_heads));
+            heads.push((name.clone(), self.heads_of(name.id)?));
+        }
+        Ok(heads)
+    }
+
+    /// Whether `id` is in memory: `core` and `devices` always are, a year once opened.
+    fn is_loaded(&self, id: DocId) -> bool {
+        match id {
+            DocId::Blocks(year) => self.docs.has_year(year),
+            DocId::Core | DocId::Devices => true,
+        }
+    }
+
+    /// One document's heads, as [`sync_heads`](Self::sync_heads) finds them.
+    fn heads_of(&mut self, id: DocId) -> Result<Vec<automerge::ChangeHash>> {
+        if !self.is_loaded(id)
+            && let Some(kept) = self.db.kept_heads(id)?
+        {
+            return Ok(kept);
+        }
+        let was_loaded = self.is_loaded(id);
+        self.open_for_sync(id)?;
+        let doc = self.docs.get_mut(id);
+        let heads = doc.heads();
+        // Read whole from the file just now, so it holds everything there: worth keeping.
+        if !was_loaded {
+            self.db.note_heads(id, &heads, |head| doc.has_change(head))?;
         }
         Ok(heads)
     }
 
     /// Document `name`'s changes that are not among `heads` or before them, each as its bytes:
-    /// what a device that has `heads` lacks. None of another generation's.
+    /// what a device that has `heads` lacks. None of another generation's. A year not loaded
+    /// whose kept heads are `heads` has nothing to give, and is not loaded to say so.
     ///
     /// # Errors
     ///
     /// If the document cannot be read.
     pub fn changes_since(&mut self, name: &SyncName, heads: &[automerge::ChangeHash]) -> Result<Vec<Vec<u8>>> {
         if name.generation != self.generation {
+            return Ok(Vec::new());
+        }
+        if !self.is_loaded(name.id) && self.db.kept_heads(name.id)?.is_some_and(|kept| kept == heads) {
             return Ok(Vec::new());
         }
         self.open_for_sync(name.id)?;
@@ -1249,8 +1405,12 @@ pub struct Imports {
     pub updated: usize,
     /// Records already exactly as the file has them.
     pub unchanged: usize,
-    /// Assignments left out because their block is in neither the file nor the store.
+    /// Records left out: assignments whose block is in neither the file nor the store, and
+    /// the records counted in [`erased`](Self::erased).
     pub skipped: usize,
+    /// Of those, records erased for good here, or belonging to a task that was, which an
+    /// export taken before the erasure still holds: importing it must not bring them back.
+    pub erased: usize,
 }
 
 /// The part of `doc`'s snapshot an earlier process kept on disk, brought up to `heads`: the

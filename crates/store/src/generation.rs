@@ -92,27 +92,59 @@ pub(crate) fn postponed_before(docs: &Documents) -> BTreeMap<String, u32> {
     docs.core_ref().root_text("postponed").and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
 }
 
-/// Whether a record goes into a generation that has erased `erased`: not one named there, nor
-/// a completion, sitting or reminder of a task named there.
-fn keeps<'a>(erased: &'a Erased, tasks: &'a BTreeSet<&'a str>) -> impl Fn(&str, &str, &Raw) -> bool + 'a {
-    move |collection, key, raw| {
+/// What goes with what was erased, worked out once from the documents: the tasks erased, and
+/// the reminders that go with them or were erased themselves, whose acknowledgements go too.
+pub(crate) struct Gone<'a> {
+    erased: &'a Erased,
+    tasks: BTreeSet<String>,
+    reminders: BTreeSet<String>,
+}
+
+impl<'a> Gone<'a> {
+    /// What goes from `docs` with `erased`: every reminder of an erased task, its own and the
+    /// defaults its acknowledgements are kept under (`remind::default_key`, from the default
+    /// reminders set now).
+    pub(crate) fn of(erased: &'a Erased, docs: &Documents) -> Self {
+        let tasks: BTreeSet<String> = erased.iter().filter_map(|key| key.strip_prefix("tasks/")).map(str::to_owned).collect();
+        let mut reminders: BTreeSet<String> =
+            erased.iter().filter_map(|key| key.strip_prefix("reminders/")).map(str::to_owned).collect();
+        let core = docs.core_ref();
+        for (key, raw) in core.entries("reminders").unwrap_or_default() {
+            if raw.text_at("target_kind") == Some("task") && raw.text_at("target_id").is_some_and(|task| tasks.contains(task)) {
+                reminders.insert(key);
+            }
+        }
+        let defaults = core.settings().default_task_reminders;
+        for task in &tasks {
+            let Ok(task) = task.parse() else { continue };
+            let target = lumenna_core::model::ReminderTarget::Task(task);
+            reminders.extend(defaults.iter().map(|trigger| lumenna_core::remind::default_key(&target, trigger).to_string()));
+        }
+        Self { erased, tasks, reminders }
+    }
+
+    /// Whether the reminder `id` stays: not erased, nor one of an erased task's.
+    pub(crate) fn keeps_reminder(&self, id: &str) -> bool {
+        !self.reminders.contains(id)
+    }
+
+    /// Whether a record goes into a generation that has erased what this names: not one named
+    /// there, nor a completion, sitting or reminder of a task named there, nor an
+    /// acknowledgement of a reminder that went.
+    pub(crate) fn keeps(&self, collection: &str, key: &str, raw: &Raw) -> bool {
         // An inline record's fields are keys of their own, `<record>/<field>`.
         let record = key.split_once('/').map_or(key, |(record, _)| record);
-        if erased.contains(&format!("{collection}/{record}")) {
+        if self.erased.contains(&format!("{collection}/{record}")) {
             return false;
         }
         match collection {
-            "completions" | "assignments" => raw.text_at("task_id").is_none_or(|task| !tasks.contains(task)),
-            "reminders" => !(raw.text_at("target_kind") == Some("task")
-                && raw.text_at("target_id").is_some_and(|task| tasks.contains(task))),
+            "completions" | "assignments" => raw.text_at("task_id").is_none_or(|task| !self.tasks.contains(task)),
+            "reminders" => !self.reminders.contains(record),
+            // Keyed `<reminder>@<date>`.
+            "acks" => !record.split_once('@').is_some_and(|(reminder, _)| self.reminders.contains(reminder)),
             _ => true,
         }
     }
-}
-
-/// The tasks among what was erased.
-fn erased_tasks(erased: &Erased) -> BTreeSet<&str> {
-    erased.iter().filter_map(|key| key.strip_prefix("tasks/")).collect()
 }
 
 /// Every loaded document of `docs`, begun again as generation `generation` holding what each
@@ -125,14 +157,17 @@ pub(crate) fn rebuild(
     postponed: &BTreeMap<String, u32>,
 ) -> Result<Documents> {
     let from = of(docs);
-    let tasks = erased_tasks(erased);
-    let keep = keeps(erased, &tasks);
+    let gone = Gone::of(erased, docs);
+    let keep = |collection: &str, key: &str, raw: &Raw| gone.keeps(collection, key, raw);
     let mut fresh = Documents::new();
     for doc in docs.iter_mut() {
         let id = doc.id();
         let rebuilt_from = RebuiltFrom { generation: from.clone(), heads: doc.heads() };
         let target = fresh.get_mut(id);
         target.ensure_schema()?;
+        // Changes every device makes alike, a newer build's schema among them, are carried as
+        // they are: made again here, under this device's actor, they would be made twice.
+        target.load_incremental(&doc.genesis_changes())?;
         doc.copy_into(target, &keep)?;
         target.set_root_text("generation", generation)?;
         target.set_root_text("rebuilt_from", &rebuilt_from.encode())?;
@@ -153,21 +188,24 @@ pub(crate) fn rebuild(
 /// the rebuild never had is all this device's.
 pub(crate) fn fold_in(newer: &mut Documents, mine: &mut Documents, began: &BTreeMap<DocId, Vec<ChangeHash>>) -> Result<()> {
     let my_generation = of(mine);
+    let generation = of(newer).unwrap_or_default();
     let erased = erased(newer);
-    let tasks = erased_tasks(&erased);
-    let keep = keeps(&erased, &tasks);
+    let gone = Gone::of(&erased, mine);
+    let keep = |collection: &str, key: &str, raw: &Raw| gone.keeps(collection, key, raw);
     for doc in mine.iter_mut() {
         let id = doc.id();
         let theirs = newer.get_mut(id);
         theirs.ensure_schema()?;
+        // As in a rebuild: what every device makes alike goes across as it is.
+        theirs.load_incremental(&doc.genesis_changes())?;
         let rebuilt = theirs.root_text("rebuilt_from").and_then(|text| RebuiltFrom::decode(&text));
         let base = match rebuilt {
             Some(rebuilt) if rebuilt.generation == my_generation => rebuilt.heads,
             Some(_) => began.get(&id).cloned().unwrap_or_default(),
             None => Vec::new(),
         };
-        let base = doc.at(&base)?;
-        theirs.fold(&base, doc, &keep)?;
+        let mut base = doc.at(&base)?;
+        theirs.fold(&mut base, doc, &keep, &generation)?;
     }
     Ok(())
 }

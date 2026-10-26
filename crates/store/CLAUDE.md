@@ -14,7 +14,12 @@ silently reverting it.
 creating operation, so two devices creating a map at the same key create two maps, and on
 merge one loses everything written into it. Root collections come from a deterministic
 genesis change (`Doc::new`); per-record sets are created with the record. Any *new*
-container needs the same care.
+container needs the same care. So does anything several devices write into one history from
+what each holds apart, as adoption does (`Doc::fold`, `Maker`): a map is made by a change every
+device makes byte for byte alike (an actor named from the generation, document, parent object
+and key, on the change that made the parent, at time zero), a field's value as the chain of the
+values the device's history gave it, link on link, so devices with the same history make the
+same changes and the one that went further replaces the others' as its history did.
 
 **A record keyed by something two devices can produce on their own is inline.** Exceptions
 (series and date) and reminder acks (reminder and date) store each field as its own key,
@@ -33,8 +38,21 @@ those too. Without it a routine vanishes on 1 January.
 
 **Change rowids are `AUTOINCREMENT` and compaction holds the write lock.** Reused rowids
 make running processes skip changes. `Db::compact` folds everything on disk into the
-document in an immediate transaction before deleting anything, and `refresh` reads in one
-transaction and loads a snapshot whose heads it lacks.
+document in an immediate transaction before deleting anything, refused there when the file
+holds another generation, and `refresh` reads in one transaction and loads a snapshot whose
+heads it lacks. **One write is one transaction**: `persist` appends every document's changes
+together (`Db::append_documents`), one generation check for them all.
+
+**Each document's heads are kept as it is written** (`kept_heads`, local, never synced), so a
+sync says what a year holds without loading it (`Store::sync_heads`): a session or exchange
+leaves out every document both sides hold at the same heads, and loads a year only when the
+other side lacks something in it or sends something for it. That is what keeps lazy years true
+on a watch. A row is believed only while nothing has written the document since without saying
+so (`through`, the document's highest rowid then, and its snapshot's heads then), so a build
+from before the table, writing beside this one, costs a load, never a skipped change; an append
+keeps the heads only when the heads kept before are among what the writer holds, and otherwise
+forgets them. A year whose heads are not kept is loaded once and kept (`Db::note_heads`, with
+every change on disk checked to be held).
 
 **The snapshot is kept, per document, and followed record by record** (`Store::snapshot`,
 `Hydrated`, `Doc::part`, `Doc::refresh_part`), since materializing is most of what an answer
@@ -51,7 +69,9 @@ build that wrote them (`HYDRATION_BUILD`, `build.rs`'s hash of every source in `
 holds their heads; written after a whole reading or a following from disk, and at most a minute
 apart while followed (`SAVE_EVERY`); never with a record unread. The postponements' tally
 (`postponed`), which reads the core document's history from its start, is kept beside the
-core's part. A document's changes load in one `load_incremental`, Automerge ordering them.
+core's part, and read on only when the core's heads move. `HYDRATION_BUILD` hashes
+`Cargo.lock` too: a new Automerge can read the same document into other records. A document's
+changes load in one `load_incremental`, Automerge ordering them.
 
 **The change cursor only advances in `refresh`.** `PRAGMA data_version` does not move for
 your own connection's writes, and other processes' rows can interleave with yours. A cursor
@@ -71,21 +91,36 @@ new **generation** (a UUIDv7; newest wins). What is easy to break:
   `Raw::write_into`), never over them: a year's document another device begins from its
   genesis in the new generation must still share them.
 - **Adoption keeps what the device did that the rebuild never saw**: a newer generation syncs
-  into documents held aside (`Staging`, `Store::route`), and `finish_adoption` folds this
-  device's changes into it field by field against the base the two share (`Doc::fold`: the
-  rebuild's `rebuilt_from` heads, or `generation-began` after a rebuild of some other
-  generation), the newer history winning where both changed. Only once whole: a session
-  cut short drops it.
+  into documents held aside, each session or exchange holding its own (`Adoption`, owned by its
+  `Rounds`, so one never takes in or throws away another's, and one cut short, cancelled or
+  abandoned drops it with itself), and `finish_adoption` folds this device's changes into it
+  field by field against the base the two share (`Doc::fold`: the rebuild's `rebuilt_from`
+  heads, or `generation-began` after a rebuild of some other generation), the newer history
+  winning where both changed. Only once whole: every document of it the two sides named heard
+  from, and its core saying it is that generation; a year folded before it arrived would be
+  rewritten whole, as maps of this device's own.
+- **A rebuild never deletes what another process wrote meanwhile**: `erase` and
+  `finish_adoption` read the sequence before reading the store, and `Db::replace_generation`
+  replaces the documents only while the file holds the generation read and nothing has been
+  appended since; otherwise everything is read again and rebuilt (`REBUILD_TRIES`, then
+  `StoreError::Busy`).
+- **Changes every device makes alike go across as they are**: a rebuild and a fold copy every
+  change of the genesis actor first (`Doc::genesis_changes`), a newer build's schema among
+  them, rather than make what they made again under a random actor.
 - **Nothing erased comes back**: core's `erased` names every record erased so far, and
-  `keeps` leaves out those and every completion, sitting and reminder of an erased task, in a
-  rebuild and in a fold. A device whose own erasure the newer generation lacks erases again on
-  top of it.
+  `Gone::keeps` leaves out those and every completion, sitting and reminder of an erased task,
+  and every acknowledgement of a reminder that went (its own, or a default's key), in a rebuild,
+  a fold and an import (which counts them in `Imports::erased`). A device whose own erasure the
+  newer generation lacks erases again on top of it.
 - **What only the history held is carried**: core's `postponed`, the tally `Store::tally`
   adds to. Anything else read from history needs the same.
 - **Every process follows**: the file's generation is in `local_state`, replaced with the
-  documents in one transaction (`Db::replace_generation`, which also clears undo, the parts
-  and the watch's agreed heads); `refresh` reloads on seeing another, and a write from the
-  history before is refused (`StoreError::Rebuilt`, checked inside the append's transaction).
+  documents in one transaction (`Db::replace_generation`, which also clears undo, the parts,
+  the kept heads and the watch's agreed heads); `refresh` reloads on seeing another (asked
+  inside its read transaction, so it never reads the new generation's changes into the old
+  history), and a write or compaction from the history before is refused
+  (`StoreError::Rebuilt`, checked inside its transaction), the process reading the new history
+  then, so the write can be made again.
 - `tests/erasure.rs` is where this is proved, against stores synced in every order.
 
 ## Versions and fields this build does not know
@@ -103,11 +138,13 @@ update. So:
   another year's document, a record becoming inline — copy the old record as it stands
   (`Raw`) and write only the changes over it, so an unknown field, or a value read as a
   default (an unknown block kind reads as work), survives those too. A new rewrite must do
-  the same. So do the two places that build a record from the model alone: an undo that
+  the same. So does a small composite written whole (`Writer::set_nested`: a due date, a
+  trigger, a delivery), which names the fields it writes and carries over any other. So do the two places that build a record from the model alone: an undo that
   creates again what its edit removed writes the record back as it stood first
   (`Documents::removed_by`, kept in the undo entry, format 2), and the JSON export carries what
   each record holds beyond the model (`export_json_keeping`, its `unknown` list), which an
-  import writes back into each record it creates (`Documents::revive`). Not kept: a record
+  import writes back into each record it creates (`Documents::revive`), reminders included.
+  Not kept: a record
   stored a key per field (an exception, an acknowledgement, a device), and a block's sittings
   in an export.
 
@@ -121,6 +158,13 @@ Kept apart in code, commands and wording, because confusing them is how someone 
   change. One of another generation is refused, since it would bring back what was erased; a
   real erasure has every device delete its automatic backups and take one afresh (the host's
   `follow_erasure`).
+- **The device list is never in a backup**, and an older backup's is passed over on restoring.
+  Do not add it back: the device's key is never in a backup, so devices restored from one
+  could not sync until paired again, and pairing again with any one of them brings the list
+  back. Merging another store's backup's devices was the only thing it did, and that adds
+  devices to trust that nobody compared words with.
+- **A backup taken is reported taken** even when pruning the oldest failed
+  (`backup::Written::pruning_failed`, which the host says as a notice).
 - **An export** (`store::export`) is current state only. JSON is complete and versioned
   (`export::VERSION`), keeps identifiers, and is what import reads; Markdown, org and ics
   are for reading only. **A field added to the model must be added to `export/json.rs`**,

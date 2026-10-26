@@ -78,7 +78,8 @@ impl Lumenna {
             policy.directory = absolute(Path::new(&to));
             refuse_inside(&self.directory, &policy.directory)?;
         }
-        let path = self.store().back_up_to(&policy, Timestamp::now())?;
+        let written = self.store().back_up_to(&policy, Timestamp::now())?;
+        let path = written.path;
         let kept = backup::list(&policy.directory)?.len();
         let mut done = BackupDone {
             announcement: format!("Backed up to {}", path.display()),
@@ -86,6 +87,7 @@ impl Lumenna {
             path: path.display().to_string(),
             kept: to_u32(kept),
         };
+        done.notices.extend(written.pruning_failed);
         done.notices.extend(cloud_warning(&policy.directory));
         Ok(done)
     }
@@ -121,7 +123,7 @@ impl Lumenna {
     pub fn back_up_if_due(&self) -> Result<Option<String>> {
         let policy = self.backup_policy()?;
         let written = self.store().back_up_if_due(&policy, Timestamp::now())?;
-        Ok(written.map(|path| path.display().to_string()))
+        Ok(written.map(|written| written.path.display().to_string()))
     }
 
     /// Merges a backup into the store.
@@ -261,10 +263,17 @@ impl Lumenna {
                 unchanged: to_u32(report.unchanged),
                 skipped: to_u32(report.skipped),
             };
-            if report.skipped > 0 {
+            let unplaced = report.skipped - report.erased;
+            if unplaced > 0 {
                 done = done.note(format!(
                     "left out {} whose block is in neither the file nor this store",
-                    count_line(report.skipped, "assignment")
+                    count_line(unplaced, "assignment")
+                ));
+            }
+            if report.erased > 0 {
+                done = done.note(format!(
+                    "left out {} erased for good here, so that importing does not bring them back",
+                    count_line(report.erased, "record")
                 ));
             }
             Ok(Imported::Export { done })

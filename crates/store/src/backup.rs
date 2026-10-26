@@ -228,6 +228,16 @@ pub fn surplus_among(names: &[String], keep: usize) -> Vec<String> {
     found.into_iter().take(surplus).map(|(_, name)| name.clone()).collect()
 }
 
+/// A backup written ([`write`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Written {
+    /// Where it went.
+    pub path: PathBuf,
+    /// Why the oldest beyond `keep` could not all be removed, when they could not: the backup
+    /// itself was written whole all the same, and is not to be reported as failed.
+    pub pruning_failed: Option<String>,
+}
+
 /// Writes a backup into the policy's directory and prunes the oldest beyond `keep`.
 ///
 /// Written to a temporary name and renamed into place, so an interrupted backup never leaves
@@ -236,8 +246,9 @@ pub fn surplus_among(names: &[String], keep: usize) -> Vec<String> {
 ///
 /// # Errors
 ///
-/// If the directory cannot be created or written.
-pub fn write(policy: &Policy, bytes: &[u8], taken: Timestamp) -> Result<PathBuf> {
+/// If the directory cannot be created or written. Pruning that fails is said in
+/// [`Written::pruning_failed`], not as an error, since the backup was taken.
+pub fn write(policy: &Policy, bytes: &[u8], taken: Timestamp) -> Result<Written> {
     std::fs::create_dir_all(&policy.directory)?;
     let path = policy.directory.join(file_name(taken));
     let partial = path.with_extension("partial");
@@ -253,12 +264,17 @@ pub fn write(policy: &Policy, bytes: &[u8], taken: Timestamp) -> Result<PathBuf>
     }
     std::fs::rename(&partial, &path)?;
 
-    let existing = list(&policy.directory)?;
-    let surplus = existing.len().saturating_sub(policy.keep.max(1));
-    for old in existing.into_iter().take(surplus) {
-        std::fs::remove_file(old.path)?;
-    }
-    Ok(path)
+    let pruned = list(&policy.directory).and_then(|existing| {
+        let surplus = existing.len().saturating_sub(policy.keep.max(1));
+        for old in existing.into_iter().take(surplus) {
+            std::fs::remove_file(old.path)?;
+        }
+        Ok(())
+    });
+    Ok(Written {
+        path,
+        pruning_failed: pruned.err().map(|error| format!("older backups could not be removed: {error}")),
+    })
 }
 
 /// Removes every backup in `directory`, as [`list`] finds them by name: what a real erasure

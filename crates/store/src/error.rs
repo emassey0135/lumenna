@@ -40,6 +40,11 @@ pub enum StoreError {
     /// before it, so this one's write was not made: it is to be made again over the new one.
     #[error("the store was just rebuilt, to erase what was deleted for good; try that again")]
     Rebuilt,
+
+    /// Another process went on writing while this one rebuilt the store for a real erasure,
+    /// every time it tried: nothing was rebuilt.
+    #[error("the store kept changing while deleted things were being erased for good; try that again")]
+    Busy,
 }
 
 impl From<std::io::Error> for StoreError {
