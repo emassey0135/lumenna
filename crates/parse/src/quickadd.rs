@@ -200,7 +200,9 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
         }
         // A word that opens a date phrase but leads nowhere is worth saying out loud rather
         // than quietly becoming part of the title.
-        if word.any_of(&["next", "last", "this", "every", "each", "in"])
+        // "this month" and "this year" name no one day; "this" before anything else is English.
+        let names_no_day = word.is("this") && tokens.get(index + 1).is_some_and(|next| next.any_of(&["month", "year"]));
+        if (names_no_day || word.any_of(&["next", "last", "every", "in"]))
             && tokens.get(index + 1).is_none_or(|next| looks_like_a_date(&next.lower))
         {
             let end = tokens.get(index + 1).map_or(word.end, |w| w.end);

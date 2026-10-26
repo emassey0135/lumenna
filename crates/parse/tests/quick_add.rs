@@ -421,7 +421,7 @@ fn a_word_ending_in_s_is_not_a_weekday_by_accident() {
 
 #[test]
 fn an_ordinary_preposition_is_not_reported_as_a_broken_date() {
-    for input in ["put files in the folder", "read the last chapter", "plan next steps"] {
+    for input in ["put files in the folder", "read the last chapter", "plan next steps", "read this 3 times", "finish this"] {
         let p = preview(input);
         assert!(p.diagnostics.is_empty(), "{input}: {:?}", p.diagnostics);
     }
