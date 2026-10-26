@@ -71,6 +71,12 @@ impl Pairing {
                 controls::focus(code);
             }
         }
+        // Focus first leaves the code and Copy if they are about to be hidden, or it would go
+        // nowhere.
+        let focus = controls::focused();
+        if view.mine.is_none() && [MY_CODE, COPY].iter().any(|id| dialog::item(hwnd, *id) == focus) {
+            controls::focus(dialog::item(hwnd, IDCANCEL.0 as u16));
+        }
         for id in [MY_CODE_LABEL, MY_CODE, COPY] {
             controls::show(dialog::item(hwnd, id), view.mine.is_some());
         }

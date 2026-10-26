@@ -291,6 +291,34 @@ Describe 'Round trips' {
         (Get-LumennaOperation erase_task_permanently).cmdlet | Should -Be 'Remove-LumennaTask -Permanently'
     }
 
+    It 'passes an array in an operation''s arguments as a list, however PowerShell wrapped it' {
+        $id = (Add-LumennaTask 'sort the post').task.id
+        # As a pipeline hands one over: an array wrapped as a PSObject.
+        $labels = Write-Output -NoEnumerate @('home', 'post')
+        Invoke-LumennaOperation edit_task @{ id = $id; labels = $labels } -WarningAction SilentlyContinue | Out-Null
+        @((Get-LumennaTaskDetail $id).labels | Sort-Object) | Should -Be @('home', 'post')
+    }
+
+    It 'resolves a relative LUMENNA_PROFILE against PowerShell''s location, as -Profile is' {
+        $parent = New-Profile
+        $saved = $env:LUMENNA_PROFILE
+        $process = [Environment]::CurrentDirectory
+        Push-Location -LiteralPath $parent
+        try {
+            # The process stays elsewhere, where `lum` would have looked.
+            [Environment]::CurrentDirectory = [IO.Path]::GetTempPath()
+            $env:LUMENNA_PROFILE = 'relative'
+            Add-LumennaTask 'found where PowerShell is' | Out-Null
+            Test-Path -LiteralPath (Join-Path $parent 'relative') | Should -BeTrue
+            @(Get-LumennaTask -Profile (Join-Path $parent 'relative') | ForEach-Object { $_.title }) | Should -Be @('found where PowerShell is')
+        } finally {
+            $env:LUMENNA_PROFILE = $saved
+            [Environment]::CurrentDirectory = $process
+            Pop-Location
+            Remove-Profile $parent
+        }
+    }
+
     It 'completes the quick-add line, the filter language, projects and labels through lum' {
         Add-LumennaTask 'phone @calls' | Out-Null
         function Complete-Typed([string] $line) {
@@ -340,6 +368,52 @@ Describe 'One lum rpc for the module''s session' {
         $again = Get-ServerIds
         $again.Count | Should -Be 1
         $again[0] | Should -Not -Be $first[0]
+    }
+
+    Context 'with a lum rpc that misbehaves' {
+        BeforeEach {
+            # A stand-in for `lum`, found where the module looks for it: a batch file on Windows,
+            # a shell script elsewhere, each doing as a test's lines say.
+            $script:fake = New-Profile
+            Mock Find-Lum -ModuleName Lumenna { $env:LUMENNA_TEST_LUM }
+            function New-FakeLum([string[]] $windows, [string[]] $unix) {
+                if ([Environment]::OSVersion.Platform -eq 'Win32NT') {
+                    $path = Join-Path $fake 'lum.cmd'
+                    Set-Content -LiteralPath $path -Value (@('@echo off') + $windows) -Encoding Ascii
+                } else {
+                    $path = Join-Path $fake 'lum'
+                    Set-Content -LiteralPath $path -Value (@('#!/bin/sh') + $unix) -Encoding Ascii
+                    chmod +x $path
+                }
+                $env:LUMENNA_TEST_LUM = $path
+            }
+            $env:LUMENNA_TEST_SEEN = Join-Path $fake 'seen'
+            & $module { Stop-LumennaServers }
+        }
+
+        AfterEach {
+            & $module { $script:RequestTimeout = [TimeSpan]::FromSeconds(60) }
+            Remove-Profile $fake
+            Remove-Item Env:\LUMENNA_TEST_LUM, Env:\LUMENNA_TEST_SEEN -ErrorAction Ignore
+        }
+
+        It 'waits for an answer for a minute, then stops the server and says so' {
+            (& $module { $script:RequestTimeout }).TotalSeconds | Should -Be 60
+            New-FakeLum -windows 'ping -n 30 127.0.0.1 > nul' -unix 'exec sleep 30'
+            & $module { $script:RequestTimeout = [TimeSpan]::FromSeconds(2) }
+            $reply = & $module { Invoke-LumennaRpc -Method 'assist.list' }
+            $reply.error.message | Should -Be 'lum rpc did not answer assist.list within 2 seconds, so it was stopped'
+            @(Get-ServerIds).Count | Should -Be 0
+        }
+
+        It 'does not send a request again when its server stops with it in hand' {
+            # Takes the request in, notes it, and stops without answering.
+            New-FakeLum -windows 'set /p request=', 'echo seen>> "%LUMENNA_TEST_SEEN%"' -unix 'read request', 'echo seen >> "$LUMENNA_TEST_SEEN"'
+            $reply = & $module { Invoke-LumennaRpc -Method 'assist.list' }
+            $reply.error.message | Should -BeLike 'lum rpc stopped*'
+            @(Get-Content -LiteralPath $env:LUMENNA_TEST_SEEN).Count | Should -Be 1
+            Should -Invoke Find-Lum -ModuleName Lumenna -Times 1 -Exactly
+        }
     }
 
     It 'stops it when the module is removed' {

@@ -1459,9 +1459,10 @@ fn f1_lists_every_key_and_alt_enter_opens_the_tasks_details() {
     assert!(text.contains("New Task: Ctrl+N") && text.contains("Exit: Ctrl+Q") && text.contains("Rename: F2"), "{help:#?}");
     assert!(app.focus().starts_with("Edit 'Shortcuts:'"), "focus starts in the list: {}", app.focus());
     app.post(&["esc"]);
-    // Alt+Enter, as the menu command it stands for: the selected task's details.
+    // Alt+Enter, as the menu command it stands for: the selected task's details, the form the
+    // app hands back once it has run the row's Edit.
     app.post(&[GO_TASKS, "home", "cmd:113"]);
-    assert!(app.focus().starts_with("Edit 'Title:'"), "{}", app.focus());
+    assert!(app.lands(|focus| focus.starts_with("Edit 'Title:'")), "{}", app.focus());
 }
 
 // ---------------------------------------------------------------------------------------

@@ -78,8 +78,10 @@ Name: "{autodesktop}\Lumenna"; Filename: "{app}\lumenna.exe"; AppUserModelID: "{
 [Registry]
 ; `lum` on the person's PATH; taken off again on uninstalling (RemoveFromPath, below).
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: NeedsAddPath(ExpandConstant('{app}'))
-; What the app writes itself, taken away with it: opening at sign-in (settings.rs's Run value) and
-; its notification identity (toast.rs). Written by the app, so created by nothing here.
+; What the app writes itself, taken away with it: opening at sign-in (settings.rs's Run value, the
+; usual profile's; every other profile's has a name of its own, which `lumenna.exe --uninstall`
+; takes away, below) and its notification identity (toast.rs). Written by the app, so created by
+; nothing here.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Lumenna"; Flags: uninsdeletevalue dontcreatekey
 Root: HKCU; Subkey: "Software\Classes\AppUserModelId\{#AppUserModelId}"; ValueType: none; Flags: uninsdeletekey dontcreatekey
 
@@ -91,6 +93,10 @@ Root: HKCU; Subkey: "Software\Classes\AppUserModelId\{#AppUserModelId}"; ValueTy
 Filename: "{app}\lumenna.exe"; Description: "{cm:LaunchProgram,Lumenna}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+; What the app wrote that only it can name: every profile's value opening it at sign-in, and the
+; Jump List the shell keeps for the notification identity, whose tasks would start a program no
+; longer there.
+Filename: "{app}\lumenna.exe"; Parameters: "--uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "LumennaForget"
 ; The sync daemon, if `lum daemon install` made one: a logon task that would go on starting a `lum`
 ; no longer there.
 Filename: "{app}\lum.exe"; Parameters: "daemon uninstall"; Flags: runhidden; RunOnceId: "LumennaDaemon"

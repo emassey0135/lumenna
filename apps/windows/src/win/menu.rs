@@ -27,6 +27,8 @@ pub const BACK_UP: u16 = 106;
 pub const CLOSE_WINDOW: u16 = 107;
 pub const EXIT: u16 = 108;
 pub const EXPORT_IMPORT: u16 = 109;
+/// Settings' Devices page, where pairing starts.
+pub const DEVICES: u16 = 110;
 pub const SETTINGS: u16 = 111;
 pub const RESTORE_BACKUP: u16 = 112;
 /// The selected row's own form: a task's details, a block's form.
@@ -87,6 +89,7 @@ pub const MENUS: [(&str, &[(u16, &str)]); 6] = [
         (NEW_FILTER, "New Saved &Filter..."),
         (0, ""),
         (SYNC_NOW, "&Sync Now\tF5"),
+        (DEVICES, "&Devices and Pairing..."),
         (BACK_UP, "Back &Up Now"),
         (RESTORE_BACKUP, "&Restore from a Backup..."),
         (EXPORT_IMPORT, "&Export and Import..."),

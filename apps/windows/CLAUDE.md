@@ -19,9 +19,12 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   tree on landing only when it is lost. Selecting a row sends `Focus` (a side list's `Hold`), and
   Space and Delete send the key (`Key("toggle")`, `Key("delete")`: what each runs is
   `keys::runs`, the core's), a side list's after holding its row; the Task menu's commands run
-  their action as the app's by kind (`Run`); and a
-  context menu, a button or Enter the one chosen (`ActOn`, naming the row), only `Asks::Form` the
-  window's (the details pane). The sidebar's selection is its held row
+  their action as the app's by kind (`Run` on a task list's row, else `Details(Run)`), and so does
+  Properties (`Run([Edit, EditTask])`), the app refusing a row without one; and a
+  context menu, a button or Enter the one chosen (`ActOn`, naming the row), only a task's own form
+  the window's (the details pane, also opened for a `Question::Form` the app leaves open). The
+  tasks, the Blocks list and the day are one tree of rows (`rows.rs`: drawing, landing, keys,
+  folding, the context menu), each view adding its own. The sidebar's selection is its held row
   when the app lands it there, else the place shown; moving through it opens each place.
 - **The app's dialogs are opened once the app is still** (polled every 50 ms from a turn that
   has one, `ask_when_still`): its open question (`asking.rs`), the block form (`block_form.rs`),
@@ -71,18 +74,23 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   a turn's `background` is carried out on the current user's Run key (`settings::keep_running`)
   and answered with `Offered` as the key now stands, or `Failed` with Windows' message.
   `Offered` is sent at start too. The key's command is `--background`, with `--profile` for a
-  profile other than the usual one; its value is `LUMENNA_RUN_NAME` for tests, so they never
-  change the person's.
+  profile other than the usual one; its value is "Lumenna" for the usual profile and
+  "Lumenna <profile key>" for each other (`tray::profile_key`), so each profile's is its own, and
+  it counts as on only while it starts this executable on this profile; `LUMENNA_RUN_NAME` for
+  tests, so they never change the person's.
 - **The installer is Inno Setup's** (`installer/lumenna.iss`, built per architecture by
   `release.yml`): the app and `lum` for one person, with no administrator, into
   `%LOCALAPPDATA%\Programs\Lumenna`, `lum` on their `PATH`, the Start menu shortcut carrying the
   notification identity (`dev.emassey0135.Lumenna`), so toasts belong to it. Its `AppId` never
   changes: Windows and winget know an upgrade by it. Uninstalling takes what the app wrote (the
-  sign-in Run value, the notification identity, a `lum daemon` logon task) and asks, No by
+  sign-in Run values, the notification identity, a `lum daemon` logon task, the Jump List) and
+  asks, No by
   default and never when silent, whether to delete the person's data too
   (`%LOCALAPPDATA%\lumenna`, the store and its backups, and `HKCU\Software\Lumenna`). The
   workflow installs, runs and silently uninstalls it on the runner, checking the store stays.
-  The uninstall question itself is checked by hand.
+  The uninstall question itself is checked by hand. What only the app can name, every
+  profile's Run value and the Jump List, it takes away itself, started by the uninstaller with
+  `--uninstall` (`win/mod.rs`): it opens no window and takes no instance lock.
 - **The MSIX is for the Microsoft Store** (`installer/msix/`: `AppxManifest.xml`, `pack.ps1`,
   `test.ps1`), unsigned as the Store takes it, its identity a stand-in until Partner Center's
   (the repository variables `MSIX_IDENTITY_NAME`, `MSIX_PUBLISHER`). One `lumenna.exe` serves
@@ -120,8 +128,9 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   start off the window's thread, on the taskbar button and in Start: a package's through
   `Windows.UI.StartScreen.JumpList`, whose items hand `--launch <id>` to Windows' activation
   (`package::launched_with`); an ordinary install's as the shell's tasks for the notification
-  identity, each a link to the executable with `--launch <id>` (and `--profile` for a profile
-  other than the usual one). A second copy started with `--launch` hands the id to the one
+  identity, each a link to the executable with `--launch <id>`. That identity is one for every
+  profile, so only the usual profile's copy makes it, or the last profile to start would own it.
+  A second copy started with `--launch` hands the id to the one
   running (`WM_COPYDATA`, `tray::claim`). Either way the window is shown and `Launch(id)` sent
   once the app is still, so it runs over the store read; New Task's line, opened by the app,
   then opens the window's quick add, which draws it.
@@ -187,7 +196,8 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   screen reader reads); the block form's Colour is a drop-down, as Kind is. A UI test reads the
   screen with its thread DPI aware, since UI Automation's places are physical pixels.
 - **Reminders are toasts** (`toast.rs`), given by the device's own delivery as the Mac's are
-  (`Device::deliver_reminders`, their buttons writing through the device), under an app
+  (`Device::deliver_reminders`, asked off the window's thread and shown back on it, `WM_THEN`, as
+  Back Up Now's backup is taken; their buttons writing through the device), under an app
   identity of their own (`LUMENNA_APP_ID` for tests), their buttons the core's: Carry Forward and Replan where a
   firing has them, then Dismiss and Snooze. Tests can read a shown toast's XML from the
   notification history but cannot press its buttons, so what each button does is checked by
