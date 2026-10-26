@@ -107,7 +107,7 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Garden"].waitForExistence(timeout: 5))
         // Quick add starts with the project, so the task lands in it.
         app.buttons["Add task"].tap()
-        let line = app.textViews["New task"]
+        let line = app.textViews["Task"]
         XCTAssertTrue(line.waitForExistence(timeout: 5))
         line.typeText("dig the beds")
         app.buttons["Add"].tap()

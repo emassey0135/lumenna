@@ -13,9 +13,9 @@ final class QuickAddViewController: NSViewController {
     /// Whether the line starts empty, whatever the place shown adds: from anywhere.
     private let fresh: Bool
     private let finished: () -> Void
-    private lazy var field = CompletingField(core: core, syntax: .quickAdd, name: "New task")
+    private lazy var field = CompletingField(core: core, syntax: .quickAdd, name: QuickAddText.label)
     private let readback = NSTextField(wrappingLabelWithString: "")
-    private let add = NSButton(title: "Add", target: nil, action: nil)
+    private let add = NSButton(title: QuickAddText.add, target: nil, action: nil)
     private var observer: NSObjectProtocol?
     /// Whether the line has been added or put away, so it is put away once.
     private var closed = false
@@ -25,7 +25,7 @@ final class QuickAddViewController: NSViewController {
         self.fresh = fresh
         self.finished = finished
         super.init(nibName: nil, bundle: nil)
-        title = "New Task"
+        title = QuickAddText.title
     }
 
     @available(*, unavailable)
@@ -36,22 +36,22 @@ final class QuickAddViewController: NSViewController {
     }
 
     override func loadView() {
-        field.placeholderString = "write the chapter tomorrow p1 #Work"
+        field.placeholderString = QuickAddText.example
         field.changed = { [weak self] in self?.textChanged() }
         field.submitted = { [weak self] in self?.save() }
         readback.textColor = .quietLabel
         readback.font = .preferredFont(forTextStyle: .subheadline)
         // Read when VoiceOver reaches it, and changes without interrupting.
-        readback.setAccessibilityLabel("Will add")
+        readback.setAccessibilityLabel(QuickAddText.willAdd)
 
         add.target = self
         add.action = #selector(save)
         add.keyEquivalent = "\r"
-        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel))
+        let cancel = NSButton(title: QuickAddText.cancel, target: self, action: #selector(cancel))
         cancel.keyEquivalent = "\u{1b}"
         let buttons = NSStackView(views: [NSView(), cancel, add])
 
-        let heading = NSTextField(labelWithString: "New Task")
+        let heading = NSTextField(labelWithString: QuickAddText.title)
         heading.font = .preferredFont(forTextStyle: .headline)
         let stack = NSStackView(views: [heading, field, readback, buttons])
         stack.orientation = .vertical
@@ -154,7 +154,7 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
         }
         let panel = NSPanel(contentViewController: controller)
         panel.styleMask = [.titled, .closable, .nonactivatingPanel]
-        panel.title = "Quick Add"
+        panel.title = QuickAddText.title
         panel.level = .floating
         panel.isReleasedWhenClosed = false
         panel.delegate = self

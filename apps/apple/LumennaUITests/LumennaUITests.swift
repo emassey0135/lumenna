@@ -126,7 +126,7 @@ final class LumennaUITests: XCTestCase {
 
     private func add(_ text: String) {
         app.buttons["Add task"].tap()
-        let field = app.textViews["New task"]
+        let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText(text)
         app.buttons["Add"].tap()
@@ -142,7 +142,7 @@ final class LumennaUITests: XCTestCase {
 
     func testAddingATaskReadsItBackAndListsIt() {
         app.buttons["Add task"].tap()
-        let field = app.textViews["New task"]
+        let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("write the chapter p1")
         // The readback names what will be saved before anything is.
@@ -382,8 +382,8 @@ final class LumennaUITests: XCTestCase {
 
     func testQuickAddPassesAnAccessibilityAudit() throws {
         app.buttons["Add task"].tap()
-        XCTAssertTrue(app.textViews["New task"].waitForExistence(timeout: 5))
-        app.textViews["New task"].typeText("call mum friday")
+        XCTAssertTrue(app.textViews["Task"].waitForExistence(timeout: 5))
+        app.textViews["Task"].typeText("call mum friday")
         // The iPad keyboard's suggestion bar is the system's, and the audit finds unnamed text
         // in it; the iPhone's is excused by name (TUIPredictionViewCell). Hidden, the sheet
         // is what is judged.
@@ -608,7 +608,7 @@ final class LumennaUITests: XCTestCase {
 
         cell(containing: "Work").tap()
         app.buttons["Add task"].tap()
-        let field = app.textViews["New task"]
+        let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         // Quick add starts with the project, so the task lands in it.
         field.typeText("ship the release")

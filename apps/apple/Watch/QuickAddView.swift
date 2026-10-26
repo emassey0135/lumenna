@@ -19,8 +19,8 @@ struct QuickAddView: View {
         let line = core.app.view.line
         return List {
             // Named explicitly: with text in it, a field's title gives way to the text.
-            TextField("Task", text: $text)
-                .accessibilityLabel("Task")
+            TextField(QuickAddText.label, text: $text)
+                .accessibilityLabel(QuickAddText.label)
                 .onChange(of: text) { _, text in typed(text) }
             // After the line is entered, what could finish its last word, beside it.
             CompletionOffer(text: $text, syntax: .quickAdd)
@@ -31,10 +31,10 @@ struct QuickAddView: View {
                 // is caught here.
                 Text(readback).font(.footnote)
             }
-            Button("Add") { add() }
+            Button(QuickAddText.add) { add() }
                 .disabled(blank)
         }
-        .navigationTitle("New Task")
+        .navigationTitle(QuickAddText.title)
         .onAppear {
             // The line opens with what the place shown adds, there to be seen and changed.
             core.app.send(.typing(.open))

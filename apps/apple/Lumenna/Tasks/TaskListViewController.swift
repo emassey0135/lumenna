@@ -28,11 +28,11 @@ struct TaskListScreen: View {
             List {
                 Section {
                     if model.filters {
-                        TextField("Filter", text: $model.filter, prompt: Text("#Work & overdue"), axis: .vertical)
+                        TextField(QuickAddText.filter, text: $model.filter, prompt: Text(QuickAddText.filterHint), axis: .vertical)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .focused($typing)
-                            .accessibilityLabel("Filter")
+                            .accessibilityLabel(QuickAddText.filter)
                             .onSubmit {
                                 typing = false
                                 // Typing is silent; finishing the filter says what it found.

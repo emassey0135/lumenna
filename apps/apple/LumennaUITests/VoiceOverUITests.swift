@@ -29,7 +29,7 @@ final class VoiceOverUITests: XCTestCase {
         if tasks.exists { tasks.tap() } else { app.typeKey("2", modifierFlags: .command) }
         for text in texts {
             app.buttons["Add task"].tap()
-            let field = app.textViews["New task"]
+            let field = app.textViews["Task"]
             XCTAssertTrue(field.waitForExistence(timeout: 5))
             field.typeText(text)
             app.buttons["Add"].tap()

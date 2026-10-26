@@ -37,8 +37,8 @@ struct MacTaskListScreen: View {
             if model.filters {
                 // The filter language, which completes: a strip beneath, and a list on Down.
                 CompletingLine(app: model.core.app, syntax: .filter, text: $model.filter) {
-                    TextField("Filter", text: $model.filter, prompt: Text("#Work & overdue, or search: words"))
-                        .accessibilityLabel("Filter")
+                    TextField(QuickAddText.filter, text: $model.filter, prompt: Text(QuickAddText.filterHint))
+                        .accessibilityLabel(QuickAddText.filter)
                         .focused($filterFocused)
                         .onSubmit {
                             // Typing is silent; finishing the filter says what it found, then goes to it.

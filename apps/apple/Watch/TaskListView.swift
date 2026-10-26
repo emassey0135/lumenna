@@ -29,9 +29,9 @@ struct TaskListView: View {
             List {
                 // Wherever the phone has one: every place of tasks but the trash.
                 if model.filters {
-                    TextField("Filter", text: $model.filter, prompt: example("#Work & overdue"))
+                    TextField(QuickAddText.filter, text: $model.filter, prompt: example(QuickAddText.filterHint))
                         .textInputAutocapitalization(.never)
-                        .accessibilityLabel("Filter")
+                        .accessibilityLabel(QuickAddText.filter)
                     CompletionOffer(text: $model.filter, syntax: .filter)
                 }
                 // The readback: how the query was understood and how many it found, or what is

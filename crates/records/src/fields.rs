@@ -736,6 +736,9 @@ pub struct QuickAddWords {
     pub nothing_to_complete: String,
     /// The button or menu that offers what could come next.
     pub show_completions: String,
+    /// How a line that completes offers what fits, where a platform says it as the field's help:
+    /// "Down arrow offers what could come next."
+    pub completes: String,
 }
 
 /// What quick add and a list's filter say (`QuickAddWords`), in sentence case where `sentence`.
@@ -754,6 +757,7 @@ pub fn quick_add_words(sentence: bool) -> QuickAddWords {
         filter_hint: "#Work & overdue, or search: words".to_owned(),
         nothing_to_complete: "Nothing to complete here.".to_owned(),
         show_completions: c("Show Completions"),
+        completes: "Down arrow offers what could come next.".to_owned(),
     }
 }
 

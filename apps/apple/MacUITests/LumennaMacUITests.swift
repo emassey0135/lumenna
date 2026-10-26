@@ -57,7 +57,7 @@ final class LumennaMacUITests: XCTestCase {
 
     private func addTask(_ text: String) {
         app.typeKey("n", modifierFlags: .command)
-        let field = app.textFields["New task"]
+        let field = app.textFields["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         enter(text, into: field)
         app.buttons["Add"].click()
