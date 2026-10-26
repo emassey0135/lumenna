@@ -35,9 +35,11 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
   that kind (`lumenna-define-action`, `lumenna-act-kind`); `.` offers them all by title, and a
   key the row does not offer refuses with the app's sentence (`Run`, `lumenna--refuse`). A key
   of the shared table is the core's whole: `d` sends `Key("delete")` on the row put in hand
-  (`lumenna-press`), and what it runs (`keys::runs`) is never listed here. The key reaches only
-  a row in hand, so a task's own buffer runs the details' Delete or Delete from Trash, and a
-  refusal there is the details' (`Details(Run)`). Sounds key on the
+  (`lumenna-press`), and what it runs (`keys::what_runs`) is never listed here; so do RET on the
+  day (`open`) and a task's `b`, `m`, `s` and `w` (`lumenna-define-command`). In a task's own
+  buffer the command goes to the details' task (`Details(Key)`), and a refusal there is the
+  details' (`Details(Run)`). `W` stays the row's own action, one Stop Waiting per task waited
+  for, so the person chooses which. Sounds key on the
   action's `subject/kind`; a key's is learnt from the question it opens (`asking.action`), so an
   immediate one plays none until a turn names what ran. Not transient: Emacsvox reads a transient by asking
   whether its command was called interactively, and Emacs 31's transient wraps each command, so

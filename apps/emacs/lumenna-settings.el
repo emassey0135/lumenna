@@ -340,22 +340,20 @@ they come: a pairing's steps arrive by themselves, in TURN."
       (unless (equal code lumenna--code-shown)
         (setq lumenna--code-shown code)
         (let ((words (plist-get devices :words)))
-          (message "%s %s: %s" (plist-get words :waiting) (plist-get words :my_code) code))))
+          (message "%s %s" (plist-get words :waiting) (plist-get pairing :mine_line)))))
     (let ((shown (append (plist-get pairing :words) nil)))
       (when (and shown (not (equal shown lumenna--words-asked)))
         (setq lumenna--words-asked shown)
         ;; Asked after the process filter has returned: a question from inside it
         ;; would hold up every other message.
-        (run-at-time 0 nil #'lumenna--ask-words screen shown (plist-get devices :words))))))
+        (run-at-time 0 nil #'lumenna--ask-words screen (plist-get pairing :matching) (plist-get devices :words))))))
 
 (add-hook 'lumenna-turned-functions #'lumenna--pairing-turned)
 
-(defun lumenna--ask-words (screen shown words)
-  "Ask whether SHOWN, the three words, match the other device's; tell SCREEN.
-WORDS are pairing's, the core's."
-  (let* ((matched (yes-or-no-p
-                   (lumenna--prompt (format "%s %s" (plist-get words :match_message) (string-join shown ", "))
-                                    (plist-get words :match_title)))))
+(defun lumenna--ask-words (screen matching words)
+  "Ask MATCHING, whether the three words match the other device's; tell SCREEN.
+MATCHING is the question whole and WORDS are pairing's, the core's both."
+  (let* ((matched (yes-or-no-p (lumenna--prompt matching (plist-get words :match_title)))))
     (lumenna-send (list :Devices (list :Pair (list :Confirm (if matched t :json-false)))) screen)))
 
 ;;;; Backups, export and import

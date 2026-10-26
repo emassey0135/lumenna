@@ -25,6 +25,7 @@ import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
+import { words } from "./words";
 
 export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   const { screen } = props;
@@ -53,7 +54,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   const act = (event: ShellEvent) => void send(event);
 
   /** Presses a shared key on the row `id`, with that row in hand. */
-  const onRow = async (id: string, pressed: "delete" | "toggle") => {
+  const onRow = async (id: string, pressed: string) => {
     await send({ tag: "Focus", value0: id });
     act(keyPressed(pressed));
   };
@@ -65,15 +66,15 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
     filterField.current.select();
   });
 
-  // The Task menu's commands, on the task in hand here, before the details' copy of them. A
-  // row without the action is the app's to refuse, in the core's words.
-  const onSelected = (...kinds: ActionKind[]) => () => {
+  // The Task menu's commands, on the task in hand here, before the details' copy of them: what
+  // each runs, or why it runs nothing, is the core's.
+  const onSelected = (id: string) => () => {
     if (!inHand) return false;
-    act({ tag: "Run", value0: kinds });
+    act(keyPressed(id));
   };
-  useCommand("mark-done", onSelected(ActionKind.MarkDone, ActionKind.MarkNotDone), 1);
-  useCommand("put-in-block", onSelected(ActionKind.PutInBlock), 1);
-  useCommand("move-to-project", onSelected(ActionKind.MoveToProject), 1);
+  useCommand("mark-done", onSelected("mark-done"), 1);
+  useCommand("put-in-block", onSelected("put-in-block"), 1);
+  useCommand("move-to-project", onSelected("move-to-project"), 1);
 
   const keys = (event: KeyboardEvent) => {
     const id = rowKey(event);
@@ -115,11 +116,11 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
       <h2>{screen.title}</h2>
       {!trash && (
         <CompletingField
-          label="Filter"
+          label={words().quickAdd.filter}
           value={filter}
           syntax={Syntax.Filter}
           inputRef={filterField}
-          placeholder="#Work & overdue, or search: words"
+          placeholder={words().quickAdd.filterHint}
           onChange={(text) => {
             setFilter(text);
             void send({ tag: "Filter", value0: text });

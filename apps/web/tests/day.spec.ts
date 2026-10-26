@@ -22,7 +22,7 @@ async function place(page: Page, name: RegExp) {
 }
 
 async function addBlock(page: Page, title: string, at: string, repeat = "") {
-  await page.getByRole("button", { name: "Add block" }).click();
+  await page.getByRole("button", { name: "New block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await expect(form.getByRole("textbox", { name: "Name", exact: true })).toBeFocused();
   await form.getByRole("textbox", { name: "Name", exact: true }).fill(title);
@@ -89,7 +89,7 @@ test("a command a trashed task does not offer is refused in the core's words, no
   await page.keyboard.press("Alt+Shift+KeyK");
   const live = page.locator('[aria-live="polite"]');
   await expect(live).toContainText("That does not apply here.");
-  await expect(live).not.toContainText("No task is selected.");
+  await expect(live).not.toContainText("No task selected");
 });
 
 test("the day opens with its summary, and a block added there is listed", async ({ page }) => {
@@ -244,7 +244,7 @@ test("a new block starts at the next whole hour today, and when the day starts o
   // — worked out before and after the form opens, in case the hour turns over in between.
   const next = () => `${String(Math.max(8, Math.min(new Date().getHours() + 1, 23))).padStart(2, "0")}:00`;
   const before = next();
-  await page.getByRole("button", { name: "Add block" }).click();
+  await page.getByRole("button", { name: "New block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   const starts = form.getByRole("textbox", { name: "Starts at" });
   await expect(starts).not.toHaveValue("");
@@ -261,7 +261,7 @@ test("a new block starts at the next whole hour today, and when the day starts o
 test("a block's day and start have the browser's pickers beside their lines, which fill them", async ({ page }) => {
   await open(page);
   await place(page, /^Blocks/);
-  await page.getByRole("button", { name: "Add block" }).click();
+  await page.getByRole("button", { name: "New block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await form.getByLabel("Choose a day").fill("2030-01-15");
   await expect(form.getByRole("textbox", { name: "Day", exact: true })).toHaveValue("2030-01-15");

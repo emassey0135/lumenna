@@ -17,6 +17,8 @@ use lumenna_app::keys::KeyGroup;
 use boltffi::export;
 use lumenna_host::Lumenna;
 use lumenna_records::{LumennaError, PickerWords};
+// Imported, not named by their paths, for BoltFFI as above.
+use lumenna_records::fields::{DetailsWords, QuickAddWords};
 
 mod app;
 mod clock;
@@ -71,4 +73,48 @@ pub fn picker_words() -> PickerWords {
         hours: case(words.hours),
         minutes: case(words.minutes),
     }
+}
+
+/// What quick add and a list's filter say, every label and button, in sentence case.
+#[export]
+pub fn quick_add_words() -> QuickAddWords {
+    lumenna_records::fields::quick_add_words(true)
+}
+
+/// What the task details say around their form, every label and button, in sentence case.
+#[export]
+pub fn details_words() -> DetailsWords {
+    lumenna_records::fields::details_words(true)
+}
+
+/// What is said once a backup is taken into a folder of the person's: "Backed up to Documents
+/// as lumenna-2026-10-26.lumbak".
+#[export]
+pub fn backed_up_to(folder: String, name: String) -> String {
+    lumenna_records::fields::backed_up_to(&folder, &name)
+}
+
+/// What is said when a backup failed, its reason after where there is one.
+#[export]
+pub fn backup_failed(reason: String) -> String {
+    lumenna_records::words::backup_failed(&reason)
+}
+
+/// What a browser calls itself when it pairs, from the names its user agent gives: "Firefox on
+/// Windows".
+#[export]
+pub fn browser_device_name(browser: String, system: String) -> String {
+    lumenna_records::words::browser_device_name(&browser, &system)
+}
+
+/// How many a pick offers: "1 choice", "3 choices".
+#[export]
+pub fn choice_count(count: u32) -> String {
+    lumenna_records::words::choice_count(count as usize)
+}
+
+/// What a pick with nothing in it says.
+#[export]
+pub fn nothing_to_choose() -> String {
+    lumenna_records::words::nothing_to_choose()
 }

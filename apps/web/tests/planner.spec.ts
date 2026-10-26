@@ -42,7 +42,7 @@ async function place(page: Page, name: RegExp) {
 }
 
 async function addBlock(page: Page, title: string, start: string, minutes: number, kind?: "Break") {
-  await page.getByRole("button", { name: "Add block" }).click();
+  await page.getByRole("button", { name: "New block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill(title);
   await form.getByRole("textbox", { name: "Starts at" }).fill(start);
@@ -229,14 +229,14 @@ test("Plan the day lists each sitting with why, and plans again around one turne
   await expect(day.getByRole("row", { name: /^Email/ })).toHaveCount(0);
 });
 
-test("a task's history is under its own heading on its screen, and never in its row", async ({ page }) => {
+test("a task's history is under its own heading on its screen, in the core's words, and never in its row", async ({ page }) => {
   await open(page);
   await add(page, "Water plants");
   const row = page.getByRole("main").getByRole("row", { name: /^Water plants/ });
   await row.click();
   const details = page.getByRole("complementary", { name: "Task details" });
   const history = details.getByRole("region", { name: "History" });
-  await expect(history.getByRole("listitem").first()).toBeVisible();
+  await expect(history).toContainText("made");
   await expect(row).not.toHaveAccessibleName(/made|sitting/);
   await axe(page);
 });

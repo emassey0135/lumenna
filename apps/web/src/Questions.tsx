@@ -32,6 +32,7 @@ import { CompletingField } from "./Completing";
 import { DayPicker } from "./Pickers";
 import { send } from "./session";
 import { SwatchMark } from "./Swatch";
+import { words } from "./words";
 
 /**
  * Which of `options` to go ahead with: an alert dialog, Cancel first and focused. `answer` hears
@@ -114,7 +115,7 @@ export function Questions(props: { asking: ShownAsking | null; form: (action: Ac
           cancel={cancel}
         />
       ) : (
-        <PickQuestion key={key} heading={question.title} items={asking.lines ?? []} yes={question.yes ?? ""} cancel={cancel} />
+        <PickQuestion key={key} heading={question.title} items={asking.lines ?? []} count={asking.count} yes={question.yes ?? ""} cancel={cancel} />
       )}
     </Modal>
   );
@@ -181,14 +182,14 @@ function TextQuestion(props: {
   );
 }
 
-function PickQuestion(props: { heading: string; items: ShownChoice[]; yes: string; cancel: () => void }) {
+function PickQuestion(props: { heading: string; items: ShownChoice[]; count: string; yes: string; cancel: () => void }) {
   const [chosen, setChosen] = useState<Key | null>(null);
   const [problem, setProblem] = useState<string | undefined>();
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (chosen === null) {
-      setProblem(props.items.length ? "Choose one first." : "There is nothing to choose.");
+      setProblem(props.items.length ? "Choose one first." : words().nothingToChoose);
       return;
     }
     void send({ tag: "Answer", value0: { tag: "Picked", id: String(chosen), length: null } });
@@ -218,14 +219,17 @@ function PickQuestion(props: { heading: string; items: ShownChoice[]; yes: strin
         >
           <Input />
           <Text slot="description" className="quiet">
-            {props.items.length === 1 ? "1 to choose from." : `${props.items.length} to choose from.`} Type part of one to
-            narrow them.
+            {props.count}. Type part of one to narrow them.
           </Text>
           <FieldError>{problem}</FieldError>
           <Popover>
             <ListBox>
               {(item: ShownChoice) => (
-                <ListBoxItem textValue={item.text} style={{ paddingInlineStart: `${0.5 + (item.depth ?? 0)}em` }}>
+                <ListBoxItem
+                  textValue={item.text}
+                  aria-label={item.level ? `${item.text}, ${item.level}` : undefined}
+                  style={{ paddingInlineStart: `${0.5 + (item.depth ?? 0)}em` }}
+                >
                   <SwatchMark swatch={item.swatch} />
                   {item.reason ? (
                     <>

@@ -154,14 +154,12 @@ A day that does not offer it says the app's sentence."
   (lumenna--day-act "clear_day"))
 
 (defun lumenna--day-activate (row)
-  "RET on ROW: edit a block, open a sitting's task, add a block in free time,
-put a cancelled day back."
-  (pcase (plist-get row :role)
-    ("block" (lumenna-act-edit))
-    ("assignment" (lumenna-act-edit))
-    ("free" (lumenna-act-kind '("add_block")))
-    ("cancelled" (lumenna-act-restore))
-    (_ (message "%s" (plist-get row :text)))))
+  "RET on ROW, the core's Enter (`open'): edit a block, open a sitting's task,
+add a block in free time, put a cancelled day back.  The day's heading and
+now are lines to hear again."
+  (if (member (plist-get row :role) '("summary" "now"))
+      (message "%s" (plist-get row :text))
+    (lumenna-press "open")))
 
 (defun lumenna-day-show (date)
   "Show DATE, any date phrase, in this day buffer: as Go to Day would."
@@ -232,7 +230,7 @@ A new block asks its essentials in turn; a block changed asks which field.
 Refused, the core's reason is said and a field asked for again."
   (let* ((form (plist-get lumenna--view :block_form))
          (fields (append (plist-get form :fields) nil))
-         (new (and (equal (plist-get form :yes) "Add") (not (plist-get form :refusal)))))
+         (new (and (lumenna--true (plist-get form :adding)) (not (plist-get form :refusal)))))
     (condition-case nil
         (progn
           (if new

@@ -16,7 +16,7 @@ async function place(page: Page, name: RegExp) {
 }
 
 async function addBlock(page: Page, title: string, at: string, day?: string) {
-  await page.getByRole("button", { name: "Add block" }).click();
+  await page.getByRole("button", { name: "New block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill(title);
   if (day) await form.getByRole("textbox", { name: "Day", exact: true }).fill(day);
@@ -149,6 +149,7 @@ test("with reminders off in this browser nothing is said, and a default the core
   await addBlock(page, "Deep work", "9:00", "2030-01-15");
   await page.getByRole("button", { name: "Settings" }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("tab", { name: "Reminders" }).click();
   await settings.getByRole("checkbox", { name: "Reminders on this device" }).focus();
   await page.keyboard.press("Space");
   await expect(settings.getByRole("checkbox", { name: "Reminders on this device" })).not.toBeChecked();

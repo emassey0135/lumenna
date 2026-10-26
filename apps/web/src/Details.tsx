@@ -20,11 +20,12 @@ import {
   TextArea,
   TextField,
 } from "react-aria-components";
-import { actOn, byKind } from "./actions";
+import { actOn } from "./actions";
 import { useCommand } from "./commands";
 import type { FormField, Screen, ShellEvent, TaskFields } from "./core";
-import { ActionKind, FieldKind } from "./core";
+import { FieldKind } from "./core";
 import { send } from "./session";
+import { words } from "./words";
 
 export interface DetailsHandle {
   /** Puts focus on the first field. */
@@ -54,23 +55,23 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
   const save = () => void act({ tag: "Details", value0: { tag: "Save" } });
 
   // The Task menu's commands on the task shown, wherever it was chosen: a list's own come
-  // first (TaskList), so focus lands as its row's action does.
-  const onTask = (...kinds: ActionKind[]) => () => {
+  // first (TaskList), so focus lands as its row's action does. What each runs on the task, or
+  // why it runs nothing, is the core's (`DetailsEvent::Key`).
+  const onTask = (id: string) => () => {
     if (!details) return false;
-    const action = byKind(details.task.offered, ...kinds);
-    // A task without the action is the app's to refuse, in the core's words.
-    void act(action ? actOn({ tag: "Details" }, action) : { tag: "Details", value0: { tag: "Run", value0: kinds } });
+    void act({ tag: "Details", value0: { tag: "Key", value0: id } });
   };
-  useCommand("mark-done", onTask(ActionKind.MarkDone, ActionKind.MarkNotDone));
-  useCommand("put-in-block", onTask(ActionKind.PutInBlock));
-  useCommand("move-to-project", onTask(ActionKind.MoveToProject));
+  useCommand("mark-done", onTask("mark-done"));
+  useCommand("put-in-block", onTask("put-in-block"));
+  useCommand("move-to-project", onTask("move-to-project"));
   useCommand("save-task", () => {
     if (!details) return false;
     save();
   });
 
+  const said = words().details;
   if (!details || !fields) {
-    return <p className="quiet">No task selected</p>;
+    return <p className="quiet">{said.none}</p>;
   }
   const { task, projects, form } = details;
 
@@ -157,7 +158,7 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
 
   return (
     <Form
-      aria-label="Task details"
+      aria-label={said.title}
       onSubmit={(event) => {
         event.preventDefault();
         save();
@@ -172,10 +173,13 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
           </div>
         ),
       )}
-      <section aria-labelledby="waits-for">
-        <h3 id="waits-for">Waits for</h3>
+      <section aria-labelledby="waits-for" aria-describedby="waits-for-hint">
+        <h3 id="waits-for">{said.waits}</h3>
+        <p id="waits-for-hint" className="quiet">
+          {said.waitsHint}
+        </p>
         {task.depends.length === 0 ? (
-          <p className="quiet">Nothing.</p>
+          <p className="quiet">{said.waitsNone}</p>
         ) : (
           <ul className="plain">
             {task.depends.map((other) => (
@@ -184,23 +188,26 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
           </ul>
         )}
       </section>
-      {/* What has happened to it: on its own screen only, never in a list. */}
-      {(task.history ?? []).length > 0 && (
-        <section aria-labelledby="task-history">
-          <h3 id="task-history">History</h3>
-          <ul className="plain">
-            {(task.history ?? []).map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <TextField className="field" value={details.state} isReadOnly>
-        <Label>State</Label>
-        <Input />
-      </TextField>
+      {/* What the details list besides the form, in the core's words: its state, the rule it
+          repeats by, its history, which is on its own screen only, never in a list. What it
+          waits for is the list above. */}
+      {details.lines
+        .filter((line) => line.key !== "waits")
+        .map((line) =>
+          line.key === "state" ? (
+            <TextField key={line.key} className="field" value={line.value} isReadOnly>
+              <Label>{line.label}</Label>
+              <Input />
+            </TextField>
+          ) : (
+            <section key={line.key} aria-labelledby={`about-${line.key}`}>
+              <h3 id={`about-${line.key}`}>{line.label}</h3>
+              <p>{line.value}</p>
+            </section>
+          ),
+        )}
       <div className="buttons">
-        <Button type="submit">Save</Button>
+        <Button type="submit">{said.save}</Button>
         {(task.offered ?? []).map((action) => (
           <Button
             key={`${action.kind}:${action.other ?? ""}`}

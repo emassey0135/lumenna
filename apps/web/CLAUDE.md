@@ -55,9 +55,20 @@ pairing with `lum`.
   `Key("delete")`, `keyPressed` in `actions.ts`), sent with the row in hand (a side list's held
   first), so what they run is `keys::runs`, never a list of kinds here. A Mac's Delete key is
   Backspace to a browser: on a row there, it and Command+Backspace are the delete key too
-  (`isDelete`). A Task menu command on a row without its action is sent all the same (`Run`, or
-  the details' `Details(Run)`), for the app to refuse in the core's words; only with no task in
-  hand does the page say no task is selected.
+  (`isDelete`). Enter and the Task menu's commands are the table's too: `Key("open")` on a row,
+  `Key("mark-done")` and the rest on the row in hand, `Details(Key(id))` on the details' task, so
+  what each runs, or why it runs nothing, is the core's (`keys::what_runs`); only with no task in
+  hand does the page say so, in the details' own words.
+- **The core's fixed words are read once as the app starts** (`words.ts`, `loadWords`): quick
+  add's and the filter's (`quick_add_words`), the details' (`details_words`) and each shared
+  command's name (the key table's, which names the header's and the day toolbar's buttons).
+  What comes with the screen (a setting's, Settings' pages, pairing's, a reminder's buttons) is
+  the screen's. Words left here are the browser's alone: the folder backups, reminders on in
+  this browser, the tab already open, storage that may be evicted.
+- **Settings' tabs are the core's pages** (`SettingsView::pages`), in its order, a page's
+  settings by its keys, its caption and its buttons by id (`back-up` a download here,
+  `restore-backup`, `import`); a page a browser has nothing of (the general page's clock and
+  background) is left out, as are a device's own settings but Reminders on this device.
   The forms are drawn from the app's: the details, the block form, quick add, Settings, a
   proposal, pairing's words.
 - **A dialog that is the app's is open while the screen says so**, and closes when the app lets

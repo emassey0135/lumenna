@@ -166,7 +166,7 @@ test("a row's check box marks it done at a click, and is no part of what a scree
 test("the row in hand is not said to be selected again each time the screen is drawn", async ({ page }) => {
   await open(page);
   await page.getByRole("navigation", { name: "Places" }).getByRole("row", { name: /^Blocks/ }).click();
-  await page.getByRole("button", { name: "Add block" }).click();
+  await page.getByRole("button", { name: "New block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill("Deep work");
   await form.getByRole("textbox", { name: "Starts at" }).fill("9am");

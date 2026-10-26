@@ -10,15 +10,17 @@ import type { KeyboardEvent } from "react";
 import { Button, Input, Label, ListBox, ListBoxItem, Text, TextField } from "react-aria-components";
 import type { Selection } from "react-aria-components";
 import type { PairEvent, PairingView, PairingWords, Screen, ShortAction } from "./core";
-import { Side } from "./core";
+import { core, Side } from "./core";
 import { actOn, isDelete, keyPressed, rowHeld } from "./actions";
 import { ChooseDialog } from "./Questions";
 import { say } from "./say";
 import { send } from "./session";
+import { commandTitle } from "./words";
 
 
-/** What this browser is called on the other devices until someone renames it. */
-function browserName(): string {
+/** What this browser is called on the other devices until someone renames it: the core's words
+ * ("Firefox on Windows") for what its user agent says it is. */
+function browserName(): Promise<string> {
   const agent = navigator.userAgent;
   const browser = /Edg\//.test(agent)
     ? "Edge"
@@ -28,7 +30,7 @@ function browserName(): string {
         ? "Chrome"
         : /Safari\//.test(agent)
           ? "Safari"
-          : "Web browser";
+          : "";
   const system = /Windows/.test(agent)
     ? "Windows"
     : /CrOS/.test(agent)
@@ -42,7 +44,7 @@ function browserName(): string {
             : /Linux/.test(agent)
               ? "Linux"
               : "";
-  return system ? `${browser} on ${system}` : browser;
+  return core.browserDeviceName(browser, system);
 }
 
 /** Settings' Devices page: the paired devices, how syncing is going, and pairing. */
@@ -104,9 +106,12 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
           </p>
           <div className="buttons">
             <Button isDisabled={others === 0 || !props.devices?.syncing} onPress={() => void syncNow()}>
-              Sync now
+              {commandTitle("sync-now")}
             </Button>
-            <Button isDisabled={!words} onPress={() => void send({ tag: "Devices", value0: { tag: "Pair", value0: { tag: "Open", value0: browserName() } } })}>
+            <Button
+              isDisabled={!words}
+              onPress={() => void browserName().then((name) => send({ tag: "Devices", value0: { tag: "Pair", value0: { tag: "Open", value0: name } } }))}
+            >
               {words?.title ?? "Pair a device"}
             </Button>
             {chosen?.offered?.map((action) => (
@@ -132,12 +137,13 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
  */
 export function PairingQuestion(props: { devices: Screen["devices"] }) {
   const words = props.devices?.words;
-  const three = props.devices?.pairing?.words;
+  // The question whole, the core's: what it says, then the words in order.
+  const matching = props.devices?.pairing?.matching;
   return (
     <ChooseDialog
-      isOpen={Boolean(words && three)}
+      isOpen={Boolean(words && matching)}
       heading={words?.matchTitle ?? ""}
-      detail={words && three ? `${words.matchMessage} ${three.join(", ")}.` : ""}
+      detail={matching ?? ""}
       options={words ? [words.matchYes, words.matchNo] : []}
       answer={(index) => void pair({ tag: "Confirm", value0: index === 0 })}
     />

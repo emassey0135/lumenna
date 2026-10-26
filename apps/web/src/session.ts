@@ -191,6 +191,7 @@ function sides(s: Screen): [Side, HeldView, HTMLElement | null, (key: string | u
   const sidebar = document.querySelector<HTMLElement>(".app nav [role='treegrid']");
   const reminders = document.querySelector<HTMLElement>("[data-list='reminders']");
   const devices = document.querySelector<HTMLElement>("[data-list='devices']");
+  const due = document.querySelector<HTMLElement>("[data-list='due']");
   return [
     [Side.Sidebar, s.sidebarHeld, sidebar, (key) => (key ? sidebar?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`) ?? null : null)],
     [
@@ -204,6 +205,8 @@ function sides(s: Screen): [Side, HeldView, HTMLElement | null, (key: string | u
         null,
     ],
     [Side.Devices, s.devicesHeld, devices, (key) => (key ? devices?.querySelector<HTMLElement>(`[role="option"][data-key="${CSS.escape(key)}"]`) ?? null : null)],
+    // A reminder due's first button.
+    [Side.Due, s.dueHeld, due, (key) => (key ? due?.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"] button`) ?? null : null)],
   ];
 }
 

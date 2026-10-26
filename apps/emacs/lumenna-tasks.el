@@ -96,15 +96,17 @@ A buffer that shows it already is shown again."
   (lumenna-send (list :Filter query))
   (lumenna--follow))
 
-;; A task's actions are the row's own (`lumenna-act-kind'); these are the keys.
-(lumenna-define-action lumenna-act-put-in-block ("put_in_block")
+;; A task's commands are the shared table's, which the core runs on the row
+;; (`lumenna-press'); these are the keys.
+(lumenna-define-command lumenna-act-put-in-block "put-in-block"
   "Put the task at point in a work block, for a sitting.")
-(lumenna-define-action lumenna-act-move-to-project ("move_to_project")
+(lumenna-define-command lumenna-act-move-to-project "move-to-project"
   "Move the task at point to another project; its subtasks follow.")
-(lumenna-define-action lumenna-act-make-subtask ("make_subtask_of")
+(lumenna-define-command lumenna-act-make-subtask "make-subtask"
   "Put the task at point under another.")
-(lumenna-define-action lumenna-act-wait-for ("wait_for")
+(lumenna-define-command lumenna-act-wait-for "wait-for"
   "Say the task at point cannot start until another is done.")
+;; One Stop Waiting per task waited for: the row's own, so the person chooses.
 (lumenna-define-action lumenna-act-stop-waiting ("stop_waiting")
   "Stop the task at point waiting for one it waits for.")
 
@@ -137,9 +139,9 @@ The other keys are the task's own actions, wherever point is.
   (seq-find (lambda (field) (equal (plist-get field :key) key))
             (append (plist-get (lumenna--details) :form) nil)))
 
-(defun lumenna--field-value (field fields task)
+(defun lumenna--field-value (field fields)
   "What FIELD of the form holds in FIELDS, as a line says it.
-TASK gives what the words cannot say: a rule that repeats."
+A priority is its option's words; an empty field says so."
   (let* ((key (plist-get field :key))
          (value (plist-get fields (intern (concat ":" key)))))
     (pcase key
@@ -148,15 +150,12 @@ TASK gives what the words cannot say: a rule that repeats."
                                              (append (plist-get field :options) nil))
                                    :title)
                         id)))
-      ;; A rule the words cannot say leaves the field empty; say the rule.
-      ("repeat" (cond ((not (string-empty-p value)) value)
-                      ((plist-get task :recurrence) (format "by the rule %s" (plist-get task :recurrence)))
-                      (t "no")))
       (_ (if (or (null value) (and (stringp value) (string-empty-p value))) "none" (format "%s" value))))))
 
 (defun lumenna--task-rows ()
-  "The task's details as rows: each field of its form, what it waits for, its
-state, then its history under a heading of its own."
+  "The task's details as rows: each field of its form, then what the details
+list besides it in the core's words (its state, the rule it repeats by, what
+it waits for), its notes, and its history last."
   (let* ((details (plist-get lumenna--view :details))
          (task (plist-get details :task))
          (fields (plist-get details :fields))
@@ -165,27 +164,26 @@ state, then its history under a heading of its own."
                 (list :key title :title title :field field :value value :text (format "%s: %s" title value))))
          (shown (mapcar (lambda (field)
                           (funcall row (plist-get field :label) (plist-get field :key)
-                                   (lumenna--field-value field fields task)))
+                                   (lumenna--field-value field fields)))
                         (seq-remove (lambda (f) (equal (plist-get f :key) "notes")) form)))
          (notes (seq-find (lambda (f) (equal (plist-get f :key) "notes")) form))
-         (history (append (plist-get task :history) nil)))
+         ;; Each line the details list, worded by the app; asked for about one task, on its
+         ;; own screen, its history is never in a list.
+         (said (cl-mapcar (lambda (line words)
+                            (list :key (concat "about " (plist-get line :key)) :about (plist-get line :key)
+                                  :text (plist-get words :text) :line t))
+                          (append (plist-get details :lines) nil)
+                          (append (plist-get lumenna--lines :details) nil)))
+         (history (seq-filter (lambda (r) (equal (plist-get r :about) "history")) said)))
     (setq-local lumenna--empty nil)
     (if (null details)
         (list "No task")
       (cons (format "Task: %s" (plist-get task :title))
             (append shown
-                    (list (funcall row "Waits for" nil
-                                   (let ((d (append (plist-get task :depends) nil)))
-                                     (if d (string-join (mapcar (lambda (x) (plist-get x :title)) d) ", ") "nothing")))
-                          (funcall row "State" nil (plist-get lumenna--lines :task_state)))
+                    (seq-difference said history)
                     (and notes (list (funcall row (plist-get notes :label) "notes"
-                                              (lumenna--field-value notes fields task))))
-                    ;; Asked for about one task, on its own screen, never in a list.
-                    (and history
-                         (cons (list :key "History" :title "History" :text "History" :line t
-                                     :role "heading" :face 'lumenna-heading)
-                               (mapcar (lambda (line) (list :key (concat "History: " line) :text line :line t :depth 1))
-                                       history))))))))
+                                              (lumenna--field-value notes fields))))
+                    history)))))
 
 (defun lumenna-task-show (id)
   "Show task ID, a field per line: a screen of its own, holding the task."
@@ -313,13 +311,11 @@ a major mode of its own, as `log-edit-mode' is for a commit message."
   (message "Notes unchanged"))
 
 (defun lumenna-task-delete ()
-  "Delete this task as it offers, and leave its buffer once it is gone.
-To the trash, or from the trash for one there already, as the delete key
-does on its row.  The shared key reaches only a row in hand, so here it is
-the details' own action of either kind."
+  "Delete this task as the delete key does, and leave its buffer.
+To the trash, or from the trash for one there already: the core's."
   (interactive)
   (let ((before (lumenna-actions)))
-    (lumenna-act-kind '("delete" "delete_for_good"))
+    (lumenna-press "delete")
     ;; Moved to the trash or out of it, what the task offers changed; refused or
     ;; let go, it is as it was.
     (unless (and (lumenna--details-task) (equal before (lumenna-actions)))

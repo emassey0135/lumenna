@@ -25,9 +25,7 @@ import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
-
-/** What Enter runs: what a row is for. */
-const OPENING: ActionKind[] = [ActionKind.Edit, ActionKind.EditTask, ActionKind.AddBlock, ActionKind.RestoreDay];
+import { commandTitle } from "./words";
 
 /** Each kind of row's class, for the styles: the kind crosses as a number. */
 const KIND_CLASS: Record<DayKind, string> = {
@@ -66,9 +64,11 @@ export function Day(props: { screen: Screen }) {
   useCommand("go-to-now", () => move(DayMove.Now));
   useCommand("new-block", addBlock);
 
-  const onRow = async (key: string, kinds: ActionKind[]) => {
+  /** Runs the shared table's command `command` on the row `key`, with that row in hand: Enter is
+   *  `open`, what the row is for, the core's. */
+  const onRow = async (key: string, command: string) => {
     await send({ tag: "Focus", value0: key });
-    act({ tag: "Run", value0: kinds });
+    act(keyPressed(command));
   };
 
   const keysDown = (event: KeyboardEvent) => {
@@ -109,18 +109,19 @@ export function Day(props: { screen: Screen }) {
 
   return (
     <>
-      <h2>{day?.title ?? "Today"}</h2>
-      {/* A toolbar is one Tab stop, its buttons a press of the arrows apart (ARIA's toolbar pattern). */}
+      <h2>{day?.title ?? props.screen.title}</h2>
+      {/* A toolbar is one Tab stop, its buttons a press of the arrows apart (ARIA's toolbar pattern);
+          each named as the shared table names its command. */}
       <Toolbar className="buttons" aria-label="Day">
         <Button isDisabled={!day} onPress={() => move(DayMove.Previous)}>
-          Previous day
+          {commandTitle("previous-day")}
         </Button>
-        <Button onPress={() => move(DayMove.Today)}>Today</Button>
+        <Button onPress={() => move(DayMove.Today)}>{commandTitle("go-today")}</Button>
         <Button isDisabled={!day} onPress={() => move(DayMove.Next)}>
-          Next day
+          {commandTitle("next-day")}
         </Button>
-        <Button onPress={() => move(DayMove.Ask)}>Go to day</Button>
-        <Button onPress={addBlock}>Add block</Button>
+        <Button onPress={() => move(DayMove.Ask)}>{commandTitle("go-to-day")}</Button>
+        <Button onPress={addBlock}>{commandTitle("new-block")}</Button>
         {/* The day's own actions, wherever focus is: its summary row offers them too. */}
         <RowMenu
           label="Day actions"
@@ -144,7 +145,7 @@ export function Day(props: { screen: Screen }) {
           onSelectionChange={chosen}
           expandedKeys={expanded}
           onExpandedChange={fold}
-          onAction={(key) => void onRow(String(key), OPENING)}
+          onAction={(key) => void onRow(String(key), "open")}
         >
           {function item(node: Node<ShownDayItem>) {
             return (

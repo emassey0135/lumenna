@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { core } from "./core";
 import type { KeyGroup } from "./core";
+import { commandTitle } from "./words";
 
 /**
  * The key the web uses for each shared command, by the table's id, where it differs from the
@@ -168,7 +169,7 @@ export function KeyboardShortcuts(props: { isOpen: boolean; onClose: () => void 
   return (
     <Modal isDismissable isOpen={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
       <Dialog className="react-aria-Dialog wide">
-        <Heading slot="title">Keyboard shortcuts</Heading>
+        <Heading slot="title">{commandTitle("keyboard-help")}</Heading>
         {groups.map((group) => (
           <section key={group.id} aria-labelledby={`keys-${group.id}`}>
             <h3 id={`keys-${group.id}`}>{group.title}</h3>

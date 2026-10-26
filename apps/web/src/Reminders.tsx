@@ -51,11 +51,6 @@ export async function askToNotify(): Promise<void> {
   }
 }
 
-/** Focuses a reminder's first button in Reminders due. */
-function focusDue(id: string): void {
-  document.getElementById(`due-${id}`)?.querySelector("button")?.focus();
-}
-
 /**
  * Gives this browser's reminders while the tab is open: every twenty seconds, and on coming
  * back to the tab, the app looks for what came due since the last look, from when the tab
@@ -88,44 +83,51 @@ export function useDelivery(ready: boolean): void {
   }, [ready]);
 }
 
-/** What came due and was not dealt with, each with the core's buttons. In the banner. */
+/** A reminder's button, as its `DueEvent`, by the button's id. */
+function dueEvent(id: string, due: string): DueEvent | undefined {
+  switch (id) {
+    case "dismiss":
+      return { tag: "Dismiss", value0: due };
+    case "snooze":
+      return { tag: "Snooze", value0: due };
+    case "carry":
+      return { tag: "Carry", value0: due };
+    case "replan":
+      return { tag: "Replan", value0: due };
+    default:
+      return undefined;
+  }
+}
+
+/** What came due and was not dealt with, each with the core's buttons in the core's order. In
+ * the banner. Which reminder is in hand after a button is the app's (`dueHeld`), landed as every
+ * side list's is (session.ts). */
 export function RemindersDue(props: { due: Due[] }) {
   if (props.due.length === 0) return null;
-  const deal = async (due: Due, event: DueEvent) => {
-    const index = props.due.findIndex((d) => d.id === due.id);
+  const deal = async (event: DueEvent) => {
     const turn = await send({ tag: "Due", value0: event });
-    // Replan opens its screen, which has focus; otherwise focus goes to what took the place of
-    // the one dealt with, else out of the list that is gone.
-    if (turn.screen.proposal) return;
-    const left = turn.screen.due ?? [];
-    const next = left[Math.min(index, left.length - 1)];
-    setTimeout(() => (next ? focusDue(next.id) : document.querySelector<HTMLElement>(".app > header button")?.focus()), 0);
+    // The last one dealt with, the list is gone: focus goes out of it, to the banner.
+    if (!turn.screen.proposal && (turn.screen.due ?? []).length === 0) {
+      setTimeout(() => document.querySelector<HTMLElement>(".app > header button")?.focus(), 0);
+    }
   };
   return (
-    <section className="due" aria-labelledby="due-heading">
+    <section className="due" aria-labelledby="due-heading" data-list="due">
       <h2 id="due-heading">Reminders due</h2>
       <ul>
         {props.due.map((due) => (
-          <li key={due.id} id={`due-${due.id}`}>
+          <li key={due.id} id={`due-${due.id}`} data-key={due.id}>
             <span id={`due-text-${due.id}`}>{due.text}</span>
-            <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { tag: "Dismiss", value0: due.id })}>
-              {due.dismiss}
-            </Button>
-            {due.snooze && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { tag: "Snooze", value0: due.id })}>
-                {due.snooze}
-              </Button>
-            )}
-            {due.replan && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { tag: "Replan", value0: due.id })}>
-                {due.replan}
-              </Button>
-            )}
-            {due.carry && (
-              <Button aria-describedby={`due-text-${due.id}`} onPress={() => void deal(due, { tag: "Carry", value0: due.id })}>
-                {due.carry}
-              </Button>
-            )}
+            {due.buttons.map((button) => {
+              const event = dueEvent(button.id, due.id);
+              return (
+                event && (
+                  <Button key={button.id} aria-describedby={`due-text-${due.id}`} onPress={() => void deal(event)}>
+                    {button.title}
+                  </Button>
+                )
+              );
+            })}
           </li>
         ))}
       </ul>

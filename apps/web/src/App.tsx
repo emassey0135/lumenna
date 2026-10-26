@@ -26,6 +26,7 @@ import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { TaskList } from "./TaskList";
 import { useFolderBackups } from "./backups";
+import { commandTitle, loadWords, words } from "./words";
 
 /** The store's name in this browser: one, unless a page asks for another (`?profile=`). */
 const profile = new URLSearchParams(location.search).get("profile") ?? "default";
@@ -59,7 +60,7 @@ export function App() {
     // Open in another tab, it says so until that tab is closed, then opens here.
     core.open(profile, Comlink.proxy((why: string) => setFailure(why))).then(
       () =>
-        start().then(() => {
+        Promise.all([start(), loadWords()]).then(() => {
           setFailure(undefined);
           setReady(true);
           launchFromAddress();
@@ -218,9 +219,10 @@ export function App() {
   useCommand("next-day", dayFrom(DayMove.Next), -1);
   useCommand("go-to-now", dayFrom(DayMove.Now), -1);
   useCommand("go-to-day", dayFrom(DayMove.Ask), -1);
+  // With no task in hand anywhere, nothing runs them: the details' own words say so.
   for (const id of ["mark-done", "save-task", "put-in-block", "move-to-project"]) {
     // eslint-disable-next-line react-hooks/rules-of-hooks -- a fixed list, called in the same order every time
-    useCommand(id, () => say("No task is selected."), -1);
+    useCommand(id, () => say(words().details.none), -1);
   }
 
   if (failure) {
@@ -239,11 +241,11 @@ export function App() {
     <div className="app">
       <header>
         <h1>Lumenna</h1>
-        <Button onPress={newTask}>New task</Button>
-        <Button onPress={() => void undo(false)}>Undo</Button>
-        <Button onPress={() => void undo(true)}>Redo</Button>
-        <Button onPress={openSettings}>Settings</Button>
-        <Button onPress={() => setKeysOpen(true)}>Keyboard shortcuts</Button>
+        <Button onPress={newTask}>{commandTitle("new-task")}</Button>
+        <Button onPress={() => void undo(false)}>{commandTitle("undo")}</Button>
+        <Button onPress={() => void undo(true)}>{commandTitle("redo")}</Button>
+        <Button onPress={openSettings}>{commandTitle("settings")}</Button>
+        <Button onPress={() => setKeysOpen(true)}>{commandTitle("keyboard-help")}</Button>
         {/* In the banner, so landmark navigation does not skip it. */}
         {notice && (
           <p className="notice" role="note">
@@ -264,7 +266,7 @@ export function App() {
           <TaskList screen={screen} onOpen={() => details.current?.focus()} />
         )}
       </main>
-      <aside aria-label="Task details">
+      <aside aria-label={words().details.title}>
         <Details ref={details} screen={screen} />
       </aside>
       <StatusLine />

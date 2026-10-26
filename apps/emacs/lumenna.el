@@ -817,7 +817,7 @@ One task's buffer offers the task's, whatever field point is on.")
 (defun lumenna--side ()
   "The side list this buffer lists, as the app names it."
   (pcase lumenna--held
-    (:sidebar_held "Sidebar") (:reminders_held "Reminders") (:devices_held "Devices")))
+    (:sidebar_held "Sidebar") (:reminders_held "Reminders") (:devices_held "Devices") (:due_held "Due")))
 
 (defun lumenna--hold (row)
   "Put ROW in hand, the app's way: this list's row, or a side list's."
@@ -895,15 +895,27 @@ DOC is its documentation."
 (lumenna-define-action lumenna-act-edit ("edit" "edit_task")
   "Open the form of what is at point: a task's details, a block's fields.")
 (defun lumenna-press (key)
-  "Press KEY, a key of the shared keyboard table (\"delete\"), on the row at point.
+  "Press KEY, a command of the shared table (\"delete\"), on the row at point.
 What it runs there is the core's, the same on every app; a row it runs
-nothing on says why in the app's words."
+nothing on says why in the app's words.  A task's buffer presses it on the
+details' task, which no row holds."
   (let ((row (lumenna--row-here)))
-    (when (or lumenna--actions-function (null row)) (user-error "Nothing to do here"))
+    (unless (or lumenna--actions-function row) (user-error "Nothing to do here"))
     (setq lumenna--acted-on row lumenna--acting nil)
-    (lumenna--hold row)
-    (lumenna-send (list :Key key))
+    (if lumenna--actions-function
+        (lumenna-send (list :Details (list :Key key)))
+      (lumenna--hold row)
+      (lumenna-send (list :Key key)))
     (lumenna--follow)))
+
+(defmacro lumenna-define-command (name id doc)
+  "Define NAME, a command pressing ID of the shared table on the row at point.
+What ID runs is the core's (`keys::what_runs').  DOC is its documentation."
+  (declare (indent 2) (doc-string 3))
+  `(defun ,name ()
+     ,doc
+     (interactive)
+     (lumenna-press ,id)))
 
 (defun lumenna-act-delete ()
   "Delete what is at point, as the core says the delete key does.
@@ -1211,23 +1223,17 @@ its own actions; a heading's adds another.
 
 (defun lumenna--place-rows ()
   "The app's places, its sidebar, then Settings, as rows.
-What sits under a folded row, deeper than it until the next at its depth, is
-left out."
-  (let ((folded (append (plist-get lumenna--view :sidebar_folded) nil))
-        (under nil)
-        rows)
+What the app folded away under a collapsed row (`:hidden') is left out."
+  (let (rows)
     (dolist (entry (append (plist-get lumenna--view :sidebar) nil))
-      (let ((depth (or (plist-get entry :depth) 0)))
-        (when (and under (<= depth under)) (setq under nil))
-        (unless under
-          (push (list :key (plist-get entry :key) :text (plist-get entry :text)
-                      :title (plist-get entry :title)
-                      :depth depth :place (plist-get entry :kind)
-                      :actions (plist-get entry :offered) :swatch (plist-get entry :swatch)
-                      :role (if (plist-get (plist-get entry :kind) :Group) "heading" "place")
-                      :state (and (lumenna--true (plist-get entry :archived)) ["archived"]))
-                rows)
-          (when (member (plist-get entry :key) folded) (setq under depth)))))
+      (unless (lumenna--true (plist-get entry :hidden))
+        (push (list :key (plist-get entry :key) :text (plist-get entry :text)
+                    :title (plist-get entry :title)
+                    :depth (or (plist-get entry :depth) 0) :place (plist-get entry :kind)
+                    :actions (plist-get entry :offered) :swatch (plist-get entry :swatch)
+                    :role (if (plist-get (plist-get entry :kind) :Group) "heading" "place")
+                    :state (and (lumenna--true (plist-get entry :archived)) ["archived"]))
+              rows)))
     (cons "Lumenna"
           (nreverse (cons (list :key "Settings" :title "Settings" :place '(:Place "Settings")) rows)))))
 
