@@ -757,6 +757,10 @@ fn elsewhere() -> LumennaError {
     LumennaError::SyncElsewhere { reason: "another process is syncing this device already".to_owned() }
 }
 
+/// How long a round asked of the holder is waited for: a device out of reach is waited for.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+const HOLDER_WAIT: Duration = Duration::from_secs(120);
+
 /// Asks the process holding the endpoint for a round, over the command surface it serves,
 /// or `None` if none answers.
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -764,14 +768,25 @@ fn ask_holder(directory: &Path) -> Option<Result<SyncReport>> {
     use std::io::{BufRead, BufReader, Write};
     let mut connection = crate::endpoint::connect(directory)?;
     // A round with a device out of reach waits for it; give it time.
-    connection.set_read_timeout(Some(Duration::from_secs(120))).ok()?;
+    connection.set_read_timeout(Some(HOLDER_WAIT)).ok()?;
     connection.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"sync\"}\n").ok()?;
     let mut reader = BufReader::new(connection);
     // Anything before the reply is a notification, pushed while the round ran.
     loop {
         let mut line = String::new();
-        if reader.read_line(&mut line).ok()? == 0 {
-            return None;
+        match reader.read_line(&mut line) {
+            Ok(0) => return None,
+            Ok(_) => {}
+            // The holder answered, and then not in time: said so, not taken for a round under
+            // way elsewhere, which is what nothing answering means.
+            Err(error) if matches!(error.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock) => {
+                return Some(Err(LumennaError::new(format!(
+                    "the process syncing this device did not finish the round within {} seconds; \
+                     it goes on syncing, and the next round may reach what this one did not",
+                    HOLDER_WAIT.as_secs()
+                ))));
+            }
+            Err(_) => return None,
         }
         let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
         if message.get("id").is_none() {

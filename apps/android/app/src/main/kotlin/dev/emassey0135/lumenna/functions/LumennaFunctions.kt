@@ -280,7 +280,7 @@ abstract class LumennaFunctions : AppFunctionService() {
         Assistant.dayPlanApplied(assist("apply_day_plan", Assistant.dayPlan("proposal", proposal), Assistant.dayPlanSittings("accepted", accepted)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
-    @AppFunctionInstruction("Undoes the last change made on this device, whoever made it: an app, `lum`, or an assistant.")
+    @AppFunctionInstruction("Undoes the last change made on this device, whoever made it: an app, a command, or an assistant.")
     suspend fun undo(): ChangeMade =
         Assistant.changeMade(assist("undo"))
 

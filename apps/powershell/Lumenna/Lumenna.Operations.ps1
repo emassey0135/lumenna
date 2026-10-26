@@ -1116,7 +1116,7 @@ function Undo-LumennaChange {
     Undo
 
     .DESCRIPTION
-    Undoes the last change made on this device, whoever made it: an app, `lum`, or an assistant.
+    Undoes the last change made on this device, whoever made it: an app, a command, or an assistant.
 
     .PARAMETER Profile
     The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.

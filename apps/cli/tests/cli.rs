@@ -128,6 +128,50 @@ fn a_row_number_from_the_wrong_listing_says_so() {
 }
 
 #[test]
+fn each_kind_keeps_its_own_last_listing_so_a_task_and_a_block_are_both_numbered() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "first"]);
+    lum.ok(&["task", "add", "second"]);
+    lum.ok(&["block", "add", "Deep work", "--at", "9am", "--minutes", "60"]);
+    lum.ok(&["task", "list"]);
+    lum.ok(&["block", "list"]);
+    let out = lum.ok(&["assign", "2", "--block", "1"]);
+    assert!(out.contains("second") && out.contains("Deep work"), "{out}");
+    // A listing of one kind with nothing in it is that kind's last listing.
+    lum.ok(&["task", "list", "p1"]);
+    assert!(lum.fails(&["task", "done", "1"]).contains("showed none"));
+    assert!(lum.ok(&["block", "show", "1"]).contains("Deep work"), "the blocks are still numbered");
+}
+
+#[test]
+fn a_command_that_fails_under_json_says_why_in_json() {
+    let lum = Lum::new();
+    let ran = lum.run(&["--json", "task", "show", "nothing-like-it"]);
+    assert!(!ran.ok);
+    let said: serde_json::Value = serde_json::from_str(&ran.stdout).unwrap_or_else(|e| panic!("{e}: {}", ran.stdout));
+    assert_eq!(said["version"], 1);
+    assert_eq!(said["error"]["kind"], "failed");
+    assert!(said["error"]["reason"].as_str().unwrap().contains("nothing-like-it"), "{said}");
+}
+
+#[test]
+fn a_blank_title_and_a_priority_past_four_are_refused_on_the_command_line_too() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "Essay"]);
+    lum.ok(&["task", "list"]);
+    assert!(lum.fails(&["task", "edit", "1", "--title", ""]).contains("a task needs a title"));
+    assert!(lum.fails(&["task", "edit", "1", "--priority", "5"]).contains("Priority takes 1 to 4"));
+    assert!(lum.fails(&["block", "add", " ", "--at", "9am", "--minutes", "30"]).contains("a block needs a name"));
+}
+
+#[test]
+fn deleting_a_label_that_is_not_there_is_refused_before_anything_is_asked() {
+    let lum = Lum::new();
+    assert!(lum.fails(&["label", "rm", "nowhere"]).contains("nowhere"));
+    assert!(lum.fails(&["device", "unpair", "ABCD"]).contains("no paired device"));
+}
+
+#[test]
 fn identifier_prefixes_work_like_git() {
     let lum = Lum::new();
     lum.ok(&["task", "add", "review PR"]);
@@ -705,7 +749,9 @@ fn an_export_comes_back_through_import_without_the_trash() {
     lum.ok(&["task", "list"]);
     lum.ok(&["task", "rm", "2"]);
 
-    let file = lum.path().join("export.json");
+    // Beside the profile: an export inside it could write over the store.
+    let beside = tempfile::tempdir().unwrap();
+    let file = beside.path().join("export.json");
     lum.ok(&["export", "--output", file.to_str().unwrap()]);
     let json = std::fs::read_to_string(&file).unwrap();
     assert!(json.contains("\"format\": \"lumenna-export\""));
@@ -805,7 +851,8 @@ fn undo_keeps_what_has_changed_since_and_says_so() {
 
     // A later title change from outside this device's history — an import stands in for one
     // merged from another device.
-    let export = lum.path().join("now.json");
+    let beside = tempfile::tempdir().unwrap();
+    let export = beside.path().join("now.json");
     lum.ok(&["export", "--output", export.to_str().unwrap()]);
     let changed = std::fs::read_to_string(&export).unwrap().replace("review the PR", "review PR 42");
     std::fs::write(&export, changed).unwrap();
@@ -1364,57 +1411,177 @@ fn complete_offers_what_the_quick_add_field_and_the_store_offer() {
     assert!(lum.ok(&["complete", "label", "x"]).contains("no completions"));
 }
 
-/// The command that does each of the app's row actions, so the CLI does everything the app
-/// does. Exhaustive, with no catch-all arm: a new `ActionKind` fails to compile here until a
-/// command does it, or it is said here why no command needs to.
+/// The commands that do what an action of `kind` does, each run in turn on a copy of the
+/// store [`Seeded`] made, `{name}` standing for one of its records. An exhaustive match, so a
+/// new kind does not compile until a command does it.
 fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static str]] {
     use lumenna_host::ActionKind as K;
     match kind {
-        K::MarkDone => &[&["task", "done"]],
-        K::MarkNotDone => &[&["task", "undone"]],
-        K::Edit => &[&["task", "edit"], &["block", "edit"]],
-        K::EditTask => &[&["task", "edit"]],
-        K::PutInBlock | K::AssignTask => &[&["assign"]],
-        K::MoveToProject | K::MakeSubtaskOf | K::MoveToTopLevel => &[&["task", "move"]],
-        K::WaitFor => &[&["task", "depend", "add"]],
-        K::StopWaiting => &[&["task", "depend", "rm"]],
-        K::Delete => &[&["task", "rm"], &["block", "rm"], &["project", "rm"], &["label", "rm"], &["filter", "rm"]],
-        K::Restore => &[&["task", "restore"]],
-        K::DeleteForGood | K::ErasePermanently => &[&["task", "erase"]],
-        K::EraseEverythingDeleted => &[&["erase-deleted"]],
-        K::CancelDay => &[&["block", "cancel"]],
-        K::RestoreDay => &[&["block", "restore"]],
-        K::StartTimer | K::ResumeTimer => &[&["start"]],
-        K::PauseTimer => &[&["pause"]],
-        K::StopTimer | K::LogMinutes => &[&["stop"]],
-        K::PlannedLength => &[&["length"]],
-        K::Unassign => &[&["unassign"]],
-        K::AddBlock => &[&["block", "add"]],
-        K::Rename => &[&["project", "rename"], &["label", "rename"], &["filter", "edit"], &["device", "rename"]],
-        K::NewInside | K::New => &[&["project", "add"], &["label", "add"], &["filter", "add"]],
-        K::MoveUnder => &[&["project", "move"]],
-        K::MoveUp | K::MoveDown => &[&["project", "order"], &["label", "order"], &["filter", "order"], &["reorder"]],
-        K::Weight => &[&["project", "weight"]],
-        K::Archive | K::Unarchive => &[&["project", "archive"]],
-        K::MergeInto => &[&["label", "merge"]],
-        K::Colour => &[&["project", "colour"], &["label", "colour"], &["filter", "colour"]],
-        K::ChangeQuery => &[&["filter", "edit"]],
-        K::Unpair => &[&["device", "unpair"]],
-        K::Reminders => &[&["reminder", "list"], &["reminder", "add"]],
-        K::DeliverOn => &[&["reminder", "deliver"]],
-        K::EndNow => &[&["end"]],
-        K::Extend => &[&["extend"]],
+        K::MarkDone => &[&["task", "done", "{essay}"]],
+        K::MarkNotDone => &[&["task", "done", "{essay}"], &["task", "undone", "{essay}"]],
+        K::Edit => &[&["task", "edit", "{essay}", "--title", "Essay draft"], &["block", "edit", "{now}", "--title", "Focus"]],
+        K::EditTask => &[&["task", "edit", "{essay}", "--notes", "Two pages", "--priority", "2"]],
+        K::PutInBlock | K::AssignTask => &[&["assign", "{groceries}", "--block", "{now}"]],
+        K::MoveToProject => &[&["task", "move", "{groceries}", "--project", "Home"]],
+        K::MakeSubtaskOf => &[&["task", "move", "{groceries}", "--parent", "{essay}"]],
+        K::MoveToTopLevel => &[&["task", "move", "{groceries}", "--parent", "{essay}"], &["task", "move", "{groceries}", "--top"]],
+        K::WaitFor => &[&["task", "depend", "add", "{groceries}", "--on", "{essay}"]],
+        K::StopWaiting => {
+            &[&["task", "depend", "add", "{groceries}", "--on", "{essay}"], &["task", "depend", "rm", "{groceries}", "--on", "{essay}"]]
+        }
+        K::Delete => &[
+            &["task", "rm", "{groceries}"],
+            &["block", "rm", "{tomorrow}", "--yes"],
+            &["project", "rm", "Home", "--keep-tasks"],
+            &["label", "rm", "errands", "--yes"],
+            &["filter", "rm", "Urgent", "--yes"],
+        ],
+        K::Restore => &[&["task", "rm", "{groceries}"], &["task", "restore", "{groceries}"]],
+        K::DeleteForGood => &[&["task", "rm", "{groceries}"], &["task", "erase", "{groceries}", "--yes"]],
+        K::ErasePermanently => &[&["task", "rm", "{groceries}"], &["task", "erase", "{groceries}", "--permanently", "--yes"]],
+        K::EraseEverythingDeleted => &[&["task", "rm", "{groceries}"], &["erase-deleted", "--yes"]],
+        K::CancelDay => &[&["block", "cancel", "{daily}", "--date", "tomorrow"]],
+        K::RestoreDay => &[&["block", "cancel", "{daily}", "--date", "tomorrow"], &["block", "restore", "{daily}", "--date", "tomorrow"]],
+        K::StartTimer => &[&["start", "{essay-sitting}"]],
+        K::ResumeTimer => &[&["start", "{essay-sitting}"], &["pause", "{essay-sitting}"], &["start", "{essay-sitting}"]],
+        K::PauseTimer => &[&["start", "{essay-sitting}"], &["pause", "{essay-sitting}"]],
+        K::StopTimer => &[&["start", "{essay-sitting}"], &["stop", "{essay-sitting}"]],
+        K::LogMinutes => &[&["stop", "{essay-sitting}", "--minutes", "20"]],
+        K::PlannedLength => &[&["length", "{essay-sitting}", "30"]],
+        K::Unassign => &[&["unassign", "{essay-sitting}"]],
+        K::AddBlock => &[&["block", "add", "Admin", "--at", "4pm", "--minutes", "30", "--date", "tomorrow"]],
+        K::Rename => &[
+            &["project", "rename", "Work", "Job"],
+            &["label", "rename", "calls", "phone"],
+            &["filter", "edit", "Calls", "--rename", "Phone"],
+            &["device", "rename", "{nobody}", "Laptop"],
+        ],
+        K::NewInside => &[&["project", "add", "Reading", "--parent", "Work"]],
+        K::New => &[&["project", "add", "Garden"], &["label", "add", "later"], &["filter", "add", "Soon", "p2"]],
+        K::MoveUnder => &[&["project", "move", "Home", "--parent", "Work"]],
+        K::MoveUp => &[
+            &["project", "order", "Home", "up"],
+            &["label", "order", "errands", "up"],
+            &["filter", "order", "Urgent", "up"],
+            &["reorder", "{laundry-sitting}", "up"],
+        ],
+        K::MoveDown => &[
+            &["project", "order", "Work", "down"],
+            &["label", "order", "calls", "down"],
+            &["filter", "order", "Calls", "down"],
+            &["reorder", "{essay-sitting}", "down"],
+        ],
+        K::Weight => &[&["project", "weight", "Work", "1.5"]],
+        K::Archive => &[&["project", "archive", "Home"]],
+        K::Unarchive => &[&["project", "archive", "Home"], &["project", "archive", "Home"]],
+        K::MergeInto => &[&["label", "merge", "errands", "calls"]],
+        K::Colour => &[&["project", "colour", "Work", "teal"], &["label", "colour", "calls", "red"], &["filter", "colour", "Calls", "blue"]],
+        K::ChangeQuery => &[&["filter", "edit", "Calls", "--query", "@calls & p1"]],
+        K::Unpair => &[&["device", "unpair", "{nobody}", "--yes"]],
+        K::Reminders => &[&["reminder", "list", "{essay}"], &["reminder", "add", "{essay}", "--at", "due", "--before", "10m"]],
+        K::DeliverOn => &[&["reminder", "deliver", "{reminder}", "all"]],
+        K::EndNow => &[&["end", "{now}"]],
+        K::Extend => &[&["extend", "{now}"], &["extend", "{now}", "--by", "30m"]],
         K::EndDay => &[&["end-day"]],
         K::ClearDay => &[&["clear-day"]],
-        K::CarryForward => &[&["carry"]],
-        K::CarryRest => &[&["carry-rest"]],
+        K::CarryForward => &[&["carry", "{essay-sitting}", "--to", "{tomorrow}"]],
+        K::CarryRest => &[&["carry-rest", "{now}"]],
         K::WhatNow => &[&["next"]],
         K::Replan => &[&["replan"]],
-        K::PlanDay => &[&["plan-day"]],
-        K::Skip | K::Unskip => &[&["skip"]],
-        K::TimeZone => &[&["task", "zone"], &["block", "zone"]],
+        K::PlanDay => &[&["plan-day", "tomorrow"]],
+        K::Skip => &[&["skip", "{laundry-sitting}"]],
+        K::Unskip => &[&["skip", "{laundry-sitting}"], &["skip", "{laundry-sitting}", "--again"]],
+        K::TimeZone => &[&["task", "zone", "{essay}", "Asia/Tokyo"], &["block", "zone", "{now}", "Europe/London"]],
         // Folding is a view's, and stores nothing: a listing shows every row.
         K::Expand | K::Collapse => &[],
+    }
+}
+
+/// What may be refused by the store as it stands rather than done: a device's, with none
+/// paired; a reminder's delivery, with one device; carrying, which needs a sitting left short.
+/// Each is still run, and has to reach the surface, which refuses in its own words.
+const MAY_BE_REFUSED: &[&str] = &["device", "deliver", "carry", "carry-rest"];
+
+/// A store with something for every action to act on, and its records' identifiers.
+struct Seeded {
+    lum: Lum,
+    names: std::collections::BTreeMap<&'static str, String>,
+}
+
+impl Seeded {
+    fn new() -> Self {
+        let lum = Lum::new();
+        lum.ok(&["project", "add", "Work"]);
+        lum.ok(&["project", "add", "Home"]);
+        lum.ok(&["label", "add", "calls"]);
+        lum.ok(&["label", "add", "errands"]);
+        lum.ok(&["filter", "add", "Calls", "@calls"]);
+        lum.ok(&["filter", "add", "Urgent", "p1"]);
+        lum.ok(&["task", "add", "Essay #Work @calls tomorrow at 9am"]);
+        lum.ok(&["task", "add", "Groceries #Home"]);
+        lum.ok(&["task", "add", "Laundry"]);
+        // A block under way now, so the day's own actions have one to end and extend.
+        let now = jiff::Zoned::now();
+        let minute = i64::from(now.hour()) * 60 + i64::from(now.minute());
+        let start = (minute - 10).max(0);
+        let length = (start + 120).min(23 * 60 + 59) - start;
+        let at = format!("{:02}:{:02}", start / 60, start % 60);
+        lum.ok(&["block", "add", "Now", "--at", &at, "--minutes", &length.to_string()]);
+        lum.ok(&["block", "add", "Admin", "--at", "4pm", "--minutes", "60", "--date", "tomorrow"]);
+        lum.ok(&["block", "add", "Standup", "--at", "7am", "--minutes", "15", "--repeat", "every day"]);
+        let json = |args: &[&str]| -> serde_json::Value {
+            let mut args = args.to_vec();
+            args.push("--json");
+            serde_json::from_str(&lum.ok(&args)).unwrap()
+        };
+        let mut names = std::collections::BTreeMap::new();
+        for row in json(&["task", "list"])["rows"].as_array().unwrap() {
+            let name = match row["title"].as_str().unwrap() {
+                "Essay" => "essay",
+                "Groceries" => "groceries",
+                _ => "laundry",
+            };
+            names.insert(name, row["id"].as_str().unwrap().to_owned());
+        }
+        for row in json(&["block", "list"])["rows"].as_array().unwrap() {
+            let id = row["id"].as_str().unwrap().to_owned();
+            match row["title"].as_str().unwrap() {
+                "Now" => names.insert("now", id),
+                "Admin" => names.insert("tomorrow", id),
+                _ => names.insert("daily", id.split('@').next().unwrap().to_owned()),
+            };
+        }
+        for (task, sitting) in [("essay", "essay-sitting"), ("laundry", "laundry-sitting")] {
+            let assigned = json(&["assign", &names[task], "--block", &names["now"], "--minutes", "45"]);
+            names.insert(sitting, assigned["affected"]["assignments"][0].as_str().unwrap().to_owned());
+        }
+        json(&["reminder", "add", &names["essay"], "--at", "due", "--before", "5m"]);
+        let reminders = json(&["reminder", "list", &names["essay"]]);
+        names.insert("reminder", reminders["reminders"][0]["id"].as_str().unwrap().to_owned());
+        names.insert("nobody", "0000".to_owned());
+        Self { lum, names }
+    }
+
+    /// A store of its own, a copy of this one, for one kind's commands.
+    fn copy(&self) -> Lum {
+        let copy = Lum::new();
+        for entry in std::fs::read_dir(self.lum.path()).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_file() {
+                std::fs::copy(entry.path(), copy.path().join(entry.file_name())).unwrap();
+            }
+        }
+        copy
+    }
+
+    /// `args` with each `{name}` its record's identifier.
+    fn filled(&self, args: &[&str]) -> Vec<String> {
+        args.iter()
+            .map(|arg| match arg.strip_prefix('{').and_then(|a| a.strip_suffix('}')) {
+                Some(name) => self.names.get(name).unwrap_or_else(|| panic!("no record {name}")).clone(),
+                None => (*arg).to_owned(),
+            })
+            .collect()
     }
 }
 
@@ -1433,12 +1600,20 @@ fn every_action_the_app_offers_has_a_command_that_does_it() {
         K::Replan, K::PlanDay, K::Expand, K::Collapse, K::Skip, K::Unskip, K::DeliverOn, K::TimeZone,
         K::ErasePermanently, K::EraseEverythingDeleted,
     ];
-    let lum = Lum::new();
+    let seeded = Seeded::new();
     for kind in kinds {
+        let lum = seeded.copy();
         for command in commands_for(kind) {
-            let mut args = command.to_vec();
-            args.push("--help");
-            lum.ok(&args);
+            let args = seeded.filled(command);
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
+            let ran = lum.run(&args);
+            let refusable = command.iter().any(|word| MAY_BE_REFUSED.contains(word));
+            assert!(
+                ran.ok || (refusable && ran.stderr.starts_with("lum: ") && !ran.stderr.contains("Usage:")),
+                "{kind:?}: `lum {}` failed: {}",
+                args.join(" "),
+                ran.stderr
+            );
         }
     }
 }

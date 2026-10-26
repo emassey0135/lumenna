@@ -1,6 +1,6 @@
 //! Projects, labels and saved filters are reached by name, so each needs one.
 
-use lumenna_host::Lumenna;
+use lumenna_host::{BlockEdit, BlockScope, Lumenna, NewBlock, TaskEdit};
 
 fn open() -> (tempfile::TempDir, std::sync::Arc<Lumenna>) {
     let directory = tempfile::tempdir().unwrap();
@@ -50,4 +50,33 @@ fn a_label_completes_over_what_was_typed_of_it_in_a_filter() {
     lumenna.add_label("calls").unwrap();
     let found = lumenna.complete_text("@ca", 3, lumenna_host::Syntax::Filter).unwrap();
     assert_eq!((found.start, found.end), (0, 3), "{found:?}");
+}
+
+#[test]
+fn a_blank_title_or_name_is_refused_for_a_task_a_block_or_a_device() {
+    let (_directory, lumenna) = open();
+    let task = lumenna.add_task("Essay").unwrap().affected.tasks[0].clone();
+    let blank = TaskEdit { title: Some(" ".to_owned()), ..TaskEdit::default() };
+    assert_eq!(lumenna.edit_task(&task, blank).unwrap_err().message(), "a task needs a title");
+    let new = NewBlock { title: String::new(), at: "9am".to_owned(), minutes: 60, kind: "work".to_owned(), ..NewBlock::default() };
+    assert_eq!(lumenna.add_block(new).unwrap_err().message(), "a block needs a name");
+    let block = NewBlock { title: "Deep work".to_owned(), at: "9am".to_owned(), minutes: 60, kind: "work".to_owned(), ..NewBlock::default() };
+    let series = lumenna.add_block(block).unwrap().affected.blocks[0].clone();
+    let renamed = BlockEdit { title: Some(String::new()), ..BlockEdit::default() };
+    assert_eq!(lumenna.edit_block(&series, renamed, BlockScope::Series).unwrap_err().message(), "a block needs a name");
+    assert_eq!(lumenna.rename_device("anything", "  ").unwrap_err().message(), "a device needs a name");
+}
+
+#[test]
+fn a_priority_outside_one_to_four_is_refused_in_the_automation_s_words() {
+    let (_directory, lumenna) = open();
+    let task = lumenna.add_task("Essay").unwrap().affected.tasks[0].clone();
+    for priority in [0, 5, 200] {
+        let edit = TaskEdit { priority: Some(priority), ..TaskEdit::default() };
+        let refused = lumenna.edit_task(&task, edit).unwrap_err();
+        assert_eq!(refused.message(), format!("Priority takes 1 to 4, where 1 is highest, not {priority}."));
+    }
+    let edit = TaskEdit { priority: Some(2), ..TaskEdit::default() };
+    lumenna.edit_task(&task, edit).unwrap();
+    assert_eq!(lumenna.show_task(&task).unwrap().task.priority, 2);
 }

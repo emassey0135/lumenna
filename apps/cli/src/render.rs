@@ -258,6 +258,12 @@ fn text(response: &Response, clock: Clock) {
         }
         Outcome::Plan(plan) => day(plan, clock),
         Outcome::Operations(table) => operations(table),
+        Outcome::TimerControl(shown) => {
+            println!("{}", response.announcement());
+            if shown.control.enabled {
+                println!("`lum timer toggle`: {}", shown.control.action_sentence);
+            }
+        }
         Outcome::Completions(found) => {
             println!("{}", response.announcement());
             for candidate in &found.candidates {

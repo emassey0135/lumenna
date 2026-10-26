@@ -15,6 +15,18 @@ use super::server::{Host, serve_streams};
 /// it should stop.
 const STEP: Duration = Duration::from_millis(250);
 
+/// The longest a failed listen waits before it is tried again.
+const LONGEST_WAIT: Duration = Duration::from_secs(60);
+
+/// Sleeps for `wait`, a step at a time, waking early when told to stop.
+fn sleep_unless_stopped(wait: Duration, stopping: &AtomicBool) {
+    let mut slept = Duration::ZERO;
+    while slept < wait && !stopping.load(Ordering::Relaxed) {
+        std::thread::sleep(STEP);
+        slept += STEP;
+    }
+}
+
 /// Serves the command surface at the profile's address for as long as this process holds the
 /// sync endpoint, and gives the address up when it stops holding it — so whichever process
 /// syncs is the one clients reach, and two never claim one address.
@@ -34,9 +46,30 @@ impl Endpoint {
             std::thread::Builder::new()
                 .name("lumenna-rpc".to_owned())
                 .spawn(move || {
+                    // A listen that fails is tried again later and later, to a minute apart, and
+                    // said once until one succeeds: something that cannot bind now (a path too
+                    // long, a full disk) seldom can a quarter of a second on.
+                    let mut wait = STEP;
+                    let mut said = false;
                     while !stopping.load(Ordering::Relaxed) {
                         if holding() {
-                            listen(&directory, &host, &holding, &stopping);
+                            match listen(&directory, &host, &holding, &stopping) {
+                                Ok(()) => {
+                                    wait = STEP;
+                                    said = false;
+                                }
+                                Err(error) => {
+                                    if !said {
+                                        eprintln!(
+                                            "lumenna: not serving {}: {error}",
+                                            endpoint::address(&directory).display()
+                                        );
+                                        said = true;
+                                    }
+                                    sleep_unless_stopped(wait, &stopping);
+                                    wait = (wait * 2).min(LONGEST_WAIT);
+                                }
+                            }
                         }
                         std::thread::sleep(STEP);
                     }
@@ -69,27 +102,36 @@ fn serve_client(directory: &Path, host: &Host, reader: Connection, writer: Conne
 }
 
 /// Accepts clients at the address until this process stops holding the endpoint or is told
-/// to stop.
+/// to stop; an error if it could not begin to.
+///
+/// The socket is made in a directory of its own that only this user can enter, given its
+/// permissions there, and only then moved to the address: it is never reachable by anyone
+/// else, as it was between a bind at the address and a change of its mode after. The move
+/// also replaces whatever a dead holder left at the address in one step.
 #[cfg(unix)]
-fn listen(directory: &Path, host: &Host, holding: &impl Fn() -> bool, stopping: &AtomicBool) {
-    use std::os::unix::fs::PermissionsExt;
+fn listen(directory: &Path, host: &Host, holding: &impl Fn() -> bool, stopping: &AtomicBool) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
     use std::os::unix::net::UnixListener;
 
     let path = endpoint::address(directory);
-    // This process holds the endpoint, so whatever is at the address is a dead holder's.
-    let _ = std::fs::remove_file(&path);
-    let listener = match UnixListener::bind(&path) {
-        Ok(listener) => listener,
-        Err(error) => {
-            eprintln!("lumenna: not serving {}: {error}", path.display());
-            return;
-        }
-    };
-    // Yours alone: anything that can reach it can read and change the whole store.
-    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    if listener.set_nonblocking(true).is_err() {
-        return;
-    }
+    // Short, as a socket's path has to be: no longer than the address it is moved to.
+    let private = directory.join(format!(".s{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&private);
+    std::fs::DirBuilder::new().mode(0o700).create(&private)?;
+    let made = private.join("s");
+    let bound = (|| {
+        let listener = UnixListener::bind(&made)?;
+        // Yours alone: anything that can reach it can read and change the whole store.
+        std::fs::set_permissions(&made, std::fs::Permissions::from_mode(0o600))?;
+        std::fs::rename(&made, &path)?;
+        listener.set_nonblocking(true)?;
+        Ok::<_, std::io::Error>(listener)
+    })();
+    let _ = std::fs::remove_dir_all(&private);
+    let listener = bound?;
+    // Which socket is this process's, so that giving the address up never removes one a
+    // later holder put there after this one stopped holding the endpoint.
+    let own = std::fs::symlink_metadata(&path).map(|meta| (meta.dev(), meta.ino())).ok();
     while holding() && !stopping.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, _)) => {
@@ -104,7 +146,11 @@ fn listen(directory: &Path, host: &Host, holding: &impl Fn() -> bool, stopping: 
             Err(_) => break,
         }
     }
-    let _ = std::fs::remove_file(&path);
+    let there = std::fs::symlink_metadata(&path).map(|meta| (meta.dev(), meta.ino())).ok();
+    if own.is_some() && there == own {
+        let _ = std::fs::remove_file(&path);
+    }
+    Ok(())
 }
 
 /// Accepts clients at the profile's named pipe until this process stops holding the endpoint
@@ -115,7 +161,7 @@ fn listen(directory: &Path, host: &Host, holding: &impl Fn() -> bool, stopping: 
 /// under this name first is refused rather than joined: clients would reach theirs. Waiting
 /// for a client wakes every [`STEP`] to look whether to give the pipe up.
 #[cfg(windows)]
-fn listen(directory: &Path, host: &Host, holding: &impl Fn() -> bool, stopping: &AtomicBool) {
+fn listen(directory: &Path, host: &Host, holding: &impl Fn() -> bool, stopping: &AtomicBool) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use std::os::windows::io::{FromRawHandle, OwnedHandle};
 
@@ -130,13 +176,7 @@ fn listen(directory: &Path, host: &Host, holding: &impl Fn() -> bool, stopping: 
 
     let path = endpoint::address(directory);
     let name: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
-    let security = match owner_only::Security::new() {
-        Ok(security) => security,
-        Err(error) => {
-            eprintln!("lumenna: not serving {}: {error}", path.display());
-            return;
-        }
-    };
+    let security = owner_only::Security::new()?;
     let mut first = true;
     let keep_waiting = || holding() && !stopping.load(Ordering::Relaxed);
     while keep_waiting() {
@@ -157,8 +197,7 @@ fn listen(directory: &Path, host: &Host, holding: &impl Fn() -> bool, stopping: 
             )
         };
         if handle == INVALID_HANDLE_VALUE {
-            eprintln!("lumenna: not serving {}: {}", path.display(), std::io::Error::last_os_error());
-            return;
+            return Err(std::io::Error::last_os_error());
         }
         first = false;
         let pipe = Pipe::new(unsafe { OwnedHandle::from_raw_handle(handle) });
@@ -176,6 +215,7 @@ fn listen(directory: &Path, host: &Host, holding: &impl Fn() -> bool, stopping: 
             Err(_) => {}
         }
     }
+    Ok(())
 }
 
 /// A security descriptor letting only this process's user open the pipe: anything that can
@@ -262,6 +302,55 @@ mod owner_only {
         })();
         unsafe { CloseHandle(token) };
         result
+    }
+}
+
+/// Writes `contents` to a new file at `path` that only this user can read or write: on Unix
+/// made with mode 0600, on Windows with the pipe's own owner-only access list, so it is never
+/// readable by anyone else, as one written and then restricted was in between. Whatever was at
+/// `path` is replaced.
+///
+/// # Errors
+///
+/// If the file cannot be made or written.
+pub fn write_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    // Made afresh, so the permissions it is made with are the ones it has.
+    match std::fs::remove_file(path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(path)?;
+        file.write_all(contents)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use std::os::windows::io::FromRawHandle;
+
+        use windows_sys::Win32::Foundation::{GENERIC_WRITE, INVALID_HANDLE_VALUE};
+        use windows_sys::Win32::Storage::FileSystem::{CREATE_NEW, CreateFileW, FILE_ATTRIBUTE_NORMAL};
+
+        let security = owner_only::Security::new()?;
+        let name: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let handle = unsafe {
+            CreateFileW(
+                name.as_ptr(),
+                GENERIC_WRITE,
+                0,
+                security.attributes(),
+                CREATE_NEW,
+                FILE_ATTRIBUTE_NORMAL,
+                std::ptr::null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            return Err(std::io::Error::last_os_error());
+        }
+        let mut file = unsafe { std::fs::File::from_raw_handle(handle) };
+        file.write_all(contents)
     }
 }
 

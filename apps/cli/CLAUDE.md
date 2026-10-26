@@ -13,9 +13,12 @@ real profile.
   the trash).
 - **Every noun is a subcommand group** (`lum task ...`, `lum block ...`). Verbs that act
   *across* nouns stay at the top: `plan`, `assign`, `unassign`, `start`, `pause`, `stop`.
-- **Row numbers are counted within a kind.** The last listing stores `kind<TAB>id` per line,
-  so `lum block list` then `lum assign 2 --block 1` resolves each half against the right
-  thing. `lum plan` records blocks *and* assignments, so `lum start 1` works after it.
+- **Row numbers are counted within a kind, against the last listing of that kind.** The
+  listing file stores `kind<TAB>id` per line, and a listing replaces only the kinds it lists
+  (`Profile::remember`), so `lum task list`, then `lum block list`, then `lum assign 2 --block
+  1` resolves each half against the right thing. A kind listed with nothing keeps an empty
+  line, so its numbers are refused as that listing's. `lum plan` records blocks *and*
+  assignments, so `lum start 1` works after it.
 - **The last listing is recorded from the response**, in `run` (`listing_of`), and only `Rows`
   and `Plan` write it: a mutation must not renumber what the user is working against, or
   `lum task done 1` twice would mean two different tasks.
@@ -43,6 +46,19 @@ real profile.
   a filter's from the parser's own completion, a name's from the store. The shell's completion
   (`COMPLETE=`) is clap's and offers names only; this is for a client completing what clap
   cannot see inside one argument.
+- **A question the core asks before an action is asked of the record as the surface finds it**
+  (`Lumenna::actions_of`), never one the CLI matched itself: matched its own way, nothing
+  found meant nothing asked, and the action went ahead. `lum project rm` asks the core's choice
+  of answers (trash its tasks, or keep them), unless `--keep-tasks` or `--yes` says.
+- **`--json` writes a failure as JSON too**, on standard output: `{"version", "error":
+  {"reason", "kind"}}`.
+- **`lum mcp` and `lum notify` take the automatic backup hourly** (`durability::back_up_hourly`),
+  as `lum rpc` does: each stays running.
+- **A logon task runs `lum sync-daemon --detach`** on Windows, which leaves its console as it
+  starts (writing to `sync-daemon.log` in the profile), so the window shown at logon closes and
+  closing it cannot stop the daemon; its paths are written without `\\?\`. A daemon takes
+  `daemon.lock` too, so a second is refused even while the first waits its turn for the
+  endpoint, serving nothing to ask.
 - **`build.rs` gives `lum` an 8 MiB main-thread stack on Windows**, as Linux and macOS have:
   Windows' 1 MiB overflows in clap's derived parser in a debug build as commands are added.
 - **`lum daemon install` runs `lum sync-daemon` as a service** (`service.rs`), always with
@@ -70,9 +86,10 @@ real profile.
   (`tests/mcp.rs`), another `lum` writing beside it.
 - **`lum mcp --listen [ADDR]` serves Streamable HTTP at `/mcp`** (127.0.0.1:7341 by default),
   each session a `Server::fresh`: on loopback with no token, rmcp's check answering only a
-  loopback `Host` (no rebound name, no tunnel); off loopback, or with `--require-token` behind
-  a proxy, only `Authorization: Bearer` with the device's token (`lum mcp token`,
-  `<profile>/mcp-token`, `0600`, never synced), read again per request so `--new` turns the old
+  loopback `Host` (no rebound name, no tunnel); off loopback, with `--writes` (loopback is every
+  user of the machine) or with `--require-token` behind a proxy, only `Authorization: Bearer`
+  with the device's token (`lum mcp token`, `<profile>/mcp-token`, made `0600` or owner-only on
+  Windows by `rpc::write_private`, never synced), read again per request so `--new` turns the old
   one away at once. Any request with an `Origin` is refused. No TLS. Its tests use rmcp's own
   client (`tests/mcp_http.rs`), which needs a rustls provider installed first: reqwest is built
   without one in this tree.

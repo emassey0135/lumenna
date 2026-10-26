@@ -147,8 +147,23 @@ impl Service {
     }
 
     /// The command line Task Scheduler runs, quoted for Windows.
+    ///
+    /// A logon task runs `lum` in a console window of its own, which closing would stop: so the
+    /// daemon is told to leave it as it starts (`--detach`), writing to its log instead. And its
+    /// paths are written as a person would, not in the `\\?\` form `canonicalize` gives, which
+    /// the task's command line need not understand.
     fn windows_command_line(&self) -> String {
-        self.arguments().iter().map(|a| windows_quote(a)).collect::<Vec<_>>().join(" ")
+        let mut args = vec![
+            plain_windows_path(&self.exe.display().to_string()),
+            "--profile".to_owned(),
+            plain_windows_path(&self.profile.display().to_string()),
+            "sync-daemon".to_owned(),
+        ];
+        if self.local_only {
+            args.push("--local-only".to_owned());
+        }
+        args.push("--detach".to_owned());
+        args.iter().map(|a| windows_quote(a)).collect::<Vec<_>>().join(" ")
     }
 }
 
@@ -175,6 +190,15 @@ fn xml_escape(text: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+/// A path without the `\\?\` prefix Windows' `canonicalize` gives it: `\\?\C:\x` as
+/// `C:\x`, `\\?\UNC\server\share` as `\\server\share`.
+fn plain_windows_path(path: &str) -> String {
+    if let Some(share) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{share}");
+    }
+    path.strip_prefix(r"\\?\").unwrap_or(path).to_owned()
 }
 
 /// One argument quoted the way `CommandLineToArgvW` reads it back.
@@ -489,6 +513,18 @@ mod tests {
         assert_eq!(windows_quote("C:\\Program Files\\lum.exe"), "\"C:\\Program Files\\lum.exe\"");
         assert_eq!(windows_quote("a \"b\""), "\"a \\\"b\\\"\"");
         assert_eq!(windows_quote("ends\\ "), "\"ends\\ \"");
+    }
+
+    #[test]
+    fn a_logon_task_runs_plain_paths_and_leaves_its_console() {
+        let mut windows = service();
+        windows.exe = PathBuf::from(r"\\?\C:\Program Files\Lumenna\lum.exe");
+        windows.profile = PathBuf::from(r"\\?\UNC\server\share\tasks");
+        windows.local_only = false;
+        assert_eq!(
+            windows.windows_command_line(),
+            r#""C:\Program Files\Lumenna\lum.exe" --profile \\server\share\tasks sync-daemon --detach"#
+        );
     }
 
     #[test]

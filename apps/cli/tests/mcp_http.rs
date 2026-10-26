@@ -80,9 +80,18 @@ impl Drop for Listening {
 }
 
 #[tokio::test]
-async fn on_loopback_a_client_reads_and_writes_with_no_token() {
+async fn on_loopback_a_client_reads_with_no_token_and_writes_only_with_it() {
+    let reading = Listening::start(&[]);
+    let client = ().serve(reading.client(None)).await.expect("the client connects");
+    let listed = client.call_tool(CallToolRequestParams::new("list_tasks")).await.unwrap();
+    assert_ne!(listed.is_error, Some(true), "{listed:?}");
+    client.cancel().await.unwrap();
+
+    // Loopback is every user of the machine, so changing the store asks for the token there too.
     let server = Listening::start(&["--writes"]);
-    let client = ().serve(server.client(None)).await.expect("the client connects");
+    assert_eq!(server.status_of(&[]).await, 401);
+    let token = server.lum(&["mcp", "token"]);
+    let client = ().serve(server.client(Some(&token))).await.expect("the token lets it in");
     let added = client
         .call_tool(CallToolRequestParams::new("add_task").with_arguments(serde_json::json!({ "text": "ring Sam" }).as_object().unwrap().clone()))
         .await

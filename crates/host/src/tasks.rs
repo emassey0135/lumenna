@@ -15,7 +15,7 @@ use crate::resolve::{self, order_after};
 use crate::types::{
     Announced, Change, MoveTarget, Rows, TaskDetail, TaskEdit, TaskShown,
 };
-use crate::{Lumenna, repaired};
+use crate::{Lumenna, named, repaired};
 
 /// Applies a person's edit, so it can be undone, and says what it did.
 pub(crate) fn record(store: &mut Store, change: &Edit) -> Result<Change> {
@@ -245,9 +245,19 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If no task matches `id`, or a field cannot be read.
+    /// If no task matches `id`, the title is blank, the priority is not 1 to 4, or a field
+    /// cannot be read.
     pub fn edit_task(&self, id: &str, edit: TaskEdit) -> Result<Change> {
         let now = Zoned::now();
+        if let Some(title) = &edit.title {
+            named("task", "a title", title)?;
+        }
+        // Refused, not folded into the lowest: every way in says the same as the automation's.
+        if let Some(priority) = edit.priority
+            && !(1..=4).contains(&priority)
+        {
+            return Err(LumennaError::new(format!("Priority takes 1 to 4, where 1 is highest, not {priority}.")));
+        }
         self.told(|store| {
             let snapshot = repaired(store);
             let id = resolve::task_id(&snapshot, id)?;

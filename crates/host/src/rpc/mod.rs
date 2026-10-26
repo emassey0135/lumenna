@@ -23,7 +23,7 @@ pub mod assist;
 mod endpoint;
 mod server;
 
-pub use endpoint::{Endpoint, relay};
+pub use endpoint::{Endpoint, relay, write_private};
 #[cfg(windows)]
 pub use endpoint::pipe_user;
 pub use server::{AppSession, Apps, Host, METHODS, Notify, SyncHook, TURN, serve_streams};

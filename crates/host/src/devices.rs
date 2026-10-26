@@ -16,7 +16,7 @@ use crate::types::{Announced, Change, DeviceList, DeviceView};
 /// What the device list says with nothing paired yet.
 pub(crate) const NO_DEVICES: &str = "No devices are paired yet. Pair one to sync with it.";
 use crate::words::count_line;
-use crate::{Lumenna, repaired};
+use crate::{Lumenna, named, repaired};
 
 impl Lumenna {
     /// The paired devices, this one first.
@@ -38,13 +38,26 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If no device, or more than one, matches.
+    /// If no device, or more than one, matches, or the name is blank.
     pub fn rename_device(&self, device: &str, name: &str) -> Result<Change> {
+        named("device", "a name", name)?;
         let found = self.find_device(device)?;
         self.told(|store| {
             let change = edit::rename_device(&repaired(store), found.node_id, name)?;
             record_or(store, &change, "it already has that name")
         })
+    }
+
+    /// The actions of the device `device` names, found as [`rename_device`](Self::rename_device)
+    /// and [`unpair_device`](Self::unpair_device) find it.
+    ///
+    /// # Errors
+    ///
+    /// If no device, or more than one, matches.
+    pub(crate) fn device_actions(&self, device: &str) -> Result<Vec<crate::actions::Action>> {
+        let found = self.find_device(device)?;
+        let this = Some(found.node_id) == self.this_device()?;
+        Ok(crate::actions::device(&found.name, &found.node_id.to_string(), this))
     }
 
     /// Stops syncing with a device. It keeps what it already has.

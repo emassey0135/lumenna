@@ -3,31 +3,49 @@
 //! that cannot be opened offers nothing rather than failing the shell.
 
 use std::ffi::OsStr;
+use std::path::PathBuf;
 
 use clap_complete::CompletionCandidate;
 
 use crate::profile::Profile;
 
-/// The names `list` gives that start with what has been typed, ignoring case.
-fn matching(current: &OsStr, list: impl FnOnce(&Profile) -> Option<Vec<String>>) -> Vec<CompletionCandidate> {
-    let typed = current.to_string_lossy().to_lowercase();
-    let Some(names) = Profile::open(None).ok().and_then(|profile| list(&profile)) else { return Vec::new() };
-    names.into_iter().filter(|name| name.to_lowercase().starts_with(&typed)).map(CompletionCandidate::new).collect()
+/// The names of `kind` that start with what has been typed, ignoring case, as `lum complete`
+/// gives them, from the profile the command line being completed names.
+fn matching(current: &OsStr, kind: lumenna_host::Completing) -> Vec<CompletionCandidate> {
+    let typed = current.to_string_lossy();
+    let Ok(profile) = Profile::open(profile_given().as_deref()) else { return Vec::new() };
+    let Ok(found) = profile.complete_typed(kind, &typed) else { return Vec::new() };
+    found.candidates.into_iter().map(|candidate| CompletionCandidate::new(candidate.text)).collect()
+}
+
+/// The `--profile` of the command line being completed, which the shell hands `lum` whole
+/// after `--`, so a name is offered from the store the command will open.
+fn profile_given() -> Option<PathBuf> {
+    let mut words = std::env::args_os().skip_while(|word| word != "--");
+    while let Some(word) = words.next() {
+        if word == "--profile" {
+            return words.next().map(PathBuf::from);
+        }
+        if let Some(value) = word.to_str().and_then(|word| word.strip_prefix("--profile=")) {
+            return Some(PathBuf::from(value));
+        }
+    }
+    None
 }
 
 /// Project names.
 pub(crate) fn projects(current: &OsStr) -> Vec<CompletionCandidate> {
-    matching(current, |profile| Some(profile.list_projects().ok()?.rows.into_iter().map(|row| row.title).collect()))
+    matching(current, lumenna_host::Completing::Project)
 }
 
 /// Label names.
 pub(crate) fn labels(current: &OsStr) -> Vec<CompletionCandidate> {
-    matching(current, |profile| Some(profile.list_labels().ok()?.rows.into_iter().map(|row| row.title).collect()))
+    matching(current, lumenna_host::Completing::Label)
 }
 
 /// Saved filters' names.
 pub(crate) fn filters(current: &OsStr) -> Vec<CompletionCandidate> {
-    matching(current, |profile| Some(profile.list_filters().ok()?.filters.into_iter().map(|filter| filter.name).collect()))
+    matching(current, lumenna_host::Completing::SavedFilter)
 }
 
 /// The assistant's operations, for `lum assist`.
@@ -49,6 +67,8 @@ pub(crate) enum Typed {
     Project,
     /// A label's name.
     Label,
+    /// A saved filter's name.
+    SavedFilter,
 }
 
 impl From<Typed> for lumenna_host::Completing {
@@ -58,6 +78,7 @@ impl From<Typed> for lumenna_host::Completing {
             Typed::Filter => Self::Filter,
             Typed::Project => Self::Project,
             Typed::Label => Self::Label,
+            Typed::SavedFilter => Self::SavedFilter,
         }
     }
 }

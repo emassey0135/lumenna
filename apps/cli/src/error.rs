@@ -32,6 +32,21 @@ impl std::fmt::Display for CliError {
 
 impl std::error::Error for CliError {}
 
+impl CliError {
+    /// What kind of failure, in a word, for `--json`'s error.
+    #[must_use]
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::Message(_) => "failed",
+            Self::Store(_) => "store",
+            Self::Edit(_) => "edit",
+            Self::Parse(_) => "parse",
+            Self::Recurrence(_) => "recurrence",
+            Self::Io(_) => "io",
+        }
+    }
+}
+
 macro_rules! from {
     ($variant:ident, $type:ty) => {
         impl From<$type> for CliError {

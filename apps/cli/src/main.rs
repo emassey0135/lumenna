@@ -37,7 +37,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 // The envelope `--json` writes is the one every RPC server writes.
 pub(crate) use lumenna_host::rpc::api;
-use lumenna_host::{BlockEdit, BlockScope, Direction, MoveTarget, NewBlock, TaskEdit};
+use lumenna_host::{BlockEdit, Direction, MoveTarget, NewBlock, Subject, TaskEdit};
 
 use api::{Outcome, Response};
 use error::{CliError, Result};
@@ -162,9 +162,9 @@ pub(crate) enum Command {
     Extend {
         /// A row number from `lum plan`, or the block's identifier.
         block: String,
-        /// How much longer, such as 15m.
-        #[arg(long, default_value = "15m")]
-        by: String,
+        /// How much longer, such as 30m; as much as the day's own Add Minutes when left out.
+        #[arg(long)]
+        by: Option<String>,
     },
     /// End the block under way and clear the rest of today: repeating blocks are cancelled
     /// for today, ones that happen once go to the trash. One undo brings it all back.
@@ -218,6 +218,14 @@ pub(crate) enum Command {
         /// The block to carry it to, `<series>@<date>` or a row number from `lum plan`.
         #[arg(long)]
         to: String,
+    },
+
+    /// The timer's one control, as a tile or a watch has it: what runs, or what a press would
+    /// start. With `toggle`, presses it: stops the timer running, else starts on what What
+    /// Should I Work On? offers first.
+    Timer {
+        #[command(subcommand)]
+        what: Option<TimerCommand>,
     },
 
     /// Start the timer on an assignment, or resume a paused one.
@@ -279,6 +287,10 @@ pub(crate) enum Command {
         /// Use the local network only: no relay, no lookup service.
         #[arg(long)]
         local_only: bool,
+        /// On Windows, leave the console it was started in, writing to sync-daemon.log in the
+        /// profile instead: what the logon task asks, so closing that window does not stop it.
+        #[arg(long, hide = true)]
+        detach: bool,
     },
 
     /// Your paired devices.
@@ -381,8 +393,9 @@ pub(crate) enum Command {
         #[arg(long)]
         writes: bool,
         /// Serve over HTTP instead, at http://ADDR/mcp (127.0.0.1:7341 when no address is
-        /// given), for a client that cannot start `lum` itself. Off this machine's loopback, a
-        /// client must send `Authorization: Bearer` with the token `lum mcp token` prints. There
+        /// given), for a client that cannot start `lum` itself. Off this machine's loopback, or
+        /// with --writes, a client must send `Authorization: Bearer` with the token `lum mcp
+        /// token` prints: loopback is every user of this machine. There
         /// is no TLS: off the machine, put Tailscale or a reverse proxy in front.
         #[arg(long, value_name = "ADDR", num_args = 0..=1, default_missing_value = "127.0.0.1:7341")]
         listen: Option<String>,
@@ -634,7 +647,8 @@ pub(crate) enum ProjectCommand {
         #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
         name: String,
     },
-    /// Delete a project.
+    /// Delete a project, asking whether its tasks go to the trash with it or move to the
+    /// Inbox, unless --keep-tasks or --yes says.
     Rm {
         /// The project to delete.
         #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
@@ -642,6 +656,9 @@ pub(crate) enum ProjectCommand {
         /// Keep its tasks, moved to the Inbox, instead of trashing them.
         #[arg(long)]
         keep_tasks: bool,
+        /// Trash its tasks with it without asking.
+        #[arg(long, conflicts_with = "keep_tasks")]
+        yes: bool,
     },
     /// Move a project under another, or to the top level.
     Move {
@@ -1012,6 +1029,12 @@ pub(crate) enum DaemonCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub(crate) enum TimerCommand {
+    /// Press the timer's control: stop what runs, else start on what is offered first.
+    Toggle,
+}
+
+#[derive(Debug, Subcommand)]
 pub(crate) enum SyncCommand {
     /// How syncing is going, device by device.
     Status,
@@ -1065,6 +1088,14 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             anstream::eprintln!("lum: {error}");
+            // A script reading --json gets the failure as JSON too, on standard output where
+            // it reads every answer, not only a sentence on the terminal's error stream.
+            if format == Format::Json {
+                println!("{}", serde_json::json!({
+                    "version": api::VERSION,
+                    "error": { "reason": error.to_string(), "kind": error.kind() },
+                }));
+            }
             ExitCode::FAILURE
         }
     }
@@ -1103,7 +1134,10 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
             }
         };
     }
-    if let Command::SyncDaemon { local_only } = cli.command {
+    if let Command::SyncDaemon { local_only, detach } = cli.command {
+        if detach {
+            network::detach(&profile);
+        }
         durability::back_up_if_due(&profile);
         return network::daemon(&profile, local_only);
     }
@@ -1118,8 +1152,8 @@ fn run(cli: &Cli, format: Format) -> Result<()> {
     // Row numbers count against whatever was listed last, so the listing is recorded from
     // the response rather than by each command that produces one — one place that can be
     // wrong instead of six.
-    if let Some(listing) = listing_of(&response.outcome) {
-        profile.remember(&listing);
+    if let Some((kinds, listing)) = listing_of(&response.outcome) {
+        profile.remember(&kinds, &listing);
     }
     let clock = if format == Format::Text { clock(&profile) } else { render::Clock::default() };
     render::emit(&response, format, clock);
@@ -1158,8 +1192,8 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             }
             LabelCommand::Colour { name, colour } => profile.recolour_label(name, colour_given(colour))?,
             LabelCommand::Rm { name, yes } => {
-                let asked = profile.list_labels()?.rows.into_iter().find(|r| r.title.eq_ignore_ascii_case(name.trim_start_matches('@')));
-                if !confirmed(asked.map(|r| r.actions), ActionKind::Delete, *yes, false)? {
+                let asked = profile.actions_of(Subject::Label, name)?;
+                if !confirmed(&asked, ActionKind::Delete, *yes, false)? {
                     return Ok(Response::unchanged("nothing was deleted"));
                 }
                 profile.delete_label(name)?
@@ -1178,8 +1212,8 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             }
             FilterCommand::Colour { name, colour } => Response::new(profile.recolour_filter(name, colour_given(colour))?),
             FilterCommand::Rm { name, yes } => {
-                let asked = profile.list_filters()?.filters.into_iter().find(|f| f.name.eq_ignore_ascii_case(name));
-                if !confirmed(asked.map(|f| f.actions), ActionKind::Delete, *yes, false)? {
+                let asked = profile.actions_of(Subject::Filter, name)?;
+                if !confirmed(&asked, ActionKind::Delete, *yes, false)? {
                     return Ok(Response::unchanged("nothing was deleted"));
                 }
                 Response::new(profile.delete_filter(name)?)
@@ -1212,10 +1246,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             BlockCommand::Show { id } => Response::new(profile.show_block(&profile.row(id, "block")?)?),
             BlockCommand::Edit { id, title, at, minutes, kind, repeat, date, all, extras } => {
                 let id = profile.row(id, "block")?;
-                let scope = match date {
-                    Some(date) => BlockScope::Occurrence { date: date.clone() },
-                    None => BlockScope::Series,
-                };
+                let scope = profile.block_scope(&id, date.clone(), *all, "--date <day>, or --all")?;
                 let edit = BlockEdit {
                     title: title.clone(),
                     at: at.clone(),
@@ -1231,13 +1262,6 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                     until: extras.until.clone(),
                     colour: extras.colour.clone(),
                 };
-                if scope == BlockScope::Series && !all && profile.show_block(&id)?.repeats {
-                    return Err(CliError::Message(
-                        "that block repeats; say --date <day> to change one day, or --all to \
-                         change every one"
-                            .to_owned(),
-                    ));
-                }
                 Response::new(profile.edit_block(&id, edit, scope)?)
             }
             BlockCommand::Cancel { id, date } => {
@@ -1249,9 +1273,9 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             BlockCommand::Zone { id, zone } => Response::new(profile.set_block_zone(&profile.row(id, "block")?, Some(zone.clone()))?),
             BlockCommand::Rm { id, yes } => {
                 let id = profile.row(id, "block")?;
-                let series = id.split('@').next().unwrap_or(&id).to_owned();
-                let asked = profile.list_blocks()?.rows.into_iter().find(|r| r.id.starts_with(&series));
-                if !confirmed(asked.map(|r| r.actions), ActionKind::Delete, *yes, false)? {
+                // Found as deleting it finds it, so what is asked about is what is deleted.
+                let asked = profile.actions_of(Subject::Series, &id)?;
+                if !confirmed(&asked, ActionKind::Delete, *yes, false)? {
                     return Ok(Response::unchanged("nothing was deleted"));
                 }
                 Response::new(profile.delete_block(&id)?)
@@ -1285,7 +1309,10 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::End { block } => Response::new(profile.end_block_now(&profile.row(block, "block")?)?),
         Command::Extend { block, by } => {
-            let minutes = lumenna_host::parse_minutes(by.clone())?;
+            let minutes = match by {
+                Some(by) => lumenna_host::parse_minutes(by.clone())?,
+                None => lumenna_host::day::EXTEND_MINS,
+            };
             Response::new(profile.extend_block(&profile.row(block, "block")?, minutes)?)
         }
         Command::EndDay => Response::new(profile.end_day(true)?),
@@ -1338,6 +1365,8 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         Command::Carry { assignment, to } => {
             Response::new(profile.carry_forward(&profile.row(assignment, "assignment")?, &profile.row(to, "block")?)?)
         }
+        Command::Timer { what: None } => Response::new(api::TimerShown::from(profile.timer_control(None)?)),
+        Command::Timer { what: Some(TimerCommand::Toggle) } => Response::new(profile.toggle_timer(None)?),
         Command::Start { assignment } => {
             Response::new(profile.start_timer(&profile.row(assignment, "assignment")?)?)
         }
@@ -1376,8 +1405,8 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             return network::rename_device(profile, device, name);
         }
         Command::Device(DeviceCommand::Unpair { device, yes }) => {
-            let asked = profile.devices()?.devices.into_iter().find(|d| d.name.eq_ignore_ascii_case(device) || d.node_id.starts_with(device.as_str()));
-            if !confirmed(asked.map(|d| d.actions), ActionKind::Unpair, *yes, false)? {
+            let asked = profile.actions_of(Subject::Device, device)?;
+            if !confirmed(&asked, ActionKind::Unpair, *yes, false)? {
                 return Ok(Response::unchanged("nothing was unpaired"));
             }
             return network::unpair_device(profile, device);
@@ -1426,7 +1455,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         Command::Import { file } => Response::new(profile.import(&file.display().to_string())?),
         Command::EraseDeleted { yes } => {
             let actions = lumenna_host::actions::store_actions();
-            if !confirmed(Some(actions), ActionKind::EraseEverythingDeleted, *yes, true)? {
+            if !confirmed(&actions, ActionKind::EraseEverythingDeleted, *yes, true)? {
                 return Ok(Response::unchanged("nothing was erased"));
             }
             Response::new(profile.erase_everything_deleted()?)
@@ -1478,7 +1507,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         TaskCommand::Erase { id: input, permanently: false, yes } => {
             let id = id(input)?;
             let actions = profile.show_task(&id)?.task.actions;
-            if !confirmed(Some(actions), ActionKind::DeleteForGood, *yes, true)? {
+            if !confirmed(&actions, ActionKind::DeleteForGood, *yes, true)? {
                 return Ok(Response::unchanged("nothing was deleted"));
             }
             Response::new(profile.erase_task(&id)?)
@@ -1486,7 +1515,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         TaskCommand::Erase { id: input, permanently: true, yes } => {
             let id = id(input)?;
             let actions = profile.show_task(&id)?.task.actions;
-            if !confirmed(Some(actions), ActionKind::ErasePermanently, *yes, true)? {
+            if !confirmed(&actions, ActionKind::ErasePermanently, *yes, true)? {
                 return Ok(Response::unchanged("nothing was erased"));
             }
             Response::new(profile.erase_task_permanently(&id)?)
@@ -1529,7 +1558,24 @@ fn project(profile: &Profile, command: &ProjectCommand) -> Result<Response> {
         ProjectCommand::Order { name, direction } => {
             profile.reorder_project(name, (*direction).into())?
         }
-        ProjectCommand::Rm { name, keep_tasks } => profile.delete_project(name, *keep_tasks)?,
+        ProjectCommand::Rm { name, keep_tasks, yes } => {
+            // The core's own question, whose answers are what becomes of the tasks.
+            let keep = if *keep_tasks {
+                true
+            } else if *yes {
+                false
+            } else {
+                let asked = profile.actions_of(Subject::Project, name)?;
+                match chosen(&asked, ActionKind::Delete)? {
+                    Choice::Answer(answer) => answer == "keep",
+                    Choice::Cancelled => return Ok(Response::unchanged("nothing was deleted")),
+                    // A script, or a project that asks nothing (the Inbox, refused below): as
+                    // before the question, its tasks go with it.
+                    Choice::NotAsked => false,
+                }
+            };
+            profile.delete_project(name, keep)?
+        }
         ProjectCommand::Weight { name, value } => {
             profile.weigh_project(name, lumenna_host::parse_weight(value.clone())?)?
         }
@@ -1537,18 +1583,26 @@ fn project(profile: &Profile, command: &ProjectCommand) -> Result<Response> {
     }))
 }
 
-/// What a response puts in the last listing, if anything.
+/// A listing's rows, as `(kind, identifier)`.
+type Listed = Vec<(String, String)>;
+
+/// What a response puts in the last listing, if anything: the kinds it lists, even with no
+/// row of one, and its rows.
 ///
 /// Only listings do: a mutation must not overwrite the numbering the user is working
 /// against, or `lum task done 1` twice in a row would mean two different tasks.
-fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
+fn listing_of(outcome: &Outcome) -> Option<(Vec<String>, Listed)> {
     match outcome {
         Outcome::Rows(rows) => {
-            Some(rows.rows.iter().map(|row| (row.role.clone(), row.id.clone())).collect())
+            let mut kinds = vec![rows.noun.clone()];
+            kinds.extend(rows.rows.iter().map(|row| row.role.clone()));
+            kinds.dedup();
+            Some((kinds, rows.rows.iter().map(|row| (row.role.clone(), row.id.clone())).collect()))
         }
         // Blocks and assignments are numbered within their own kinds but listed together,
         // which is what lets `lum start 1` work straight after `lum plan`.
-        Outcome::Plan(plan) => Some(
+        Outcome::Plan(plan) => Some((
+            vec!["block".to_owned(), "assignment".to_owned()],
             plan.blocks
                 .iter()
                 .flat_map(|block| {
@@ -1557,7 +1611,7 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
                     )
                 })
                 .collect(),
-        ),
+        )),
         Outcome::Change(_)
         | Outcome::Task(_)
         | Outcome::Block(_)
@@ -1582,21 +1636,23 @@ fn listing_of(outcome: &Outcome) -> Option<Vec<(String, String)>> {
         | Outcome::SyncStatus(_)
         | Outcome::Devices(_)
         | Outcome::Operations(_)
-        | Outcome::Completions(_) => None,
+        | Outcome::Completions(_)
+        | Outcome::TimerControl(_) => None,
     }
 }
 
-/// Asks the question the core puts before the action of `kind` among `actions`, when it
-/// asks one: the same words every client asks. `--yes` answers it; without a terminal to
-/// ask at, a `strict` one is refused and any other goes ahead, as a script expects.
 /// A colour named on the command line: `none` clears it.
 fn colour_given(colour: &str) -> Option<String> {
     Some(colour.to_owned()).filter(|c| !c.eq_ignore_ascii_case("none"))
 }
 
-fn confirmed(actions: Option<Vec<lumenna_host::Action>>, kind: ActionKind, yes: bool, strict: bool) -> Result<bool> {
+/// Asks the question the core puts before the action of `kind` among `actions`, the actions
+/// of the record it acts on as the surface found it, when it asks one: the same words every
+/// client asks. `--yes` answers it; without a terminal to ask at, a `strict` one is refused
+/// and any other goes ahead, as a script expects.
+fn confirmed(actions: &[lumenna_host::Action], kind: ActionKind, yes: bool, strict: bool) -> Result<bool> {
     use std::io::IsTerminal;
-    let question = actions.into_iter().flatten().find(|a| a.kind == kind).map(|a| a.question);
+    let question = actions.iter().find(|a| a.kind == kind).map(|a| a.question.clone());
     let Some(lumenna_host::Question::Confirm { title, message, .. }) = question else { return Ok(true) };
     if yes {
         return Ok(true);
@@ -1612,6 +1668,36 @@ fn confirmed(actions: Option<Vec<lumenna_host::Action>>, kind: ActionKind, yes: 
     let mut answer = String::new();
     std::io::stdin().read_line(&mut answer)?;
     Ok(answer.trim() == "yes")
+}
+
+/// What a choice of answers came to.
+enum Choice {
+    /// The answer's identifier, as the core gave it.
+    Answer(String),
+    /// The person gave none of them.
+    Cancelled,
+    /// Nothing asked: no such question, or no terminal to ask at.
+    NotAsked,
+}
+
+/// Asks the choice of answers the core puts before the action of `kind` among `actions`, at
+/// the terminal: each answer offered by its identifier, which is what is typed.
+fn chosen(actions: &[lumenna_host::Action], kind: ActionKind) -> Result<Choice> {
+    use std::io::IsTerminal;
+    let question = actions.iter().find(|a| a.kind == kind).map(|a| a.question.clone());
+    let Some(lumenna_host::Question::Choose { title, message, answers }) = question else { return Ok(Choice::NotAsked) };
+    if !std::io::stdin().is_terminal() {
+        return Ok(Choice::NotAsked);
+    }
+    let offered: Vec<String> = answers.iter().map(|a| format!("{} ({})", a.id, a.title)).collect();
+    anstream::eprint!("{title} {message} Type {}: ", offered.join(" or "));
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    let answer = answer.trim();
+    Ok(answers
+        .iter()
+        .find(|a| a.id.eq_ignore_ascii_case(answer))
+        .map_or(Choice::Cancelled, |a| Choice::Answer(a.id.clone())))
 }
 
 /// The clock a proposal is said in: this device's `clock` setting.
@@ -1666,6 +1752,8 @@ fn notify(profile: &Profile, speak: bool) -> Result<Response> {
         std::thread::sleep(std::time::Duration::from_secs(5));
     };
     println!("Saying reminders as they come due. Ctrl+C stops.");
+    // It stays running, so it keeps taking the automatic backup.
+    durability::back_up_hourly(profile.shared());
     let say = |text: &str| {
         // The bell first, so a speakup or braille user knows a reminder arrived.
         print!("\u{7}");

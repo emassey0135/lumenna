@@ -13,7 +13,7 @@ use crate::types::{
     Announced, BlockEdit, BlockScope, BlockShown, Change, Direction, NewBlock, Plan, Rows, Timer, WorkBlocks,
 };
 use crate::words::{count_line, duration, time_text};
-use crate::{Lumenna, repaired};
+use crate::{Lumenna, named, repaired};
 
 
 pub use lumenna_records::plan::WORK_BLOCK_DAYS;
@@ -86,6 +86,7 @@ impl Lumenna {
     /// If the time, date, kind or repetition cannot be read, or the block is malformed.
     pub fn add_block(&self, block: NewBlock) -> Result<Change> {
         let now = Zoned::now();
+        named("block", "a name", &block.title)?;
         self.told(|store| {
             let day = resolve::date(block.date.as_deref(), &now, repaired(store).settings.week_start)?;
             let start = resolve::time(&block.at)?;
@@ -149,6 +150,9 @@ impl Lumenna {
     /// is asked about a single day.
     pub fn edit_block(&self, id: &str, edit: BlockEdit, scope: BlockScope) -> Result<Change> {
         let now = Zoned::now();
+        if let Some(title) = &edit.title {
+            named("block", "a name", title)?;
+        }
         self.told(|store| {
             // Looked up by identifier, so every year is opened (CLAUDE.md, `load_all_years`).
             store.load_all_years()?;
@@ -276,6 +280,27 @@ impl Lumenna {
             said.notices.extend(moved.map(|first| starts_on(first, now.date())));
             Ok(said)
         })
+    }
+
+    /// Which occurrences a change to block `id` is for, where the person says so with a day or
+    /// with "every one" rather than being asked, as on a command line: one day's when `date`
+    /// is given, every one's when `every` is set, and with neither, every one's only for a
+    /// block that happens once. `how` is how this client says the two, for the refusal.
+    ///
+    /// # Errors
+    ///
+    /// If no block matches `id`, or it repeats and neither was said: which occurrences a
+    /// change means is never guessed.
+    pub fn block_scope(&self, id: &str, date: Option<String>, every: bool, how: &str) -> Result<BlockScope> {
+        if let Some(date) = date {
+            return Ok(BlockScope::Occurrence { date });
+        }
+        if !every && self.show_block(id)?.repeats {
+            return Err(LumennaError::new(format!(
+                "that block repeats; say which day to change, or that every occurrence changes ({how})"
+            )));
+        }
+        Ok(BlockScope::Series)
     }
 
     /// Holds a block to one place's time zone, by its name, or lets it float with `None`:

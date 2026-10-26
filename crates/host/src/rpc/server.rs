@@ -1,12 +1,12 @@
 //! One client's conversation: framing, the method table, pushed changes, and pairing.
 
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::{
-    BlockEdit, BlockScope, Lumenna, LumennaError, MoveTarget, NewBlock, Reach, SyncReport,
+    BlockEdit, Lumenna, LumennaError, MoveTarget, NewBlock, Reach, SyncReport,
     TaskEdit,
 };
 use serde::Serialize;
@@ -56,6 +56,7 @@ pub const METHODS: &[&str] = &[
     "task.undone",
     "task.rm",
     "task.restore",
+    "task.zone",
     "task.erase",
     "task.erase_permanently",
     "erase_everything_deleted",
@@ -71,6 +72,7 @@ pub const METHODS: &[&str] = &[
     "project.move",
     "project.order",
     "project.weight",
+    "project.colour",
     "label.add",
     "label.list",
     "label.rename",
@@ -82,6 +84,7 @@ pub const METHODS: &[&str] = &[
     "filter.list",
     "filter.edit",
     "filter.order",
+    "filter.colour",
     "filter.rm",
     "plan",
     "block.add",
@@ -91,12 +94,30 @@ pub const METHODS: &[&str] = &[
     "block.cancel",
     "block.restore",
     "block.rm",
+    "block.zone",
+    "end",
+    "extend",
+    "end_day",
+    "clear_day",
     "assign",
     "unassign",
+    "skip",
+    "reorder",
+    "carry",
+    "carry_rest",
     "length",
     "start",
     "pause",
     "stop",
+    "timer.control",
+    "timer.toggle",
+    "what_now",
+    "start_on",
+    "replan",
+    "replan.apply",
+    "day_plan",
+    "day_plan.apply",
+    "history",
     "config.get",
     "config.set",
     "undo",
@@ -113,6 +134,7 @@ pub const METHODS: &[&str] = &[
     "restore",
     "export",
     "import",
+    "reminder.give",
     "reminder.deliver",
     "reminder.due",
     "reminder.upcoming",
@@ -127,6 +149,131 @@ pub const METHODS: &[&str] = &[
     "assist.list",
     "complete",
 ];
+
+/// What a block's add and edit take beyond their own.
+const EXTRAS: [&str; 8] =
+    ["notes", "accepts_tasks", "counts_capacity", "anchored", "min_minutes", "task_filter", "until", "colour"];
+
+/// The parameters each method takes, every one of [`METHODS`] but the app's (whose are the
+/// app's to read). A name a method does not take is refused, as `assist` refuses one: a
+/// client's typo should not pass for a parameter left out.
+const TAKES: &[(&str, &[&str])] = &[
+    ("initialize", &[]),
+    ("shutdown", &[]),
+    ("task.add", &["text"]),
+    ("task.list", &["query"]),
+    ("task.show", &["id"]),
+    ("task.history", &["id"]),
+    ("task.edit", &["id", "title", "due", "repeat", "priority", "estimate", "notes", "project", "labels"]),
+    ("task.done", &["id"]),
+    ("task.undone", &["id"]),
+    ("task.rm", &["id"]),
+    ("task.restore", &["id"]),
+    ("task.zone", &["id", "zone"]),
+    ("task.erase", &["id", "confirm"]),
+    ("task.erase_permanently", &["id", "confirm"]),
+    ("erase_everything_deleted", &["confirm"]),
+    ("task.move", &["id", "parent", "project", "top"]),
+    ("task.search", &["text"]),
+    ("task.depend.add", &["id", "on"]),
+    ("task.depend.rm", &["id", "on"]),
+    ("project.add", &["name", "parent"]),
+    ("project.list", &[]),
+    ("project.rename", &["name", "to"]),
+    ("project.archive", &["name"]),
+    ("project.rm", &["name", "keep_tasks"]),
+    ("project.move", &["name", "parent"]),
+    ("project.order", &["name", "direction"]),
+    ("project.weight", &["name", "value"]),
+    ("project.colour", &["name", "colour"]),
+    ("label.add", &["name"]),
+    ("label.list", &[]),
+    ("label.rename", &["name", "to"]),
+    ("label.merge", &["from", "into"]),
+    ("label.rm", &["name"]),
+    ("label.order", &["name", "direction"]),
+    ("label.colour", &["name", "colour"]),
+    ("filter.add", &["name", "query"]),
+    ("filter.list", &[]),
+    ("filter.edit", &["name", "rename", "query"]),
+    ("filter.order", &["name", "direction"]),
+    ("filter.colour", &["name", "colour"]),
+    ("filter.rm", &["name"]),
+    ("plan", &["date"]),
+    ("block.add", &["title", "at", "minutes", "date", "kind", "repeat", "+extras"]),
+    ("block.list", &[]),
+    ("block.show", &["id"]),
+    ("block.edit", &["id", "title", "at", "minutes", "kind", "repeat", "date", "all", "+extras"]),
+    ("block.cancel", &["id", "date"]),
+    ("block.restore", &["id", "date"]),
+    ("block.rm", &["id"]),
+    ("block.zone", &["id", "zone"]),
+    ("end", &["block"]),
+    ("extend", &["block", "minutes"]),
+    ("end_day", &[]),
+    ("clear_day", &[]),
+    ("assign", &["task", "block", "date", "minutes"]),
+    ("unassign", &["assignment"]),
+    ("skip", &["assignment", "again"]),
+    ("reorder", &["assignment", "direction"]),
+    ("carry", &["assignment", "to"]),
+    ("carry_rest", &["block"]),
+    ("length", &["assignment", "minutes"]),
+    ("start", &["assignment"]),
+    ("pause", &["assignment"]),
+    ("stop", &["assignment", "minutes"]),
+    ("timer.control", &["now"]),
+    ("timer.toggle", &["now"]),
+    ("what_now", &["now"]),
+    ("start_on", &["choice", "now"]),
+    ("replan", &["clock", "pins", "now"]),
+    ("replan.apply", &["proposal", "accepted", "now"]),
+    ("day_plan", &["date", "clock", "pins", "now"]),
+    ("day_plan.apply", &["plan", "accepted", "now"]),
+    ("history", &[]),
+    ("config.get", &["key"]),
+    ("config.set", &["key", "value"]),
+    ("undo", &[]),
+    ("redo", &[]),
+    ("pair", &["code", "local_only", "name"]),
+    ("pair.confirm", &["match"]),
+    ("pair.cancel", &[]),
+    ("sync", &["local_only"]),
+    ("sync.status", &[]),
+    ("device.list", &[]),
+    ("device.rename", &["device", "name"]),
+    ("device.unpair", &["device"]),
+    ("backup", &["to"]),
+    ("restore", &["file"]),
+    ("export", &["format", "output", "force"]),
+    ("import", &["file"]),
+    ("reminder.give", &["now"]),
+    ("reminder.deliver", &["id", "on", "now"]),
+    ("reminder.due", &["since", "now"]),
+    ("reminder.upcoming", &["until"]),
+    ("reminder.list", &["target"]),
+    ("reminder.add", &["target", "anchor", "offset_mins", "saying"]),
+    ("reminder.rm", &["id"]),
+    ("reminder.dismiss", &["key", "occurrence"]),
+    ("reminder.snooze", &["key", "occurrence", "minutes"]),
+    ("assist", &["operation", "args"]),
+    ("assist.list", &[]),
+    ("complete", &["kind", "text"]),
+];
+
+/// The refusal of a parameter `method` does not take, if `params` has one. A method this
+/// does not know is left to the dispatcher, which says so in its own words.
+fn untaken(method: &str, params: &Value) -> Option<RpcError> {
+    let (_, takes) = TAKES.iter().find(|(name, _)| *name == method)?;
+    let names: Vec<&str> =
+        takes.iter().flat_map(|name| if *name == "+extras" { EXTRAS.to_vec() } else { vec![*name] }).collect();
+    let given = params.as_object()?;
+    let name = given.keys().find(|key| !names.contains(&key.as_str()))?;
+    Some(invalid(match names.as_slice() {
+        [] => format!("{method} takes nothing, so not '{name}'"),
+        _ => format!("{method} takes no '{name}'; it takes {}", names.join(", ")),
+    }))
+}
 
 /// What runs a round on the endpoint this process holds, when it holds one: a `sync` here is
 /// a request to it rather than a second endpoint.
@@ -242,11 +389,15 @@ pub fn serve_streams(
 
     let result = (|| {
         while server.running.load(Ordering::Relaxed) {
-            let Some((framing, text)) = read_message(&mut reader)? else { break };
+            let Some(message) = read_message(&mut reader)? else { break };
+            let (framing, reply) = match message {
+                Message::Text(framing, text) => (framing, handle(&server, &text)),
+                Message::Refused(framing, why) => (framing, Some(failure(&Value::Null, PARSE_ERROR, &why))),
+            };
             if let Ok(mut writer) = server.writer.lock() {
                 writer.framing = framing;
             }
-            if let Some(reply) = handle(&server, &text) {
+            if let Some(reply) = reply {
                 server.send(&reply);
             }
         }
@@ -323,14 +474,30 @@ impl Server {
     }
 }
 
+/// The longest message read, in either framing: far beyond any request, which is a few
+/// hundred bytes or a proposal handed back, and short enough that one bad header cannot have
+/// the server allocate what the machine does not have.
+const LONGEST: usize = 64 * 1024 * 1024;
+
+/// What a message read turned out to be.
+enum Message {
+    /// A request's text, in the framing it came in.
+    Text(Framing, String),
+    /// One the server will not read, and why, answered as a parse error. Its bytes are passed
+    /// over, so the next message is read from where it starts.
+    Refused(Framing, String),
+}
+
 /// Reads one message, in whichever framing it arrives in.
-fn read_message(reader: &mut impl BufRead) -> std::io::Result<Option<(Framing, String)>> {
-    let mut line = String::new();
+fn read_message(reader: &mut impl BufRead) -> std::io::Result<Option<Message>> {
     loop {
-        line.clear();
-        if reader.read_line(&mut line)? == 0 {
-            return Ok(None);
-        }
+        let Some(line) = read_line(reader)? else { return Ok(None) };
+        let Ok(line) = line else {
+            return Ok(Some(Message::Refused(
+                Framing::Lines,
+                format!("a message is longer than the {} MiB this reads", LONGEST >> 20),
+            )));
+        };
         // A byte order mark is passed over: .NET Framework writes one at the start of a child's
         // input whenever the console's code page is UTF-8, before the client has sent anything,
         // and Windows PowerShell 5.1 starts `lum rpc` so.
@@ -339,22 +506,55 @@ fn read_message(reader: &mut impl BufRead) -> std::io::Result<Option<(Framing, S
             continue;
         }
         let Some(length) = trimmed.strip_prefix("Content-Length:") else {
-            return Ok(Some((Framing::Lines, trimmed.to_owned())));
+            return Ok(Some(Message::Text(Framing::Lines, trimmed.to_owned())));
         };
         let length: usize = length.trim().parse().map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad Content-Length: {trimmed}"))
         })?;
         // Whatever other headers follow, the body starts after the blank line.
         loop {
-            let mut header = String::new();
-            if reader.read_line(&mut header)? == 0 || header.trim().is_empty() {
-                break;
+            match read_line(reader)? {
+                None => break,
+                Some(Ok(header)) if header.trim().is_empty() => break,
+                Some(_) => {}
             }
+        }
+        if length > LONGEST {
+            // Passed over rather than read, so the conversation goes on after it.
+            let skipped = std::io::copy(&mut reader.by_ref().take(length as u64), &mut std::io::sink())?;
+            if skipped < length as u64 {
+                return Ok(None);
+            }
+            return Ok(Some(Message::Refused(
+                Framing::Headers,
+                format!("a Content-Length of {length} is more than the {} MiB this reads", LONGEST >> 20),
+            )));
         }
         let mut body = vec![0_u8; length];
         reader.read_exact(&mut body)?;
-        return Ok(Some((Framing::Headers, String::from_utf8_lossy(&body).into_owned())));
+        return Ok(Some(Message::Text(Framing::Headers, String::from_utf8_lossy(&body).into_owned())));
     }
+}
+
+/// Reads one line, no longer than [`LONGEST`]: `Err` for one that was longer, whose rest is
+/// passed over up to its end; `None` at the end of the input.
+fn read_line(reader: &mut impl BufRead) -> std::io::Result<Option<std::result::Result<String, ()>>> {
+    let mut line = Vec::new();
+    let read = reader.by_ref().take(LONGEST as u64 + 1).read_until(b'\n', &mut line)?;
+    if read == 0 {
+        return Ok(None);
+    }
+    if line.len() > LONGEST {
+        let mut rest = Vec::new();
+        loop {
+            rest.clear();
+            if reader.by_ref().take(64 * 1024).read_until(b'\n', &mut rest)? == 0 || rest.ends_with(b"\n") {
+                break;
+            }
+        }
+        return Ok(Some(Err(())));
+    }
+    Ok(Some(Ok(String::from_utf8_lossy(&line).into_owned())))
 }
 
 // JSON-RPC 2.0 error codes. The first four are the specification's; the last is ours, for a
@@ -380,6 +580,10 @@ fn handle(server: &Arc<Server>, text: &str) -> Option<Value> {
         return Some(failure(&id, INVALID_REQUEST, "no method"));
     };
     let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+    if let Some(RpcError { code, message }) = untaken(method, &params) {
+        request.get("id")?;
+        return Some(failure(&id, code, &message));
+    }
 
     // A pairing answers when it is over, minutes from now, from a thread of its own; the
     // server goes on answering in the meantime — `pair.confirm` among the rest.
@@ -431,6 +635,7 @@ fn failure(id: &Value, code: i32, message: &str) -> Value {
 }
 
 /// A code and a sentence, which is all JSON-RPC carries.
+#[derive(Debug)]
 struct RpcError {
     code: i32,
     message: String,
@@ -480,7 +685,12 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             title: maybe_text(params, "title"),
             due: maybe_text(params, "due"),
             repeat: maybe_text(params, "repeat"),
-            priority: maybe_number(params, "priority")?.map(|value| u8::try_from(value).unwrap_or(u8::MAX)),
+            // Anything else is the surface's to refuse, in the words every way in uses.
+            priority: maybe_number(params, "priority")?
+                .map(|value| {
+                    u8::try_from(value).map_err(|_| failed(format!("Priority takes 1 to 4, where 1 is highest, not {value}.")))
+                })
+                .transpose()?,
             estimate: maybe_text(params, "estimate"),
             notes: maybe_text(params, "notes"),
             project: maybe_text(params, "project"),
@@ -503,6 +713,8 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "task.undone" => Response::new(l.uncomplete_task(&id()?)?),
         "task.rm" => Response::new(l.trash_task(&id()?)?),
         "task.restore" => Response::new(l.restore_task(&id()?)?),
+        // A place's zone, or null to let it float with the device's.
+        "task.zone" => Response::new(l.set_task_zone(&id()?, maybe_text(params, "zone"))?),
         "task.erase" => {
             // Nothing here can prompt, so the caller confirms instead.
             if !flag(params, "confirm") {
@@ -542,6 +754,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "project.rm" => Response::new(l.delete_project(&name()?, flag(params, "keep_tasks"))?),
         "project.move" => Response::new(l.move_project(&name()?, maybe_text(params, "parent"))?),
         "project.order" => Response::new(l.reorder_project(&name()?, way(params)?)?),
+        "project.colour" => Response::new(l.recolour_project(&name()?, colour(params))?),
         "project.weight" => {
             // A number, or the string "inherit" to go back to the parent's weight.
             let value = match params.get("value") {
@@ -558,10 +771,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "label.merge" => Response::new(l.merge_labels(&text_of(params, "from")?, &text_of(params, "into")?)?),
         "label.rm" => Response::new(l.delete_label(&name()?)?),
         "label.order" => Response::new(l.reorder_label(&name()?, way(params)?)?),
-        "label.colour" => Response::new(l.recolour_label(
-            &name()?,
-            maybe_text(params, "colour").filter(|c| !c.eq_ignore_ascii_case("none")),
-        )?),
+        "label.colour" => Response::new(l.recolour_label(&name()?, colour(params))?),
 
         "filter.add" => Response::new(l.add_filter(&name()?, &text_of(params, "query")?)?),
         "filter.list" => Response::new(l.list_filters()?),
@@ -569,6 +779,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             Response::new(l.edit_filter(&name()?, maybe_text(params, "rename"), maybe_text(params, "query"))?)
         }
         "filter.order" => Response::new(l.reorder_filter(&name()?, way(params)?)?),
+        "filter.colour" => Response::new(l.recolour_filter(&name()?, colour(params))?),
         "filter.rm" => Response::new(l.delete_filter(&name()?)?),
 
         "plan" => Response::new(l.plan(maybe_text(params, "date").filter(|d| !d.trim().is_empty()))?),
@@ -595,16 +806,8 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "block.show" => Response::new(l.show_block(&id()?)?),
         "block.edit" => {
             let block = id()?;
-            let scope = match maybe_text(params, "date") {
-                Some(date) => BlockScope::Occurrence { date },
-                None => BlockScope::Series,
-            };
             // Asked of a repeating block every time, never guessed.
-            if scope == BlockScope::Series && !flag(params, "all") && l.show_block(&block)?.repeats {
-                return Err(invalid(
-                    "that block repeats; give a 'date' to change one day, or 'all': true to change every one",
-                ));
-            }
+            let scope = l.block_scope(&block, maybe_text(params, "date"), flag(params, "all"), "'date', or 'all': true")?;
             let extras = extras(params)?;
             Response::new(l.edit_block(&block, BlockEdit {
                 title: maybe_text(params, "title"),
@@ -625,6 +828,16 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "block.cancel" => Response::new(l.cancel_occurrence(&id()?, &text_of(params, "date")?)?),
         "block.restore" => Response::new(l.restore_occurrence(&id()?, &text_of(params, "date")?)?),
         "block.rm" => Response::new(l.delete_block(&id()?)?),
+        "block.zone" => Response::new(l.set_block_zone(&id()?, maybe_text(params, "zone"))?),
+        // The day's own: the block under way ended now or given longer, the rest of today
+        // cleared, with or without the block under way.
+        "end" => Response::new(l.end_block_now(&text_of(params, "block")?)?),
+        "extend" => Response::new(l.extend_block(
+            &text_of(params, "block")?,
+            maybe_number(params, "minutes")?.unwrap_or(crate::day::EXTEND_MINS),
+        )?),
+        "end_day" => Response::new(l.end_day(true)?),
+        "clear_day" => Response::new(l.end_day(false)?),
 
         "assign" => Response::new(l.assign(
             &text_of(params, "task")?,
@@ -633,14 +846,28 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             maybe_number(params, "minutes")?,
         )?),
         "unassign" => Response::new(l.unassign(&text_of(params, "assignment")?)?),
+        // Skipped, it stays on the record; `again` plans a skipped one again.
+        "skip" => Response::new(l.skip_sitting(&text_of(params, "assignment")?, !flag(params, "again"))?),
+        "reorder" => Response::new(l.reorder_sitting(&text_of(params, "assignment")?, way(params)?)?),
+        "carry" => Response::new(l.carry_forward(&text_of(params, "assignment")?, &text_of(params, "to")?)?),
         // A number, or null to clear it.
         "length" => Response::new(l.plan_minutes(&text_of(params, "assignment")?, maybe_number(params, "minutes")?)?),
         "start" => Response::new(l.start_timer(&text_of(params, "assignment")?)?),
         "pause" => Response::new(l.pause_timer(&text_of(params, "assignment")?)?),
         "stop" => Response::new(l.stop_timer(&text_of(params, "assignment")?, maybe_number(params, "minutes")?)?),
+        // The timer's one control, as a tile or a watch shows it, and pressing it.
+        "timer.control" => Response::new(api::TimerShown::from(l.timer_control(maybe_text(params, "now"))?)),
+        "timer.toggle" => Response::new(l.toggle_timer(maybe_text(params, "now"))?),
+        "history" => Response::new(l.history()?),
 
         "config.get" => Response::new(l.settings(maybe_text(params, "key"))?),
-        "config.set" => Response::new(l.set_setting(&text_of(params, "key")?, &text_of(params, "value")?)?),
+        "config.set" => {
+            let (key, value) = (text_of(params, "key")?, text_of(params, "value")?);
+            if key == "backup-dir" && !value.trim().is_empty() {
+                whole_path(&key, &value)?;
+            }
+            Response::new(l.set_setting(&key, &value)?)
+        }
         "assist" => {
             let args = match params.get("args") {
                 None | Some(Value::Null) => serde_json::Map::new(),
@@ -653,7 +880,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "assist.list" => Response::new(api::Operations::all()),
         "complete" => {
             let kind = serde_json::from_value(params.get("kind").cloned().unwrap_or(Value::Null))
-                .map_err(|_| invalid("'kind' is required: line, filter, project or label"))?;
+                .map_err(|_| invalid("'kind' is required: line, filter, project, label or saved_filter"))?;
             Response::new(l.complete_typed(kind, &maybe_text(params, "text").unwrap_or_default())?)
         }
         "undo" => Response::new(l.undo()?),
@@ -680,8 +907,8 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "device.rename" => Response::new(l.rename_device(&text_of(params, "device")?, &name()?)?),
         "device.unpair" => Response::new(l.unpair_device(&text_of(params, "device")?)?),
 
-        "backup" => Response::new(l.backup(maybe_text(params, "to"))?),
-        "restore" => Response::new(l.restore(&text_of(params, "file")?)?),
+        "backup" => Response::new(l.backup(maybe_path(params, "to")?)?),
+        "restore" => Response::new(l.restore(&path(params, "file")?)?),
         // Without `output` the export comes back in the reply, as `content`.
         "export" => {
             let format = match maybe_text(params, "format") {
@@ -689,17 +916,15 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
                 Some(word) => crate::ExportFormat::from_word(&word)
                     .ok_or_else(|| invalid(format!("'{word}' is not a format; use json, markdown, org or ics")))?,
             };
-            let output = maybe_text(params, "output");
-            let force = flag(params, "force");
-            if let Some(output) = &output
-                && std::path::Path::new(output).exists()
-                && !force
-            {
-                return Err(failed(format!("{output} already exists; pass \"force\": true to replace it")));
+            match l.export(format, maybe_path(params, "output")?, flag(params, "force")) {
+                Ok(exported) => Response::new(exported),
+                Err(refused) if refused.message().ends_with(crate::NOT_ASKED_TO_REPLACE) => {
+                    return Err(failed(format!("{}; pass \"force\": true to replace it", refused.message())));
+                }
+                Err(refused) => return Err(refused.into()),
             }
-            Response::new(l.export(format, output, force)?)
         }
-        "import" => Response::new(l.import(&text_of(params, "file")?)?),
+        "import" => Response::new(l.import(&path(params, "file")?)?),
 
         // What a block's end offers: its short work carried to the next blocks that take it.
         "carry_rest" => Response::new(l.carry_rest_forward(&text_of(params, "block")?)?),
@@ -731,10 +956,15 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         )?),
 
         // Reminders: what to give, a target's own, and dealing with one firing.
+        // Which devices one of a target's own reminders fires on, as `reminder deliver` says it.
+        "reminder.deliver" if params.get("id").is_some() => {
+            Response::new(l.deliver_reminder(id()?, text_of(params, "on")?)?)
+        }
         // What to give now, for a client that gives this device's reminders (BTSpeak's service,
         // Emacs): only while no other process does, so a running app and a client never both
-        // say one.
-        "reminder.deliver" => {
+        // say one. Asked as `reminder.deliver` without an `id` too, its name until this one,
+        // for the clients built before it.
+        "reminder.give" | "reminder.deliver" => {
             let mut held = server.reminders.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             if held.is_none() {
                 *held = l.take_reminders()?;
@@ -747,6 +977,11 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "reminder.due" => Response::new(l.reminders_due(text_of(params, "since")?, maybe_text(params, "now"))?),
         "reminder.upcoming" => Response::new(l.upcoming_reminders(text_of(params, "until")?)?),
         "reminder.list" => Response::new(l.reminders_of(text_of(params, "target")?)?),
+        // A phrase of the person's own, as the apps take one ("tomorrow at 9am", "5m before
+        // start"), or what it counts from and how far.
+        "reminder.add" if params.get("saying").is_some() => {
+            Response::new(l.add_reminder_saying(text_of(params, "target")?, text_of(params, "saying")?)?)
+        }
         "reminder.add" => {
             let offset = match params.get("offset_mins") {
                 None | Some(Value::Null) => 0,
@@ -815,6 +1050,35 @@ fn time_style(params: &Value) -> std::result::Result<crate::TimeStyle, RpcError>
         Some("12-hour") => Ok(crate::TimeStyle::TwelveHour),
         Some(other) => Err(invalid(format!("'{other}' is not a clock; use 12-hour or 24-hour"))),
     }
+}
+
+/// A colour by name, or none for `none` or nothing.
+fn colour(params: &Value) -> Option<String> {
+    maybe_text(params, "colour").filter(|c| !c.eq_ignore_ascii_case("none"))
+}
+
+/// A file or directory, refused unless whole: a relative one would be taken against this
+/// server's working directory, which is not the client's, and land somewhere it did not mean.
+fn path(params: &Value, key: &str) -> std::result::Result<String, RpcError> {
+    let path = text_of(params, key)?;
+    whole_path(key, &path)?;
+    Ok(path)
+}
+
+fn maybe_path(params: &Value, key: &str) -> std::result::Result<Option<String>, RpcError> {
+    match maybe_text(params, key) {
+        Some(path) => whole_path(key, &path).map(|()| Some(path)),
+        None => Ok(None),
+    }
+}
+
+fn whole_path(key: &str, path: &str) -> std::result::Result<(), RpcError> {
+    if std::path::Path::new(path).is_absolute() {
+        return Ok(());
+    }
+    Err(invalid(format!(
+        "'{key}' has to be a whole path, from the root: {path} would be taken from where this server runs, not where the client is"
+    )))
 }
 
 fn maybe_text(params: &Value, key: &str) -> Option<String> {
@@ -968,4 +1232,91 @@ fn start_pairing(server: &Arc<Server>, id: Value, params: &Value) -> std::result
         });
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The methods `answer` and `handle` have an arm for, read from this file: the table
+    /// cannot leave one out without this seeing it.
+    fn answered() -> Vec<String> {
+        let source = include_str!("server.rs");
+        let start = source.find("fn answer(").expect("answer");
+        let end = start + source[start..].find("        other =>").expect("the last arm");
+        let mut methods: Vec<String> = source[start..end]
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| line.starts_with('"'))
+            .flat_map(|line| {
+                let arm = line.split("=>").next().unwrap_or_default();
+                let arm = arm.split(" if ").next().unwrap_or_default();
+                arm.split('|').map(|name| name.trim().trim_matches('"').to_owned()).collect::<Vec<_>>()
+            })
+            .collect();
+        // Answered in `handle`, before the table.
+        methods.push("pair".to_owned());
+        methods.sort();
+        methods.dedup();
+        methods
+    }
+
+    #[test]
+    fn every_method_answered_is_listed_and_every_one_listed_is_answered() {
+        let mut listed: Vec<String> =
+            METHODS.iter().filter(|m| !m.starts_with("app.")).map(|m| (*m).to_owned()).collect();
+        listed.sort();
+        assert_eq!(listed, answered());
+    }
+
+    #[test]
+    fn every_method_listed_says_what_it_takes() {
+        let mut listed: Vec<&str> = METHODS.iter().copied().filter(|m| !m.starts_with("app.")).collect();
+        let mut taken: Vec<&str> = TAKES.iter().map(|(name, _)| *name).collect();
+        listed.sort_unstable();
+        taken.sort_unstable();
+        assert_eq!(listed, taken);
+    }
+
+    #[test]
+    fn a_parameter_a_method_does_not_take_is_refused_by_name() {
+        let refused = untaken("task.edit", &json!({ "id": "0193", "titel": "Essay" })).expect("refused");
+        assert_eq!(refused.code, INVALID_PARAMS);
+        assert!(refused.message.contains("takes no 'titel'"), "{}", refused.message);
+        assert!(untaken("block.add", &json!({ "title": "Deep work", "colour": "red" })).is_none());
+        assert!(untaken("undo", &json!({ "all": true })).expect("refused").message.contains("takes nothing"));
+    }
+
+    #[test]
+    fn a_content_length_beyond_what_is_read_is_refused_and_the_next_message_still_read() {
+        let huge = LONGEST + 10;
+        let mut input = format!("Content-Length: {huge}\r\n\r\n").into_bytes();
+        input.extend(std::iter::repeat_n(b'x', huge));
+        input.extend(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"undo\"}\n");
+        let mut reader = std::io::BufReader::new(input.as_slice());
+        assert!(matches!(read_message(&mut reader).unwrap(), Some(Message::Refused(Framing::Headers, _))));
+        assert!(matches!(read_message(&mut reader).unwrap(), Some(Message::Text(Framing::Lines, text)) if text.contains("undo")));
+    }
+
+    #[test]
+    fn a_content_length_far_beyond_the_input_ends_it_without_reading_that_much() {
+        let mut reader = std::io::BufReader::new(&b"Content-Length: 99999999999999\r\n\r\n{}"[..]);
+        assert!(read_message(&mut reader).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_line_longer_than_what_is_read_is_refused() {
+        let mut input = vec![b'x'; LONGEST + 2];
+        input.extend(b"\n{\"method\":\"undo\"}\n");
+        let mut reader = std::io::BufReader::new(input.as_slice());
+        assert!(matches!(read_message(&mut reader).unwrap(), Some(Message::Refused(Framing::Lines, _))));
+        assert!(matches!(read_message(&mut reader).unwrap(), Some(Message::Text(_, text)) if text.contains("undo")));
+    }
+
+    #[test]
+    fn a_relative_path_is_refused_and_a_whole_one_taken() {
+        assert!(path(&json!({ "file": "backup.lumbak" }), "file").is_err());
+        let whole = if cfg!(windows) { r"C:\backups\b.lumbak" } else { "/backups/b.lumbak" };
+        assert_eq!(path(&json!({ "file": whole }), "file").unwrap(), whole);
+    }
 }
