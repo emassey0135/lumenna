@@ -322,8 +322,8 @@ macOS run on master alone (`full`), since most wait for one of the five macOS ru
 runs the builds and everything that blocks, Firefox included.
 
 `crates/core/tests/rows.rs` snapshots the row projection (each row's place, folding, checked
-state, speech and braille) in `tests/snapshots/`, rewritten with `UPDATE_SNAPSHOTS=1` once a
-change is meant. `crates/store/tests/convergence.rs` checks replicas reaching the same state
+state and the parts it carries; how a line is joined is the app's, tested there) in
+`tests/snapshots/`, rewritten with `UPDATE_SNAPSHOTS=1` once a change is meant. `crates/store/tests/convergence.rs` checks replicas reaching the same state
 from the same changes in different orders: the slowest suite, and the one worth running before
 believing anything about merge.
 

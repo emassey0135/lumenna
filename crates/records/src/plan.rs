@@ -133,7 +133,12 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
         .collect();
     cancelled.sort_by(|a, b| (&a.start, &a.title).cmp(&(&b.start, &b.title)));
     let mut plan = Plan {
-        announcement: format!("{day}, {}", count_line(blocks.len(), "block")),
+        // The day in words: a screen reader reads "2026-10-26" as numbers.
+        announcement: format!(
+            "{}, {}",
+            crate::words::capitalised(&lumenna_core::time::day_words(day, now.date())),
+            count_line(blocks.len(), "block")
+        ),
         notices: Vec::new(),
         date: day.to_string(),
         count: to_u32(blocks.len()),

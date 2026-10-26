@@ -31,8 +31,8 @@ pub struct TaskHistory {
     /// Anything else worth saying.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notices: Vec<String>,
-    /// What has happened to it, as parts: "3 sittings, 1 hour 30 minutes logged against a
-    /// 1-hour estimate", "put in a block twice and left".
+    /// What has happened to it, as parts: "3 sittings, 1 hour 30 minutes logged against an
+    /// estimate of 2 hours", "put in a block twice and left".
     pub history: Vec<String>,
     /// Its urgency, to one decimal place.
     pub urgency: f32,
@@ -45,7 +45,7 @@ pub struct TaskHistory {
 
 crate::announced!(TaskHistory);
 
-/// "today", "3 days", "2 weeks", "4 months", "a year".
+/// "today", "3 days ago", "2 weeks ago", "4 months ago", "1 year ago".
 fn age_words(days: i64) -> String {
     match days {
         ..1 => "today".to_owned(),
@@ -110,7 +110,14 @@ fn term_words(term: Term, task: &Task, snapshot: &Snapshot, now: &Zoned) -> (&'s
         Term::Age => ("age", format!("made {}", age_words(now.timestamp().duration_since(task.created_at).as_secs() / 86_400))),
         Term::Started => ("started", "partly worked".to_owned()),
         Term::Blocking => {
-            let waiting = snapshot.tasks.values().filter(|t| t.depends.contains(&task.id) && !t.is_deleted()).count();
+            // Those still to do: a task done since waits on nothing, as urgency counts it.
+            let facts = snapshot.facts();
+            let waiting = facts
+                .waiters_of(task.id)
+                .iter()
+                .filter_map(|id| snapshot.tasks.get(id))
+                .filter(|t| !t.is_deleted() && !facts.is_completed(t))
+                .count();
             ("blocking", format!("{} on it", match waiting { 1 => "1 task waits".to_owned(), n => format!("{n} tasks wait") }))
         }
         Term::Blocked => ("blocked", "waits on another task".to_owned()),

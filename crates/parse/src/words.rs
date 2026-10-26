@@ -156,7 +156,8 @@ pub(crate) fn sigil_name(input: &str, tokens: &[Word], at: usize, known: &[Strin
 ///
 /// The one reading of a length, for a task's estimate and a block line's `for 2h` alike;
 /// `None` for anything else, for nothing, and for more minutes than a `u32` holds.
-pub(crate) fn minutes_of(text: &str) -> Option<u32> {
+#[must_use]
+pub fn minutes_of(text: &str) -> Option<u32> {
     let mut total: u32 = 0;
     let mut rest = text;
     let mut after_hours = false;

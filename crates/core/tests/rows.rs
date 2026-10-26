@@ -1,7 +1,9 @@
-//! Snapshots of the row projection: what a task list and a day are, row by row, before any app
-//! words them. Each line is a row's depth, position, folding and checked state, then its speech
-//! and its braille, so a change to any of them shows here as a diff to read. Rewrite the
-//! snapshots after a change meant to alter them with `UPDATE_SNAPSHOTS=1`.
+//! Snapshots of the row projection: what a task list is, row by row, before any app words it.
+//! Each line is a row's depth, position, folding and checked state, then the parts it carries
+//! (title, role, states, due words and time, value), so a change to any shows here as a diff to
+//! read. How a line is joined is the app's (`lumenna_app::speech`), tested there: a sentence
+//! composed here would be one no app says. Rewrite the snapshots after a change meant to alter
+//! them with `UPDATE_SNAPSHOTS=1`.
 
 use std::path::Path;
 
@@ -10,7 +12,7 @@ use jiff::civil::{date, time};
 use lumenna_core::filter::{Context, Expr};
 use lumenna_core::id::TaskId;
 use lumenna_core::model::{
-    BlockAssignment, BlockKind, BlockRef, BlockSeries, Due, Priority, Project, Recurrence, Task, TaskCompletion,
+    Due, Priority, Project, Recurrence, Task, TaskCompletion,
 };
 use lumenna_core::order::OrderKey;
 use lumenna_core::row::Row;
@@ -21,7 +23,7 @@ fn now() -> Zoned {
     date(2026, 5, 6).at(14, 30, 0, 0).in_tz("America/New_York").unwrap()
 }
 
-/// One row as a line: its place in the tree and its state, then what speech and braille make of it.
+/// One row as a line: its place in the tree and its state, then its parts as it carries them.
 fn line(row: &Row) -> String {
     let fold = match row.expanded {
         Some(true) => " expanded",
@@ -33,7 +35,18 @@ fn line(row: &Row) -> String {
         Some(false) => " unchecked",
         None => "",
     };
-    format!("{}[{}/{}]{fold}{checked} | {} | {}", "  ".repeat(row.depth as usize), row.index, row.count, row.speech(), row.braille())
+    let states: Vec<&str> = row.state.iter().map(|s| s.speech()).collect();
+    let due_time = row.due_time.map(|t| format!("{:02}:{:02}", t.hour(), t.minute()));
+    let parts = [
+        Some(row.title.clone()),
+        Some(format!("{:?}", row.role)),
+        (!states.is_empty()).then(|| states.join(" ")),
+        row.due.clone(),
+        due_time,
+        row.value.clone(),
+    ];
+    let parts: Vec<String> = parts.into_iter().flatten().collect();
+    format!("{}[{}/{}]{fold}{checked} | {}", "  ".repeat(row.depth as usize), row.index, row.count, parts.join(" | "))
 }
 
 /// Compares `rows` with the snapshot `name`, or writes it when asked.
@@ -118,20 +131,4 @@ fn the_task_list_with_completed_subtasks_shown_reads_as_its_snapshot() {
     let now = now();
     let cx = Context::new(&world.snapshot, &now);
     snapshot("task_list_with_completed_subtasks", &world.snapshot.task_rows(&Expr::All, &cx));
-}
-
-#[test]
-fn the_day_reads_as_its_snapshot() {
-    let mut world = world();
-    let day = date(2026, 5, 6);
-    let deep = BlockSeries::one_off("Deep work", BlockKind::Work, day, time(9, 0, 0, 0), 120).unwrap();
-    let lunch = BlockSeries::one_off("Lunch", BlockKind::Break, day, time(12, 0, 0, 0), 45).unwrap();
-    let review = BlockSeries::one_off("Review", BlockKind::Work, day, time(15, 0, 0, 0), 60).unwrap();
-    let report = world.snapshot.tasks.values().find(|t| t.title == "Write the report").unwrap().id;
-    let sitting = BlockAssignment::new(BlockRef::OneOff(review.id), report, OrderKey::middle());
-    world.snapshot.assignments.insert(sitting.id, sitting);
-    for series in [deep, lunch, review] {
-        world.snapshot.series.insert(series.id, series);
-    }
-    snapshot("day", &world.snapshot.day_rows(day, &now()).unwrap());
 }

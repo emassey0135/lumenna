@@ -654,12 +654,18 @@ fn quick_add_reads_back_the_line_and_puts_a_completion_in_at_the_cursor() {
 #[test]
 fn quick_add_makes_a_block_from_a_line_that_starts_with_block_reading_it_back_first() {
     let mut app = App::new();
+    app.send(Event::Clock(lumenna_records::proposals::TimeStyle::TwelveHour));
     app.send(Event::Typing(Typing::Open));
     let line = "block \"Deep work\" 9-11am tomorrow weekdays";
     app.send(Event::Typing(Typing::Text { text: line.to_owned(), cursor: u32::try_from(line.len()).unwrap() }));
     let view = app.view().line.unwrap();
     assert_eq!(view.readback, "New block Deep work, 9:00 AM to 11:00 AM, tomorrow, every weekday");
     assert!(!view.has_errors);
+    // In the person's clock, as every other time the app says.
+    app.send(Event::Clock(lumenna_records::proposals::TimeStyle::TwentyFourHour));
+    app.send(Event::Typing(Typing::Text { text: line.to_owned(), cursor: u32::try_from(line.len()).unwrap() }));
+    assert_eq!(app.view().line.unwrap().readback, "New block Deep work, 09:00 to 11:00, tomorrow, every weekday");
+    app.send(Event::Clock(lumenna_records::proposals::TimeStyle::TwelveHour));
     let shell = app.send(Event::QuickAdd(line.to_owned()));
     assert!(said(&shell).iter().any(|s| s.starts_with("Added block Deep work")), "{shell:?}");
     app.send(Event::Open(Place::Blocks));

@@ -153,6 +153,19 @@ pub fn widgets() -> Vec<GlanceWidget> {
     .collect()
 }
 
+/// The watch's tile, as Wear OS's tile picker lists it: what is happening now and what is next,
+/// with no room for the tasks due. Its complication is the [`widgets`]' Now. Wear OS's manifest
+/// names both ahead, which a test of the core checks.
+#[must_use]
+pub fn watch_tile() -> GlanceWidget {
+    GlanceWidget {
+        id: "today".to_owned(),
+        name: "Today".to_owned(),
+        description: "What is happening now, what is next, and the timer running".to_owned(),
+        parts: vec![GlancePart::Headline, GlancePart::Next],
+    }
+}
+
 /// What a glance shows from `now` until `until`: the moment now, then one wherever that
 /// changes.
 ///
@@ -170,19 +183,17 @@ pub fn timeline(snapshot: &Snapshot, now: &Zoned, until: Timestamp) -> Result<Ve
             changes.insert(start.timestamp());
         }
         for block in crate::plan::plan(snapshot, day, now)?.blocks {
-            for time in [&block.start, &block.end] {
-                if let Some(at) = instant(day, time, now) {
-                    changes.insert(at);
-                }
+            if let Some((starts, ends)) = span_of(&block, day, now) {
+                changes.extend([starts, ends]);
             }
         }
         for task in snapshot.tasks.values().filter(|t| !t.is_deleted()) {
             if let Some(due) = &task.due
                 && due.date == day
                 && let Some(time) = due.time
-                && let Some(at) = instant(day, &time.strftime("%H:%M").to_string(), now)
             {
-                changes.insert(at);
+                let zone = lumenna_core::remind::zone_of(due.timezone.as_ref(), now.time_zone());
+                changes.insert(lumenna_core::remind::instant(day, time, &zone));
             }
         }
         let Ok(next) = day.tomorrow() else { break };
@@ -222,8 +233,8 @@ fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
         title: b.title.clone(),
         start: b.start.clone(),
         end: b.end.clone(),
-        starts_at: instant(today, &b.start, now).map(|t| t.to_string()).unwrap_or_default(),
-        ends_at: instant(today, &b.end, now).map(|t| t.to_string()).unwrap_or_default(),
+        starts_at: span_of(b, today, now).map(|(starts, _)| starts.to_string()).unwrap_or_default(),
+        ends_at: span_of(b, today, now).map(|(_, ends)| ends.to_string()).unwrap_or_default(),
         kind: b.kind.clone(),
         colour: b.colour.clone(),
         tasks: b.assignments.iter().map(|a| a.title.clone()).collect(),
@@ -242,9 +253,14 @@ fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
         })
     });
     let rows = crate::lists::tasks(snapshot, "overdue | today", now)?;
+    // Overdue as every list says it: in the zone a due time is held to, and only once it has
+    // passed, not at the minute it falls due.
+    let facts = snapshot.facts();
     let overdue_of = |id: &str| {
-        let Some(task) = id.parse().ok().and_then(|id| snapshot.tasks.get(&id)) else { return false };
-        task.due.as_ref().is_some_and(|due| due.date < today || (due.date == today && due.time.is_some_and(|time| time <= now.time())))
+        id.parse()
+            .ok()
+            .and_then(|id| snapshot.tasks.get(&id))
+            .is_some_and(|task| facts.has_state(task, lumenna_core::state::State::Overdue, now))
     };
     let tasks: Vec<GlanceTask> = rows
         .rows
@@ -271,13 +287,17 @@ fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
     })
 }
 
-/// `HH:MM` on `day`, in `now`'s zone, as an instant; a day's end ("24:00") is midnight after.
-fn instant(day: jiff::civil::Date, time: &str, now: &Zoned) -> Option<Timestamp> {
-    if time == "24:00" {
-        return day.tomorrow().ok()?.to_zoned(now.time_zone().clone()).ok().map(|z| z.timestamp());
-    }
-    let time: jiff::civil::Time = time.parse().ok()?;
-    day.at(time.hour(), time.minute(), 0, 0).to_zoned(now.time_zone().clone()).ok().map(|z| z.timestamp())
+/// When a block on `day` starts and ends, as instants, made as its reminders are: its start in
+/// the zone it is held to, else `now`'s, through `remind::instant`, and its end its start plus
+/// its minutes. So one that runs past midnight ends the next day, and one across a change of
+/// the clocks keeps its real length; read from its `HH:MM` end, either ended before it began.
+fn span_of(block: &PlanBlock, day: jiff::civil::Date, now: &Zoned) -> Option<(Timestamp, Timestamp)> {
+    let start: jiff::civil::Time = block.start.parse().ok()?;
+    let held = block.timezone.as_deref().map(lumenna_core::model::TzName::new);
+    let zone = lumenna_core::remind::zone_of(held.as_ref(), now.time_zone());
+    let starts = lumenna_core::remind::instant(day, start, &zone);
+    let ends = starts.checked_add(jiff::SignedDuration::from_mins(i64::from(block.duration_mins))).ok()?;
+    Some((starts, ends))
 }
 
 
@@ -306,6 +326,39 @@ mod tests {
     }
 
     #[test]
+    fn a_block_past_midnight_ends_the_next_day_and_one_held_to_a_zone_starts_at_its_moment() {
+        use lumenna_core::model::{BlockKind, BlockSeries, TzName};
+        let now: Zoned = "2026-10-20T21:30:00[America/New_York]".parse().unwrap();
+        let mut snapshot = Snapshot::default();
+        let late = BlockSeries::one_off("Late shift", BlockKind::Work, now.date(), jiff::civil::time(23, 0, 0, 0), 120).unwrap();
+        snapshot.series.insert(late.id, late);
+        let next = timeline(&snapshot, &now, now.timestamp()).unwrap().remove(0).next.unwrap();
+        assert_eq!((next.starts_at.as_str(), next.ends_at.as_str()), ("2026-10-21T03:00:00Z", "2026-10-21T05:00:00Z"));
+
+        let mut snapshot = Snapshot::default();
+        let mut call = BlockSeries::one_off("Call London", BlockKind::Event, now.date(), jiff::civil::time(23, 30, 0, 0), 30).unwrap();
+        call.timezone = Some(TzName::new("Europe/London"));
+        snapshot.series.insert(call.id, call);
+        let moment = timeline(&snapshot, &"2026-10-20T09:00:00[America/New_York]".parse().unwrap(), now.timestamp()).unwrap().remove(0);
+        let call = moment.next.unwrap();
+        assert_eq!((call.starts_at.as_str(), call.ends_at.as_str()), ("2026-10-20T22:30:00Z", "2026-10-20T23:00:00Z"));
+    }
+
+    #[test]
+    fn a_task_due_this_minute_is_not_yet_overdue() {
+        use lumenna_core::model::{Due, Project, Task};
+        let now: Zoned = "2026-10-20T09:00:00[America/New_York]".parse().unwrap();
+        let mut snapshot = Snapshot::default();
+        let inbox = Project::inbox();
+        let mut task = Task::new(inbox.id, "Call", lumenna_core::order::OrderKey::middle());
+        task.due = Some(Due::at(now.date(), jiff::civil::time(9, 0, 0, 0)));
+        snapshot.projects.insert(inbox.id, inbox);
+        snapshot.tasks.insert(task.id, task);
+        let moment = timeline(&snapshot, &now, now.timestamp()).unwrap().remove(0);
+        assert_eq!((moment.due, moment.overdue), (1, 0));
+    }
+
+    #[test]
     fn only_today_offers_new_task_last_and_it_is_a_launch_shortcut() {
         for widget in widgets() {
             let at = widget.parts.iter().position(|part| *part == GlancePart::NewTask);
@@ -325,14 +378,27 @@ mod tests {
         }
     }
 
+    /// The text of `<string name="{name}">` in the Android resources at `path`.
+    fn android_string(path: &str, name: &str) -> String {
+        let strings = std::fs::read_to_string(root().join(path)).unwrap();
+        let element = format!("<string name=\"{name}\">");
+        let start = strings.find(&element).unwrap_or_else(|| panic!("no {name} in {path}")) + element.len();
+        strings[start..start + strings[start..].find("</string>").unwrap()].replace(r"\'", "'")
+    }
+
+    #[test]
+    fn wear_os_names_its_tile_and_complication_as_the_core_words_them() {
+        let wear = |name: &str| android_string("apps/android/wear/src/main/res/values/strings.xml", name);
+        let tile = watch_tile();
+        assert_eq!(wear(&format!("tile_{}", tile.id)), tile.name);
+        assert_eq!(wear(&format!("tile_{}_description", tile.id)), tile.description);
+        let now = widgets().into_iter().find(|w| w.id == "now").unwrap();
+        assert_eq!(wear("complication_now"), now.name);
+    }
+
     #[test]
     fn android_offers_every_widget_as_the_core_words_it() {
-        let strings = std::fs::read_to_string(root().join("apps/android/app/src/main/res/values/strings.xml")).unwrap();
-        let string = |name: &str| {
-            let element = format!("<string name=\"{name}\">");
-            let start = strings.find(&element).unwrap_or_else(|| panic!("no {name} in strings.xml")) + element.len();
-            strings[start..start + strings[start..].find("</string>").unwrap()].replace(r"\'", "'")
-        };
+        let string = |name: &str| android_string("apps/android/app/src/main/res/values/strings.xml", name);
         for widget in widgets() {
             assert_eq!(string(&format!("widget_{}", widget.id)), widget.name);
             assert_eq!(string(&format!("widget_{}_description", widget.id)), widget.description);

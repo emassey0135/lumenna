@@ -80,7 +80,7 @@ pub enum EditError {
 
     /// The block does not occur on the day the assignment names — before its series
     /// starts, after it ends, on a day its rule skips, or on one that was cancelled.
-    #[error("that block does not happen on {date}")]
+    #[error("that block does not happen on {}", crate::time::long_date(*.date))]
     NoOccurrence {
         /// The day that was asked for.
         date: jiff::civil::Date,
@@ -994,8 +994,10 @@ pub fn except_occurrence(
         return Ok(Edit::nothing());
     }
     let description = match &after.action {
-        ExceptionAction::Cancelled => format!("Cancelled {} on {date}", series.title),
-        ExceptionAction::Modified { .. } => format!("Changed {} on {date} only", series.title),
+        // The day in words, never ISO digits; a whole date, since the description is kept for
+        // undo and "tomorrow" would not stay true.
+        ExceptionAction::Cancelled => format!("Cancelled {} on {}", series.title, time::long_date(date)),
+        ExceptionAction::Modified { .. } => format!("Changed {} on {} only", series.title, time::long_date(date)),
     };
     let transition = match before {
         Some(before) => Transition::updated(before, after),
@@ -1020,7 +1022,7 @@ pub fn restore_occurrence(
         return Ok(Edit::nothing());
     };
     Ok(Edit {
-        description: format!("Put {} on {date} back as the series has it", series.title),
+        description: format!("Put {} on {} back as the series has it", series.title, time::long_date(date)),
         changes: vec![Change::Exception(Box::new(Transition::removed(before)))],
     })
 }

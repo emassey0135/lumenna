@@ -90,7 +90,8 @@ fn project_choices(snapshot: &Snapshot, skip: impl Fn(&Project) -> bool) -> Vec<
     crate::tree::in_tree_order(snapshot)
         .into_iter()
         .filter(|(project, _)| !skip(project))
-        .map(|(project, depth)| Choice { id: project.name.clone(), title: project.name.clone(), depth, ..Choice::default() })
+        // Named by identifier, never by name: two projects may share one.
+        .map(|(project, depth)| Choice { id: project.id.to_string(), title: project.name.clone(), depth, ..Choice::default() })
         .collect()
 }
 
@@ -234,7 +235,7 @@ pub fn offered(snapshot: &Snapshot, action: &Action, now: &Zoned) -> Result<Choi
                 live.sort_by(|x, y| x.order.cmp_with(&x.id, &y.order, &y.id));
                 listed(
                     live.into_iter()
-                        .map(|l| Choice { id: l.name.clone(), title: l.name.clone(), ..Choice::default() })
+                        .map(|l| Choice { id: l.id.to_string(), title: l.name.clone(), ..Choice::default() })
                         .collect(),
                     "label",
                     "There is no other label to merge it into.",
@@ -298,10 +299,12 @@ pub fn blocks_for(snapshot: &Snapshot, task: Option<&str>, from: Option<&str>, d
             Choice { id: b.id, title: b.title, date: Some(b.date), start: Some(b.start), end: Some(b.end), reason, ..Choice::default() }
         })
         .collect();
+    // The day in words: a screen reader reads ISO digits as numbers.
+    let from = blocks.from.parse().map_or_else(|_| blocks.from.clone(), |day| lumenna_core::time::day_words_long(day, now.date()));
     let none = match (blocks.days, blocks.from == now.date().to_string()) {
         (7, true) => "There are no work blocks this week. Add one from Today.".to_owned(),
-        (1, _) => format!("There are no work blocks on {}.", blocks.from),
-        (days, _) => format!("There are no work blocks in the {days} days from {}.", blocks.from),
+        (1, _) => format!("There are no work blocks on {from}."),
+        (days, _) => format!("There are no work blocks in the {days} days from {from}."),
     };
     Ok(listed(open, "work block", &none))
 }
