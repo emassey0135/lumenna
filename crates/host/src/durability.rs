@@ -19,6 +19,10 @@ use crate::types::{
 use crate::words::{count_line, to_u32};
 use crate::{Lumenna, repaired};
 
+/// How [`Lumenna::export`]'s refusal of a file that exists ends, for a client to add how it is
+/// asked to replace one there: the check and the sentence are the surface's alone.
+pub const NOT_ASKED_TO_REPLACE: &str = "replacing it was not asked for";
+
 /// The settings that stay on this device.
 pub const DEVICE_KEYS: &[&str] = &["backup-dir", "backup-keep", "backup-every", "clock", "reminders"];
 
@@ -32,12 +36,29 @@ impl Lumenna {
     /// the automatic backups, which hold what was erased, are deleted, and a fresh one is
     /// taken of the new history when automatic backups are on. Looked at whenever the store's
     /// generation is not the one last seen, so it costs nothing otherwise.
-    pub(crate) fn follow_erasure(&self, store: &mut Store) -> Result<()> {
+    ///
+    /// Never fails the operation it runs beside: the erasure has happened whatever becomes of
+    /// the backups, and an unreachable backup folder must not stop every answer. A failure is
+    /// said as a notice, and this process does not try again; `backups-of` stays as it was, so
+    /// the next process to open the store does.
+    pub(crate) fn follow_erasure(&self, store: &mut Store) {
         let generation = store.generation().unwrap_or_default().to_owned();
         let mut seen = self.generation_seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if seen.as_deref() == Some(generation.as_str()) {
-            return Ok(());
+            return;
         }
+        if let Err(error) = self.clear_backups_after_erasure(store, &generation) {
+            self.unsaid.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push(format!(
+                "The automatic backups could not be cleared after the erasure: {error}. Those \
+                 taken before it still hold what was erased; this is tried again the next time \
+                 the store is opened"
+            ));
+        }
+        *seen = Some(generation);
+    }
+
+    /// What [`follow_erasure`](Self::follow_erasure) does, once per generation on this device.
+    fn clear_backups_after_erasure(&self, store: &mut Store, generation: &str) -> Result<()> {
         let backed_up = store.local_value(BACKUPS_OF)?.map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
         if backed_up.as_deref().unwrap_or_default() != generation {
             #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -50,7 +71,6 @@ impl Lumenna {
             }
             store.set_local_value(BACKUPS_OF, generation.as_bytes())?;
         }
-        *seen = Some(generation);
         Ok(())
     }
 
@@ -155,7 +175,7 @@ impl Lumenna {
     ///
     /// # Errors
     ///
-    /// If `path` exists and `replace` is not set, or it cannot be written.
+    /// If `path` is inside the profile, exists and `replace` is not set, or cannot be written.
     pub fn export(
         &self,
         format: ExportFormat,
@@ -184,11 +204,17 @@ impl Lumenna {
             });
         };
         let file = Path::new(&path);
-        if file.exists() && !replace {
+        // Written over the store itself, or anything beside it, the export would take what it
+        // was made from with it.
+        if inside(&self.directory, file) {
             return Err(LumennaError::new(format!(
-                "{} already exists, and replacing it was not asked for",
+                "{} is inside the profile directory; an export there could overwrite the store \
+                 it was made from",
                 file.display()
             )));
+        }
+        if file.exists() && !replace {
+            return Err(LumennaError::new(format!("{} already exists, and {NOT_ASKED_TO_REPLACE}", file.display())));
         }
         std::fs::write(file, &content)?;
         Ok(Exported {
@@ -223,7 +249,7 @@ impl Lumenna {
         let file = Path::new(name);
         if backup::is_backup(&bytes) {
             return self
-                .with(|store| {
+                .told(|store| {
                     self.merged();
                     restore_bytes(store, file, &bytes)
                 })
@@ -238,7 +264,8 @@ impl Lumenna {
                  iCalendar exports are for reading, and do not come back in"
             ))
         })?;
-        self.with(|store| {
+        // Told, so a repair the import made necessary is said on its own answer.
+        self.told(|store| {
             self.merged();
             let report = store.import(&imported)?;
             fold_inbox(store)?;
@@ -267,8 +294,9 @@ impl Lumenna {
                     count_line(report.skipped, "assignment")
                 ));
             }
-            Ok(Imported::Export { done })
+            Ok(done)
         })
+        .map(|done| Imported::Export { done })
     }
 }
 
@@ -348,9 +376,14 @@ fn resolved(path: &Path) -> PathBuf {
     }
 }
 
+/// Whether `path` is the profile directory or anything in it.
+fn inside(profile: &Path, path: &Path) -> bool {
+    resolved(path).starts_with(resolved(profile))
+}
+
 /// A backup inside the directory it protects can be lost along with it.
 pub(crate) fn refuse_inside(profile: &Path, directory: &Path) -> Result<()> {
-    if resolved(directory).starts_with(resolved(profile)) {
+    if inside(profile, directory) {
         return Err(LumennaError::new(format!(
             "{} is inside the profile directory; a backup there can be lost along with the \
              store it is meant to protect",

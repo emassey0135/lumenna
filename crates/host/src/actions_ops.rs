@@ -47,6 +47,36 @@ fn timer(timer: crate::types::Timer) -> Change {
 }
 
 impl Lumenna {
+    /// The actions of the record `target` names, found as the operation acting on it finds
+    /// it: a project, label or saved filter by name, a block by identifier, a device by name or
+    /// identifier. For a client that offers one action by name rather than from a row it
+    /// listed, such as a command line asking the action's question before deleting.
+    ///
+    /// # Errors
+    ///
+    /// If nothing, or more than one record, matches, or `subject` is not one of those.
+    pub fn actions_of(&self, subject: Subject, target: &str) -> Result<Vec<Action>> {
+        #[cfg(feature = "link")]
+        if subject == Subject::Device {
+            return self.device_actions(target);
+        }
+        self.with(|store| {
+            store.load_all_years()?;
+            let snapshot = repaired(store);
+            Ok(match subject {
+                Subject::Project => crate::actions::project(&snapshot, resolve::project(&snapshot, target)?),
+                Subject::Label => crate::actions::label(&snapshot, resolve::label(&snapshot, target)?),
+                Subject::Filter => crate::actions::filter(&snapshot, crate::organise::filter_named(&snapshot, target)?),
+                Subject::Series | Subject::Block => {
+                    let id = resolve::series_id(&snapshot, target)?;
+                    let series = snapshot.series.get(&id).ok_or_else(|| LumennaError::new("no such block"))?;
+                    crate::actions::series(series)
+                }
+                other => return Err(LumennaError::new(format!("the actions of a {other:?} are found on its row"))),
+            })
+        })
+    }
+
     /// What a [`Question::Pick`] offers for `action`, in order: never a task as its own
     /// parent or a project inside itself, never a wait that would close a cycle.
     ///
@@ -185,13 +215,7 @@ impl Lumenna {
             (S::Reminder, K::New) => self.add_reminder_saying(target.to_owned(), answer_text(&answer)?),
             (S::Reminder, K::Delete) => self.remove_reminder(target.to_owned()),
             #[cfg(feature = "link")]
-            (S::Device, K::Rename) => {
-                let name = answer_text(&answer)?;
-                if name.is_empty() {
-                    return Err(LumennaError::new("a device needs a name"));
-                }
-                self.rename_device(target, &name)
-            }
+            (S::Device, K::Rename) => self.rename_device(target, &answer_text(&answer)?),
             #[cfg(feature = "link")]
             (S::Device, K::Unpair) => self.unpair_device(target),
             _ => Err(LumennaError::new(format!("{} is not something this build can do", action.title))),

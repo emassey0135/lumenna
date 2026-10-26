@@ -118,13 +118,36 @@ pub fn connect(directory: &Path) -> Option<Connection> {
     }
     #[cfg(windows)]
     {
+        use std::os::windows::ffi::OsStrExt;
         use std::os::windows::fs::OpenOptionsExt;
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED)
-            .open(address(directory))
-            .ok()?;
+
+        use windows_sys::Win32::Foundation::ERROR_PIPE_BUSY;
+        use windows_sys::Win32::System::Pipes::WaitNamedPipeW;
+
+        /// How long to wait for the holder to make its next instance when every one is taken.
+        const BUSY_WAIT_MS: u32 = 2_000;
+
+        let path = address(directory);
+        let open = || {
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED)
+                .open(&path)
+        };
+        let file = match open() {
+            Ok(file) => file,
+            // The holder is there, between one client taking an instance and its next being
+            // made: waited for, rather than taken for nothing answering.
+            Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => {
+                let name: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+                if unsafe { WaitNamedPipeW(name.as_ptr(), BUSY_WAIT_MS) } == 0 {
+                    return None;
+                }
+                open().ok()?
+            }
+            Err(_) => return None,
+        };
         Some(Connection::Pipe(Pipe::new(file.into())))
     }
 }

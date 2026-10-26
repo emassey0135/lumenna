@@ -11,7 +11,7 @@ use crate::error::{LumennaError, Result};
 use crate::resolve::{self, order_after};
 use crate::tasks::{record, record_or};
 use crate::types::{Announced, Change, Direction, Filters, Rows, Weight};
-use crate::{Lumenna, repaired};
+use crate::{Lumenna, named, repaired};
 
 
 impl Lumenna {
@@ -25,7 +25,7 @@ impl Lumenna {
     ///
     /// If there is already a project by that name, or no parent by that one.
     pub fn add_project(&self, name: &str, parent: Option<String>) -> Result<Change> {
-        named("project", name)?;
+        named("project", "a name", name)?;
         self.told(|store| {
             let snapshot = repaired(store);
             if snapshot.project_by_name(name).is_some() {
@@ -55,7 +55,7 @@ impl Lumenna {
     ///
     /// If there is no project by the first name, or already one by the second.
     pub fn rename_project(&self, name: &str, to: &str) -> Result<Change> {
-        named("project", to)?;
+        named("project", "a name", to)?;
         self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::project(&snapshot, name)?.clone();
@@ -172,7 +172,7 @@ impl Lumenna {
     ///
     /// If there is already a label by that name.
     pub fn add_label(&self, name: &str) -> Result<Change> {
-        named("label", name)?;
+        named("label", "a name", name)?;
         self.told(|store| {
             let snapshot = repaired(store);
             let name = name.trim_start_matches('@');
@@ -203,7 +203,7 @@ impl Lumenna {
     /// If there is no label by the first name, or already one by the second — which is what
     /// [`merge_labels`](Self::merge_labels) is for.
     pub fn rename_label(&self, name: &str, to: &str) -> Result<Change> {
-        named("label", to)?;
+        named("label", "a name", to)?;
         self.told(|store| {
             let snapshot = repaired(store);
             let before = resolve::label(&snapshot, name)?.clone();
@@ -267,7 +267,7 @@ impl Lumenna {
     ///
     /// If the query cannot be read.
     pub fn add_filter(&self, name: &str, query: &str) -> Result<Change> {
-        named("saved filter", name)?;
+        named("saved filter", "a name", name)?;
         self.told(|store| {
             let snapshot = repaired(store);
             let (expr, sort) = resolve::list_query(&snapshot, query)?;
@@ -301,15 +301,20 @@ impl Lumenna {
     pub fn delete_filter(&self, name: &str) -> Result<Change> {
         self.told(|store| {
             let snapshot = repaired(store);
-            let target = snapshot
-                .saved_filters
-                .values()
-                .find(|f| f.deleted_at.is_none() && f.name.eq_ignore_ascii_case(name))
-                .ok_or_else(|| LumennaError::new(format!("no filter called '{name}'")))?;
+            let target = filter_named(&snapshot, name)?;
             let change = edit::trash_filter(&snapshot, target.id)?;
             record_or(store, &change, "that filter is already gone")
         })
     }
+}
+
+/// The saved filter called `name`, ignoring case.
+pub(crate) fn filter_named<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a SavedFilter> {
+    snapshot
+        .saved_filters
+        .values()
+        .find(|f| f.deleted_at.is_none() && f.name.eq_ignore_ascii_case(name))
+        .ok_or_else(|| LumennaError::new(format!("no filter called '{name}'")))
 }
 
 impl Lumenna {
@@ -457,7 +462,7 @@ impl Lumenna {
         query: Option<String>,
     ) -> Result<Change> {
         if let Some(to) = &rename {
-            named("saved filter", to)?;
+            named("saved filter", "a name", to)?;
         }
         self.told(|store| {
             let snapshot = repaired(store);
@@ -555,11 +560,3 @@ pub(crate) fn moved<I: Ord + Copy>(
         .map_err(|e| LumennaError::new(e.to_string()))
 }
 
-
-/// Refuses a blank name: nothing could be listed, said or typed to reach it.
-fn named(kind: &str, name: &str) -> Result<()> {
-    if name.trim().is_empty() {
-        return Err(LumennaError::new(format!("a {kind} needs a name")));
-    }
-    Ok(())
-}

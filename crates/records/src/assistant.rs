@@ -352,7 +352,7 @@ const OPERATIONS: &[Op] = &[
         Param("proposal", "Proposal", K::DayPlan, false, "The proposal as `propose_day_plan` returned it, whole."),
         Param("accepted", "Accepted", K::DayPlanSittings, false, "Those of its `sittings` the person accepted, each as it was proposed."),
     ], "Puts the sittings the person accepted into their blocks, as one change they can undo, and plans again around what they turned down."),
-    write("undo", "Undo", C::Undo, &["undo", "take back"], &[], "Undoes the last change made on this device, whoever made it: an app, `lum`, or an assistant."),
+    write("undo", "Undo", C::Undo, &["undo", "take back"], &[], "Undoes the last change made on this device, whoever made it: an app, a command, or an assistant."),
     write("redo", "Redo", C::Undo, &["redo"], &[], "Redoes what was last undone."),
 ];
 

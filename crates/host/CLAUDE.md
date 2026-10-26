@@ -38,6 +38,16 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   numbering.
 - **`task.erase`, `task.erase_permanently` and `erase_everything_deleted` require
   `"confirm": true`**: nothing here can prompt.
+- **A method refuses a parameter it does not take** (`TAKES`, checked before it runs), as
+  `assist` does: a typo must not pass for a parameter left out. `METHODS` and `TAKES` list
+  every method `answer` has an arm for, which a test reads from the source to hold them equal.
+- **A path is refused unless whole** (`backup.to`, `restore.file`, `export.output`,
+  `import.file`, `config.set backup-dir`): a relative one would be the server's working
+  directory's, not the client's.
+- **`reminder.give` gives this device's reminders** (`deliver_reminders`, taking the reminder
+  lock for the connection); `reminder.deliver {id, on}` is `lum reminder deliver`'s, which
+  devices one fires on. `reminder.deliver` without an `id` still gives them, its name before
+  `reminder.give`, for clients built before it (Emacs's).
 - **`assist {operation, args}` runs an operation of the assistant table** through
   `Lumenna::assist`, its arguments read by `rpc::assist` (`arguments_of`, which `lum mcp` and
   `lum assist` read theirs with too) and a name the operation does not take refused. One that
@@ -50,12 +60,20 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
 - **A real erasure is followed by every process** (`follow_erasure`, around every operation in
   `Lumenna::with`): when the store's generation is not the one its automatic backups were last
   taken of (`backups-of`), they are deleted and one is taken afresh. It is refused while a
-  paired device runs a version from before generations (`too_old_to_follow`).
+  paired device runs a version from before generations (`too_old_to_follow`). It never fails
+  the operation it runs beside: a backup folder it cannot clear is said as a notice, not
+  tried again by this process, and `backups-of` is left for the next process to try.
 - **Two framings, chosen per message by what arrived**: newline-delimited JSON (MCP's stdio
   transport) and `Content-Length` headers (`jsonrpc.el`). A reply is framed as its request. A
   byte order mark where a message starts is passed over: .NET Framework writes one into a
   child's input when the console's code page is UTF-8, before its client sends anything, so
   Windows PowerShell 5.1's `lum rpc` would otherwise refuse every request on such a console.
+  A message, or a line, longer than 64 MiB (`LONGEST`) is passed over and answered as a parse
+  error, never read into memory: one bad header used to abort whatever served it.
+- **The socket is made where only its user can reach it, then moved to the address**, so it
+  is never another user's to open, even for a moment; and a holder giving the address up
+  removes it only if it is still its own socket (by device and inode), never the next
+  holder's.
 - **Spans are UTF-8 byte offsets.** A client that indexes by code point converts both ways.
 - **`pair` replies when the pairing ends**, talking in between through `lumenna/pairing`
   notifications (`{code, name}`, then `{words}`); the client answers `pair.confirm {match}`

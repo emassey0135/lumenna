@@ -48,6 +48,8 @@ pub enum Completing {
     Project,
     /// A label's name.
     Label,
+    /// A saved filter's name.
+    SavedFilter,
 }
 
 impl Lumenna {
@@ -63,14 +65,17 @@ impl Lumenna {
         let (noun, rows) = match kind {
             Completing::Line => return self.complete_text(text, cursor, Syntax::QuickAdd),
             Completing::Filter => return self.complete_text(text, cursor, Syntax::Filter),
-            Completing::Project => ("project", self.list_projects()?.rows),
-            Completing::Label => ("label", self.list_labels()?.rows),
+            Completing::Project => ("project", titles(self.list_projects()?.rows)),
+            Completing::Label => ("label", titles(self.list_labels()?.rows)),
+            Completing::SavedFilter => {
+                ("saved filter", self.list_filters()?.filters.into_iter().map(|filter| filter.name).collect())
+            }
         };
         let typed = text.to_lowercase();
         let candidates: Vec<crate::Candidate> = rows
             .into_iter()
-            .filter(|row| row.title.to_lowercase().starts_with(&typed))
-            .map(|row| crate::Candidate { label: format!("{noun} {}", row.title), text: row.title, kind: noun.to_owned() })
+            .filter(|name| name.to_lowercase().starts_with(&typed))
+            .map(|name| crate::Candidate { label: format!("{noun} {name}"), text: name, kind: noun.to_owned() })
             .collect();
         let announcement = match candidates.as_slice() {
             [only] => format!("1 completion, {}", only.label),
@@ -78,4 +83,8 @@ impl Lumenna {
         };
         Ok(Completions { announcement, notices: Vec::new(), start: 0, end: cursor, candidates })
     }
+}
+
+fn titles(rows: Vec<crate::types::RowView>) -> Vec<String> {
+    rows.into_iter().map(|row| row.title).collect()
 }

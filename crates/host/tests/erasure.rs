@@ -143,3 +143,30 @@ fn a_process_sharing_the_profile_deletes_nothing_twice() {
     other.list_tasks("").unwrap();
     assert_eq!(opened.backups(), after);
 }
+
+#[test]
+fn an_erasure_whose_backups_cannot_be_cleared_is_done_and_said_and_tried_again_by_the_next_process() {
+    let opened = open();
+    let id = add(&opened.lumenna, "the secret");
+    opened.lumenna.trash_task(&id).unwrap();
+    // The backup folder is a file now, so nothing there can be listed or removed.
+    let backups = opened.directory.path().join("backups");
+    let _ = std::fs::remove_dir_all(&backups);
+    std::fs::write(&backups, "not a folder").unwrap();
+
+    let done = opened.lumenna.erase_everything_deleted().unwrap();
+    assert!(done.changed, "the erasure is done, and said to be");
+    assert!(done.notices.iter().any(|n| n.contains("could not be cleared")), "{:?}", done.notices);
+    // Nothing after it fails for the folder, and this process does not try again.
+    let listed = opened.lumenna.list_tasks("").unwrap();
+    assert!(listed.notices.iter().all(|n| !n.contains("could not be cleared")), "{:?}", listed.notices);
+
+    // The next process to open the store clears them, once the folder can be.
+    std::fs::remove_file(&backups).unwrap();
+    std::fs::create_dir(&backups).unwrap();
+    let stale = backups.join("lumenna-20260101T000000.000Z.lumbak");
+    std::fs::write(&stale, "what was erased").unwrap();
+    let next = Lumenna::open(opened.lumenna.path().to_str().unwrap()).unwrap();
+    next.list_tasks("").unwrap();
+    assert!(!stale.exists(), "the backup from before the erasure is gone");
+}

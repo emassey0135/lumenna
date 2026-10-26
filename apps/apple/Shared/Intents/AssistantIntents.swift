@@ -664,7 +664,7 @@ struct UndoIntent: OperationIntent {
     static let persistentIdentifier = "undo"
     static let title: LocalizedStringResource = "Undo"
     static let description: IntentDescription? = IntentDescription(
-        "Undoes the last change made on this device, whoever made it: an app, `lum`, or an assistant.",
+        "Undoes the last change made on this device, whoever made it: an app, a command, or an assistant.",
         categoryName: "Undo",
         searchKeywords: ["undo", "take back"]
     )

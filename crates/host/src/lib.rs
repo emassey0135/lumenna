@@ -83,7 +83,7 @@ pub use reminders::{DueReminder, DueReminders, ReminderList, ReminderView};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub use reminders::ReminderLock;
 pub use lumenna_records::{QUERY, go_to_day_question, length_question, new_filter_questions, not_offered, Action, ActionKind, Answer, Choice, Choices, Question, Subject};
-pub use durability::{DEVICE_KEYS, cloud_warning, folder_backup_due, folder_backup_surplus, folder_backup_words, folder_backups};
+pub use durability::{DEVICE_KEYS, NOT_ASKED_TO_REPLACE, cloud_warning, folder_backup_due, folder_backup_surplus, folder_backup_words, folder_backups};
 pub use places_ops::sidebar;
 pub use lumenna_records::{LumennaError, Result};
 pub use lumenna_records::{parse_minutes, parse_weight, priorities, BlockDefaults, BlockFields, TaskFields, block_defaults, block_edit, block_fields, day_block_fields, new_block, label_reference, project_reference, sitting_status, task_edit, task_fields};
@@ -278,7 +278,7 @@ impl Lumenna {
         // Another process may have written since, and answering from a stale document would
         // be a wrong answer rather than a slow one.
         store.refresh()?;
-        self.follow_erasure(&mut store)?;
+        self.follow_erasure(&mut store);
         self.write_repairs(&mut store)?;
         let result = operation(&mut store);
         if self.merged.swap(false, std::sync::atomic::Ordering::Relaxed) {
@@ -288,7 +288,7 @@ impl Lumenna {
         }
         // An erasure the operation made, or took in from a sync, is followed now, not at the
         // next operation.
-        self.follow_erasure(&mut store)?;
+        self.follow_erasure(&mut store);
         result
     }
 
@@ -321,6 +321,15 @@ impl Lumenna {
         *looked = Some(store.version());
         Ok(())
     }
+}
+
+/// Refuses a blank name: nothing could be listed, said or typed to reach it. `what` is how the
+/// refusal names what it is ("a block needs a name").
+pub(crate) fn named(kind: &str, what: &str, name: &str) -> Result<()> {
+    if name.trim().is_empty() {
+        return Err(LumennaError::new(format!("a {kind} needs {what}")));
+    }
+    Ok(())
 }
 
 /// The repaired snapshot every query runs against.
