@@ -47,17 +47,11 @@ export function Sidebar(props: {
   const here = placeKey(entries, props.place);
   const selected = useMemo(() => (here ? [here] : []), [here]);
   const nodes = useMemo(() => nest(entries, key, (entry) => entry.depth), [entries]);
-  // What is folded is the app's: a row is open while it offers Collapse.
-  const shown = useMemo(
-    () => new Set<Key>(entries.filter((e) => e.offered?.some((a) => a.kind === ActionKind.Collapse)).map(key)),
-    [entries],
-  );
+  // What is folded is the app's: a row with rows under it says whether they are shown.
+  const shown = useMemo(() => new Set<Key>(entries.filter((e) => e.expanded === true).map(key)), [entries]);
   // Left and Right fold a row: its own Expand or Collapse, run through the app.
   const fold = (open: Set<Key>) => {
-    const changed = entries.find((e) => {
-      const action = byKind(e.offered, ActionKind.Expand, ActionKind.Collapse);
-      return action && (action.kind === ActionKind.Collapse) !== open.has(key(e));
-    });
+    const changed = entries.find((e) => e.expanded != null && e.expanded !== open.has(key(e)));
     const action = changed && byKind(changed.offered, ActionKind.Expand, ActionKind.Collapse);
     if (action) void send(actOn(rowHeld(Side.Sidebar, key(changed)), action));
   };

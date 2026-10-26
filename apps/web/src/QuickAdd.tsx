@@ -13,6 +13,7 @@ import type { Offered, ShownLine } from "./core";
 import { Syntax } from "./core";
 import { CompletingField } from "./Completing";
 import { send, typed } from "./session";
+import { words } from "./words";
 
 /** Quick add, open while the app has a line, and from the moment it is asked for (`opening`), so
  * what is typed straight away goes into it: opened with `Typing::Open`, closed by the app once a
@@ -72,9 +73,10 @@ function Line(props: { line: ShownLine | null; close: () => void }) {
     if (text.trim()) void send({ tag: "QuickAdd", value0: text });
   };
 
+  const said = words().quickAdd;
   return (
     <Dialog>
-      <Heading slot="title">New task</Heading>
+      <Heading slot="title">{said.title}</Heading>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -84,7 +86,7 @@ function Line(props: { line: ShownLine | null; close: () => void }) {
         {/* Completes as every line in the filter language does, the same combobox. Enter with
             nothing offered open submits the form. */}
         <CompletingField
-          label="Task"
+          label={said.label}
           syntax={Syntax.QuickAdd}
           value={text}
           onChange={(value) => {
@@ -92,18 +94,19 @@ function Line(props: { line: ShownLine | null; close: () => void }) {
             void tell(value);
           }}
           offers={offers}
-          description="Such as: write the chapter tomorrow p1 #Work."
+          hint={said.hint}
+          placeholder={said.example}
           autoFocus
           inputRef={input}
         />
-        <label htmlFor="quick-add-readback">Will add</label>
+        <label htmlFor="quick-add-readback">{said.willAdd}</label>
         <output id="quick-add-readback" className="readback" tabIndex={0}>
           {line?.readback ?? ""}
         </output>
         <div className="buttons">
-          <Button onPress={props.close}>Cancel</Button>
+          <Button onPress={props.close}>{said.cancel}</Button>
           <Button type="submit" isDisabled={!text.trim()}>
-            Add
+            {said.add}
           </Button>
         </div>
       </form>

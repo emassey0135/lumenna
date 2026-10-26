@@ -146,7 +146,7 @@ test("a task waits for another, and stops", async ({ page }) => {
   const stop = details.getByRole("button", { name: "Stop waiting for Buy paint" });
   await expect(stop).toBeVisible();
   await stop.click();
-  await expect(details.getByText("Nothing.")).toBeVisible();
+  await expect(details.getByText("Nothing", { exact: true })).toBeVisible();
 });
 
 test("a planning setting applies when its field is left, and says so", async ({ page }) => {
@@ -189,7 +189,7 @@ test("a backup downloads, and restores into another browser", async ({ freshCont
   await here.getByRole("button", { name: "Settings" }).click();
   await here.getByRole("tab", { name: "Backups" }).click();
   const downloading = here.waitForEvent("download");
-  await here.getByRole("button", { name: "Download a Backup" }).click();
+  await here.getByRole("button", { name: "Back up now" }).click();
   const file = await downloading;
   expect(file.suggestedFilename()).toMatch(/^lumenna-.*\.lumbak$/);
   const path = await file.path();
@@ -249,7 +249,7 @@ test("backups go into a folder chosen once, the oldest beyond those kept removed
 test("a block's flags follow its kind, and its settings are kept", async ({ page }) => {
   await open(page);
   await places(page).getByRole("row", { name: /^Blocks/ }).click();
-  await page.getByRole("button", { name: "Add block" }).click();
+  await page.getByRole("button", { name: "New block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill("Commute");
   await form.getByRole("button", { name: /Kind/ }).click();
@@ -278,7 +278,7 @@ test("space pauses a running timer, and the menu offers resume and stop", async 
   await open(page);
   await add(page, "Write report");
   await places(page).getByRole("row", { name: /^Today/ }).click();
-  await page.getByRole("button", { name: "Add block" }).click();
+  await page.getByRole("button", { name: "New block" }).click();
   const form = page.getByRole("dialog", { name: "New Block" });
   await form.getByRole("textbox", { name: "Name", exact: true }).fill("Deep work");
   await form.getByRole("textbox", { name: "Starts at" }).fill("11:30pm");
@@ -461,7 +461,7 @@ test("every shared command works on the web's key", async ({ page }) => {
   // Task, on the task in hand; with none, as in the empty trash, it says so.
   await page.keyboard.press("Alt+Shift+Digit4");
   await page.keyboard.press("Alt+Shift+KeyP");
-  await expect(live).toContainText("No task is selected.");
+  await expect(live).toContainText("No task selected");
   await page.keyboard.press("Alt+Shift+Digit2");
   await page.keyboard.press("Alt+Shift+KeyP");
   await expect(live).toContainText("There is no other project to move it to.");

@@ -9,7 +9,20 @@
 // decided here.
 
 import * as Comlink from "comlink";
-import init, { open, pickerWords, sentenceCase, keyboardShortcuts, folderBackupWords } from "./core/lumenna_web.js";
+import init, {
+  open,
+  pickerWords,
+  sentenceCase,
+  keyboardShortcuts,
+  folderBackupWords,
+  quickAddWords,
+  detailsWords,
+  backedUpTo,
+  backupFailed,
+  browserDeviceName,
+  choiceCount,
+  nothingToChoose,
+} from "./core/lumenna_web.js";
 import type {
   App,
   Asking,
@@ -33,6 +46,8 @@ import type {
   KeyGroup,
   Syntax,
   PickerWords,
+  QuickAddWords,
+  DetailsWords,
 } from "./core/lumenna_web.js";
 import { Capitals, TimeStyle } from "./core/lumenna_web.js";
 
@@ -144,6 +159,9 @@ export interface ShownChoice {
   reason?: string;
   /** A colour's, drawn beside its name. */
   swatch?: Swatch;
+  /** "level 2", where it sits deeper or shallower than the choice before it: a list box says no
+   * level of its own. */
+  level?: string;
 }
 
 /** What a field written in the filter or quick-add language offers at its cursor. */
@@ -157,6 +175,8 @@ export interface Offered {
 /** The question open, a pick's choices as lines. */
 export interface ShownAsking extends Asking {
   lines: ShownChoice[] | null;
+  /** How many the pick offers, in words: "3 choices". */
+  count: string;
 }
 
 /** A task's or block's reminders, each with the line it reads as. */
@@ -209,7 +229,9 @@ function screen(view: ViewModel, lines: Lines): Screen {
       depth: choice.depth,
       reason: choice.reason ?? undefined,
       swatch: choice.swatch ?? undefined,
+      level: lines.choices[index]?.level ?? undefined,
     })),
+    count: view.asking.choices ? choiceCount(view.asking.choices.choices.length) : "",
   };
   const devices = view.devices && {
     ...view.devices,
@@ -338,6 +360,27 @@ const api = {
 
   /** What automatic backups to a folder do, in a sentence. */
   folderBackupWords: (): string => folderBackupWords(),
+
+  /** What quick add and a list's filter say, in sentence case. */
+  quickAddWords: (): QuickAddWords => quickAddWords(),
+
+  /** What the task details say around their form, in sentence case. */
+  detailsWords: (): DetailsWords => detailsWords(),
+
+  /** What is said once a backup is taken into the folder `folder` as `name`. */
+  backedUpTo: (folder: string, name: string): string => backedUpTo(folder, name),
+
+  /** What is said when a backup failed, and why where that is known. */
+  backupFailed: (reason: string): string => backupFailed(reason),
+
+  /** What this browser calls itself when it pairs, from its user agent's names. */
+  browserDeviceName: (browser: string, system: string): string => browserDeviceName(browser, system),
+
+  /** How many a pick offers, in words. */
+  choiceCount: (count: number): string => choiceCount(count),
+
+  /** What a pick with nothing in it says. */
+  nothingToChoose: (): string => nothingToChoose(),
 };
 
 export type Api = typeof api;

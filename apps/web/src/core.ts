@@ -46,6 +46,13 @@ export type {
   RowView,
   KeyCommand,
   KeyGroup,
+  QuickAddWords,
+  DetailsWords,
+  DetailsLine,
+  DueButton,
+  SettingsPage,
+  SettingsButton,
+  CommandState,
   TaskDetail,
   TaskFields,
 } from "./core/lumenna_web.js";

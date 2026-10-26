@@ -11,8 +11,13 @@ import type { Key } from "react-aria-components";
 import { core } from "./core";
 import type { Offered, Syntax } from "./core";
 import { say } from "./say";
+import { words } from "./words";
 
 const nothing: Offered = { announcement: "", start: 0, end: 0, candidates: [] };
+
+/** How a line in the filter language completes, in the web's keys: the core says it only as part
+ * of quick add's hint. */
+const OFFERS = "Down arrow offers what could come next.";
 
 export function CompletingField(props: {
   label: string;
@@ -20,6 +25,8 @@ export function CompletingField(props: {
   onChange: (text: string) => void;
   syntax: Syntax;
   description?: string;
+  /** What the field takes and how it completes, whole, where the core says both: quick add's. */
+  hint?: string;
   placeholder?: string;
   autoFocus?: boolean;
   /** Enter with nothing offered open: what the field does when finished. */
@@ -64,7 +71,7 @@ export function CompletingField(props: {
     const asking = props.offers ? props.offers(line, cursor) : core.complete(line, cursor, props.syntax);
     void asking.then((found) => {
       if (found.candidates.length > 0) opening.current = true;
-      else say(found.announcement || "Nothing to complete here.");
+      else say(found.announcement || words().quickAdd.nothingToComplete);
       offeredFor.current = line;
       setOffer(found);
     });
@@ -128,7 +135,7 @@ export function CompletingField(props: {
         <Input ref={(element) => void (input.current = element)} placeholder={props.placeholder} autoFocus={props.autoFocus} />
       </div>
       <Text slot="description" className="quiet">
-        {[props.description, "Down arrow offers what could come next."].filter(Boolean).join(" ")}
+        {props.hint ?? [props.description, OFFERS].filter(Boolean).join(" ")}
       </Text>
       <FieldError>{props.error}</FieldError>
       <Popover>

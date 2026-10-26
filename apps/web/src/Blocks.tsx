@@ -1,12 +1,11 @@
 // Every block series, as the app lists them: its actions are the core's, in its menu; Enter
-// changes one, Delete deletes it, asking first; Add block makes one.
+// changes one, Delete deletes it, asking first; New block makes one.
 
 import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import type { Screen, ShellEvent } from "./core";
-import { ActionKind } from "./core";
 import { actOn, isDelete, keyPressed, rowShown, shortActions } from "./actions";
 import { useCommand } from "./commands";
 import { rowKey } from "./landing";
@@ -14,6 +13,7 @@ import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
+import { commandTitle } from "./words";
 
 export function Blocks(props: { screen: Screen }) {
   const list = props.screen.list;
@@ -31,9 +31,10 @@ export function Blocks(props: { screen: Screen }) {
   /** Sends `event`; what comes back lands focus and is said as every turn is (session.ts). */
   const act = (event: ShellEvent) => void send(event);
 
-  const onRow = async (id: string, kinds: ActionKind[]) => {
+  /** Runs the shared table's command `command` on the row `id`, with that row in hand. */
+  const onRow = async (id: string, command: string) => {
     await send({ tag: "Focus", value0: id });
-    act({ tag: "Run", value0: kinds });
+    act(keyPressed(command));
   };
 
   const keys = (event: KeyboardEvent) => {
@@ -64,18 +65,18 @@ export function Blocks(props: { screen: Screen }) {
 
   return (
     <>
-      <h2>Blocks</h2>
+      <h2>{props.screen.title}</h2>
       <p className="quiet" id="blocks-readback">
         {items.length > 0 ? list?.readback : ""}
       </p>
       <div className="buttons">
-        <Button onPress={add}>Add block</Button>
+        <Button onPress={add}>{commandTitle("new-block")}</Button>
         <RowMenu actions={shortActions(list, inHand)} onAction={(action) => inHand && act(actOn(rowShown(inHand.row.id), action))} isOpen={menu} onOpenChange={setMenu} />
       </div>
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>
         <Tree
           ref={tree}
-          aria-label="Blocks"
+          aria-label={props.screen.title}
           aria-describedby="blocks-readback"
           items={items.map((item) => ({ id: item.row.id, item }))}
           selectionMode="single"
@@ -83,7 +84,7 @@ export function Blocks(props: { screen: Screen }) {
           disallowEmptySelection
           selectedKeys={selected}
           onSelectionChange={choose}
-          onAction={(key: Key) => void onRow(String(key), [ActionKind.Edit])}
+          onAction={(key: Key) => void onRow(String(key), "open")}
           renderEmptyState={() => <p className="quiet">{list?.empty}</p>}
         >
           {(node) => (

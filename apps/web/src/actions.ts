@@ -41,9 +41,10 @@ export function byKind<A extends { kind: ActionKind }>(actions: readonly A[] | u
   return undefined;
 }
 
-/** A shared key pressed on the row in hand, by its id in the core's table ("delete", "toggle"):
- *  what it runs there is the core's (`keys::runs`), the same on every platform. */
-export const keyPressed = (id: "delete" | "toggle"): ShellEvent => ({ tag: "Key", value0: id });
+/** A command of the shared table run on the row in hand, by its id ("delete", "toggle", "open",
+ *  "mark-done"): what it runs there is the core's (`keys::what_runs`), the same on every
+ *  platform, and so is why it runs nothing. */
+export const keyPressed = (id: string): ShellEvent => ({ tag: "Key", value0: id });
 
 /** What a key press on a row needs to say which key it is. */
 interface Pressed {
