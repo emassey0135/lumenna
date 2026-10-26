@@ -1,4 +1,5 @@
 import Foundation
+import LumennaApp
 
 /// The open store, for the whole app — the iPhone's, the Mac's and the watch's: the Crux app over
 /// it (`AppModel`), which every screen draws, and what is about running on an Apple platform —
@@ -180,7 +181,7 @@ final class Core: ObservableObject {
             do {
                 _ = try device.backUpIfDue()
             } catch {
-                DispatchQueue.main.async { failed("The automatic backup failed. \(error.sentence)") }
+                DispatchQueue.main.async { failed(LumennaApp.backupFailed(reason: error.sentence)) }
             }
         }
     }

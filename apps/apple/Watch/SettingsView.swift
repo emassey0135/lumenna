@@ -51,8 +51,10 @@ struct DevicesView: View {
         let lines = core.app.lines.devices
         let devices = page?.list?.devices ?? []
         return List {
-            Text("This watch syncs through your iPhone. Pair a new device from the iPhone.")
-                .font(.footnote)
+            // How this watch syncs, the app's: through its phone.
+            if let status = page?.status, !status.isEmpty {
+                Text(status).font(.footnote)
+            }
             if let list = page?.list, list.devices.isEmpty {
                 Text(list.empty)
             }

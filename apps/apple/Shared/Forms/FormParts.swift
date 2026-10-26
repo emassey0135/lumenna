@@ -240,14 +240,13 @@ struct FailureAlert: ViewModifier {
         content
             // SwiftUI's own accent, which the window's tint does not reach.
             .tint(Color.lumennaTint)
+            // The core's sentence is the whole alert: it says what could not be done and why.
             .alert(
-                "Could not do that",
+                failure ?? "",
                 isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } }),
                 presenting: failure
             ) { _ in
                 Button("OK") {}
-            } message: { failure in
-                Text(failure)
             }
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import LumennaApp
 
 /// A key and its modifiers, as Carbon registers it and as a person reads it.
 struct Shortcut: Equatable {
@@ -88,10 +89,16 @@ enum HotKeys {
     enum Kind: String, CaseIterable {
         case summon, quickAdd
 
+        /// Its name, the core's.
         var name: String {
+            LumennaApp.hotkeyName(kind: core, sentence: false)
+        }
+
+        /// The core's kind of shortcut this is.
+        var core: LumennaApp.HotKind {
             switch self {
-            case .summon: "Show Lumenna"
-            case .quickAdd: "Quick Add a Task"
+            case .summon: .show
+            case .quickAdd: .quickAdd
             }
         }
 
@@ -187,7 +194,7 @@ enum HotKeys {
         // Not answering to the old one while a new one is being pressed.
         if let old = references.removeValue(forKey: kind.id) { UnregisterEventHotKey(old) }
         let alert = NSAlert()
-        alert.messageText = "New Shortcut for \(kind.name)"
+        alert.messageText = "\(LumennaApp.hotkeyWords().dialog): \(kind.name)"
         alert.informativeText = "Press the keys now, with Command or Control. With VoiceOver on, Control-Command keys reach Lumenna as they are. Escape keeps \(description(kind))."
         alert.addButton(withTitle: "Cancel")
         var monitor: Any?
@@ -212,7 +219,7 @@ enum HotKeys {
                 warning.messageText = "\(shortcut.description) is taken"
                 warning.informativeText = "\(conflict) Use it for \(kind.name) anyway?"
                 warning.addButton(withTitle: "Keep \(description(kind))")
-                warning.addButton(withTitle: "Use It Anyway")
+                warning.addButton(withTitle: LumennaApp.hotkeyWords().useAnyway)
                 warning.beginSheetModal(for: window) { response in
                     if response == .alertSecondButtonReturn { set(kind, to: shortcut) } else { register(kind) }
                     done()

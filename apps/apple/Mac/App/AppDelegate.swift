@@ -108,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func backUp() {
-        core.backUpIfDue { [weak self] message in self?.main?.window?.showFailure(message, title: "Backup") }
+        core.backUpIfDue { [weak self] message in self?.main?.window?.showFailure(message) }
     }
 
     // MARK: - Windows

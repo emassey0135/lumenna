@@ -31,6 +31,11 @@ final class TaskDetailModel: NSObject, ObservableObject {
     @Published private(set) var projects: [LumennaApp.Choice] = []
     /// The fields as the core words them: each one's name, what it takes and an example.
     @Published private(set) var form: [LumennaApp.FormField] = []
+    /// What the details list besides the form, the app's: the state, the rule it repeats by,
+    /// what it waits for, its history.
+    @Published private(set) var lines: [LumennaApp.DetailsLine] = []
+    /// The details' own words, the core's.
+    let words = LumennaApp.detailsWords(sentence: false)
     @Published var failure: String?
 
     /// Whether the fields are being set from the app's, not typed.
@@ -76,6 +81,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
         task = details.task
         projects = details.projects
         if form != details.form { form = details.form }
+        if lines != details.lines { lines = details.lines }
         guard !filling else { return }
         filling = true
         core.app.whenStill { [weak self] in
@@ -147,7 +153,7 @@ struct TaskDetailView: View {
         if let task = model.task {
             form(task).showingTask(task.id, titled: task.title)
         } else {
-            Text("This task is no longer here.").foregroundStyle(Color.quietLabel)
+            Text(model.words.gone).foregroundStyle(Color.quietLabel)
         }
     }
 
@@ -181,30 +187,20 @@ struct TaskDetailView: View {
             } header: {
                 FormParts.heading(words["notes"].label)
             }
+            // What the details list besides the fields, the app's lines in its words: the state,
+            // the rule it repeats by, what it waits for, and its past, on its own screen only.
             Section {
-                if task.repetition == nil, let rule = task.recurrence {
-                    LabeledContent("Repeats by the rule", value: rule)
+                ForEach(model.lines, id: \.key) { line in
+                    LabeledContent(line.label, value: line.value)
                 }
-                LabeledContent("State", value: task.state.joined(separator: ", "))
             } header: {
-                FormParts.heading("About")
-            }
-            // What the records hold of its past, the core's words: on its own screen only,
-            // never in a list.
-            if !task.history.isEmpty {
-                Section {
-                    ForEach(Array(task.history.enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                    }
-                } header: {
-                    FormParts.heading("History")
-                }
+                FormParts.heading(model.words.about)
             }
             Section {
                 #if os(macOS) || os(watchOS)
                 // On the phone Save is in the navigation bar; on the Mac ⌘S reaches it too,
                 // and a watch has no bar button for it.
-                Button("Save") { model.save() }
+                Button(model.words.save) { model.save() }
                 #endif
                 // What can be done to it, the core's, in its order.
                 ForEach(task.offered, id: \.self) { action in

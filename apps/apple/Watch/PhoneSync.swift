@@ -1,4 +1,5 @@
 import Foundation
+import LumennaApp
 import WatchConnectivity
 import WatchKit
 
@@ -16,7 +17,7 @@ import WatchKit
 /// hands on its own the same way while this app cannot answer.
 final class PhoneSync: NSObject, ObservableObject {
     /// How the last attempt went, said in the settings row.
-    @Published private(set) var status = "Not synced with the iPhone yet"
+    @Published private(set) var status = PhoneSync.said(.notYet)
     private weak var core: Core?
     private var running = false
     private var again = false
@@ -44,22 +45,27 @@ final class PhoneSync: NSObject, ObservableObject {
         guard session.activationState == .activated else { return }
         guard session.isReachable else {
             LinkParcel.handOn(core.app.device, over: session)
-            status = "The iPhone is not in reach; changes go to it when it is"
+            status = PhoneSync.said(.outOfReach)
             return
         }
         do {
             running = true
             send(try core.app.device.linkStart(), over: session)
         } catch {
-            finish("Could not sync with the iPhone. \(error.sentence)")
+            finish(PhoneSync.said(.failed(reason: error.sentence)))
         }
+    }
+
+    /// How syncing with the phone went, in the core's words.
+    static func said(_ status: LumennaApp.PhoneSync) -> String {
+        LumennaApp.phoneSync(phone: "the iPhone", status: status)
     }
 
     private func send(_ message: Data, over session: WCSession) {
         session.sendMessageData(message, replyHandler: { reply in
             DispatchQueue.main.async { self.take(reply, over: session) }
         }, errorHandler: { error in
-            DispatchQueue.main.async { self.finish("Could not sync with the iPhone. \(error.localizedDescription)") }
+            DispatchQueue.main.async { self.finish(PhoneSync.said(.failed(reason: error.localizedDescription))) }
         })
     }
 
@@ -75,9 +81,9 @@ final class PhoneSync: NSObject, ObservableObject {
             if core.app.device.linkTookIn() {
                 NotificationCenter.default.post(name: Core.changed, object: nil, userInfo: [Core.fromPhone: true])
             }
-            finish("Synced with the iPhone at \(Date.now.formatted(date: .omitted, time: .shortened))")
+            finish(PhoneSync.said(.synced(time: Date.now.formatted(date: .omitted, time: .shortened))))
         } catch {
-            finish("Could not sync with the iPhone. \(error.sentence)")
+            finish(PhoneSync.said(.failed(reason: error.sentence)))
         }
     }
 

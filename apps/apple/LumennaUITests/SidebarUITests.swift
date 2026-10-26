@@ -82,7 +82,7 @@ final class SidebarUITests: XCTestCase {
         }
         place("Inbox").tap()
         XCTAssertTrue(app.navigationBars["Inbox"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["No task open"].exists, "nothing is open beside it yet")
+        XCTAssertTrue(app.staticTexts["No task selected"].exists, "nothing is open beside it yet")
         try audit()
     }
 

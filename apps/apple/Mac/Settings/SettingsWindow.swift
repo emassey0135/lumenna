@@ -137,6 +137,9 @@ extension SettingsModel {
 
 struct GeneralSettings: View {
     @ObservedObject var model: SettingsModel
+    /// The shortcuts' words, the core's. Its caption is about a PC's keys, so the Mac keeps its
+    /// own, about Control-Command and VoiceOver.
+    private let words = LumennaApp.hotkeyWords()
 
     var body: some View {
         Form {
@@ -156,17 +159,16 @@ struct GeneralSettings: View {
                     Named(kind.name) {
                         HStack {
                             Text(model.shortcutDescription(kind))
-                            Button("Change…") { model.recordShortcut(kind) }
-                                .accessibilityLabel("Change shortcut for \(kind.name)")
-                            Button(model.shortcutDescription(kind) == "Off" ? "Turn On" : "Turn Off") {
-                                model.toggleShortcut(kind)
-                            }
-                            .accessibilityLabel("\(model.shortcutDescription(kind) == "Off" ? "Turn on" : "Turn off") shortcut for \(kind.name)")
+                            Button(words.change + "…") { model.recordShortcut(kind) }
+                                .accessibilityLabel("\(words.change), \(kind.name)")
+                            let toggle = HotKeys.shortcut(kind) == nil ? words.turnOn : words.turnOff
+                            Button(toggle) { model.toggleShortcut(kind) }
+                                .accessibilityLabel("\(toggle), \(kind.name)")
                         }
                     }
                 }
             } header: {
-                FormParts.heading("Shortcuts from Anywhere")
+                FormParts.heading(words.heading)
             } footer: {
                 Text("These work in any app, so they take their keys from whatever app is in front. Control-Command, because Control-Option is VoiceOver's.")
                     .font(.footnote).foregroundStyle(Color.quietLabel)

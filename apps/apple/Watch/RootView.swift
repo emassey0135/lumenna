@@ -165,10 +165,9 @@ struct RootView: View {
                     }
                 }
             }
-            .alert("Could not do that", isPresented: failed) {
+            // The core's sentence is the whole alert: what could not be done and why.
+            .alert(core.failure ?? "", isPresented: failed) {
                 Button("OK") { core.failure = nil }
-            } message: {
-                Text(core.failure ?? "")
             }
         }
         // What the app says, shown for sighted wearers; the asker's sheets show it over themselves.

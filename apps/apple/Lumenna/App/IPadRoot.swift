@@ -12,7 +12,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     // Kept, so coming back to them finds them as they were left.
     private lazy var day = DayViewController(core: core)
     private lazy var tasks = TaskListViewController(core: core, place: .tasks)
-    private var empty = "No task open"
+    private var empty = LumennaApp.detailsWords(sentence: false).none
 
     init(core: Core) {
         self.core = core
@@ -67,7 +67,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     func show(_ destination: Destination, then: ((UIViewController) -> Void)? = nil) {
         if let presented = presentedViewController { presented.dismiss(animated: false) }
         let screen = screen(for: destination)
-        empty = destination == .settings ? "No settings page open" : "No task open"
+        empty = destination == .settings ? "No settings page open" : LumennaApp.detailsWords(sentence: false).none
         list.setViewControllers([screen], animated: false)
         sidebar.current = destination
         close()

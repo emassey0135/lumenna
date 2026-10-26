@@ -53,7 +53,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
         chosen: @escaping (PickerItem) -> Void, cancelled: @escaping () -> Void = {}
     ) {
         guard !items.isEmpty else {
-            window.showFailure("There is nothing to choose from.", title: title)
+            window.showFailure(LumennaApp.nothingToChoose(), title: title)
             cancelled()
             return
         }

@@ -29,8 +29,8 @@ final class RemindersViewController: AppListViewController {
                 detail: line.flatMap { $0.detail.isEmpty ? nil : $0.detail }, actions: reminder.offered
             )
         }
-        let off = silenced ? "Notifications for Lumenna are off in Settings, so these are not shown" : nil
-        return (items, ([list.announcement] + [off].compactMap { $0 }).joined(separator: ". "))
+        let off = silenced ? LumennaApp.notificationWords(thisDevice: AppModel.thisDevice, sentence: false).off : nil
+        return (items, ([list.announcement] + [off].compactMap { $0 }).joined(separator: " "))
     }
 
     override var addTitle: String? { "Add Reminder" }
