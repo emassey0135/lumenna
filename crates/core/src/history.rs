@@ -7,7 +7,6 @@ use jiff::{Zoned, civil};
 
 use crate::model::{AssignmentStatus, Task};
 use crate::snapshot::Snapshot;
-use crate::urgency::sitting_day;
 
 /// A task's history, as counts.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -45,7 +44,7 @@ pub fn history(snapshot: &Snapshot, task: &Task, now: &Zoned) -> History {
     for sitting in snapshot.assignments.values().filter(|a| a.task_id == task.id) {
         found.sittings += 1;
         found.worked_mins += sitting.accumulated_mins;
-        let day = sitting_day(snapshot, sitting.block_ref);
+        let day = snapshot.assignment_date(sitting);
         if sitting.accumulated_mins > 0 {
             found.last_worked = found.last_worked.max(day);
         }

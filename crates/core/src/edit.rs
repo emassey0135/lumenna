@@ -273,7 +273,12 @@ impl Builder {
         self
     }
 
+    /// The edit, or [`Edit::nothing`] when nothing differs, so no caller says a change that
+    /// was never made.
     fn finish(&mut self) -> Edit {
+        if self.changes.is_empty() {
+            return Edit::nothing();
+        }
         Edit { description: std::mem::take(&mut self.description), changes: std::mem::take(&mut self.changes) }
     }
 }
@@ -597,15 +602,9 @@ pub enum MoveTo {
     /// A different project. Subtasks follow, since a subtask in another project from its
     /// parent has no view that can show both.
     Project(ProjectId),
-    /// Under a different parent, or to the top level.
+    /// Under a different parent, or to the top level. Tasks have no order of their own to
+    /// move within: a list orders them by urgency or by when they were added.
     Parent(Option<TaskId>),
-    /// A different position among its current siblings.
-    Between {
-        /// The task it should follow, if any.
-        after: Option<TaskId>,
-        /// The task it should precede, if any.
-        before: Option<TaskId>,
-    },
 }
 
 /// Moves a task.
@@ -663,17 +662,6 @@ pub fn move_task(snapshot: &Snapshot, id: TaskId, to: MoveTo) -> Result<Edit, Ed
                         builder.task(Transition::updated(target.clone(), moved));
                     }
                 }
-            }
-        }
-        MoveTo::Between { after, before } => {
-            let lower = after.and_then(|id| snapshot.tasks.get(&id)).map(|t| t.order.clone());
-            let upper = before.and_then(|id| snapshot.tasks.get(&id)).map(|t| t.order.clone());
-            if let Ok(order) = OrderKey::between(lower.as_ref(), upper.as_ref())
-                && order != task.order
-            {
-                let mut moved = task.clone();
-                moved.order = order;
-                builder.task(Transition::updated(task.clone(), moved));
             }
         }
     }
@@ -1393,8 +1381,8 @@ pub fn defer_sitting(snapshot: &Snapshot, assignment_id: AssignmentId, year: i16
 ///
 /// # Errors
 ///
-/// [`EditError::NotFound`] if there is no such sitting; [`EditError::Invalid`] if it is
-/// neither planned (to skip) nor skipped (to plan again).
+/// [`EditError::NotFound`] if there is no such sitting; [`EditError::NotSkippable`] if it is
+/// not planned, to skip, or [`EditError::NotSkipped`] if it is not skipped, to plan again.
 pub fn skip_sitting(snapshot: &Snapshot, assignment_id: AssignmentId, year: i16, skip: bool) -> Result<Edit, EditError> {
     use crate::model::AssignmentStatus as S;
     let assignment = snapshot

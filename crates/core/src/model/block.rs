@@ -415,8 +415,14 @@ impl BlockAssignment {
     ///
     /// `cap_mins` is the containing block's duration, as for [`elapsed`](Self::elapsed): a
     /// timer left running past the end of its block contributes at most the block's length.
+    ///
+    /// The run is logged to the nearest minute, not floored: only whole minutes are kept, and
+    /// floored, ten runs of 50 seconds logged nothing at all. Rounded, what one run gains
+    /// another loses, rather than every run losing.
     pub fn pause(&mut self, now: Timestamp, cap_mins: Option<u32>) -> Elapsed {
-        let elapsed = self.elapsed(now, cap_mins);
+        let half_a_minute = SignedDuration::from_secs(30);
+        let rounded = if self.is_running() { now.saturating_add(half_a_minute).unwrap_or(now) } else { now };
+        let elapsed = self.elapsed(rounded, cap_mins);
         self.accumulated_mins = elapsed.mins;
         self.running_since = None;
         elapsed
@@ -581,6 +587,22 @@ mod tests {
         let t2 = t1 + SignedDuration::from_secs(60 * 60);
         a.start(t2);
         assert_eq!(a.elapsed(t2 + SignedDuration::from_secs(7 * 60), None).mins, 50);
+    }
+
+    #[test]
+    fn short_runs_are_logged_to_the_nearest_minute_rather_than_lost() {
+        let mut a = assignment();
+        let mut t = Timestamp::from_second(1_700_000_000).unwrap();
+        for _ in 0..10 {
+            a.start(t);
+            t += SignedDuration::from_secs(50);
+            a.pause(t, None);
+            t += SignedDuration::from_secs(60);
+        }
+        assert_eq!(a.accumulated_mins, 10, "ten runs of 50 seconds are not nothing");
+        a.start(t);
+        a.pause(t + SignedDuration::from_secs(20), None);
+        assert_eq!(a.accumulated_mins, 10, "20 seconds rounds down");
     }
 
     #[test]

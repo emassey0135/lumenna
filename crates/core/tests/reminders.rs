@@ -62,7 +62,7 @@ impl World {
     }
 
     fn fired(&self, from: Timestamp, until: Timestamp) -> Vec<Timestamp> {
-        firings(&self.snapshot, from, until, &zone(), None).unwrap().into_iter().map(|f| f.at).collect()
+        firings(&self.snapshot, from, until, &zone(), None).firings.into_iter().map(|f| f.at).collect()
     }
 }
 
@@ -162,7 +162,7 @@ fn a_reminder_for_other_devices_fires_nowhere_else_and_still_keeps_the_defaults_
     reminder.delivery = Delivery::OnlyDevices([laptop].into_iter().collect());
     world.snapshot.reminders.insert(reminder.id, reminder);
     let window = (at(2026, 5, 6, 0, 0), at(2026, 5, 7, 0, 0));
-    let on = |device| firings(&world.snapshot, window.0, window.1, &zone(), device).unwrap().len();
+    let on = |device| firings(&world.snapshot, window.0, window.1, &zone(), device).firings.len();
     assert_eq!(on(Some(laptop)), 1);
     assert_eq!(on(Some(NodeId::from_bytes([2; 32]))), 0, "and no default in its place");
     assert_eq!(on(None), 0);
@@ -226,4 +226,33 @@ fn checks_in_any_steps_fire_exactly_what_one_check_over_the_whole_time_does() {
         assert_eq!(stepped, whole, "in steps of {step_mins} minutes");
     }
     assert!(whole.len() >= 15, "{}", whole.len());
+}
+
+#[test]
+fn a_series_whose_rule_cannot_be_expanded_is_named_and_every_other_block_still_fires() {
+    let mut world = World::new();
+    let deep = world.daily("Deep work", 9, 0, 120);
+    let broken = world.daily("Broken", 10, 0, 30);
+    world.snapshot.series.get_mut(&broken).unwrap().rrule = Some("FREQ=SOMETIMES".to_owned());
+    world.remind(ReminderTarget::Block(deep), Trigger::before(ReminderAnchor::BlockStart, 5));
+    world.remind(ReminderTarget::Block(broken), Trigger::before(ReminderAnchor::BlockStart, 5));
+    let found = firings(&world.snapshot, at(2026, 5, 6, 0, 0), at(2026, 5, 6, 23, 0), &zone(), None);
+    assert_eq!(found.firings.iter().map(|f| f.at).collect::<Vec<_>>(), vec![at(2026, 5, 6, 8, 55)]);
+    assert_eq!(found.unreadable, vec![broken]);
+}
+
+#[test]
+fn work_left_short_is_carried_on_the_earliest_reminder_after_the_end_whatever_order_they_were_made_in() {
+    use lumenna_core::model::{AssignmentStatus, BlockAssignment, BlockRef};
+    let mut world = World::new();
+    let deep = world.daily("Deep work", 9, 0, 60);
+    let later = world.remind(ReminderTarget::Block(deep), Trigger::after(ReminderAnchor::BlockEnd, 10));
+    let at_end = world.remind(ReminderTarget::Block(deep), Trigger::at(ReminderAnchor::BlockEnd));
+    let essay = world.task("Essay", Due::on(date(2026, 6, 1)));
+    let mut sitting = BlockAssignment::new(BlockRef::Occurrence(deep, date(2026, 5, 6)), essay, OrderKey::middle());
+    (sitting.status, sitting.planned_mins, sitting.accumulated_mins) = (AssignmentStatus::Worked, Some(60), 20);
+    world.snapshot.assignments.insert(sitting.id, sitting);
+    let found = firings(&world.snapshot, at(2026, 5, 6, 9, 30), at(2026, 5, 6, 11, 0), &zone(), None).firings;
+    let carrying: Vec<_> = found.iter().filter(|f| f.carry).map(|f| f.key).collect();
+    assert_eq!(carrying, vec![at_end.id], "not {:?}", later.id);
 }

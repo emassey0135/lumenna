@@ -254,6 +254,16 @@ pub fn reminder_target(snapshot: &Snapshot, input: &str) -> Result<ReminderTarge
         .map_err(|_| LumennaError::new(format!("nothing here matches '{input}'")))
 }
 
+/// What is said of a block whose repetition no device can read: its reminders are left out,
+/// and every other block's still fire.
+#[must_use]
+pub fn unreadable_words(snapshot: &Snapshot, series: lumenna_core::id::SeriesId) -> String {
+    format!(
+        "Reminders for {} are left out: its repetition cannot be read",
+        target_name(snapshot, ReminderTarget::Block(series))
+    )
+}
+
 /// What a reminder target is called.
 pub fn target_name(snapshot: &Snapshot, target: ReminderTarget) -> String {
     match target {

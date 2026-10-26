@@ -226,6 +226,7 @@ pub struct Facts<'a> {
     snapshot: &'a Snapshot,
     completions: BTreeMap<TaskId, Vec<&'a TaskCompletion>>,
     assignments: BTreeMap<TaskId, Vec<&'a BlockAssignment>>,
+    waiters: BTreeMap<TaskId, Vec<TaskId>>,
 }
 
 impl<'a> Facts<'a> {
@@ -240,7 +241,13 @@ impl<'a> Facts<'a> {
         for assignment in snapshot.assignments.values() {
             assignments.entry(assignment.task_id).or_default().push(assignment);
         }
-        Self { snapshot, completions, assignments }
+        let mut waiters: BTreeMap<TaskId, Vec<TaskId>> = BTreeMap::new();
+        for task in snapshot.tasks.values() {
+            for depends in &task.depends {
+                waiters.entry(*depends).or_default().push(task.id);
+            }
+        }
+        Self { snapshot, completions, assignments, waiters }
     }
 
     /// The snapshot this indexes.
@@ -259,6 +266,12 @@ impl<'a> Facts<'a> {
     #[must_use]
     pub fn assignments_of(&self, task: TaskId) -> &[&'a BlockAssignment] {
         self.assignments.get(&task).map_or(&[], Vec::as_slice)
+    }
+
+    /// The tasks that wait on a task, deleted and done ones too.
+    #[must_use]
+    pub fn waiters_of(&self, task: TaskId) -> &[TaskId] {
+        self.waiters.get(&task).map_or(&[], Vec::as_slice)
     }
 
     /// Whether a task's current occurrence is finished.

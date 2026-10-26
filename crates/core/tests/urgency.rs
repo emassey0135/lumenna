@@ -124,3 +124,53 @@ fn history_counts_sittings_time_and_the_days_it_was_put_in_a_block_and_left() {
     assert_eq!(found.age_days, 120);
     assert_eq!(found.last_worked, Some(date(2026, 5, 5)));
 }
+
+#[test]
+fn a_due_time_held_to_a_zone_is_measured_in_that_zone() {
+    let mut world = World::new();
+    let (here, london) = (world.task("here"), world.task("london"));
+    // 9:00 today: five and a half hours ago in New York, ten and a half in London.
+    for id in [here, london] {
+        world.snapshot.tasks.get_mut(&id).unwrap().due = Some(Due::at(now().date(), time(9, 0, 0, 0)));
+    }
+    world.snapshot.tasks.get_mut(&london).unwrap().due.as_mut().unwrap().timezone =
+        Some(lumenna_core::model::TzName::new("Europe/London"));
+    assert!(world.score(london) > world.score(here), "longer overdue, more urgent");
+}
+
+#[test]
+fn only_time_still_owed_takes_room_in_a_block() {
+    use lumenna_core::suggestions::remaining;
+    let mut world = World::new();
+    let series = BlockSeries::one_off("Deep work", BlockKind::Work, now().date(), time(9, 0, 0, 0), 120).unwrap();
+    let block = BlockRef::OneOff(series.id);
+    world.snapshot.series.insert(series.id, series);
+    let mut sit = |title: &str, status: AssignmentStatus, planned: u32, worked: u32| {
+        let task = world.task(title);
+        let mut sitting = BlockAssignment::new(block, task, OrderKey::middle());
+        (sitting.status, sitting.planned_mins, sitting.accumulated_mins) = (status, Some(planned), worked);
+        world.snapshot.assignments.insert(sitting.id, sitting);
+        task
+    };
+    sit("skipped", AssignmentStatus::Skipped, 30, 0);
+    sit("moved on", AssignmentStatus::Deferred, 30, 0);
+    sit("worked", AssignmentStatus::Worked, 30, 30);
+    sit("half done", AssignmentStatus::InProgress, 40, 15);
+    let done = sit("done", AssignmentStatus::Planned, 20, 0);
+    let completion = lumenna_core::model::TaskCompletion::new(done, None);
+    world.snapshot.completions.insert(completion.id, completion);
+    assert_eq!(remaining(&world.snapshot, block, 120), 95, "only the 25 minutes still owed on the half-done sitting");
+}
+
+#[test]
+fn a_task_due_earlier_today_is_suggested_as_overdue_not_due_today() {
+    use lumenna_core::suggestions::{Reason, suggest};
+    let mut world = World::new();
+    let task = world.task("call the bank");
+    world.snapshot.tasks.get_mut(&task).unwrap().due = Some(Due::at(now().date(), time(9, 0, 0, 0)));
+    let series = BlockSeries::one_off("Admin", BlockKind::Work, now().date(), time(15, 0, 0, 0), 60).unwrap();
+    let block = BlockRef::OneOff(series.id);
+    world.snapshot.series.insert(series.id, series);
+    let found = suggest(&world.snapshot, None, block, 60, &now(), 5);
+    assert!(found[0].reasons.contains(&Reason::Overdue(0)), "{:?}", found[0].reasons);
+}

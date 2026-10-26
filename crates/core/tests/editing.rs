@@ -525,28 +525,6 @@ fn a_task_put_under_a_parent_joins_the_parents_project() {
 }
 
 #[test]
-fn reordering_puts_a_task_between_its_neighbours() {
-    let mut world = World::new();
-    let mut order = OrderKey::middle();
-    let mut ids = Vec::new();
-    for title in ["first", "second", "third"] {
-        let mut task = Task::new(world.work, title, order.clone());
-        order = OrderKey::after(&order);
-        ids.push(task.id);
-        task.project_id = world.work;
-        world.snapshot.tasks.insert(task.id, task);
-    }
-
-    let edit =
-        move_task(&world.snapshot, ids[2], MoveTo::Between { after: Some(ids[0]), before: Some(ids[1]) })
-            .unwrap();
-    world.apply(&edit);
-
-    assert!(world.task(ids[0]).order < world.task(ids[2]).order);
-    assert!(world.task(ids[2]).order < world.task(ids[1]).order);
-}
-
-#[test]
 fn a_move_that_changes_nothing_produces_no_edit() {
     let mut world = World::new();
     let id = world.add("Review PR");

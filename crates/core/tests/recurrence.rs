@@ -286,6 +286,23 @@ fn completion_anchoring_respects_the_days_a_rule_names() {
 }
 
 #[test]
+fn finishing_a_completion_anchored_task_early_moves_it_past_the_occurrence_finished() {
+    // "every! day" due the 6th, finished on the 5th: the 6th is what was just completed, so
+    // coming back on the 6th would read as done for good.
+    let due = due_every("FREQ=DAILY", date(2026, 1, 6), true);
+    let Advanced::Next(next) = advance(&due, date(2026, 1, 5), 1).unwrap() else {
+        panic!("should recur");
+    };
+    assert_eq!(next.date, date(2026, 1, 7));
+    // "every! monday" due Monday the 12th, finished on Sunday the 11th.
+    let due = due_every("FREQ=WEEKLY;BYDAY=MO", date(2026, 1, 12), true);
+    let Advanced::Next(next) = advance(&due, date(2026, 1, 11), 1).unwrap() else {
+        panic!("should recur");
+    };
+    assert_eq!(next.date, date(2026, 1, 19));
+}
+
+#[test]
 fn the_time_and_zone_survive_the_advance() {
     let due = Due {
         time: Some(time(15, 30, 0, 0)),
@@ -665,6 +682,23 @@ proptest! {
         let mut sorted = seen.clone();
         sorted.dedup();
         prop_assert_eq!(sorted.len(), seen.len());
+    }
+
+    /// Whenever it is finished, early or late, a recurring task comes back after the
+    /// occurrence it was due on: never on it, which would read as done for good.
+    #[test]
+    fn a_completion_on_any_day_moves_the_task_past_its_due_date(
+        index in 0..RULES.len(),
+        anchor in any_date(),
+        early in -40i64..40,
+        from_completion in any::<bool>(),
+    ) {
+        let due = due_every(RULES[index], anchor, from_completion);
+        let completed_on = anchor.checked_add(jiff::Span::new().days(early)).unwrap();
+        let Advanced::Next(next) = advance(&due, completed_on, 1).unwrap() else {
+            panic!("an unbounded rule should not finish");
+        };
+        prop_assert!(next.date > due.date, "{:?} finished {:?} -> {:?}", due.date, completed_on, next.date);
     }
 }
 

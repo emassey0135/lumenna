@@ -237,7 +237,8 @@ pub const HISTORY_DAYS: i64 = 14;
 pub fn history(snapshot: &Snapshot, now: &Zoned) -> Result<Rows> {
     use std::collections::BTreeMap;
     let today = now.date();
-    let since = today.checked_sub(jiff::Span::new().days(HISTORY_DAYS)).unwrap_or(today);
+    // Fourteen days, today the last of them: fourteen back from today would be fifteen.
+    let since = today.checked_sub(jiff::Span::new().days(HISTORY_DAYS - 1)).unwrap_or(today);
     let zone = now.time_zone().clone();
     // The latest event per task: when, whether it was a completion, the block it was in.
     let mut latest: BTreeMap<lumenna_core::id::TaskId, (jiff::civil::DateTime, bool, Option<String>)> = BTreeMap::new();
