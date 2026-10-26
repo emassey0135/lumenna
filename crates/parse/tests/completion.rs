@@ -156,3 +156,9 @@ fn multi_byte_input_does_not_split_a_character() {
     assert_eq!(result.candidates.len(), 2);
     assert_eq!(&input[result.replace_span.0..result.replace_span.1], "#w");
 }
+
+#[test]
+fn a_word_that_is_a_keyword_and_a_date_is_offered_once() {
+    let offered = texts("tod", 3, Syntax::Filter);
+    assert_eq!(offered.iter().filter(|t| *t == "today").count(), 1, "{offered:?}");
+}

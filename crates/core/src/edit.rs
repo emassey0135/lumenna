@@ -1222,7 +1222,7 @@ pub fn stop_timer(
         ended.status = crate::model::AssignmentStatus::Worked;
         return Ok((
             Edit {
-                description: format!("Logged {} minutes", logged.mins),
+                description: format!("Logged {}", time::minutes_words(logged.mins)),
                 changes: vec![Change::Assignment {
                     year,
                     transition: Box::new(Transition::updated(assignment.clone(), ended)),
@@ -1238,7 +1238,7 @@ pub fn stop_timer(
     }
     Ok((
         Edit {
-            description: format!("Logged {} minutes", elapsed.mins),
+            description: format!("Logged {}", time::minutes_words(elapsed.mins)),
             changes: vec![Change::Assignment {
                 year,
                 transition: Box::new(Transition::updated(assignment.clone(), stopped)),
@@ -1276,7 +1276,7 @@ pub fn pause_timer(
     let elapsed = paused.pause(time::truncate(now.timestamp()), cap_mins);
     Ok((
         Edit {
-            description: format!("Paused timer, {} minutes so far", elapsed.mins),
+            description: format!("Paused timer, {} so far", time::minutes_words(elapsed.mins)),
             changes: vec![Change::Assignment {
                 year,
                 transition: Box::new(Transition::updated(assignment.clone(), paused)),
@@ -1320,7 +1320,7 @@ pub fn log_minutes(
         return Ok(Edit::nothing());
     }
     Ok(Edit {
-        description: format!("Logged {mins} minutes"),
+        description: format!("Logged {}", time::minutes_words(mins)),
         changes: vec![Change::Assignment {
             year,
             transition: Box::new(Transition::updated(assignment.clone(), logged)),
@@ -1353,7 +1353,7 @@ pub fn plan_minutes(
     planned.planned_mins = mins;
     Ok(Edit {
         description: match mins {
-            Some(mins) => format!("Planned {mins} minutes"),
+            Some(mins) => format!("Planned {}", time::minutes_words(mins)),
             None => "Cleared the planned length".to_owned(),
         },
         changes: vec![Change::Assignment {

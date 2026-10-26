@@ -35,7 +35,7 @@
 mod spec;
 
 pub use spec::{
-    DateSpec, DueSpec, MonthDay, RecurrenceSpec, RelativeUnit, Which, weekday_name,
+    DateSpec, DueSpec, MonthDay, RecurrenceSpec, RelativeUnit, Which, offset, weekday_name,
 };
 
 use jiff::Timestamp;
@@ -79,6 +79,18 @@ fn day_and_month(date: jiff::civil::Date) -> String {
     ];
     let month = MONTHS.get((date.month() as usize).wrapping_sub(1)).copied().unwrap_or("");
     format!("{} {month}", date.day())
+}
+
+/// *"1 minute"*, *"45 minutes"*: a count of minutes as a sentence says it.
+#[must_use]
+pub fn minutes_words(minutes: u32) -> String {
+    if minutes == 1 { "1 minute".to_owned() } else { format!("{minutes} minutes") }
+}
+
+/// *"15:00"*, or with `twelve_hour` *"3:00 PM"*: a time in the clock the person reads by.
+#[must_use]
+pub fn clock_in(time: jiff::civil::Time, twelve_hour: bool) -> String {
+    if twelve_hour { clock_words(time) } else { format!("{:02}:{:02}", time.hour(), time.minute()) }
 }
 
 /// *"3:00 PM"*.

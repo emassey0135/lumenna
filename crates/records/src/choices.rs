@@ -119,7 +119,7 @@ pub fn offered(snapshot: &Snapshot, action: &Action, now: &Zoned) -> Result<Choi
             Subject::Filter => snapshot
                 .saved_filters
                 .values()
-                .find(|f| f.deleted_at.is_none() && f.name.eq_ignore_ascii_case(&action.target))
+                .find(|f| f.deleted_at.is_none() && lumenna_core::suggest::same_name(&f.name, &action.target))
                 .ok_or_else(|| LumennaError::new(format!("there is no saved filter called {}", action.target)))?
                 .color
                 .clone(),

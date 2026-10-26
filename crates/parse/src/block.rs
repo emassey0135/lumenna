@@ -8,7 +8,7 @@
 use jiff::civil;
 
 use crate::date::{clock, parse_date, parse_recurrence, parse_time};
-use crate::words::{Word, words};
+use crate::words::{Word, minutes_of, words};
 
 /// A block line, as understood. The day and the repetition are kept as typed, for whatever
 /// reads a block's day and repetition to read them as it reads the block form's.
@@ -129,7 +129,7 @@ fn range(tokens: &[Word], at: usize) -> Option<(civil::Time, u32, usize)> {
     // "9am for 2h", "at 9am for 90m".
     let (start, used) = parse_time(tokens, at)?;
     if tokens.get(at + used).is_some_and(|w| w.is("for")) {
-        let minutes = span(&tokens.get(at + used + 1)?.lower)?;
+        let minutes = minutes_of(&tokens.get(at + used + 1)?.lower)?;
         return Some((start, minutes, used + 2));
     }
     None
@@ -149,20 +149,6 @@ fn meridiem(text: &str) -> Option<&'static str> {
 fn length(start: civil::Time, end: civil::Time) -> Option<u32> {
     let minutes = (i32::from(end.hour()) * 60 + i32::from(end.minute())) - (i32::from(start.hour()) * 60 + i32::from(start.minute()));
     u32::try_from(minutes).ok().filter(|m| *m > 0)
-}
-
-/// `2h`, `90m`, `1h30m`, `45min`.
-fn span(text: &str) -> Option<u32> {
-    let text = text.trim_end_matches("in").trim_end_matches("ute").trim_end_matches("utes");
-    let (hours, rest) = match text.split_once('h') {
-        Some((h, rest)) => (h.parse::<u32>().ok()?, rest),
-        None => (0, text),
-    };
-    let minutes = match rest.trim_end_matches('m') {
-        "" => 0,
-        m => m.parse::<u32>().ok()?,
-    };
-    Some(hours * 60 + minutes).filter(|m| *m > 0)
 }
 
 #[cfg(test)]
@@ -188,6 +174,8 @@ mod tests {
         assert_eq!(review.date.as_deref(), Some("friday"));
         assert_eq!(review.repeat.as_deref(), Some("every friday"));
         assert_eq!(read("block Standup 9 to 9:15am").minutes, 15);
+        assert_eq!(read("block Reading 8pm for 45minutes").minutes, 45, "a length reads as a task's estimate does");
+        assert_eq!(read("block Walk 7am for 1hour").minutes, 60);
     }
 
     #[test]

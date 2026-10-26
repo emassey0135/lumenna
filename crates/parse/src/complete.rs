@@ -218,7 +218,10 @@ fn bare(
 
     out.retain(|c| c.text.to_lowercase().starts_with(prefix));
     out.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.text.cmp(&b.text)));
-    out.dedup_by(|a, b| a.text == b.text);
+    // Once each, under its first kind: "today" is a keyword and a date both, and sorted by
+    // kind the two are not side by side for `dedup` to find.
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|c| seen.insert(c.text.clone()));
     out
 }
 

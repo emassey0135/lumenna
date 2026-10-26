@@ -30,9 +30,11 @@ pub struct When {
 
 /// Matches the longest date, time, and repetition phrase starting at `at`.
 ///
-/// Greedy on purpose, and in this order: a repetition, then a day, then a time. That is what
-/// lets *"every weekday at 9am"* and *"tomorrow 3pm"* come out as single phrases rather than
-/// leaving half of themselves in the title — the failure worth avoiding, since a swallowed date is invisible until the task fails to fire.
+/// Greedy on purpose, and in this order: a repetition, then a day, then a time, then a day
+/// once more if none came before the time. That is what lets *"every weekday at 9am"*,
+/// *"tomorrow 3pm"* and *"at 3pm tomorrow"* come out as single phrases rather than leaving
+/// half of themselves in the title — the failure worth avoiding, since a swallowed date is
+/// invisible until the task fails to fire.
 #[must_use]
 pub fn parse_when(words: &[Word], at: usize) -> Option<When> {
     let mut spec = DueSpec::default();
@@ -50,6 +52,12 @@ pub fn parse_when(words: &[Word], at: usize) -> Option<When> {
     if let Some((time, used)) = parse_time(words, index) {
         spec.time = Some(time);
         index += used;
+        if spec.date.is_none()
+            && let Some((date, used)) = parse_date(words, index)
+        {
+            spec.date = Some(date);
+            index += used;
+        }
     }
 
     (!spec.is_empty()).then_some(When { spec, words: index - at })
@@ -102,9 +110,15 @@ pub fn parse_date(words: &[Word], at: usize) -> Option<(DateSpec, usize)> {
             };
             return Some((spec, 2));
         }
+        // "next month" is a month away and "last year" a year ago. "This day" is today; "this
+        // month" and "this year" name no one day, so they are no date, and quick add says so.
         if let Some(unit) = unit_of(&next.lower) {
-            let amount = if which == Which::Last { -1 } else { 1 };
-            return Some((DateSpec::Offset { amount, unit }, 2));
+            return match (which, unit) {
+                (Which::This, RelativeUnit::Day) => Some((DateSpec::Today, 2)),
+                (Which::This, _) => None,
+                (Which::Next, unit) => Some((DateSpec::Offset { amount: 1, unit }, 2)),
+                (Which::Last, unit) => Some((DateSpec::Offset { amount: -1, unit }, 2)),
+            };
         }
         return None;
     }
@@ -259,12 +273,13 @@ pub fn parse_recurrence(words: &[Word], at: usize) -> Option<(RecurrenceSpec, bo
     if from_completion {
         index += 1;
     }
-    // "every other week" is an interval of two.
+    // "every other week" is an interval of two, and "every 3 days" or "every 3rd day" of
+    // three: an ordinal before a unit counts the units, it is no day of the month.
     let mut interval: u16 = 1;
     if words.get(index).is_some_and(|w| w.is("other")) {
         interval = 2;
         index += 1;
-    } else if let Some(n) = words.get(index).and_then(|w| integer(&w.lower))
+    } else if let Some(n) = words.get(index).and_then(|w| ordinal(&w.lower))
         && (1..=1000).contains(&n)
         && words.get(index + 1).is_some_and(|w| unit_of(&w.lower).is_some())
     {
@@ -274,9 +289,10 @@ pub fn parse_recurrence(words: &[Word], at: usize) -> Option<(RecurrenceSpec, bo
 
     let word = words.get(index)?;
 
-    // "every weekday"
+    // "every weekday". Weekdays have no interval to keep, so "every other weekday" is no
+    // repetition, said rather than read as every weekday.
     if word.any_of(&["weekday", "weekdays"]) {
-        return Some((RecurrenceSpec::Weekdays, from_completion, index + 1 - at));
+        return (interval == 1).then_some((RecurrenceSpec::Weekdays, from_completion, index + 1 - at));
     }
 
     // "every first monday", "every last friday (of the month)"

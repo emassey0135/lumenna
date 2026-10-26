@@ -32,7 +32,7 @@ use lumenna_core::suggest;
 use lumenna_core::time::{DueSpec, RecurrenceSpec};
 
 use crate::date::parse_when;
-use crate::words::{Word, words};
+use crate::words::{Word, minutes_of, position, priority_of, sigil_name, words};
 
 /// Something recognised, and where it was.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +83,8 @@ impl Known {
 /// What the text said, before it is checked against the store.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct QuickAdd {
+    /// The line as typed, for saying where in it each diagnostic is.
+    pub input: String,
     /// Everything that was not a recognised token.
     pub title: String,
     /// The `#project`, if one was given.
@@ -112,7 +114,7 @@ pub struct QuickAdd {
 #[must_use]
 pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
     let tokens = words(input);
-    let mut out = QuickAdd::default();
+    let mut out = QuickAdd { input: input.to_owned(), ..QuickAdd::default() };
     let mut consumed: Vec<(usize, usize)> = Vec::new();
     let mut index = 0;
 
@@ -126,9 +128,15 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
             index += 1;
             continue;
         }
-        if let Some(rest) = word.lower.strip_prefix('#') {
-            let (name, used) = sigil_name(input, &tokens, index, rest, &known.projects);
+        if word.lower.starts_with('#') {
+            let (name, used) = sigil_name(input, &tokens, index, &known.projects);
             let end = tokens[index + used - 1].end;
+            // `#""` names nothing, as a bare `#` does.
+            if name.trim().is_empty() {
+                out.bare_sigils.push(spanned_text(input, word.start, end));
+                index += used;
+                continue;
+            }
             if out.project.is_some() {
                 out.duplicates.push(spanned_text(input, word.start, end));
                 index += used;
@@ -139,9 +147,14 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
             index += used;
             continue;
         }
-        if let Some(rest) = word.lower.strip_prefix('@') {
-            let (name, used) = sigil_name(input, &tokens, index, rest, &known.labels);
+        if word.lower.starts_with('@') {
+            let (name, used) = sigil_name(input, &tokens, index, &known.labels);
             let end = tokens[index + used - 1].end;
+            if name.trim().is_empty() {
+                out.bare_sigils.push(spanned_text(input, word.start, end));
+                index += used;
+                continue;
+            }
             consumed.push((word.start, end));
             out.labels.push(Spanned { value: name, start: word.start, end });
             index += used;
@@ -173,7 +186,7 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
             index += when.words;
             continue;
         }
-        if let Some(minutes) = estimate_of(&word.lower) {
+        if let Some(minutes) = minutes_of(&word.lower) {
             if out.estimate_mins.is_some() {
                 out.duplicates.push(spanned_text(input, word.start, word.end));
                 index += 1;
@@ -187,7 +200,7 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
         }
         // A word that opens a date phrase but leads nowhere is worth saying out loud rather
         // than quietly becoming part of the title.
-        if word.any_of(&["next", "last", "every", "in"])
+        if word.any_of(&["next", "last", "this", "every", "each", "in"])
             && tokens.get(index + 1).is_none_or(|next| looks_like_a_date(&next.lower))
         {
             let end = tokens.get(index + 1).map_or(word.end, |w| w.end);
@@ -204,11 +217,6 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
     out
 }
 
-/// Everything the recognised tokens did not take.
-///
-/// Cut from the original input rather than rejoined from words, so punctuation and spacing
-/// survive: *"buy milk, eggs (not bread) tomorrow"* keeps its commas and its parentheses and
-/// loses only the date. Runs of whitespace left behind by a removed span collapse to one.
 /// Whether a one-word date phrase is more likely part of the title.
 ///
 /// Two families of word are dates only in context:
@@ -237,7 +245,7 @@ fn is_title_word(tokens: &[Word], index: usize, used: usize) -> bool {
     };
     let recognised = next.lower.starts_with(['#', '@'])
         || priority_of(&next.lower).is_some()
-        || estimate_of(&next.lower).is_some()
+        || minutes_of(&next.lower).is_some()
         || parse_when(tokens, index + 1).is_some();
     !recognised
 }
@@ -257,6 +265,11 @@ fn looks_like_a_date(word: &str) -> bool {
         )
 }
 
+/// Everything the recognised tokens did not take.
+///
+/// Cut from the original input rather than rejoined from words, so punctuation and spacing
+/// survive: *"buy milk, eggs (not bread) tomorrow"* keeps its commas and its parentheses and
+/// loses only the date. Runs of whitespace left behind by a removed span collapse to one.
 fn title_without(input: &str, mut spans: Vec<(usize, usize)>) -> String {
     spans.sort_unstable();
     let mut kept = String::with_capacity(input.len());
@@ -273,104 +286,6 @@ fn title_without(input: &str, mut spans: Vec<(usize, usize)>) -> String {
 
 fn spanned_text(input: &str, start: usize, end: usize) -> Spanned<String> {
     Spanned { value: input.get(start..end).unwrap_or_default().to_owned(), start, end }
-}
-
-/// Reads the name after a `#` or `@`, honouring quotes and greedy multi-word matching.
-///
-/// Returns the name and how many words it took.
-fn sigil_name(
-    input: &str,
-    tokens: &[Word],
-    at: usize,
-    first: &str,
-    known: &[String],
-) -> (String, usize) {
-    // `#"My Project"` is the escape hatch for a project genuinely named "work p1".
-    if first.starts_with('"') {
-        let mut name = String::new();
-        for (offset, word) in tokens.iter().enumerate().skip(at) {
-            let raw = word.raw(input);
-            let piece = if offset == at { raw.trim_start_matches(['#', '@', '"']) } else { raw };
-            let closed = piece.ends_with('"');
-            if !name.is_empty() {
-                name.push(' ');
-            }
-            name.push_str(piece.trim_end_matches('"'));
-            if closed {
-                return (name, offset - at + 1);
-            }
-        }
-        return (name, tokens.len() - at);
-    }
-
-    // Greedy: prefer the longest known name that the following words spell out, so
-    // `#My Project p1` takes the project and leaves the priority alone.
-    let raw_first = tokens[at].raw(input).trim_start_matches(['#', '@']).to_owned();
-    let mut best = (raw_first.clone(), 1);
-    let mut candidate = raw_first;
-    for (offset, word) in tokens.iter().enumerate().skip(at + 1) {
-        candidate.push(' ');
-        candidate.push_str(word.raw(input));
-        if known.iter().any(|name| name.eq_ignore_ascii_case(&candidate)) {
-            best = (candidate.clone(), offset - at + 1);
-        }
-    }
-    let _ = first;
-    best
-}
-
-fn priority_of(text: &str) -> Option<Priority> {
-    match text {
-        "p1" => Some(Priority::P1),
-        "p2" => Some(Priority::P2),
-        "p3" => Some(Priority::P3),
-        "p4" => Some(Priority::P4),
-        _ => None,
-    }
-}
-
-/// `45m`, `90min`, `2h`, `1h30m`.
-///
-/// One glued token only. A loose `30 minutes` would take three words out of *"wait 30
-/// minutes for the dough"* and put them in a field nobody was filling in — and `in 30
-/// minutes` is a time rather than an estimate, which is indistinguishable once the number is
-/// separated from its unit.
-fn estimate_of(text: &str) -> Option<u32> {
-    let mut total: u32 = 0;
-    let mut digits = String::new();
-    let mut matched = false;
-    let mut rest = text;
-
-    while !rest.is_empty() {
-        let split = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-        if split == 0 {
-            return None;
-        }
-        digits.clear();
-        digits.push_str(&rest[..split]);
-        let value: u32 = digits.parse().ok()?;
-        rest = &rest[split..];
-
-        if let Some(after) = rest.strip_prefix("hours").or_else(|| rest.strip_prefix("hour")) {
-            total = total.checked_add(value.checked_mul(60)?)?;
-            rest = after;
-        } else if let Some(after) = rest.strip_prefix('h') {
-            total = total.checked_add(value.checked_mul(60)?)?;
-            rest = after;
-        } else {
-            // Anything but a minute unit here means this word is not an estimate at all.
-            let after = rest
-                .strip_prefix("minutes")
-                .or_else(|| rest.strip_prefix("minute"))
-                .or_else(|| rest.strip_prefix("mins"))
-                .or_else(|| rest.strip_prefix("min"))
-                .or_else(|| rest.strip_prefix('m'))?;
-            total = total.checked_add(value)?;
-            rest = after;
-        }
-        matched = true;
-    }
-    (matched && total > 0).then_some(total)
 }
 
 /// How much a diagnostic matters.
@@ -431,6 +346,9 @@ pub struct Preview {
     pub terse: bool,
     /// The day it was read on, for saying a date without its year when it is this year's.
     pub today: jiff::civil::Date,
+    /// Whether a time is said as 3:00 PM rather than 15:00: the person's clock, which
+    /// [`QuickAdd::resolve`] cannot know and leaves twelve-hour.
+    pub twelve_hour: bool,
 }
 
 impl Preview {
@@ -463,7 +381,7 @@ impl Preview {
                 (None, false) => format!("due {}", long_date(due.date)),
             };
             if let Some(time) = due.time {
-                phrase.push_str(&format!(" at {}", clock_words(time)));
+                phrase.push_str(&format!(" at {}", clock_in(time, self.twelve_hour)));
             }
             if let Some(repetition) = &self.repetition {
                 phrase.push_str(&format!(", {repetition}"));
@@ -485,7 +403,7 @@ impl Preview {
             parts.push(format!("priority {}", self.priority.as_u8()));
         }
         if let Some(minutes) = self.estimate_mins {
-            parts.push(format!("estimated {minutes} minutes"));
+            parts.push(format!("estimated {}", minutes_words(minutes)));
         }
         for name in &self.new_labels {
             parts.push(format!("new label {name}"));
@@ -514,7 +432,7 @@ impl QuickAdd {
                         severity: Severity::Error,
                         start: spanned.start,
                         end: spanned.end,
-                        message: unknown_message("project", &spanned.value, spanned.start, &names),
+                        message: unknown_message("project", &spanned.value, position(&self.input, spanned.start), &names),
                     });
                     None
                 }
@@ -544,7 +462,8 @@ impl QuickAdd {
                             end: spanned.end,
                             message: format!(
                                 "new label '{}' at position {}; did you mean '{near}'?",
-                                spanned.value, spanned.start
+                                spanned.value,
+                                position(&self.input, spanned.start)
                             ),
                         });
                     }
@@ -559,6 +478,21 @@ impl QuickAdd {
             due_phrase = spanned.value.date.as_ref().map(ToString::to_string);
             repetition = spanned.value.recurrence.as_ref().map(RecurrenceSpec::describe);
             match spanned.value.resolve_in(now, snapshot.settings.week_start) {
+                Ok(None) if spanned.value.date.is_some() => {
+                    // Cut from the title and then dropped would be the silent loss quick add
+                    // exists to prevent: "pay rent feb 30" saved as "pay rent", due never.
+                    diagnostics.push(Diagnostic {
+                        severity: Severity::Error,
+                        start: spanned.start,
+                        end: spanned.end,
+                        message: format!(
+                            "there is no date {}, at position {}",
+                            due_phrase.as_deref().unwrap_or_default(),
+                            position(&self.input, spanned.start)
+                        ),
+                    });
+                    None
+                }
                 Ok(due) => due,
                 Err(error) => {
                     diagnostics.push(Diagnostic {
@@ -579,7 +513,8 @@ impl QuickAdd {
                 end: spanned.end,
                 message: format!(
                     "'{}' at position {} repeats something already given; it stayed in the title",
-                    spanned.value, spanned.start
+                    spanned.value,
+                    position(&self.input, spanned.start)
                 ),
             });
         }
@@ -591,7 +526,8 @@ impl QuickAdd {
                 end: spanned.end,
                 message: format!(
                     "'{}' at position {} has no {noun} name after it; it stayed in the title",
-                    spanned.value, spanned.start
+                    spanned.value,
+                    position(&self.input, spanned.start)
                 ),
             });
         }
@@ -602,7 +538,8 @@ impl QuickAdd {
                 end: spanned.end,
                 message: format!(
                     "could not read a date from '{}' at position {}; it stayed in the title",
-                    spanned.value, spanned.start
+                    spanned.value,
+                    position(&self.input, spanned.start)
                 ),
             });
         }
@@ -625,6 +562,7 @@ impl QuickAdd {
             diagnostics,
             terse: snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse,
             today: now.date(),
+            twelve_hour: true,
         }
     }
 }
@@ -638,4 +576,4 @@ fn unknown_message(noun: &str, name: &str, position: usize, candidates: &[&str])
     }
 }
 
-use lumenna_core::time::{clock_words, long_date};
+use lumenna_core::time::{clock_in, long_date, minutes_words};

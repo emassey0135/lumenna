@@ -21,14 +21,13 @@
 //! produced deliberately rather than inferred from a combinator's internals.
 
 use lumenna_core::filter::{DueFilter, Expr, Predicate, Sort};
-use lumenna_core::model::Priority;
 use lumenna_core::state::State;
 use lumenna_core::suggest;
 use lumenna_core::time::DateSpec;
 
 use crate::date::parse_date;
 use crate::quickadd::Known;
-use crate::words::{Word, words};
+use crate::words::{Word, position, priority_of, sigil_name, words};
 
 /// What could have appeared at the position where parsing stopped.
 ///
@@ -110,7 +109,7 @@ pub fn parse_filter(input: &str, known: &Known) -> Result<Expr, ParseError> {
         return Err(ParseError {
             start: word.start,
             end: word.end,
-            message: format!("'sort:' at position {} orders a list, and only at the end of its query", word.start),
+            message: format!("'sort:' at position {} orders a list, and only at the end of its query", position(input, word.start)),
             expected: vec![Expected::Operator],
         });
     }
@@ -120,7 +119,7 @@ pub fn parse_filter(input: &str, known: &Known) -> Result<Expr, ParseError> {
         let word = &parser.tokens[parser.at];
         return Err(parser.error(
             word,
-            format!("unexpected '{}' at position {}", word.raw(input), word.start),
+            format!("unexpected '{}' at position {}", word.raw(input), position(input, word.start)),
             vec![Expected::Operator, Expected::CloseParen],
         ));
     }
@@ -146,7 +145,7 @@ pub fn parse_query(input: &str, known: &Known) -> Result<(Expr, Option<Sort>), P
         return Err(ParseError {
             start: after.start,
             end: after.end,
-            message: format!("unexpected '{}' at position {}: sort: goes at the end", after.raw(input), after.start),
+            message: format!("unexpected '{}' at position {}: sort: goes at the end", after.raw(input), position(input, after.start)),
             expected: Vec::new(),
         });
     }
@@ -158,7 +157,7 @@ pub fn parse_query(input: &str, known: &Known) -> Result<(Expr, Option<Sort>), P
             return Err(ParseError {
                 start: key.start,
                 end: key.end,
-                message: format!("'{other}' at position {} is not an order: urgency or added", key.start),
+                message: format!("'{other}' at position {} is not an order: urgency or added", position(input, key.start)),
                 expected: vec![Expected::Keyword],
             });
         }
@@ -166,7 +165,7 @@ pub fn parse_query(input: &str, known: &Known) -> Result<(Expr, Option<Sort>), P
             return Err(ParseError {
                 start: word.start,
                 end: word.end,
-                message: format!("'sort:' at position {} needs an order after it: urgency or added", word.start),
+                message: format!("'sort:' at position {} needs an order after it: urgency or added", position(input, word.start)),
                 expected: vec![Expected::Keyword],
             });
         }
@@ -241,7 +240,7 @@ impl<'a> Cursor<'a> {
                         word,
                         format!(
                             "expected a closing parenthesis at position {}, found '{}'",
-                            word.start,
+                            position(self.input, word.start),
                             word.raw(self.input)
                         ),
                         vec![Expected::CloseParen, Expected::Operator],
@@ -254,44 +253,20 @@ impl<'a> Cursor<'a> {
         self.predicate()
     }
 
-    /// Reads the name after a sigil, honouring quotes and greedy multi-word matching.
-    fn sigil_name(&mut self, stripped: &str, known: &[String]) -> String {
-        let first = self.tokens[self.at].clone();
-        self.at += 1;
-
-        if stripped.starts_with('"') {
-            let mut name =
-                first.raw(self.input).trim_start_matches(['#', '@', '"']).to_owned();
-            if !first.raw(self.input).trim_start_matches(['#', '@']).ends_with('"')
-                || name.is_empty()
-            {
-                while let Some(word) = self.peek() {
-                    let raw = word.raw(self.input);
-                    self.at += 1;
-                    if !name.is_empty() {
-                        name.push(' ');
-                    }
-                    name.push_str(raw.trim_end_matches('"'));
-                    if raw.ends_with('"') {
-                        break;
-                    }
-                }
-            }
-            return name.trim_end_matches('"').to_owned();
+    /// Reads the name after a sigil, as quick add reads it; a sigil naming nothing, `#` or
+    /// `@""`, is refused rather than read as a project or label called nothing.
+    fn sigil_name(&mut self, known: &[String], expected: Expected) -> Result<String, ParseError> {
+        let word = self.tokens[self.at].clone();
+        let (name, used) = sigil_name(self.input, self.tokens, self.at, known);
+        if name.trim().is_empty() {
+            return Err(self.error(
+                &word,
+                format!("'{}' at position {} names nothing", word.raw(self.input), position(self.input, word.start)),
+                vec![expected],
+            ));
         }
-
-        let base = first.raw(self.input).trim_start_matches(['#', '@']).to_owned();
-        let mut best = (base.clone(), self.at);
-        let mut candidate = base;
-        for (offset, word) in self.tokens.iter().enumerate().skip(self.at) {
-            candidate.push(' ');
-            candidate.push_str(word.raw(self.input));
-            if known.iter().any(|name| name.eq_ignore_ascii_case(&candidate)) {
-                best = (candidate.clone(), offset + 1);
-            }
-        }
-        self.at = best.1;
-        best.0
+        self.at += used;
+        Ok(name)
     }
 
     fn predicate(&mut self) -> Result<Expr, ParseError> {
@@ -305,22 +280,22 @@ impl<'a> Cursor<'a> {
         };
         let word = word.clone();
 
-        if let Some(rest) = word.lower.strip_prefix("##") {
-            let name = self.sigil_name(rest, &self.known.projects.clone());
+        if word.lower.starts_with("##") {
+            let name = self.sigil_name(&self.known.projects, Expected::Project)?;
             return Ok(Expr::Predicate(Predicate::Project {
                 name,
                 include_descendants: true,
             }));
         }
-        if let Some(rest) = word.lower.strip_prefix('#') {
-            let name = self.sigil_name(rest, &self.known.projects.clone());
+        if word.lower.starts_with('#') {
+            let name = self.sigil_name(&self.known.projects, Expected::Project)?;
             return Ok(Expr::Predicate(Predicate::Project {
                 name,
                 include_descendants: false,
             }));
         }
-        if let Some(rest) = word.lower.strip_prefix('@') {
-            let name = self.sigil_name(rest, &self.known.labels.clone());
+        if word.lower.starts_with('@') {
+            let name = self.sigil_name(&self.known.labels, Expected::Label)?;
             return Ok(Expr::Predicate(Predicate::Label(name)));
         }
         if let Some(priority) = priority_of(&word.lower) {
@@ -338,7 +313,7 @@ impl<'a> Cursor<'a> {
             let spec = self.date_argument(&rest, "assigned")?;
             return Ok(Expr::Predicate(Predicate::Assigned(spec)));
         }
-        if let Some(rest) = keyed(&word.lower, "search") {
+        if let Some(rest) = keyed(word.raw(self.input), "search") {
             self.at += 1;
             return Ok(Expr::Predicate(Predicate::Search(self.text_argument(rest)?)));
         }
@@ -364,10 +339,12 @@ impl<'a> Cursor<'a> {
         if let Ok(days) = word.lower.parse::<i64>()
             && self.tokens.get(self.at + 1).is_some_and(|w| w.any_of(&["day", "days"]))
         {
+            self.reachable(&DateSpec::Offset { amount: days, unit: lumenna_core::time::RelativeUnit::Day }, 2)?;
             self.at += 2;
             return Ok(Expr::Predicate(Predicate::Due(DueFilter::Within { days })));
         }
         if let Some((spec, used)) = parse_date(self.tokens, self.at) {
+            self.reachable(&spec, used)?;
             self.at += used;
             return Ok(Expr::Predicate(Predicate::Due(DueFilter::On(spec))));
         }
@@ -380,7 +357,7 @@ impl<'a> Cursor<'a> {
             format!(
                 "'{}' at position {} is not something to filter on{hint}",
                 word.raw(self.input),
-                word.start
+                position(self.input, word.start)
             ),
             vec![Expected::Project, Expected::Label, Expected::Priority, Expected::Keyword],
         ))
@@ -411,14 +388,35 @@ impl<'a> Cursor<'a> {
         })))
     }
 
+    /// Refuses a date `used` words long at the cursor that no calendar reaches, naming it:
+    /// it would resolve to nothing on every device the saved filter syncs to.
+    fn reachable(&self, spec: &DateSpec, used: usize) -> Result<(), ParseError> {
+        if spec.is_reachable() {
+            return Ok(());
+        }
+        let (first, last) = (&self.tokens[self.at], &self.tokens[self.at + used - 1]);
+        Err(ParseError {
+            start: first.start,
+            end: last.end,
+            message: format!(
+                "'{}' at position {} is further off than any date",
+                &self.input[first.start..last.end],
+                position(self.input, first.start)
+            ),
+            expected: vec![Expected::Date],
+        })
+    }
+
     /// Reads a date, either from a fragment glued onto the keyword or from the words after
     /// it.
     fn date_argument(&mut self, glued: &str, keyword: &str) -> Result<DateSpec, ParseError> {
         if !glued.is_empty() {
+            // A date glued on is one word, which no offset is, so every one is reachable.
             if let Some(spec) = date_from_fragment(glued) {
                 return Ok(spec);
             }
         } else if let Some((spec, used)) = parse_date(self.tokens, self.at) {
+            self.reachable(&spec, used)?;
             self.at += used;
             return Ok(spec);
         }
@@ -429,7 +427,7 @@ impl<'a> Cursor<'a> {
                     &word,
                     format!(
                         "expected a date after '{keyword}' at position {}, found '{}'",
-                        word.start,
+                        position(self.input, word.start),
                         word.raw(self.input)
                     ),
                     vec![Expected::Date],
@@ -439,15 +437,18 @@ impl<'a> Cursor<'a> {
         })
     }
 
+    /// Reads the text after `search`, glued on (`search:milk`) or the next word, and a
+    /// quoted phrase on to its closing quote either way: `search:"buy milk"`.
     fn text_argument(&mut self, inline: &str) -> Result<String, ParseError> {
-        if !inline.is_empty() {
-            return Ok(inline.trim_matches('"').to_owned());
-        }
-        let Some(word) = self.peek() else {
-            return Err(self.at_end(vec![Expected::Text]));
+        let raw = if inline.is_empty() {
+            let Some(word) = self.peek() else {
+                return Err(self.at_end(vec![Expected::Text]));
+            };
+            self.at += 1;
+            word.raw(self.input).to_owned()
+        } else {
+            inline.to_owned()
         };
-        let raw = word.raw(self.input).to_owned();
-        self.at += 1;
         if let Some(open) = raw.strip_prefix('"') {
             let mut text = open.to_owned();
             if raw.len() > 1 && raw.ends_with('"') {
@@ -470,10 +471,11 @@ impl<'a> Cursor<'a> {
 }
 
 /// Splits `assigned: today` written as one word, or bare `assigned`, returning whatever was
-/// glued on after the colon.
+/// glued on after the colon. The key must be the whole word or end at its colon: `searching`
+/// is not `search` with "ing" glued on.
 fn keyed<'a>(text: &'a str, key: &str) -> Option<&'a str> {
-    let rest = text.strip_prefix(key)?;
-    Some(rest.strip_prefix(':').unwrap_or(rest))
+    let rest = text.get(..key.len()).filter(|start| start.eq_ignore_ascii_case(key)).map(|_| &text[key.len()..])?;
+    if rest.is_empty() { Some(rest) } else { rest.strip_prefix(':') }
 }
 
 /// Parses a date out of a fragment that was glued onto a keyword, such as the `friday` in
@@ -482,14 +484,4 @@ fn date_from_fragment(fragment: &str) -> Option<DateSpec> {
     let tokens = words(fragment);
     let (spec, used) = parse_date(&tokens, 0)?;
     (used == tokens.len()).then_some(spec)
-}
-
-fn priority_of(text: &str) -> Option<Priority> {
-    match text {
-        "p1" => Some(Priority::P1),
-        "p2" => Some(Priority::P2),
-        "p3" => Some(Priority::P3),
-        "p4" => Some(Priority::P4),
-        _ => None,
-    }
 }

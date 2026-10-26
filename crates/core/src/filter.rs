@@ -35,7 +35,7 @@
 
 use std::collections::BTreeSet;
 
-use jiff::{Span, Zoned};
+use jiff::Zoned;
 
 use crate::model::{Priority, Task};
 use crate::snapshot::Snapshot;
@@ -301,7 +301,15 @@ impl Expr {
         match self {
             Self::All => "of any kind".to_owned(),
             Self::Predicate(p) => p.describe(),
-            Self::Not(inner) => format!("not {}", inner.describe_body()),
+            // A negation of several conditions says it covers all of them: "not priority 1,
+            // and overdue" is `!p1 & overdue`, and `!(p1 & overdue)` must not read the same.
+            Self::Not(inner) => match inner.as_ref() {
+                Self::And(parts) if parts.len() == 2 => format!("not both {}", join(parts, " and ")),
+                Self::And(parts) if parts.len() > 2 => format!("not all of {}", join(parts, ", ")),
+                Self::Or(parts) if parts.len() == 2 => format!("neither {}", join(parts, " nor ")),
+                Self::Or(parts) if parts.len() > 2 => format!("none of {}", join(parts, ", ")),
+                inner => format!("not {}", inner.describe_body()),
+            },
             Self::And(parts) => join(parts, ", and "),
             Self::Or(parts) => match parts.len() {
                 0 => "of any kind".to_owned(),
@@ -342,7 +350,7 @@ impl Predicate {
             Self::State(s) => cx.facts.has_state(task, *s, cx.now),
             Self::Due(filter) => filter.matches(task, cx),
             Self::Assigned(spec) => spec
-                .resolve(cx.now)
+                .resolve_in(cx.now, snapshot.settings.week_start)
                 .is_some_and(|date| cx.facts.is_assigned_on(task.id, date)),
             Self::Search(needle) => {
                 let needle = needle.to_lowercase();
@@ -380,10 +388,10 @@ impl DueFilter {
         let today = cx.now.date();
         match self {
             Self::Today => due == today,
-            Self::Within { days } => match today.checked_add(Span::new().days(*days)) {
-                Ok(limit) if *days >= 0 => due >= today && due <= limit,
-                Ok(limit) => due <= today && due >= limit,
-                Err(_) => false,
+            Self::Within { days } => match crate::time::offset(today, *days, crate::time::RelativeUnit::Day) {
+                Some(limit) if *days >= 0 => due >= today && due <= limit,
+                Some(limit) => due <= today && due >= limit,
+                None => false,
             },
             Self::On(spec) => spec.resolve_in(cx.now, cx.snapshot.settings.week_start) == Some(due),
             Self::Before(spec) => spec.resolve_in(cx.now, cx.snapshot.settings.week_start).is_some_and(|date| due < date),
@@ -411,7 +419,7 @@ impl Snapshot {
     pub fn project_by_name(&self, name: &str) -> Option<&crate::model::Project> {
         self.projects
             .values()
-            .find(|p| p.deleted_at.is_none() && p.name.eq_ignore_ascii_case(name))
+            .find(|p| p.deleted_at.is_none() && crate::suggest::same_name(&p.name, name))
     }
 
     /// A label by name, case-insensitively, skipping deleted ones.
@@ -419,7 +427,7 @@ impl Snapshot {
     pub fn label_by_name(&self, name: &str) -> Option<&crate::model::Label> {
         self.labels
             .values()
-            .find(|l| l.deleted_at.is_none() && l.name.eq_ignore_ascii_case(name))
+            .find(|l| l.deleted_at.is_none() && crate::suggest::same_name(&l.name, name))
     }
 
     /// Whether `project` is `ancestor` or sits anywhere beneath it.
