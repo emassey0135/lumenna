@@ -32,6 +32,7 @@ import androidx.wear.compose.material3.Text
 import dev.emassey0135.lumenna.Option
 import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Core
+import dev.emassey0135.lumenna.ShowingLine
 import dev.emassey0135.lumenna.name
 
 /**
@@ -61,11 +62,8 @@ fun AddTaskScreen(core: Core, navigator: Navigator) {
     val line = view?.line
     val lines by app.lines.collectAsState()
     val entry = LocalTextEntry.current
-    var opened by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { app.send(ShellEvent.Typing(Typing.Open)) }
-    // Added, the app lets the line go, and the screen goes back.
-    LaunchedEffect(line == null) { if (line != null) opened = true else if (opened) navigator.back() }
-    DisposableEffect(Unit) { onDispose { if (app.view.value?.line != null) app.send(ShellEvent.Typing(Typing.Close)) } }
+    // Added, the app lets the line go, and the screen goes back; leaving it lets the line go.
+    val opened = ShowingLine(app, navigator::back)
     val text = line?.text.orEmpty()
     val set = { value: String -> app.send(ShellEvent.Typing(Typing.Text(value, TextOffsets.bytes(value.length, value)))) }
     // Straight to the input screen, as the phone's quick add opens with the keyboard up.
@@ -147,6 +145,8 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
             val text = form.text(field.key)
             if (text != null) {
                 item { TextFieldButton(field.label, text, field.example) { set(field.key, it) } }
+                // What the field takes, the core's words beneath it, as the phone shows them.
+                if (field.hint.isNotEmpty()) item { Text(field.hint) }
                 return@forEach
             }
             item { Heading(field.label) }

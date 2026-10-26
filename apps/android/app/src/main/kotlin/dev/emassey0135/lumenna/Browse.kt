@@ -4,6 +4,8 @@ import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.SidebarKind
 import dev.emassey0135.lumenna.app.SidebarGroup
+import dev.emassey0135.lumenna.app.groupCount
+import dev.emassey0135.lumenna.app.groupEmpty
 import dev.emassey0135.lumenna.app.Place
 import dev.emassey0135.lumenna.app.ActionKind
 import androidx.compose.runtime.collectAsState
@@ -69,14 +71,15 @@ fun MenuScreen(title: String, core: Core, navigator: Navigator, items: List<Item
 fun BrowseScreen(core: Core, navigator: Navigator) {
     val view by core.app.view.collectAsState()
     val rows = placeRows(view?.sidebar.orEmpty())
-    fun count(n: Int, noun: String) = if (n == 1) "1 $noun" else "$n ${noun}s"
+    // How many, in the core's words for each group: "no projects", "1 label".
+    fun count(group: SidebarGroup, n: Int) = groupCount(group, n.toUInt())
     fun under(group: SidebarGroup) = rows.groupUnder(group).count { it.depth == 1 }
     val trash = rows.firstOrNull { (it.entry.kind as? SidebarKind.Place)?.field0 == Place.Trash }
     val history = rows.firstOrNull { (it.entry.kind as? SidebarKind.Place)?.field0 == Place.History }
     val items = listOf(
-        Item("projects", "Projects", count(rows.groupUnder(SidebarGroup.PROJECTS).size, "project")),
-        Item("labels", "Labels", count(under(SidebarGroup.LABELS), "label")),
-        Item("filters", "Saved filters", count(under(SidebarGroup.FILTERS), "filter")),
+        Item("projects", "Projects", count(SidebarGroup.PROJECTS, rows.groupUnder(SidebarGroup.PROJECTS).size)),
+        Item("labels", "Labels", count(SidebarGroup.LABELS, under(SidebarGroup.LABELS))),
+        Item("filters", "Saved filters", count(SidebarGroup.FILTERS, under(SidebarGroup.FILTERS))),
         Item("blocks", "Blocks", ""),
         Item("history", "History", history?.detail.orEmpty()),
         Item("trash", "Trash", trash?.detail.orEmpty()),
@@ -124,6 +127,10 @@ private fun GroupScreen(core: Core, navigator: Navigator, group: SidebarGroup, t
             IconButton(onClick = { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, heading.key), new)) }) { Icon(Icons.Filled.Add, contentDescription = addLabel) }
         }
     }) {
+        // Nothing in it yet, said in the core's words: "No labels."
+        if (rows.isEmpty() && heading != null) {
+            Text(groupEmpty(group), style = MaterialTheme.typography.bodyMedium, color = quiet(), modifier = Modifier.padding(16.dp))
+        }
         PlaceRows(
             core, rows,
             open = { row -> (row.entry.kind as? SidebarKind.Place)?.field0?.let { place -> { navigator.push(Screen.Tasks(place)) } } },

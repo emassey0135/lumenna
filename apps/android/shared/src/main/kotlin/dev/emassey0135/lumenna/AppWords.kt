@@ -13,10 +13,21 @@ import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.SidebarEntry
 import dev.emassey0135.lumenna.app.SidebarKind
 import dev.emassey0135.lumenna.app.Side
+import dev.emassey0135.lumenna.app.KeyCommand
+import dev.emassey0135.lumenna.app.keyboardShortcuts
 import dev.emassey0135.lumenna.app.sidebarKey
 
 // What Android adds to the lines the core words (crates/app, through the turn's `lines`):
 // what a tree control would report by itself, which a Compose list does not.
+
+/** The shared keyboard table's commands by id (`keyboard_shortcuts()`), named in sentence case. */
+val sharedCommands: Map<String, KeyCommand> by lazy { keyboardShortcuts().flatMap { it.commands }.associateBy { it.id } }
+
+/**
+ * A shared command's name, as every app's menus and keyboard help call it ("Undo", "Previous
+ * day"): what a button doing the same is called here too.
+ */
+fun commandTitle(id: String): String = sharedCommands[id]?.title ?: id
 
 /** An action's name in this platform's capitals: sentence case, as Material and Wear OS write. */
 val Action.name: String get() = sentence.ifEmpty { title }
@@ -47,7 +58,7 @@ fun AppModel.rowActions(row: String, actions: List<Offered>, local: (Offered) ->
 /** The actions offered on what [on] names, in short: a row, the day, the details' task, a reminder list. */
 fun AppModel.actingOn(on: ActingOn, actions: List<Offered>, local: (Offered) -> Boolean = { false }): List<RowAction> =
     actions.map { action ->
-        RowAction(action.name, action.kind, action.destructive, action.subject, action.primary) {
+        RowAction(action.name, action.kind, action.destructive, action.primary) {
             if (!local(action)) {
                 send(ShellEvent.ActOn(on, action))
             } else {

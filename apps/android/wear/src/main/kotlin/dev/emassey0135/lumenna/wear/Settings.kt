@@ -31,8 +31,8 @@ import androidx.wear.compose.material3.Text
 import dev.emassey0135.lumenna.Option
 import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Core
+import dev.emassey0135.lumenna.commandTitle
 import dev.emassey0135.lumenna.RowAction
-import dev.emassey0135.lumenna.sentence
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
 import androidx.wear.compose.material3.RadioButton
 
@@ -40,7 +40,7 @@ import androidx.wear.compose.material3.RadioButton
 @Composable
 fun SettingsScreen(navigator: Navigator) {
     WearList {
-        item { Heading("Settings") }
+        item { Heading(commandTitle("settings")) }
         item { Button(onClick = { navigator.open(Screen.Planning) }, modifier = Modifier.fillMaxWidth(), label = { Text("Planning") }) }
         item { Button(onClick = { navigator.open(Screen.Devices) }, modifier = Modifier.fillMaxWidth(), label = { Text("Devices and sync") }) }
         item { Button(onClick = { navigator.open(Screen.ReminderSettings) }, modifier = Modifier.fillMaxWidth(), label = { Text("Reminders") }) }
@@ -72,7 +72,7 @@ fun PlanningScreen(core: Core) {
         all.filter { !it.setting.syncs && it.setting.key.startsWith("backup-") && it.setting.kind != SettingKind.FOLDER }.forEach { setting(core, it) }
         item {
             // Into this watch's backups, beside the others.
-            Button(onClick = { core.attempt { core.device.backup() }?.let { core.say(sentence(it.announcement, it.notices)) } }, modifier = Modifier.fillMaxWidth(), label = { Text("Back up now") })
+            Button(onClick = { core.backUpNow() }, modifier = Modifier.fillMaxWidth(), label = { Text("Back up now") })
         }
         // What is done to the store as a whole, the core's (Erase everything deleted), beside the
         // backups it takes with it: a watch is a peer, its store whole. The app asks its question.
@@ -105,18 +105,21 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
     val view by app.view.collectAsState()
     LaunchedEffect(Unit) { app.send(ShellEvent.Devices(DevicesEvent.Show)) }
     val devices = view?.devices
+    val lines by app.lines.collectAsState()
     WearList {
         item { Heading("Devices and sync") }
         devices?.status?.takeIf { it.isNotEmpty() }?.let { item { Text(it) } }
-        item { Button(onClick = { syncNow(core) }, modifier = Modifier.fillMaxWidth(), label = { Text("Sync now") }) }
-        devices?.list?.devices.orEmpty().forEach { device ->
+        item { Button(onClick = { app.syncNow() }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("sync-now")) }) }
+        devices?.list?.devices.orEmpty().forEachIndexed { index, device ->
             item {
                 // The core's: Rename, and Unpair on every row but this watch's own. Sync Now is
                 // with every device at once, so it is the screen's button above.
                 val actions = app.rowActions(device.nodeId, device.offered, side = Side.DEVICES)
+                // How syncing with it is going, as the core words it for every app.
+                val line = lines?.devices?.getOrNull(index)
                 RowButton(
-                    device.name,
-                    detail = (listOf(device.platform) + device.status).joinToString(", "),
+                    line?.title ?: device.name,
+                    detail = line?.detail.orEmpty(),
                     actions = actions,
                     onLongClick = { navigator.actions(device.name, actions) },
                 ) { navigator.actions(device.name, actions) }
@@ -124,11 +127,6 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
         }
         item { PairingButtons(core) }
     }
-}
-
-/** A round with every paired device now: the app says how it went. */
-private fun syncNow(core: Core) {
-    core.app.send(ShellEvent.Devices(DevicesEvent.SyncNow))
 }
 
 /**

@@ -26,12 +26,16 @@ class WearApplication : Application(), CoreHolder, GlanceShower {
         BridgingManager.fromContext(this).setConfig(
             BridgingConfig.Builder(this, true).addExcludedTag(Reminders.BRIDGE_TAG).build(),
         )
-        core.getOrNull()?.let {
-            Reminders.follow(this, it)
-            // The tile and the complications are drawn again when the store changes and at each
-            // moment their glance names.
-            Glances.follow(this, it)
-        }
+        // The store opens off the main thread, as the phone's does: a cold start for an alarm,
+        // the tile or a complication has nothing else to do on it.
+        Thread({
+            core.getOrNull()?.let {
+                Reminders.follow(this, it)
+                // The tile and the complications are drawn again when the store changes and at
+                // each moment their glance names.
+                Glances.follow(this, it)
+            }
+        }, "lumenna-open").start()
     }
 
     /** The glance is shown on the tile and the watch faces' complications. */

@@ -381,12 +381,8 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
     val view by app.view.collectAsState()
     val line = view?.line
     val lines by app.lines.collectAsState()
-    var opened by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { app.send(ShellEvent.Typing(Typing.Open)) }
-    // Added, the app lets the line go, and the screen goes back.
-    LaunchedEffect(line == null) { if (line != null) opened = true else if (opened) navigator.back() }
-    // Leaving it lets the line go.
-    DisposableEffect(Unit) { onDispose { if (app.view.value?.line != null) app.send(ShellEvent.Typing(Typing.Close)) } }
+    // Added, the app lets the line go, and the screen goes back; leaving it lets the line go.
+    ShowingLine(app, navigator::back)
     // The field's own text while typing is on its way, so the caret stays put; the app's once none is.
     var typed by remember { mutableStateOf<TextFieldValue?>(null) }
     var pending by remember { mutableIntStateOf(0) }

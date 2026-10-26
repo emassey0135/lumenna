@@ -44,6 +44,9 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
         val asked = asking ?: return@LaunchedEffect
         val action = asked.action
         val cancel = { app.send(ShellEvent.Cancel) }
+        // Asked again after a refusal, the input screen's label says why first: on the
+        // watch's own screen behind it, the reason was never seen.
+        val label = { title: String -> listOfNotNull(asked.refusal?.trimEnd('.'), title).joinToString(". ") }
         val answer = { given: Answer -> app.send(ShellEvent.Answer(given)) }
         when (val question = asked.question) {
             Question.Immediate -> {}
@@ -67,10 +70,11 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
                     // A day: the line first, said or typed, then the watch's own calendar.
                     val from = asked.day
                     navigator.choose(question.title, listOf(Option("line", question.label), Option("calendar", pickers.day)), cancelled = cancel) { way ->
-                        if (way.key == "calendar") calendar = from else entry?.ask(question.title) { answer(Answer.Text(it)) }
+                        if (way.key == "calendar") calendar = from else entry?.ask(label(question.title), cancel) { answer(Answer.Text(it)) }
                     }
                 } else {
-                    entry?.ask(question.title) { answer(Answer.Text(it)) }
+                    // Backing out of the input screen gives the question up, as Cancel would.
+                    entry?.ask(label(question.title), cancel) { answer(Answer.Text(it)) }
                 }
             }
             is Question.Pick -> asked.choices?.let { offered ->

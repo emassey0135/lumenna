@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 
 /**
  * The app itself (crates/app, through crates/ffi and BoltFFI), over this device's store:
@@ -57,18 +58,24 @@ class AppModel(
     /** The view's lines, in this phone's clock: every row, the day, what a pick offers. */
     val lines: StateFlow<Lines?> = worded.asStateFlow()
 
+    /** The clock the app was last told: the phone's 12- or 24-hour setting, which can change while it runs. */
+    private var clock = Clock.style
+
     init {
         shown.value = app.view()
         worded.value = app.lines()
-        app.send(ShellEvent.Clock(Clock.style))
+        app.send(ShellEvent.Clock(clock))
         app.send(ShellEvent.Capitals(Capitals.SENTENCE))
-        main.post(object : Runnable {
-            // The app's minutes: what is now, what is due.
-            override fun run() {
-                app.tick()
-                main.postDelayed(this, 15_000)
-            }
-        })
+    }
+
+    // The app's minutes, what is now and what is due, and what another process wrote: only
+    // while the app is in front, where they are shown. Away, a tick each minute made a turn
+    // that woke everything following the store, for a screen nobody saw.
+    private val ticking = object : Runnable {
+        override fun run() {
+            app.tick()
+            main.postDelayed(this, 15_000)
+        }
     }
 
     private val saving = MutableSharedFlow<SaveFile>(extraBufferCapacity = 4)
@@ -103,8 +110,38 @@ class AppModel(
     /** Takes in a change made elsewhere, or a new minute. */
     fun tick() = app.tick()
 
-    /** The app came to the front or left it: syncing runs only while it is in front. */
-    fun inFront(inFront: Boolean) = app.inFront(inFront)
+    /**
+     * The app came to the front or left it, on the main thread: syncing and the minutes run only
+     * while it is in front. Coming back, the clock is told again if the person changed it away.
+     */
+    fun inFront(inFront: Boolean) {
+        app.inFront(inFront)
+        main.removeCallbacks(ticking)
+        if (!inFront) return
+        if (Clock.style != clock) {
+            clock = Clock.style
+            app.send(ShellEvent.Clock(clock))
+        }
+        main.post(ticking)
+    }
+
+    /** A round with every paired device now: the app says how it went. */
+    fun syncNow() = send(ShellEvent.Devices(dev.emassey0135.lumenna.app.DevicesEvent.SyncNow))
+
+    private val drawn = MutableStateFlow(0L)
+
+    /**
+     * Waits until the app is still, at most [timeout] ms: looked at again after each turn is
+     * drawn, and every so often, since the store's own work ends without one.
+     */
+    suspend fun settle(timeout: Long = 5_000) {
+        kotlinx.coroutines.withTimeoutOrNull(timeout) {
+            while (!still) {
+                val at = drawn.value
+                kotlinx.coroutines.withTimeoutOrNull(100) { drawn.first { it != at } }
+            }
+        }
+    }
 
     /**
      * Whether the app is still: nothing with the store, and every turn drawn. The tests wait on
@@ -123,8 +160,8 @@ class AppModel(
         }
         shown.value = turn.view
         worded.value = turn.lines
-        // What follows the store — reminders' alarms — looks again, a moment after the last turn.
-        core.moved()
+        // What follows the store — reminders' alarms, the widgets — looks again if the store moved.
+        core.turned()
         // Focus moves first, then this is said: the list that lands releases it — the main one,
         // or a list beside it that the change was made from.
         val sideLanded = was != null && (
@@ -139,5 +176,6 @@ class AppModel(
         }
         turn.files.forEach { saving.tryEmit(it) }
         turn.said.forEach(core::report)
+        drawn.value += 1
     }
 }

@@ -26,7 +26,9 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   `Shell` from one thread of the app's, in order, what arrived together as one.
 - **`shared` holds the core and what decides nothing about looks**: `Core` (the `Device` and,
   over it, the app), `AppModel` (turns taken on the main thread in order, speech held while a
-  list lands), `Words.kt` (the locale's time and date, handed to the core as `Clock.locale`),
+  list lands), `Front` (the activity coming to the front and leaving it, the same on both),
+  `Launching` and `ReminderOpened.reminded` (where a launch or a tapped reminder takes the
+  screens), `Words.kt` (the locale's time and date, handed to the core as `Clock.locale`),
   `AppWords.kt` (what a tree control would say by itself and a Compose list does not: folding
   and the level), landing on a row (`Landing.kt`: `rememberLanding`, `RowFocus`, `RowKey`), a
   screen on what the app has open (`Showing.kt`), the forms' fields by the core's keys
@@ -60,6 +62,23 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   turn posted to the main thread undrawn). A turn comes from the app's own thread, so without
   it a test looks at the screen between pressing Add and the row arriving. A pairing or a sync
   under way does not count.
+- **What follows the store looks again only when it moved** (`Core.changes`, `Heads`): after a
+  turn the app leaves, the store's heads are read off the main thread, and `changes` moves only
+  if they did, so a keystroke or a new minute arms no alarms and redraws no widget; coming to
+  the front moves it too. The app ticks (another process's writes, the minutes) only while it is
+  in front (`AppModel.inFront`), and is told the clock again there if the 12- or 24-hour setting
+  changed meanwhile. The watch's link follows `changes` only while the activity is started
+  (`repeatOnLifecycle`); `LinkService` answers the other side otherwise.
+- **The time zone is Android's own**: `TZ` is never set, so the core reads
+  `persist.sys.timezone` through jiff, the zone Java's clock reads, and follows a change within
+  jiff's five minutes. Setting `TZ` from Kotlin raced the core's threads reading it.
+- **Nothing that reads the store runs on the main thread from outside the screens**: the store
+  opens on a thread of its own as the process starts; arming reminders, an alarm going off and a
+  notification's buttons run on reminders' own thread, a receiver holding its broadcast open
+  (`goAsync`); a backup, an export and an import are off it too.
+- **What decides nothing about Android is tested on the JVM** (`src/test` in `shared` and
+  `app`: `./gradlew :shared:testDebugUnitTest :app:testDebugUnitTest`), with the core's records
+  built by hand: there is no native library there, so nothing a test calls may reach it.
 - **Material's text and outlined buttons are 40dp**, and a radio row is as tall as its
   padding: both fail the touch-target check. `Target` gives 48dp.
 - **A row is one node** (`ListRow`: `clearAndSetSemantics`, custom actions) with one
@@ -74,6 +93,10 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
 - **Nested lists fold, as the app folds them**: a row with something under it has the app's
   Collapse or Expand among its actions and says which it is. The level is the app's, said
   against the row shown before, after folding.
+- **What changes say, the phone shows as a snackbar**, a newer one taking the place of the one
+  showing (`collectLatest`), which TalkBack has begun saying: waiting for each, the last of a
+  run came long after. The announcements are a buffer of 64 that drops the oldest, so a run
+  never loses its last, and nothing is kept while no screen listens.
 - **TalkBack does not follow input focus under touch**, on the phone or the watch. `RowFocus`
   gives the row input focus, then performs the accessibility-focus action through the view's
   `AccessibilityNodeProvider`, found by the `RowKey` property; the announcement is held
@@ -270,8 +293,15 @@ phone does.
 - **Rows keep full size at the screen's edges** (`edgeScale = 1f`): scaled, a button falls
   under 48dp and fails the touch-target check.
 - **A row's actions are TalkBack's custom actions and a long press**; the day's rows offer
-  theirs when tapped too. Announcements are a 1dp polite live region, never shown: drawn over
-  the list, they hide the rows beneath, and the checks find a button partly visible.
+  theirs when tapped too. A row is one description, its title first, as the phone's: as a state
+  description the rest was said before the title. Announcements are a 1dp polite live region,
+  never shown: drawn over the list, they hide the rows beneath, and the checks find a button
+  partly visible. They are said in turn, each held long enough to be heard (`sayInTurn`), and
+  every other one carries an unheard mark (`Said.description`), so the same sentence twice is a
+  change TalkBack says.
+- **A refused line is asked again with why**: the input screen's label is the app's refusal,
+  then the question; backing out of the input screen gives the question up (`TextEntry`'s
+  `cancelled`). A place merged or deleted takes its list to where the app went, as the phone's.
 - **The watch's own link to its phone is preferred to Iroh while they are near**
   (`shared/WatchLink.kt`): the Wearable Data Layer's `ChannelClient`, a stream over Bluetooth
   or the local network. Only nodes Google reports `isNearby`: further off the Data Layer can

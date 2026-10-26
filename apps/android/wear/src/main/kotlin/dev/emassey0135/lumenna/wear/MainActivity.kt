@@ -5,21 +5,20 @@ import android.os.Bundle
 import dev.emassey0135.lumenna.ReminderOpened
 import dev.emassey0135.lumenna.Reminders
 import kotlinx.coroutines.flow.MutableStateFlow
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import dev.emassey0135.lumenna.Clock
+import dev.emassey0135.lumenna.Front
 import dev.emassey0135.lumenna.Launching
 import dev.emassey0135.lumenna.SyncWorker
-import dev.emassey0135.lumenna.WatchLink
 
 class MainActivity : ComponentActivity() {
     private val core get() = (application as WearApplication).core
+
+    /** Coming to the front and leaving it, as the phone does (`Front`): the watch is a peer of its own. */
+    private val front by lazy { core.getOrNull()?.let { Front(this, it, PLATFORM) } }
 
     /** The last reminder notification tapped, counted so a second tap on the same one opens it too. */
     private val opened = MutableStateFlow<Pair<Long, ReminderOpened>?>(null)
@@ -40,14 +39,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handle(intent)
-        // A change here, or one from another device, goes to the watch or phone near by, a
-        // moment after the last of a run of them.
-        core.getOrNull()?.let { opened ->
-            lifecycleScope.launch {
-                @OptIn(kotlinx.coroutines.FlowPreview::class)
-                opened.changes.drop(1).debounce(2_000).collect { WatchLink.syncNearby(this@MainActivity, opened, PLATFORM) }
-            }
-        }
+        front?.created()
         Clock.update(this)
         setContent {
             MaterialTheme {
@@ -60,24 +52,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Sync runs while the app is in front, as on the phone: the watch is a peer of its own. */
     override fun onResume() {
         super.onResume()
         Clock.update(this)
-        core.getOrNull()?.run {
-            timeZoneMayHaveChanged()
-            changed()
-            startSyncing(this@MainActivity)
-            // The watch and the phone over their own link, while near: before Iroh's round.
-            WatchLink.syncNearby(this@MainActivity, this, PLATFORM)
-            backUpIfDue()
-        }
+        front?.resumed()
     }
 
-    /** Leaving: the service stops, and one more round is asked for, to send what was just edited. */
     override fun onPause() {
-        core.getOrNull()?.stopSyncing()
-        SyncWorker.syncOnLeaving(this)
+        front?.paused() ?: SyncWorker.syncOnLeaving(this)
         super.onPause()
     }
 }

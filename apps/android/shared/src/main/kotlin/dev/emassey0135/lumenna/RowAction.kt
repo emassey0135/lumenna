@@ -8,8 +8,6 @@ data class RowAction(
     val name: String,
     val kind: dev.emassey0135.lumenna.app.ActionKind? = null,
     val destructive: Boolean = false,
-    /** What the core's action is done to, so a key with nothing to do here can say why. */
-    val subject: dev.emassey0135.lumenna.app.Subject? = null,
     /** Whether a row shows it by itself, before the rest (`Action.primary`). */
     val primary: Boolean = false,
     val run: () -> Unit,

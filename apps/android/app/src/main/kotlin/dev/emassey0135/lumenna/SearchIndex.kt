@@ -86,8 +86,17 @@ object SearchIndex {
         .build()
 
     /** What tells one version of a document from another, kept between indexings. */
-    private fun fingerprint(doc: SearchDocument): String =
-        listOf(doc.kind.name, doc.title, doc.line, doc.keywords.joinToString("\u001f"), doc.due.orEmpty(), doc.launch).joinToString("\u001e").hashCode().toString()
+    internal fun fingerprint(doc: SearchDocument): String = fingerprint(
+        listOf(doc.kind.name, doc.title, doc.line, doc.keywords.joinToString("\u001f"), doc.due.orEmpty(), doc.launch),
+    )
+
+    /**
+     * A document's fields as SHA-256: a 32-bit hash let two versions of a document collide, and
+     * the second was never indexed.
+     */
+    internal fun fingerprint(fields: List<String>): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(fields.joinToString("\u001e").toByteArray())
+            .joinToString("") { "%02x".format(it) }
 
     /**
      * Writes what changed since the last indexing and removes what went, waiting for it: on the

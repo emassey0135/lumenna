@@ -26,6 +26,8 @@ import dev.emassey0135.lumenna.app.SettingsEvent
 import dev.emassey0135.lumenna.app.ShellEvent
 import android.content.Context
 import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -326,7 +328,7 @@ fun BackupsScreen(core: Core, navigator: Navigator) {
             Button(
                 modifier = Target.padding(16.dp),
                 // Into this device's backups, beside the others: the app's backup is a file to keep elsewhere.
-                onClick = { core.attempt { core.device.backup() }?.let { core.say(sentence(it.announcement, it.notices)) } },
+                onClick = { core.backUpNow() },
             ) { Text("Back up now") }
             Text(
                 "These settings are this device's own. Restore a backup from Export and import.",
@@ -353,11 +355,15 @@ fun ExportScreen(core: Core, navigator: Navigator) {
     val view by app.view.collectAsState()
     LaunchedEffect(Unit) { app.send(ShellEvent.Settings(SettingsEvent.Open)) }
     var made by remember { mutableStateOf<SaveFile?>(null) }
+    // Files are written and read off the main thread: a backup can be large, and the provider
+    // chosen (Drive) can be slow.
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val resolver = context.contentResolver
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
         val file = made ?: return@rememberLauncherForActivityResult
         made = null
         if (uri == null) return@rememberLauncherForActivityResult
-        context.contentResolver.openOutputStream(uri)?.use { it.write(file.bytes) }
+        scope.launch(Dispatchers.IO) { runCatching { resolver.openOutputStream(uri)?.use { it.write(file.bytes) } } }
     }
     // Each file the app makes is saved where the person chooses.
     LaunchedEffect(Unit) {
@@ -368,10 +374,14 @@ fun ExportScreen(core: Core, navigator: Navigator) {
     }
     val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "import"
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@rememberLauncherForActivityResult
-        app.send(ShellEvent.Settings(SettingsEvent.Import(name, bytes)))
+        scope.launch(Dispatchers.IO) {
+            val name = runCatching {
+                resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { if (it.moveToFirst()) it.getString(0) else null }
+            }.getOrNull() ?: "import"
+            val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull() ?: return@launch
+            app.send(ShellEvent.Settings(SettingsEvent.Import(name, bytes)))
+        }
     }
     ScreenFrame("Export and import", core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -419,7 +429,7 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
         // Syncing is with every device at once, so it is the screen's, not a row's.
-        OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { syncNow(core) }) { Text("Sync now") }
+        OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { core.app.syncNow() }) { Text(Command.SYNC_NOW.title) }
         val list = devices?.list
         val rows = list?.devices.orEmpty()
         val state = rememberLazyListState()
@@ -496,7 +506,14 @@ fun PairingScreen(core: Core, navigator: Navigator) {
                 Text("${words.myCode}: $code", fontFamily = FontFamily.Monospace)
                 OutlinedButton(modifier = Target, onClick = {
                     val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(words.myCode, code))
+                    // Marked sensitive, so the system's copied preview and keyboard suggestions do
+                    // not show it: whoever has the code can pair while it waits.
+                    val clip = android.content.ClipData.newPlainText(words.myCode, code).apply {
+                        description.extras = android.os.PersistableBundle().apply {
+                            putBoolean(if (Build.VERSION.SDK_INT >= 33) android.content.ClipDescription.EXTRA_IS_SENSITIVE else "android.content.extra.IS_SENSITIVE", true)
+                        }
+                    }
+                    clipboard.setPrimaryClip(clip)
                     core.say(words.copied)
                 }) { Text(words.copyCode) }
             }

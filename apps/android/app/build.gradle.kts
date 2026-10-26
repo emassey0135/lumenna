@@ -62,6 +62,7 @@ dependencies {
     implementation(project(":shared"))
 
     androidTestImplementation(bom)
+    testImplementation(libs.junit)
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.compose.ui.test.junit4.accessibility)
     androidTestImplementation(libs.androidx.test.runner)
