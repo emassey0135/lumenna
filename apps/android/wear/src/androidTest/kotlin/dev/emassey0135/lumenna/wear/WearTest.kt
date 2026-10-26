@@ -212,7 +212,7 @@ class WearTest {
         core.device.trashTask(core.device.listTasks("").rows.single().id)
         rule.runOnIdle { core.changed() }
         press("Settings")
-        press("Planning")
+        press("Backups")
         // Under it, what it takes, in the core's words.
         said(core.app.view.value!!.settings!!.offeredCaption).assertExists()
         press("Erase everything deleted")
@@ -503,7 +503,7 @@ class WearTest {
     }
 
     @Test
-    fun aTasksScreenHasItsHistoryUnderAHeading() {
+    fun aTasksScreenSaysItsHistoryAmongTheCoresLinesUnderAbout() {
         core.device.addTask("draft the report")
         rule.runOnIdle { core.changed() }
         press("Tasks")

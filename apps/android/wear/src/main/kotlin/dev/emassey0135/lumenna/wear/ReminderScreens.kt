@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna.wear
 
+import dev.emassey0135.lumenna.on
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.rememberSideLanding
 import dev.emassey0135.lumenna.app.Side
@@ -89,14 +90,21 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
 @Composable
 fun ReminderSettingsScreen(core: Core, changes: Long) {
     val context = LocalContext.current
-    val shown = appSettings(core).filter { it.setting.key == "reminders" }
+    val page = dev.emassey0135.lumenna.SettingsPages.of("reminders")
+    val all = appSettings(core)
+    val words = remember { dev.emassey0135.lumenna.app.notificationWords("this watch", true) }
     val access = dev.emassey0135.lumenna.LocalReminderAccess.current
     val (allowed, exact, grant) = remember(changes) { access(context) }
     val ask = rememberNotificationAsk()
     WearList {
-        item { Heading("Reminders") }
-        shown.forEach { view ->
+        item { Heading(page?.title.orEmpty()) }
+        all.on(page).forEach { view ->
             val setting = view.setting
+            // Turning reminders on is when notifications are asked for; the rest are any setting.
+            if (setting.key != "reminders") {
+                setting(core, view)
+                return@forEach
+            }
             item {
                 SwitchButton(
                     checked = setting.value == "true",
@@ -111,21 +119,21 @@ fun ReminderSettingsScreen(core: Core, changes: Long) {
             if (setting.hint.isNotEmpty()) item { Text(setting.hint) }
         }
         if (!allowed) {
-            item { Text("Notifications are off for Lumenna, so no reminder can be shown on this watch.") }
+            item { Text(words.off) }
             item {
                 Button(
                     onClick = { if (Reminders.shouldAsk(context)) ask() else context.startActivity(Reminders.notificationSettings(context)) },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Allow notifications") },
+                    label = { Text(words.allow) },
                 )
             }
         }
         if (!exact) {
-            item { Text("Reminders may come a few minutes late: Lumenna is not allowed to set alarms for an exact time.") }
+            item { Text(words.late) }
             grant?.let { intent ->
-                item { Button(onClick = { context.startActivity(intent) }, modifier = Modifier.fillMaxWidth(), label = { Text("Allow exact alarms") }) }
+                item { Button(onClick = { context.startActivity(intent) }, modifier = Modifier.fillMaxWidth(), label = { Text(words.allowExact) }) }
             }
         }
-        item { Text("When reminders come is set in Planning, and on a task or block in its Reminders.") }
+        page?.caption?.takeIf { it.isNotEmpty() }?.let { item { Text(it) } }
     }
 }

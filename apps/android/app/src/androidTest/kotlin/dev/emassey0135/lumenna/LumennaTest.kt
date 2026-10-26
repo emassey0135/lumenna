@@ -994,15 +994,16 @@ class LumennaTest {
     }
 
     @Test
-    fun aTasksPageHasItsHistoryUnderAHeading() {
+    fun aTasksPageSaysItsHistoryAmongTheCoresLinesUnderAbout() {
         seed { it.addTask("draft the report") }
         tab("Tasks")
         row("draft the report").performClick()
         rule.waitForIdle()
         val history = core.device.showTask(core.device.listTasks("").rows.single().id).task.history
         assertTrue("a task has a history from the day it is added", history.isNotEmpty())
-        rule.onNode(hasText("History") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).performScrollTo()
-        history.forEach { line -> rule.onNode(hasText(line)).performScrollTo().assertExists() }
+        rule.onNode(hasText("About") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).performScrollTo()
+        // The line's label, then what it says, one stop.
+        rule.onNode(hasText("History") and hasText(history.first(), substring = true)).performScrollTo().assertExists()
     }
 
     /** The replanned day of the core's own tests, at its moment, and a block under way today. */

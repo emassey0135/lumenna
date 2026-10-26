@@ -121,7 +121,7 @@ private fun GroupScreen(core: Core, navigator: Navigator, group: SidebarGroup, t
     val all = placeRows(entries)
     val heading = all.firstOrNull { (it.entry.kind as? SidebarKind.Group)?.field0 == group }
     // Folded within the group as the app has it; the heading's own fold left out.
-    val rows = placeRows(all.groupUnder(group).map { it.entry.copy(depth = it.entry.depth - 1u) })
+    val rows = placeRowsWithin(all.groupUnder(group).map { it.entry.copy(depth = it.entry.depth - 1u) })
     ScreenFrame(title, core, navigator, actions = {
         heading?.entry?.offered?.firstOrNull { it.kind == ActionKind.NEW }?.let { new ->
             IconButton(onClick = { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, heading.key), new)) }) { Icon(Icons.Filled.Add, contentDescription = addLabel) }
@@ -185,8 +185,7 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
         }
         AppTaskRows(core, shownRows(list?.items.orEmpty(), lines?.list.orEmpty()), list, open = { row ->
             // A block's own screen is its form, for every occurrence: its Edit, on the row in hand.
-            app.send(ShellEvent.Focus(row.id))
-            app.send(ShellEvent.Run(listOf(dev.emassey0135.lumenna.app.ActionKind.EDIT)))
+            app.rowKeys(row.id).key("open")
         }, openLabel = "Edit every occurrence")
     }
 }

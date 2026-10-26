@@ -58,17 +58,6 @@ object Clock {
         val pattern = DateFormat.getBestDateTimePattern(locale, if (withYear) "EEEEdMMMMy" else "EEEEdMMMM")
         return date.format(DateTimeFormatter.ofPattern(pattern, locale))
     }
-
-    /** "1 hour 30 minutes", as the core, the command line and the BTSpeak app say it. */
-    fun length(minutes: UInt): String {
-        val hours = minutes / 60u
-        val rest = minutes % 60u
-        val parts = buildList {
-            if (hours > 0u) add(if (hours == 1u) "1 hour" else "$hours hours")
-            if (rest > 0u || hours == 0u) add(if (rest == 1u) "1 minute" else "$rest minutes")
-        }
-        return parts.joinToString(" ")
-    }
 }
 
 /** The core counts text in UTF-8 bytes, as Rust strings do; Kotlin counts UTF-16 units. */

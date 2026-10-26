@@ -1,5 +1,8 @@
 package dev.emassey0135.lumenna.wear
 
+import dev.emassey0135.lumenna.rowKeys
+import dev.emassey0135.lumenna.quickWords
+import dev.emassey0135.lumenna.app.foldState
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.rememberLanding
 import dev.emassey0135.lumenna.rememberSideLanding
@@ -87,13 +90,12 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
     val state = rememberScalingLazyListState()
     val focus = rememberSideLanding(core, Side.SIDEBAR, keys) { state.scrollToItem(it) }
     WearList(state) {
-        item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
+        item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text(quickWords.title) }) }
         rows.forEachIndexed { index, row ->
             item {
-                val previous = if (index > 0) rows[index - 1].depth else 0
-                val level = if (row.depth != previous) "level ${row.depth + 1}" else null
                 val fold = row.entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
-                val state = listOfNotNull(row.expanded?.let { if (it) "expanded" else "collapsed" }, level).joinToString(", ").ifEmpty { null }
+                // Folding and the level where it changes, the core's words.
+                val state = listOfNotNull(row.expanded?.let(::foldState), row.level).joinToString(", ").ifEmpty { null }
                 when (val kind = row.entry.kind) {
                     is SidebarKind.Place -> RowButton(
                         row.entry.text,
@@ -183,9 +185,9 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
     WearList(state) {
         item { Heading(placeTitle(place)) }
         if (!trash) {
-            item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
+            item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text(quickWords.title) }) }
             item {
-                TextFieldButton("Filter", filter, "#Work & overdue") {
+                TextFieldButton(quickWords.filter, filter, quickWords.filterHint) {
                     filter = it
                     app.send(ShellEvent.Filter(it))
                 }
@@ -252,7 +254,7 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
     val state = rememberScalingLazyListState()
     val focus = rememberLanding(core, keys) { state.scrollToItem(it) }
     WearList(state) {
-        item { Heading("Blocks") }
+        item { Heading(placeTitle(Place.Blocks)) }
         if (list != null && list.items.isEmpty()) item { Text(list.empty) }
         list?.items.orEmpty().forEachIndexed { index, shown ->
             item {
@@ -262,8 +264,7 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
                 // Said as a task row is: when, in this watch's clock, then how long.
                 RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }, key = row.id, focus = focus, swatch = row.swatch) {
                     // Its own screen is its form, for every occurrence: its Edit, on the row in hand.
-                    app.send(ShellEvent.Focus(row.id))
-                    app.send(ShellEvent.Run(listOf(ActionKind.EDIT)))
+                    app.rowKeys(row.id).key("open")
                 }
             }
         }
@@ -277,7 +278,7 @@ fun ChooseScreen(screen: Screen.Choose) {
     WearList {
         item { Heading(screen.title) }
         screen.message?.let { message -> item { Text(message) } }
-        if (screen.choices.isEmpty()) item { Text("Nothing to choose from") }
+        if (screen.choices.isEmpty()) item { Text(dev.emassey0135.lumenna.app.nothingToChoose()) }
         screen.choices.forEachIndexed { index, choice ->
             item {
                 // In a tree, the level where it changes beside the detail, as a tree's rows say it.

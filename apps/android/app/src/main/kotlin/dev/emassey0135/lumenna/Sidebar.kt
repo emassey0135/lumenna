@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna
 
+import dev.emassey0135.lumenna.app.foldState
 import dev.emassey0135.lumenna.app.ActingOn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -69,13 +70,12 @@ fun PlaceRows(
     val focus = rememberSideLanding(core, Side.SIDEBAR, keys, state)
     LazyColumn(Modifier.fillMaxSize().semantics { collectionInfo = CollectionInfo(keys.size, 1) }, state = state) {
         itemsIndexed(shown, key = { _, row -> row.key }) { index, row ->
-            val previous = if (index > 0) shown[index - 1].depth else 0
-            val level = if (row.depth != previous) "level ${row.depth + 1}" else null
             val group = row.entry.kind is SidebarKind.Group
             ListRow(
                 title = row.title,
                 detail = row.detail,
-                speech = listOfNotNull(row.detail.ifEmpty { null }, row.expanded?.let { if (it) "expanded" else "collapsed" }, level)
+                // Folding and the level where it changes, in the core's words.
+                speech = listOfNotNull(row.detail.ifEmpty { null }, row.expanded?.let(::foldState), row.level)
                     .joinToString(", "),
                 index = index,
                 depth = row.depth,

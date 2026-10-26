@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna
 
+import dev.emassey0135.lumenna.app.completeWith
 import dev.emassey0135.lumenna.app.Typing
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.TextRange
@@ -145,8 +146,8 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
             CompletingField(
                 core = core,
                 syntax = Syntax.FILTER,
-                label = "Filter",
-                example = "#Work & overdue",
+                label = quickWords.filter,
+                example = quickWords.filterHint,
                 value = filter,
                 onValueChange = {
                     if (it.text != filter.text) app.send(ShellEvent.Filter(it.text))
@@ -271,26 +272,18 @@ fun ListRow(
                         if (actions.isNotEmpty()) menu = true
                         return@onKeyEvent actions.isNotEmpty()
                     }
+                    if (command.place != dev.emassey0135.lumenna.Place.ROW) return@onKeyEvent false
+                    // The folding arrows go on to the list where the row does not fold, so they
+                    // can move focus as arrows do.
+                    if (command == Command.EXPAND && actions.none { it.kind == ActionKind.EXPAND }) return@onKeyEvent false
+                    if (command == Command.COLLAPSE && actions.none { it.kind == ActionKind.COLLAPSE }) return@onKeyEvent false
                     // A heading's actions add one more of what is under it, so a row key says
                     // nothing of the rest there.
                     val heading = actions.none { it.kind != ActionKind.NEW }
-                    // Delete is the core's: whichever of `keys::runs("delete")` the row offers,
-                    // never Erase Permanently, or why it has none.
-                    if (command == Command.DELETE) {
-                        val keying = keys?.takeIf { !heading } ?: return@onKeyEvent false
-                        keying.key(command.id!!)
-                        return@onKeyEvent true
-                    }
-                    val action = command.rowAction(actions)
-                    if (action != null) {
-                        action.run()
-                        return@onKeyEvent true
-                    }
-                    // A row key with nothing to do here: the app says why, in the core's words,
-                    // rather than nothing.
-                    val kind = command.kind ?: return@onKeyEvent false
+                    // What the key does to the row is the core's (`keys::what_runs`): the row's
+                    // action of that kind, Delete's never Erase Permanently, or why it has none.
                     val keying = keys?.takeIf { !heading } ?: return@onKeyEvent false
-                    keying.refuse(kind)
+                    keying.key(command.runs ?: return@onKeyEvent false)
                     true
                 }
                 .then(
@@ -396,8 +389,8 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
     LaunchedEffect(view?.line) { if (pending > 0) pending-- }
     val add = { app.send(ShellEvent.QuickAdd(shown.text)) }
 
-    ScreenFrame("New task", core, navigator, actions = {
-        IconButton(onClick = { add() }) { Icon(Icons.Filled.Check, contentDescription = "Add") }
+    ScreenFrame(quickWords.title, core, navigator, actions = {
+        IconButton(onClick = { add() }) { Icon(Icons.Filled.Check, contentDescription = quickWords.add) }
     }) {
         val focus = remember { FocusRequester() }
         // Typing starts at once, as it does on the iPhone.
@@ -406,8 +399,9 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
             OutlinedTextField(
                 value = shown,
                 onValueChange = { if (it.text != shown.text || it.selection != shown.selection) tell(it) },
-                label = { Text("Task") },
-                placeholder = { Text("call the bank tomorrow at 3pm p1 #Home @calls") },
+                label = { Text(quickWords.label) },
+                placeholder = { Text(quickWords.example) },
+                supportingText = { Text(quickWords.hint) },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
@@ -419,7 +413,6 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
             val candidates = line?.offer?.candidates.orEmpty()
             if (candidates.isNotEmpty()) {
                 FlowRow(Modifier.padding(top = 4.dp)) {
-                    val labels = lines?.candidates.orEmpty()
                     candidates.take(8).forEachIndexed { index, candidate ->
                         SuggestionChip(
                             onClick = {
@@ -429,7 +422,7 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
                             label = { Text(candidate.text) },
                             modifier = Modifier
                                 .padding(end = 8.dp)
-                                .semantics { contentDescription = "Complete with ${labels.getOrNull(index) ?: candidate.label}" },
+                                .semantics { contentDescription = completeWith(candidate) },
                         )
                     }
                 }
@@ -442,7 +435,7 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
             color = quiet(),
             modifier = Modifier
                 .padding(16.dp)
-                .semantics { contentDescription = if (said.isEmpty()) "" else "Will add: $said" },
+                .semantics { contentDescription = if (said.isEmpty()) "" else "${quickWords.willAdd}: $said" },
         )
     }
 }

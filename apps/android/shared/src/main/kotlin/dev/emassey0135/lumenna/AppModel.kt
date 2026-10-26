@@ -126,7 +126,7 @@ class AppModel(
     }
 
     /** A round with every paired device now: the app says how it went. */
-    fun syncNow() = send(ShellEvent.Devices(dev.emassey0135.lumenna.app.DevicesEvent.SyncNow))
+    fun syncNow() = send(ShellEvent.Key("sync-now"))
 
     private val drawn = MutableStateFlow(0L)
 

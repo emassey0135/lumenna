@@ -101,7 +101,7 @@ fun AskText(
           }
         },
         confirmButton = { TextButton(modifier = Target, onClick = { done(text.text) }) { Text(action) } },
-        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(quickWords.cancel) } },
     )
     LaunchedEffect(Unit) { focus.requestFocus() }
 }
@@ -127,13 +127,13 @@ fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Uni
                     OutlinedTextField(
                         value = narrow,
                         onValueChange = { narrow = it },
-                        label = { Text("Narrow the list") },
+                        label = { Text(quickWords.filter) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 if (shown.isEmpty()) {
-                    Text("Nothing matches", Modifier.padding(vertical = 12.dp))
+                    Text(dev.emassey0135.lumenna.app.nothingToChoose(), Modifier.padding(vertical = 12.dp))
                 }
                 LazyColumn(
                     Modifier
@@ -157,7 +157,7 @@ fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Uni
                                 Text(choice.title, style = MaterialTheme.typography.bodyLarge)
                             }
                             // The level where it changes, as a tree's rows say it: the indent says nothing aloud.
-                            val detail = detailOf(shown, index)
+                            val detail = detailOf(shown, index, whole = narrow.isBlank())
                             if (detail.isNotEmpty()) {
                                 Text(detail, style = MaterialTheme.typography.bodyMedium, color = quiet())
                             }
@@ -171,7 +171,7 @@ fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Uni
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(quickWords.cancel) } },
     )
 }
 
@@ -194,7 +194,7 @@ fun Confirm(
                 Text(action, color = if (destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
             }
         },
-        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(quickWords.cancel) } },
     )
 }
 

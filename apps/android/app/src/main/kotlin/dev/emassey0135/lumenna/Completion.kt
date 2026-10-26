@@ -118,7 +118,7 @@ fun CompletingField(
                         label = { Text(candidate.text) },
                         modifier = Modifier
                             .padding(end = 8.dp)
-                            .semantics { contentDescription = "Complete with ${dev.emassey0135.lumenna.app.candidateLine(candidate)}" },
+                            .semantics { contentDescription = dev.emassey0135.lumenna.app.completeWith(candidate) },
                     )
                 }
             }
@@ -131,7 +131,7 @@ fun CompletingField(
             title = { Text(COMPLETIONS) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    if (candidates.isEmpty()) Text(NOTHING_COMPLETES)
+                    if (candidates.isEmpty()) Text(quickWords.nothingToComplete)
                     candidates.forEach { candidate ->
                         Text(
                             dev.emassey0135.lumenna.app.candidateLine(candidate),
@@ -145,12 +145,13 @@ fun CompletingField(
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(modifier = Target, onClick = { listing = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(modifier = Target, onClick = { listing = false }) { Text(quickWords.cancel) } },
         )
     }
 }
 
-/** The field's action and button that open the list, and the list's title. */
-const val SHOW_COMPLETIONS = "Show completions"
+/** The field's action and button that open the list, the core's words. */
+val SHOW_COMPLETIONS: String get() = quickWords.showCompletions
+
+/** The list's title. */
 private const val COMPLETIONS = "Completions"
-private const val NOTHING_COMPLETES = "Nothing completes here."

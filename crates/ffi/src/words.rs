@@ -157,6 +157,12 @@ pub fn fold_state(expanded: bool) -> String {
     lumenna_records::words::fold_state(expanded)
 }
 
+/// How deep a row sits, said where it changes from the row before: "level 2" for `depth` 1.
+#[export]
+pub fn level(depth: u32) -> String {
+    lumenna_records::words::level(depth)
+}
+
 /// How long, in words: "1 hour 30 minutes".
 #[export]
 pub fn duration_words(minutes: u32) -> String {

@@ -40,7 +40,7 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
             app.send(ShellEvent.Answer(Answer.Text(day)))
         }
     }
-    LaunchedEffect(asking?.action?.kind, asking?.action?.target, asking?.question, asking?.choices, asking?.refusal) {
+    LaunchedEffect(asking?.number, asking?.action?.kind, asking?.action?.target, asking?.question, asking?.choices, asking?.refusal) {
         val asked = asking ?: return@LaunchedEffect
         val action = asked.action
         val cancel = { app.send(ShellEvent.Cancel) }
@@ -58,13 +58,12 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
                 question.title, question.message, question.yes, dismissed = cancel,
             ) { answer(Answer.Yes) }
             is Question.Text -> {
-                // How long, chosen: a sitting's planned length, minutes logged, or the length a
-                // pick asks once something is picked.
-                val length = action?.kind == ActionKind.PLANNED_LENGTH || action?.kind == ActionKind.LOG_MINUTES ||
-                    action?.question is Question.Pick
-                if (length) {
-                    chooseLength(navigator, question.title, if (question.optional) "None" else null, cancel) { minutes ->
-                        answer(Answer.Text(minutes?.let { "${it}m" }.orEmpty()))
+                // How long, chosen from the usual lengths the app offers with the question: a
+                // sitting's planned length, minutes logged, the length a pick asks once
+                // something is picked. Each answers in the core's own words for it.
+                if (asked.lengths.isNotEmpty()) {
+                    navigator.choose(label(question.title), asked.lengths.map(::option), cancelled = cancel) { picked ->
+                        answer(Answer.Text(picked.key))
                     }
                 } else if (asked.day != null) {
                     // A day: the line first, said or typed, then the watch's own calendar.

@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna
 
+import dev.emassey0135.lumenna.app.durationWords
 import dev.emassey0135.lumenna.app.ActingOn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -108,14 +109,13 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     FollowProposal(core, navigator)
     FollowReminders(core, navigator)
 
-    val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
-    val addBlock = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }
+    // Each of the day's commands is the core's to run (`ShellEvent.Key`), by key or button alike.
+    val run = { command: Command -> command.id?.let { app.send(ShellEvent.Key(it)) } ?: Unit }
+    val addBlock = { run(Command.NEW_BLOCK) }
 
-    Offer(Command.PREVIOUS_DAY) { move(DayMove.PREVIOUS) }
-    Offer(Command.NEXT_DAY) { move(DayMove.NEXT) }
-    Offer(Command.GO_TO_NOW) { move(DayMove.NOW) }
-    Offer(Command.GO_TO_DAY) { move(DayMove.ASK) }
-    Offer(Command.NEW_BLOCK) { addBlock() }
+    for (command in listOf(Command.PREVIOUS_DAY, Command.NEXT_DAY, Command.GO_TO_NOW, Command.GO_TO_DAY, Command.NEW_BLOCK)) {
+        androidx.compose.runtime.key(command) { Offer(command) { run(command) } }
+    }
 
     // The day's own actions, the app's, in the core's order.
     val dayActions = day?.let { app.actingOn(ActingOn.Day, it.offered) }.orEmpty()
@@ -146,10 +146,9 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Named as the core's commands for each move are, which the keys run too.
-            OutlinedButton(modifier = Target, onClick = { move(DayMove.PREVIOUS) }) { Text(Command.PREVIOUS_DAY.title) }
-            OutlinedButton(modifier = Target, onClick = { move(DayMove.NOW) }) { Text(Command.GO_TO_NOW.title) }
-            OutlinedButton(modifier = Target, onClick = { move(DayMove.NEXT) }) { Text(Command.NEXT_DAY.title) }
-            OutlinedButton(modifier = Target, onClick = { move(DayMove.ASK) }) { Text(Command.GO_TO_DAY.title) }
+            for (command in listOf(Command.PREVIOUS_DAY, Command.GO_TO_NOW, Command.NEXT_DAY, Command.GO_TO_DAY)) {
+                OutlinedButton(modifier = Target, onClick = { run(command) }) { Text(command.title) }
+            }
             dayActions.forEach { action ->
                 OutlinedButton(modifier = Target, onClick = action.run) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
@@ -161,7 +160,6 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
             state = scroll,
         ) {
             itemsIndexed(shown, key = { _, (item, _) -> item.key }) { index, (item, line) ->
-                val edit = item.offered.firstOrNull { it.kind == ActionKind.EDIT }
                 ListRow(
                     title = line?.title.orEmpty(),
                     detail = line?.detail.orEmpty(),
@@ -174,9 +172,8 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
                     key = item.key,
                     say = core::say,
                     open = when {
-                        item.kind == DayKind.BLOCK && edit != null -> ({
-                            app.send(ShellEvent.ActOn(ActingOn.Row(item.key), edit))
-                        })
+                        // A block's Enter, the core's: its Edit, or why it has none.
+                        item.kind == DayKind.BLOCK -> ({ app.rowKeys(item.key).key("open") })
                         item.kind == DayKind.SITTING -> item.sitting?.let { sitting -> { navigator.push(Screen.Task(sitting.task)) } }
                         else -> null
                     },
@@ -255,7 +252,7 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
                         val value = typed[field.key] ?: if (field.key == "date") form.date else fields.text(field.key)
                         // The length is read back as it is typed.
                         val help = if (field.key == "minutes") {
-                            value.trim().toUIntOrNull()?.let { "Lasts ${Clock.length(it)}." } ?: field.hint.ifEmpty { null }
+                            value.trim().toUIntOrNull()?.let { durationWords(it).replaceFirstChar(Char::uppercase) } ?: field.hint.ifEmpty { null }
                         } else {
                             field.hint.ifEmpty { null }
                         }

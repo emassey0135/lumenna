@@ -39,6 +39,7 @@ import dev.emassey0135.lumenna.Launched
 import dev.emassey0135.lumenna.Reminded
 import dev.emassey0135.lumenna.Said
 import dev.emassey0135.lumenna.launch
+import dev.emassey0135.lumenna.replan
 import dev.emassey0135.lumenna.sayInTurn
 import dev.emassey0135.lumenna.app.Place
 import kotlinx.coroutines.delay
@@ -56,7 +57,8 @@ sealed interface Screen {
     /** The app's block form, while it has one open. */
     data object BlockForm : Screen
     data object Settings : Screen
-    data object Planning : Screen
+    /** One of the core's pages of settings, by its id: Planning, Backups, General. */
+    data class SettingsPage(val id: String) : Screen
     data object Devices : Screen
     /** A task's or a block series' reminders: the app's list, while it has one open. */
     data object Reminders : Screen
@@ -177,7 +179,7 @@ private fun Confirmation(navigator: Navigator) {
                 navigator.answered()
                 asked?.dismissed?.invoke()
             }) {
-                Icon(glyph(CLOSE), contentDescription = "Cancel")
+                Icon(glyph(CLOSE), contentDescription = dev.emassey0135.lumenna.quickWords.cancel)
             }
         },
     )
@@ -207,8 +209,7 @@ fun WearApp(
         when (val reminded = tapped?.second?.reminded) {
             is Reminded.Task -> navigator.open(Screen.Task(reminded.id))
             is Reminded.Block -> navigator.open(Screen.Day(reminded.on))
-            Reminded.Replan ->
-                core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Proposal(dev.emassey0135.lumenna.app.ProposalEvent.Replan))
+            is Reminded.Replan -> core.app.replan(reminded)
             null -> {}
         }
     }
@@ -263,8 +264,8 @@ fun WearApp(
                             is Screen.Task -> TaskScreen(core, navigator, screen)
                             Screen.AddTask -> AddTaskScreen(core, navigator)
                             Screen.BlockForm -> BlockFormScreen(core, navigator)
-                            Screen.Settings -> SettingsScreen(navigator)
-                            Screen.Planning -> PlanningScreen(core)
+                            Screen.Settings -> SettingsScreen(core, navigator)
+                            is Screen.SettingsPage -> SettingsPageScreen(core, screen.id)
                             Screen.Devices -> DevicesScreen(core, navigator)
                             Screen.Reminders -> RemindersScreen(core, navigator)
                             Screen.ReminderSettings -> ReminderSettingsScreen(core, changes)

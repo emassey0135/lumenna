@@ -186,7 +186,7 @@ class Core(
             try {
                 device.backUpIfDue()
             } catch (error: LumennaError) {
-                main.post { say("The automatic backup failed. ${error.sentence}") }
+                main.post { say(dev.emassey0135.lumenna.app.backupFailed(error.sentence)) }
             }
         }
     }
