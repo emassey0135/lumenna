@@ -31,7 +31,6 @@ import { DayPicker, TimePicker } from "./Pickers";
 import { send } from "./session";
 import { SwatchMark } from "./Swatch";
 
-/** Where the block form is shown: rendered once, in the app, while the app has one open. */
 /**
  * A field's place in the form's values. A field is named as the core names it ("accepts_tasks"),
  * which is what its edit sends back; the values record is typed as BoltFFI writes its fields.
@@ -40,6 +39,7 @@ function fieldOf(key: string): string {
   return key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
 }
 
+/** Where the block form is shown: rendered once, in the app, while the app has one open. */
 export function BlockForms(props: { form: BlockFormView | null }) {
   return (
     <Modal isDismissable isOpen={props.form !== null} onOpenChange={(isOpen) => !isOpen && void send({ tag: "Block", value0: { tag: "Cancel" } })}>

@@ -14,7 +14,8 @@
 ;; the GTK app or `lum notify' does it better, and the server tells this
 ;; connection when one does.
 ;;
-;; What came due and was not dealt with stays in M-x lumenna-reminders-due,
+;; What came due and was not dealt with is the app's list, the same on every
+;; device's apps, shown in M-x lumenna-reminders-due,
 ;; where d dismisses one, z snoozes it, and c carries forward what a block's
 ;; end left short, where its reminder offers to.  A task's or block's own
 ;; reminders are its Reminders action (R): a list of them, a to add one by a
@@ -24,6 +25,7 @@
 ;;; Code:
 
 (require 'lumenna)
+(require 'parse-time)
 ;; Only where Emacs was built with D-Bus: elsewhere loading it signals.
 (when (featurep 'dbusbind)
   (require 'notifications nil t))
@@ -31,10 +33,8 @@
 (declare-function notifications-notify "notifications" (&rest params))
 (declare-function lumenna-task-show "lumenna-tasks" (id))
 (declare-function lumenna-today "lumenna-day" ())
-(declare-function lumenna-today "lumenna-day" ())
-(declare-function lumenna--task "lumenna-tasks" (&optional id))
 (declare-function dbus-ping "dbus" (bus service &optional timeout))
-(declare-function lumenna-replan "lumenna-proposal" ())
+(declare-function lumenna-replan "lumenna-proposal" (&optional event))
 
 (defcustom lumenna-reminders-start-automatically t
   "Whether reminders start being given once Lumenna first connects.
@@ -68,12 +68,13 @@ Nil asks the core for now.")
 (defvar lumenna-reminders--asking nil
   "Whether a delivery has been asked for and not yet answered.")
 
-(defvar lumenna-reminders--waiting nil
-  "What came due and was not dealt with yet, oldest first.
-Each is the core's `DueReminder' plist, or for what was missed while nothing
-ran, a plist with `:summary' and `:missed', the missed reminders.")
-
 ;;;; Giving them
+
+;; `reminder.deliver' says what came due while this connection holds the
+;; device's reminder lock; the app is then handed the same moments to look at
+;; (`Due(Look)'), and what it finds it lists, says and gives as notices.  Which
+;; are still listed, and what each button does, are the app's, as on every
+;; other platform.
 
 (defun lumenna-reminders--desktop-p ()
   "Whether a desktop notification can be shown here."
@@ -81,81 +82,78 @@ ran, a plist with `:summary' and `:missed', the missed reminders.")
        (featurep 'dbusbind)
        (ignore-errors (dbus-ping :session "org.freedesktop.Notifications" 500))))
 
-(defun lumenna-reminders--key (reminder)
-  "What tells REMINDER apart from every other firing."
-  (if (plist-get reminder :summary)
-      (cons 'missed (mapcar #'lumenna-reminders--key (plist-get reminder :missed)))
-    (cons (plist-get reminder :key) (plist-get reminder :occurrence))))
+(defun lumenna-reminders--moment (time)
+  "TIME as the RFC 3339 moment the core reads, in UTC."
+  (format-time-string "%FT%TZ" time t))
 
-(defun lumenna-reminders--say (text)
-  "Say TEXT, a reminder, through the speech layers, with its sound."
-  (run-hook-with-args 'lumenna-changed-functions "reminder/due" nil)
-  (funcall lumenna-announce-function text nil))
+(defun lumenna-reminders--hand-over (found now)
+  "Have the app look at what FOUND, the core's `DueReminders' at NOW, gave.
+It looks from just before the earliest of them until NOW, so it finds the
+same reminders, and lists, says and shows each it does not list already."
+  (let ((firings (append (plist-get found :missed) (plist-get found :due) nil)))
+    (when firings
+      (let ((since (lumenna-reminders--moment
+                    (time-subtract (apply #'min (mapcar (lambda (f) (float-time (parse-iso8601-time-string (plist-get f :at))))
+                                                        firings))
+                                   1))))
+        (lumenna-send (list :Due (list :Look (list :since since :now now))) 0)))))
 
-(defun lumenna-reminders--notify (reminder)
-  "Show REMINDER as a desktop notification, its buttons the core's words."
+(defun lumenna-reminders--notify (due)
+  "Show DUE, a reminder the app lists, as a desktop notification.
+Its buttons are the core's words, and each is the app's to carry out."
   (when (lumenna-reminders--desktop-p)
-    (let* ((first (if (plist-get reminder :summary) (car (plist-get reminder :missed)) reminder))
-           (title (if (plist-get reminder :summary) "Lumenna" (plist-get reminder :title)))
-           (body (or (plist-get reminder :summary) (plist-get reminder :text))))
+    (let* ((id (plist-get due :id))
+           (first (aref (plist-get due :firings) 0))
+           (offer (lambda (button word) (and word (not (string-empty-p word)) (list button word)))))
       (ignore-errors
         (notifications-notify
-         :title title :body body :app-name "Lumenna"
-         :actions (append (list "dismiss" (plist-get first :dismiss))
-                          (unless (plist-get reminder :summary)
-                            (append (list "snooze" (plist-get first :snooze))
-                                    ;; At a block's end with work left short, the text ends
-                                    ;; in the question this button answers.
-                                    (when (lumenna-reminders--carry-p reminder)
-                                      (list "carry" (plist-get reminder :carry)))
-                                    ;; A block's work outrunning its time: Replan from Now.
-                                    (when (lumenna-reminders--replan-p reminder)
-                                      (list "replan" (plist-get reminder :replan)))
-                                    (list "default" (plist-get first :title)))))
+         :title (plist-get due :title) :body (plist-get due :text) :app-name "Lumenna"
+         :actions (append (list "dismiss" (plist-get due :dismiss))
+                          (funcall offer "snooze" (plist-get due :snooze))
+                          ;; At a block's end with work left short, the text ends in the
+                          ;; question this button answers.
+                          (funcall offer "carry" (plist-get due :carry))
+                          ;; A block's work outrunning its time: Replan from Now.
+                          (funcall offer "replan" (plist-get due :replan))
+                          ;; What was missed, as one summary, is about nothing to open.
+                          (and (plist-get due :snooze) (list "default" (plist-get first :title))))
          :on-action (lambda (_id action)
                       (pcase action
-                        ("dismiss" (lumenna-reminders--deal reminder "reminder.dismiss"))
-                        ("snooze" (lumenna-reminders--deal reminder "reminder.snooze"))
-                        ("carry" (lumenna-reminders--carry reminder))
-                        ("replan" (lumenna-replan))
-                        ("default" (lumenna-reminders--open reminder)))))))))
+                        ("dismiss" (lumenna-reminders--deal id "Dismiss"))
+                        ("snooze" (lumenna-reminders--deal id "Snooze"))
+                        ("carry" (lumenna-reminders--deal id "Carry"))
+                        ("replan" (lumenna-replan (list :Due (list :Replan id))))
+                        ("default" (lumenna-reminders--open first)))))))))
 
-(defun lumenna-reminders--give (found)
-  "Give what FOUND, the core's `DueReminders', says came due."
-  (let ((summary (plist-get found :missed_summary))
-        (missed (append (plist-get found :missed) nil)))
-    (when (and summary (not (string-empty-p summary)))
-      (let ((entry (list :summary summary :missed missed)))
-        (setq lumenna-reminders--waiting (append lumenna-reminders--waiting (list entry)))
-        (lumenna-reminders--say summary)
-        (lumenna-reminders--notify entry))))
-  (dolist (reminder (append (plist-get found :due) nil))
-    (setq lumenna-reminders--waiting (append lumenna-reminders--waiting (list reminder)))
-    (lumenna-reminders--say (plist-get reminder :text))
-    (lumenna-reminders--notify reminder))
-  (when (plist-get found :due)
-    (lumenna-reminders--redraw)))
+(defun lumenna-reminders--noticed (turn)
+  "Show each notice TURN gives as a desktop notification: a reminder come due."
+  (let ((listed (append (plist-get (plist-get turn :view) :due) nil)))
+    (dolist (notice (append (plist-get turn :notices) nil))
+      (when-let* ((due (seq-find (lambda (d) (equal (plist-get d :id) (plist-get notice :id))) listed)))
+        (lumenna-reminders--notify due)))))
+
+(add-hook 'lumenna-turned-functions #'lumenna-reminders--noticed)
 
 (defun lumenna-reminders-deliver ()
   "Ask what came due, and give it.  In the background; Emacs stays free."
   (interactive)
   (unless lumenna-reminders--asking
     (setq lumenna-reminders--asking t)
-    (condition-case err
-        (jsonrpc-async-request
-         (lumenna--connection) 'reminder.deliver
-         (lumenna--params (list :now (and lumenna-reminders--now (funcall lumenna-reminders--now))))
-         :success-fn (lambda (found)
+    (let ((now (if lumenna-reminders--now (funcall lumenna-reminders--now) (lumenna-reminders--moment nil))))
+      (condition-case err
+          (jsonrpc-async-request
+           (lumenna--connection) 'reminder.deliver (list :now now)
+           :success-fn (lambda (found)
+                         (setq lumenna-reminders--asking nil)
+                         (lumenna-reminders--pace (lumenna--true (plist-get found :elsewhere)))
+                         (lumenna-reminders--hand-over found now))
+           :error-fn (lambda (err)
                        (setq lumenna-reminders--asking nil)
-                       (lumenna-reminders--pace (lumenna--true (plist-get found :elsewhere)))
-                       (lumenna-reminders--give found))
-         :error-fn (lambda (err)
-                     (setq lumenna-reminders--asking nil)
-                     (message "Lumenna reminders: %s" (plist-get err :message)))
-         :timeout-fn (lambda () (setq lumenna-reminders--asking nil))
-         :timeout 30)
-      (error (setq lumenna-reminders--asking nil)
-             (message "Lumenna reminders: %s" (error-message-string err))))))
+                       (message "Lumenna reminders: %s" (plist-get err :message)))
+           :timeout-fn (lambda () (setq lumenna-reminders--asking nil))
+           :timeout 30)
+        (error (setq lumenna-reminders--asking nil)
+               (message "Lumenna reminders: %s" (error-message-string err)))))))
 
 (defun lumenna-reminders--start (every)
   "Ask what came due every EVERY seconds from now."
@@ -190,127 +188,126 @@ and shown, unless another process on this device already gives them."
     (lumenna-reminders-deliver)
     (add-function :after after-focus-change-function #'lumenna-reminders--focus-changed)))
 
+(defvar lumenna-reminders--resume nil
+  "Whether `lumenna-disconnect' stopped the reminders.
+They start again on connecting.")
+
 (defun lumenna-reminders--connected ()
-  "Start giving reminders on the first connection, if that is wanted."
-  (when (and lumenna-reminders-start-automatically (not lumenna-reminders-mode))
-    (lumenna-reminders-mode 1)))
+  "Start giving reminders on connecting, if that is wanted.
+Or if a disconnection stopped them."
+  (when (and (or lumenna-reminders-start-automatically lumenna-reminders--resume)
+             (not lumenna-reminders-mode))
+    (lumenna-reminders-mode 1))
+  (setq lumenna-reminders--resume nil))
+
+(defun lumenna-reminders--disconnected ()
+  "Stop giving reminders once disconnected: asking would connect again at once."
+  (when lumenna-reminders-mode
+    (lumenna-reminders-mode -1)
+    (setq lumenna-reminders--resume t)))
 
 (add-hook 'lumenna-connected-hook #'lumenna-reminders--connected)
+(add-hook 'lumenna-disconnected-hook #'lumenna-reminders--disconnected)
 
 ;;;; Dealing with one
 
-(defun lumenna-reminders--deal (reminder method)
-  "Do METHOD, `reminder.dismiss' or `reminder.snooze', to REMINDER, and say it.
-A summary of what was missed is dismissed one by one."
-  (let ((each (if (plist-get reminder :summary) (plist-get reminder :missed) (list reminder)))
-        result)
-    (dolist (one each)
-      (setq result (lumenna-call method :key (plist-get one :key) :occurrence (plist-get one :occurrence))))
-    (setq lumenna-reminders--waiting
-          (seq-remove (lambda (r) (equal (lumenna-reminders--key r) (lumenna-reminders--key reminder)))
-                      lumenna-reminders--waiting))
-    (lumenna-reminders--wrote method result)))
+(defun lumenna-reminders--deal (id event)
+  "Send EVENT, a button of the app's (\"Dismiss\", \"Snooze\", \"Carry\"), for
+the reminder due ID.  The app takes it off the list and says what it did."
+  (with-current-buffer (lumenna--home-buffer)
+    (setq lumenna--acting (pcase event
+                            ("Dismiss" "reminder/dismiss") ("Snooze" "reminder/snooze")
+                            ("Carry" "block/carry_rest")))
+    (lumenna-send (list :Due (list (intern (concat ":" event)) id)) 0)
+    (lumenna--follow)))
 
-(defun lumenna-reminders--wrote (event result)
-  "Say RESULT, what EVENT, a store method, did; the app's screens take it in."
-  (run-hook-with-args 'lumenna-changed-functions event result)
-  (lumenna-say result)
-  (lumenna--tick)
-  (lumenna-reminders--redraw))
-
-(defun lumenna-reminders--not-offered (_kind)
-  "Why a reminder does not offer an action: it has no button for it."
-  "Nothing to do here")
-
-(defun lumenna-reminders--carry-p (reminder)
-  "Whether REMINDER offers to carry its block's short work forward."
-  (let ((carry (plist-get reminder :carry)))
-    (and (stringp carry) (not (string-empty-p carry)))))
-
-(defun lumenna-reminders--replan-p (reminder)
-  "Whether REMINDER offers Replan from Now: a block's work outrunning its time."
-  (let ((replan (plist-get reminder :replan)))
-    (and (stringp replan) (not (string-empty-p replan)))))
-
-(defun lumenna-reminders-replan ()
-  "Open Replan from Now, as the reminder at point offers to."
-  (interactive)
-  (unless (lumenna-reminders--replan-p (lumenna-reminders--at-point))
-    (user-error "%s" (lumenna-reminders--not-offered "replan")))
-  (lumenna-replan))
-
-(defun lumenna-reminders--carry (reminder)
-  "Carry the work REMINDER's block left short forward (`carry_rest'), and say it.
-That answers the reminder, so it leaves what came due."
-  (let ((result (lumenna-call "carry_rest" :block (format "%s@%s" (plist-get reminder :target)
-                                                          (plist-get reminder :occurrence)))))
-    (setq lumenna-reminders--waiting
-          (seq-remove (lambda (r) (equal (lumenna-reminders--key r) (lumenna-reminders--key reminder)))
-                      lumenna-reminders--waiting))
-    (lumenna-reminders--wrote "block/carry_rest" result)))
-
-(defun lumenna-reminders--open (reminder)
-  "Open what REMINDER is about: its task, or its block's day."
-  (let ((first (if (plist-get reminder :summary) (car (plist-get reminder :missed)) reminder)))
-    (pcase (plist-get first :kind)
-      ("task" (lumenna-task-show (plist-get first :target)))
-      (_ (with-current-buffer (lumenna-today)
-           (lumenna-send (list :ShowBlock (list :series (plist-get first :target) :date (plist-get first :occurrence))))
-           (lumenna--follow))))))
+(defun lumenna-reminders--open (firing)
+  "Open what FIRING, a reminder's, is about: its task, or its block's day."
+  (pcase (plist-get firing :kind)
+    ("task" (lumenna-task-show (plist-get firing :target)))
+    (_ (with-current-buffer (lumenna-today)
+         (lumenna-send (list :ShowBlock (list :series (plist-get firing :target) :date (plist-get firing :occurrence))))
+         (lumenna--follow)))))
 
 ;;;; What came due
+
+;; The app's list of what came due, drawn from the places' screen, whose
+;; turns carry it.
 
 (define-derived-mode lumenna-reminders-due-mode lumenna-list-mode "Lumenna Due"
   "What came due and was not dealt with yet.  d dismisses one, z snoozes it.
 
 \\{lumenna-reminders-due-mode-map}"
-  (setq-local lumenna--activate #'lumenna-reminders--open))
+  (setq-local lumenna--draw #'lumenna-reminders--due-rows)
+  (setq-local lumenna--activate (lambda (row) (lumenna-reminders--open (aref (plist-get (plist-get row :due) :firings) 0)))))
 
 (defun lumenna-reminders--due-rows ()
-  "The reminders waiting, as rows."
-  (setq-local lumenna--empty "Nothing has come due")
-  (cons (if lumenna-reminders--waiting
-            (format "Reminders due, %d" (length lumenna-reminders--waiting))
-          "Reminders due")
-        (mapcar (lambda (reminder)
-                  (list :key (lumenna-reminders--key reminder) :role "reminder" :reminder reminder
-                        :title (or (plist-get reminder :summary) (plist-get reminder :text))))
-                lumenna-reminders--waiting)))
-
-(defun lumenna-reminders--redraw ()
-  "Redraw the list of what came due, if it is shown."
-  (when-let* ((buffer (get-buffer "*Lumenna: Reminders due*")))
-    (with-current-buffer buffer (lumenna-refresh))))
+  "The reminders the app lists as due, as rows."
+  (let ((due (append (plist-get lumenna--view :due) nil)))
+    (setq-local lumenna--empty "Nothing has come due")
+    (cons (if due (format "Reminders due, %d" (length due)) "Reminders due")
+          (mapcar (lambda (one)
+                    (list :key (plist-get one :id) :role "reminder" :due one :title (plist-get one :text)))
+                  due))))
 
 ;;;###autoload
 (defun lumenna-reminders-due ()
   "List what came due and was not dealt with: d dismisses one, z snoozes it."
   (interactive)
-  (lumenna--show-list "*Lumenna: Reminders due*" #'lumenna-reminders-due-mode #'lumenna-reminders--due-rows))
+  (let ((home (lumenna--home-buffer))
+        (buffer (get-buffer-create "*Lumenna: Reminders due*")))
+    (with-current-buffer buffer
+      (unless (derived-mode-p 'lumenna-reminders-due-mode)
+        (lumenna-reminders-due-mode)
+        (lumenna--attach 0))
+      (setq lumenna--view (buffer-local-value 'lumenna--view home)
+            lumenna--lines (buffer-local-value 'lumenna--lines home))
+      (lumenna--redraw))
+    (pop-to-buffer-same-window buffer)))
 
 (defun lumenna-reminders--at-point ()
-  "The reminder at point, or a `user-error'."
-  (or (plist-get (lumenna-row) :reminder) (user-error "No reminder on this line")))
+  "The reminder due at point, as the app lists it, or a `user-error'."
+  (or (plist-get (lumenna-row) :due) (user-error "No reminder on this line")))
+
+(defun lumenna-reminders--press (event button)
+  "Send EVENT for the reminder at point.
+It offers it if it has BUTTON's words; one it does not offer is refused in
+the app's words."
+  (let* ((due (lumenna-reminders--at-point))
+         (id (plist-get due :id)))
+    (if (plist-get due button)
+        (lumenna-reminders--deal id event)
+      (let ((lumenna--heard (list 'heard)))
+        (lumenna-send (list :Due (list (intern (concat ":" event)) id)) 0)
+        (lumenna--settle)
+        (user-error "%s" (string-join (or (cdr lumenna--heard) '("Nothing to do here")) " "))))))
 
 (defun lumenna-reminders-dismiss ()
   "Dismiss the reminder at point, on every device."
   (interactive)
-  (lumenna-reminders--deal (lumenna-reminders--at-point) "reminder.dismiss"))
+  (lumenna-reminders--press "Dismiss" :dismiss))
 
 (defun lumenna-reminders-snooze ()
   "Snooze the reminder at point, on every device, for as long as the core says."
   (interactive)
-  (let ((reminder (lumenna-reminders--at-point)))
-    (when (plist-get reminder :summary) (user-error "What was missed can be dismissed, not snoozed"))
-    (lumenna-reminders--deal reminder "reminder.snooze")))
+  ;; What was missed, as one summary, has no Snooze, and the app would snooze it all.
+  (unless (plist-get (lumenna-reminders--at-point) :snooze)
+    (user-error "What was missed can be dismissed, not snoozed"))
+  (lumenna-reminders--press "Snooze" :snooze))
 
 (defun lumenna-reminders-carry ()
   "Carry what the block of the reminder at point left short forward, as it offers."
   (interactive)
-  (let ((reminder (lumenna-reminders--at-point)))
-    (unless (lumenna-reminders--carry-p reminder)
-      (user-error "%s" (lumenna-reminders--not-offered "carry_rest")))
-    (lumenna-reminders--carry reminder)))
+  (lumenna-reminders--press "Carry" :carry))
+
+(defun lumenna-reminders-replan ()
+  "Open Replan from Now, as the reminder at point offers to.
+Once something is replanned, the app dismisses the warning."
+  (interactive)
+  (let ((due (lumenna-reminders--at-point)))
+    (if (plist-get due :replan)
+        (lumenna-replan (list :Due (list :Replan (plist-get due :id))))
+      (lumenna-reminders--press "Replan" :replan))))
 
 ;;;; A task's or block's own
 

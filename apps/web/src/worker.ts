@@ -54,15 +54,24 @@ function unitsAt(text: string, bytes: number): number {
 
 let opening: Promise<void> | undefined;
 
-async function opened(name: string): Promise<void> {
-  const granted = await new Promise<boolean>((resolve) => {
-    void navigator.locks.request(`lumenna:${name}`, { ifAvailable: true }, (lock) => {
+/** Takes the lock `name`, held while this worker lives; with `ifAvailable`, only if no other
+ * tab holds it. Whether it was taken. */
+function hold(name: string, options: LockOptions): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    void navigator.locks.request(name, options, (lock) => {
       resolve(lock !== null);
-      // Held while this worker lives.
       return lock ? new Promise<void>(() => {}) : undefined;
     });
   });
-  if (!granted) throw new Error("Lumenna is open in another tab. Close it there to use it here.");
+}
+
+async function opened(name: string, waiting?: (why: string) => void): Promise<void> {
+  const lock = `lumenna:${name}`;
+  if (!(await hold(lock, { ifAvailable: true }))) {
+    // Another tab has it: this one says so, and opens the store once that tab is closed.
+    void waiting?.("Lumenna is open in another tab. Close it there to use it here.");
+    await hold(lock, {});
+  }
   // The module, and its wasm beside it, which Vite serves as an asset.
   await init(await fetch(new URL("./core/lumenna_web_bg.wasm", import.meta.url)));
   app = await open(name);
@@ -244,13 +253,13 @@ function turned(turn: Turn): Said {
 const api = {
   /**
    * Opens the store — one tab at a time. OPFS gives the store one connection, and a device has
-   * one sync endpoint, so the first tab holds a lock for as long as it is open and any other is
-   * told where Lumenna is already open.
+   * one sync endpoint, so the first tab holds a lock for as long as it is open; any other is told
+   * (`waiting`) where Lumenna is already open, and opens it once that tab is closed.
    */
-  open(name: string): Promise<void> {
+  open(name: string, waiting?: (why: string) => void): Promise<void> {
     // Asking twice is one opening: React's development mode runs effects twice, and a second
     // request for the lock would find this worker's own first request holding it.
-    opening ??= opened(name);
+    opening ??= opened(name, waiting);
     return opening;
   },
 
@@ -279,7 +288,8 @@ const api = {
   },
 
   /** What to draw now. */
-  screen: (): Screen => turned(session().now()).screen,
+  /** The screen as it is now, numbered as the turns are, so none drawn before is drawn over it. */
+  now: (): Said => turned(session().now()),
 
 
   /** A number that moves when another tab or process has written. */

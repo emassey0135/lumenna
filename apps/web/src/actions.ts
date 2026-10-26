@@ -3,6 +3,7 @@
 
 import type { ActingOn, ShellEvent, ShortAction } from "./core";
 import { ActionKind, Side } from "./core";
+import { mac } from "./Keys";
 
 /** What a menu or a key needs of an action, whole (`Action`) or a list row's in short. */
 export interface Named {
@@ -44,7 +45,26 @@ export function byKind<A extends { kind: ActionKind }>(actions: readonly A[] | u
  *  what it runs there is the core's (`keys::runs`), the same on every platform. */
 export const keyPressed = (id: "delete" | "toggle"): ShellEvent => ({ tag: "Key", value0: id });
 
+/** What a key press on a row needs to say which key it is. */
+interface Pressed {
+  key: string;
+  ctrlKey: boolean;
+  altKey: boolean;
+  target: EventTarget | null;
+}
+
+/**
+ * Whether a key press on a row is the delete key: Delete, and on a Mac, whose Delete key is
+ * Backspace to a browser, that and Command+Backspace too, as the Finder takes it. Never in a
+ * field, where Backspace deletes what was typed.
+ */
+export function isDelete(event: Pressed): boolean {
+  if (event.key === "Delete") return true;
+  if (!mac || event.key !== "Backspace" || event.ctrlKey || event.altKey) return false;
+  return !(event.target as HTMLElement | null)?.closest?.("input, textarea, [contenteditable='true']");
+}
+
 /** The shared key a key press is, on a row: Delete, or Space. */
-export function sharedKey(event: { key: string }): "delete" | "toggle" | undefined {
-  return event.key === "Delete" ? "delete" : event.key === " " ? "toggle" : undefined;
+export function sharedKey(event: Pressed): "delete" | "toggle" | undefined {
+  return isDelete(event) ? "delete" : event.key === " " ? "toggle" : undefined;
 }

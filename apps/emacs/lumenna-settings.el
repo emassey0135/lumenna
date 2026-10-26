@@ -371,19 +371,17 @@ WORDS are pairing's, the core's."
   (lumenna-say (lumenna-call "restore" :file (expand-file-name file)))
   (lumenna--tick))
 
-(defun lumenna-export (format file)
-  "Write the current state as FORMAT to FILE: nothing from the trash, no history."
-  (interactive
-   (let* ((formats '(("JSON, complete, can be imported" . "json") ("Markdown checklist" . "markdown")
-                     ("Org outline" . "org") ("Calendar file of your blocks" . "ics")))
-          (format (cdr (assoc (completing-read "Export as: " formats nil t) formats)))
-          (suffix (if (equal format "markdown") "md" format)))
-     (list format (read-file-name "Export to: " nil nil nil
-                                  (format "Lumenna %s.%s" (format-time-string "%Y-%m-%d") suffix)))))
-  (let ((file (expand-file-name file)))
-    (when (and (file-exists-p file) (not (yes-or-no-p (format "%s exists; replace it? " file))))
-      (user-error "Nothing exported"))
-    (lumenna-say (lumenna-call "export" :format format :output file :force (and (file-exists-p file) t)))))
+(defun lumenna-export ()
+  "Write the current state to a file: nothing from the trash, no history.
+Which exports there are, and what each is called, are the app's; it makes
+the file, and where to keep it is asked."
+  (interactive)
+  (let* ((choices (mapcar (lambda (choice) (cons (plist-get choice :label) (plist-get choice :format)))
+                          (append (plist-get (plist-get lumenna--view :settings) :exports) nil)))
+         (format (or (cdr (assoc (completing-read "Export: " choices nil t) choices))
+                     (user-error "Nothing exported"))))
+    (lumenna-send (list :Settings (list :Export format)))
+    (lumenna--follow)))
 
 (defun lumenna-import (file)
   "Read FILE, a JSON export or a backup, into the store.  Nothing is removed."

@@ -11,7 +11,7 @@ import { Button, Collection, Tree, TreeItem, TreeItemContent } from "react-aria-
 import type { Key, Selection } from "react-aria-components";
 import type { ShortAction, SidebarEntry, Place } from "./core";
 import { ActionKind, Side } from "./core";
-import { actOn, byKind, keyPressed, rowHeld } from "./actions";
+import { actOn, byKind, isDelete, keyPressed, rowHeld } from "./actions";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
@@ -82,7 +82,7 @@ export function Sidebar(props: {
       event.preventDefault();
       setHeld(key(at));
       setMenu(true);
-    } else if (event.key === "Delete") {
+    } else if (isDelete(event)) {
       // Delete here does what it does in every other list, the core's, on the row held here.
       event.preventDefault();
       event.stopPropagation();

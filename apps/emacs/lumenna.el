@@ -173,15 +173,54 @@ The daemon's socket if it answers, else a `lum rpc' of its own."
           (jsonrpc-shutdown connection)
           (user-error "This client reads version %s of Lumenna's data and `lum' speaks version %s; update whichever is older"
                       lumenna-contract (plist-get server :contract))))
-      (setq lumenna--connection connection)
-      (clrhash lumenna--screens)
-      (setq lumenna--clock nil)
-      (lumenna--follow-clock)
-      ;; What pairing's sentences call this device, which finds others on its network.
-      (jsonrpc-notify connection 'app.send (list :screen 0 :event (list :PairingAs (list :called "this computer" :nearby t))))
+      ;; The buffers of a connection that went (a daemon restarted, a `lum rpc' gone)
+      ;; draw screens the new app has never had.
+      (let ((left (lumenna--leave-screens)))
+        (setq lumenna--connection connection)
+        (clrhash lumenna--screens)
+        (setq lumenna--clock nil)
+        (lumenna--follow-clock)
+        ;; What pairing's sentences call this device, which finds others on its network.
+        (jsonrpc-notify connection 'app.send (list :screen 0 :event (list :PairingAs (list :called "this computer" :nearby t))))
+        (lumenna--reopen-screens left))
       (lumenna--start-ticking)
       (run-hooks 'lumenna-connected-hook)))
   lumenna--connection)
+
+(defun lumenna--leave-screens ()
+  "Ready the buffers drawing screens for a new connection, and return them.
+A buffer that opened a screen, or the places' screen, is kept to open it
+again; one drawing what the app opened on another's (a proposal, a reminder
+list) is closed, since the new app has not opened it.  Called while no
+connection runs, so closing tells no app."
+  (let (kept)
+    (dolist (buffer (buffer-list))
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer
+          (when lumenna--screen
+            (if (or lumenna--opened-with (= lumenna--screen 0))
+                (push buffer kept)
+              (kill-buffer buffer))))))
+    (nreverse kept)))
+
+(defun lumenna--reopen-screens (buffers)
+  "Draw BUFFERS' screens again over the new connection, as each was opened."
+  (dolist (buffer buffers)
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (setq lumenna--view nil lumenna--landed nil)
+        (lumenna--attach lumenna--screen)
+        (dolist (event lumenna--opened-with) (lumenna-send event)))))
+  (when buffers
+    (lumenna--settle)
+    (dolist (buffer buffers)
+      (when (buffer-live-p buffer)
+        (with-current-buffer buffer
+          (unless lumenna--view
+            ;; Nothing sent there, or drawn as it was: no turn came for it.
+            (let ((shown (jsonrpc-request lumenna--connection 'app.view (list :screen lumenna--screen))))
+              (setq lumenna--view (plist-get shown :view) lumenna--lines (plist-get shown :lines))
+              (lumenna--redraw))))))))
 
 (defvar lumenna--clock nil
   "The clock the app was last told: `24' or `12'.
@@ -194,10 +233,15 @@ As `display-time-24hr-format' had it.")
       (setq lumenna--clock clock)
       (jsonrpc-notify lumenna--connection 'app.clock (list :twenty_four (if (eq clock '24) t :json-false))))))
 
+(defvar lumenna-disconnected-hook nil
+  "Run once the connection to the server is closed by `lumenna-disconnect'.
+For what would otherwise open it again: the reminders' timer.")
+
 (defun lumenna-disconnect ()
   "Close the connection to Lumenna, if one is open."
   (interactive)
   (lumenna--stop-ticking)
+  (run-hooks 'lumenna-disconnected-hook)
   (clrhash lumenna--screens)
   (when lumenna--connection
     (ignore-errors (jsonrpc-shutdown lumenna--connection))
@@ -264,6 +308,10 @@ Every speech system reads the echo area."
 
 (defvar-local lumenna--screen nil
   "The app's screen this buffer draws.")
+
+(defvar-local lumenna--opened-with nil
+  "The events that opened this buffer's screen.
+Sent again over a new connection.")
 
 (defvar-local lumenna--view nil
   "What the app last showed on this buffer's screen.")
@@ -346,18 +394,24 @@ EVENT is the app's in its JSON shape: \"Undo\", (:Focus ID),
         (setcdr (last lumenna--heard) said)
         (setq said nil))
       (when said
-        (when lumenna--acting
-          (run-hook-with-args 'lumenna-changed-functions lumenna--acting nil)
-          (setq lumenna--acting nil))
+        (cond ((not (seq-empty-p (plist-get turn :notices)))
+               ;; A notice is a reminder come due: what is said is it, with its sound.
+               ;; Every turn carries the list, an empty vector when there is none.
+               (run-hook-with-args 'lumenna-changed-functions "reminder/due" nil))
+              (lumenna--acting
+               (run-hook-with-args 'lumenna-changed-functions lumenna--acting nil)
+               (setq lumenna--acting nil)))
         (funcall lumenna-announce-function (car said) (cdr said))))
     (run-hook-with-args 'lumenna-turned-functions turn)))
 
 (defun lumenna--save-file (file)
   "Save FILE, a backup or an export the app made, where the person says."
-  (let ((name (read-file-name "Save as: " nil nil nil (plist-get file :name))))
-    (let ((coding-system-for-write 'binary))
-      (write-region (base64-decode-string (plist-get file :data)) nil name))
-    (message "Saved %s" (abbreviate-file-name name))))
+  (let ((name (expand-file-name (read-file-name "Save as: " nil nil nil (plist-get file :name)))))
+    (if (and (file-exists-p name) (not (yes-or-no-p (format "%s exists; replace it? " (abbreviate-file-name name)))))
+        (message "Not saved")
+      (let ((coding-system-for-write 'binary))
+        (write-region (base64-decode-string (plist-get file :data)) nil name))
+      (message "Saved %s" (abbreviate-file-name name)))))
 
 (defvar lumenna--ticking nil
   "The timer that takes in another process's writes and the minute.")
@@ -392,7 +446,8 @@ already draws one.  EVENTS are sent there first."
     (with-current-buffer buffer
       (unless (derived-mode-p mode) (funcall mode))
       (unless lumenna--screen
-        (lumenna--attach (or screen (prog1 lumenna--next-screen (cl-incf lumenna--next-screen)))))
+        (lumenna--attach (or screen (prog1 lumenna--next-screen (cl-incf lumenna--next-screen))))
+        (setq lumenna--opened-with events))
       (dolist (event events) (lumenna-send event))
       (lumenna--settle)
       (unless lumenna--view
@@ -622,15 +677,21 @@ FUNCTION is called with the action, from the buffer it was asked on."
 (defvar lumenna--typed nil
   "What was last typed for a text question, kept for the question asked again.")
 
-(defun lumenna--ask-text (action question refusal)
-  "Read the line ACTION's text QUESTION asks for; sent as typed, even empty.
-Asked again after REFUSAL, the core's reason, with what was typed."
-  (let ((prompt (lumenna--prompt refusal (lumenna--question-title question) (plist-get question :hint)
-                                 (plist-get question :label)))
-        (initial (if refusal lumenna--typed (plist-get question :initial))))
+(defun lumenna--ask-text (asking)
+  "Read the line ASKING's text question asks for; sent as typed, even empty.
+Asked again after its refusal, the core's reason, with what was typed.  A
+line in the filter language (`:syntax') completes as the list's filter does."
+  (let* ((action (plist-get asking :action))
+         (question (plist-get asking :question))
+         (refusal (plist-get asking :refusal))
+         (syntax (plist-get asking :syntax))
+         (prompt (lumenna--prompt refusal (lumenna--question-title question) (plist-get question :hint)
+                                  (plist-get question :label)))
+         (initial (if refusal lumenna--typed (plist-get question :initial))))
     (setq lumenna--typed
-          (cond ((equal (plist-get action :kind) "change_query")
-                 (lumenna-read-line prompt "filter" initial 'lumenna-filter-history))
+          (cond (syntax
+                 (lumenna-read-line prompt syntax initial
+                                    (if (equal syntax "filter") 'lumenna-filter-history 'lumenna-add-history)))
                 ;; Not the action's own question: how long a pick is meant to take.
                 ((not (equal question (plist-get action :question)))
                  (read-from-minibuffer prompt initial))
@@ -678,7 +739,7 @@ form opened, another day's blocks asked for)."
        ;; What going ahead does, then the question, which the answer follows.
        (and (yes-or-no-p (lumenna--prompt refusal (plist-get question :message) (plist-get question :title)))
             (list :answer "yes")))
-      ("text" (when-let* ((text (lumenna--ask-text action question refusal)))
+      ("text" (when-let* ((text (lumenna--ask-text asking)))
                 (list :answer "text" :text text)))
       ("pick" (lumenna--ask-pick asking))
       ("choose" (lumenna--ask-choose question))
@@ -803,10 +864,13 @@ where it offers none, the core's sentence says why."
           (t (lumenna--refuse row kinds)))))
 
 (defun lumenna--refuse (row kinds)
-  "Run KINDS on ROW, which offers none of them, and refuse in the app's words."
-  (lumenna--hold row)
+  "Run KINDS on ROW, which offers none of them, and refuse in the app's words.
+A task's buffer runs them on the details' task, which no row holds."
+  (unless lumenna--actions-function (lumenna--hold row))
   (let ((lumenna--heard (list 'heard)))
-    (lumenna-send (list :Run (vconcat kinds)))
+    (lumenna-send (if lumenna--actions-function
+                      (list :Details (list :Run (vconcat kinds)))
+                    (list :Run (vconcat kinds))))
     (lumenna--settle)
     (user-error "%s" (string-join (or (cdr lumenna--heard) '("Nothing to do here")) " "))))
 

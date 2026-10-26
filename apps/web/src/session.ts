@@ -234,20 +234,23 @@ async function landSide(within: () => HTMLElement | null, row: () => HTMLElement
 }
 
 /** Applies a turn: draws it, saves its files, shows its notifications, lands focus if the app
- * moved it, then says what it says, after focus so the move does not cut it off. */
-async function apply(turn: Said) {
-  if (!show(turn.screen, turn.seq)) return;
+ * moved it, then says what it says, after focus so the move does not cut it off. A turn older
+ * than the screen drawn is dropped, but for one that came `early`, before the first screen was
+ * drawn, whose screen that one already holds and whose files and words are still owed. */
+async function apply(turn: Said, early = false) {
+  const drawn = show(turn.screen, turn.seq);
+  if (!drawn && !early) return;
   for (const file of turn.files) download(file.name, file.bytes as Uint8Array<ArrayBuffer>, file.kind);
   for (const notice of turn.notices) notify(notice);
   const s = turn.screen;
   const before = document.activeElement;
-  if (s.landing > landed) {
+  if (drawn && s.landing > landed) {
     landed = s.landing;
     const anywhere = landAnywhere;
     landAnywhere = false;
     if (!appDialog(s)) await land(s.focus ?? undefined, anywhere, before);
   }
-  for (const [side, held] of sides(s)) {
+  for (const [side, held] of drawn ? sides(s) : []) {
     if (held.landing <= (landedSides.get(side) ?? 0)) continue;
     landedSides.set(side, held.landing);
     // The list and its row in hand as drawn by the time it lands: a later turn may have moved it.
@@ -260,13 +263,20 @@ async function apply(turn: Said) {
 /** Starts drawing, once the store is open, and listens for the turns the network brings. */
 export async function start(): Promise<void> {
   noteOpeners();
-  const first = await core.screen();
-  landed = first.landing;
-  landedSides.set(Side.Sidebar, first.sidebarHeld.landing);
-  landedSides.set(Side.Reminders, first.remindersHeld.landing);
-  landedSides.set(Side.Devices, first.devicesHeld.landing);
-  show(first);
-  await core.listen(Comlink.proxy((turn: Said) => void apply(turn)));
+  // Listening first, so no turn falls between the screen read and the listening; those that come
+  // before the first screen is drawn wait for it.
+  let early: Said[] | undefined = [];
+  await core.listen(Comlink.proxy((turn: Said) => void (early ? early.push(turn) : apply(turn))));
+  const first = await core.now();
+  const s = first.screen;
+  landed = s.landing;
+  landedSides.set(Side.Sidebar, s.sidebarHeld.landing);
+  landedSides.set(Side.Reminders, s.remindersHeld.landing);
+  landedSides.set(Side.Devices, s.devicesHeld.landing);
+  show(s, first.seq);
+  const waiting = early;
+  early = undefined;
+  for (const turn of waiting) await apply(turn, true);
 }
 
 let inFlight = 0;

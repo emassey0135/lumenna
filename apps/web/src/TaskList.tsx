@@ -65,9 +65,10 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
     filterField.current.select();
   });
 
-  // The Task menu's commands, on the task in hand here, before the details' copy of them.
+  // The Task menu's commands, on the task in hand here, before the details' copy of them. A
+  // row without the action is the app's to refuse, in the core's words.
   const onSelected = (...kinds: ActionKind[]) => () => {
-    if (!inHand || !byKind(shortActions(list, inHand), ...kinds)) return false;
+    if (!inHand) return false;
     act({ tag: "Run", value0: kinds });
   };
   useCommand("mark-done", onSelected(ActionKind.MarkDone, ActionKind.MarkNotDone), 1);

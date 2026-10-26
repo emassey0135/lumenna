@@ -217,8 +217,8 @@ put a cancelled day back."
                                (append (plist-get field :options) nil)))
               (default (car (rassoc now choices))))
          (cdr (assoc (completing-read (lumenna--with-default prompt default) choices nil t nil nil default) choices))))
-      (_ (if (equal key "task_filter")
-             (lumenna-read-line prompt "filter" now nil example)
+      (_ (if-let* ((syntax (plist-get field :syntax)))
+             (lumenna-read-line prompt syntax now nil example)
            (read-from-minibuffer prompt now nil nil nil (and example (not (string-empty-p example)) example)))))))
 
 (defun lumenna--block-field (key value)

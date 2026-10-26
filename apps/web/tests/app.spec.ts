@@ -26,6 +26,19 @@ test("the store opens in the browser and the places are a tree", async ({ page }
   await expect(places.getByRole("row", { name: /^Inbox/ })).toBeVisible();
 });
 
+test("a second tab says the store is open in the first, and opens it once the first is closed", async ({ context }) => {
+  const first = await context.newPage();
+  await open(first);
+  const second = await context.newPage();
+  await second.goto("/");
+  await expect(second.getByRole("alert")).toHaveText("Lumenna is open in another tab. Close it there to use it here.", {
+    timeout: 30_000,
+  });
+  await first.close();
+  await expect(second.getByRole("navigation", { name: "Places" }).getByRole("row", { name: /^Tasks/ })).toBeVisible({ timeout: 30_000 });
+  await expect(second.getByRole("alert")).toHaveCount(0);
+});
+
 test("a launch shortcut in the address does what it says once, and leaves the address", async ({ page }) => {
   await page.goto("/?launch=new-task");
   const field = page.getByRole("combobox", { name: "Task" });

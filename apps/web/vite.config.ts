@@ -5,6 +5,8 @@ import react from "@vitejs/plugin-react";
 // `new URL(…, import.meta.url)`, which Vite resolves itself.
 export default defineConfig({
   plugins: [react()],
+  // What tells this build from every other, for its service worker's cache (public/sw.js).
+  define: { __BUILD__: JSON.stringify(Date.now().toString(36)) },
   worker: { format: "es" },
   build: {
     rollupOptions: {

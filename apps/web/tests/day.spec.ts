@@ -62,6 +62,36 @@ test("deleting from the trash asks first, with Cancel focused, and Cancel keeps 
   await expect(tasks.getByRole("row", { name: /^Old idea/ })).toHaveCount(0);
 });
 
+test("on a Mac the Delete key, which a browser calls Backspace, deletes the row", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "platform", { get: () => "MacIntel" }));
+  await open(page);
+  await add(page, "Old news");
+  const tasks = page.getByRole("main");
+  await tasks.getByRole("row", { name: /^Old news/ }).focus();
+  await page.keyboard.press("Backspace");
+  await expect(tasks.getByRole("row", { name: /^Old news/ })).toHaveCount(0);
+  await place(page, /^Trash/);
+  await tasks.getByRole("row", { name: /^Old news/ }).focus();
+  await page.keyboard.press("Meta+Backspace");
+  await expect(page.getByRole("alertdialog", { name: "Delete Old news from the trash?" })).toBeVisible();
+});
+
+test("a command a trashed task does not offer is refused in the core's words, not as no task", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "platform", { get: () => "Linux x86_64" }));
+  await open(page);
+  await add(page, "Old idea");
+  const tasks = page.getByRole("main");
+  await tasks.getByRole("row", { name: /^Old idea/ }).focus();
+  await page.keyboard.press("Delete");
+  await expect(tasks.getByRole("row", { name: /^Old idea/ })).toHaveCount(0);
+  await place(page, /^Trash/);
+  await tasks.getByRole("row", { name: /^Old idea/ }).focus();
+  await page.keyboard.press("Alt+Shift+KeyK");
+  const live = page.locator('[aria-live="polite"]');
+  await expect(live).toContainText("That does not apply here.");
+  await expect(live).not.toContainText("No task is selected.");
+});
+
 test("the day opens with its summary, and a block added there is listed", async ({ page }) => {
   await open(page);
   await place(page, /^Today/);

@@ -29,7 +29,8 @@ much a whole area does.")
 (lumenna-define-action lumenna-act-merge ("merge_into")
   "Fold the label at point into another, for a near-duplicate a typo made.")
 (lumenna-define-action lumenna-act-colour ("colour")
-  "Give the label at point a colour, or none.  The name always shows too.")
+  "Give the project, label or saved filter at point a colour, or none.
+The name always shows too.")
 (lumenna-define-action lumenna-act-change-query ("change_query")
   "Change the query of the saved filter at point.")
 
@@ -162,6 +163,7 @@ A filter is kept as typed, so \"today\" means today whenever it is opened.
    ("M-n" "Move Down" lumenna-act-move-down)
    ("w" "Weight" lumenna-act-weight)
    ("A" "Archive or Unarchive" lumenna-act-archive)
+   ("C" "Colour" lumenna-act-colour)
    ("d" "Delete" lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-labels-mode
@@ -182,6 +184,7 @@ A filter is kept as typed, so \"today\" means today whenever it is opened.
    ("a" "New Saved Filter" lumenna-filter-add)
    ("r" "Rename" lumenna-act-rename)
    ("e" "Change Query" lumenna-act-change-query)
+   ("C" "Colour" lumenna-act-colour)
    ("M-p" "Move Up" lumenna-act-move-up)
    ("M-n" "Move Down" lumenna-act-move-down)
    ("d" "Delete" lumenna-act-delete)))
