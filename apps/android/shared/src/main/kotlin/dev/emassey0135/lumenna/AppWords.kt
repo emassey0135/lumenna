@@ -142,7 +142,7 @@ fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> = entries.map { entry
  * folded heading hides them all. A row is open while it offers Collapse; [word] is the core's
  * "level 2".
  */
-fun placeRowsWithin(entries: List<SidebarEntry>, word: (UInt) -> String = { dev.emassey0135.lumenna.app.level(it) }): List<PlaceRow> {
+fun placeRowsWithin(entries: List<SidebarEntry>, word: (UInt) -> String = { dev.emassey0135.lumenna.app.levelWords(it) }): List<PlaceRow> {
     var previous = 0u
     var hiddenBelow: UInt? = null
     return entries.map { entry ->
