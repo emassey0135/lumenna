@@ -20,6 +20,14 @@ class SettingsTest(unittest.TestCase):
     def page(self, steps):
         self.session.press(*["Control+Page_Down"] * steps)
 
+    def tab_to_check(self, name, most=16):
+        """Tabs to the check box `name`: what comes before it on a page is the core's order."""
+        for _ in range(most):
+            if self.session.focus().startswith(f"[check box] {name!r}"):
+                return
+            self.session.press("Tab")
+        raise AssertionError(f"no check box {name!r}; at {self.session.focus()}")
+
     def test_settings_opens_on_its_tab_and_tab_comes_back_to_it(self):
         self.assertEqual(self.session.focus(), "[page tab] 'General' selected")
         self.session.press("Tab")
@@ -31,10 +39,12 @@ class SettingsTest(unittest.TestCase):
         self.session.press("Right")
         self.assertEqual(self.session.focus(), "[page tab] 'Planning' selected")
         self.session.press("Tab")
-        self.assertEqual(self.session.focus(), "[check box] 'Completing a task completes its subtasks' checked")
+        self.assertEqual(self.session.focus(), "[text] 'Day starts'")
         self.session.press("Control+Tab")
-        self.assertEqual(self.session.focus(), "[page tab] 'Devices' selected")
-        self.session.press("Control+Shift+Tab")
+        self.assertEqual(self.session.focus(), "[page tab] 'Reminders' selected")
+        self.session.press("Control+Tab")
+        self.assertEqual(self.session.focus(), "[page tab] 'Devices and Sync' selected")
+        self.session.press("Control+Shift+Tab", "Control+Shift+Tab")
         self.assertEqual(self.session.focus(), "[page tab] 'Planning' selected")
         self.session.press("Control+Page_Up")
         self.assertEqual(self.session.focus(), "[page tab] 'General' selected")
@@ -71,13 +81,18 @@ class SettingsTest(unittest.TestCase):
 
     def test_a_check_box_applies_at_once_and_says_so(self):
         self.page(1)
-        self.session.press("Tab", "space")
+        self.tab_to_check("Completing a task completes its subtasks")
+        self.session.press("space")
         self.assertEqual(self.session.said(), ["Completing a task completes its subtasks: Off"])
         self.assertEqual(self.session.lum("config", "get", "cascade-complete-subtasks").strip(), "false")
 
+    def test_showing_completed_subtasks_is_a_planning_setting(self):
+        self.page(1)
+        self.tab_to_check("Show completed subtasks")
+
     def test_a_text_setting_applies_when_it_is_left(self):
         self.page(1)
-        self.session.press("Tab", "Tab")
+        self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[text] 'Day starts'")
         self.session.type("7:30")
         self.assertEqual(self.session.said(), [])
@@ -87,7 +102,7 @@ class SettingsTest(unittest.TestCase):
 
     def test_a_setting_that_does_not_read_is_put_back(self):
         self.page(1)
-        self.session.press("Tab", "Tab")
+        self.session.press("Tab")
         self.session.type("whenever")
         self.session.press("Tab")
         self.session.wait_for_alert()
@@ -96,7 +111,7 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(self.session.lum("config", "get", "day-start").strip(), "08:00")
 
     def test_the_devices_page_says_the_sync_state_and_skips_an_empty_list(self):
-        self.page(2)
+        self.page(3)
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[text] 'Sync status'")
         status = self.session.focused()
@@ -105,7 +120,7 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(self.session.focus(), "[button] 'Sync Now'")
 
     def test_a_code_entered_while_waiting_gives_up_the_wait_and_joins(self):
-        self.page(2)
+        self.page(3)
         self.session.press("Tab", "Tab", "Tab")
         self.assertEqual(self.session.focus(), "[button] 'Pair a Device…'")
         self.session.press("Return")
@@ -125,7 +140,7 @@ class SettingsTest(unittest.TestCase):
         self.assertIn("'notacode' is not a pairing code", said[-1])
 
     def test_an_empty_code_says_to_type_or_paste_one_and_reads_no_clipboard(self):
-        self.page(2)
+        self.page(3)
         self.session.press("Tab", "Tab", "Tab")
         self.session.press("Return")
         self.session.wait_for_window("Pair a Device")
@@ -140,7 +155,7 @@ class SettingsTest(unittest.TestCase):
         self.session.lum("task", "add", "Buy milk")
         task = json.loads(self.session.lum("task", "list", "--json"))["rows"][0]["id"]
         self.session.lum("task", "rm", task)
-        self.page(4)
+        self.page(5)
         self.session.tab_to("Import or Restore…")
         self.session.press("Tab")
         self.assertEqual(self.session.focus(), "[button] 'Erase Everything Deleted…'")

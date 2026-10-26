@@ -136,10 +136,10 @@ impl Dialog {
             && asked.as_ref() != Some(three)
         {
             let dialog = Rc::clone(self);
-            let three = three.clone();
+            // The question whole, as the core words it: what it asks, then the words.
+            let detail = view.matching.clone().unwrap_or_else(|| three.join(", "));
             spawn(async move {
                 let said = &dialog.words;
-                let detail = format!("{} {}.", said.match_message, three.join(", "));
                 let matched = prompts::yes_or_no(&dialog.window, &said.match_title, &detail, &said.match_no, &said.match_yes).await;
                 send(PairEvent::Confirm(matched));
             });

@@ -84,7 +84,7 @@ impl Sidebar {
             if entry.offered.is_empty() {
                 return;
             }
-            let (menu, group) = actions::menu(&entry.offered, &ActingOn::Held(Side::Sidebar, entry.key.clone()), Some(&entry.title));
+            let (menu, group) = actions::menu(&entry.offered, &ActingOn::Held(Side::Sidebar, entry.key.clone()));
             app.popup(&menu, sidebar.tree.view.upcast_ref(), point, Some(&group));
         });
         let weak = Rc::downgrade(&sidebar);

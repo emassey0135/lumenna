@@ -142,15 +142,15 @@ class SettingsTest(unittest.TestCase):
     def tearDown(self):
         self.session.close()
 
-    def test_reminders_on_this_device_is_a_general_setting(self):
-        self.session.press("Tab", "Tab")
+    def test_reminders_on_this_device_is_on_the_reminders_page(self):
+        self.session.press("Control+Page_Down", "Control+Page_Down", "Tab")
         self.assertEqual(self.session.focus(), "[check box] 'Reminders on this device' checked")
         self.session.press("space")
         self.assertEqual(self.session.lum("config", "get", "reminders").strip(), "false")
 
     def test_the_default_reminders_are_saved_when_left(self):
-        self.session.press("Control+Page_Down")
-        self.session.press("Alt+r")
+        self.session.press("Control+Page_Down", "Control+Page_Down")
+        self.session.press("Alt+t")
         self.assertEqual(self.session.focus(), "[text] 'Reminders for a task with a due date'")
         self.session.type("30m before")
         self.assertEqual(self.session.said(), [], "nothing is saved per keystroke")

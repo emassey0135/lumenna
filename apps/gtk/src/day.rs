@@ -43,14 +43,12 @@ impl DayView {
             .margin_end(8)
             .build();
         let buttons = gtk::Box::builder().spacing(6).build();
-        let button = |label: &str, action: &str| {
-            let button = gtk::Button::builder().label(label).action_name(action).build();
-            buttons.append(&button);
-        };
-        button("Previous Day", "win.previous-day");
-        button("Today", "win.go-to-now");
-        button("Next Day", "win.next-day");
-        button("Add Block…", "win.new-block");
+        // The day's commands, named as the menus name them.
+        for id in ["previous-day", "go-to-now", "next-day", "new-block"] {
+            let Some(command) = lumenna_app::keys::command_of(id) else { continue };
+            let label = if command.asks { format!("{}…", command.title) } else { command.title.to_owned() };
+            buttons.append(&gtk::Button::builder().label(label).action_name(format!("win.{id}")).build());
+        }
         let tree = Tree::new("The day");
         widget.append(&buttons);
         widget.append(&tree.widget);
@@ -76,7 +74,7 @@ impl DayView {
         });
         self.tree.connect_activate(move |_| {
             if let Some(app) = crate::window::app() {
-                app.model.send(ShellEvent::Run(actions::ENTER.to_vec()));
+                app.model.send(ShellEvent::Key("open".to_owned()));
             }
         });
         self.tree.connect_key(move |key, modifiers, _| {
@@ -102,7 +100,7 @@ impl DayView {
             if row.offered.is_empty() {
                 return;
             }
-            let (menu, group) = actions::menu(&row.offered, &ActingOn::Row(row.key.clone()), name_of(&row));
+            let (menu, group) = actions::menu(&row.offered, &ActingOn::Row(row.key.clone()));
             app.popup(&menu, day.tree.view.upcast_ref(), point, Some(&group));
         });
         let weak = Rc::downgrade(self);
@@ -142,26 +140,8 @@ impl DayView {
         self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
     }
 
-    fn selected(&self) -> Option<DayItem> {
-        let index = self.tree.selected()?;
-        self.rows.borrow().get(index).cloned()
-    }
-
-    /// The task a selected sitting is for: what the Task menu acts on from the day.
-    pub fn selected_task(&self) -> Option<String> {
-        self.selected()?.sitting.map(|sitting| sitting.task)
-    }
-
     /// Moves focus into the day, once it is drawn.
     pub fn focus(&self) {
         self.landing.want(&self.tree);
-    }
-}
-
-/// What a row of the day is called, for a reminder list it opens: its block or its task.
-fn name_of(row: &DayItem) -> Option<&str> {
-    match row.kind {
-        DayKind::Sitting => row.sitting.as_ref().map(|sitting| sitting.title.as_str()),
-        _ => row.block.as_ref().map(|block| block.title.as_str()),
     }
 }

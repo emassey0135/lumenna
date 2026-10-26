@@ -27,7 +27,6 @@ use crate::clock::Locale;
 use crate::core::Event;
 use crate::detail::Detail;
 use crate::sidebar::Sidebar;
-use lumenna_records::ActionKind;
 use crate::day::DayView;
 use crate::tasks::TaskList;
 use crate::prompts;
@@ -163,10 +162,10 @@ pub fn take(turn: lumenna_ffi::Turn) {
 pub fn receive(event: Event) {
     let Some(app) = app() else { return };
     match event {
-        Event::ShowWindow => app.show_window(),
-        Event::QuickAdd => app.quick_add(true),
-        Event::SyncNow => app.model.send(lumenna_ffi::ShellEvent::Devices(lumenna_app::DevicesEvent::SyncNow)),
-        Event::Quit => app.quit(),
+        // From the tray, quick add comes up over whatever is in front, as from anywhere.
+        Event::Command(id) if id == "new-task" => app.quick_add(true),
+        Event::Command(id) => app.command(&id),
+        Event::ToggleTimer => crate::tray::toggle_timer(&app),
     }
 }
 
@@ -283,10 +282,8 @@ impl App {
         });
         app.add_actions();
 
-        application.set_menubar(Some(&menu_bar()));
-        for (action, keys) in ACCELERATORS {
-            application.set_accels_for_action(action, keys);
-        }
+        crate::menus::follow(application, &app.model.view().commands);
+        crate::menus::accelerators(application);
         // Hidden, not closed: the app stays resident, syncing.
         app.window.connect_close_request(|window| {
             window.set_visible(false);
@@ -419,6 +416,7 @@ impl App {
     /// Draws what the app last left on every screen drawn from it, and asks what it has open.
     fn draw(self: &Rc<Self>) {
         self.follow_place();
+        crate::menus::follow(&self.application, &self.model.view().commands);
         self.sidebar.draw(self);
         if let Some(list) = self.task_list() {
             list.draw(self);
@@ -567,11 +565,6 @@ impl App {
         }
     }
 
-    /// Opens the selected task's details: focus to the first field.
-    pub fn open_detail(&self) {
-        self.detail.focus();
-    }
-
     // -------------------------------------------------------------------------------------
     // Showing and hiding
     // -------------------------------------------------------------------------------------
@@ -604,317 +597,132 @@ impl App {
         editable.then_some(focus)
     }
 
-    /// The task the Task menu acts on: the one in the details when focus is there, else the
-    /// one selected in the list.
-    fn task_in_hand(&self) -> Option<String> {
-        if self.detail.has_focus() {
-            return self.detail.task_id();
-        }
-        match self.content()? {
-            Content::Tasks(list) if !list.is_trash() => list.selected().map(|row| row.id),
-            Content::Day(day) => day.selected_task(),
-            _ => None,
-        }
-    }
-
+    /// Every command the core's menus and tray name, as a window action `win.<id>`: what a
+    /// row's or the day's command runs is the core's (`keys::what_runs`), handed on by its id;
+    /// the rest are this window's to do.
     fn add_actions(self: &Rc<Self>) {
-        let simple = |name: &str, run: fn(&Rc<App>)| {
-            let action = gio::SimpleAction::new(name, None);
+        for command in lumenna_app::keys::COMMANDS {
+            let id = command.id;
+            let action = gio::SimpleAction::new(id, None);
             action.connect_activate(move |_, _| {
                 if let Some(app) = app() {
-                    run(&app);
+                    app.command(id);
                 }
             });
             self.window.add_action(&action);
-        };
-        simple("new-task", |app| app.quick_add(false));
-        simple("sync-now", |app| app.model.send(lumenna_ffi::ShellEvent::Devices(lumenna_app::DevicesEvent::SyncNow)));
-        simple("settings", |app| crate::settings::show(app, crate::settings::Page::General));
-        simple("devices", |app| crate::settings::show(app, crate::settings::Page::Devices));
-        simple("export-import", |app| crate::settings::show(app, crate::settings::Page::Export));
-        simple("back-up", |app| {
-            app.model.back_up(|done| {
+        }
+    }
+
+    /// Runs the command `id`, from the menu bar, its key, a button or the tray.
+    pub fn command(self: &Rc<Self>, id: &str) {
+        use lumenna_app::keys::Runs;
+        use lumenna_ffi::ShellEvent;
+        let key = || ShellEvent::Key(id.to_owned());
+        match lumenna_app::keys::what_runs(id) {
+            // A row's: the details' task where focus is there, or where the day shows a sitting,
+            // whose task the details show; else the row in hand. Opening a row opens a block's
+            // form in the day too. Whatever has none, the app says why.
+            Runs::Row(_) => {
+                let opening = matches!(id, "open-task" | "properties");
+                if self.detail.has_focus() || (self.task_list().is_none() && !opening) {
+                    self.model.send(ShellEvent::Details(lumenna_app::DetailsEvent::Key(id.to_owned())));
+                } else {
+                    self.model.send(key());
+                }
+            }
+            // The day's own, on the day shown: from another place, Today first.
+            Runs::Day(_) => {
+                if self.day().is_none() {
+                    self.go(Place::Today, true);
+                }
+                self.model.send(key());
+            }
+            Runs::App | Runs::Shell => self.own_command(id),
+        }
+    }
+
+    /// The commands this window does itself: its windows, its panes, and what focus decides.
+    fn own_command(self: &Rc<Self>, id: &str) {
+        use lumenna_ffi::ShellEvent;
+        match id {
+            "show" => self.show_window(),
+            "new-task" => self.quick_add(false),
+            "sync-now" => self.model.send(ShellEvent::Devices(lumenna_app::DevicesEvent::SyncNow)),
+            "settings" => crate::settings::show(self, crate::settings::Page::General),
+            "devices" => crate::settings::show(self, crate::settings::Page::Devices),
+            "export-import" => crate::settings::show(self, crate::settings::Page::Export),
+            "back-up" => self.model.back_up(|done| {
                 let Some(app) = self::app() else { return };
                 match done {
                     Ok(done) => app.say(&lumenna_records::words::spoken(&done.announcement, &done.notices)),
                     Err(error) => app.fail(error.message()),
                 }
-            });
-        });
-        simple("restore-backup", |app| {
-            let window = app.window.clone().upcast::<gtk::Window>();
-            spawn(async move { crate::settings::import(&window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await });
-        });
-        simple("new-project", |app| crate::sidebar::new_in(app, lumenna_records::places::SidebarGroup::Projects));
-        simple("new-label", |app| crate::sidebar::new_in(app, lumenna_records::places::SidebarGroup::Labels));
-        simple("new-filter", |app| crate::sidebar::new_in(app, lumenna_records::places::SidebarGroup::Filters));
-        simple("close-window", |app| app.window.set_visible(false));
-        simple("quit", |app| app.quit());
-        simple("undo", |app| {
+            }),
+            "restore-backup" => {
+                let window = self.window.clone().upcast::<gtk::Window>();
+                spawn(async move { crate::settings::import(&window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await });
+            }
+            "new-project" => crate::sidebar::new_in(self, lumenna_records::places::SidebarGroup::Projects),
+            "new-label" => crate::sidebar::new_in(self, lumenna_records::places::SidebarGroup::Labels),
+            "new-filter" => crate::sidebar::new_in(self, lumenna_records::places::SidebarGroup::Filters),
+            "close-window" => self.window.set_visible(false),
+            "quit" => self.quit(),
             // In a field, its own typing; elsewhere, the store.
-            if let Some(field) = app.editing() {
-                let _ = field.activate_action("text.undo", None);
-            } else {
-                app.model.send(lumenna_ffi::ShellEvent::Undo);
-            }
-        });
-        simple("redo", |app| {
-            if let Some(field) = app.editing() {
-                let _ = field.activate_action("text.redo", None);
-            } else {
-                app.model.send(lumenna_ffi::ShellEvent::Redo);
-            }
-        });
-        simple("filter", |app| {
-            if app.task_list().is_none_or(|list| !list.has_filter()) {
-                app.go(Place::Tasks, false);
-            }
-            if let Some(list) = app.task_list() {
-                list.focus_filter();
-            }
-        });
-        simple("go-today", |app| app.go(Place::Today, true));
-        simple("go-tasks", |app| app.go(Place::Tasks, true));
-        simple("go-blocks", |app| app.go(Place::Blocks, true));
-        simple("go-trash", |app| app.go(Place::Trash, true));
-        simple("go-history", |app| app.go(Place::History, true));
-        simple("next-pane", |app| app.move_pane(1));
-        simple("previous-pane", |app| app.move_pane(-1));
-        simple("open-task", |app| {
-            if app.task_in_hand().is_some() {
-                app.open_detail();
-            }
-        });
-        simple("save-task", |app| app.detail.save(app));
-        simple("new-block", |app| {
-            // Added where blocks are shown, to land on: the day, or the Blocks list.
-            let blocks = app.task_list().is_some_and(|list| list.place == Place::Blocks);
-            if app.day().is_none() && !blocks {
-                app.go(Place::Today, false);
-            }
-            crate::block_form::add(app);
-        });
-        // The day's commands go to Today first, from anywhere: the app's to do.
-        simple("previous-day", |app| app.day_move(lumenna_app::DayMove::Previous));
-        simple("next-day", |app| app.day_move(lumenna_app::DayMove::Next));
-        simple("go-to-now", |app| app.day_move(lumenna_app::DayMove::Now));
-        simple("go-to-day", |app| app.day_move(lumenna_app::DayMove::Ask));
-        // The day's own actions, on the day shown: Plan the Day, Replan from Now and the rest.
-        let day_command = |name: &str, kind: ActionKind| {
-            simple_with(self, name, move |app| {
-                if app.day().is_none() {
-                    app.go(Place::Today, true);
+            "undo" => match self.editing() {
+                Some(field) => drop(field.activate_action("text.undo", None)),
+                None => self.model.send(ShellEvent::Undo),
+            },
+            "redo" => match self.editing() {
+                Some(field) => drop(field.activate_action("text.redo", None)),
+                None => self.model.send(ShellEvent::Redo),
+            },
+            "filter" => {
+                if self.task_list().is_none_or(|list| !list.has_filter()) {
+                    self.go(Place::Tasks, false);
                 }
-                // The day's own action, whatever row is in hand, or why the day has none.
-                app.model.send(lumenna_ffi::ShellEvent::RunDay(vec![kind]));
-            });
-        };
-        day_command("plan-day", ActionKind::PlanDay);
-        day_command("replan", ActionKind::Replan);
-        day_command("what-now", ActionKind::WhatNow);
-        day_command("end-day", ActionKind::EndDay);
-        day_command("clear-day", ActionKind::ClearDay);
-        // Each runs the task in hand's action of its kind, as its row's menu would: Mark Done
-        // is Mark Not Done on a done task. A command the task does not offer does nothing.
-        let task_command = |name: &str, kinds: &'static [ActionKind]| {
-            simple_with(self, name, move |app| {
-                // A task list's row in hand is the app's, which runs its action of the kind.
-                if !app.detail.has_focus() && app.task_list().is_some() {
-                    return app.model.send(lumenna_ffi::ShellEvent::Run(kinds.to_vec()));
+                if let Some(list) = self.task_list() {
+                    list.focus_filter();
                 }
-                // Elsewhere, the task the details show, a sitting's in the day: the app runs it, or
-                // says why it has none.
-                app.model.send(lumenna_ffi::ShellEvent::Details(lumenna_app::DetailsEvent::Run(kinds.to_vec())));
-            });
-        };
-        // The selected row's details or form: a task's details, a block's form.
-        simple("open-selected", |app| app.model.send(lumenna_ffi::ShellEvent::Run(vec![ActionKind::Edit, ActionKind::EditTask])));
-        task_command("mark-done", &[ActionKind::MarkDone, ActionKind::MarkNotDone]);
-        task_command("put-in-block", &[ActionKind::PutInBlock]);
-        task_command("move-to-project", &[ActionKind::MoveToProject]);
-        task_command("make-subtask", &[ActionKind::MakeSubtaskOf]);
-        task_command("move-to-top", &[ActionKind::MoveToTopLevel]);
-        task_command("wait-for", &[ActionKind::WaitFor]);
-        task_command("trash-task", &[ActionKind::Delete]);
-        task_command("restore-task", &[ActionKind::Restore]);
-        task_command("erase-task", &[ActionKind::DeleteForGood]);
-        // From the menu alone: no key may begin a store's history again.
-        task_command("erase-permanently", &[ActionKind::ErasePermanently]);
-        simple("keyboard-help", crate::help::show);
-        simple("about", |app| {
-            let about = adw::AboutDialog::builder()
-                .application_name("Lumenna")
-                .application_icon(crate::ID)
-                .comments("Tasks, and the time blocks you work through them in.")
-                .version(env!("CARGO_PKG_VERSION"))
-                .license_type(gtk::License::Agpl30)
-                .website("https://github.com/emassey0135/lumenna")
-                .developer_name("Elijah Massey")
-                .build();
-            // Its own title is "About", so Orca never heard whose; focus starts on the version.
-            adw::prelude::AdwDialogExt::set_title(&about, "About Lumenna");
-            adw::prelude::AdwDialogExt::present(&about, Some(&app.window));
-        });
+            }
+            "go-today" => self.go(Place::Today, true),
+            "go-tasks" => self.go(Place::Tasks, true),
+            "go-blocks" => self.go(Place::Blocks, true),
+            "go-trash" => self.go(Place::Trash, true),
+            "go-history" => self.go(Place::History, true),
+            "next-pane" => self.move_pane(1),
+            "previous-pane" => self.move_pane(-1),
+            "save-task" => self.detail.save(self),
+            "new-block" => {
+                // Added where blocks are shown, to land on: the day, or the Blocks list.
+                let blocks = self.task_list().is_some_and(|list| list.place == Place::Blocks);
+                if self.day().is_none() && !blocks {
+                    self.go(Place::Today, false);
+                }
+                crate::block_form::add(self);
+            }
+            // The day's moves go to Today first, from anywhere: the app's to do.
+            "previous-day" => self.day_move(lumenna_app::DayMove::Previous),
+            "next-day" => self.day_move(lumenna_app::DayMove::Next),
+            "go-to-now" => self.day_move(lumenna_app::DayMove::Now),
+            "go-to-day" => self.day_move(lumenna_app::DayMove::Ask),
+            "keyboard-help" => crate::help::show(self),
+            "about" => self.about(),
+            _ => {}
+        }
     }
-}
 
-/// Adds a window action that runs `run` with the app.
-fn simple_with(app: &App, name: &str, run: impl Fn(&Rc<App>) + 'static) {
-    let action = gio::SimpleAction::new(name, None);
-    action.connect_activate(move |_, _| {
-        if let Some(app) = self::app() {
-            run(&app);
-        }
-    });
-    app.window.add_action(&action);
-}
-
-/// The shortcuts, by action. GNOME's conventions where it has one: Ctrl+Shift+Z redoes.
-const ACCELERATORS: &[(&str, &[&str])] = &[
-    ("win.new-task", &["<Control>n"]),
-    ("win.sync-now", &["F5"]),
-    ("win.settings", &["<Control>comma"]),
-    ("win.close-window", &["<Control>w"]),
-    ("win.quit", &["<Control>q"]),
-    ("win.undo", &["<Control>z"]),
-    ("win.redo", &["<Control><Shift>z", "<Control>y"]),
-    ("win.filter", &["<Control>f"]),
-    ("win.go-today", &["<Control>1"]),
-    ("win.go-tasks", &["<Control>2"]),
-    ("win.go-blocks", &["<Control>3"]),
-    ("win.go-trash", &["<Control>4"]),
-    ("win.go-history", &["<Control>5"]),
-    ("win.next-pane", &["F6"]),
-    ("win.previous-pane", &["<Shift>F6"]),
-    ("win.mark-done", &["<Control>k"]),
-    ("win.save-task", &["<Control>s"]),
-    ("win.put-in-block", &["<Control>b"]),
-    ("win.move-to-project", &["<Control><Shift>m"]),
-    ("win.previous-day", &["<Control>Page_Up"]),
-    ("win.next-day", &["<Control>Page_Down"]),
-    ("win.go-to-now", &["<Control>t"]),
-    ("win.go-to-day", &["<Control>g"]),
-    ("win.new-block", &["<Control><Shift>n"]),
-    // Properties, as Files has it: both keys.
-    ("win.open-selected", &["<Alt>Return", "<Control>i"]),
-    ("win.keyboard-help", &["F1", "<Control>question"]),
-];
-
-/// The menu bar. Mnemonics are GTK's underscores.
-fn menu_bar() -> gio::Menu {
-    let item = |label: &str, action: &str| gio::MenuItem::new(Some(label), Some(action));
-    // A key shown beside an item that the widget with focus answers itself, so it is not
-    // bound as an accelerator.
-    let shown = |label: &str, action: &str, key: &str| {
-        let item = item(label, action);
-        item.set_attribute_value("accel", Some(&key.to_variant()));
-        item
-    };
-    let section = |items: Vec<gio::MenuItem>| {
-        let section = gio::Menu::new();
-        for item in items {
-            section.append_item(&item);
-        }
-        section
-    };
-    let submenu = |sections: Vec<gio::Menu>| {
-        let menu = gio::Menu::new();
-        for part in sections {
-            menu.append_section(None, &part);
-        }
-        menu
-    };
-    let bar = gio::Menu::new();
-    bar.append_submenu(
-        Some("_File"),
-        &submenu(vec![
-            section(vec![
-                item("_New Task…", "win.new-task"),
-                item("New _Block…", "win.new-block"),
-                item("New _Project…", "win.new-project"),
-                item("New _Label…", "win.new-label"),
-                item("New Saved _Filter…", "win.new-filter"),
-            ]),
-            section(vec![
-                item("_Sync Now", "win.sync-now"),
-                item("_Devices and Pairing…", "win.devices"),
-                item("Back _Up Now", "win.back-up"),
-                item("_Restore from a Backup…", "win.restore-backup"),
-                item("E_xport and Import…", "win.export-import"),
-            ]),
-            section(vec![item("Pr_eferences…", "win.settings")]),
-            section(vec![item("_Close Window", "win.close-window"), item("_Quit", "win.quit")]),
-        ]),
-    );
-    bar.append_submenu(
-        Some("_Edit"),
-        &submenu(vec![
-            section(vec![item("_Undo", "win.undo"), item("_Redo", "win.redo")]),
-            section(vec![item("_Filter Tasks", "win.filter")]),
-            // GNOME's name for what is held about the selected thing: a task's details, a
-            // block's form.
-            section(vec![item("_Properties", "win.open-selected")]),
-        ]),
-    );
-    bar.append_submenu(
-        Some("_View"),
-        &submenu(vec![
-            section(vec![
-                item("_Today", "win.go-today"),
-                item("T_asks", "win.go-tasks"),
-                item("_Blocks", "win.go-blocks"),
-                item("T_rash", "win.go-trash"),
-                item("_History", "win.go-history"),
-            ]),
-            section(vec![item("_Next Pane", "win.next-pane"), item("_Previous Pane", "win.previous-pane")]),
-        ]),
-    );
-    bar.append_submenu(
-        Some("_Task"),
-        &submenu(vec![
-            section(vec![
-                item("_Mark Done", "win.mark-done"),
-                shown("_Edit Details", "win.open-task", "Return"),
-                item("_Save Changes", "win.save-task"),
-            ]),
-            section(vec![
-                item("Put in a _Block…", "win.put-in-block"),
-                item("Move to _Project…", "win.move-to-project"),
-                item("Make S_ubtask Of…", "win.make-subtask"),
-                item("Move to _Top Level", "win.move-to-top"),
-                item("_Wait For…", "win.wait-for"),
-            ]),
-            section(vec![
-                shown("Move to T_rash", "win.trash-task", "Delete"),
-                item("Rest_ore from Trash", "win.restore-task"),
-                item("_Delete from Trash…", "win.erase-task"),
-                item("Er_ase Permanently…", "win.erase-permanently"),
-            ]),
-        ]),
-    );
-    bar.append_submenu(
-        Some("_Day"),
-        &submenu(vec![
-            section(vec![
-                item("_Previous Day", "win.previous-day"),
-                item("_Next Day", "win.next-day"),
-                item("Go to N_ow", "win.go-to-now"),
-                item("_Go to Day…", "win.go-to-day"),
-            ]),
-            section(vec![item("_Add Block…", "win.new-block")]),
-            // The day's own actions, titled as the core titles them.
-            section(vec![
-                item("P_lan the Day…", "win.plan-day"),
-                item("_Replan from Now…", "win.replan"),
-                item("What Should I _Work On?…", "win.what-now"),
-                item("_End the Day…", "win.end-day"),
-                item("_Clear the Rest of the Day…", "win.clear-day"),
-            ]),
-        ]),
-    );
-    bar.append_submenu(
-        Some("_Help"),
-        &submenu(vec![section(vec![item("_Keyboard Shortcuts", "win.keyboard-help"), item("_About Lumenna", "win.about")])]),
-    );
-    bar
+    fn about(&self) {
+        let about = adw::AboutDialog::builder()
+            .application_name("Lumenna")
+            .application_icon(crate::ID)
+            .comments(lumenna_records::words::app_description())
+            .version(env!("CARGO_PKG_VERSION"))
+            .license_type(gtk::License::Agpl30)
+            .website("https://github.com/emassey0135/lumenna")
+            .developer_name("Elijah Massey")
+            .build();
+        // Its own title is "About", so Orca never heard whose; focus starts on the version.
+        adw::prelude::AdwDialogExt::set_title(&about, "About Lumenna");
+        adw::prelude::AdwDialogExt::present(&about, Some(&self.window));
+    }
 }

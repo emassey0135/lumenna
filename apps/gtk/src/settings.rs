@@ -1,6 +1,7 @@
-//! Settings: a window of tabs, opened with Ctrl+Comma — General, Planning, Devices, Backups,
-//! and Export and Import, as on the Mac and Windows. The app's settings
-//! (`ViewModel::settings`) and Devices page (`ViewModel::devices`), drawn.
+//! Settings: a window of tabs, opened with Ctrl+Comma, its pages the core's
+//! (`settings_pages`, `SettingsView::pages`): each one's title, settings in order, buttons and
+//! caption, as on every platform. The app's settings (`ViewModel::settings`) and Devices page
+//! (`ViewModel::devices`), drawn; only the mnemonics are this app's.
 //!
 //! Every page applies a change as it is made; a text field when it is left or Enter is pressed
 //! in it. What each setting is called, its control and its options are the core's; what a
@@ -24,33 +25,66 @@ use crate::prompts;
 use crate::tree::{Item, Landing, Tree};
 use crate::window::{App, spawn};
 
-/// The pages opened directly, by their place in the window (Planning is 1, Backups 3).
+/// The pages opened directly.
 #[derive(Clone, Copy)]
 pub enum Page {
-    General = 0,
-    Devices = 2,
-    Export = 4,
+    General,
+    Devices,
+    Export,
 }
 
-const PAGES: [&str; 5] = ["General", "Planning", "Devices", "Backups", "Export and Import"];
+impl Page {
+    /// The core's id for it (`SettingsPage::id`).
+    fn id(self) -> &'static str {
+        match self {
+            Self::General => "general",
+            Self::Devices => "devices",
+            Self::Export => "export",
+        }
+    }
+}
 
-/// Each page's settings, in order, with the mnemonic each is marked with: the one thing
-/// about a setting that is this app's.
-/// Opening at sign-in (`background`) is offered by the app once this desktop has said it can.
-const GENERAL: [(&str, char); 2] = [("background", 'O'), ("reminders", 'R')];
-const PLANNING: [(&str, char); 10] = [
-    ("cascade-complete-subtasks", 'C'),
+/// Each setting's and page button's mnemonic, by key or id: the one thing about them that is
+/// this app's. One missing here, or whose letter its page has used, takes the first letter of
+/// its name the page has not.
+const MNEMONICS: &[(&str, char)] = &[
+    ("background", 'O'),
+    ("clock", 'C'),
     ("day-start", 's'),
     ("day-end", 'e'),
-    ("all-day-reminder-hour", 'A'),
-    ("default-task-reminders", 'R'),
-    ("default-block-reminders", 'b'),
-    ("verbosity", 'm'),
     ("week-start", 'W'),
-    ("urgency-weights", 'u'),
     ("task-order", 'k'),
+    ("show-completed-subtasks", 'h'),
+    ("cascade-complete-subtasks", 'C'),
+    ("verbosity", 'm'),
+    ("urgency-weights", 'u'),
+    ("reminders", 'R'),
+    ("default-task-reminders", 't'),
+    ("default-block-reminders", 'b'),
+    ("all-day-reminder-hour", 'A'),
+    ("backup-every", 'A'),
+    ("backup-keep", 'k'),
+    ("backup-dir", 'g'),
+    ("sync-now", 'N'),
+    ("pair", 'P'),
+    ("back-up", 'B'),
+    ("restore-backup", 'R'),
+    ("import", 'I'),
 ];
-const BACKUPS: [(&str, char); 2] = [("backup-every", 'A'), ("backup-keep", 'k')];
+
+/// The mnemonic of `key`, named `title`, among the letters a page has `used`.
+fn mnemonic(key: &str, title: &str, used: &mut Vec<char>) -> char {
+    let fits = |c: char| title.contains(c) && c.is_alphanumeric() && !used.contains(&c.to_ascii_lowercase());
+    let letter = MNEMONICS
+        .iter()
+        .find(|(of, _)| *of == key)
+        .map(|(_, letter)| *letter)
+        .filter(|letter| fits(*letter))
+        .or_else(|| title.chars().find(|c| fits(*c)))
+        .unwrap_or_default();
+    used.push(letter.to_ascii_lowercase());
+    letter
+}
 
 /// The pages and the row of tabs over them.
 ///
@@ -61,6 +95,8 @@ const BACKUPS: [(&str, char); 2] = [("backup-every", 'A'), ("backup-keep", 'k')]
 struct Tabs {
     stack: gtk::Stack,
     switcher: gtk::StackSwitcher,
+    /// The pages' ids, in order.
+    ids: Vec<String>,
 }
 
 impl Tabs {
@@ -70,7 +106,7 @@ impl Tabs {
 
     fn current(&self) -> usize {
         let name = self.stack.visible_child_name();
-        PAGES.iter().position(|page| name.as_deref() == Some(*page)).unwrap_or(0)
+        self.ids.iter().position(|page| name.as_deref() == Some(page.as_str())).unwrap_or(0)
     }
 
     /// Only the current tab is a Tab stop.
@@ -83,8 +119,10 @@ impl Tabs {
 
     /// Opens a page, and puts focus on its tab when `focus`.
     fn go(&self, index: usize, focus: bool) {
-        let index = index.min(PAGES.len() - 1);
-        self.stack.set_visible_child_name(PAGES[index]);
+        let index = index.min(self.ids.len().saturating_sub(1));
+        if let Some(id) = self.ids.get(index) {
+            self.stack.set_visible_child_name(id);
+        }
         self.settle();
         if focus && let Some(button) = self.buttons().get(index) {
             button.grab_focus();
@@ -93,7 +131,7 @@ impl Tabs {
 
     /// Opens the page `step` along, wrapping round.
     fn step(&self, step: isize, focus: bool) {
-        let count = PAGES.len() as isize;
+        let count = self.ids.len().max(1) as isize;
         let next = (self.current() as isize + step).rem_euclid(count) as usize;
         self.go(next, focus);
     }
@@ -169,20 +207,28 @@ pub fn save(app: &App, file: &lumenna_app::SaveFile) {
 
 /// Opens Settings on a page.
 pub fn show(app: &Rc<App>, page: Page) {
+    let pages = lumenna_records::fields::settings_pages(true, false);
+    let index = pages.iter().position(|shown| shown.id == page.id()).unwrap_or(0);
     if let Some(open) = open() {
-        open.tabs.go(page as usize, false);
+        open.tabs.go(index, false);
         open.window.present();
         return;
     }
     let stack = gtk::Stack::new();
     let mut statuses = Vec::new();
     let mut slots = Vec::new();
-    let pages = [general(), planning(), devices_page(), backups(app), export(app)];
     let mut folder = None;
     let mut devices = None;
     let mut store = None;
-    for (title, built) in PAGES.iter().zip(pages) {
-        stack.add_titled(&built.widget, Some(title), title);
+    let ids: Vec<String> = pages.iter().map(|shown| shown.id.clone()).collect();
+    for spec in &pages {
+        let built = match spec.id.as_str() {
+            "devices" => devices_page(spec),
+            "backups" => backups(app, spec),
+            "export" => export(app, spec),
+            _ => settings_only(spec),
+        };
+        stack.add_titled(&built.widget, Some(&spec.id), &spec.title);
         statuses.push(built.status);
         slots.push(built.slot);
         folder = folder.or(built.folder);
@@ -190,8 +236,8 @@ pub fn show(app: &Rc<App>, page: Page) {
         store = store.or(built.store);
     }
     let switcher = gtk::StackSwitcher::builder().stack(&stack).halign(gtk::Align::Center).margin_top(6).build();
-    let tabs = Rc::new(Tabs { stack: stack.clone(), switcher: switcher.clone() });
-    tabs.go(page as usize, false);
+    let tabs = Rc::new(Tabs { stack: stack.clone(), switcher: switcher.clone(), ids });
+    tabs.go(index, false);
     {
         // A click on a tab opens its page too; the Devices page asks the app to list them.
         let tabs = Rc::downgrade(&tabs);
@@ -199,7 +245,7 @@ pub fn show(app: &Rc<App>, page: Page) {
             if let Some(tabs) = tabs.upgrade() {
                 tabs.settle();
             }
-            if stack.visible_child_name().as_deref() == Some(PAGES[Page::Devices as usize]) {
+            if stack.visible_child_name().as_deref() == Some(Page::Devices.id()) {
                 send(ShellEvent::Devices(DevicesEvent::Show));
             }
         });
@@ -216,7 +262,7 @@ pub fn show(app: &Rc<App>, page: Page) {
                 gdk::Key::Right | gdk::Key::KP_Right => tabs.step(1, true),
                 gdk::Key::Left | gdk::Key::KP_Left => tabs.step(-1, true),
                 gdk::Key::Home | gdk::Key::KP_Home => tabs.go(0, true),
-                gdk::Key::End | gdk::Key::KP_End => tabs.go(PAGES.len() - 1, true),
+                gdk::Key::End | gdk::Key::KP_End => tabs.go(tabs.ids.len().saturating_sub(1), true),
                 _ => return glib::Propagation::Proceed,
             }
             glib::Propagation::Stop
@@ -358,11 +404,15 @@ impl Window {
     fn fill(&self, app: &App, view: &SettingsView) {
         let find = |key: &str| view.settings.iter().find(|shown| shown.setting.key == key);
         if self.controls.borrow().is_empty() {
-            for (page, keys) in [(0, &GENERAL[..]), (1, &PLANNING[..]), (3, &BACKUPS[..])] {
-                for (key, mnemonic) in keys {
+            for page in &view.pages {
+                let Some(slot) = self.tabs.ids.iter().position(|id| *id == page.id).and_then(|at| self.slots.get(at)) else { continue };
+                let mut used = Vec::new();
+                // The folder has a row of its own, with a button that chooses one.
+                for key in page.keys.iter().filter(|key| key.as_str() != "backup-dir") {
                     if let Some(shown) = find(key) {
-                        let control = make(&self.slots[page], &shown.setting, *mnemonic, &self.filling);
-                        self.controls.borrow_mut().insert((*key).to_owned(), control);
+                        let letter = mnemonic(key, &shown.setting.title, &mut used);
+                        let control = make(slot, &shown.setting, letter, &view.words, &self.filling);
+                        self.controls.borrow_mut().insert(key.clone(), control);
                     }
                 }
             }
@@ -430,7 +480,7 @@ impl Window {
 
 /// A setting's control, by its kind, with its name above it — `mnemonic` marked in it — and
 /// its hint as its description, put in `slot`.
-fn make(slot: &gtk::Box, setting: &Setting, mnemonic: char, filling: &Rc<Cell<bool>>) -> Control {
+fn make(slot: &gtk::Box, setting: &Setting, mnemonic: char, words: &lumenna_records::fields::SettingWords, filling: &Rc<Cell<bool>>) -> Control {
     let label = marked(&setting.title, mnemonic, '_');
     let key = setting.key.clone();
     let field = |widget: &gtk::Widget| {
@@ -480,6 +530,9 @@ fn make(slot: &gtk::Box, setting: &Setting, mnemonic: char, filling: &Rc<Cell<bo
         }
         SettingKind::Time | SettingKind::Number | SettingKind::Folder | SettingKind::Line => {
             let entry = gtk::Entry::new();
+            if setting.kind == SettingKind::Time {
+                entry.set_placeholder_text(Some(&words.time_example));
+            }
             describe(&entry, &setting.hint);
             field(entry.upcast_ref());
             let problem = gtk::Label::builder().wrap(true).xalign(0.0).visible(false).build();
@@ -606,6 +659,9 @@ impl PageBox {
     }
 
     fn footer(&self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
         self.add(&gtk::Label::builder().label(text).wrap(true).xalign(0.0).margin_top(12).build());
     }
 
@@ -622,25 +678,46 @@ fn tell(status: &gtk::Label, text: &str) {
     crate::window::announce(status, text);
 }
 
-// ---------------------------------------------------------------------------------------
-// General: this computer's own
-// ---------------------------------------------------------------------------------------
-
-fn general() -> Built {
-    let page = PageBox::new();
-    page.settings();
-    page.footer("These settings are this computer's alone.");
-    page.finish()
+/// A page's own buttons, as the core lists them (`SettingsPage::buttons`), each doing what its
+/// id names.
+fn page_buttons(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage, status: &gtk::Label) -> gtk::Box {
+    let row = gtk::Box::builder().spacing(6).margin_top(6).build();
+    let mut used = Vec::new();
+    for button in &spec.buttons {
+        let title = marked(&button.title, mnemonic(&button.id, &button.title, &mut used), '_');
+        let made = gtk::Button::with_mnemonic(&if button.asks { format!("{title}…") } else { title });
+        let (id, app, status) = (button.id.clone(), Rc::downgrade(app), status.clone());
+        made.connect_clicked(move |made| {
+            let Some(app) = app.upgrade() else { return };
+            let window = window_of(made, &app);
+            match id.as_str() {
+                "sync-now" => send(ShellEvent::Devices(DevicesEvent::SyncNow)),
+                "pair" => send(ShellEvent::Devices(DevicesEvent::Pair(lumenna_app::PairEvent::Open(glib::host_name().to_string())))),
+                "back-up" => {
+                    let status = status.clone();
+                    app.model.back_up(move |done| match done {
+                        Ok(done) => tell(&status, &lumenna_records::words::spoken(&done.announcement, &done.notices)),
+                        Err(error) => prompts::fail(&window, error.message()),
+                    });
+                }
+                "restore-backup" => spawn(async move { import(&window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await }),
+                "import" => spawn(async move { import(&window, "Import or Restore", &IMPORTABLE).await }),
+                _ => {}
+            }
+        });
+        row.append(&made);
+    }
+    row
 }
 
 // ---------------------------------------------------------------------------------------
-// Planning: the store's, synced to every device
+// General, Planning, Reminders: settings alone
 // ---------------------------------------------------------------------------------------
 
-fn planning() -> Built {
+fn settings_only(spec: &lumenna_records::fields::SettingsPage) -> Built {
     let page = PageBox::new();
     page.settings();
-    page.footer("These sync to all your devices.");
+    page.footer(&spec.caption);
     page.finish()
 }
 
@@ -702,7 +779,7 @@ impl DevicesPage {
     }
 }
 
-fn devices_page() -> Built {
+fn devices_page(spec: &lumenna_records::fields::SettingsPage) -> Built {
     let page = PageBox::new();
     let devices = Rc::new(DevicesPage::empty());
     page.field("S_ync status", &devices.sync_status);
@@ -715,20 +792,16 @@ fn devices_page() -> Built {
     devices.label.set_mnemonic_widget(Some(&devices.list.view));
     page.add(&devices.label);
     page.add(&devices.list.widget);
-    let buttons = gtk::Box::builder().spacing(6).margin_top(6).build();
-    let sync_now = gtk::Button::with_mnemonic("Sync _Now");
-    let pair = gtk::Button::with_mnemonic("_Pair a Device…");
+    let row = match crate::window::app() {
+        Some(app) => page_buttons(&app, spec, &page.status),
+        None => gtk::Box::new(gtk::Orientation::Horizontal, 6),
+    };
+    // A device's own actions, held there before they run.
     let rename = gtk::Button::with_mnemonic("_Rename…");
     let unpair = gtk::Button::with_mnemonic("_Unpair…");
-    for button in [&sync_now, &pair, &rename, &unpair] {
-        buttons.append(button);
-    }
-    page.add(&buttons);
-    sync_now.connect_clicked(|_| send(ShellEvent::Devices(DevicesEvent::SyncNow)));
-    pair.connect_clicked(|_| {
-        let name = glib::host_name().to_string();
-        send(ShellEvent::Devices(DevicesEvent::Pair(lumenna_app::PairEvent::Open(name))));
-    });
+    row.append(&rename);
+    row.append(&unpair);
+    page.add(&row);
     for (button, kind) in [(&rename, ActionKind::Rename), (&unpair, ActionKind::Unpair)] {
         let devices = Rc::downgrade(&devices);
         button.connect_clicked(move |_| {
@@ -769,7 +842,7 @@ fn devices_page() -> Built {
 // Backups: this device's alone
 // ---------------------------------------------------------------------------------------
 
-fn backups(app: &Rc<App>) -> Built {
+fn backups(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage) -> Built {
     let page = PageBox::new();
     page.settings();
     let folder = gtk::Entry::builder().editable(false).hexpand(true).build();
@@ -777,17 +850,12 @@ fn backups(app: &Rc<App>) -> Built {
     let row = gtk::Box::builder().spacing(6).build();
     row.append(&folder);
     row.append(&choose);
-    let label = gtk::Label::builder().label(marked("Back up to", 't', '_')).use_underline(true).xalign(0.0).margin_top(6).build();
+    let label = gtk::Label::builder().use_underline(true).xalign(0.0).margin_top(6).build();
     label.set_mnemonic_widget(Some(&folder));
     page.add(&label);
     page.add(&row);
-    let buttons = gtk::Box::builder().spacing(6).margin_top(6).build();
-    let back_up = gtk::Button::with_mnemonic("_Back Up Now");
-    let restore = gtk::Button::with_mnemonic("_Restore from a Backup…");
-    buttons.append(&back_up);
-    buttons.append(&restore);
-    page.add(&buttons);
-    page.footer("These settings are this device's alone, and do not sync.");
+    page.add(&page_buttons(app, spec, &page.status));
+    page.footer(&spec.caption);
     let mut built = page.finish();
     built.folder = Some(folder.clone());
     {
@@ -811,28 +879,12 @@ fn backups(app: &Rc<App>) -> Built {
             });
         });
     }
-    {
-        let (app, status) = (Rc::downgrade(app), built.status.clone());
-        back_up.connect_clicked(move |button| {
-            let Some(app) = app.upgrade() else { return };
-            let (status, window) = (status.clone(), window_of(button, &app));
-            app.model.back_up(move |done| match done {
-                Ok(done) => tell(&status, &lumenna_records::words::spoken(&done.announcement, &done.notices)),
-                Err(error) => prompts::fail(&window, error.message()),
-            });
-        });
-    }
-    restore.connect_clicked(|button| {
-        let Some(app) = crate::window::app() else { return };
-        let window = window_of(button, &app);
-        spawn(async move { import(&window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await });
-    });
-    // The folder's own label is the core's.
-    if let Some(title) = app.model.view().settings.as_ref().and_then(|settings| {
+    // The folder's own label is the core's: the setting's title, once the app has said it.
+    let title = app.model.view().settings.as_ref().and_then(|settings| {
         settings.settings.iter().find(|shown| shown.setting.key == "backup-dir").map(|shown| shown.setting.title.clone())
-    }) {
-        label.set_label(&marked(&title, 't', '_'));
-    }
+    });
+    let title = title.unwrap_or_else(|| "Backups go to".to_owned());
+    label.set_label(&marked(&title, mnemonic("backup-dir", &title, &mut vec!['a', 'k']), '_'));
     built
 }
 
@@ -866,7 +918,7 @@ pub const IMPORTABLE: [(&str, &str); 1] = [("Lumenna exports and backups", "*.js
 // Export and import: what you have now, and reading it back
 // ---------------------------------------------------------------------------------------
 
-fn export(app: &Rc<App>) -> Built {
+fn export(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage) -> Built {
     let page = PageBox::new();
     let mut buttons = Vec::new();
     for export in lumenna_records::exports::EXPORTS {
@@ -875,15 +927,11 @@ fn export(app: &Rc<App>) -> Built {
         page.add(&button);
         buttons.push((export.format, button));
     }
-    let import_button = gtk::Button::with_mnemonic("_Import or Restore…");
-    import_button.set_halign(gtk::Align::Start);
-    page.add(&import_button);
+    page.add(&page_buttons(app, spec, &page.status));
     // What is done to the store as a whole, once the app says what it is.
     let store = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(6).margin_top(6).build();
     page.add(&store);
-    page.footer(
-        "An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.",
-    );
+    page.footer(&spec.caption);
     let mut built = page.finish();
     built.store = Some(store);
     for (format, button) in buttons {
@@ -894,11 +942,6 @@ fn export(app: &Rc<App>) -> Built {
             spawn(async move { export_to(&window, format).await });
         });
     }
-    import_button.connect_clicked(|button| {
-        let Some(app) = crate::window::app() else { return };
-        let window = window_of(button, &app);
-        spawn(async move { import(&window, "Import or Restore", &IMPORTABLE).await });
-    });
     built
 }
 

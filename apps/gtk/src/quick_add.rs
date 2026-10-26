@@ -117,23 +117,25 @@ impl Dialog {
 
 fn build(app: &App) -> Rc<Dialog> {
     let anywhere = ANYWHERE.take();
-    let window = gtk::Window::builder().title("New Task").default_width(480).application(&app.application).build();
+    // Every label and button the core's; the mnemonics this app's.
+    let said = lumenna_records::fields::quick_add_words(false);
+    let window = gtk::Window::builder().title(&said.title).default_width(480).application(&app.application).build();
     if !anywhere || app.window.is_visible() {
         window.set_modal(true);
         window.set_transient_for(Some(&app.window));
     }
-    let line = gtk::Entry::builder().activates_default(true).build();
-    let line_label = gtk::Label::builder().label("_Task").use_underline(true).xalign(0.0).build();
+    let marked = |text: &str, letter: char| lumenna_app::devices::marked(text, letter, '_');
+    let line = gtk::Entry::builder().activates_default(true).placeholder_text(&said.example).build();
+    let line_label = gtk::Label::builder().label(marked(&said.label, 'T')).use_underline(true).xalign(0.0).build();
     line_label.set_mnemonic_widget(Some(&line));
-    let hint = "Such as: write the chapter tomorrow p1 #Work. Down arrow offers what could come next.";
-    line.update_property(&[gtk::accessible::Property::Description(hint)]);
-    let hint = gtk::Label::builder().label(hint).wrap(true).xalign(0.0).build();
+    line.update_property(&[gtk::accessible::Property::Description(&said.hint)]);
+    let hint = gtk::Label::builder().label(&said.hint).wrap(true).xalign(0.0).build();
     let shown = prompts::read_only_text();
-    let shown_label = gtk::Label::builder().label("_Will add").use_underline(true).xalign(0.0).build();
+    let shown_label = gtk::Label::builder().label(marked(&said.will_add, 'W')).use_underline(true).xalign(0.0).build();
     shown_label.set_mnemonic_widget(Some(&shown));
-    let add = gtk::Button::with_mnemonic("_Add");
+    let add = gtk::Button::with_mnemonic(&marked(&said.add, 'A'));
     add.add_css_class("suggested-action");
-    let cancel = gtk::Button::with_mnemonic("_Cancel");
+    let cancel = gtk::Button::with_mnemonic(&marked(&said.cancel, 'C'));
     let buttons = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(8).halign(gtk::Align::End).build();
     buttons.append(&cancel);
     buttons.append(&add);

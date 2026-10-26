@@ -23,7 +23,6 @@ use crate::window::App;
 
 pub struct TaskList {
     pub place: Place,
-    trash: bool,
     /// Whether it has a filter to change: not the trash, History or the block series.
     filtered: bool,
     pub widget: gtk::Box,
@@ -42,7 +41,6 @@ pub struct TaskList {
 
 impl TaskList {
     pub fn new(place: Place) -> Rc<Self> {
-        let trash = place == Place::Trash;
         // The block series have no filter either, and a button to add one.
         let blocks = place == Place::Blocks;
         let filtered = !matches!(place, Place::Trash | Place::History | Place::Blocks);
@@ -55,11 +53,10 @@ impl TaskList {
             .margin_end(8)
             .build();
         let filter = gtk::Entry::builder().text(place.query()).build();
-        let label = gtk::Label::builder().label("Filte_r").use_underline(true).xalign(0.0).build();
+        let said = lumenna_records::fields::quick_add_words(false);
+        let label = gtk::Label::builder().label(lumenna_app::devices::marked(&said.filter, 'r', '_')).use_underline(true).xalign(0.0).build();
         label.set_mnemonic_widget(Some(&filter));
-        filter.update_property(&[gtk::accessible::Property::Description(
-            "Such as p1 & due before: friday, or #Work. Down arrow offers what could come next. Enter goes to what it finds.",
-        )]);
+        filter.update_property(&[gtk::accessible::Property::Description(&said.filter_hint)]);
         crate::completion::attach(&filter, crate::completion::Source::Filter);
         let readback = gtk::Label::builder().xalign(0.0).wrap(true).build();
         let tree = Tree::new(&place.title());
@@ -71,13 +68,13 @@ impl TaskList {
         }
         widget.append(&readback);
         if blocks {
-            let add = gtk::Button::builder().label("Add Block…").action_name("win.new-block").halign(gtk::Align::Start).build();
+            let title = lumenna_app::keys::command_of("new-block").map_or("New Block", |command| command.title);
+            let add = gtk::Button::builder().label(format!("{title}…")).action_name("win.new-block").halign(gtk::Align::Start).build();
             widget.append(&add);
         }
         widget.append(&tree.widget);
         let list = Rc::new(Self {
             place,
-            trash,
             filtered,
             widget,
             filter,
@@ -133,7 +130,7 @@ impl TaskList {
         });
         self.tree.connect_activate(move |_| {
             if let Some(app) = crate::window::app() {
-                app.model.send(ShellEvent::Run(actions::ENTER.to_vec()));
+                app.model.send(ShellEvent::Key("open".to_owned()));
             }
         });
         self.tree.connect_key(move |key, modifiers, _| {
@@ -154,7 +151,7 @@ impl TaskList {
         self.tree.connect_menu(move |index, point| {
             let (Some(list), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some((row, offered)) = list.offered(index) else { return };
-            let (menu, group) = actions::menu(&offered, &ActingOn::Row(row.id.clone()), Some(&row.title));
+            let (menu, group) = actions::menu(&offered, &ActingOn::Row(row.id.clone()));
             app.popup(&menu, list.tree.view.upcast_ref(), point, Some(&group));
         });
         // Folding is the app's: Left and Right run the row's Collapse or Expand.
@@ -178,12 +175,6 @@ impl TaskList {
         let offered = self.offered.borrow();
         let actions = row.actions.iter().filter_map(|at| offered.get(*at as usize).cloned()).collect();
         Some((row.row, actions))
-    }
-
-    /// The row selected, if any.
-    pub fn selected(&self) -> Option<RowView> {
-        let index = self.tree.selected()?;
-        self.rows.borrow().get(index).map(|row| row.row.clone())
     }
 
     /// Draws what the app last left, if it is this place's list. Focus goes to the row in hand
@@ -220,11 +211,6 @@ impl TaskList {
         *self.offered.borrow_mut() = list.offered.clone();
         let rebuilt = self.tree.set(items);
         self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);
-    }
-
-    /// Whether this is the trash, where only restoring and erasing apply.
-    pub fn is_trash(&self) -> bool {
-        self.trash
     }
 
     /// Whether it has a filter to change.

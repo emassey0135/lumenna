@@ -720,7 +720,7 @@ impl Tree {
             let Some(row) = list_row.item().and_downcast::<Row>() else { continue };
             let depth = list_row.depth();
             let shown =
-                if self.level_in_text && depth != previous { format!("{}, level {}", row.text(), depth + 1) } else { row.text() };
+                if self.level_in_text && depth != previous { format!("{}, {}", row.text(), lumenna_records::words::level(depth)) } else { row.text() };
             if row.shown() != shown {
                 row.set_shown(shown);
             }
