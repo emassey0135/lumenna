@@ -12,14 +12,14 @@ final class Questions: ObservableObject {
 /// as sheets when the app opens one and closed when it lets it go; one closed by the person is
 /// put away in the app.
 final class WatchScreens {
-    private let core: WatchCore
+    private let core: Core
     private weak var asker: WatchAsker?
     private var blockForm: AppBlockFormModel?
     private var proposal: AppProposalModel?
     private var reminders: RemindersModel?
     private var observer: NSObjectProtocol?
 
-    init(core: WatchCore, asker: WatchAsker) {
+    init(core: Core, asker: WatchAsker) {
         self.core = core
         self.asker = asker
         observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
@@ -70,7 +70,7 @@ final class WatchScreens {
 /// labels and saved filters, Blocks and Trash, folded as the app has them. Then Undo, Redo,
 /// and syncing with the iPhone.
 struct RootView: View {
-    @EnvironmentObject private var core: WatchCore
+    @EnvironmentObject private var core: Core
     @EnvironmentObject private var phone: PhoneSync
     @State private var adding = false
     @StateObject private var asker: WatchAsker
@@ -81,7 +81,7 @@ struct RootView: View {
     /// Where a complication tapped took the app: the core's launch, as the app left it.
     @State private var launched: LumennaApp.Place?
 
-    init(core: WatchCore) {
+    init(core: Core) {
         _asker = StateObject(wrappedValue: WatchAsker(core: core))
     }
 
@@ -125,12 +125,12 @@ struct RootView: View {
                 guard let reminded = note.object as? RemindedOf else { return }
                 if reminded.replan {
                     // The overrun warning's Replan: Replan from Now, the phone's screen.
-                    core.app.send(.open(.today))
-                    core.app.send(.day(.now))
-                    core.app.send(.proposal(.replan))
+                    core.app.replanFromNow()
                 } else if reminded.kind == "task" {
                     remindedTask = TaskOpened(id: reminded.target)
                 } else {
+                    // The block on its day, in hand: the app's, as on every app.
+                    core.app.send(.showBlock(series: reminded.target, date: reminded.day))
                     remindedDay = .today
                 }
             }
@@ -198,7 +198,7 @@ struct RootView: View {
             NavigationLink(value: place) {
                 HStack {
                     SwatchMark(swatch: item.swatch)
-                    Text(item.detail.map { "\(item.title), \($0)" } ?? item.title)
+                    Text(entry?.text ?? item.title)
                 }
             }
             .accessibilityValue(AppModel.spoken(detail: nil, expanded: item.expanded, level: item.level))
@@ -232,7 +232,7 @@ struct RootView: View {
 struct PlaceView: View {
     /// Handed in, not observed: rebuilt on every turn of the app, the place shown was never
     /// pushed.
-    let core: WatchCore
+    let core: Core
     let place: LumennaApp.Place
 
     var body: some View {

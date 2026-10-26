@@ -47,17 +47,12 @@ enum Reminders {
         "\(prefix)\(reminder.key) \(reminder.occurrence)"
     }
 
-    /// An RFC 3339 moment from the core, with or without fractions of a second.
-    static func moment(_ text: String) -> Date? {
-        let whole = ISO8601DateFormatter()
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: text) ?? whole.date(from: text)
-    }
-
-    /// `date` as the core reads a moment.
-    static func rfc3339(_ date: Date) -> String {
-        ISO8601DateFormatter().string(from: date)
+    /// The missed summary's identifier, named by the firings it sums up: the same on the phone
+    /// and the watch, so a worn watch can take the phone's for its own rather than show both,
+    /// and a summary shown again replaces the one before rather than stacking beside it.
+    static func missedIdentifier(_ missed: [LumennaApp.DueReminder]) -> String {
+        let last = missed.last.map { "\($0.key) \($0.occurrence)" } ?? ""
+        return "\(prefix)missed \(missed.count) \(last)"
     }
 
     /// What the notification says: the target's name as its title, the core's whole message
@@ -143,7 +138,7 @@ enum Reminders {
     static func requests(_ due: [LumennaApp.DueReminder], after now: Date) -> [UNNotificationRequest] {
         let calendar = Calendar.current
         return due
-            .compactMap { reminder in moment(reminder.at).map { (reminder, $0) } }
+            .compactMap { reminder in Instant.parse(reminder.at).map { (reminder, $0) } }
             .filter { $0.1 > now }
             .sorted { $0.1 < $1.1 }
             .prefix(most)
@@ -303,7 +298,7 @@ final class ReminderSchedule {
         rearms += 1
         work.async { [weak self] in
             let missed = catchingUp ? self?.missed() : nil
-            let until = Reminders.rfc3339(now.addingTimeInterval(Reminders.window))
+            let until = Instant.rfc3339(now.addingTimeInterval(Reminders.window))
             let upcoming = try? device.upcomingReminders(until: until)
             // What is handed over is the notification center's to do, quickly, on the main
             // thread, where its answers come back too.
@@ -380,14 +375,23 @@ final class ReminderDelivery {
     func follow() {
         observer = NotificationCenter.default.addObserver(forName: Core.changed, object: nil, queue: .main) { [weak self] note in
             guard let self, Reminders.isOwnEdit(note) else { return }
-            let until = Reminders.rfc3339(Date().addingTimeInterval(Reminders.window))
-            guard let upcoming = try? device.upcomingReminders(until: until), !upcoming.due.isEmpty else { return }
-            Reminders.askIfUndecided(centre) { [weak self] in self?.now() }
+            let device = device
+            work.async { [weak self] in
+                let until = Instant.rfc3339(Date().addingTimeInterval(Reminders.window))
+                guard let upcoming = try? device.upcomingReminders(until: until), !upcoming.due.isEmpty else { return }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    Reminders.askIfUndecided(self.centre) { [weak self] in self?.now() }
+                }
+            }
         }
     }
 
     /// Looks now, as on coming to the front, or when the store changed.
     func now() { tick(force: true) }
+
+    /// Where the store is asked what is due: never the main thread, one look at a time.
+    private let work = DispatchQueue(label: "lumenna.reminders.delivery", qos: .userInitiated)
 
     private func tick(force: Bool) {
         if !force, holding, let last, Date().timeIntervalSince(last) < Self.every { return }
@@ -401,17 +405,28 @@ final class ReminderDelivery {
                 holding = false
                 return
             }
-            deliver(now: nil)
+            // Asking reads the store, every year of it: never on the main thread.
+            let device = device
+            work.async { [weak self] in
+                let found = try? device.deliverReminders(now: nil)
+                DispatchQueue.main.async { self?.show(found) }
+            }
         }
     }
 
-    /// Takes the right if free and shows what has come due; `now` is for tests. Returns what
-    /// was handed to the notification center.
+    /// Takes the right if free and shows what has come due, all at once on the calling thread;
+    /// `now` is for tests. Returns what was handed to the notification center.
     @discardableResult
     func deliver(now: String?) -> [UNNotificationRequest] {
+        show(try? device.deliverReminders(now: now))
+    }
+
+    /// What the core gave: shown, if this process holds the right to give them.
+    @discardableResult
+    private func show(_ found: LumennaApp.DueReminders?) -> [UNNotificationRequest] {
         // The right is the device's to give one process at a time: taken here when free, and
         // while another holds it, nothing is given.
-        guard let found = try? device.deliverReminders(now: now) else { return [] }
+        guard let found else { return [] }
         holding = !found.elsewhere
         guard holding else { return [] }
         last = Date()
@@ -430,7 +445,7 @@ final class ReminderDelivery {
             let content = UNMutableNotificationContent()
             content.body = found.missedSummary
             content.sound = .default
-            requests.append(UNNotificationRequest(identifier: "\(Reminders.prefix)missed \(UUID().uuidString)", content: content, trigger: nil))
+            requests.append(UNNotificationRequest(identifier: Reminders.missedIdentifier(found.missed), content: content, trigger: nil))
         }
         return requests
     }

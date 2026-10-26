@@ -14,36 +14,39 @@ struct DayScreen: View {
     @ObservedObject var model: DayModel
     /// Opens a sitting's task beside the day on iPad, pushed on iPhone: UIKit's.
     let openTask: (String) -> Void
-    /// Go to Day: UIKit's sheet of a typed day or the calendar.
+    /// Go to Day: the app's own question, asked with the calendar beside the line.
     let chooseDay: () -> Void
     @AccessibilityFocusState private var spoken: String?
     /// A cancelled day whose actions are offered, tapped.
     @State private var offering: DayModel.Row?
 
     var body: some View {
-        List {
-            Section {
-                heading
-                buttons
+        ScrollViewReader { scroller in
+            List {
+                Section {
+                    heading
+                    buttons
+                }
+                ForEach(model.shown) { row in
+                    rowView(row)
+                }
             }
-            ForEach(model.shown) { row in
-                rowView(row)
+            .listStyle(.plain)
+            .navigationTitle(model.title)
+            .confirmationDialog(offering?.line?.text ?? "", isPresented: Binding(get: { offering != nil }, set: { if !$0 { offering = nil } }), presenting: offering) { row in
+                ForEach(row.item.offered, id: \.self) { action in
+                    Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: row.item) }
+                }
             }
-        }
-        .listStyle(.plain)
-        .navigationTitle(model.title)
-        .confirmationDialog(offering?.line?.text ?? "", isPresented: Binding(get: { offering != nil }, set: { if !$0 { offering = nil } }), presenting: offering) { row in
-            ForEach(row.item.offered, id: \.self) { action in
-                Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: row.item) }
+            .onChange(of: model.landed?.count) { _, _ in
+                // The app moved the row in hand: VoiceOver goes there, once the row is drawn.
+                guard let key = model.landed?.key else { return }
+                scroller.scrollTo(key, anchor: .center)
+                DispatchQueue.main.async { spoken = key }
             }
-        }
-        .onChange(of: model.landed?.count) { _, _ in
-            // The app moved the row in hand: VoiceOver goes there, once the row is drawn.
-            guard let key = model.landed?.key else { return }
-            DispatchQueue.main.async { spoken = key }
-        }
-        .onChange(of: spoken) { _, key in
-            if let key { model.moved(to: key) }
+            .onChange(of: spoken) { _, key in
+                if let key { model.moved(to: key) }
+            }
         }
     }
 
@@ -194,8 +197,6 @@ final class DayViewController: UIHostingController<DayScreen> {
     private let core: Core
     private let model: DayModel
     private var observer: NSObjectProtocol?
-    /// Why the last day typed could not be read, for Go to Day's sheet.
-    private var goToRefusal: String?
 
     init(core: Core) {
         self.core = core
@@ -266,42 +267,14 @@ final class DayViewController: UIHostingController<DayScreen> {
     /// The day's actions as offered, for tests.
     var dayActionTitles: [String] { model.actions.map(\.title) }
 
-    /// Replan from Now, as the overrun warning's Replan opens it: today, the screen over it.
-    func openReplan() {
-        model.appear()
-        core.app.send(.day(.now))
-        core.app.send(.proposal(.replan))
-    }
-
-    /// A reminder's block, chosen in Notification Center: its day, with that block in hand.
-    func show(day iso: String, series: String) {
-        guard model.goTo(iso) == nil else { return }
-        if let block = core.app.current.view.day?.items.first(where: { $0.kind == .block && $0.block?.series == series }) {
-            core.app.send(.focus(block.key))
-        }
-    }
-
-    /// Go to Day: a day typed in the core's words, or the system's calendar. The app reads it,
-    /// as the answer to its own Go to Day; a day it cannot read stays in the sheet with why.
+    /// Go to Day: the app's own question, which the window's `AppQuestions` asks with the
+    /// system's calendar beside the line (`DayPickerViewController`).
     private func chooseDay() {
-        let shown = model.date.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0) } ?? .now
-        let picker = DayPickerViewController(showing: shown) { [weak self] named in
-            guard let self else { return {} }
-            if let refusal = self.model.goTo(named) { throw DayRefused(sentence: refusal) }
-            return {}
-        }
-        present(UINavigationController(rootViewController: picker), animated: true)
+        model.move(.ask)
     }
 
-    @objc func undoChange() {
-        if let typing = UIResponder.editingWithUndo, typing.canUndo { typing.undo(); return }
-        core.app.send(.undo)
-    }
-
-    @objc func redoChange() {
-        if let typing = UIResponder.editingWithUndo, typing.canRedo { typing.redo(); return }
-        core.app.send(.redo)
-    }
+    @objc func undoChange() { undoInStore(core) }
+    @objc func redoChange() { redoInStore(core) }
 
     // MARK: - Keyboard
 
@@ -328,10 +301,4 @@ final class DayViewController: UIHostingController<DayScreen> {
         model.appear()
         core.app.send(.runDay([kind]))
     }
-}
-
-/// A day the core could not read, its sentence for the Go to Day sheet to show.
-private struct DayRefused: LocalizedError {
-    let sentence: String
-    var errorDescription: String? { sentence }
 }

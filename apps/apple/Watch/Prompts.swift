@@ -6,7 +6,7 @@ import SwiftUI
 /// typed or dictated on the system's own input screen, which takes no suggestions. Choosing
 /// one puts it in place of what it completes.
 struct CompletionOffer: View {
-    @EnvironmentObject private var core: WatchCore
+    @EnvironmentObject private var core: Core
     @Binding var text: String
     let syntax: LumennaApp.Syntax
 

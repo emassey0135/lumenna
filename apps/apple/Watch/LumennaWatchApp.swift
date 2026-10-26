@@ -10,8 +10,10 @@ struct LumennaWatchApp: SwiftUI.App {
     @Environment(\.scenePhase) private var phase
 
     init() {
-        // Siri and Shortcuts' intents run on this store, and may be what launched the app.
-        if let core = Opened.shared.core { Assistant.serve(core.app.device) { core.app.send(.launch($0)) } }
+        // Siri and Shortcuts' intents run on this store, and may be what launched the app. A
+        // launch they ask for goes where every other way in goes (`Launches`), so the root
+        // follows it: sent to the app alone, the screens never went there.
+        if let core = Opened.shared.core { Assistant.serve(core.app.device) { Launches.shared.ask($0) } }
     }
 
     var body: some Scene {
@@ -29,10 +31,34 @@ struct LumennaWatchApp: SwiftUI.App {
                 }
             }
             .onChange(of: phase) { _, phase in
-                guard phase == .active else { return }
-                opened.core?.phone.syncNow()
-                opened.reminders?.rearm(catchingUp: true)
+                switch phase {
+                case .active:
+                    // The wearer may have flown somewhere.
+                    opened.core?.timeZoneMayHaveChanged()
+                    opened.core?.phone.syncNow()
+                    opened.reminders?.rearm(catchingUp: true)
+                case .background:
+                    opened.core.map(Self.settle)
+                default:
+                    break
+                }
             }
+        }
+    }
+}
+
+extension LumennaWatchApp {
+    /// Leaving: the app is given time to finish what it is doing with the store before the
+    /// system suspends it. The store is in the App Group's container, and watchOS, as iOS, ends
+    /// a process suspended while it holds a lock on a file there (`0xdead10cc`): a write under
+    /// way as the wearer lowered their wrist would be one.
+    static func settle(_ core: Core) {
+        ProcessInfo.processInfo.performExpiringActivity(withReason: "Finishing with the store") { expired in
+            guard !expired else { return }
+            let still = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async { core.app.whenStill { still.signal() } }
+            // Never held for long: the system's allowance is short.
+            _ = still.wait(timeout: .now() + 10)
         }
     }
 }
@@ -44,7 +70,7 @@ final class Opened: ObservableObject {
     /// Posted with a `RemindedOf` when a reminder's notification is chosen.
     static let reminded = Notification.Name("LumennaReminded")
 
-    let core: WatchCore?
+    let core: Core?
     let reason: String
     /// The watch's own reminders: it keeps a whole store, so it schedules what fires from it,
     /// with the same identifiers as the phone's, so the two show once (`Shared/Reminders.swift`).
@@ -53,7 +79,7 @@ final class Opened: ObservableObject {
 
     private init() {
         do {
-            let core = try WatchCore()
+            let core = try Core()
             self.core = core
             reason = ""
             let responder = ReminderResponder(device: core.app.device) { reminded in

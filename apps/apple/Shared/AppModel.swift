@@ -14,10 +14,6 @@ import UIKit
 final class AppModel {
     /// Posted on the main thread once a turn is in `view`, for every screen showing it to draw.
     static let shown = Notification.Name("LumennaAppShown")
-    /// Posted with the files a turn made for the person to keep — an export, a backup — under
-    /// `AppModel.saving`, for the screen that asked to save them where the person chooses.
-    static let files = Notification.Name("LumennaAppFiles")
-    static let saving = "files"
 
     /// The store, as the app's own connection holds it: what runs without the screens.
     let device: LumennaApp.Device
@@ -31,6 +27,10 @@ final class AppModel {
     private var seq: UInt32 = 0
     // Foundation's, named in full: the core has a record called `Timer` too.
     private var minutes: Foundation.Timer?
+    /// Who asked for the file a turn makes next (an export, to save where the person chooses),
+    /// and which request it was: one at a time, the latest asking.
+    private var fileWanted: (request: Int, then: (LumennaApp.SaveFile) -> Void)?
+    private var fileRequests = 0
 
     /// The app over the profile in `directory`, saying it runs `platform` in pairing.
     init(directory: URL, platform: String) throws {
@@ -39,7 +39,7 @@ final class AppModel {
         view = app.view()
         lines = app.lines()
         relay.model = self
-        app.send(event: .clock(Clock.style == .twelveHour ? .twelveHour : .twentyFourHour))
+        app.send(event: .clock(Clock.style))
         // Title Case, as Apple's platforms write buttons and menus.
         app.send(event: .capitals(.title))
         // What pairing's sentences call this device, which finds others on its network.
@@ -56,7 +56,8 @@ final class AppModel {
             // surface, as the daemon would, so Emacs and the BTSpeak app reach it.
             app.serveCommands(app: "Lumenna for Mac", deviceName: Host.current().localizedName ?? "Mac")
         }
-        // Opening at login, which Settings offers in the core's words.
+        // Opening at login, which Settings offers in the core's words; told again as the app
+        // comes to the front, since System Settings can change it meanwhile.
         app.send(event: LoginItem.offered)
         #endif
         // What a sync, the watch or another process wrote, the app takes in; and the minutes,
@@ -66,6 +67,12 @@ final class AppModel {
         }
         minutes = Foundation.Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.app.tick()
+        }
+        // The person changed the region or chose a 12- or 24-hour clock: every time is worded
+        // again in it, the core's sentences and the lines alike.
+        NotificationCenter.default.addObserver(forName: NSLocale.currentLocaleDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            Clock.localeChanged()
+            self?.app.send(event: .clock(Clock.style))
         }
     }
 
@@ -77,6 +84,20 @@ final class AppModel {
 
     /// When the person last did something, for telling their changes from arrivals.
     private(set) var lastSent = Date.distantPast
+
+    /// Tells the app something of this device's own, not the person's doing: how opening at
+    /// login stands. Not counted as theirs, so a change it brings is not taken for their edit.
+    func tell(_ event: LumennaApp.ShellEvent) {
+        app.send(event: event)
+    }
+
+    /// Replan from Now on today, as an overrun warning's Replan opens it: the day with now in
+    /// hand, then the proposal, which each app's screens follow — the same three steps on every
+    /// Apple app, wherever the person was.
+    func replanFromNow() {
+        send(.day(.now))
+        send(.proposal(.replan))
+    }
 
     /// What a widget or complication shows for the next `hours`, the core's, worded in this
     /// device's clock (`GlanceFile`). Safe off the main thread.
@@ -94,13 +115,17 @@ final class AppModel {
     /// must not act on a turn made before the person's last answer (the question open).
     var current: (view: LumennaApp.ViewModel, lines: LumennaApp.Lines) { (app.view(), app.lines()) }
 
-    /// The next file a turn makes, once, for whoever asked for it: an export to save.
-    func nextFile(_ then: @escaping (LumennaApp.SaveFile) -> Void) {
-        var token: NSObjectProtocol?
-        token = NotificationCenter.default.addObserver(forName: AppModel.files, object: self, queue: .main) { note in
-            guard let files = note.userInfo?[AppModel.saving] as? [LumennaApp.SaveFile], let file = files.first else { return }
-            if let token { NotificationCenter.default.removeObserver(token) }
-            then(file)
+    /// Sends `event`, which makes a file (an export), and hands that file to `then`, once. Asked
+    /// again, the newer request is the one answered; and once the app is done with it without a
+    /// file (it refused, and said why), nobody waits for one, so a later export never reaches an
+    /// earlier handler.
+    func file(from event: LumennaApp.ShellEvent, then: @escaping (LumennaApp.SaveFile) -> Void) {
+        fileRequests += 1
+        let request = fileRequests
+        fileWanted = (request, then)
+        send(event)
+        whenStill { [weak self] in
+            if self?.fileWanted?.request == request { self?.fileWanted = nil }
         }
     }
 
@@ -133,8 +158,9 @@ final class AppModel {
         view = turn.view
         lines = turn.lines
         NotificationCenter.default.post(name: AppModel.shown, object: self)
-        if !turn.files.isEmpty {
-            NotificationCenter.default.post(name: AppModel.files, object: self, userInfo: [AppModel.saving: turn.files])
+        if let file = turn.files.first, let wanted = fileWanted {
+            fileWanted = nil
+            wanted.then(file)
         }
         // Said after the screens have drawn and moved focus, queued behind what VoiceOver is
         // saying, so neither cuts the other off.
@@ -142,7 +168,7 @@ final class AppModel {
         #if os(macOS)
         // What the person chose for opening at login: the system's to do, and the app told how
         // it went, which it says.
-        if let on = turn.background { app.send(event: LoginItem.set(on)) }
+        if let on = turn.background { tell(LoginItem.set(on)) }
         #endif
     }
 }

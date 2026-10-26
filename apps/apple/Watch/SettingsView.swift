@@ -5,7 +5,7 @@ import SwiftUI
 /// (`Shared/Forms/Settings.swift`). Backups and exports are the phone's: a watch has nowhere
 /// to save a file or pick one.
 struct SettingsView: View {
-    @EnvironmentObject private var core: WatchCore
+    @EnvironmentObject private var core: Core
 
     var body: some View {
         Hosted(core: core).navigationTitle("Settings")
@@ -13,9 +13,9 @@ struct SettingsView: View {
 
     private struct Hosted: View {
         @StateObject private var model: SettingsModel
-        private let core: WatchCore
+        private let core: Core
 
-        init(core: WatchCore) {
+        init(core: Core) {
             self.core = core
             _model = StateObject(wrappedValue: SettingsModel(core: core))
         }
@@ -34,7 +34,7 @@ struct SettingsView: View {
 /// and version, and the page says the watch syncs through its phone. Each offers its actions,
 /// the app's, when tapped; pairing a new one is the phone's.
 struct DevicesView: View {
-    @EnvironmentObject private var core: WatchCore
+    @EnvironmentObject private var core: Core
     @EnvironmentObject private var asker: WatchAsker
 
     var body: some View {

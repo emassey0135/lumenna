@@ -48,26 +48,33 @@ struct MacDayScreen: View {
                 }
             }
             .padding(.horizontal, 12)
-            List(selection: Binding(get: { model.focus }, set: { if let key = $0 {
-                // A row chosen takes the list's focus with it: a click selects a SwiftUI list's
-                // row without making the list first responder, and Space went elsewhere.
-                listFocused = true
-                model.moved(to: key)
-            } })) {
-                ForEach(Self.tree(model.rows)) { node in
-                    nodeView(node)
-                }
-            }
-            .accessibilityLabel("The day")
-            .focused($listFocused)
-            .contextMenu(forSelectionType: String.self) { keys in
-                if let key = keys.first, let item = model.rows.first(where: { $0.id == key })?.item {
-                    ForEach(item.offered, id: \.self) { action in
-                        Button(action.asksFirst ? action.title + "…" : action.title) { model.run(action, on: item) }
+            ScrollViewReader { scroller in
+                List(selection: Binding(get: { model.focus }, set: { if let key = $0 {
+                    // A row chosen takes the list's focus with it: a click selects a SwiftUI list's
+                    // row without making the list first responder, and Space went elsewhere.
+                    listFocused = true
+                    model.moved(to: key)
+                } })) {
+                    ForEach(Self.tree(model.rows)) { node in
+                        nodeView(node)
                     }
                 }
-            } primaryAction: { _ in
-                activate()
+                .accessibilityLabel("The day")
+                .focused($listFocused)
+                .contextMenu(forSelectionType: String.self) { keys in
+                    if let key = keys.first, let item = model.rows.first(where: { $0.id == key })?.item {
+                        ForEach(item.offered, id: \.self) { action in
+                            Button(action.asksFirst ? action.title + "…" : action.title) { model.run(action, on: item) }
+                        }
+                    }
+                } primaryAction: { _ in
+                    activate()
+                }
+                .onChange(of: model.landed?.count) { _, _ in
+                    // The app moved the row in hand: the outline scrolls to it, which the
+                    // selection alone does not, so VoiceOver finds it on screen.
+                    if let key = model.landed?.key { scroller.scrollTo(key) }
+                }
             }
         }
 
@@ -223,20 +230,6 @@ final class DayViewController: NSViewController {
     /// The day's actions as the pull-down offers them, for tests.
     var dayActionTitles: [String] { model.actions.map(\.title) }
 
-    /// Replan from Now, as the overrun warning's Replan opens it: today, the sheet over it.
-    func openReplan() {
-        model.move(.now)
-        core.app.send(.proposal(.replan))
-    }
-
-    /// A reminder's block, chosen in Notification Center: its day, with the block in hand.
-    func show(day iso: String, series: String) {
-        guard model.goTo(iso) == nil else { return }
-        if let block = core.app.current.view.day?.items.first(where: { $0.kind == .block && $0.block?.series == series }) {
-            core.app.send(.focus(block.key))
-        }
-    }
-
     // MARK: - Moving through days, from the Day menu
 
     @objc func previousDay(_ sender: Any?) { model.move(.previous) }
@@ -244,43 +237,7 @@ final class DayViewController: NSViewController {
     /// Today, on now: the app puts now in hand and says the day.
     @objc func goToToday(_ sender: Any?) { model.move(.now) }
     @objc func newBlock(_ sender: Any?) { core.app.send(.block(.new(start: nil, minutes: nil))) }
-    @objc func goToDay(_ sender: Any?) { askDay(typed: "", problem: nil) }
-
-    /// The app's Go to Day, answered by typing a day ("next friday", "12 October") or with
-    /// the system's calendar. A day the app cannot read asks again, saying why, with what was
-    /// typed still there.
-    private func askDay(typed: String, problem: String?) {
-        guard let window = view.window,
-              case let .text(title, label, _, hint, _, yes, _) = LumennaApp.goToDayQuestion() else { return }
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = [problem, hint].compactMap { $0 }.joined(separator: "\n\n")
-        let field = NSTextField(string: typed)
-        field.placeholderString = label
-        field.setAccessibilityLabel(label)
-        field.setAccessibilityHelp(hint)
-        let picker = NSDatePicker()
-        picker.datePickerStyle = .clockAndCalendar
-        picker.datePickerElements = .yearMonthDay
-        picker.dateValue = model.date.flatMap { try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse($0) } ?? .now
-        picker.sizeToFit()
-        picker.setAccessibilityLabel(label)
-        let stack = NSStackView(views: [field, picker])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        field.widthAnchor.constraint(equalToConstant: max(picker.frame.width, 240)).isActive = true
-        stack.frame = NSRect(x: 0, y: 0, width: max(picker.frame.width, 240), height: picker.frame.height + 32)
-        alert.accessoryView = stack
-        alert.addButton(withTitle: yes)
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard let self, response == .alertFirstButtonReturn else { return }
-            let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            let named = text.isEmpty ? Clock.isoDay(picker.dateValue) : text
-            if let refusal = self.model.goTo(named) {
-                DispatchQueue.main.async { self.askDay(typed: text, problem: refusal) }
-            }
-        }
-    }
+    /// Go to Day: the app's own question, asked by the window with the system's calendar beside
+    /// the line.
+    @objc func goToDay(_ sender: Any?) { model.move(.ask) }
 }

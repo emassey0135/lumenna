@@ -124,6 +124,15 @@ final class TaskDetailModel: NSObject, ObservableObject {
         if let action = task?.offered.first(where: { [.markDone, .markNotDone].contains($0.kind) }) { run(action) }
     }
 
+    /// The task's action of `kind`, as a key asks, or the app says why it has none.
+    func run(_ kind: LumennaApp.ActionKind) {
+        if let action = task?.offered.first(where: { $0.kind == kind }) {
+            run(action)
+        } else {
+            core.app.send(.details(.run([kind])))
+        }
+    }
+
     /// Move to Trash, as a key asks.
     func trash() {
         if let action = task?.offered.first(where: { $0.kind == .delete }) { run(action) }

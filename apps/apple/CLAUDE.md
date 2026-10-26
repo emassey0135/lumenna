@@ -31,9 +31,11 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   alone (`cargo rustc --crate-type staticlib`), the Mac's and the phone's with the `rpc`
   feature, then has BoltFFI generate the Swift (`Generated/App`, the watch's
   `Generated/Watch/App`). What it makes is named as the build phase's output, or a fresh
-  checkout looks for the Swift before the phase has run. The clean environment sets the
-  deployment targets itself (`IPHONEOS_DEPLOYMENT_TARGET` and the rest), or C objects target
-  the SDK's own version; heed that linker warning.
+  checkout looks for the Swift before the phase has run. The clean environment passes on the
+  deployment targets Xcode gives it from project.yml (`IPHONEOS_DEPLOYMENT_TARGET` and the rest),
+  or C objects target the SDK's own version; heed that linker warning. The Swift is generated
+  afresh and put in place only when it differs, so an unchanged core compiles nothing again;
+  `cargo` and `boltffi` are found on the caller's `PATH`.
 - **The core is linked statically, by the `.a`'s full path** (`-force_load`). `-llumenna_ffi`
   picks the dylib Cargo builds beside it, which works in the simulator and crashes on a phone
   at launch. A post-build phase fails the build on any `liblumenna_` reference. A launch is
@@ -80,7 +82,19 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
 - **A SwiftUI `TextField`'s title is only a placeholder**: with text in it, VoiceOver never
   says the name. See `NamedRow` below.
 - **The core's announcement is queued behind a focus change** (`Announcer`, a queued
-  announcement), so neither cuts the other off.
+  announcement), so neither cuts the other off. One `Announcer` for every Apple app
+  (`Shared/Announcer.swift`), which leaves out an empty part and never recases the core's words.
+- **A question that asks for a day** (`Asking::day`: Go to Day, Another Day) is asked with the
+  platform's calendar beside the line, open on the app's day (`QuestionAsking.text`'s `day`): on
+  iOS a sheet (`DayPickerViewController`), on the Mac the alert with an `NSDatePicker`, on the
+  watch a sheet with its picker. A refused day is asked again in the sheet still up, its typing
+  kept, so the iPhone's and the watch's sheet stays until the app takes an answer. Go to Day is
+  the app's own question (`Day(DayMove::Ask)`), never asked by a shell for itself.
+- **A screen opening its place judges by the app as it is now** (`TaskListModel.appear`,
+  `DayModel.appear`, through `AppModel.current`), not the last turn drawn: opened again just
+  after the app went there itself (a reminder's block, `ShowBlock`), the day went back to today.
+- **A list scrolls to the row the app lands on** before VoiceOver goes there (a
+  `ScrollViewReader` round each list): a `List` row off the screen has no element to focus.
 - **What the app says is shown as well as spoken** (`Announcer` posts `Said`): a refusal or
   what a change did reaches someone without VoiceOver too. On iOS a banner over the window
   (`SaidBanner`), on the watch the same over each screen and sheet (`showsWhatIsSaid`), both
@@ -126,7 +140,15 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   watch told): `Core` looks at the store's heads once a second (`Device.heads`, which move
   for the app's own writes too) and posts it, marked `arrived` unless the person did
   something in the last three seconds. The app ticks once a second itself, taking in what
-  another process wrote.
+  another process wrote. The watch's `Core` is the same file, so its own writes post it too.
+- **The store in the group is never left mid-write as the app is suspended** (`0xdead10cc`):
+  leaving holds the background task until the app is still (`BackgroundSync.leaving`, the
+  refresh's end, the watch's `performExpiringActivity` on going to the background), and the
+  round on leaving stops syncing only if the app has not come back to the front meanwhile.
+- **The clock follows the locale**: `Clock`'s formatters are made again and `Event::Clock`
+  sent again when the region or the 12- or 24-hour setting changes.
+- **An export's file goes to the request that asked for it** (`AppModel.file(from:then:)`): the
+  latest, once, and none once the app is done without making one.
 - **Background sync** (`BackgroundSync`): a round in the time `beginBackgroundTask` grants
   on leaving, and a `BGAppRefreshTask` whenever iOS chooses. A refresh launches the app with
   no scene, so the `Core` is the app delegate's, one per process. Apple's simulated launch
@@ -150,7 +172,11 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   all, so the carry one is set from the last carry reminder seen whenever any is handed over:
   one already showing keeps its button. An overrun warning (`replan` set) is a third, its
   button the core's Replan, `.foreground`: `ReminderResponder` hands on a `RemindedOf` with
-  `replan`, and each app opens today with Replan from Now over it (`openReplan`).
+  `replan`, and each app opens today with Replan from Now over it, one path for all three
+  (`AppModel.replanFromNow`: the day on now, then the proposal), the screens following. Not the
+  app's `DueEvent::Replan`: the app's due list is filled only by its own looks
+  (`DueEvent::Look`), which no Apple app sends, since the system holds the reminders, so the app
+  would refuse it. A reminder's block is the app's `ShowBlock` on every Apple app.
 - **The day's own actions** (`Plan.actions`) are a Day Actions menu button among the day's
   buttons (in the navigation bar it crowds the title, which the iPad's narrow column clips)
   and the heading's custom actions, which make the heading at least 44 points tall: an element
@@ -307,7 +333,8 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   framework's phase's output, a phase the phone and the watch share. `release.yml` checks both
   architectures are in it and that it runs, and makes `lum`'s own macOS tarball from it.
 - **The window follows the app**: the middle pane shows the app's place, so a place renamed,
-  merged or deleted takes the window with it, and the right pane the details of the task in
+  merged or deleted takes the window with it, and a command that goes somewhere and then acts
+  there waits for the pane (`MainWindowController.go(_:then:)`, run once `follow` has shown it), and the right pane the details of the task in
   hand, which follow the row in hand. Every list's selection is the row in hand, scrolled to
   only when the app moved it, and folding there is the row's own Expand or Collapse. The task
   list is SwiftUI's `List`, rows nested in disclosure groups, which is AppKit's outline
@@ -544,6 +571,11 @@ each embedded in its app.
     on a Mac, nor `openAppWhenRun`, which would bring the window forward for every Shortcuts run of
     Complete a Task as well.
   - **The watch** has no Today, so no Mark Done, and compiles no intents.
+- **Every way in from outside is a launch through `Launches`**: a widget's URL, a control's
+  press, a search result Siri or Spotlight opens (`Assistant.serve`'s `launch`), the app icon's
+  quick actions (`QuickActions`, set from `launchShortcuts()` as the scene connects) and the
+  Mac's Dock menu (`applicationDockMenu`), so the screens follow every one. A scene that
+  disconnects lets go (`Launches.letGo`), and a launch waits for the next.
 - **A widget tapped opens Today, the core's launch** (`widgetURL` of `LaunchURL.of("today")`,
   `lumenna://launch/<id>`, the scheme each app registers): the app sends `ShellEvent.launch`
   and follows the place the app left (`PlaceFollowing` on the iPhone's tabs and the iPad's
@@ -654,8 +686,8 @@ iPhone's and iPad's and the Mac's are behind `#available`, the watch's always th
 - **The phone's forms are the watch's** (`Shared/Forms`: task, block, planning settings),
   with its own answers beside the others' in `FormParts.swift`: the iPhone's wherever its
   SwiftUI behaves the same, else the name always above the field and Save in the form. So
-  `WatchCore` is the forms' `Core` (a typealias), its `app` the same `AppModel`, and the watch
-  has an `Announcer`. Backups and exports stay on the phone: a watch cannot save or pick a
+  the watch compiles `Shared/Core.swift`, its link to the phone (`PhoneSync`), what it publishes
+  for SwiftUI and its alert under `#if os(watchOS)`, and the shared `Announcer`. Backups and exports stay on the phone: a watch cannot save or pick a
   file. `Shared/Clock.swift` and `Words.swift` are shared too; the watch's core is its own.
 - **The watch's lists and day follow the phone's models** (`TaskListModel`, `DayModel`): what
   is listed, the row in hand put back on returning, the filter, and VoiceOver taken to a row

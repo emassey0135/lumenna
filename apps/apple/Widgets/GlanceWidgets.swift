@@ -14,12 +14,12 @@ struct GlanceTimelineEntry: TimelineEntry {
 
     /// When the timer running counts from, which SwiftUI's timer text counts on by itself: a
     /// timer needs no moment of its own.
-    var timerStart: Date? { glance.moment.timer.flatMap { GlanceWidgets.instant($0.countingFrom) } }
+    var timerStart: Date? { glance.moment.timer.flatMap { Instant.parse($0.countingFrom) } }
 
     /// The block under way, from its start to its end, for a gauge that fills by itself.
     var blockUnderWay: ClosedRange<Date>? {
-        guard let block = glance.moment.current, let start = GlanceWidgets.instant(block.startsAt),
-              let end = GlanceWidgets.instant(block.endsAt), start < end else { return nil }
+        guard let block = glance.moment.current, let start = Instant.parse(block.startsAt),
+              let end = Instant.parse(block.endsAt), start < end else { return nil }
         return start ... end
     }
 
@@ -53,7 +53,7 @@ enum GlanceWidgets {
     /// The glance's moments as WidgetKit's entries, each dated by its `at`, in order; one whose
     /// moment cannot be read is left out.
     static func entries(_ glance: [LumennaApp.GlanceEntry]) -> [GlanceTimelineEntry] {
-        glance.compactMap { entry in instant(entry.moment.at).map { GlanceTimelineEntry(date: $0, glance: entry) } }
+        glance.compactMap { entry in Instant.parse(entry.moment.at).map { GlanceTimelineEntry(date: $0, glance: entry) } }
     }
 
     /// Whether the glance has run out by `now`: none written, or its last moment come. The app
@@ -87,17 +87,6 @@ enum GlanceWidgets {
         stride(from: parts.count, to: 0, by: -1).map { Array(parts.prefix($0)) }
     }
 
-    /// An instant as the core writes one (RFC 3339, in UTC, to the nanosecond or to the second).
-    static func instant(_ text: String) -> Date? {
-        let whole = Date.ISO8601FormatStyle()
-        guard let dot = text.firstIndex(of: "."), let zone = text[dot...].firstIndex(where: { !$0.isNumber && $0 != "." }) else {
-            return try? whole.parse(text)
-        }
-        // Foundation reads at most milliseconds: the seconds whole, then their fraction.
-        guard let seconds = try? whole.parse(String(text[..<dot] + text[zone...])),
-              let fraction = Double("0" + text[dot ..< zone]) else { return nil }
-        return seconds.addingTimeInterval(fraction)
-    }
 }
 
 /// The store, as a widget may touch it: opened afresh for one piece of work and let go before it

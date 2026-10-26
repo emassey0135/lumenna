@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import LumennaApp
 
 /// The core's launches (`launchShortcuts()`, `records::launch`) asked for from outside the app — a
 /// widget's or complication's URL (`LaunchURL`), a control's press — handed to whoever shows the
@@ -23,6 +24,26 @@ final class Launches {
         let waiting = pending
         pending = []
         waiting.forEach(handler)
+    }
+
+    /// What showed the app has gone (iOS disconnected its scene): a launch waits again for
+    /// whatever shows it next, rather than going to a window no longer there.
+    func letGo() {
+        handler = nil
+    }
+
+    /// The core's launches, as the platform offers them by themselves: the app icon's quick
+    /// actions, the Dock's menu. Their order and words are the core's.
+    nonisolated static var shortcuts: [LumennaApp.LaunchShortcut] { LumennaApp.launchShortcuts() }
+
+    /// The system symbol for one of the core's generic icon names.
+    nonisolated static func symbol(_ icon: String) -> String {
+        switch icon {
+        case "add": "plus"
+        case "today": "calendar"
+        case "next": "arrow.forward.circle"
+        default: "circle"
+        }
     }
 }
 

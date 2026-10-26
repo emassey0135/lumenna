@@ -36,7 +36,11 @@ enum BackgroundSync {
     }
 
     /// Leaving the front: syncs once in the time iOS grants, then the app lets go of the
-    /// endpoint.
+    /// endpoint — unless it came back to the front meanwhile, where it keeps syncing.
+    ///
+    /// The task is held until the app is still, too: the store is in the App Group's container,
+    /// and iOS ends a process suspended while it holds a lock on a file there (`0xdead10cc`), as
+    /// a write just made, or a tick, would.
     static func leaving(_ core: Core) {
         var task = UIBackgroundTaskIdentifier.invalid
         let end = {
@@ -44,9 +48,13 @@ enum BackgroundSync {
             UIApplication.shared.endBackgroundTask(task)
             task = .invalid
         }
+        let stop = {
+            guard UIApplication.shared.applicationState != .active else { return }
+            core.app.inFront(false)
+        }
         task = UIApplication.shared.beginBackgroundTask(withName: "Sync on leaving") {
             // Out of time: whatever the round had not sent goes at the next one.
-            core.app.inFront(false)
+            stop()
             end()
         }
         // The round runs off the main thread, on the app's own sync service; then it stops.
@@ -54,10 +62,13 @@ enum BackgroundSync {
         DispatchQueue.global(qos: .utility).async {
             _ = try? device.syncNow()
             DispatchQueue.main.async {
+                let finish = {
+                    stop()
+                    core.app.whenStill { end() }
+                }
                 // What the round brought in may fire before the app is next opened.
-                AppDelegate.reminders?.rearm()
-                core.app.inFront(false)
-                end()
+                guard let reminders = AppDelegate.reminders else { return finish() }
+                reminders.rearm(then: finish)
             }
         }
         schedule()
@@ -70,13 +81,15 @@ enum BackgroundSync {
             task.setTaskCompleted(success: false)
             return
         }
+        // Finished once, on the main thread, where the round's end comes too: the expiration
+        // handler is called on a queue of the system's.
         var finished = false
         let finish = { (success: Bool) in
             guard !finished else { return }
             finished = true
             task.setTaskCompleted(success: success)
         }
-        task.expirationHandler = { finish(false) }
+        task.expirationHandler = { DispatchQueue.main.async { finish(false) } }
         // A round of its own, on an endpoint opened for it: the app is not in front.
         let device = core.app.device
         DispatchQueue.global(qos: .utility).async {
@@ -89,9 +102,11 @@ enum BackgroundSync {
                 // Re-armed, and the widgets' glance written, before the task ends, whatever the
                 // round did: a refresh is also what carries the two-day window forward while the
                 // app is not opened.
+                // Once the app is still, so nothing holds the store as the task ends.
+                let done = { core.app.whenStill { finish(synced) } }
                 let glanced = {
-                    guard let glance = core.glance else { return finish(synced) }
-                    glance.write { finish(synced) }
+                    guard let glance = core.glance else { return done() }
+                    glance.write { done() }
                 }
                 let reminders = AppDelegate.reminders
                 guard let reminders else { return glanced() }

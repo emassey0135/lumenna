@@ -89,10 +89,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - Places
 
-    /// Goes to `place`, as choosing it in the sidebar does.
-    func go(_ place: LumennaApp.Place) {
-        core.app.send(.open(place))
+    /// Goes to `place`, as choosing it in the sidebar does, then does `then` on its pane once the
+    /// pane shows it. The pane changes only when the app's turn comes back (`follow`), so a
+    /// command that goes somewhere and acts there acted on the pane it left.
+    func go(_ place: LumennaApp.Place, then: (() -> Void)? = nil) {
+        if core.app.current.view.place != place { core.app.send(.open(place)) }
+        guard let then else { return }
+        if shown == place, core.app.view.place == place { return then() }
+        arriving.append((place, then))
     }
+
+    /// What waits for a place to be shown in the middle pane, as `go` was asked.
+    private var arriving: [(place: LumennaApp.Place, then: () -> Void)] = []
 
     /// The panes as the app has them: the place shown in the middle, the task in hand beside it.
     private func follow() {
@@ -107,6 +115,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         window?.title = view.place == .today ? core.app.lines.dayTitle : view.title
         showTask(view.details?.task.id)
+        // What waited for the place now shown, once the pane has laid it out. What waits for a
+        // place the app has since left is dropped.
+        if let shown, !arriving.isEmpty {
+            let ready = arriving.filter { $0.place == shown }.map(\.then)
+            let now = core.app.current.view.place
+            arriving.removeAll { $0.place == shown || $0.place != now }
+            if !ready.isEmpty { DispatchQueue.main.async { ready.forEach { $0() } } }
+        }
     }
 
     /// The task in the detail pane, or none.

@@ -55,26 +55,33 @@ struct MacTaskListScreen: View {
                     .foregroundStyle(Color.quietLabel)
                     .padding(.horizontal, 12)
             }
-            List(selection: Binding(get: { model.focus }, set: { if let id = $0 {
-                // A row chosen takes the list's focus with it: a click selects a SwiftUI list's
-                // row without making the list first responder, and Space went elsewhere.
-                listFocused = true
-                model.moved(to: id)
-            } })) {
-                ForEach(Self.tree(model.rows)) { node in
-                    NodeView(node: node, model: model)
-                }
-            }
-            .accessibilityLabel(model.title)
-            .focused($listFocused)
-            .contextMenu(forSelectionType: String.self) { ids in
-                if let id = ids.first, let shown = model.rows.first(where: { $0.id == id }) {
-                    ForEach(shown.actions, id: \.self) { action in
-                        Button(action.asksFirst ? action.title + "…" : action.title) { model.run(action, on: shown.row) }
+            ScrollViewReader { scroller in
+                List(selection: Binding(get: { model.focus }, set: { if let id = $0 {
+                    // A row chosen takes the list's focus with it: a click selects a SwiftUI list's
+                    // row without making the list first responder, and Space went elsewhere.
+                    listFocused = true
+                    model.moved(to: id)
+                } })) {
+                    ForEach(Self.tree(model.rows)) { node in
+                        NodeView(node: node, model: model)
                     }
                 }
-            } primaryAction: { _ in
-                if !model.trash { open() }
+                .accessibilityLabel(model.title)
+                .focused($listFocused)
+                .contextMenu(forSelectionType: String.self) { ids in
+                    if let id = ids.first, let shown = model.rows.first(where: { $0.id == id }) {
+                        ForEach(shown.actions, id: \.self) { action in
+                            Button(action.asksFirst ? action.title + "…" : action.title) { model.run(action, on: shown.row) }
+                        }
+                    }
+                } primaryAction: { _ in
+                    if !model.trash { open() }
+                }
+                .onChange(of: model.landed?.count) { _, _ in
+                    // The app moved the row in hand: the outline scrolls to it, which the
+                    // selection alone does not, so VoiceOver finds it on screen.
+                    if let key = model.landed?.key { scroller.scrollTo(key) }
+                }
             }
         }
 

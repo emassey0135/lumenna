@@ -74,7 +74,7 @@ struct TaskEntity: AppEntity {
         estimate = task.estimateMins.map(Int.init)
         repeats = task.repetition
         states = task.state
-        added = try? Date.ISO8601FormatStyle().parse(task.createdAt)
+        added = Instant.parse(task.createdAt)
     }
 
     /// A task a glance names, by its identifier and title alone: what a widget's Mark Done hands

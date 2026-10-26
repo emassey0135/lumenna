@@ -3,11 +3,10 @@ import UIKit
 
 extension UIViewController {
     /// Opens the app's own form for `action` (`Question.form`), asked for by the app's question
-    /// open: a task's details, a reminder list. Beside the list on iPad, pushed on iPhone.
+    /// open: a task's details, beside the list on iPad, pushed on iPhone. A reminder list is the
+    /// app's to open (`AppSheets`), never asked.
     func openForm(_ action: LumennaApp.Action, core: Core) {
         switch action.kind {
-        case .reminders:
-            openReminders(of: action.target, core: core)
         case .edit where action.subject == .task, .editTask:
             showBeside(TaskDetailViewController(core: core, id: action.target))
         default:

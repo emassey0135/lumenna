@@ -24,73 +24,76 @@ struct TaskListScreen: View {
     @State private var listing = false
 
     var body: some View {
-        List {
-            Section {
-                if model.filters {
-                    TextField("Filter", text: $model.filter, prompt: Text("#Work & overdue"), axis: .vertical)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($typing)
-                        .accessibilityLabel("Filter")
-                        .onSubmit {
-                            typing = false
-                            // Typing is silent; finishing the filter says what it found.
-                            Announcer.say(model.readback)
-                        }
-                        .onChange(of: model.filter) { _, text in complete(text) }
-                        .accessibilityAction(named: CompletionWords.show) { showCompletions() }
-                        .onKeyPress(.downArrow) {
-                            showCompletions()
-                            return .handled
-                        }
-                }
-                // The readback: how the query was understood, and how many it found. A
-                // misread filter shows wrong results silently, and wrong results are invisible.
-                Text(model.readback)
-                    .font(.footnote)
-                    .foregroundStyle(Color.quietLabel)
-            }
-            ForEach(model.shown) { row in
-                rowView(row)
-            }
-        }
-        .listStyle(.plain)
-        .navigationTitle(model.title)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                // What could finish the last word, the app's, above the keyboard.
-                if let offered, !offered.candidates.isEmpty {
-                    ScrollView(.horizontal) {
-                        HStack {
-                            ForEach(offered.candidates, id: \.text) { candidate in
-                                Button(candidate.text) { insert(candidate, at: offered) }
-                                    .accessibilityLabel(LumennaApp.candidateLine(candidate: candidate))
+        ScrollViewReader { scroller in
+            List {
+                Section {
+                    if model.filters {
+                        TextField("Filter", text: $model.filter, prompt: Text("#Work & overdue"), axis: .vertical)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($typing)
+                            .accessibilityLabel("Filter")
+                            .onSubmit {
+                                typing = false
+                                // Typing is silent; finishing the filter says what it found.
+                                Announcer.say(model.readback)
                             }
-                            Button(CompletionWords.show) { showCompletions() }
+                            .onChange(of: model.filter) { _, text in complete(text) }
+                            .accessibilityAction(named: CompletionWords.show) { showCompletions() }
+                            .onKeyPress(.downArrow) {
+                                showCompletions()
+                                return .handled
+                            }
+                    }
+                    // The readback: how the query was understood, and how many it found. A
+                    // misread filter shows wrong results silently, and wrong results are invisible.
+                    Text(model.readback)
+                        .font(.footnote)
+                        .foregroundStyle(Color.quietLabel)
+                }
+                ForEach(model.shown) { row in
+                    rowView(row)
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle(model.title)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    // What could finish the last word, the app's, above the keyboard.
+                    if let offered, !offered.candidates.isEmpty {
+                        ScrollView(.horizontal) {
+                            HStack {
+                                ForEach(offered.candidates, id: \.text) { candidate in
+                                    Button(candidate.text) { insert(candidate, at: offered) }
+                                        .accessibilityLabel(LumennaApp.candidateLine(candidate: candidate))
+                                }
+                                Button(CompletionWords.show) { showCompletions() }
+                            }
                         }
                     }
                 }
             }
-        }
-        .sheet(isPresented: $listing) {
-            CompletionList(offered: offered) { candidate in
-                listing = false
-                if let candidate, let offered { insert(candidate, at: offered) }
+            .sheet(isPresented: $listing) {
+                CompletionList(offered: offered) { candidate in
+                    listing = false
+                    if let candidate, let offered { insert(candidate, at: offered) }
+                }
             }
-        }
-        .onChange(of: model.landed?.count) { _, _ in
-            // The app moved the row in hand: VoiceOver goes there, once the row is drawn.
-            guard let key = model.landed?.key else { return }
-            DispatchQueue.main.async { spoken = key }
-        }
-        .onChange(of: spoken) { _, key in
-            if let key { model.moved(to: key) }
-        }
-        // Filter Tasks: the field takes focus as soon as it is on screen.
-        .onChange(of: model.filterWanted, initial: true) { _, wanted in
-            guard wanted else { return }
-            model.filterWanted = false
-            typing = true
+            .onChange(of: model.landed?.count) { _, _ in
+                // The app moved the row in hand: VoiceOver goes there, once the row is drawn.
+                guard let key = model.landed?.key else { return }
+                scroller.scrollTo(key, anchor: .center)
+                DispatchQueue.main.async { spoken = key }
+            }
+            .onChange(of: spoken) { _, key in
+                if let key { model.moved(to: key) }
+            }
+            // Filter Tasks: the field takes focus as soon as it is on screen.
+            .onChange(of: model.filterWanted, initial: true) { _, wanted in
+                guard wanted else { return }
+                model.filterWanted = false
+                typing = true
+            }
         }
     }
 
@@ -257,15 +260,8 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
         RowRotor.list(in: view)?.accessibilityCustomRotors = [overdue]
     }
 
-    @objc func undoChange() {
-        if let typing = UIResponder.editingWithUndo, typing.canUndo { typing.undo(); return }
-        core.app.send(.undo)
-    }
-
-    @objc func redoChange() {
-        if let typing = UIResponder.editingWithUndo, typing.canRedo { typing.redo(); return }
-        core.app.send(.redo)
-    }
+    @objc func undoChange() { undoInStore(core) }
+    @objc func redoChange() { redoInStore(core) }
 
     /// Quick add, or in Blocks the block form for a new one.
     @objc func addTask() {
@@ -287,7 +283,9 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         switch action {
-        case #selector(toggleDone as () -> Void), #selector(moveToTrash): model.inHand != nil
+        case #selector(toggleDone as () -> Void), #selector(moveToTrash), #selector(putInBlock), #selector(moveToProject),
+             #selector(makeSubtask), #selector(waitFor):
+            model.inHand != nil
         case #selector(filterTasks): model.filters
         default: super.canPerformAction(action, withSender: sender)
         }
@@ -296,6 +294,17 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
     @objc func toggleDone() {
         guard let row = model.inHand else { return }
         model.run([.markDone, .markNotDone], on: row, saying: .markDone)
+    }
+
+    // The row's own action of each kind, or the app says why it has none.
+    @objc func putInBlock() { runInHand(.putInBlock) }
+    @objc func moveToProject() { runInHand(.moveToProject) }
+    @objc func makeSubtask() { runInHand(.makeSubtaskOf) }
+    @objc func waitFor() { runInHand(.waitFor) }
+
+    private func runInHand(_ kind: LumennaApp.ActionKind) {
+        guard let row = model.inHand else { return }
+        model.run([kind], on: row, saying: kind)
     }
 
     @objc func moveToTrash() {

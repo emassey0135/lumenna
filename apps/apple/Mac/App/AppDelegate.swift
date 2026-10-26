@@ -31,8 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             NSApp.terminate(nil)
             return
         }
-        // Siri, Shortcuts and Spotlight's intents run on this store.
-        Assistant.serve(core.app.device) { [weak self] in self?.core.app.send(.launch($0)) }
+        // Siri, Shortcuts and Spotlight's intents run on this store. A launch they ask for (a
+        // search result chosen) goes where every way in goes, which shows the window.
+        Assistant.serve(core.app.device) { Launches.shared.ask($0) }
         NSApp.mainMenu = MainMenu.build()
         showMainWindow(nil)
         // A widget's or a control's launch (`NewTaskControlIntent`), and any that came first.
@@ -66,6 +67,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationDidBecomeActive(_ notification: Notification) {
         core?.timeZoneMayHaveChanged()
         reminders?.now()
+        // Opening at login, as the system has it now: System Settings may have changed it.
+        core?.app.tell(LoginItem.offered)
+    }
+
+    /// The Dock icon's menu: the core's launches, as the iPhone's app icon offers them.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        for shortcut in Launches.shortcuts {
+            let item = ClosureMenuItem(title: shortcut.title) { Launches.shared.ask(shortcut.id) }
+            item.image = NSImage(systemSymbolName: Launches.symbol(shortcut.icon), accessibilityDescription: nil)
+            menu.addItem(item)
+        }
+        return menu
     }
 
     /// A widget tapped: the core's launch it names.
@@ -138,7 +152,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// One round with every paired device, on this app's own endpoint: the app says how it
     /// went.
     @objc func syncNowFromMenu(_ sender: Any?) {
-        Announcer.say("Syncing")
         core.app.send(.devices(.syncNow))
     }
 
@@ -174,27 +187,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func goToTrash(_ sender: Any?) { go(.trash) }
     @objc func goToHistory(_ sender: Any?) { go(.history) }
 
-    private func go(_ place: LumennaApp.Place) {
+    /// Goes to `place`, then `then` on its pane once the window shows it (`MainWindowController.go`).
+    private func go(_ place: LumennaApp.Place, then: (() -> Void)? = nil) {
         showMainWindow(nil)
-        if core.app.view.place != place { main?.go(place) }
+        main?.go(place, then: then)
     }
 
     /// A reminder chosen in Notification Center: its task, or its block on its day.
     private func open(_ reminded: RemindedOf) {
+        showMainWindow(nil)
         if reminded.replan {
-            // The overrun warning's Replan: today, with Replan from Now over it.
-            NSApp.activate()
-            go(.today)
-            main?.day?.openReplan()
-            return
-        }
-        if reminded.kind == "task" {
+            // The overrun warning's Replan: today, with Replan from Now over it, the app's; the
+            // window follows.
+            core.app.replanFromNow()
+        } else if reminded.kind == "task" {
             go(.tasks)
             core.app.send(.focus(reminded.target))
-            main?.showDetails()
+            core.app.whenStill { [weak self] in self?.main?.showDetails() }
         } else {
-            go(.today)
-            main?.day?.show(day: reminded.day, series: reminded.target)
+            // The block on its day, in hand: the app's, which the window follows.
+            core.app.send(.showBlock(series: reminded.target, date: reminded.day))
         }
     }
 
@@ -219,8 +231,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func newFilter(_ sender: Any?) { showMainWindow(nil); main?.sidebar.newSavedFilter() }
 
     @objc func focusFilter(_ sender: Any?) {
-        if main?.taskList?.filters != true { go(.tasks) }
-        main?.taskList?.focusFilter()
+        if main?.taskList?.filters == true {
+            main?.taskList?.focusFilter()
+        } else {
+            go(.tasks) { [weak self] in self?.main?.taskList?.focusFilter() }
+        }
     }
 
     /// Each Task menu command is the in-hand task's own action of that kind — a task row's,
@@ -256,8 +271,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return nil
     }
 
+    /// The command's action, or, where the task in hand has none, the app says why in the
+    /// core's words: a menu item is never greyed out without a reason a screen reader can hear.
     private func perform(_ command: Selector) {
-        action(for: command)?.run()
+        if let found = action(for: command) { return found.run() }
+        let kinds = Self.kinds(command)
+        let view = core.app.view
+        let onDetails = view.details != nil && (view.place == .today || view.place == .blocks)
+        core.app.send(onDetails ? .details(.run(kinds)) : .run(kinds))
     }
 
     @objc func toggleDone(_ sender: Any?) { perform(#selector(toggleDone(_:))) }
@@ -271,13 +292,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func previousPane(_ sender: Any?) { main?.previousPane(sender) }
     @objc func previousDay(_ sender: Any?) { main?.day?.previousDay(sender) }
     @objc func nextDay(_ sender: Any?) { main?.day?.nextDay(sender) }
+    /// Today on now: the app's own move, which shows the day wherever the window was.
     @objc func goToNow(_ sender: Any?) {
-        go(.today)
-        main?.day?.goToToday(sender)
+        showMainWindow(nil)
+        core.app.send(.day(.now))
     }
+    /// Go to Day: the app's question, which the window asks, from wherever it was.
     @objc func goToDay(_ sender: Any?) {
-        go(.today)
-        main?.day?.goToDay(sender)
+        showMainWindow(nil)
+        core.app.send(.day(.ask))
     }
 
     /// The day's own actions for the Day menu: the day shown's, else none until it is shown;
@@ -299,28 +322,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     @objc func backUpNow(_ sender: Any?) {
-        do {
-            let done = try core.app.device.backup()
-            Announcer.say(done.announcement, notices: done.notices)
-        } catch {
-            main?.window?.showFailure(error.sentence)
-        }
+        core.backUpNow { [weak self] failed in self?.main?.window?.showFailure(failed) }
     }
 
     @objc func exportOrImport(_ sender: Any?) {
         showSettings(nil)
-        (settings?.window?.contentViewController as? NSTabViewController)?.selectedTabViewItemIndex = 4
+        settings?.show(.export)
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
-        case #selector(toggleDone(_:)), #selector(putInBlock(_:)), #selector(moveToProject(_:)),
-             #selector(makeSubtask(_:)), #selector(waitFor(_:)), #selector(moveToTrash(_:)):
-            let found = action(for: item.action)
-            if item.action == #selector(toggleDone(_:)) {
-                item.title = found?.title ?? "Mark Done"
-            }
-            return found != nil
+        case #selector(toggleDone(_:)):
+            // Named for what it would do; kept on even where the task has no such action, so
+            // choosing it has the app say why.
+            item.title = action(for: item.action)?.title ?? "Mark Done"
+            return true
         case #selector(previousDay(_:)), #selector(nextDay(_:)):
             return main?.day != nil
         case #selector(undoChange(_:)):

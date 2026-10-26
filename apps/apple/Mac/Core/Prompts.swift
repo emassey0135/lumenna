@@ -72,7 +72,7 @@ extension NSWindow: QuestionAsking {
         }
     }
 
-    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, answered: @escaping (String?) -> Void) {
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, day: String?, answered: @escaping (String?) -> Void) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = [problem, hint.isEmpty ? nil : hint].compactMap { $0 }.joined(separator: "\n\n")
@@ -82,13 +82,38 @@ extension NSWindow: QuestionAsking {
         field.stringValue = initial
         field.placeholderString = label
         field.setAccessibilityLabel(label)
+        if !hint.isEmpty { field.setAccessibilityHelp(hint) }
         field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
-        alert.accessoryView = field
+        // A day (Go to Day, Another Day): the line first, the system's calendar beside it, open
+        // on the day the app gives; a day chosen there is the answer when nothing is typed.
+        let calendar = day.map { day -> NSDatePicker in
+            let picker = NSDatePicker()
+            picker.datePickerStyle = .clockAndCalendar
+            picker.datePickerElements = .yearMonthDay
+            picker.dateValue = Clock.day(day) ?? .now
+            picker.sizeToFit()
+            picker.setAccessibilityLabel(label)
+            return picker
+        }
+        if let calendar {
+            let width = max(calendar.frame.width, 240)
+            let stack = NSStackView(views: [field, calendar])
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            field.widthAnchor.constraint(equalToConstant: width).isActive = true
+            stack.frame = NSRect(x: 0, y: 0, width: width, height: calendar.frame.height + 32)
+            alert.accessoryView = stack
+        } else {
+            alert.accessoryView = field
+        }
         alert.addButton(withTitle: yes)
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: front) { response in
-            let text = response == .alertFirstButtonReturn ? field.stringValue : nil
+            var text = response == .alertFirstButtonReturn ? field.stringValue : nil
+            if let typed = text, let calendar, typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                text = Clock.isoDay(calendar.dateValue)
+            }
             DispatchQueue.main.async { answered(text) }
         }
     }
@@ -141,9 +166,9 @@ final class FrontAsker: QuestionAsking {
         window.confirm(title: title, message: message, yes: yes, destructive: destructive, answered: answered)
     }
 
-    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, answered: @escaping (String?) -> Void) {
+    func text(title: String, label: String, initial: String, hint: String, problem: String?, yes: String, syntax: LumennaApp.Syntax?, day: String?, answered: @escaping (String?) -> Void) {
         guard let window else { return answered(nil) }
-        window.text(title: title, label: label, initial: initial, hint: hint, problem: problem, yes: yes, syntax: syntax, answered: answered)
+        window.text(title: title, label: label, initial: initial, hint: hint, problem: problem, yes: yes, syntax: syntax, day: day, answered: answered)
     }
 
     func pick(title: String, offered: [Offered], yes: String, answered: @escaping (Picked) -> Void) {

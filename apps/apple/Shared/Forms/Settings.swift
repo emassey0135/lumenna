@@ -100,12 +100,7 @@ final class SettingsModel: NSObject, ObservableObject {
 
     /// A backup now, beside the automatic ones, in this device's backup folder.
     func backUpNow() {
-        do {
-            let done = try core.app.device.backup()
-            Announcer.say(done.announcement, notices: done.notices)
-        } catch {
-            failure = error.sentence
-        }
+        core.backUpNow { [weak self] failed in self?.failure = failed }
     }
 
     /// The file name an export of `format` gets, the app's, dated.
@@ -115,8 +110,7 @@ final class SettingsModel: NSObject, ObservableObject {
 
     /// Asks the app for an export of `format`, handing its file to `saved` once it is made.
     func exporting(_ format: LumennaApp.ExportFormat, saved: @escaping (LumennaApp.SaveFile) -> Void) {
-        core.app.nextFile(saved)
-        core.app.send(.settings(.export(format)))
+        core.app.file(from: .settings(.export(format)), then: saved)
     }
 
     /// Reads a JSON export or a backup the person chose; the app tells them apart by its name,

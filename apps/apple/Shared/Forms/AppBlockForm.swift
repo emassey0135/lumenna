@@ -151,7 +151,7 @@ final class AppBlockFormModel: ObservableObject {
     }
 
     private static func day(_ iso: String) -> Date? {
-        iso.isEmpty ? nil : try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse(iso)
+        iso.isEmpty ? nil : Clock.day(iso)
     }
 }
 
