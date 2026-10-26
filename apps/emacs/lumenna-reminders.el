@@ -189,11 +189,12 @@ and shown, unless another process on this device already gives them."
     (add-function :after after-focus-change-function #'lumenna-reminders--focus-changed)))
 
 (defvar lumenna-reminders--resume nil
-  "Whether `lumenna-disconnect' stopped the reminders, to start again on connecting.")
+  "Whether `lumenna-disconnect' stopped the reminders.
+They start again on connecting.")
 
 (defun lumenna-reminders--connected ()
-  "Start giving reminders on connecting, if that is wanted or they were stopped by
-a disconnection."
+  "Start giving reminders on connecting, if that is wanted.
+Or if a disconnection stopped them."
   (when (and (or lumenna-reminders-start-automatically lumenna-reminders--resume)
              (not lumenna-reminders-mode))
     (lumenna-reminders-mode 1))
@@ -221,7 +222,7 @@ the reminder due ID.  The app takes it off the list and says what it did."
     (lumenna--follow)))
 
 (defun lumenna-reminders--open (firing)
-  "Open what FIRING, one of a reminder's, is about: its task, or its block's day."
+  "Open what FIRING, a reminder's, is about: its task, or its block's day."
   (pcase (plist-get firing :kind)
     ("task" (lumenna-task-show (plist-get firing :target)))
     (_ (with-current-buffer (lumenna-today)
@@ -269,8 +270,9 @@ the reminder due ID.  The app takes it off the list and says what it did."
   (or (plist-get (lumenna-row) :due) (user-error "No reminder on this line")))
 
 (defun lumenna-reminders--press (event button)
-  "Send EVENT for the reminder at point, which offers it if it has BUTTON's words.
-One it does not offer is refused in the app's words."
+  "Send EVENT for the reminder at point.
+It offers it if it has BUTTON's words; one it does not offer is refused in
+the app's words."
   (let* ((due (lumenna-reminders--at-point))
          (id (plist-get due :id)))
     (if (plist-get due button)

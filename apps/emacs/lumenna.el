@@ -310,7 +310,8 @@ Every speech system reads the echo area."
   "The app's screen this buffer draws.")
 
 (defvar-local lumenna--opened-with nil
-  "The events that opened this buffer's screen, sent again over a new connection.")
+  "The events that opened this buffer's screen.
+Sent again over a new connection.")
 
 (defvar-local lumenna--view nil
   "What the app last showed on this buffer's screen.")
