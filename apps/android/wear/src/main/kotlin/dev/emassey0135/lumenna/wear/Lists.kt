@@ -28,7 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumnDefaults
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
@@ -43,6 +43,7 @@ import dev.emassey0135.lumenna.levelChange
 import dev.emassey0135.lumenna.detailOf
 import dev.emassey0135.lumenna.sentence
 import dev.emassey0135.lumenna.name
+import dev.emassey0135.lumenna.commandTitle
 
 /**
  * A screen's list: Wear's scaling list, which the rotary crown scrolls, with rows kept at
@@ -71,7 +72,8 @@ fun WearList(state: ScalingLazyListState = rememberScalingLazyListState(), conte
 fun PlacesScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
-    val rows = placeRows(view?.sidebar.orEmpty().filter { !it.archived }).filter { !it.hidden }
+    // Every place the app lists, an archived project's included, as every app's sidebar has them.
+    val rows = placeRows(view?.sidebar.orEmpty()).filter { !it.hidden }
     // Every item in the list's order, a row by its key, so a row's place is where to scroll.
     val keys = buildList {
         add("\u0000new")
@@ -105,9 +107,10 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
                     // A heading folds what is under it when pressed.
                     is SidebarKind.Group -> Button(
                         onClick = { fold?.let { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, row.key), it)) } },
+                        // One description, its name then whether it is folded, as a row's.
                         modifier = Modifier.fillMaxWidth().semantics {
                             heading()
-                            if (state != null) stateDescription = state
+                            contentDescription = listOfNotNull(row.entry.text, state).joinToString(", ")
                         },
                         // In sentence case, as the app words a heading for Wear OS.
                         label = { Text(row.entry.text) },
@@ -121,14 +124,15 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
                 }
             }
         }
-        item { Button(onClick = { app.send(ShellEvent.Undo) }, modifier = Modifier.fillMaxWidth(), label = { Text("Undo") }) }
-        item { Button(onClick = { app.send(ShellEvent.Redo) }, modifier = Modifier.fillMaxWidth(), label = { Text("Redo") }) }
-        item { Button(onClick = { navigator.open(Screen.Settings) }, modifier = Modifier.fillMaxWidth(), label = { Text("Settings") }) }
+        // Named as every app's commands for them are.
+        item { Button(onClick = { app.send(ShellEvent.Undo) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("undo")) }) }
+        item { Button(onClick = { app.send(ShellEvent.Redo) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("redo")) }) }
+        item { Button(onClick = { navigator.open(Screen.Settings) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("settings")) }) }
     }
 }
 
-private fun placeScreen(place: Place): Screen = when (place) {
-    Place.Today -> Screen.Day
+internal fun placeScreen(place: Place): Screen = when (place) {
+    Place.Today -> Screen.Day()
     Place.Blocks -> Screen.Blocks
     else -> Screen.Tasks(place)
 }
@@ -143,6 +147,20 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
     val app = core.app
     val view by app.view.collectAsState()
     LaunchedEffect(place) { app.send(ShellEvent.Open(place)) }
+    // Where a place's action leads is the app's (merged, deleted): when the app moves on from
+    // the place shown, the screen goes with it, as the phone's does. Only while this screen is
+    // the one shown, so a place opened over it is not taken for a move.
+    val appPlace = view?.place
+    var lastPlace by remember { mutableStateOf(appPlace) }
+    LaunchedEffect(appPlace) {
+        val was = lastPlace
+        lastPlace = appPlace
+        if (appPlace == null || was != place || appPlace == place || navigator.current() != Screen.Tasks(place)) return@LaunchedEffect
+        navigator.replace(placeScreen(appPlace))
+    }
+    // Narrowing the list, as the phone's field above it does: the app's filter, and why what
+    // was typed does not read yet.
+    var filter by rememberSaveable(place) { mutableStateOf("") }
     val trash = place == Place.Trash
     val here = view?.takeIf { it.place == place }
     val list = here?.list
@@ -151,7 +169,11 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
     val items = shownRows(list?.items.orEmpty(), lines?.list.orEmpty())
     val keys = buildList {
         add("\u0000heading")
-        if (!trash) add("\u0000new")
+        if (!trash) {
+            add("\u0000new")
+            add("\u0000filter")
+            if (list?.refusal != null) add("\u0000refusal")
+        }
         if (list != null && items.isEmpty()) add("\u0000empty")
         items.forEach { (shown, _) -> add(shown.row.id) }
     }
@@ -162,6 +184,13 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
         item { Heading(placeTitle(place)) }
         if (!trash) {
             item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text("New task") }) }
+            item {
+                TextFieldButton("Filter", filter, "#Work & overdue") {
+                    filter = it
+                    app.send(ShellEvent.Filter(it))
+                }
+            }
+            list?.refusal?.let { item { Text(it) } }
         }
         if (list != null && items.isEmpty()) item { Text(lines?.readback.orEmpty()) }
         items.forEach { (shown, line) ->
@@ -198,16 +227,12 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
                 item {
                     Button(onClick = {
                         app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, entry.key), action))
-                        // After a rename, a merge or a delete, the list stands for something gone.
-                        if (action.kind in leaving) navigator.back()
                     }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) })
                 }
             }
         }
     }
 }
-
-private val leaving = setOf(ActionKind.RENAME, ActionKind.DELETE, ActionKind.MERGE_INTO, ActionKind.CHANGE_QUERY)
 
 /** Every block series, the app's Blocks place, each opening the app's form for every occurrence; Delete asks first. */
 @Composable

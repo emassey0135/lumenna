@@ -84,4 +84,7 @@ dependencies {
     implementation(libs.androidx.core)
     // The watch's own link to its phone (WatchLink), preferred to Iroh while they are near.
     api(libs.play.wearable)
+    // What decides nothing about Android, tested on the JVM: no device, and none of the core's
+    // native library either, so a test builds the records it reads by hand.
+    testImplementation(libs.junit)
 }

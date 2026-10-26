@@ -3,6 +3,8 @@ package dev.emassey0135.lumenna
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import dev.emassey0135.lumenna.app.Place
+import dev.emassey0135.lumenna.app.ShellEvent
 
 /**
  * Opening an app on one of the core's launch shortcuts (`launch_shortcuts()`): the phone's icon
@@ -30,4 +32,21 @@ object Launching {
      * action, since a tile's launch names no action of its own.
      */
     fun id(intent: Intent?): String? = intent?.getStringExtra(ID)
+}
+
+/** Where the screens follow the app once it has done a launch shortcut, on the phone and the watch alike. */
+sealed interface Launched {
+    /** It opened its line: quick add. */
+    data object QuickAdd : Launched
+
+    /** It went to [place], with the details of [task] where it shows a task's. */
+    data class At(val place: Place?, val task: String?) : Launched
+}
+
+/** Has the app do the launch shortcut [id], and once it is still, says where it went. */
+suspend fun AppModel.launch(id: String): Launched? {
+    send(ShellEvent.Launch(id))
+    settle()
+    val shown = view.value ?: return null
+    return if (shown.line != null) Launched.QuickAdd else Launched.At(shown.place, shown.details?.task?.id)
 }

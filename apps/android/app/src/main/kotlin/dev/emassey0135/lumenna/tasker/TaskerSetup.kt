@@ -80,7 +80,7 @@ class TaskerEditActivity : ComponentActivity() {
                     core.fold(
                         onSuccess = { opened ->
                             TaskerSetup(opened, before) { operation, values, shown ->
-                                val secret = before?.secret ?: secrets.make()
+                                val secret = secrets.forSaving(before?.secret)
                                 secrets.keep(secret, operation)
                                 setResult(Activity.RESULT_OK, Tasker.edited(TaskerAction(operation, values, shown, secret)))
                                 finish()

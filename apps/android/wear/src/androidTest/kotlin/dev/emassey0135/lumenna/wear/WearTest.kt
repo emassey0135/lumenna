@@ -64,9 +64,10 @@ class WearTest {
         rule.registerIdlingResource(stillApp(core))
         Clock.update(context)
         rule.enableAccessibilityChecks()
-        val entry = TextEntry { label, answered ->
+        // With nothing scripted, the person backs out of the input screen.
+        val entry = TextEntry { label, cancelled, answered ->
             asked += label
-            answers.removeFirstOrNull()?.let(answered)
+            answers.removeFirstOrNull()?.let(answered) ?: cancelled()
         }
         rule.setContent {
             androidx.compose.runtime.CompositionLocalProvider(
@@ -102,8 +103,12 @@ class WearTest {
         rule.waitForIdle()
     }
 
-    private fun stateOf(text: String, substring: Boolean = false): String =
-        shown(text, substring).fetchSemanticsNode().config.getOrNull(SemanticsProperties.StateDescription).orEmpty()
+    /** What a row says after its title, in its one description: "Projects, expanded" says "expanded". */
+    private fun stateOf(text: String, substring: Boolean = false): String {
+        val said = shown(text, substring).fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription).orEmpty().joinToString(", ")
+        assertTrue("$said begins with its title", said.startsWith(text) || substring)
+        return said.substringAfter(", ", "")
+    }
 
     @Test
     fun thePlacesAreTheCoresWithTheirHeadingsAndAProject() {
@@ -388,6 +393,22 @@ class WearTest {
         shown("When it ends").assertExists()
         actOnMain("When it ends", "Remove reminder")
         said("1 reminder, the defaults").assertExists()
+    }
+
+    @Test
+    fun aRefusedAnswerIsAskedAgainWithWhyAndBackingOutGivesTheQuestionUp() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.uiAutomation.grantRuntimePermission(instrumentation.targetContext.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+        core.device.addBlock(newBlock(title = "Deep work", at = "9:00", minutes = 90u, date = "today", kind = "work", repeat = null))
+        rule.runOnIdle { core.changed() }
+        press("Today")
+        actOnMain("Deep work", "Reminders")
+        answers += "whenever it suits"
+        press("Add reminder")
+        assertEquals(2, asked.size)
+        assertEquals("New reminder for Deep work", asked[0])
+        assertTrue(asked[1], asked[1].endsWith(". New reminder for Deep work"))
+        rule.runOnIdle { assertEquals(null, core.app.view.value?.asking) }
     }
 
     @Test

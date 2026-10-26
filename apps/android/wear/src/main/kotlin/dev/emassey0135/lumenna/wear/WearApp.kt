@@ -35,6 +35,11 @@ import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import dev.emassey0135.lumenna.Option
 import dev.emassey0135.lumenna.Core
+import dev.emassey0135.lumenna.Launched
+import dev.emassey0135.lumenna.Reminded
+import dev.emassey0135.lumenna.Said
+import dev.emassey0135.lumenna.launch
+import dev.emassey0135.lumenna.sayInTurn
 import dev.emassey0135.lumenna.app.Place
 import kotlinx.coroutines.delay
 
@@ -42,7 +47,8 @@ import kotlinx.coroutines.delay
 sealed interface Screen {
     data object Places : Screen
     data class Tasks(val place: Place) : Screen
-    data object Day : Screen
+    /** The day planner: a reminder's block on its day, in hand, else the day the app shows. */
+    data class Day(val block: dev.emassey0135.lumenna.BlockOn? = null) : Screen
     data object Blocks : Screen
     data class Task(val id: String) : Screen
     /** Quick add: the app's line. */
@@ -90,6 +96,20 @@ class Navigator(private val controller: NavHostController) {
     /** Back to the screen before. */
     fun back() {
         controller.popBackStack()
+    }
+
+    /** This screen in place of the one shown. */
+    fun replace(screen: Screen) {
+        back()
+        open(screen)
+    }
+
+    /** The screen shown now. */
+    fun current(): Screen = screen(controller.currentBackStackEntry?.arguments?.getString("n")?.let { "screen/$it" })
+
+    /** A screen gone from the back stack for good, by back or a swipe: nothing will show it again. */
+    fun forget(route: String) {
+        opened.remove(route)
     }
 
     /** Offers `choices`; `chosen` runs once the list has closed, `cancelled` if it closed without one. */
@@ -180,16 +200,16 @@ fun WearApp(
 ) {
     val controller = rememberSwipeDismissableNavController()
     val navigator = remember(controller) { Navigator(controller) }
-    // A reminder's notification, tapped: its task, or the day its block is on.
+    // A reminder's notification, tapped: its task, or its block on its day, in hand, as the
+    // phone opens it.
     val tapped = opened?.collectAsState()?.value
     LaunchedEffect(tapped) {
-        val reminder = tapped?.second ?: return@LaunchedEffect
-        when (reminder.kind) {
-            "task" -> navigator.open(Screen.Task(reminder.target))
-            "block" -> navigator.open(Screen.Day)
-            // An overrun's Replan button: the rest of today, worked out again.
-            dev.emassey0135.lumenna.Reminders.REPLAN ->
+        when (val reminded = tapped?.second?.reminded) {
+            is Reminded.Task -> navigator.open(Screen.Task(reminded.id))
+            is Reminded.Block -> navigator.open(Screen.Day(reminded.on))
+            Reminded.Replan ->
                 core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Proposal(dev.emassey0135.lumenna.app.ProposalEvent.Replan))
+            null -> {}
         }
     }
     // A way in from outside the app (the tile, a complication): the app does what it says, and
@@ -197,29 +217,24 @@ fun WearApp(
     val launch = launched?.collectAsState()?.value
     LaunchedEffect(launch) {
         val id = launch?.second ?: return@LaunchedEffect
-        core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Launch(id))
-        kotlinx.coroutines.withTimeoutOrNull(5_000) { while (!core.app.still) delay(16) }
-        val view = core.app.view.value ?: return@LaunchedEffect
-        when {
-            view.line != null -> navigator.open(Screen.AddTask)
-            view.place == dev.emassey0135.lumenna.app.Place.Today -> navigator.open(Screen.Day)
-            else -> view.place?.let { navigator.open(Screen.Tasks(it)) }
+        when (val went = core.app.launch(id)) {
+            Launched.QuickAdd -> navigator.open(Screen.AddTask)
+            is Launched.At -> went.place?.let { navigator.open(placeScreen(it)) }
+            null -> {}
         }
     }
     val changes by core.changes.collectAsState()
     // The moment proposals are made against: a test's, or now.
     val plannerNow = dev.emassey0135.lumenna.LocalPlannerNow.current
     LaunchedEffect(plannerNow) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.PlanFrom(plannerNow)) }
-    var said by remember { mutableStateOf("") }
-    LaunchedEffect(core) {
-        core.announcements.collect { text ->
-            said = text
-        }
-    }
+    // What changes say, one at a time and in turn, each held long enough to be heard: set as
+    // they came, each overwrote the one before before TalkBack had said it.
+    var said by remember { mutableStateOf<Said?>(null) }
+    LaunchedEffect(core) { sayInTurn(core.announcements) { said = it } }
     LaunchedEffect(said) {
-        if (said.isNotEmpty()) {
-            delay(4_000)
-            said = ""
+        if (said != null) {
+            delay(Said.CLEARED)
+            said = null
         }
     }
     // AppScaffold shows the time at the top of every screen, as Wear OS asks of an app; each
@@ -230,10 +245,20 @@ fun WearApp(
                 SwipeDismissableNavHost(navController = controller, startDestination = "places") {
                     composable("places") { PlacesScreen(core, navigator) }
                     composable("screen/{n}") { backStack ->
-                        when (val screen = navigator.screen("screen/${backStack.arguments?.getString("n")}")) {
+                        val route = "screen/${backStack.arguments?.getString("n")}"
+                        // Popped by back or a swipe, a screen is forgotten: the routes otherwise
+                        // kept every screen ever opened.
+                        remember(backStack) {
+                            backStack.lifecycle.addObserver(
+                                androidx.lifecycle.LifecycleEventObserver { _, event ->
+                                    if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY) navigator.forget(route)
+                                },
+                            )
+                        }
+                        when (val screen = navigator.screen(route)) {
                             Screen.Places -> PlacesScreen(core, navigator)
                             is Screen.Tasks -> TasksScreen(core, navigator, screen.place)
-                            Screen.Day -> DayScreen(core, navigator)
+                            is Screen.Day -> DayScreen(core, navigator, screen.block)
                             Screen.Blocks -> BlocksScreen(core, navigator)
                             is Screen.Task -> TaskScreen(core, navigator, screen)
                             Screen.AddTask -> AddTaskScreen(core, navigator)
@@ -259,7 +284,7 @@ fun WearApp(
                     Modifier.align(Alignment.Center).size(1.dp).semantics {
                         liveRegion = LiveRegionMode.Polite
                         // Out of the tree while there is nothing to say: an empty one is unlabelled.
-                        if (said.isEmpty()) hideFromAccessibility() else contentDescription = said
+                        said.let { if (it == null) hideFromAccessibility() else contentDescription = it.description }
                     },
                 )
             }

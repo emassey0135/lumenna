@@ -59,8 +59,9 @@ class TimerTile : TileService() {
             } catch (error: LumennaError) {
                 error.sentence
             }
-            core.changed()
             main.post {
+                // The app takes the write in on the main thread, where its turns are drawn.
+                core.changed()
                 said = change
                 draw()
             }
@@ -105,15 +106,15 @@ class TimerTile : TileService() {
          * press would do nothing. Beside it the task (or why nothing would start), else, behind a
          * secure lock, only what a press does; after a press, what the core said of it.
          */
-        fun shown(control: TimerControl, locked: Boolean, said: String? = null): Shown {
+        fun shown(control: TimerControl, locked: Boolean, said: String? = null, name: String = name()): Shown {
             val state = when {
                 !control.enabled -> Tile.STATE_UNAVAILABLE
                 control.running -> Tile.STATE_ACTIVE
                 else -> Tile.STATE_INACTIVE
             }
             val detail = if (locked) control.actionSentence else said ?: control.detail
-            val description = if (locked) listOf(name(), control.actionSentence) else listOf(name(), control.actionSentence, detail)
-            return Shown(state, name(), detail, description.filter { it.isNotBlank() }.joinToString(", "))
+            val description = if (locked) listOf(name, control.actionSentence) else listOf(name, control.actionSentence, detail)
+            return Shown(state, name, detail, description.filter { it.isNotBlank() }.joinToString(", "))
         }
 
         /** Asks the system to have the tile draw itself again, though Quick Settings is closed. */

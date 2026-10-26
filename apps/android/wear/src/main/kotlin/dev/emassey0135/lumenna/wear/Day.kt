@@ -29,6 +29,7 @@ import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.RowAction
 import dev.emassey0135.lumenna.levelChange
+import dev.emassey0135.lumenna.commandTitle
 import java.time.LocalDate
 
 /**
@@ -38,11 +39,15 @@ import java.time.LocalDate
  * with sittings folds. Another day is a button away, Go to Day the app's question.
  */
 @Composable
-fun DayScreen(core: Core, navigator: Navigator) {
+fun DayScreen(core: Core, navigator: Navigator, block: dev.emassey0135.lumenna.BlockOn? = null) {
     val app = core.app
     val view by app.view.collectAsState()
-    // Unless the app shows it already: coming back from a screen above it keeps the day shown.
-    LaunchedEffect(Unit) { if (app.view.value?.place !is Place.Today) app.send(ShellEvent.Open(Place.Today)) }
+    LaunchedEffect(Unit) {
+        // A reminder's block: its day, with it in hand, as the phone shows it.
+        if (block != null) app.send(ShellEvent.ShowBlock(block.series, block.date))
+        // Unless the app shows it already: coming back from a screen above it keeps the day shown.
+        else if (app.view.value?.place !is Place.Today) app.send(ShellEvent.Open(Place.Today))
+    }
     val day = view?.takeIf { it.place == Place.Today }?.day
     val worded by app.lines.collectAsState()
     val lines = worded?.takeIf { day != null }
@@ -85,10 +90,11 @@ fun DayScreen(core: Core, navigator: Navigator) {
             item { Button(onClick = action.run, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
         }
         item { Button(onClick = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }, modifier = Modifier.fillMaxWidth(), label = { Text("Add block") }) }
-        item { Button(onClick = { move(DayMove.PREVIOUS) }, modifier = Modifier.fillMaxWidth(), label = { Text("Previous day") }) }
-        if (day?.today == false) item { Button(onClick = { move(DayMove.TODAY) }, modifier = Modifier.fillMaxWidth(), label = { Text("Today") }) }
-        item { Button(onClick = { move(DayMove.NEXT) }, modifier = Modifier.fillMaxWidth(), label = { Text("Next day") }) }
+        // Named as every app's commands for each move are.
+        item { Button(onClick = { move(DayMove.PREVIOUS) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("previous-day")) }) }
+        if (day?.today == false) item { Button(onClick = { move(DayMove.TODAY) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("go-today")) }) }
+        item { Button(onClick = { move(DayMove.NEXT) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("next-day")) }) }
         // As the phone asks: a day as it is said, read by the app.
-        item { Button(onClick = { move(DayMove.ASK) }, modifier = Modifier.fillMaxWidth(), label = { Text("Go to day") }) }
+        item { Button(onClick = { move(DayMove.ASK) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("go-to-day")) }) }
     }
 }

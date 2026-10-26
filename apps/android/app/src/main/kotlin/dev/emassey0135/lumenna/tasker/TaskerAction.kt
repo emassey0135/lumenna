@@ -96,6 +96,17 @@ class TaskerSecrets(context: Context) {
         kept.edit().putString(hash(secret), operation).commit()
     }
 
+    /** Whether [secret] was made and kept here, for any operation. */
+    fun made(secret: String): Boolean = kept.contains(hash(secret))
+
+    /**
+     * The secret an action is saved with: the one it came with, if it was made here, else a
+     * new one. What it came with is whoever opened the setup's to say, and any app can open it:
+     * kept as given, a caller could name a secret it knows and then fire what the person
+     * consented to.
+     */
+    fun forSaving(given: String?): String = given?.takeIf(::made) ?: make()
+
     /** Whether [secret] was set up on this device for [operation]. */
     fun allows(secret: String, operation: String): Boolean = kept.getString(hash(secret), null) == operation
 

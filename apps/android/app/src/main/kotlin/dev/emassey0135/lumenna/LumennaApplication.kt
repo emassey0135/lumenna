@@ -14,14 +14,18 @@ class LumennaApplication : Application(), CoreHolder, GlanceShower {
         SyncWorker.schedulePeriodic(this)
         // The icon's shortcuts are the core's, given to the launcher as the process starts.
         Launches.publish(this)
-        core.getOrNull()?.let {
-            // Reminders are armed now and after every change to the store (`Reminders.follow`),
-            // and the widgets drawn again then and at each moment their glance names.
-            Reminders.follow(this, it)
-            Glances.follow(this, it)
-            // The system's search index too (`SearchIndex`).
-            SearchIndex.follow(this, it)
-        }
+        // The store opens off the main thread, which a cold start for an alarm, a widget or a
+        // tile has nothing else to do on; what asks for it on the main thread meanwhile waits.
+        Thread({
+            core.getOrNull()?.let {
+                // Reminders are armed now and after every change to the store (`Reminders.follow`),
+                // and the widgets drawn again then and at each moment their glance names.
+                Reminders.follow(this, it)
+                Glances.follow(this, it)
+                // The system's search index too (`SearchIndex`).
+                SearchIndex.follow(this, it)
+            }
+        }, "lumenna-open").start()
     }
 
     /**

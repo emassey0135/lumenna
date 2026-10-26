@@ -78,6 +78,7 @@ fun AskText(
                     onValueChange = { text = it },
                     onSubmit = { done(text.text) },
                     focus = focus,
+                    hint = hint,
                 )
             } else OutlinedTextField(
                 value = text,

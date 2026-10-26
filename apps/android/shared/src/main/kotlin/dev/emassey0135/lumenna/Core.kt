@@ -4,20 +4,18 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
-import android.system.Os
 import dev.emassey0135.lumenna.app.Change
 import dev.emassey0135.lumenna.app.Device
 import dev.emassey0135.lumenna.app.LumennaError
 import dev.emassey0135.lumenna.app.SyncReport
 import java.io.File
-import java.util.TimeZone
 import java.util.concurrent.Executors
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /**
  * The open store, for the whole app.
@@ -25,7 +23,11 @@ import kotlinx.coroutines.flow.asStateFlow
  * The screens draw the app itself ([app], the Crux app through BoltFFI); what runs without them
  * — reminders' alarms and receivers, a background round, the watch's link — asks [device], the
  * same store. This class adds only what is about running on Android: where the profile lives,
- * the time zone, syncing while the app is in front, and saying what happened.
+ * syncing while the app is in front, and saying what happened.
+ *
+ * The time zone is Android's own: with `TZ` unset, the core reads `persist.sys.timezone`, the
+ * zone the app's own clock reads too, and follows a change as the person travels. Setting `TZ`
+ * from here raced the core's threads reading it, and took effect no sooner.
  */
 class Core(
     /** Where the store lives: also what tells its notifications from another store's. */
@@ -36,7 +38,6 @@ class Core(
     val device: Device
 
     init {
-        useSystemTimeZone()
         directory.mkdirs()
         device = Device(directory.absolutePath)
     }
@@ -60,30 +61,44 @@ class Core(
 
     private val generation = MutableStateFlow(0L)
 
-    /** Moves whenever the store changed, so every screen showing it reads it again. */
+    /**
+     * Moves whenever the store changed, so what follows it — reminders' alarms, the widgets, the
+     * search index, the watch's link — looks again. Not for every turn of the app's: a keystroke
+     * or a new minute changes nothing in the store, and each look reads all of it.
+     */
     val changes: StateFlow<Long> = generation.asStateFlow()
 
-    private val spoken = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    private val spoken = announcementFlow()
 
     /** What to say: a change's announcement, or why something failed. The app shows each. */
     val announcements: SharedFlow<String> = spoken.asSharedFlow()
 
-    /** A write made outside the app — a receiver's, a test's — which the app takes in. */
+    /** A write made outside the app — a receiver's, a test's — which the app takes in. From any thread. */
     fun changed() {
         moved()
         if (appOpened) app.tick()
     }
 
-    /** The store may have moved: what follows it (reminders' alarms) looks again. */
+    /** The store may have moved: what follows it (reminders' alarms) looks again. From any thread. */
     fun moved() {
-        generation.value += 1
+        generation.update { it + 1 }
     }
 
-    /** Says [text], politely, after whatever is being said now. */
+    private val headsThread = Executors.newSingleThreadExecutor { Thread(it, "lumenna-heads") }
+    private val heads = Heads(read = { runCatching { device.heads() }.getOrNull() }, run = headsThread::execute, moved = ::moved)
+
+    /**
+     * The app left a turn: [changes] moves only if the store's heads did, which a write here or
+     * one taken in from elsewhere moves, and a keystroke or a new minute does not.
+     */
+    fun turned() = heads.look()
+
+    /** Says [text], politely, after whatever is being said now. From any thread. */
     fun say(text: String) {
         if (text.isNotBlank()) spoken.tryEmit(text)
     }
 
+    private val main = Handler(Looper.getMainLooper())
     private var held: MutableList<String>? = null
 
     /**
@@ -95,20 +110,6 @@ class Core(
         if (held == null) held = mutableListOf()
     }
 
-    private val dropped = MutableStateFlow(0L)
-
-    /** Moves whenever an action is given up, so a list stops waiting to put focus back. */
-    val cancels: StateFlow<Long> = dropped.asStateFlow()
-
-    /**
-     * An action's question was cancelled, or had nothing to ask: no change is coming, so
-     * nothing waits for one to put focus back on the row, and what was held is said.
-     */
-    fun cancelled() {
-        release()
-        dropped.value += 1
-    }
-
     /** Says what was held. */
     fun release() {
         val texts = held ?: return
@@ -116,23 +117,17 @@ class Core(
         texts.forEach(::say)
     }
 
-    /** Says what a change did, now or once focus has moved. */
+    /** Says what a change did, now or once focus has moved. From any thread: what is held is the main thread's. */
     fun report(text: String) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post { report(text) }
+            return
+        }
         held?.add(text) ?: say(text)
     }
 
     /** Says what a change did: the core's sentence, then each notice. */
     fun say(change: Change) = report(sentence(change.announcement, change.notices))
-
-    /**
-     * Runs an operation on the store from outside the app — a receiver's, a test's seeding — then
-     * has the app take it in and says what happened, or why it failed. Returns the change, or
-     * null on failure.
-     */
-    fun change(operation: (Device) -> Change): Change? = attempt { operation(device) }?.also {
-        changed()
-        say(it)
-    }
 
     /** Runs [operation], saying why if it fails. */
     fun <T> attempt(operation: () -> T): T? = try {
@@ -143,7 +138,6 @@ class Core(
     }
 
     private val syncThread = Executors.newSingleThreadExecutor { Thread(it, "lumenna-sync") }
-    private val main = Handler(Looper.getMainLooper())
 
     private var multicast: WifiManager.MulticastLock? = null
 
@@ -181,6 +175,11 @@ class Core(
      */
     fun syncRound(): SyncReport = syncThread.submit(java.util.concurrent.Callable { device.syncNow() }).get()
 
+    /** Takes a backup now, into this device's backups, off the main thread: says what it did, or why not. */
+    fun backUpNow() {
+        syncThread.execute { attempt { device.backup() }?.let { say(sentence(it.announcement, it.notices)) } }
+    }
+
     /** Takes a backup if one is due, off the main thread. */
     fun backUpIfDue() {
         syncThread.execute {
@@ -192,23 +191,12 @@ class Core(
         }
     }
 
-    /** Called when the app comes back, since the person may have travelled. */
-    fun timeZoneMayHaveChanged() = useSystemTimeZone()
-
     companion object {
         /**
          * Where the store lives: no-backup storage, the app's own and never copied to Google
          * by Android's backup — the store reaches another device by pairing.
          */
         fun profileDirectory(context: Context): File = File(context.noBackupFilesDir, "lumenna")
-
-        /**
-         * Tells the core which time zone "today" is in. The core reads Android's own setting
-         * when `TZ` is unset, but this is the zone the app's own clock uses, so they agree.
-         */
-        private fun useSystemTimeZone() {
-            Os.setenv("TZ", TimeZone.getDefault().id, true)
-        }
     }
 }
 

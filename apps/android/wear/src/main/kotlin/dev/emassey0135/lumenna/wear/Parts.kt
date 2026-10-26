@@ -26,7 +26,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.Text
@@ -36,10 +36,14 @@ import dev.emassey0135.lumenna.RowAction
 
 /**
  * Asking for a line of text. On a watch there is no text field: the system's own input screen
- * takes it — voice, the keyboard, handwriting — and hands it back. A test provides its own.
+ * takes it — voice, the keyboard, handwriting — and hands it back, or [cancelled] when the
+ * person backs out of it. A test provides its own.
  */
 fun interface TextEntry {
-    fun ask(label: String, answered: (String) -> Unit)
+    fun ask(label: String, cancelled: () -> Unit, answered: (String) -> Unit)
+
+    /** Asks with nothing to say when it is backed out of. */
+    fun ask(label: String, answered: (String) -> Unit) = ask(label, {}, answered)
 }
 
 val LocalTextEntry = compositionLocalOf<TextEntry?> { null }
@@ -49,16 +53,16 @@ private const val KEY = "lumenna-text"
 /** The system's input screen, as the app asks for text: `null` in a test, which provides one. */
 @Composable
 fun rememberSystemTextEntry(): TextEntry {
-    val waiting = remember { mutableStateOf<((String) -> Unit)?>(null) }
+    val waiting = remember { mutableStateOf<Pair<() -> Unit, (String) -> Unit>?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val text = result.data?.let { RemoteInput.getResultsFromIntent(it) }?.getCharSequence(KEY)?.toString()
-        val answered = waiting.value
+        val (cancelled, answered) = waiting.value ?: return@rememberLauncherForActivityResult
         waiting.value = null
-        if (text != null) answered?.invoke(text)
+        if (text != null) answered(text) else cancelled()
     }
     return remember {
-        TextEntry { label, answered ->
-            waiting.value = answered
+        TextEntry { label, cancelled, answered ->
+            waiting.value = cancelled to answered
             val input = RemoteInput.Builder(KEY).setLabel(label).wearableExtender {
                 setEmojisAllowed(false)
                 setInputActionType(EditorInfo.IME_ACTION_DONE)
@@ -73,7 +77,8 @@ fun rememberSystemTextEntry(): TextEntry {
 /**
  * A row: its title, then what is said of it, one stop for TalkBack, with its actions as the
  * row's custom actions and, for touch, on a long press. As on the phone, the title comes
- * first and is never abbreviated.
+ * first and is never abbreviated: one description, title then [state] (else [detail]). As a
+ * state description of its own, TalkBack said the state before the title.
  */
 @Composable
 fun RowButton(
@@ -97,7 +102,7 @@ fun RowButton(
             .then(if (key != null && focus != null) Modifier.focusRequester(focus.requester(key)) else Modifier)
             .semantics {
                 if (key != null) rowKey = key
-                if (state != null) stateDescription = state
+                contentDescription = listOfNotNull(title, state ?: detail).filter { it.isNotEmpty() }.joinToString(", ")
                 if (actions.isNotEmpty()) customActions = actions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
             },
         label = { Text(title) },

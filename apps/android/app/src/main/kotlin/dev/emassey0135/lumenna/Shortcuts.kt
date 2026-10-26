@@ -8,7 +8,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import dev.emassey0135.lumenna.app.ActionKind
-import dev.emassey0135.lumenna.app.KeyCommand
 import dev.emassey0135.lumenna.app.keyboardShortcuts
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -21,13 +20,6 @@ data class Keys(val code: Int, val ctrl: Boolean = false, val shift: Boolean = f
     /** As `KeyboardShortcutInfo` takes them. */
     val modifiers: Int get() = (if (ctrl) KeyEvent.META_CTRL_ON else 0) or (if (shift) KeyEvent.META_SHIFT_ON else 0)
 }
-
-/**
- * The keyboard commands every desktop app shares (`lumenna_app::keys`, through the core), by
- * their identifiers: the keys Windows, GTK and the web bind, and their names, so a keyboard on
- * Android does what it does there, and the system's shortcuts helper says so.
- */
-private val shared: Map<String, KeyCommand> by lazy { keyboardShortcuts().flatMap { it.commands }.associateBy { it.id } }
 
 /** A key as the shared table writes it ("Ctrl+Shift+N", "Shift+F10"), in Android's terms. */
 internal fun keysOf(written: String): Keys? {
@@ -53,11 +45,17 @@ internal fun keysOf(written: String): Keys? {
     return Keys(code, ctrl = ctrl, shift = shift)
 }
 
-/** Where a command is listed in the system's keyboard shortcuts helper. */
-enum class Place(val title: String) {
-    APP("Lumenna"),
-    DAY("Day"),
-    ROW("In a list"),
+/**
+ * Where a command is listed in the system's keyboard shortcuts helper: the app's own commands
+ * under its name, the day's and a row's under the shared table's headings for them.
+ */
+enum class Place(private val group: String?) {
+    APP(null),
+    DAY("day"),
+    ROW("lists"),
+    ;
+
+    val title: String by lazy { group?.let { id -> keyboardShortcuts().firstOrNull { it.id == id }?.title } ?: "Lumenna" }
 }
 
 /**
@@ -86,6 +84,8 @@ enum class Command(val id: String?, val place: Place, private val own: List<Keys
     GO_TO_NOW("go-to-now", Place.DAY),
     GO_TO_DAY("go-to-day", Place.DAY),
     MARK_DONE("mark-done", Place.ROW),
+    PUT_IN_BLOCK("put-in-block", Place.ROW),
+    MOVE_TO_PROJECT("move-to-project", Place.ROW),
     DELETE("delete", Place.ROW),
     ACTIONS("actions", Place.ROW),
     // Android's own: a tree control's folding keys, which a Compose list does not give.
@@ -93,11 +93,15 @@ enum class Command(val id: String?, val place: Place, private val own: List<Keys
     COLLAPSE(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_LEFT)), "Collapse"),
     ;
 
+    // The keyboard commands every desktop app shares (`lumenna_app::keys`, through the core), by
+    // their identifiers: the keys Windows, GTK and the web bind, and their names, so a keyboard
+    // on Android does what it does there, and the system's shortcuts helper says so.
+
     /** What it is called, in the shared table's words. */
-    val title: String by lazy { id?.let { shared[it]?.title } ?: ownTitle ?: name }
+    val title: String by lazy { id?.let { sharedCommands[it]?.title } ?: ownTitle ?: name }
 
     /** The keys that run it: the shared table's, read as Android's key codes. */
-    val keys: List<Keys> by lazy { id?.let { shared[it]?.keys?.mapNotNull(::keysOf) } ?: own }
+    val keys: List<Keys> by lazy { id?.let { sharedCommands[it]?.keys?.mapNotNull(::keysOf) } ?: own }
 
     fun matches(event: KeyEvent) = keys.any { it.matches(event) }
 
@@ -116,6 +120,8 @@ enum class Command(val id: String?, val place: Place, private val own: List<Keys
  */
 fun Command.rowAction(actions: List<RowAction>): RowAction? = when (this) {
     Command.MARK_DONE -> actions.ofKind(ActionKind.MARK_DONE, ActionKind.MARK_NOT_DONE)
+    Command.PUT_IN_BLOCK -> actions.ofKind(ActionKind.PUT_IN_BLOCK)
+    Command.MOVE_TO_PROJECT -> actions.ofKind(ActionKind.MOVE_TO_PROJECT)
     Command.EXPAND -> actions.ofKind(ActionKind.EXPAND)
     Command.COLLAPSE -> actions.ofKind(ActionKind.COLLAPSE)
     else -> null
@@ -125,6 +131,8 @@ fun Command.rowAction(actions: List<RowAction>): RowAction? = when (this) {
 val Command.kind: ActionKind?
     get() = when (this) {
         Command.MARK_DONE -> ActionKind.MARK_DONE
+        Command.PUT_IN_BLOCK -> ActionKind.PUT_IN_BLOCK
+        Command.MOVE_TO_PROJECT -> ActionKind.MOVE_TO_PROJECT
         else -> null
     }
 

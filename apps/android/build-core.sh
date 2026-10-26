@@ -90,9 +90,7 @@ for abi in $ABIS; do
     cargo rustc -p lumenna-ffi --lib --crate-type staticlib $PROFILE_FLAG --target "$triple" --quiet)
 done
 (cd "$ROOT/crates/ffi" && clean boltffi pack android $PROFILE_FLAG --no-build --quiet --overlay "$BOLT/overlay.toml")
-# Only the Kotlin: the JNI glue beside it is compiled into the library already. What an
-# earlier build wrote there goes first, the library of before the crate was renamed included.
-rm -rf "$KOTLIN/io" "$JNI_LIBS"/*/liblumenna-mobile.so
+# Only the Kotlin: the JNI glue beside it is compiled into the library already.
 mkdir -p "$KOTLIN/dev/emassey0135/lumenna"
 cp -R "$BOLT/kotlin/dev/emassey0135/lumenna/app" "$KOTLIN/dev/emassey0135/lumenna/"
 

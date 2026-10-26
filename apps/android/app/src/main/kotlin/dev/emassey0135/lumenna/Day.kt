@@ -145,10 +145,11 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedButton(modifier = Target, onClick = { move(DayMove.PREVIOUS) }) { Text("Previous day") }
-            OutlinedButton(modifier = Target, onClick = { move(DayMove.NOW) }) { Text("Now") }
-            OutlinedButton(modifier = Target, onClick = { move(DayMove.NEXT) }) { Text("Next day") }
-            OutlinedButton(modifier = Target, onClick = { move(DayMove.ASK) }) { Text("Go to day") }
+            // Named as the core's commands for each move are, which the keys run too.
+            OutlinedButton(modifier = Target, onClick = { move(DayMove.PREVIOUS) }) { Text(Command.PREVIOUS_DAY.title) }
+            OutlinedButton(modifier = Target, onClick = { move(DayMove.NOW) }) { Text(Command.GO_TO_NOW.title) }
+            OutlinedButton(modifier = Target, onClick = { move(DayMove.NEXT) }) { Text(Command.NEXT_DAY.title) }
+            OutlinedButton(modifier = Target, onClick = { move(DayMove.ASK) }) { Text(Command.GO_TO_DAY.title) }
             dayActions.forEach { action ->
                 OutlinedButton(modifier = Target, onClick = action.run) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)

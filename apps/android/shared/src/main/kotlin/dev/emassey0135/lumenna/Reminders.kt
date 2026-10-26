@@ -22,6 +22,7 @@ import dev.emassey0135.lumenna.app.Device
 import dev.emassey0135.lumenna.app.LumennaError
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -180,7 +181,35 @@ data class ReminderAccess(val notifications: Boolean, val exact: Boolean, val gr
 val LocalReminderAccess = staticCompositionLocalOf<(Context) -> ReminderAccess> { Reminders::access }
 
 /** What a reminder's notification opens: a task, or a block's day. */
-data class ReminderOpened(val kind: String, val target: String, val occurrence: String)
+data class ReminderOpened(val kind: String, val target: String, val occurrence: String) {
+    /** Where the screens go for it, on the phone and the watch alike. */
+    val reminded: Reminded?
+        get() = when (kind) {
+            "task" -> Reminded.Task(target)
+            "block" -> Reminded.Block(occurrence.takeIf { it.isNotEmpty() }?.let { BlockOn(target, it) })
+            Reminders.REPLAN -> Reminded.Replan
+            else -> null
+        }
+}
+
+/** A block's day, as a reminder names it: its series and the occurrence's date. */
+data class BlockOn(val series: String, val date: String)
+
+/** Where a reminder's notification takes the screens. */
+sealed interface Reminded {
+    /** The task's details. */
+    data class Task(val id: String) : Reminded
+
+    /** The block's day, with it in hand; today when the reminder names no day. */
+    data class Block(val on: BlockOn?) : Reminded
+
+    /**
+     * An overrun's Replan button: the rest of today, worked out again. As the app's own
+     * Replan from Now, since the app's reminder button (`DueEvent.Replan`) acts only on a
+     * reminder in its own list, which Android's alarms never fill.
+     */
+    data object Replan : Reminded
+}
 
 object Reminders {
     /** The notification channel, which the person can change in the system's settings. */
@@ -224,7 +253,14 @@ object Reminders {
     /** Notifications are posted under their firing's identity, with this one number. */
     private const val NOTIFICATION = 1
 
-    /** Arms the alarms from the store; one arming at a time, from any thread. */
+    /**
+     * Where reminders' work runs: arming (the store read, then up to a hundred calls to
+     * AlarmManager), an alarm going off, a notification's button. Never the main thread, which
+     * draws the screens meanwhile; one thread, so they come in the order asked.
+     */
+    private val work = Executors.newSingleThreadExecutor { Thread(it, "lumenna-reminders") }
+
+    /** Arms the alarms from the store; one arming at a time, from any thread but the main one. */
     @Synchronized
     fun arm(context: Context, core: Core) {
         channel(context)
@@ -242,13 +278,14 @@ object Reminders {
     /**
      * Re-arms after every change to the store, a moment after the last of a run of them: a
      * local edit, a sync bringing something in, the app coming back to the front (which says
-     * the store changed so every screen reads it again). The first arming is now.
+     * the store changed so every screen reads it again). The first arming is now. Each runs on
+     * reminders' own thread.
      */
     @OptIn(FlowPreview::class)
     fun follow(context: Context, core: Core) {
         val app = context.applicationContext
         CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
-            core.changes.debounce(1_000).collect { arm(app, core) }
+            core.changes.debounce(1_000).collect { work.execute { arm(app, core) } }
         }
     }
 
@@ -286,11 +323,13 @@ object Reminders {
         val now = maxOf(Instant.now(), moment)
         val found = core.attempt { core.device.remindersDue(moment.minusSeconds(1).toString(), now.toString()) } ?: return null
         val match = { due: DueReminder -> due.key == key && due.occurrence == occurrence }
-        val shown = found.due.firstOrNull(match)?.also { show(context, core, it, it.text) }
-            ?: found.missed.firstOrNull(match)?.also { show(context, core, it, it.missed) }
-        // Told to the core at the next catching up, so it is not counted as missed.
-        if (shown != null) SystemShown(context).record("$key@$occurrence")
-        return shown
+        val firing = found.due.firstOrNull(match)?.let { it to it.text } ?: found.missed.firstOrNull(match)?.let { it to it.missed }
+            ?: return null
+        // Told to the core at the next catching up, so it is not counted as missed; one that
+        // could not be shown, notifications being off, is missed, and said as missed once they
+        // are on.
+        if (show(context, core, firing.first, firing.second)) SystemShown(context).record("$key@$occurrence")
+        return firing.first
     }
 
     /**
@@ -381,13 +420,16 @@ object Reminders {
             .extend(NotificationCompat.WearableExtender().setBridgeTag(BRIDGE_TAG))
             .build()
 
-    private fun show(context: Context, core: Core, due: DueReminder, text: String) {
-        if (!notificationsAllowed(context)) return
+    /** Shows a firing's notification; whether it could be, notifications being allowed. */
+    private fun show(context: Context, core: Core, due: DueReminder, text: String): Boolean {
+        if (!notificationsAllowed(context)) return false
         channel(context)
-        try {
+        return try {
             context.getSystemService(NotificationManager::class.java).notify("${due.key}@${due.occurrence}", NOTIFICATION, notification(context, due, text, core.directory.path))
+            true
         } catch (_: SecurityException) {
             // Notifications were refused after the check.
+            false
         }
     }
 
@@ -404,8 +446,11 @@ object Reminders {
                 .putExtra(KEY, due.key).putExtra(OCCURRENCE, due.occurrence).putExtra(TARGET, due.target),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // The firing in the intent's data, so each notification's is a pending intent of its own:
+        // pending intents differing only in their extras are one, and opened another's target.
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            data = Uri.fromParts("lumenna-open", id, null)
             putExtra(OPEN_KIND, due.kind)
             putExtra(OPEN_TARGET, due.target)
             putExtra(OPEN_OCCURRENCE, due.occurrence)
@@ -425,7 +470,7 @@ object Reminders {
             .extend(NotificationCompat.WearableExtender().setBridgeTag(BRIDGE_TAG))
             .apply {
                 open?.let {
-                    setContentIntent(PendingIntent.getActivity(context, id.hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                    setContentIntent(PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 }
             }
             .addAction(0, sentenceCase(due.dismiss), pressed(DISMISS))
@@ -437,13 +482,14 @@ object Reminders {
                 if (due.replan.isNotEmpty()) {
                     val replan = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        data = Uri.fromParts("lumenna-replan", id, null)
                         putExtra(OPEN_KIND, REPLAN)
                         putExtra(OPEN_TARGET, due.target)
                         putExtra(OPEN_OCCURRENCE, due.occurrence)
                         putExtra(OPEN_CANCEL, id)
                     }
                     replan?.let {
-                        addAction(0, sentenceCase(due.replan), PendingIntent.getActivity(context, "replan $id".hashCode(), it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                        addAction(0, sentenceCase(due.replan), PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                     }
                 }
             }
@@ -484,6 +530,19 @@ object Reminders {
             PendingIntent.FLAG_IMMUTABLE or flags,
         )
 
+    /** [handle] on reminders' own thread, [receiver]'s broadcast held open until it is done. */
+    internal fun handleAsync(receiver: BroadcastReceiver, context: Context, intent: Intent) {
+        val pending = receiver.goAsync()
+        val app = context.applicationContext
+        work.execute {
+            try {
+                handle(app, intent)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
     internal fun handle(context: Context, intent: Intent) {
         val core = (context.applicationContext as? CoreHolder)?.core?.getOrNull() ?: return
         val key = intent.getStringExtra(KEY)
@@ -497,8 +556,9 @@ object Reminders {
                 if (key != null && target != null && occurrence != null) carry(context, core, key, target, occurrence)
             }
             else -> {
-                // The phone may have moved to another zone, which moves every civil time.
-                core.timeZoneMayHaveChanged()
+                // The clock may have changed, its 12- or 24-hour setting included, or the zone,
+                // which moves every civil time; the core reads the zone itself.
+                Clock.update(context)
                 arm(context, core)
             }
         }
@@ -560,9 +620,13 @@ object Reminders {
     }
 }
 
-/** Alarms going off and a notification's buttons: the app's own intents, never another's. */
+/**
+ * Alarms going off and a notification's buttons: the app's own intents, never another's. The
+ * broadcast is held open while reminders' thread does the work, which reads and writes the
+ * store: on the main thread it held up the screens, and a cold start opened the store there too.
+ */
 class ReminderReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) = Reminders.handle(context, intent)
+    override fun onReceive(context: Context, intent: Intent) = Reminders.handleAsync(this, context, intent)
 }
 
 /**
@@ -571,7 +635,7 @@ class ReminderReceiver : BroadcastReceiver() {
  */
 class ReminderRearmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action in rearming) Reminders.handle(context, Intent(Reminders.REARM))
+        if (intent.action in rearming) Reminders.handleAsync(this, context, Intent(Reminders.REARM))
     }
 
     private val rearming = setOf(

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import dev.emassey0135.lumenna.app.Place
+import dev.emassey0135.lumenna.app.placeTitle
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.VerticalDivider
@@ -66,12 +67,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.withTimeoutOrNull
-
-/** A block's day, as a reminder names it: its series and the occurrence's date. */
-data class BlockOn(val series: String, val date: String)
+import kotlinx.coroutines.flow.collectLatest
 
 /** Somewhere to be: what a tab's back stack holds. */
 sealed interface Screen {
@@ -133,12 +130,18 @@ sealed interface Screen {
     data object Proposal : Screen
 }
 
-/** The four tabs, as on the iPhone: each its own back stack. */
-enum class Tab(val title: String, val icon: ImageVector, val root: Screen) {
-    TODAY("Today", Icons.Filled.DateRange, Screen.Day()),
-    TASKS("Tasks", Icons.Filled.CheckCircle, Screen.Tasks()),
-    BROWSE("Browse", Icons.AutoMirrored.Filled.List, Screen.Browse),
-    SETTINGS("Settings", Icons.Filled.Settings, Screen.Settings),
+/**
+ * The four tabs, as on the iPhone: each its own back stack. Named as the core names the places
+ * and the commands that go to them; Browse, the iPhone's own, is a tab no other app has.
+ */
+enum class Tab(private val named: () -> String, val icon: ImageVector, val root: Screen) {
+    TODAY({ placeTitle(Place.Today) }, Icons.Filled.DateRange, Screen.Day()),
+    TASKS({ placeTitle(Place.Tasks) }, Icons.Filled.CheckCircle, Screen.Tasks()),
+    BROWSE({ "Browse" }, Icons.AutoMirrored.Filled.List, Screen.Browse),
+    SETTINGS({ Command.SETTINGS.title }, Icons.Filled.Settings, Screen.Settings),
+    ;
+
+    val title: String by lazy { named() }
 }
 
 /**
@@ -196,9 +199,11 @@ fun LumennaApp(
     LaunchedEffect(plannerNow) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.PlanFrom(plannerNow)) }
 
     // The core's sentence for each change, said politely: a snackbar is a live region, and
-    // Material gives it the time the person's accessibility settings ask for.
+    // Material gives it the time the person's accessibility settings ask for. A newer one takes
+    // the place of the one showing, which TalkBack has begun saying already: waiting for each in
+    // turn, the last of a run was shown long after what it said was done.
     LaunchedEffect(core) {
-        core.announcements.collect { snackbar.showSnackbar(it) }
+        core.announcements.collectLatest { snackbar.showSnackbar(it) }
     }
 
     CompositionLocalProvider(LocalShortcuts provides shortcuts) {
@@ -264,33 +269,32 @@ fun LumennaApp(
             val launch = launched?.collectAsState()?.value
             LaunchedEffect(launch) {
                 val id = launch?.second ?: return@LaunchedEffect
-                core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Launch(id))
-                withTimeoutOrNull(5_000) { while (!core.app.still) delay(16) }
-                val view = core.app.view.value ?: return@LaunchedEffect
-                val place = view.place
-                when {
-                    view.line != null -> go(Tab.TASKS, Screen.QuickAdd)
-                    place == Place.Today -> go(Tab.TODAY)
-                    place == Place.Tasks && view.details != null -> go(Tab.TASKS, Screen.Task(view.details!!.task.id))
-                    place == null || place == Place.Tasks -> go(Tab.TASKS)
-                    else -> go(Tab.BROWSE, Destination.At(place).screen())
+                when (val went = core.app.launch(id)) {
+                    Launched.QuickAdd -> go(Tab.TASKS, Screen.QuickAdd)
+                    is Launched.At -> {
+                        val (place, task) = went
+                        when {
+                            place == Place.Today -> go(Tab.TODAY)
+                            place == Place.Tasks && task != null -> go(Tab.TASKS, Screen.Task(task))
+                            place == null || place == Place.Tasks -> go(Tab.TASKS)
+                            else -> go(Tab.BROWSE, Destination.At(place).screen())
+                        }
+                    }
+                    null -> {}
                 }
             }
 
             // A reminder's notification, tapped: its task, or its block's day; its Replan button, Replan from Now.
             val tapped = opened?.collectAsState()?.value
             LaunchedEffect(tapped) {
-                val reminder = tapped?.second
-                when (reminder?.kind) {
-                    "task" -> go(Tab.TASKS, Screen.Task(reminder.target))
-                    "block" -> if (reminder.occurrence.isEmpty()) go(Tab.TODAY)
-                        else go(Tab.TODAY, Screen.Day(BlockOn(reminder.target, reminder.occurrence)))
-                    // An overrun's Replan button: the rest of today, worked out again.
-                    Reminders.REPLAN -> {
+                when (val reminded = tapped?.second?.reminded) {
+                    is Reminded.Task -> go(Tab.TASKS, Screen.Task(reminded.id))
+                    is Reminded.Block -> reminded.on?.let { go(Tab.TODAY, Screen.Day(it)) } ?: go(Tab.TODAY)
+                    Reminded.Replan -> {
                         go(Tab.TODAY)
                         core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Proposal(dev.emassey0135.lumenna.app.ProposalEvent.Replan))
                     }
-                    else -> {}
+                    null -> {}
                 }
             }
 
@@ -312,7 +316,7 @@ fun LumennaApp(
             Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(Place.Trash)) }
             Offer(Command.GO_HISTORY) { go(Tab.BROWSE, Screen.Tasks(Place.History)) }
             Offer(Command.SETTINGS) { go(Tab.SETTINGS) }
-            Offer(Command.SYNC_NOW) { syncNow(core) }
+            Offer(Command.SYNC_NOW) { core.app.syncNow() }
 
             // The app has one question open at a time, asked once over whatever is shown; a
             // task's form is its details.
@@ -440,11 +444,6 @@ private fun FocusRequester.tryFocus() {
     runCatching { requestFocus() }
 }
 
-/** A round with every paired device now: the app says how it went. */
-fun syncNow(core: Core) {
-    core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Devices(dev.emassey0135.lumenna.app.DevicesEvent.SyncNow))
-}
-
 @Composable
 private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: Long) {
     when (screen) {
@@ -498,10 +497,10 @@ fun ScreenFrame(
                 },
                 actions = {
                     IconButton(onClick = { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Undo) }) {
-                        Icon(Glyphs.undo, contentDescription = "Undo")
+                        Icon(Glyphs.undo, contentDescription = Command.UNDO.title)
                     }
                     IconButton(onClick = { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Redo) }) {
-                        Icon(Glyphs.redo, contentDescription = "Redo")
+                        Icon(Glyphs.redo, contentDescription = Command.REDO.title)
                     }
                     actions()
                 },

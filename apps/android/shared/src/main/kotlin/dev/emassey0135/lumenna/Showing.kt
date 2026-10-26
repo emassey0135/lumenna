@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import dev.emassey0135.lumenna.app.BlockEvent
 import dev.emassey0135.lumenna.app.ProposalEvent
 import dev.emassey0135.lumenna.app.ShellEvent
+import dev.emassey0135.lumenna.app.Typing
 
 /**
  * A screen showing something the app has open — a proposal, a reminder list, the block form —
@@ -46,6 +47,23 @@ fun ShowingReminders(app: AppModel, back: () -> Unit) {
         back = back,
         close = { app.send(ShellEvent.CloseReminders) },
     )
+}
+
+/**
+ * Quick add's screen, on the app's line: opened with the screen, which goes [back] once the
+ * line is added and let go, and leaving the screen lets it go. Whether the app has it open.
+ */
+@Composable
+fun ShowingLine(app: AppModel, back: () -> Unit): Boolean {
+    val view by app.view.collectAsState()
+    LaunchedEffect(Unit) { app.send(ShellEvent.Typing(Typing.Open)) }
+    ShowingApp(
+        open = view?.line != null,
+        stillOpen = { app.view.value?.line != null },
+        back = back,
+        close = { app.send(ShellEvent.Typing(Typing.Close)) },
+    )
+    return view?.line != null
 }
 
 /** The block form's screen, on the app's open form. */

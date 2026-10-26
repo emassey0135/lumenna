@@ -66,6 +66,8 @@ fun CompletingField(
     imeAction: ImeAction = ImeAction.Done,
     focused: Boolean = false,
     focus: FocusRequester = remember { FocusRequester() },
+    /** Beneath the field, read by TalkBack with it: why an answer was refused, else the question's hint. */
+    hint: String? = null,
 ) {
     if (focused) LaunchedEffect(Unit) { focus.requestFocus() }
     // What could go at the cursor, and the span it would replace, in UTF-16 units.
@@ -91,6 +93,7 @@ fun CompletingField(
             onValueChange = onValueChange,
             label = { Text(label) },
             placeholder = { Text(example) },
+            supportingText = hint?.let { { Text(it) } },
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(focus)

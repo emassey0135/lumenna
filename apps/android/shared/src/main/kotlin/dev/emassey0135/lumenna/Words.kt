@@ -5,7 +5,6 @@ import android.text.format.DateFormat
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
 import java.util.Locale
 
 /**
@@ -15,6 +14,8 @@ import java.util.Locale
  * or "14:30" is this phone's setting, so it is decided here.
  */
 object Clock {
+    // Read by the core's threads as they word a line, and set on the main thread.
+    @Volatile
     private var twentyFourHour = false
 
     /** Reads the phone's 12- or 24-hour setting, which can change while the app runs. */
@@ -45,12 +46,17 @@ object Clock {
     val locale = object : dev.emassey0135.lumenna.app.Locale {
         override fun time(hour: Byte, minute: Byte): String = format(hour.toInt(), minute.toInt())
 
-        override fun date(year: Short, month: Byte, day: Byte, withYear: Boolean): String {
-            val date = LocalDate.of(year.toInt(), month.toInt(), day.toInt())
-            val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
-            val name = date.month.getDisplayName(TextStyle.FULL, Locale.getDefault())
-            return if (withYear) "$weekday ${date.dayOfMonth} $name ${date.year}" else "$weekday ${date.dayOfMonth} $name"
-        }
+        override fun date(year: Short, month: Byte, day: Byte, withYear: Boolean): String =
+            date(LocalDate.of(year.toInt(), month.toInt(), day.toInt()), withYear, Locale.getDefault())
+    }
+
+    /**
+     * A date with its weekday and month named, in [locale]'s own order and punctuation: "Monday,
+     * October 5" in the US, "Monday 5 October" in Britain, "lundi 5 octobre" in France.
+     */
+    fun date(date: LocalDate, withYear: Boolean, locale: Locale): String {
+        val pattern = DateFormat.getBestDateTimePattern(locale, if (withYear) "EEEEdMMMMy" else "EEEEdMMMM")
+        return date.format(DateTimeFormatter.ofPattern(pattern, locale))
     }
 
     /** "1 hour 30 minutes", as the core, the command line and the BTSpeak app say it. */
@@ -63,9 +69,6 @@ object Clock {
         }
         return parts.joinToString(" ")
     }
-
-    /** Today, as the core reads a date. */
-    fun today(): String = LocalDate.now().toString()
 }
 
 /** The core counts text in UTF-8 bytes, as Rust strings do; Kotlin counts UTF-16 units. */

@@ -114,6 +114,21 @@ class TaskerTest {
     }
 
     @Test
+    fun anActionKeepsItsBundleWholeThroughTasker() {
+        val action = TaskerAction("add_task", mapOf("text" to "%line"), mapOf("text" to "Buy milk"), secrets.make())
+        assertEquals(action, TaskerAction.from(action.bundle()))
+    }
+
+    @Test
+    fun aSecretTheSetupIsHandedIsKeptOnlyIfItWasMadeHere() {
+        val stranger = "0".repeat(64)
+        assertTrue(stranger != secrets.forSaving(stranger))
+        val ours = secrets.make().also { secrets.keep(it, "add_task") }
+        assertEquals(ours, secrets.forSaving(ours))
+        assertTrue(secrets.forSaving(null).length == 64)
+    }
+
+    @Test
     fun anActionSetUpOnTheScreenFiresAndAnswersTheCoresVariables() {
         setUp()
         press("Add a task")
