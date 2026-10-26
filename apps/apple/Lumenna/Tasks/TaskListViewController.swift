@@ -260,15 +260,8 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
         RowRotor.list(in: view)?.accessibilityCustomRotors = [overdue]
     }
 
-    @objc func undoChange() {
-        if let typing = UIResponder.editingWithUndo, typing.canUndo { typing.undo(); return }
-        core.app.send(.undo)
-    }
-
-    @objc func redoChange() {
-        if let typing = UIResponder.editingWithUndo, typing.canRedo { typing.redo(); return }
-        core.app.send(.redo)
-    }
+    @objc func undoChange() { undoInStore(core) }
+    @objc func redoChange() { redoInStore(core) }
 
     /// Quick add, or in Blocks the block form for a new one.
     @objc func addTask() {

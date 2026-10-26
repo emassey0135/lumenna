@@ -60,13 +60,18 @@ DEVELOPER="${DEVELOPER_DIR:-$(xcode-select -p)}"
 # The cargo the caller's PATH finds, kept through the clean environment: Homebrew's rustup puts
 # its cargo in /opt/homebrew/opt/rustup/bin, never linked into /opt/homebrew/bin, and a machine
 # with it has none in ~/.cargo/bin.
+# BoltFFI's the same way: wherever `cargo install` or the machine put it.
 FOUND_CARGO="$(command -v cargo 2>/dev/null || true)"
-CARGO_PATH="${FOUND_CARGO:+$(dirname "$FOUND_CARGO"):}$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+FOUND_BOLTFFI="$(command -v boltffi 2>/dev/null || true)"
+CARGO_PATH="${FOUND_CARGO:+$(dirname "$FOUND_CARGO"):}${FOUND_BOLTFFI:+$(dirname "$FOUND_BOLTFFI"):}$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+# The deployment targets are project.yml's, which Xcode hands this script; the numbers here are
+# only for a run by hand, outside Xcode.
 cargo() {
   env -i HOME="$HOME" USER="${USER:-}" \
     PATH="$CARGO_PATH" \
-    DEVELOPER_DIR="$DEVELOPER" IPHONEOS_DEPLOYMENT_TARGET=17.0 MACOSX_DEPLOYMENT_TARGET=14.0 \
-    WATCHOS_DEPLOYMENT_TARGET=27.0 \
+    DEVELOPER_DIR="$DEVELOPER" IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}" \
+    MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}" \
+    WATCHOS_DEPLOYMENT_TARGET="${WATCHOS_DEPLOYMENT_TARGET:-27.0}" \
     cargo "$@"
 }
 
@@ -113,7 +118,7 @@ HOST_TARGET="$ROOT/target"
 boltffi() {
   env -i HOME="$HOME" USER="${USER:-}" \
     PATH="$CARGO_PATH" DEVELOPER_DIR="$DEVELOPER" \
-    CARGO_TARGET_DIR="$HOST_TARGET" "$HOME/.cargo/bin/boltffi" "$@"
+    CARGO_TARGET_DIR="$HOST_TARGET" boltffi "$@"
 }
 APP_GENERATED="$GENERATED/App"
 mkdir -p "$APP_GENERATED/include"
@@ -121,14 +126,25 @@ mkdir -p "$APP_GENERATED/include"
 # the watch's has no network at all.
 APP_FEATURES=(--cargo-arg=--features=rpc)
 [ -n "$WATCH" ] && APP_FEATURES=(--cargo-arg=--no-default-features)
-# Afresh each time: a file it no longer writes (the crate's old name's) would otherwise stay.
-rm -rf "$APP_GENERATED/swift"
-(cd "$ROOT/crates/ffi" && boltffi generate swift -q -o "$APP_GENERATED/swift" ${APP_FEATURES[@]+"${APP_FEATURES[@]}"})
-cp "$APP_GENERATED/swift/boltffi.h" "$APP_GENERATED/include/"
-cat > "$APP_GENERATED/include/module.modulemap" <<'MAP'
-module LumennaAppFFI {
+# Afresh each time, so a file it no longer writes (the crate's old name's) does not stay; but put
+# in place only when it differs, so an unchanged core does not have Xcode compile the framework's
+# Swift again.
+FRESH="$APP_GENERATED/swift.fresh"
+rm -rf "$FRESH"
+(cd "$ROOT/crates/ffi" && boltffi generate swift -q -o "$FRESH" ${APP_FEATURES[@]+"${APP_FEATURES[@]}"})
+if diff -rq "$FRESH" "$APP_GENERATED/swift" >/dev/null 2>&1; then
+  rm -rf "$FRESH"
+else
+  rm -rf "$APP_GENERATED/swift"
+  mv "$FRESH" "$APP_GENERATED/swift"
+  cp "$APP_GENERATED/swift/boltffi.h" "$APP_GENERATED/include/"
+fi
+MAP='module LumennaAppFFI {
     header "boltffi.h"
     export *
-}
-MAP
+}'
+# Rewritten only when it differs, for the same reason.
+if [ "$(cat "$APP_GENERATED/include/module.modulemap" 2>/dev/null)" != "$MAP" ]; then
+  printf '%s\n' "$MAP" > "$APP_GENERATED/include/module.modulemap"
+fi
 

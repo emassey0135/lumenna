@@ -16,23 +16,17 @@ extension NSColor {
         increasedContrast ? .labelColor : NSColor.labelColor.withAlphaComponent(0.78)
     }
 
-    /// The app's accent, as on the phone: system blue is about 4 to 1 on white.
+    /// The app's accent, as on the phone (`Shades.tint`).
     static let lumennaTint = NSColor(name: "lumennaTint") { appearance in
-        switch (isDark(appearance), increasedContrast) {
-        case (true, true): NSColor(red: 0.62, green: 0.81, blue: 1.0, alpha: 1)
-        case (true, false): NSColor(red: 0.45, green: 0.71, blue: 1.0, alpha: 1)
-        case (false, true): NSColor(red: 0.0, green: 0.28, blue: 0.62, alpha: 1)
-        case (false, false): NSColor(red: 0.0, green: 0.38, blue: 0.80, alpha: 1)
-        }
+        NSColor(Shades.tint.pick(dark: isDark(appearance), contrast: increasedContrast))
     }
 
-    /// Red for overdue that clears 4.5 to 1, never the only signal: the word is beside it.
+    /// Red for overdue (`Shades.warning`), never the only signal: the word is beside it.
     static let warningLabel = NSColor(name: "warningLabel") { appearance in
-        switch (isDark(appearance), increasedContrast) {
-        case (true, true): NSColor(red: 1.0, green: 0.62, blue: 0.60, alpha: 1)
-        case (true, false): NSColor(red: 1.0, green: 0.48, blue: 0.45, alpha: 1)
-        case (false, true): NSColor(red: 0.55, green: 0.0, blue: 0.08, alpha: 1)
-        case (false, false): NSColor(red: 0.69, green: 0.0, blue: 0.11, alpha: 1)
-        }
+        NSColor(Shades.warning.pick(dark: isDark(appearance), contrast: increasedContrast))
+    }
+
+    private convenience init(_ shade: Shades.RGB) {
+        self.init(red: shade.red, green: shade.green, blue: shade.blue, alpha: 1)
     }
 }

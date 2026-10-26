@@ -19,7 +19,7 @@ extension LumennaApp.SearchDocument {
         attributes.contentDescription = line.isEmpty ? nil : line
         attributes.keywords = keywords
         if let due {
-            attributes.dueDate = try? Date.ISO8601FormatStyle(timeZone: .current).year().month().day().parse(due)
+            attributes.dueDate = Clock.day(due)
         }
         return attributes
     }
