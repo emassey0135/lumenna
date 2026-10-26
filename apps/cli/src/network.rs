@@ -147,8 +147,10 @@ fn answering(profile: &Profile) -> Option<String> {
 /// `lum sync-daemon`: holds the endpoint and keeps this device in sync until stopped,
 /// serving the command surface at the profile's address while it does.
 pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
-    // A second daemon is refused. An app holding the endpoint is waited for instead, and
-    // taken over from when it quits.
+    // A second daemon is refused, by a lock of the daemons' own: one still waiting its turn for
+    // the endpoint serves nothing that could be asked. An app holding the endpoint is waited
+    // for instead, and taken over from when it quits.
+    let _daemon = daemon_lock(profile)?;
     if answering(profile).as_deref() == Some("daemon") {
         return Err(CliError::Message("a sync daemon is already running for this profile".to_owned()));
     }
@@ -189,6 +191,47 @@ pub(crate) fn daemon(profile: &Profile, local_only: bool) -> Result<()> {
     endpoint.stop();
     service.stop();
     Ok(())
+}
+
+/// Leaves the console this process was started in, on Windows, sending what it says to
+/// `sync-daemon.log` in the profile: a logon task's console is a window of its own, which
+/// would be shown at every logon and stop the daemon when closed. Elsewhere, nothing.
+pub(crate) fn detach(profile: &Profile) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::IntoRawHandle;
+
+        use windows_sys::Win32::System::Console::{FreeConsole, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle};
+
+        let log = std::fs::OpenOptions::new().create(true).append(true).open(profile.directory().join("sync-daemon.log"));
+        unsafe { FreeConsole() };
+        if let Ok(log) = log {
+            // Kept open for the rest of the process, as the console was.
+            let handle = log.into_raw_handle();
+            unsafe {
+                SetStdHandle(STD_OUTPUT_HANDLE, handle);
+                SetStdHandle(STD_ERROR_HANDLE, handle);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = profile;
+}
+
+/// The lock only one sync daemon per profile holds, for as long as it runs.
+fn daemon_lock(profile: &Profile) -> Result<std::fs::File> {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(profile.directory().join("daemon.lock"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(std::fs::TryLockError::WouldBlock) => {
+            Err(CliError::Message("a sync daemon is already running for this profile".to_owned()))
+        }
+        Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
+    }
 }
 
 /// Control-C, or — on Unix — the SIGTERM a service manager sends to stop a daemon.

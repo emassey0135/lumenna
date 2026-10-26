@@ -55,18 +55,28 @@ pub(crate) fn export(
     output: Option<&Path>,
     force: bool,
 ) -> Result<Response> {
-    // Said here, in the terminal's terms, rather than in the surface's.
-    if let Some(output) = output
-        && output.exists()
-        && !force
-    {
-        return Err(CliError::Message(format!(
-            "{} already exists; pass --force to replace it",
-            output.display()
-        )));
-    }
     let path = output.map(|p| p.display().to_string());
-    Ok(Response::new(profile.export(format, path, force)?))
+    match profile.export(format, path, force) {
+        Ok(exported) => Ok(Response::new(exported)),
+        // The surface refuses; the terminal says how it is asked.
+        Err(refused) if refused.message().ends_with(lumenna_host::NOT_ASKED_TO_REPLACE) => {
+            Err(CliError::Message(format!("{}; pass --force to replace it", refused.message())))
+        }
+        Err(refused) => Err(refused.into()),
+    }
+}
+
+/// Takes a backup at once if one is due, then looks again hourly, for as long as the process
+/// runs: what a resident `lum` (an MCP server, `lum notify`) does, as `lum rpc` does.
+pub(crate) fn back_up_hourly(lumenna: std::sync::Arc<lumenna_host::Lumenna>) {
+    std::thread::spawn(move || {
+        loop {
+            if let Err(error) = lumenna.back_up_if_due() {
+                anstream::eprintln!("lum: the automatic backup failed: {error}");
+            }
+            std::thread::sleep(std::time::Duration::from_secs(60 * 60));
+        }
+    });
 }
 
 /// Takes a backup if one is due, before a command runs.

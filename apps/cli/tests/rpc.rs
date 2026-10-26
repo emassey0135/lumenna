@@ -538,3 +538,54 @@ fn a_byte_order_mark_before_the_first_request_is_passed_over() {
     let out = rpc.talk(&["\u{feff}{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"assist.list\"}"]);
     assert_eq!(replies(&out)[&1]["result"]["result"], "operations", "{out}");
 }
+
+#[test]
+fn a_parameter_a_method_does_not_take_is_refused_and_nothing_is_done() {
+    let rpc = Rpc::new();
+    let out = rpc.talk(&[
+        r#"{"jsonrpc":"2.0","id":1,"method":"task.add","params":{"txet":"review PR"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"task.list"}"#,
+    ]);
+    assert!(out.contains("task.add takes no 'txet'; it takes text"), "{out}");
+    assert!(out.contains(r#""count":0"#), "{out}");
+}
+
+#[test]
+fn a_relative_path_is_refused_since_it_would_be_the_server_s_and_not_the_client_s() {
+    let rpc = Rpc::new();
+    let out = rpc.talk(&[r#"{"jsonrpc":"2.0","id":1,"method":"export","params":{"format":"markdown","output":"tasks.md"}}"#]);
+    assert!(out.contains("has to be a whole path"), "{out}");
+}
+
+#[test]
+fn what_the_command_line_does_beyond_the_first_methods_is_a_method_too() {
+    let rpc = Rpc::new();
+    rpc.cli(&["project", "add", "Work"]);
+    rpc.cli(&["task", "add", "Call Tokyo tomorrow at 9am"]);
+    let out = rpc.talk(&[
+        r#"{"jsonrpc":"2.0","id":1,"method":"project.colour","params":{"name":"Work","colour":"teal"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"history"}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"timer.control"}"#,
+        r#"{"jsonrpc":"2.0","id":4,"method":"reminder.give"}"#,
+    ]);
+    assert!(out.contains("teal"), "{out}");
+    assert!(out.contains("Nothing done in the last two weeks"), "{out}");
+    assert!(out.contains(r#""result":"timer_control""#), "{out}");
+    assert!(out.contains(r#""result":"due_reminders""#), "{out}");
+}
+
+#[test]
+fn a_content_length_past_what_is_read_ends_the_session_without_the_server_falling_over() {
+    let rpc = Rpc::new();
+    let mut server = rpc.spawn();
+    {
+        let stdin = server.stdin.as_mut().unwrap();
+        writeln!(stdin, r#"{{"jsonrpc":"2.0","id":1,"method":"task.list"}}"#).unwrap();
+        write!(stdin, "Content-Length: 99999999999999\r\n\r\n{{}}").unwrap();
+    }
+    server.stdin.take();
+    let mut out = String::new();
+    server.stdout.as_mut().unwrap().read_to_string(&mut out).unwrap();
+    assert!(server.wait().unwrap().success(), "it ends as the input does, not by aborting");
+    assert!(out.contains(r#""id":1"#), "{out}");
+}

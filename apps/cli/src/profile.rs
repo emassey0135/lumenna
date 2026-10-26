@@ -95,19 +95,34 @@ impl Profile {
     /// `2` against blocks and be right, and `--block 1` against whatever came first and be
     /// silently wrong. Counting per kind makes both halves mean what they look like.
     ///
+    /// A listing replaces only the `kinds` it lists, so the last of each kind is kept: `lum
+    /// task list`, then `lum block list`, then `lum assign 2 --block 1` names the second task
+    /// listed and the first block. A kind listed with no rows is kept as a line with no
+    /// identifier, so its number is refused as that listing's. The newest listing comes
+    /// first, which is how a number of another kind is told which was listed last.
+    ///
     /// Failing to write this is not worth failing a command over — the listing already
     /// printed, and the next one will overwrite it — so the error is dropped deliberately.
-    pub fn remember(&self, rows: &[(String, String)]) {
+    pub fn remember(&self, kinds: &[String], rows: &[(String, String)]) {
         if !self.rows_addressable {
             return;
         }
-        let lines: Vec<String> =
-            rows.iter().map(|(kind, id)| format!("{kind}\t{id}")).collect();
+        let mut lines: Vec<String> = rows.iter().map(|(kind, id)| format!("{kind}\t{id}")).collect();
+        lines.extend(
+            kinds.iter().filter(|kind| rows.iter().all(|(listed, _)| listed != *kind)).map(|kind| format!("{kind}\t")),
+        );
+        lines.extend(
+            self.recall_all()
+                .into_iter()
+                .filter(|(kind, _)| !kinds.contains(kind))
+                .map(|(kind, id)| format!("{kind}\t{id}")),
+        );
         let _ = std::fs::write(self.listing_path(), lines.join("\n"));
     }
 
-    /// What the last listing showed, as `(kind, identifier)` pairs.
-    pub fn recall(&self) -> Vec<(String, String)> {
+    /// What the last listing of each kind showed, as `(kind, identifier)` pairs, newest
+    /// first; a kind listed with nothing, as an empty identifier.
+    fn recall_all(&self) -> Vec<(String, String)> {
         std::fs::read_to_string(self.listing_path())
             .map(|text| {
                 text.lines()
@@ -135,16 +150,22 @@ impl Profile {
             // The surface refuses bare numbers with the same explanation.
             return Ok(input.to_owned());
         }
-        let listing = self.recall();
+        let listing = self.recall_all();
         let of_kind: Vec<&String> = listing
             .iter()
-            .filter(|(row_kind, _)| row_kind == kind)
+            .filter(|(row_kind, id)| row_kind == kind && !id.is_empty())
             .map(|(_, id)| id)
             .collect();
 
         if of_kind.is_empty() {
-            let showed = listing.first().map(|(row_kind, _)| row_kind.clone());
             let command = listing_command(kind);
+            if listing.iter().any(|(row_kind, _)| row_kind == kind) {
+                return Err(CliError::Message(format!(
+                    "the last listing of {kind}s showed none, so there is no row {row}; run \
+                     `{command}` to list them again"
+                )));
+            }
+            let showed = listing.first().map(|(row_kind, _)| row_kind.clone());
             return Err(CliError::Message(match showed {
                 Some(showed) => format!(
                     "the last listing showed {showed}s, not {kind}s; run `{command}` first, \

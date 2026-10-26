@@ -63,10 +63,12 @@ pub(crate) fn serve(profile: &Profile, writes: bool, listen: Option<Listen>) -> 
         .enable_all()
         .build()
         .map_err(|e| CliError::Message(e.to_string()))?;
+    // Resident, so it takes the automatic backup when one is due, as `lum rpc` does.
+    crate::durability::back_up_hourly(Arc::clone(&lumenna));
     runtime.block_on(async move {
         let server = Server::new(Arc::clone(&lumenna), writes, changes(lumenna));
         if let Some(listen) = listen {
-            return http(server, &listen, token_path(profile)).await;
+            return http(server, &listen, writes, token_path(profile)).await;
         }
         let running = server.serve(rmcp::transport::stdio()).await.map_err(|e| CliError::Message(e.to_string()))?;
         running.waiting().await.map_err(|e| CliError::Message(e.to_string()))?;
@@ -93,26 +95,22 @@ fn token_at(path: PathBuf, new: bool) -> crate::error::Result<String> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).map_err(|e| CliError::Message(e.to_string()))?;
     let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    // Written whole beside it, readable by this user alone, then put in place.
+    // Written whole beside it, made readable by this user alone, then put in place.
     let beside = path.with_extension("new");
-    std::fs::write(&beside, &token).map_err(failed)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&beside, std::fs::Permissions::from_mode(0o600)).map_err(failed)?;
-    }
+    lumenna_host::rpc::write_private(&beside, token.as_bytes()).map_err(failed)?;
     std::fs::rename(&beside, &path).map_err(failed)?;
     Ok(token)
 }
 
 /// Serves Streamable HTTP at `/mcp` on `listen` until interrupted.
-async fn http(server: Server, listen: &Listen, token: PathBuf) -> crate::error::Result<()> {
+async fn http(server: Server, listen: &Listen, writes: bool, token: PathBuf) -> crate::error::Result<()> {
     let failed = |e: std::io::Error| CliError::Message(format!("cannot listen on {}: {e}", listen.address));
     let listener = tokio::net::TcpListener::bind(&listen.address).await.map_err(failed)?;
     let local = listener.local_addr().map_err(failed)?;
     // The token is read again for each request, so a new one (`lum mcp token --new`) turns the
-    // old away at once.
-    let token = if local.ip().is_loopback() && !listen.require_token {
+    // old away at once. Loopback alone is every user of this machine, so the tools that change
+    // the store ask for it there too: only reading is open to a neighbour.
+    let token = if local.ip().is_loopback() && !listen.require_token && !writes {
         None
     } else {
         token_at(token.clone(), false)?;
