@@ -115,7 +115,11 @@ impl Sheet {
 /// Opens Settings on the page the core calls `id` (`general`, `devices`, `export`, …).
 pub fn show(app: &App, id: &str) {
     app.crux.send(ShellEvent::Settings(SettingsEvent::Open));
-    let described = app.described_settings();
+    // The store's settings, and opening at sign-in, which is the app's row rather than the
+    // store's, as Windows has it now.
+    let mut described = app.described_settings();
+    described.retain(|s| s.key != lumenna_records::background::KEY);
+    described.push(lumenna_records::background::background_setting(BackgroundKind::WindowsSignIn, opens_at_sign_in(&app.directory)));
     let view = app.crux.view().settings;
     // The core's pages: the app's, else as the core lays them out for a shell that follows its
     // platform's clock, which this does (`Clock`).

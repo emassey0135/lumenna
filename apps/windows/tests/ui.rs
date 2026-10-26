@@ -508,7 +508,8 @@ fn the_keyboard_opens_a_rows_context_menu() {
 fn quick_add_reads_back_what_it_will_add_before_adding_it() {
     let app = App::launch(|_| {});
     app.post(&[NEW_TASK, "text:Call Sam tomorrow p1", "tab"]);
-    let read_back = |focus: &str| focus.starts_with("Edit 'Will add:'") && focus.contains("Call Sam") && focus.contains("priority 1");
+    let will_add = format!("Edit '{}:'", lumenna_records::fields::quick_add_words(false).will_add);
+    let read_back = |focus: &str| focus.starts_with(&will_add) && focus.contains("Call Sam") && focus.contains("priority 1");
     assert!(app.lands(read_back), "{}", app.focus());
     app.post(&["enter"]);
     assert!(app.says(|s| s.contains("Call Sam")), "{}", app.status());
@@ -1325,9 +1326,11 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     );
     // Its own subtask is not somewhere it can go.
     app.post(&["cmd:164"]);
-    let offered: Vec<String> = app.front().into_iter().filter(|l| l.contains("ListItem")).collect();
-    assert!(offered.is_empty(), "Write report was offered as going under {offered:#?}");
     assert!(app.says(|s| s.contains("no task it could go under")), "{}", app.status());
+    // No pick opens at all: the main window stays in front, whose own lists (what the task waits
+    // for) are not a pick's.
+    let front = app.front();
+    assert!(!front.iter().any(|l| l.contains("Window 'Make Subtask Of")), "Write report was offered somewhere to go under: {front:#?}");
 
     // The Inbox keeps its name and place: only reordered and weighed.
     app.post(&["cmd:145", "select:Inbox, 2 open tasks", "context"]);
