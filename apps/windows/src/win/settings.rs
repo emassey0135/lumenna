@@ -35,7 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::HSTRING;
 
 use super::app::{self, App};
-use super::core::{Poster, WM_EVENT, sentence};
+use super::core::{Poster, WM_EVENT};
 use super::dialog::{self, Class, Dialog, Template};
 use super::{a11y, actions, controls, package, pairing, picker, prompts, shortcuts, system};
 use crate::devices;
@@ -430,7 +430,7 @@ impl Dialog for General {
         self.hwnd.set(page);
         a11y::make_live(dialog::item(page, STATUS));
         let at_sign_in = dialog::item(page, AT_SIGN_IN);
-        controls::check(at_sign_in, opens_at_sign_in());
+        app::with(|app| controls::check(at_sign_in, opens_at_sign_in(&app.directory)));
         a11y::set_description(at_sign_in, &controls::text(dialog::item(page, AT_SIGN_IN_HINT)));
         let reminders = dialog::item(page, REMINDERS);
         if let Some(setting) = self.described.iter().find(|s| s.key == "reminders") {
@@ -547,64 +547,131 @@ impl Dialog for Recorder {
 }
 
 /// What this PC keeps running in the background, as the app is told it: whether Lumenna opens
-/// at sign-in. Sent at start and after every change.
-pub fn background() -> ShellEvent {
-    ShellEvent::Background(BackgroundEvent::Offered { kind: BackgroundKind::WindowsSignIn, on: opens_at_sign_in() })
+/// at sign-in on the profile at `profile`. Sent at start and after every change.
+pub fn background(profile: &std::path::Path) -> ShellEvent {
+    ShellEvent::Background(BackgroundEvent::Offered { kind: BackgroundKind::WindowsSignIn, on: opens_at_sign_in(profile) })
 }
 
-/// Whether Lumenna opens at sign-in: the Run key's, or a package's startup task's.
-fn opens_at_sign_in() -> bool {
-    if package::packaged() { package::opens_at_sign_in() } else { sign_in::on() }
+/// Whether Lumenna opens at sign-in on the profile at `profile`: the Run key's, or a package's
+/// startup task's, which a package has one of.
+fn opens_at_sign_in(profile: &std::path::Path) -> bool {
+    if package::packaged() { package::opens_at_sign_in() } else { sign_in::on(profile) }
 }
 
 /// Opens Lumenna at sign-in, or stops, as the app asked, and tells the app how that went, which
 /// it says in its own words. A package asks Windows off the window's thread and posts the
 /// answer back (`WM_EVENT`).
 pub fn keep_running(app: &App, on: bool) {
-    let answer = |result: Result<(), String>| match result {
-        Ok(()) => background(),
+    let answer = |result: Result<(), String>, profile: &std::path::Path| match result {
+        Ok(()) => background(profile),
         Err(reason) => ShellEvent::Background(BackgroundEvent::Failed { reason }),
     };
     if package::packaged() {
         let window = Poster::new(app.main);
+        let profile = app.directory.clone();
         std::thread::spawn(move || {
-            window.send(WM_EVENT, answer(package::open_at_sign_in(on)));
+            window.send(WM_EVENT, answer(package::open_at_sign_in(on), &profile));
         });
         return;
     }
-    app.crux.send(answer(sign_in::set(on, &app.directory)));
+    app.crux.send(answer(sign_in::set(on, &app.directory), &app.directory));
 }
 
 /// Opening at sign-in, for an ordinary install: the current user's Run key, as every Windows
-/// program does it. Started that way, the app opens in the notification area without its window
-/// (`--background`).
-mod sign_in {
-    use super::system;
+/// program does it, a value for each profile. Started that way, the app opens in the
+/// notification area without its window (`--background`).
+pub mod sign_in {
+    use std::path::Path;
 
-    /// The Run key's value: `LUMENNA_RUN_NAME` gives the UI tests one of their own, so they
-    /// never change what opens at the person's sign-in.
-    fn name() -> String {
-        std::env::var("LUMENNA_RUN_NAME").ok().filter(|name| !name.is_empty()).unwrap_or_else(|| "Lumenna".to_owned())
+    use super::system;
+    use crate::win::tray;
+
+    /// What every value of the app's starts with; the usual profile's is this alone.
+    const NAME: &str = "Lumenna";
+
+    /// The Run key's value for the profile at `profile`: the usual one's is "Lumenna", and each
+    /// other's a name of its own, so each profile opens at sign-in, or not, by itself.
+    /// `LUMENNA_RUN_NAME` gives the UI tests one of their own, so they never change what opens
+    /// at the person's sign-in.
+    fn name(profile: &Path) -> String {
+        if let Some(name) = std::env::var("LUMENNA_RUN_NAME").ok().filter(|name| !name.is_empty()) {
+            return name;
+        }
+        named(profile, usual(profile))
     }
 
-    pub fn on() -> bool {
-        system::read_string(system::RUN_KEY, &name()).is_some()
+    fn named(profile: &Path, usual: bool) -> String {
+        if usual { NAME.to_owned() } else { format!("{NAME} {}", tray::profile_key(profile)) }
+    }
+
+    fn usual(profile: &Path) -> bool {
+        crate::profile::default_directory().as_deref() == Some(profile)
+    }
+
+    /// What the value runs: this executable, in the background, on the profile at `profile`,
+    /// named only when it is not the usual one.
+    fn command(exe: &Path, profile: &Path, usual: bool) -> String {
+        let mut command = format!("\"{}\" --background", exe.display());
+        if !usual {
+            command.push_str(&format!(" --profile \"{}\"", profile.display()));
+        }
+        command
+    }
+
+    /// Whether this executable opens on the profile at `profile` at sign-in: the value is there
+    /// and starts this program on this profile, not one moved or another copy's.
+    pub fn on(profile: &Path) -> bool {
+        let Ok(exe) = std::env::current_exe() else { return false };
+        system::read_string(system::RUN_KEY, &name(profile))
+            .is_some_and(|stored| stored.eq_ignore_ascii_case(&command(&exe, profile, usual(profile))))
     }
 
     /// Turns it on or off for the profile at `profile`, or says why Windows would not.
-    pub fn set(on: bool, profile: &std::path::Path) -> Result<(), String> {
+    pub fn set(on: bool, profile: &Path) -> Result<(), String> {
         // Windows' message is a sentence; the app's own sentence ends it.
         let reason = |error: &dyn std::fmt::Display| error.to_string().trim().trim_end_matches('.').to_owned();
         if !on {
-            return system::delete_value(system::RUN_KEY, &name()).map_err(|error| reason(&error.message()));
+            return system::delete_value(system::RUN_KEY, &name(profile)).map_err(|error| reason(&error.message()));
         }
         let exe = std::env::current_exe().map_err(|error| reason(&error))?;
-        let mut command = format!("\"{}\" --background", exe.display());
-        // A profile other than the usual one is the one opened at sign-in, too.
-        if crate::profile::default_directory().as_deref() != Some(profile) {
-            command.push_str(&format!(" --profile \"{}\"", profile.display()));
+        system::write_string(system::RUN_KEY, &name(profile), &command(&exe, profile, usual(profile)))
+            .map_err(|error| reason(&error.message()))
+    }
+
+    /// Takes away every profile's value that starts this executable: what uninstalling it leaves
+    /// behind otherwise, since another profile's name is its own.
+    pub fn forget_all() {
+        let Ok(exe) = std::env::current_exe() else { return };
+        let starts = format!("\"{}\"", exe.display()).to_lowercase();
+        for name in system::value_names(system::RUN_KEY) {
+            let ours = name == NAME || name.starts_with(&format!("{NAME} "));
+            if ours && system::read_string(system::RUN_KEY, &name).is_some_and(|command| command.to_lowercase().starts_with(&starts)) {
+                let _ = system::delete_value(system::RUN_KEY, &name);
+            }
         }
-        system::write_string(system::RUN_KEY, &name(), &command).map_err(|error| reason(&error.message()))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn the_usual_profile_opens_at_sign_in_as_lumenna_and_another_under_a_name_of_its_own() {
+            let work = Path::new(r"D:\work");
+            assert_eq!(named(Path::new(r"C:\data"), true), "Lumenna");
+            assert_eq!(named(work, false), format!("Lumenna {}", tray::profile_key(work)));
+            assert_ne!(named(work, false), named(Path::new(r"D:\home"), false));
+        }
+
+        #[test]
+        fn a_profile_other_than_the_usual_one_is_named_in_what_opens_at_sign_in() {
+            let exe = Path::new(r"C:\Programs\Lumenna\lumenna.exe");
+            assert_eq!(command(exe, Path::new(r"C:\data"), true), r#""C:\Programs\Lumenna\lumenna.exe" --background"#);
+            assert_eq!(
+                command(exe, Path::new(r"D:\work"), false),
+                r#""C:\Programs\Lumenna\lumenna.exe" --background --profile "D:\work""#
+            );
+        }
     }
 }
 
@@ -1007,11 +1074,9 @@ impl Dialog for Backups {
                     set("backup-dir", &folder.display().to_string());
                 }
             }
-            // Into this device's backups, as the automatic ones are.
-            (BACK_UP, BN_CLICKED) => app::with(|app| match app.back_up() {
-                Ok(said) => say(page, &said),
-                Err(error) => prompts::fail(sheet(page), &sentence(&error)),
-            }),
+            // Into this device's backups, as the automatic ones are; where is said on this page,
+            // the dialog in front, once it is taken.
+            (BACK_UP, BN_CLICKED) => app::with(App::back_up),
             (RESTORE, BN_CLICKED) => import(sheet(page), "Restore from a Backup", &BACKUPS),
             _ => {}
         }

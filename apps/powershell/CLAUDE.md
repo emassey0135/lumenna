@@ -54,8 +54,9 @@ one `lum rpc` the module keeps for its session. `Lumenna/` is the module as it s
   standard error into error records. Its standard error is drained as it comes
   (`ReadToEndAsync`), so it never blocks on it, and said if it stops.
 - **Finding `lum`**: on `PATH`, else beside the module, else the Windows installer's
-  `%LOCALAPPDATA%\Programs\Lumenna`. A relative `-Profile` is resolved against PowerShell's
-  location, not the process's.
+  `%LOCALAPPDATA%\Programs\Lumenna`. A relative `-Profile`, or `$env:LUMENNA_PROFILE`, is
+  resolved against PowerShell's location, not the process's (`Resolve-LumennaProfile`), and the
+  server is told the whole path.
 - **Completers are registered by the module** (`Register-ArgumentCompleter`, from
   `$script:Completed`), never in a parameter's `[ArgumentCompleter]`, whose scriptblock cannot see
   the module's own functions. Each asks `complete` (a line, a filter, a project, a label), whose
@@ -65,11 +66,14 @@ one `lum rpc` the module keeps for its session. `Lumenna/` is the module as it s
   `Select-Object -First` inside a cmdlet (5.1 leaves its stopping the pipeline in the caller's
   `-ErrorVariable`), `-ErrorAction Ignore` rather than `SilentlyContinue` for what may not be
   there, arrays unwrapped before `ConvertTo-Json` (5.1 writes a wrapped one as `value` and
-  `Count`), and any `.ps1` with a character outside ASCII saved with a byte order mark, as the
+  `Count`; `Set-LumennaArgument`, for a cmdlet's parameters and `Invoke-LumennaOperation`'s
+  arguments alike, assigning rather than returning, since the pipeline may wrap it again), and any `.ps1` with a character outside ASCII saved with a byte order mark, as the
   generator saves its own.
 - **Tests**: `tests/run.ps1` runs the Pester tests in whichever edition starts it, with Pester 5
   or later from `-Modules` (5.1 ships Pester 3), against `target/debug/lum`
   (`cargo build -p lumenna-cli` first). CI's `powershell` job runs them on Windows in both
   editions and on Linux in PowerShell 7, for any change under `apps/powershell` or `apps/cli`.
   Each round trip has a temporary profile of its own, whose server is stopped before the profile
-  is deleted (Windows will not delete a database a process holds open).
+  is deleted (Windows will not delete a database a process holds open). A server that never
+  answers, or stops with a request in hand, is a stand-in `lum` (a batch file, a shell script)
+  that `Find-Lum` is mocked to find.

@@ -25,6 +25,7 @@ mod pairing;
 mod picker;
 mod proposal;
 mod reminders;
+mod rows;
 mod settings;
 mod shell;
 mod shortcuts;
@@ -38,10 +39,20 @@ mod tree;
 mod view;
 mod widgets;
 
+/// What the installer's uninstaller starts `lumenna.exe` with, to take away what it wrote of
+/// its own that the installer cannot name: every profile's value opening it at sign-in, and the
+/// Jump List.
+const UNINSTALL: &str = "--uninstall";
+
 pub fn run() {
     // Started by the Widgets board, to draw its widgets: no window.
     if widgets::requested() {
         widgets::serve();
+        return;
+    }
+    if std::env::args().skip(1).any(|argument| argument == UNINSTALL) {
+        settings::sign_in::forget_all();
+        jump_list::forget();
         return;
     }
     app::run();

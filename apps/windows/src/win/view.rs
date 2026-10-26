@@ -63,13 +63,14 @@ pub trait View {
         false
     }
 
-    /// Alt+Enter, Properties: the selected row's own form. Returns whether there was one.
-    fn properties(&self, _app: &App) -> bool {
+    /// Escape, with focus in the view.
+    fn escape(&self, _app: &App, _focus: HWND) -> bool {
         false
     }
 
-    /// Escape, with focus in the view.
-    fn escape(&self, _app: &App, _focus: HWND) -> bool {
+    /// Whether its tree folded a row itself since this was last asked, which the tree has
+    /// already said.
+    fn took_fold(&self) -> bool {
         false
     }
 

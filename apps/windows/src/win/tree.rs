@@ -109,9 +109,16 @@ impl Tree {
         self.busy.set(true);
         self.marks.show(items.iter().any(|item| item.swatch.is_some()));
         if same {
+            // A checkbox the tree flipped itself, on Space or a click, is put back as the app has
+            // it when the app refused the change or it failed: the row is the same, the box not.
             let changed: Vec<(usize, Item)> = {
                 let old = self.items.borrow();
-                items.iter().enumerate().filter(|(i, item)| old[*i] != **item).map(|(i, item)| (i, item.clone())).collect()
+                items
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, item)| old[*i] != **item || item.checked.is_some_and(|checked| self.is_checked(*i) != checked))
+                    .map(|(i, item)| (i, item.clone()))
+                    .collect()
             };
             let handles = self.handles.borrow().clone();
             for (index, item) in changed {
@@ -183,6 +190,11 @@ impl Tree {
 
     pub fn len(&self) -> usize {
         self.items.borrow().len()
+    }
+
+    /// The key of the row at `index`.
+    pub fn key(&self, index: usize) -> Option<String> {
+        self.items.borrow().get(index).map(|item| item.key.clone())
     }
 
     pub fn index_of(&self, key: &str) -> Option<usize> {

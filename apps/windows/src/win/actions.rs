@@ -31,6 +31,22 @@ pub fn fold(app: &App, key: String, action: Offered, selected: Option<String>) {
     }
 }
 
+/// Runs one of row `key`'s actions as the app's, but for a task's own form: the details pane,
+/// which focus moves to. Every other form — a block's, a row's reminders, the day's proposals —
+/// is the app's to open.
+pub fn act_on_row(app: &App, key: &str, action: &Offered) {
+    if opens_details(action) {
+        app.open_detail();
+    } else {
+        app.crux.send(ShellEvent::ActOn(ActingOn::Row(key.to_owned()), action.clone()));
+    }
+}
+
+/// Whether an action is a task's own form, which is the details pane.
+fn opens_details(action: &Offered) -> bool {
+    action.asks == Asks::Form && action.subject == Subject::Task && matches!(action.kind, ActionKind::Edit | ActionKind::EditTask)
+}
+
 /// A context menu of `actions`: each under its spoken name, with a separator before the
 /// first that removes something.
 pub fn menu(actions: &[Offered]) -> Vec<(u16, String)> {
@@ -48,8 +64,7 @@ pub fn menu(actions: &[Offered]) -> Vec<(u16, String)> {
 /// Windows' own commands do. A task's form is the details pane, which focus moves to rather
 /// than a dialog opening.
 pub fn label(action: &Offered) -> String {
-    let details = action.subject == Subject::Task && matches!(action.kind, ActionKind::Edit | ActionKind::EditTask);
-    let asks = action.asks != Asks::Nothing && !details;
+    let asks = action.asks != Asks::Nothing && !opens_details(action);
     format!("{}{}", action.title.replace('&', "&&"), if asks { "..." } else { "" })
 }
 

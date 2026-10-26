@@ -9,15 +9,15 @@ use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenC
 use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows::Win32::System::Ole::CF_UNICODETEXT;
 use windows::Win32::System::Registry::{
-    HKEY_CURRENT_USER, REG_DWORD, REG_SZ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegDeleteKeyValueW, RegGetValueW,
-    RegSetKeyValueW,
+    HKEY, HKEY_CURRENT_USER, KEY_READ, REG_DWORD, REG_SZ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegCloseKey, RegDeleteKeyValueW,
+    RegEnumValueW, RegGetValueW, RegOpenKeyExW, RegSetKeyValueW,
 };
 use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
 use windows::Win32::UI::Shell::{
     FOS_FORCEFILESYSTEM, FOS_OVERWRITEPROMPT, FOS_PICKFOLDERS, FileOpenDialog, FileSaveDialog, IFileDialog,
     IFileOpenDialog, IFileSaveDialog, IShellItem, SHCreateItemFromParsingName, SIGDN_FILESYSPATH,
 };
-use windows::core::{HSTRING, Interface, PCWSTR};
+use windows::core::{HSTRING, Interface, PCWSTR, PWSTR};
 
 /// What Windows starts at sign-in.
 pub const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -88,6 +88,29 @@ pub fn write_string(key: &str, name: &str, value: &str) -> windows::core::Result
 pub fn delete_value(key: &str, name: &str) -> windows::core::Result<()> {
     let status = unsafe { RegDeleteKeyValueW(HKEY_CURRENT_USER, &HSTRING::from(key), &HSTRING::from(name)) };
     if status == ERROR_FILE_NOT_FOUND { Ok(()) } else { status.ok() }
+}
+
+/// The names of a key's values, none where it is missing.
+pub fn value_names(key: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut opened = HKEY::default();
+    if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, &HSTRING::from(key), None, KEY_READ, &mut opened) }.is_err() {
+        return names;
+    }
+    // A value's name is at most 16,383 characters.
+    let mut buffer = vec![0u16; 16_384];
+    for index in 0.. {
+        let mut length = buffer.len() as u32;
+        let status = unsafe { RegEnumValueW(opened, index, Some(PWSTR(buffer.as_mut_ptr())), &mut length, None, None, None, None) };
+        if status.is_err() {
+            break;
+        }
+        names.push(String::from_utf16_lossy(&buffer[..length as usize]));
+    }
+    unsafe {
+        let _ = RegCloseKey(opened);
+    }
+    names
 }
 
 /// Puts text on the clipboard.

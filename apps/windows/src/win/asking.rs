@@ -23,9 +23,13 @@ pub fn ask(app: &App) {
     }
     let destructive = asking.action.as_ref().is_some_and(|action| action.destructive);
     let answer = match &asking.question {
-        // Not asked by a dialog: the task's form is the details pane, which the list opens
-        // itself, and nothing else asks this way yet.
-        Question::Immediate | Question::Form => None,
+        Question::Immediate => None,
+        // The one form the app hands back, a task's (Properties, run as the app's): the
+        // details pane, which shows the task in hand. The question is closed as it opens.
+        Question::Form => {
+            app.open_detail();
+            None
+        }
         Question::Confirm { title, message, yes } => prompts::confirm(owner, title, message, yes).then_some(Answer::Yes),
         Question::Choose { title, message, answers } => {
             let names: Vec<&str> = answers.iter().map(|answer| answer.title.as_str()).collect();

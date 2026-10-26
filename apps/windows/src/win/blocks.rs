@@ -1,166 +1,128 @@
-//! Every block series, drawn from the app's view of Blocks (`view.list`): Enter changes one,
-//! Delete runs its Delete, and the context menu offers what the core gives each row, run as
-//! the app's, its form the app's block form.
+//! Every block series, drawn from the app's view of Blocks (`view.list`), with Add Block… above
+//! them: Enter changes one, Delete runs its Delete, and the context menu offers what the core
+//! gives each row, run as the app's (`rows.rs`), its form the app's block form.
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
-use lumenna_app::{ActingOn, Offered, ViewModel};
+use lumenna_app::{BlockEvent, ViewModel};
 use lumenna_app::lines::Lines;
 use lumenna_ffi::ShellEvent;
 use lumenna_records::{ActionKind, RowView};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT};
-use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, NMTVKEYDOWN, TVN_KEYDOWN, TVN_SELCHANGEDW, WC_STATICW};
-use windows::Win32::UI::Input::KeyboardAndMouse::VK_DELETE;
+use windows::Win32::UI::Controls::{NM_DBLCLK, NMHDR, WC_BUTTONW, WC_STATICW};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
+use windows::Win32::UI::WindowsAndMessaging::{BN_CLICKED, BS_PUSHBUTTON, WS_TABSTOP};
 
 use super::app::App;
 use super::controls::{self, rect};
-use super::tree::{Item, Tree};
+use super::rows::{Rows, Shown};
+use super::tree::Item;
 use super::view::{Metrics, View};
 use super::actions;
 
 const TREE: u16 = 600;
+const ADD: u16 = 601;
 
 pub struct BlockList {
+    add: HWND,
     count: HWND,
-    pub tree: Tree,
-    rows: RefCell<Vec<RowView>>,
-    /// Each row's actions, as the list offers them in short, in the same order.
-    offers: RefCell<Vec<Vec<Offered>>>,
+    pub rows: Rows<RowView>,
 }
 
 impl BlockList {
     pub fn create(_app: &App, pane: HWND) -> Rc<Self> {
+        // The count first: an empty static made after the button would be named after it.
         let count = controls::create(pane, WC_STATICW, "", SS_NOPREFIX.0, 0, 0);
-        let tree = Tree::create(pane, TREE, "Blocks", false);
-        Rc::new(Self { count, tree, rows: RefCell::new(Vec::new()), offers: RefCell::new(Vec::new()) })
-    }
-
-    fn selected(&self) -> Option<RowView> {
-        let index = self.tree.selected()?;
-        self.rows.borrow().get(index).cloned()
+        // The day's own button, as the day has it: a new block, which the app lands on here.
+        let add = controls::create(pane, WC_BUTTONW, "Add Block...", BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, ADD);
+        let rows = Rows::create(pane, TREE, "Blocks", false);
+        Rc::new(Self { add, count, rows })
     }
 
     /// Draws the app's Blocks: `landed` when the app moved the row in hand itself.
     pub fn draw(&self, app: &App, view: &ViewModel, lines: &Lines, landed: bool) {
         let Some(list) = &view.list else { return };
         controls::set_text(self.count, &lines.readback);
-        let items = list
+        let shown = list
             .items
             .iter()
             .zip(&lines.list)
-            .map(|(item, line)| Item { key: item.row.id.clone(), text: line.text.clone(), depth: item.row.depth, checked: None, expanded: item.row.expanded, swatch: item.row.swatch.clone() })
+            .map(|(item, line)| Shown {
+                item: Item {
+                    key: item.row.id.clone(),
+                    text: line.text.clone(),
+                    depth: item.row.depth,
+                    checked: None,
+                    expanded: item.row.expanded,
+                    swatch: item.row.swatch.clone(),
+                },
+                row: item.row.clone(),
+                offered: actions::of_row(&list.offered, &item.actions),
+            })
             .collect();
-        *self.rows.borrow_mut() = list.items.iter().map(|item| item.row.clone()).collect();
-        *self.offers.borrow_mut() = list.items.iter().map(|item| actions::of_row(&list.offered, &item.actions)).collect();
-        let rebuilt = self.tree.set(items);
-        if (landed || rebuilt)
-            && let Some(index) = view.focus.as_deref().and_then(|key| self.tree.index_of(key))
-        {
-            self.tree.select_quietly(index);
-        }
-        if landed && controls::lost(app.main) {
-            controls::focus(self.tree.hwnd);
-        }
+        self.rows.draw(app, shown, view.focus.as_deref(), landed);
     }
 
-    /// The selected row's actions.
-    fn selected_actions(&self) -> Option<Vec<Offered>> {
-        let index = self.tree.selected()?;
-        self.offers.borrow().get(index).cloned()
-    }
-
-    /// Runs one of the selected row's actions as the app's: its form, the block form or the
-    /// reminder list, is the app's to open.
-    fn act(&self, app: &App, action: &Offered) {
-        if let Some(row) = self.selected() {
-            app.crux.send(ShellEvent::ActOn(ActingOn::Row(row.id), action.clone()));
+    /// The selected row's Edit, its form, as the app's.
+    fn edit(&self, app: &App) {
+        let action = self.rows.selected_actions().and_then(|offered| actions::of_kind(&offered, &[ActionKind::Edit]));
+        if let (Some(key), Some(action)) = (self.rows.selected_key(), action) {
+            actions::act_on_row(app, &key, &action);
         }
-    }
-
-    /// The selected row's action of one of `kinds`, after the notification being handled.
-    fn act_later(app: &App, kinds: &'static [ActionKind]) {
-        app.defer(move |app| {
-            if let Some(blocks) = app.blocks()
-                && let Some(action) = blocks.selected_actions().and_then(|offered| actions::of_kind(&offered, kinds))
-            {
-                blocks.act(app, &action);
-            }
-        });
     }
 }
 
 impl View for BlockList {
     fn focus_target(&self) -> HWND {
-        self.tree.hwnd
+        self.rows.tree.hwnd
     }
 
     fn layout(&self, width: i32, height: i32, m: Metrics) {
         let gap = m.gap();
         controls::place(self.count, rect(gap, gap, width - 2 * gap, m.line));
-        let y = gap + m.line + gap;
-        controls::place(self.tree.hwnd, rect(gap, y, width - 2 * gap, (height - y - gap).max(m.line)));
+        let mut y = gap + m.line + gap;
+        controls::place(self.add, rect(gap, y, m.px(96), m.button));
+        y += m.button + gap;
+        controls::place(self.rows.tree.hwnd, rect(gap, y, width - 2 * gap, (height - y - gap).max(m.line)));
     }
 
-
-    fn notify(&self, app: &App, header: &NMHDR, lparam: LPARAM) -> Option<isize> {
-        if header.hwndFrom != self.tree.hwnd {
-            return None;
-        }
-        match header.code {
-            TVN_SELCHANGEDW if !self.tree.busy() => {
-                if let Some(row) = self.selected() {
-                    app.crux.send(ShellEvent::Focus(row.id));
-                }
-                Some(0)
-            }
-            TVN_KEYDOWN if unsafe { &*(lparam.0 as *const NMTVKEYDOWN) }.wVKey == VK_DELETE.0 => {
-                app.crux.send(ShellEvent::Key("delete".into()));
-                Some(1)
-            }
-            NM_DBLCLK => {
-                Self::act_later(app, &[ActionKind::Edit]);
-                Some(1)
-            }
-            _ => None,
-        }
-    }
-
-    fn context_menu(&self, app: &App, control: HWND, point: Option<POINT>) -> bool {
-        if control != self.tree.hwnd {
-            return false;
-        }
-        if let Some(index) = point.and_then(|p| self.tree.index_at(p)) {
-            self.tree.select(index);
-        }
-        let (Some(index), Some(offered)) = (self.tree.selected(), self.selected_actions()) else { return true };
-        let at = point.unwrap_or_else(|| self.tree.menu_point(index));
-        let items = actions::menu(&offered);
-        let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
-        if let Some(action) = app.popup(&items, at).and_then(|command| actions::chosen(&offered, command)) {
-            self.act(app, &action);
-        }
-        true
-    }
-
-    fn properties(&self, app: &App) -> bool {
-        let Some(action) = self.selected_actions().and_then(|offered| actions::of_kind(&offered, &[ActionKind::Edit])) else { return false };
-        self.act(app, &action);
-        true
-    }
-
-    fn enter(&self, app: &App, focus: HWND) -> bool {
-        if focus == self.tree.hwnd {
-            if let Some(action) = self.selected_actions().and_then(|offered| actions::of_kind(&offered, &[ActionKind::Edit])) {
-                self.act(app, &action);
-            }
+    fn command(&self, app: &App, control: HWND, _id: u16, code: u16) -> bool {
+        if control == self.add && u32::from(code) == BN_CLICKED {
+            app.crux.send(ShellEvent::Block(BlockEvent::New { start: None, minutes: None }));
             return true;
         }
         false
     }
 
+    fn notify(&self, app: &App, header: &NMHDR, lparam: LPARAM) -> Option<isize> {
+        if header.hwndFrom == self.rows.tree.hwnd && header.code == NM_DBLCLK {
+            app.defer(|app| {
+                if let Some(blocks) = app.blocks() {
+                    blocks.edit(app);
+                }
+            });
+            return Some(1);
+        }
+        self.rows.notify(app, header, lparam)
+    }
+
+    fn context_menu(&self, app: &App, control: HWND, point: Option<POINT>) -> bool {
+        self.rows.context_menu(app, control, point, |key, _, action| actions::act_on_row(app, key, action))
+    }
+
+    fn enter(&self, app: &App, focus: HWND) -> bool {
+        if focus == self.rows.tree.hwnd {
+            self.edit(app);
+            return true;
+        }
+        false
+    }
+
+    fn took_fold(&self) -> bool {
+        self.rows.took_fold()
+    }
+
     fn windows(&self) -> Vec<HWND> {
-        vec![self.count, self.tree.hwnd]
+        vec![self.count, self.add, self.rows.tree.hwnd]
     }
 }

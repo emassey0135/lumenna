@@ -75,13 +75,19 @@ pub struct Instance(#[allow(dead_code)] HANDLE);
 /// The window class for this profile's main window, which is how a second instance finds
 /// the first. One per profile, so two profiles can run side by side.
 pub fn class_name(profile: &std::path::Path) -> String {
-    format!("{CLASS_PREFIX}{:016x}", fnv(&profile.display().to_string().to_lowercase()))
+    format!("{CLASS_PREFIX}{}", profile_key(profile))
+}
+
+/// What names everything of a profile's own — its lock, its window class, its sign-in value —
+/// from its path, as Windows compares paths: whatever their case.
+pub fn profile_key(profile: &std::path::Path) -> String {
+    format!("{:016x}", fnv(&profile.display().to_string().to_lowercase()))
 }
 
 /// Becomes the profile's running instance, or — if there already is one — shows it, handing it
 /// the way in this one was started with, and returns `None`.
 pub fn claim(profile: &std::path::Path, launch: Option<&str>) -> Option<Instance> {
-    let name = format!("Local\\Lumenna-{:016x}", fnv(&profile.display().to_string().to_lowercase()));
+    let name = format!("Local\\Lumenna-{}", profile_key(profile));
     let mutex = unsafe { CreateMutexW(None, true, &HSTRING::from(name)) }.ok()?;
     if unsafe { GetLastError() } != ERROR_ALREADY_EXISTS {
         return Some(Instance(mutex));

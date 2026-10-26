@@ -70,6 +70,10 @@ use crate::{profile, speech};
 /// came from, so it waits until that window has finished sending it.
 const WM_DEFERRED: u32 = WM_APP + 3;
 
+/// Runs what a thread beside the window finished, on the window's thread: a backup taken, the
+/// reminders due.
+const WM_THEN: u32 = WM_APP + 9;
+
 /// The app's icon, as build.rs embeds it.
 pub const ICON: u16 = 1;
 
@@ -84,6 +88,9 @@ const TIMER_LAUNCH: usize = 4;
 
 /// Something to do once the notification being handled has returned.
 type Deferred = Box<dyn FnOnce(&App)>;
+
+/// Something a thread beside the window hands back to it to finish.
+type Then = Box<dyn FnOnce(&App) + Send>;
 
 /// The icon chosen from the keyboard: `NIN_SELECT | NINF_KEY`, which the bindings lack.
 const NIN_KEYSELECT: u32 = windows::Win32::UI::Shell::NIN_SELECT | 1;
@@ -170,6 +177,10 @@ pub struct App {
     ticks: Cell<u32>,
     /// A way in from outside (`--launch`, a Jump List's task) waiting for the app to be still.
     launching: RefCell<Option<String>>,
+    /// One in the afternoon as Windows writes it, to tell when its clock changed.
+    clock: RefCell<String>,
+    /// Whether the reminders due are being asked for off the window's thread now.
+    delivering: Cell<bool>,
 }
 
 thread_local! {
@@ -358,12 +369,13 @@ impl App {
             }
         };
         crux.send(ShellEvent::Clock(proposal::style()));
+        let clock = lumenna_ffi::Locale::time(&Formats, 13, 0);
         // Title Case, as Windows writes its buttons and menus.
         crux.send(ShellEvent::Capitals(Capitals::Title));
         // How pairing's sentences call this device; it finds devices on its own network.
         crux.send(ShellEvent::PairingAs { called: "this PC".to_owned(), nearby: true });
         // Whether it opens at sign-in, the app's setting of keeping Lumenna running.
-        crux.send(settings::background());
+        crux.send(settings::background(&directory));
         // Resident, so in front for as long as it runs: the device's sync process once another
         // device is paired, which then answers the command surface at the profile's pipe, as
         // the daemon would, so Emacs and the BTSpeak app reach it.
@@ -401,6 +413,8 @@ impl App {
             quick_add: RefCell::new(None),
             ticks: Cell::new(0),
             launching: RefCell::new(None),
+            clock: RefCell::new(clock),
+            delivering: Cell::new(false),
         });
         app.update_font();
         dark::window(main);
@@ -499,9 +513,11 @@ impl App {
     /// A turn the app left: drawn, its question asked once the app is still, then what it
     /// says said.
     fn take_turn(&self, turn: lumenna_ffi::Turn) {
-        if turn.seq <= self.seq.replace(turn.seq) {
+        // A stale turn leaves the newest taken as it was.
+        if turn.seq <= self.seq.get() {
             return;
         }
+        self.seq.set(turn.seq);
         let landed = turn.view.landing != self.landing.replace(turn.view.landing);
         // What the app holds this moment, ahead of any turn still queued: where it is, and
         // which of its dialogs are open.
@@ -570,9 +586,7 @@ impl App {
         }
         // The tree says a row it folded itself is expanded or collapsed; a proposal about to
         // open is said by its screen, once it is up.
-        let folded = list.is_some_and(|list| list.folded_by_tree.replace(false))
-            | day.is_some_and(|day| day.folded_by_tree.replace(false))
-            | self.sidebar.folded_by_tree.replace(false);
+        let folded = self.content().is_some_and(|content| content.view().took_fold()) | self.sidebar.folded_by_tree.replace(false);
         let opening = turn.view.proposal.as_ref().filter(|_| screen.is_none()).map(|p| p.announcement.clone());
         let said: Vec<String> = turn
             .said
@@ -706,7 +720,6 @@ impl App {
         self.device.settings(None).map(|list| list.settings).unwrap_or_default()
     }
 
-    /// Takes a backup now, into this device's backups, as the automatic ones are; says where.
     /// Takes the automatic backup if one is due, off the window's thread, saying so only if it
     /// failed.
     fn back_up_if_due(&self) {
@@ -719,9 +732,20 @@ impl App {
         });
     }
 
-    pub fn back_up(&self) -> Result<String> {
-        let done = self.device.backup()?;
-        Ok(speech::sentence(&speech::announcement(&done.announcement, &done.notices)))
+    /// Takes a backup now, into this device's backups, as the automatic ones are, off the
+    /// window's thread; then says where, over whatever is in front, or why it failed.
+    pub fn back_up(&self) {
+        let device = Arc::clone(&self.device);
+        let window = Poster::new(self.main);
+        std::thread::spawn(move || {
+            let done: Result<String> =
+                device.backup().map(|done| speech::sentence(&speech::announcement(&done.announcement, &done.notices)));
+            let then: Then = Box::new(move |app: &App| match done {
+                Ok(said) => app.say(&said),
+                Err(error) => prompts::fail(app.owner(), &sentence(&error)),
+            });
+            window.send(WM_THEN, then);
+        });
     }
 
     /// What dialogs this window opens are owned by: the dialog in front, else the window.
@@ -904,6 +928,13 @@ impl App {
         }
         // Colours' marks in the appearance now, or none under high contrast.
         swatch::redraw_all();
+        // Windows' clock as the regional settings now write it, which the app's sentences and
+        // every line are said in.
+        let clock = lumenna_ffi::Locale::time(&Formats, 13, 0);
+        if *self.clock.borrow() != clock {
+            *self.clock.borrow_mut() = clock;
+            self.crux.send(ShellEvent::Clock(proposal::style()));
+        }
         let font = self.message_font();
         if self.font_made_from.get() != (font.lfHeight, font.lfFaceName) {
             self.update_font();
@@ -1053,14 +1084,19 @@ impl App {
         class.eq_ignore_ascii_case("Edit").then_some(focus)
     }
 
-    /// The task the Task menu acts on: the one in the details when focus is there, else the
-    /// one selected in the list or the day.
+    /// The task whose details Edit Details opens: the one in the details when focus is there,
+    /// else the one selected in the list, where the app offers its details (not in the trash),
+    /// or a sitting's in the day.
     fn task_in_hand(&self) -> Option<String> {
         if controls::within(self.panes[2], controls::focused()) {
             return self.detail.task_id();
         }
         match self.content()? {
-            Content::Tasks(list) => list.selected().map(|row| row.id),
+            Content::Tasks(list) => {
+                let offered = list.rows.selected_actions()?;
+                actions::of_kind(&offered, &[ActionKind::Edit, ActionKind::EditTask])?;
+                list.rows.selected().map(|row| row.id)
+            }
             Content::Day(day) => day.selected_task(),
             Content::Blocks(_) => None,
         }
@@ -1071,7 +1107,7 @@ impl App {
         if let Some(Content::Tasks(list)) = self.content()
             && !controls::within(self.panes[2], controls::focused())
         {
-            return list.selected_actions();
+            return list.rows.selected_actions();
         }
         self.detail_actions_in_hand()
     }
@@ -1091,24 +1127,13 @@ impl App {
     /// A Task-menu command: the task in hand's action of that kind, as the core offers it, so
     /// Mark Done marks a done task not done, and in the trash Restore restores.
     fn act_on_task_in_hand(&self, kinds: &[ActionKind]) {
-        // The list's row in hand is the app's, and so is saying when it has no such action.
-        if !controls::within(self.panes[2], controls::focused())
-            && let Some(list) = self.task_list()
-        {
-            if list.selected().is_none() {
-                return self.say("No task is selected");
-            }
+        // A task list's row in hand is the app's, and so is saying when it has no such action.
+        if !controls::within(self.panes[2], controls::focused()) && self.task_list().is_some() {
             return self.crux.send(ShellEvent::Run(kinds.to_vec()));
         }
-        let Some(offered) = self.detail_actions_in_hand() else {
-            return self.say("No task is selected");
-        };
-        let Some(action) = actions::of_kind(&offered, kinds) else {
-            // Why the task the details show has none, as the app says it: beside the day that
-            // is a sitting's task, not the row in hand.
-            return self.crux.send(ShellEvent::Details(DetailsEvent::Run(kinds.to_vec())));
-        };
-        self.detail.act(self, action);
+        // Elsewhere the task the details show, beside the day a sitting's: the app runs its
+        // action, or says why it has none.
+        self.crux.send(ShellEvent::Details(DetailsEvent::Run(kinds.to_vec())));
     }
 
     /// Names the Task menu's Mark Done item as the task in hand's own, Mark Not Done when it
@@ -1127,8 +1152,9 @@ impl App {
             2 => self.escape(),
             menu::NEW_TASK => self.quick_add(false),
             menu::NEW_BLOCK => {
-                // On the day shown, which is today from anywhere else.
-                if self.day().is_none() {
+                // Added where blocks are shown, to land on: the day, or the Blocks list; else
+                // today.
+                if self.day().is_none() && self.blocks().is_none() {
                     self.go(Place::Today, true);
                 }
                 self.crux.send(ShellEvent::Block(lumenna_app::BlockEvent::New { start: None, minutes: None }));
@@ -1137,11 +1163,9 @@ impl App {
             menu::NEW_LABEL => self.sidebar.add(self, SidebarGroup::Labels),
             menu::NEW_FILTER => self.sidebar.add(self, SidebarGroup::Filters),
             menu::SYNC_NOW => self.crux.send(ShellEvent::Devices(lumenna_app::DevicesEvent::SyncNow)),
-            menu::BACK_UP => match self.back_up() {
-                Ok(said) => self.say(&said),
-                Err(error) => self.fail(&sentence(&error)),
-            },
+            menu::BACK_UP => self.back_up(),
             menu::SETTINGS => settings::show(self, Page::General),
+            menu::DEVICES => settings::show(self, Page::Devices),
             menu::EXPORT_IMPORT => settings::show(self, Page::Export),
             menu::RESTORE_BACKUP => settings::import(self.main, "Restore from a Backup", &settings::BACKUPS),
             menu::CLOSE_WINDOW => self.hide_window(),
@@ -1166,7 +1190,8 @@ impl App {
                 }
             }
             menu::FILTER => {
-                if self.task_list().is_none() {
+                // The trash and History list what they hold, with no filter to change.
+                if self.task_list().is_none_or(|list| !list.has_filter()) {
                     self.go(Place::Tasks, false);
                 }
                 if let Some(list) = self.task_list() {
@@ -1189,11 +1214,11 @@ impl App {
             }
             menu::SAVE_TASK => self.detail.save(self),
             menu::PROPERTIES => {
-                // The details are already the task's own form.
-                if !controls::within(self.panes[2], controls::focused())
-                    && !self.content().is_some_and(|content| content.view().properties(self))
-                {
-                    self.say("No task or block is selected");
+                // The row in hand's own form, as the app has it: a task's details, which the
+                // details pane already is while focus is there, or a block's form. A row without
+                // one is the app's to refuse.
+                if !controls::within(self.panes[2], controls::focused()) {
+                    self.crux.send(ShellEvent::Run(vec![ActionKind::Edit, ActionKind::EditTask]));
                 }
             }
             menu::KEYBOARD_HELP => help::show(self.main),
@@ -1217,7 +1242,7 @@ impl App {
                 self.crux.send(ShellEvent::Day(step));
                 self.follow_place();
                 if let Some(day) = self.day() {
-                    controls::focus(day.tree.hwnd);
+                    controls::focus(day.rows.tree.hwnd);
                 }
             }
 
@@ -1354,10 +1379,25 @@ impl App {
     /// gives them: another (`lum notify`, another copy) may hold that right, and this takes
     /// it when that one stops.
     fn give_reminders(&self) {
-        let Some(toasts) = &self.toasts else { return };
-        // The device's own, as the Mac gives them: it takes the right to give them while no
-        // other process has it, and keeps it.
-        let Ok(due) = self.device.deliver_reminders(None) else { return };
+        // One look at a time, off the window's thread: it reads the store.
+        if self.toasts.is_none() || self.delivering.replace(true) {
+            return;
+        }
+        let device = Arc::clone(&self.device);
+        let window = Poster::new(self.main);
+        std::thread::spawn(move || {
+            // The device's own, as the Mac gives them: it takes the right to give them while no
+            // other process has it, and keeps it.
+            let due = device.deliver_reminders(None);
+            let then: Then = Box::new(move |app: &App| app.reminders_due(due.ok()));
+            window.send(WM_THEN, then);
+        });
+    }
+
+    /// Shows as toasts what the device found due, on the window's thread, which the toasts are.
+    fn reminders_due(&self, due: Option<lumenna_records::reminders::DueReminders>) {
+        self.delivering.set(false);
+        let (Some(toasts), Some(due)) = (&self.toasts, due) else { return };
         self.reminders.set(!due.elsewhere);
         let window = Poster::new(self.main);
         for reminder in &due.due {
@@ -1396,21 +1436,21 @@ impl App {
                     self.crux.send(ShellEvent::ShowBlock { series: reminder.target.clone(), date: reminder.occurrence.clone() });
                     self.follow_place();
                     if let Some(day) = self.day() {
-                        controls::focus(day.tree.hwnd);
+                        controls::focus(day.rows.tree.hwnd);
                     }
                 } else {
-                    self.go(Place::Tasks, true);
-                    if let Some(list) = self.task_list() {
-                        list.land_on(&reminder.target);
-                    }
+                    // The task's own way in, as a search result opens it: the app goes to Tasks
+                    // with the task in hand and its details shown.
+                    self.launch(format!("task:{}", reminder.target));
                 }
             }
             Answered::Summary => self.show_window(),
-            // Today's own Replan from Now, as the Day menu runs it, once the window is in front.
+            // The app's Replan from Now, once the window is in front. Not the app's
+            // `DueEvent::Replan`, which dismisses the warning once something is replanned:
+            // that works on the reminders the app looked for itself, and these are the
+            // device's own delivery.
             Answered::Replan => {
                 self.show_window();
-                self.crux.send(ShellEvent::Day(DayMove::Now));
-                self.follow_place();
                 self.crux.send(ShellEvent::Proposal(lumenna_app::ProposalEvent::Replan));
             }
         }
@@ -1518,6 +1558,7 @@ unsafe extern "system" fn main_procedure(hwnd: HWND, message: u32, wparam: WPARA
             WM_SAY => app.say(&said(lparam)),
             WM_EVENT => app.crux.send(taken::<lumenna_ffi::ShellEvent>(lparam)),
             WM_REMINDER => app.reminder_answered(taken(lparam)),
+            WM_THEN => taken::<Then>(lparam)(&app),
             WM_DEFERRED => {
                 let action = app.deferred.borrow_mut().pop_front();
                 if let Some(action) = action {

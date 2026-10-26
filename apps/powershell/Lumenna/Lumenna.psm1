@@ -21,11 +21,27 @@ $script:Listings = @{
     operations = @{ Property = 'operations'; Type = 'Lumenna.Operation' }
 }
 
-# The profile a cmdlet was given, as a whole path: relative to PowerShell's location, which is
-# not the process's.
-function Resolve-LumennaProfile($Cmdlet, [string] $ProfileDirectory) {
+# The profile a cmdlet was given, else LUMENNA_PROFILE's as it is now, as a whole path: relative
+# to PowerShell's location (`$Paths`, a session state's), which is not the process's that `lum`
+# would resolve it against. $null for the platform's own.
+function Resolve-LumennaProfile($Paths, [string] $ProfileDirectory) {
+    if (-not $ProfileDirectory) { $ProfileDirectory = $env:LUMENNA_PROFILE }
     if (-not $ProfileDirectory) { return $null }
-    $Cmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ProfileDirectory)
+    $Paths.GetUnresolvedProviderPathFromPSPath($ProfileDirectory)
+}
+
+# Puts an argument into what goes to the server, as it is to go: a switch as true or false, and an
+# array plain, since one wrapped as a PSObject is written by Windows PowerShell's ConvertTo-Json as
+# an object with `value` and `Count`. Assigned here rather than returned, since what a function
+# returns comes through the pipeline, which may wrap it again.
+function Set-LumennaArgument([hashtable] $Into, [string] $Name, $Value) {
+    if ($Value -is [System.Management.Automation.SwitchParameter]) {
+        $Into[$Name] = $Value.IsPresent
+    } elseif ($Value -is [array]) {
+        $Into[$Name] = [object[]] @($Value | ForEach-Object { $_ })
+    } else {
+        $Into[$Name] = $Value
+    }
 }
 
 function New-LumennaError([string] $Reason, [string] $Id, [System.Management.Automation.ErrorCategory] $Category, $Target) {
@@ -88,15 +104,7 @@ function Invoke-LumennaAssist($Cmdlet, [string] $Operation, $Bound) {
     $given = @{}
     foreach ($name in $op.Names.Keys) {
         if (-not $Bound.ContainsKey($name)) { continue }
-        $value = $Bound[$name]
-        if ($value -is [System.Management.Automation.SwitchParameter]) {
-            $value = $value.IsPresent
-        } elseif ($value -is [array]) {
-            # A plain array: one wrapped as a PSObject is written by Windows PowerShell's
-            # ConvertTo-Json as an object with `value` and `Count`.
-            $value = [object[]] @($value | ForEach-Object { $_ })
-        }
-        $given[$op.Names[$name]] = $value
+        Set-LumennaArgument $given $op.Names[$name] $Bound[$name]
     }
     $target = if ($op.Target -and $Bound.ContainsKey($op.Target)) { [string] $Bound[$op.Target] } else { $null }
     if ($op.Writes) {
@@ -105,7 +113,7 @@ function Invoke-LumennaAssist($Cmdlet, [string] $Operation, $Bound) {
     }
     if ($op.Confirms) { $given['confirm'] = $true }
     $record = Invoke-LumennaRequest -Cmdlet $Cmdlet -Method assist -Params @{ operation = $Operation; args = $given } `
-        -ProfileDirectory (Resolve-LumennaProfile $Cmdlet $Bound['Profile']) -ErrorId "Lumenna.$Operation" -Target $target
+        -ProfileDirectory (Resolve-LumennaProfile $Cmdlet.SessionState.Path $Bound['Profile']) -ErrorId "Lumenna.$Operation" -Target $target
     if ($record) { Write-LumennaRecord $Cmdlet $record }
 }
 
@@ -119,10 +127,8 @@ function Complete-LumennaArgument {
         if ($typed -match "^['`"]") { $typed = $typed.Substring(1) }
         if ($typed.Length -and $typed -match "['`"]$") { $typed = $typed.Substring(0, $typed.Length - 1) }
         $typed = $typed -replace "''", "'"
-        $profileDirectory = $null
-        if ($FakeBoundParameters -and $FakeBoundParameters.Contains('Profile')) {
-            $profileDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($FakeBoundParameters['Profile'])
-        }
+        $given = if ($FakeBoundParameters -and $FakeBoundParameters.Contains('Profile')) { $FakeBoundParameters['Profile'] } else { $null }
+        $profileDirectory = Resolve-LumennaProfile $ExecutionContext.SessionState.Path $given
         $reply = Invoke-LumennaRpc -Method complete -Params @{ kind = $Kind; text = $typed } -ProfileDirectory $profileDirectory
         if (-not $reply -or $reply.PSObject.Properties['error']) { return }
         $found = $reply.result
@@ -166,7 +172,8 @@ function Get-LumennaOperation {
         [SupportsWildcards()]
         [string] $Name = '*'
     )
-    $table = Invoke-LumennaRequest -Cmdlet $PSCmdlet -Method 'assist.list' -ErrorId 'Lumenna.List'
+    $table = Invoke-LumennaRequest -Cmdlet $PSCmdlet -Method 'assist.list' -ErrorId 'Lumenna.List' `
+        -ProfileDirectory (Resolve-LumennaProfile $PSCmdlet.SessionState.Path $null)
     foreach ($op in @($table.operations)) {
         $cmdlet = $null
         if ($script:Operations.Contains($op.id)) {
@@ -217,8 +224,10 @@ function Invoke-LumennaOperation {
         [Parameter()]
         [string] $Profile
     )
-    $record = Invoke-LumennaRequest -Cmdlet $PSCmdlet -Method assist -Params @{ operation = $Operation; args = $Arguments } `
-        -ProfileDirectory (Resolve-LumennaProfile $PSCmdlet $Profile) -ErrorId "Lumenna.$Operation" -Target $Operation
+    $given = @{}
+    foreach ($name in $Arguments.Keys) { Set-LumennaArgument $given $name $Arguments[$name] }
+    $record = Invoke-LumennaRequest -Cmdlet $PSCmdlet -Method assist -Params @{ operation = $Operation; args = $given } `
+        -ProfileDirectory (Resolve-LumennaProfile $PSCmdlet.SessionState.Path $Profile) -ErrorId "Lumenna.$Operation" -Target $Operation
     if ($record) { Write-LumennaRecord $PSCmdlet $record }
 }
 
