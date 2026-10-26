@@ -6,8 +6,8 @@ read, and Remove reminder on each of its own (the delete keys). The main menu's 
 what came due over the last day and was not dealt with, whatever gave it — this app's service,
 or another device's dismissal not yet here — to dismiss (the delete keys) or snooze (`z`), at a
 block's end that left work short to carry it forward (`f`), and on an overrun to replan (`p`).
-Settings has Reminders on this device, the core's own setting; the background service that
-gives them while the app is closed is Settings' own (`preferences.py`).
+Settings' Reminders page, the core's, has Reminders on this device and the defaults; the background
+service that gives them while the app is closed is on its General page (`preferences.py`).
 """
 
 from __future__ import annotations
@@ -31,6 +31,11 @@ LOOK_BACK = datetime.timedelta(hours=24)
 
 def _moment(when: datetime.datetime) -> str:
     return when.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+#: This app's letter for each of a reminder's buttons (`DueButton.id`); Dismiss is the delete
+#: keys'.
+DUE_KEYS = {"carry": "f", "replan": "p", "snooze": "z"}
 
 
 def now() -> datetime.datetime:
@@ -59,31 +64,38 @@ def reminder_rows(session: Session) -> list[Row]:
 
 
 def reminders_of(session: Session, row=None) -> str:
-    """The list a Reminders action opened, until the person leaves it: the core's
-    announcement as its heading, each reminder a row. Leaving closes it in the app."""
-    name = getattr(row, "title", "") if row is not None else ""
-    state = {"heading": "Reminders"}
+    """The list a Reminders action opened, until the person leaves it: the app's title for it
+    ("Reminders for Pay rent") and the core's announcement as its heading, each reminder a row,
+    and the list's own Add reminder. Leaving closes it in the app."""
+
+    def title() -> str:
+        view = session.view()
+        listing = view.reminders
+        return actions.prompt(view.reminders_title or "", listing.announcement if listing is not None else "")
 
     def build():
+        return items(reminder_rows(session)) if session.view().reminders is not None else []
+
+    def adding_action():
         listing = session.view().reminders
-        if listing is None:
-            return []
-        said = listing.announcement
-        state["heading"] = f"Reminders for {name}. {said}" if name else said
-        return items(reminder_rows(session))
+        return next((action for action in (listing.offered if listing else []) if action.kind == K.NEW), None)
 
     def adding(_row) -> str:
-        listing = session.view().reminders
-        found = [action for action in (listing.offered if listing else []) if action.kind == K.NEW]
-        return actions.act(session, found[0], on=L.ActingOnReminders()) if found else ""
+        action = adding_action()
+        return actions.act(session, action, on=L.ActingOnReminders()) if action is not None else ""
+
+    def own():
+        action = adding_action()
+        added = [Command(actions.named(action), adding, key="a")] if action is not None else []
+        return [*added, *undo_commands(session)]
 
     session.reminders_open = True
     try:
         with screen("lumenna-reminders"):
             live_menu(
-                session, build, lambda: state["heading"],
+                session, build, title,
                 context=lambda rows: actions.commands(session, rows),
-                app=[Command("Add reminder", adding, key="a"), *undo_commands(session)],
+                app=own,
                 empty="Press a to add one.",
                 app_title="Reminders menu",
                 focus=lambda: session.view().reminders_held.focus,
@@ -122,60 +134,54 @@ def due(session: Session) -> str:
             made.append(row)
         return items(made)
 
-    def deal(event):
-        def run(row) -> str:
-            return session.send(L.ShellEventDue(event(row.key)))
-        return run
-
-    def replan(row) -> str:
+    def replan(key: str) -> str:
         import proposals  # here: proposals imports actions, which imports this module
 
         proposals.pin(session)
-        session.send(L.ShellEventDue(L.DueEventReplan(row.key)))
-        return actions.follow(session)
+        # A reminder without the button: the app says why, and opens nothing.
+        said = session.send(L.ShellEventDue(L.DueEventReplan(key)))
+        return actions.joined(said, actions.follow(session))
 
-    def no(event):
-        # The app refuses a button the reminder lacks, in the core's words.
-        return lambda row: session.send(L.ShellEventDue(event(row.key)))
+    #: What each button sends; Replan opens the app's proposal, answered here.
+    runs = {
+        "carry": lambda key: session.send(L.ShellEventDue(L.DueEventCarry(key))),
+        "replan": replan,
+        "dismiss": lambda key: session.send(L.ShellEventDue(L.DueEventDismiss(key))),
+        "snooze": lambda key: session.send(L.ShellEventDue(L.DueEventSnooze(key))),
+    }
+
+    def button(row, which):
+        return next((b for b in row.record.buttons if b.id == which), None)
+
+    def commands(rows) -> list[Command]:
+        """Each row's buttons, the core's, in its order: what a reminder offers of its own
+        (Carry forward, Replan) first, then Dismiss, which the delete keys run, and Snooze. A
+        letter a reminder lacks is sent all the same, and the app says why."""
+        order: list[str] = []
+        for row in rows:
+            for offered in row.record.buttons:
+                if offered.id not in order and offered.id in runs:
+                    order.append(offered.id)
+        # A letter no reminder here offers still runs, for the app to say why.
+        order.extend(which for which in runs if which not in order)
+        return [
+            Command(
+                lambda row, which=which: button(row, which).title,
+                lambda row, which=which: runs[which](row.key),
+                key=DUE_KEYS.get(which, ""),
+                applies=lambda row, which=which: button(row, which) is not None,
+                deletes=which == "dismiss",
+                refuse=(lambda row, which=which: runs[which](row.key)) if which in ("carry", "replan") else None,
+            )
+            for which in order
+        ]
 
     with screen("lumenna-reminders"):
         live_menu(
             session, build, title,
-            context=lambda rows: [
-                Command(lambda row: row.record.dismiss, deal(L.DueEventDismiss), deletes=True),
-                Command(lambda row: row.record.snooze or "", deal(L.DueEventSnooze), key="z",
-                        applies=lambda row: bool(row.record.snooze)),
-                # A block's end that left work short: its text ends in the question this answers.
-                Command(lambda row: session.sentence(row.record.carry or ""), deal(L.DueEventCarry), key="f",
-                        applies=lambda row: bool(row.record.carry), refuse=no(L.DueEventCarry)),
-                # A block's work outrunning its time: Replan from now.
-                Command(lambda row: session.sentence(row.record.replan or ""), replan, key="p",
-                        applies=lambda row: bool(row.record.replan), refuse=no(L.DueEventReplan)),
-            ],
+            context=commands,
             app=undo_commands(session),
             empty="Nothing has come due.",
             app_title="Reminders menu",
         )
-    return ""
-
-
-# ---------------------------------------------------------------------------------------
-# Settings: reminders on this device
-# ---------------------------------------------------------------------------------------
-
-
-#: The device settings shown on this page rather than with the backups.
-KEYS = {"reminders"}
-
-
-def settings_page(session: Session) -> str:
-    """Reminders on this device, which the core honours. The service that gives them while the
-    app is closed is Settings' own Background reminders and sync, since it syncs too."""
-    import preferences  # here, since preferences imports this module
-
-    def build():
-        return preferences.setting_items(session, lambda setting: setting.key in KEYS)
-
-    with screen("lumenna-reminders"), preferences.opened(session):
-        live_menu(session, build, "Reminders", app=undo_commands(session), app_title="Reminders menu")
     return ""

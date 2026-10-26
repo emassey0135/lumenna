@@ -228,7 +228,7 @@ class Menus(unittest.TestCase):
         offered = [command for command in script.menus[-1]["context"] if command.applies(menu)]
         self.assertEqual(
             [command.get_label(menu) for command in offered],
-            ["Restore, r", "Delete from trash", "Erase permanently", "Details"],
+            ["Restore, r", "Delete from trash", "Erase permanently", "Task details"],
         )
         # Nothing is a key for erasing: no letter, and the delete keys are the app's (below).
         self.assertEqual([c.get_label(menu) for c in offered if c.on_delete_key], [])
@@ -249,24 +249,26 @@ class Menus(unittest.TestCase):
         self.assertTrue(question.startswith("Delete lose me from the trash? Undo can bring it back"), question)
         self.assertEqual(self.titles("deleted"), ["open one"])
 
-    def test_settings_offers_erase_everything_deleted_after_export_and_import_and_it_asks_first(self):
+    def test_the_export_and_import_page_offers_erase_everything_deleted_after_its_buttons_and_it_asks_first(self):
         self.call("task.add", text="still here")
         self.call("task.rm", id=self.call("task.add", text="gone for good")["task"]["id"])
         script = self.run_script(
             [
+                ("menu", "Export and import"),
                 ("menu", "Erase everything deleted"),
                 ("confirm", False),
                 ("menu", "Erase everything deleted"),
                 ("confirm", True),
                 ("back",),
+                ("back",),
             ],
             lambda: preferences.settings(self.session),
         )
-        rows = script.menus[0]["rows"]
-        self.assertEqual(rows.index("Erase everything deleted"), rows.index("Export and import") + 1, rows)
+        rows = script.menus[1]["rows"]
+        self.assertEqual(rows.index("Erase everything deleted"), rows.index("Import or restore") + 1, rows)
         # The core's caption is said and brailled after the row, as the device gives a row's hint.
         self.assertEqual(
-            script.menus[0]["hints"]["Erase everything deleted"],
+            script.menus[1]["hints"]["Erase everything deleted"],
             "Takes what was deleted out of the history every device keeps, so nothing can bring it back.",
         )
         self.assertEqual(self.titles(), ["still here"])
@@ -580,7 +582,7 @@ class Menus(unittest.TestCase):
             [("menu", "write the chapter"), ("back",)],
             lambda: tasks.task_list(self.session),
         )
-        self.assertEqual(script.shown[-1][-2:], ["History", "made today"])
+        self.assertEqual(script.shown[-1][-1], "History, made today")
 
     def test_a_task_is_read_back_before_it_is_added_when_asked_for(self):
         import options
@@ -832,11 +834,11 @@ class Menus(unittest.TestCase):
         row = tasks.list_rows(self.session)[0]
         menu.menu = [type("Row", (), {"row": row})()]
         labels = [command.get_label(menu) for command in script.menus[-1]["context"] if command.applies(menu)]
-        # The core's actions, in its order and under its names, then this app's Details.
+        # The core's actions, in its order and under its names, then the details, under the core's name.
         self.assertEqual(
             labels,
             ["Mark done, c", "Edit details, e", "Put in a block, b", "Move to project, m",
-             "Make subtask of, s", "Wait for, w", "Reminders, r", "Move to trash", "Details"],
+             "Make subtask of, s", "Wait for, w", "Reminders, r", "Move to trash", "Task details"],
         )
         self.assertNotIn("Move to top level, t", labels, "only for a subtask")
 
@@ -876,6 +878,35 @@ class Menus(unittest.TestCase):
         work = next(row for row in organise.group_rows(self.session, L.SidebarGroup.PROJECTS) if row.title == "Work")
         self.assertTrue(work.said().endswith("collapsed"), work.said())
 
+    def test_a_subproject_says_its_level_counted_from_the_projects_list_where_it_changes(self):
+        self.call("project.add", name="Work")
+        self.call("project.add", name="Reports", parent="Work")
+        self.call("project.add", name="Home")
+        self.store.caught_up()
+        said = {row.title: row.said() for row in organise.group_rows(self.session, L.SidebarGroup.PROJECTS)}
+        self.assertEqual(said["Inbox"].split(",")[0], "Inbox")
+        self.assertTrue(said["Reports"].startswith("level 2, Reports"), said)
+        self.assertTrue(said["Home"].startswith("level 1, Home"), said)
+        self.assertTrue(said["Work"].endswith("expanded"), said)
+
+    def test_enter_on_a_sitting_edits_its_task_as_every_apps_open_does(self):
+        self.call("task.add", text="write the chapter")
+        script = self.run_script(
+            [
+                ("app", "Add a block"),
+                # Ending at midnight, so it is never over while the test runs.
+                ("form", {"title": "Deep work", "start": "11pm", "minutes": "60"}),
+                ("key", "Deep work", "i"),
+                ("choose", "write the chapter"),
+                ("input", ""),
+                ("menu", "write the chapter"),
+                ("form", {"title": "write the last chapter"}),
+                ("back",),
+            ],
+            lambda: day.day_plan(self.session),
+        )
+        self.assertEqual(self.titles(), ["write the last chapter"])
+
     def test_a_letter_a_row_does_not_offer_says_why_in_the_cores_words(self):
         self.call("project.add", name="Work")
         script = self.run_script([("key", "Inbox", "r"), ("back",)], lambda: organise.projects(self.session))
@@ -907,7 +938,7 @@ class Menus(unittest.TestCase):
     def test_a_backup_setting_offers_the_cores_options(self):
         script = self.run_script(
             [("menu", "Automatic backups, Every day"), ("choose", "Every week"), ("back",)],
-            lambda: preferences.setting_page(self.session, "Backups", preferences.on_this_device),
+            lambda: preferences.setting_page(self.session, "backups"),
         )
         self.assertEqual(script.offered[0], ["Every 12 hours", "Every day", "Every week", "Off"])
         self.assertEqual(self.call("config.get", key="backup-every")["settings"][0]["value"], "7d")
@@ -917,14 +948,14 @@ class Menus(unittest.TestCase):
     def test_a_setting_with_few_values_is_a_choice(self):
         self.run_script(
             [("menu", "Announcements"), ("choose", "Terse"), ("back",)],
-            lambda: preferences.setting_page(self.session, "Planning", preferences.planning),
+            lambda: preferences.setting_page(self.session, "planning"),
         )
         self.assertEqual(self.call("config.get", key="verbosity")["settings"][0]["value"], "terse")
 
     def test_a_time_setting_shows_and_takes_hours_and_minutes(self):
         self.run_script(
             [("menu", "Day starts, 08:00"), ("input", "9:30am"), ("back",)],
-            lambda: preferences.setting_page(self.session, "Planning", preferences.planning),
+            lambda: preferences.setting_page(self.session, "planning"),
         )
         self.assertEqual(self.call("config.get", key="day-start")["settings"][0]["value"], "09:30")
 

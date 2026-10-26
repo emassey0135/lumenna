@@ -1,20 +1,22 @@
 # Lumenna Settings
 
+Settings are in pages, as in every Lumenna app: General, g; Planning, p; Reminders, m; Devices and sync, d; Backups, b; and Export and import, e. Each page says after a moment what is on it, and opening one says what it holds. Enter changes a setting. Times are written as you would say them: 9am, 14:30.
+
 ## Planning
 
-Enter changes a setting. Times are written as you would say them: 9am, 14:30. These settings sync to all your devices.
+The day, the week, the order of tasks, completing subtasks, and announcements. These settings sync to all your devices.
 
-## Reminders, on this device
+## Reminders
 
-Reminders on this device. See [Lumenna Reminders](help:lumenna-reminders). The defaults for every task and every block are on Planning: phrases such as 5m before start, separated by commas.
+Reminders on this device, and the defaults for every task and every block: phrases such as 5m before start, separated by commas. See [Lumenna Reminders](help:lumenna-reminders).
 
 ## Background reminders and sync
 
-On the Settings page, g chooses On or Off, after saying what it does. When it is on, a service keeps this device in sync with your other devices and gives its reminders while Lumenna is closed, and starts whenever the device does. While Lumenna is open, the service goes on doing both, and Sync now asks it for a round.
+On the General page, Enter chooses On or Off, after saying what it does. When it is on, a service keeps this device in sync with your other devices and gives its reminders while Lumenna is closed, and starts whenever the device does. While Lumenna is open, the service goes on doing both, and Sync now asks it for a round.
 
 ## Read a task back before adding it
 
-On the Settings page, r turns this on or off. When it is on, a task you type is read back — its date, priority, project and labels as understood — and you choose Add it, or Change it to edit the line. It is this device's alone.
+On the Settings page itself, r turns this on or off. When it is on, a task you type is read back — its date, priority, project and labels as understood — and you choose Add it, or Change it to edit the line. It is this device's alone.
 
 ## Devices and sync
 
@@ -30,8 +32,8 @@ How often a backup is taken, how many are kept, and where they go. A backup hold
 
 ## Export and import
 
-An export is what you have now, with nothing from the trash: JSON to import again, a Markdown checklist, an org outline, or a calendar file of your blocks. Import reads a JSON export or a backup.
+An export is what you have now, with nothing from the trash: JSON to import again, a Markdown checklist, an org outline, or a calendar file of your blocks. Import or restore reads a JSON export or a backup.
 
 ## Erase everything deleted
 
-Below Export and import, with no shortcut: it erases everything in the trash, and the history of everything ever deleted, from every device, and cannot be undone. It asks first, saying what else it does.
+On the Export and import page, after Import or restore, with no shortcut: it erases everything in the trash, and the history of everything ever deleted, from every device, and cannot be undone. It asks first, saying what else it does.

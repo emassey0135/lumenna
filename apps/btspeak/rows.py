@@ -18,6 +18,8 @@ import time
 
 from BTSpeak import dialogs, settings
 
+from core import native
+
 #: The device's clock setting, read again once this many seconds have passed: a redraw
 #: describes every row, and a Pi feels a file read per row.
 _CLOCK_FOR = 5.0
@@ -91,7 +93,7 @@ class Row:
     def _with(self, line: str) -> str:
         parts = [self.level or "", line]
         if self.expanded is not None:
-            parts.append("expanded" if self.expanded else "collapsed")
+            parts.append(native().fold_state(self.expanded))
         return ", ".join(part for part in parts if part)
 
 

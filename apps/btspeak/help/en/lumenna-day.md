@@ -5,7 +5,7 @@ The day as it is lived, opening on now: blocks in time order with the tasks assi
 ## Enter
 
 - On a block: edit it. A repeating block asks whether to change that day only or every occurrence.
-- On a task in a block: its details.
+- On a task in a block: edit the task, as Edit details does.
 - On free time: add a block there.
 - On a day cancelled from a repeating block: put it back.
 

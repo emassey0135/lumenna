@@ -31,7 +31,7 @@ from BTSpeak import dialogs
 
 from actions import L
 from core import Core, LumennaError
-from session import Session, live_menu
+from session import Session, announce, live_menu
 import day
 import organise
 import preferences
@@ -48,7 +48,7 @@ def run(core: Core) -> int:
     except LumennaError as error:
         dialogs.show_message(error.message)
         return 1
-    core.back_up_while_running()
+    core.back_up_while_running(failed=announce)
     # Syncing runs while the app does, beside the daemon or in its place; so does giving
     # reminders, unless the background service already gives them.
     core.app.in_front(True)

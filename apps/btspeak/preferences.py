@@ -1,7 +1,7 @@
 """Settings, devices and sync, and getting data in and out.
 
-Laid out as the phone lays it out: planning settings that sync, this device's backups, the
-devices it syncs with, and export and import. Each setting is offered the way its value is
+Laid out in the core's pages, as every app lays them out (`SettingsView.pages`): what each holds,
+its caption and its buttons are the core's, its letter this app's. Each setting is offered the way its value is
 shaped — a choice where there are only a few, a line of text where the core reads a phrase —
 and the core checks every one of them, so nothing here does. The settings, the devices and
 pairing are the app's (`ViewModel::settings`, `devices`), opened as their pages open and put
@@ -20,15 +20,17 @@ import actions
 from actions import L
 from core import device_name, refused
 import options
-import reminder_lists
 from rows import Row, items
-from session import REFRESH, Command, Session, choose, confirm, live_menu, screen
+from session import REFRESH, Command, Session, choose, confirm, live_menu, screen, sentences
 from tasks import undo_commands
 
 
-#: What this app shows of the device settings: `clock` is for clients with no clock of their
-#: own, and this device has its Time Format.
-NOT_HERE = {"clock"}
+#: This app's letter for each of the core's settings pages (`SettingsPage.id`), as it has
+#: always had them.
+PAGE_KEYS = {"general": "g", "planning": "p", "reminders": "m", "devices": "d", "backups": "b", "export": "e"}
+
+#: This app's letter for each of a page's buttons (`SettingsButton.id`), on the page's main menu.
+BUTTON_KEYS = {"sync-now": "s", "pair": "p", "back-up": "b", "restore-backup": "r", "import": "i"}
 
 #: How long a sync round may take before it is given up on: a device that cannot be reached
 #: takes a while to give up on.
@@ -36,21 +38,6 @@ SYNC_FOR = 180
 
 #: How long the Devices page waits for the network to say how syncing is going, in seconds.
 STATUS_FOR = 5
-
-
-def planning(setting) -> bool:
-    """Whether a setting is on the Planning page: those that sync to every device."""
-    return setting.syncs
-
-
-def on_this_device(setting) -> bool:
-    """Whether a setting is on the Backups page: this device's own."""
-    return (
-        not setting.syncs
-        and setting.key not in NOT_HERE
-        and setting.key not in reminder_lists.KEYS
-        and setting.key != BACKGROUND
-    )
 
 
 def read_back_title() -> str:
@@ -64,28 +51,10 @@ def toggle_read_back() -> str:
     return "A task is read back before it is added" if on else "A task is added as soon as it is entered"
 
 
-#: The app's setting for the background service, shown in Settings itself rather than on a page:
-#: it gives reminders and syncs, so it belongs to neither.
-BACKGROUND = "background"
-
-
 def setting_title(setting) -> str:
     """A setting's row: its name and its value, as the core names them."""
     named = {option.id: option.title for option in setting.options}
     return f"{setting.title}, {named.get(setting.value, setting.value)}"
-
-
-def background_item(session: Session):
-    """The app's background setting as a row of Settings, where the app offers it: Enter
-    chooses, the core's hint said with the question. Turning it on or off is the session's."""
-    if setting_of(session, BACKGROUND) is None:
-        return None
-
-    def title(*_):
-        shown = setting_of(session, BACKGROUND)
-        return setting_title(shown.setting) if shown is not None else ""
-
-    return dialogs.DynamicMenuItem(title=title, shortcut="g", action=lambda: change_setting(session, BACKGROUND))
 
 
 @contextlib.contextmanager
@@ -101,22 +70,58 @@ def opened(session: Session):
         session.send(L.ShellEventSettings(L.SettingsEventClose()))
 
 
+def pages(session: Session) -> list:
+    """The core's settings pages, in order, once the app has opened settings."""
+    view = session.view().settings
+    return list(view.pages) if view is not None else []
+
+
+def page_of(session: Session, page_id: str):
+    return next((page for page in pages(session) if page.id == page_id), None)
+
+
 def settings(session: Session) -> str:
-    """A short list of pages, as on the phone, the app's background setting, and this app's own
-    preference."""
+    """The core's settings pages, as every app groups them, each with its letter here and its
+    description as its hint, then this app's own preference. A page with nothing on it here —
+    no setting the app shows, no button, no screen of its own — is left out."""
     with screen("lumenna-settings"), opened(session):
+        shown = {setting.setting.key for setting in shown_settings(session)}
         menu = [
-            dialogs.DynamicMenuItem(title="Planning", shortcut="p", action=lambda: setting_page(session, "Planning", planning)),
-            dialogs.DynamicMenuItem(title="Devices and sync", shortcut="d", action=lambda: devices(session)),
-            dialogs.DynamicMenuItem(title="Reminders, on this device", shortcut="m", action=lambda: reminder_lists.settings_page(session)),
-            background_item(session),
-            dialogs.DynamicMenuItem(title="Backups, on this device only", shortcut="b", action=lambda: backups(session)),
-            dialogs.DynamicMenuItem(title="Export and import", shortcut="e", action=lambda: export_import(session)),
-            *store_items(session),
-            dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back),
+            dialogs.DynamicMenuItem(
+                title=page.title, shortcut=PAGE_KEYS.get(page.id, ""), hint=page.description or None,
+                action=lambda page_id=page.id: open_page(session, page_id),
+            )
+            for page in pages(session)
+            if page.buttons or page.id == "export" or any(key in shown for key in page.keys)
         ]
-        dialogs.dynamic_menu([item for item in menu if item is not None], title="Settings")
+        menu.append(dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back))
+        dialogs.dynamic_menu(menu, title=command_title("settings"))
     return ""
+
+
+def command_title(command: str) -> str:
+    """A command of the shared table's name, as the core's menus give it: "Settings"."""
+    return next((item.title for group in L.menus(True) for item in group.items if item.id == command), command)
+
+
+def open_page(session: Session, page_id: str) -> str:
+    """One of the core's pages: Devices and sync, and Export and import, are screens of their
+    own; the rest list their settings."""
+    if page_id == "devices":
+        return devices(session)
+    if page_id == "export":
+        return export_import(session)
+    return setting_page(session, page_id)
+
+
+def button_commands(session: Session, page) -> list[Command]:
+    """A page's buttons, the core's, as its main menu's commands, each with this app's letter."""
+    runs = {"sync-now": sync_now, "pair": pair, "back-up": back_up, "restore-backup": restore, "import": import_file}
+    return [
+        Command(button.title, lambda _, run=runs[button.id]: run(session), key=BUTTON_KEYS.get(button.id, ""))
+        for button in (page.buttons if page is not None else [])
+        if button.id in runs
+    ]
 
 
 def store_items(session: Session) -> list:
@@ -141,32 +146,39 @@ def shown_settings(session: Session) -> list:
     return view.settings if view is not None else []
 
 
-def setting_items(session: Session, which) -> list:
-    """The settings `which` keeps, one row each, said as the core names them."""
+def setting_items(session: Session, page_id: str) -> list:
+    """The settings on the core's page `page_id`, in its order, one row each, said as the core
+    names them."""
+    page = page_of(session, page_id)
     made = []
-    for shown in shown_settings(session):
-        setting = shown.setting
-        if not which(setting):
+    for key in (page.keys if page is not None else []):
+        shown = setting_of(session, key)
+        if shown is None:
             continue
         made.append(dialogs.DynamicMenuItem(
-            title=setting_title(setting),
-            action=lambda key=setting.key: change_setting(session, key),
+            title=setting_title(shown.setting),
+            action=lambda key=key: change_setting(session, key),
         ))
     return made
 
 
-def setting_page(session: Session, title: str, which) -> str:
-    """Settings, one per row: Enter changes one."""
+def page_title(page) -> str:
+    """A page's heading: its title, then what it says under its settings."""
+    return sentences(page.title, page.caption) if page is not None else ""
+
+
+def setting_page(session: Session, page_id: str) -> str:
+    """One of the core's pages of settings, one per row: Enter changes one; its buttons are on
+    its main menu."""
     with screen("lumenna-settings"), opened(session):
+        page = page_of(session, page_id)
+        if page is None:
+            return ""
         live_menu(
-            session, lambda: setting_items(session, which), title,
-            app=undo_commands(session), app_title=f"{title} menu",
+            session, lambda: setting_items(session, page_id), lambda: page_title(page_of(session, page_id)),
+            app=[*button_commands(session, page), *undo_commands(session)], app_title=f"{page.title} menu",
         )
     return ""
-
-
-#: What a line of text takes, for a setting typed rather than chosen, by its kind.
-TAKES = {L.SettingKind.TIME: "a time such as 9am or 14:30", L.SettingKind.NUMBER: "a whole number"}
 
 
 def setting_of(session: Session, key: str):
@@ -182,14 +194,15 @@ def change_setting(session: Session, key: str) -> str:
     setting = shown.setting
     value = setting.value
     offered = {option.id: option.title for option in setting.options}
-    said = ". ".join(part for part in (setting.title, setting.hint) if part)
     if offered:
-        chosen = choose(offered, said, default=value)
+        chosen = choose(offered, actions.prompt(setting.title, setting.hint), default=value)
         if chosen is None or chosen == value:
             return ""
         return session.send(L.ShellEventSettings(L.SettingsEventSet(key, chosen)))
-    takes = TAKES.get(setting.kind)
-    asked = f"{said}, {takes}" if takes else said
+    words = session.view().settings.words
+    # What a line takes is the setting's own hint; where it has none, the core's for its shape.
+    hint = setting.hint or {L.SettingKind.TIME: words.time_hint, L.SettingKind.NUMBER: words.number_hint}.get(setting.kind, "")
+    asked = actions.prompt(setting.title, hint)
     # Saved when entered. One the core refuses is asked again, its sentence first and the
     # line as typed, as a refused field stays in its dialog.
     wrong, typed = "", value
@@ -246,7 +259,7 @@ def devices(session: Session) -> str:
     with screen("lumenna-settings"):
         live_menu(
             session, build, lambda: state["heading"],
-            main=lambda row: actions.run_kind(session, row, actions.K.RENAME),
+            main=lambda row: actions.press(session, "rename", row),
             context=lambda rows: actions.commands(session, rows),
             app=[
                 Command("Sync now", lambda _: sync_now(session), key="s"),
@@ -339,7 +352,7 @@ def pairing_screen(session: Session) -> str:
             return pairing.problem
         if pairing.mine:
             # Enter on the line shows the code alone, to read a character at a time.
-            return f"{words.waiting} {words.my_code}: {pairing.mine}"
+            return sentences(words.waiting, pairing.mine_line or pairing.mine)
         return words.opening if pairing.waiting else words.connecting
 
     def read_code() -> str:
@@ -378,9 +391,7 @@ def pairing_screen(session: Session) -> str:
             # Paired: what the app said of it is what is said after the screen.
             return said or session.wait_said(0)
         if pairing.words:
-            matched = dialogs.request_confirmation(
-                f"{words.match_title}. {words.match_message} {', '.join(pairing.words)}", default=False,
-            )
+            matched = dialogs.request_confirmation(sentences(words.match_title, pairing.matching or ""), default=False)
             send(L.PairEventConfirm(bool(matched)))
             continue
         if not pairing.running and not pairing.problem:
@@ -418,24 +429,6 @@ def pairing_screen(session: Session) -> str:
 # ---------------------------------------------------------------------------------------
 
 
-def backups(session: Session) -> str:
-    """This device's backups: how often, how many, where — and one now, or one merged in."""
-
-    with screen("lumenna-settings"), opened(session):
-        live_menu(
-            session,
-            lambda: setting_items(session, on_this_device),
-            "Backups. A backup holds your whole history, including every task you deleted, so the "
-            "store can be rebuilt from it. It stays on this device",
-            app=[
-                Command("Back up now", lambda _: back_up(session), key="b"),
-                Command("Restore from a backup", lambda _: restore(session), key="r"),
-            ],
-            app_title="Backups menu",
-        )
-    return ""
-
-
 def back_up(session: Session) -> str:
     """A backup now, beside the automatic ones."""
     try:
@@ -466,15 +459,19 @@ def export_import(session: Session) -> str:
 
 
 def _export_import(session: Session) -> str:
+    """The core's Export and import page: Export (this app's row, choosing among the core's
+    exports), the page's buttons, then what the app offers to do to the store as a whole."""
+    page = page_of(session, "export")
+    runs = {"import": import_file}
     menu = [
         dialogs.DynamicMenuItem(title="Export", action=lambda: export(session)),
-        dialogs.DynamicMenuItem(title="Import an export, or restore a backup", action=lambda: import_file(session)),
+        *[
+            dialogs.DynamicMenuItem(title=button.title, action=lambda run=runs[button.id]: run(session))
+            for button in (page.buttons if page is not None else []) if button.id in runs
+        ],
+        *store_items(session),
     ]
-    dialogs.dynamic_menu(
-        menu,
-        title="Export and import. An export is what you have now, with nothing from the trash. "
-        "Importing adds what this device lacks and removes nothing",
-    )
+    dialogs.dynamic_menu(menu, title=page_title(page))
     return ""
 
 
@@ -489,7 +486,7 @@ def _export(session: Session) -> str:
     view = session.view().settings
     offered = view.exports if view is not None else []
     if not offered:
-        return ""
+        return L.nothing_to_choose()
     index = choose({i: choice.label for i, choice in enumerate(offered)}, "Export as")
     if index is None:
         return ""

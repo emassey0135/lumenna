@@ -62,6 +62,24 @@ KEYS = {
     K.CARRY_REST: "f",
 }
 
+#: The shared table's command each letter runs where the table has one (`keys::runs`): the
+#: letter is this app's, what it runs on the row, or why it runs nothing there, the app's. A
+#: kind with no command here runs the row's action of that kind.
+COMMANDS = {
+    K.MARK_DONE: "mark-done",
+    K.MARK_NOT_DONE: "mark-done",
+    K.EDIT: "properties",
+    K.EDIT_TASK: "properties",
+    K.PUT_IN_BLOCK: "put-in-block",
+    K.MOVE_TO_PROJECT: "move-to-project",
+    K.MAKE_SUBTASK_OF: "make-subtask",
+    K.MOVE_TO_TOP_LEVEL: "move-to-top",
+    K.WAIT_FOR: "wait-for",
+    K.STOP_WAITING: "stop-waiting",
+    K.RESTORE: "restore-task",
+    K.RENAME: "rename",
+}
+
 #: The letters for the day's own actions, on the Day menu: none a row of the day uses.
 DAY_KEYS = {
     K.WHAT_NOW: "w",
@@ -173,14 +191,16 @@ def ask(session: Session, asking, row=None) -> str:
         return answer(L.AnswerYes())
     if isinstance(question, L.QuestionText):
         said = prompt(wrong, question.title, question.hint, question.label)
+        # Refused, the line starts as typed, the app's; else as the question starts it.
+        typed = asking.typed if wrong and asking.typed is not None else question.initial
         # A saved filter's query is the filter language, which the app says: completion is offered.
         if asking.syntax is not None:
             import tasks  # here, since tasks imports this module
 
             text = tasks.assisted_input(session, said, asking.syntax, history_key="lumenna-filter",
-                                        default=question.initial)
+                                        default=typed)
         else:
-            text = dialogs.request_input(said, default_text=question.initial)
+            text = dialogs.request_input(said, default_text=typed)
         if text is None:
             return session.send(cancel)
         return answer(L.AnswerText(text))
@@ -242,15 +262,33 @@ def not_offered(session: Session, kind, row) -> str:
 
 
 def press(session: Session, key: str, row) -> str:
-    """A key of the shared table pressed on `row` (`"delete"`): the app puts the row in hand and
-    runs what that key runs there, or says why it does nothing; then whatever it opens is
-    answered."""
+    """A command of the shared table run on `row` (`"delete"`, `"open"`, `"mark-done"`): the
+    app puts the row in hand and runs what that command runs there, or says why it does nothing;
+    then whatever it opens is answered."""
     import proposals  # here: proposals imports this module
 
     proposals.pin(session)
     said = [session.send(held(row), L.ShellEventKey(key))]
     said.append(follow(session, row))
     return joined(*said)
+
+
+def by_letter(session: Session, row, kind) -> str:
+    """A letter on a row that offers its kind: the shared table's command where it has one, else
+    the row's action. A row with several of the kind (Stop waiting for each task it waits for)
+    asks which."""
+    command = COMMANDS.get(kind)
+    if command is None or len(of_kind(row, kind)) > 1:
+        return run_kind(session, row, kind)
+    return press(session, command, row)
+
+
+def refuse_letter(session: Session, row, kind) -> str:
+    """A letter on a row that does not offer its kind: the app runs it there and says why."""
+    command = COMMANDS.get(kind)
+    if command is None or row is None or not getattr(row, "key", None):
+        return not_offered(session, kind, row)
+    return press(session, command, row)
 
 
 def _slots(rows) -> list:
@@ -291,9 +329,8 @@ def commands(session: Session, rows, before=(), after=()) -> list[Command]:
             lambda row, kind=kind, nth=nth: act(session, _nth(row, kind, nth), row),
             key=key,
             applies=lambda row, kind=kind, nth=nth: _nth(row, kind, nth) is not None,
-            # A letter with several of its kind on the row asks which.
-            by_key=(lambda row, kind=kind: run_kind(session, row, kind)) if key else None,
-            refuse=(lambda row, kind=kind: not_offered(session, kind, row)) if key else None,
+            by_key=(lambda row, kind=kind: by_letter(session, row, kind)) if key else None,
+            refuse=(lambda row, kind=kind: refuse_letter(session, row, kind)) if key else None,
         ))
     # The delete keys, Control-D and the D chord: what they do to the row is the app's, the same
     # key on every platform (Delete, Delete from trash on a trashed task, Unassign, Unpair).

@@ -157,6 +157,14 @@ pub fn fold_state(expanded: bool) -> String {
     lumenna_records::words::fold_state(expanded)
 }
 
+/// How deep a row sits, as said where it changes from the row before: "level 2" for `depth` 1.
+/// For a shell that lists part of a tree on its own (BTSpeak's projects, labels and filters, one
+/// heading's places to a screen), whose levels count from that part.
+#[export]
+pub fn level_words(depth: u32) -> String {
+    lumenna_records::words::level(depth)
+}
+
 /// How long, in words: "1 hour 30 minutes".
 #[export]
 pub fn duration_words(minutes: u32) -> String {

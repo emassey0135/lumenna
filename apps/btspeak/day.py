@@ -12,7 +12,7 @@ from __future__ import annotations
 from BTSpeak import dialogs
 
 import actions
-from actions import K, L
+from actions import L
 from rows import Row, items
 from session import Command, Session, empty_then, heading, live_menu, screen
 import proposals  # noqa: F401 - Replan from now's and Plan the day's screen
@@ -50,7 +50,7 @@ def day_heading(session: Session) -> str:
     """The day as every app heads it: "<day>. <summary>", the core's line."""
     view, lines = session.view(), session.lines()
     if view.day is None:
-        return "Today"
+        return L.place_title(L.PlaceToday())
     return next(
         (lines.day[i].text for i, item in enumerate(view.day.items)
          if item.kind == L.DayKind.SUMMARY and i < len(lines.day)),
@@ -73,8 +73,8 @@ def day_heading_braille(session: Session) -> str:
 def day_plan(session: Session) -> str:
     """A day as it is lived, opening on now.
 
-    Enter does a row's main thing — edits a block, shows a sitting's task, adds a block in free
-    time, puts a cancelled day back. The rest is on the row's context menu (M-Chord with
+    Enter does a row's main thing, the shared table's Open — edits a block or a sitting's task,
+    adds a block in free time, puts a cancelled day back. The rest is on the row's context menu (M-Chord with
     Dot 7); the day's own actions, moving between days and adding a block are on the main
     menu (M-Chord), and on their keys.
     """
@@ -92,7 +92,9 @@ def day_plan(session: Session) -> str:
         live_menu(
             session, build, lambda: day_heading(session),
             braille_title=lambda: day_heading_braille(session),
-            main=lambda row: plan_main(session, row),
+            # Enter is the shared table's Open: edits a block or a sitting's task, adds a block in
+            # free time, puts a cancelled day back.
+            main=lambda row: actions.press(session, "open", row),
             context=lambda rows: actions.commands(session, rows),
             app=lambda: [
                 *day_commands(session),
@@ -122,21 +124,6 @@ def day_commands(session: Session) -> list[Command]:
     ]
 
 
-def plan_main(session: Session, row: Row) -> str:
-    """What Enter does on a row of the day: edits a block, shows a sitting's task, adds a
-    block in free time, puts a cancelled day back — each the row's own action."""
-    kind = row.record.kind
-    if kind == L.DayKind.BLOCK:
-        return actions.run_kind(session, row, K.EDIT)
-    if kind == L.DayKind.SITTING:
-        return tasks.show(session, Row(row.record.sitting.task, ""))
-    if kind == L.DayKind.FREE:
-        return actions.run_kind(session, row, K.ADD_BLOCK)
-    if kind == L.DayKind.CANCELLED:
-        return actions.run_kind(session, row, K.RESTORE_DAY)
-    return row.line
-
-
 def add_block(session: Session) -> str:
     """One block, once or repeating, in the app's block form: it starts when the core says for
     its day — today the next whole hour, another day when the day starts."""
@@ -162,7 +149,7 @@ def blocks(session: Session) -> str:
     with screen("lumenna-day"):
         live_menu(
             session, build, lambda: state["heading"],
-            main=lambda row: actions.run_kind(session, row, K.EDIT),
+            main=lambda row: actions.press(session, "open", row),
             context=lambda rows: actions.commands(session, rows),
             app=[Command("Add a block", lambda _: add_block(session), key="a"), *tasks.undo_commands(session)],
             empty=empty_then(lambda: tasks.readback(session), "Press a to add one."),

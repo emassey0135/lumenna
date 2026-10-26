@@ -16,33 +16,25 @@ import tasks
 
 def group_rows(session: Session, group) -> list[Row]:
     """The places under `group`'s heading in the app's sidebar, without those folded away under
-    a collapsed one, each said with its level where that changes against the row shown before."""
-    view = session.view()
-    # The rows the app has collapsed: what is deeper under each is left out.
-    folded = set(view.sidebar_folded)
+    a collapsed one, each said with its level where that changes against the row shown before.
+
+    What is folded and whether a row's own are shown are the app's (`hidden`, `expanded`). The
+    app's `level` counts from the whole sidebar, its headings the first level; this list is one
+    heading's places alone, its first level theirs, so the level is counted from here, in the
+    core's words."""
     rows: list[Row] = []
     under = False
     previous = 0
-    hidden_below = None
-    for entry in view.sidebar:
+    for entry in session.view().sidebar:
         if entry.depth == 0:
             under = isinstance(entry.kind, L.SidebarKindGroup) and entry.kind.field_0 == group
-            hidden_below = None
             continue
-        if not under:
+        if not under or entry.hidden:
             continue
-        if hidden_below is not None:
-            if entry.depth > hidden_below:
-                continue
-            hidden_below = None
-        if entry.key in folded:
-            hidden_below = entry.depth
         depth = entry.depth - 1
-        kinds = {action.kind for action in entry.offered}
-        expanded = True if actions.K.COLLAPSE in kinds else False if actions.K.EXPAND in kinds else None
-        level = f"level {depth + 1}" if depth != previous else None
+        level = L.level_words(depth) if depth != previous else None
         previous = depth
-        row = Row(entry.key, entry.text, entry.offered, entry, level=level, expanded=expanded, title=entry.title)
+        row = Row(entry.key, entry.text, entry.offered, entry, level=level, expanded=entry.expanded, title=entry.title)
         row.side = L.Side.SIDEBAR
         rows.append(row)
     return rows
