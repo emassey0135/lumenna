@@ -160,38 +160,65 @@ impl DateSpec {
         let back = i64::from(today.weekday().to_monday_zero_offset()) - i64::from(week_start.to_monday_zero_offset());
         let this_week = today.checked_sub(Span::new().days(back.rem_euclid(7))).ok();
         match *self {
-            Self::WeekStart { weeks } => this_week?.checked_add(Span::new().weeks(weeks)).ok(),
-            Self::WeekEnd { weeks } => this_week?.checked_add(Span::new().weeks(weeks).days(6)).ok(),
+            Self::WeekStart { weeks } => offset(this_week?, weeks, RelativeUnit::Week),
+            Self::WeekEnd { weeks } => offset(offset(this_week?, weeks, RelativeUnit::Week)?, 6, RelativeUnit::Day),
             Self::On(date) => Some(date),
             Self::MonthDay { month, day } => resolve_month_day(today, month, day),
             Self::Today => Some(today),
             Self::Tomorrow => today.checked_add(Span::new().days(1)).ok(),
             Self::Yesterday => today.checked_sub(Span::new().days(1)).ok(),
             Self::Weekday { day, which } => resolve_weekday(today, day, which),
-            Self::Offset { amount, unit } => {
-                let span = match unit {
-                    RelativeUnit::Day => Span::new().days(amount),
-                    RelativeUnit::Week => Span::new().weeks(amount),
-                    RelativeUnit::Month => Span::new().months(amount),
-                    RelativeUnit::Year => Span::new().years(amount),
-                };
-                today.checked_add(span).ok()
-            }
+            Self::Offset { amount, unit } => offset(today, amount, unit),
         }
     }
 }
 
-/// A month and day, in the current year or the next one.
+impl DateSpec {
+    /// Whether some date lies this far from another: false for an offset no calendar reaches,
+    /// "in 99999999 days", which a parser refuses where it is typed rather than leave to
+    /// resolve to nothing.
+    #[must_use]
+    pub fn is_reachable(&self) -> bool {
+        let span = |amount: i64, unit: RelativeUnit| match unit {
+            RelativeUnit::Day => Span::new().try_days(amount).is_ok(),
+            RelativeUnit::Week => Span::new().try_weeks(amount).is_ok(),
+            RelativeUnit::Month => Span::new().try_months(amount).is_ok(),
+            RelativeUnit::Year => Span::new().try_years(amount).is_ok(),
+        };
+        match *self {
+            Self::Offset { amount, unit } => span(amount, unit),
+            Self::WeekStart { weeks } | Self::WeekEnd { weeks } => span(weeks, RelativeUnit::Week),
+            _ => true,
+        }
+    }
+}
+
+/// `date` moved by `amount` of `unit`, or `None` past what a date can hold.
+///
+/// jiff's own setters panic on an amount beyond their range, and the amount is whatever was
+/// typed: a saved filter's "in 99999999 days" syncs, and would panic every device drawing it.
+#[must_use]
+pub fn offset(date: civil::Date, amount: i64, unit: RelativeUnit) -> Option<civil::Date> {
+    let span = match unit {
+        RelativeUnit::Day => Span::new().try_days(amount),
+        RelativeUnit::Week => Span::new().try_weeks(amount),
+        RelativeUnit::Month => Span::new().try_months(amount),
+        RelativeUnit::Year => Span::new().try_years(amount),
+    };
+    date.checked_add(span.ok()?).ok()
+}
+
+/// A month and day, the first on or after today.
 ///
 /// *"sep 1"* typed in October means next September, because a task manager is about what is
 /// coming. A date already gone is almost never what someone meant to type, and a due date
-/// silently landing in the past is exactly the failure to avoid.
+/// silently landing in the past is exactly the failure to avoid. February 29 is looked for
+/// up to eight years on: leap years are four apart, bar 2100's gap of eight.
 fn resolve_month_day(today: civil::Date, month: i8, day: i8) -> Option<civil::Date> {
-    let this_year = civil::Date::new(today.year(), month, day).ok();
-    match this_year {
-        Some(date) if date >= today => Some(date),
-        _ => civil::Date::new(today.year().checked_add(1)?, month, day).ok(),
-    }
+    (0..=8)
+        .filter_map(|ahead| today.year().checked_add(ahead))
+        .filter_map(|year| civil::Date::new(year, month, day).ok())
+        .find(|date| *date >= today)
 }
 
 fn resolve_weekday(today: civil::Date, day: Weekday, which: Which) -> Option<civil::Date> {
@@ -337,11 +364,7 @@ impl RecurrenceSpec {
             Self::Weekly { interval, days } if days.is_empty() => every(*interval, "week"),
             Self::Weekly { interval, days } => {
                 let names: Vec<&str> = days.iter().copied().map(weekday_name).collect();
-                let list = match names.split_last() {
-                    Some((last, [])) => (*last).to_owned(),
-                    Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
-                    None => String::new(),
-                };
+                let list = crate::words::listed(&names);
                 match interval {
                     0 | 1 => format!("every {list}"),
                     2 => format!("every other {list}"),

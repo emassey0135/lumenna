@@ -74,7 +74,7 @@ pub struct Proposal {
 }
 
 fn minutes(time: jiff::civil::Time) -> i64 {
-    i64::from(time.hour()) * 60 + i64::from(time.minute())
+    crate::time::minutes_of_day(time)
 }
 
 /// A block as the walk sees it.

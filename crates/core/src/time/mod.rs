@@ -35,7 +35,7 @@
 mod spec;
 
 pub use spec::{
-    DateSpec, DueSpec, MonthDay, RecurrenceSpec, RelativeUnit, Which, weekday_name,
+    DateSpec, DueSpec, MonthDay, RecurrenceSpec, RelativeUnit, Which, offset, weekday_name,
 };
 
 use jiff::Timestamp;
@@ -81,17 +81,45 @@ fn day_and_month(date: jiff::civil::Date) -> String {
     format!("{} {month}", date.day())
 }
 
-/// *"3:00 PM"*.
+/// *"1 minute"*, *"45 minutes"*: a count of minutes as a sentence says it.
 #[must_use]
-pub fn clock_words(time: jiff::civil::Time) -> String {
-    let hour = time.hour();
+pub fn minutes_words(minutes: u32) -> String {
+    if minutes == 1 { "1 minute".to_owned() } else { format!("{minutes} minutes") }
+}
+
+/// Minutes since midnight: what the planner counts a day in.
+#[must_use]
+pub fn minutes_of_day(time: jiff::civil::Time) -> i64 {
+    i64::from(time.hour()) * 60 + i64::from(time.minute())
+}
+
+/// Minutes since midnight as a time: *"15:00"*, or with `twelve_hour` *"3:00 PM"*. Past
+/// midnight or before it, the time it is then on the clock, never *"24:30"*.
+#[must_use]
+pub fn clock_of_minutes(minutes: i64, twelve_hour: bool) -> String {
+    let (hour, minute) = (minutes.div_euclid(60).rem_euclid(24), minutes.rem_euclid(60));
+    if !twelve_hour {
+        return format!("{hour:02}:{minute:02}");
+    }
     let (display, meridiem) = match hour {
         0 => (12, "AM"),
         1..=11 => (hour, "AM"),
         12 => (12, "PM"),
         _ => (hour - 12, "PM"),
     };
-    format!("{display}:{:02} {meridiem}", time.minute())
+    format!("{display}:{minute:02} {meridiem}")
+}
+
+/// *"15:00"*, or with `twelve_hour` *"3:00 PM"*: a time in the clock the person reads by.
+#[must_use]
+pub fn clock_in(time: jiff::civil::Time, twelve_hour: bool) -> String {
+    clock_of_minutes(minutes_of_day(time), twelve_hour)
+}
+
+/// *"3:00 PM"*.
+#[must_use]
+pub fn clock_words(time: jiff::civil::Time) -> String {
+    clock_in(time, true)
 }
 
 /// When something is due, as a row says it next to its title: near dates by name, *"due

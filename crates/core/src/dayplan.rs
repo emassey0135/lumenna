@@ -46,7 +46,7 @@ pub struct DayProposal {
 }
 
 fn minutes(time: jiff::civil::Time) -> i64 {
-    i64::from(time.hour()) * 60 + i64::from(time.minute())
+    crate::time::minutes_of_day(time)
 }
 
 /// A plan for `day`'s work blocks still to come at `now`, each given what its filter (from

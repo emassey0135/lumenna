@@ -30,8 +30,9 @@
 //! abbreviating content is information loss. Long labels cost nothing when scanning, because
 //! panning to the next braille *window* and moving to the next *line* are separate
 //! operations — you move between items without reading through the current one.
-
-use jiff::Zoned;
+//!
+//! The words themselves are the app's (`lumenna_app::speech`, `lines`), which every platform
+//! reads: the core says what is true, never how a line is joined.
 
 use crate::filter::{Context, Expr};
 use crate::id::{LabelId, ProjectId, SeriesId, TaskId};
@@ -138,51 +139,6 @@ pub struct Row {
     pub priority: Option<u8>,
 }
 
-impl Row {
-    /// The row as speech would render it.
-    ///
-    /// Assembled from the components rather than stored, so braille can assemble them
-    /// differently from the same row.
-    #[must_use]
-    pub fn speech(&self) -> String {
-        let mut parts = vec![self.title.clone(), self.role.speech().to_owned()];
-        parts.extend(self.state.iter().map(|s| s.speech().to_owned()));
-        parts.extend(self.due_phrase());
-        if let Some(value) = &self.value {
-            parts.push(value.clone());
-        }
-        if self.count > 1 {
-            parts.push(format!("{} of {}", self.index, self.count));
-        }
-        parts.join(", ")
-    }
-
-    /// The row as braille would render it: short forms for role and state, title verbatim.
-    #[must_use]
-    pub fn braille(&self) -> String {
-        let mut parts = vec![self.role.abbreviation().to_owned(), self.title.clone()];
-        parts.extend(self.state.iter().map(|s| s.abbreviation().to_owned()));
-        parts.extend(self.due_phrase());
-        if let Some(value) = &self.value {
-            parts.push(value.clone());
-        }
-        let mut line = parts.join(" ");
-        if self.count > 1 {
-            line.push_str(&format!(" {}/{}", self.index, self.count));
-        }
-        line
-    }
-
-    /// The due words with the time in the twelve-hour clock: what an app does with its own.
-    fn due_phrase(&self) -> Option<String> {
-        let due = self.due.clone()?;
-        Some(match self.due_time {
-            Some(time) => format!("{due} at {}", crate::time::clock_words(time)),
-            None => due,
-        })
-    }
-}
-
 impl Snapshot {
     /// Projects the tasks a filter selects into rows, as a flattened tree.
     ///
@@ -278,83 +234,6 @@ impl Snapshot {
         }
         None
     }
-
-    /// Projects the block occurrences of one day into rows, in the order the day is lived.
-    ///
-    /// # Errors
-    ///
-    /// If a series carries a rule that cannot be expanded.
-    pub fn day_rows(
-        &self,
-        date: jiff::civil::Date,
-        now: &Zoned,
-    ) -> Result<Vec<Row>, crate::recur::RecurError> {
-        let occurrences = self.day(date)?;
-        let count = u32::try_from(occurrences.len()).unwrap_or(u32::MAX);
-        Ok(occurrences
-            .into_iter()
-            .enumerate()
-            .map(|(index, occurrence)| {
-                let assigned = self
-                    .assignments
-                    .values()
-                    .filter(|a| {
-                        a.block_ref.series_id() == occurrence.series_id
-                            && a.block_ref.date().is_none_or(|d| d == occurrence.date)
-                    })
-                    .count();
-                let running = date == now.date()
-                    && occurrence.start_time <= now.time()
-                    && !occurrence.is_over_at(now.time());
-                Row {
-                    id: RowId::Occurrence(occurrence.series_id, occurrence.date),
-                    role: Role::Block,
-                    depth: 0,
-                    index: u32::try_from(index).unwrap_or(u32::MAX) + 1,
-                    count,
-                    expanded: (assigned > 0).then_some(false),
-                    checked: None,
-                    title: occurrence.title.clone(),
-                    // A block is not a task, so it wears no task states. Whether it is
-                    // happening *now* is derived from the clock and never stored.
-                    state: Vec::new(),
-                    due: None,
-                    due_time: None,
-                    value: Some(describe_block(&occurrence, assigned, running)),
-                    hint: None,
-                    priority: None,
-                }
-            })
-            .collect())
-    }
-}
-
-/// A time of day without its seconds.
-fn clock(time: jiff::civil::Time) -> String {
-    format!("{:02}:{:02}", time.hour(), time.minute())
-}
-
-fn describe_block(
-    occurrence: &crate::recur::Occurrence,
-    assigned: usize,
-    running: bool,
-) -> String {
-    let mut parts = vec![
-        format!("{} to {}", clock(occurrence.start_time), clock(occurrence.end_time())),
-        format!("{} minutes", occurrence.duration_mins),
-    ];
-    if running {
-        parts.push("now".to_owned());
-    }
-    match assigned {
-        0 => {}
-        1 => parts.push("1 task assigned".to_owned()),
-        n => parts.push(format!("{n} tasks assigned")),
-    }
-    if occurrence.modified {
-        parts.push("changed for this day".to_owned());
-    }
-    parts.join(", ")
 }
 
 /// A task's priority as its row says it; P4 is none, so says nothing.

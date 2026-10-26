@@ -103,6 +103,21 @@ fn apply_graph(
 }
 
 proptest! {
+    /// No amount typed can make resolving a date panic: a saved filter syncs, so one that
+    /// panicked would panic every device drawing it. A date beyond the calendar is `None`,
+    /// and one the parser would refuse is exactly one that is not reachable.
+    #[test]
+    fn resolving_any_offset_never_panics(amount in any::<i64>(), unit in 0usize..4, week_start in 0i8..7) {
+        use lumenna_core::time::{DateSpec, RelativeUnit};
+        let unit = [RelativeUnit::Day, RelativeUnit::Week, RelativeUnit::Month, RelativeUnit::Year][unit];
+        let now = jiff::civil::date(2026, 10, 26).at(12, 0, 0, 0).in_tz("UTC").unwrap();
+        let week_start = jiff::civil::Weekday::from_monday_zero_offset(week_start).unwrap();
+        for spec in [DateSpec::Offset { amount, unit }, DateSpec::WeekStart { weeks: amount }, DateSpec::WeekEnd { weeks: amount }] {
+            let resolved = spec.resolve_in(&now, week_start);
+            prop_assert!(resolved.is_none() || spec.is_reachable(), "{spec:?} resolved to {resolved:?} though unreachable");
+        }
+    }
+
     /// However a list is assembled, its keys stay in strict order.
     ///
     /// Repeated insertion at the same index is the pathological case, and it is also the

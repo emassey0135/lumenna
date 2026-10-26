@@ -21,9 +21,9 @@ pub struct Settings {
     /// A **core** setting, not a per-UI one, because the core generates the announcement
     /// text — one setting, honoured identically on all eleven targets.
     pub verbosity: Verbosity,
-    /// Offered in the UI for new tasks.
+    /// The reminders a task with a due date takes when it has none of its own.
     pub default_task_reminders: Vec<Trigger>,
-    /// Offered in the UI for new blocks.
+    /// The reminders a block takes when it has none of its own.
     pub default_block_reminders: Vec<Trigger>,
     /// What a date-only due date means when a reminder needs a time to count back from.
     pub all_day_reminder_hour: civil::Time,

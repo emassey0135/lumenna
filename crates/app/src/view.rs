@@ -284,7 +284,8 @@ fn shown(model: &Screen) -> ViewModel {
             .as_ref()
             .and_then(|target| lumenna_records::reminders::reminders_of(&store.snapshot, target).ok()),
         line: model.line.as_ref().map(|line| {
-            let preview = lumenna_records::text::preview(&store.snapshot, &line.text, &store.now);
+            let style = model.style.unwrap_or(crate::proposal::default_style());
+            let preview = lumenna_records::text::preview_in(&store.snapshot, &line.text, &store.now, style);
             crate::typing::LineView {
                 text: line.text.clone(),
                 cursor: line.cursor,

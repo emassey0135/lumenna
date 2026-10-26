@@ -95,6 +95,96 @@ pub fn word_at(words: &[Word], cursor: usize) -> Option<(usize, &Word)> {
         .find(|(_, word)| cursor >= word.start && cursor <= word.end)
 }
 
+/// The character a byte offset falls at, counted from one, as a person counts along a line.
+///
+/// Spans stay bytes, for slicing; a message says this instead, since "é" is two bytes and
+/// someone arrowing through the line counts it once.
+pub(crate) fn position(input: &str, byte: usize) -> usize {
+    input.get(..byte).map_or(byte, |before| before.chars().count()) + 1
+}
+
+/// `p1` to `p4`, as quick add and the filter language both read a priority.
+pub(crate) fn priority_of(text: &str) -> Option<lumenna_core::model::Priority> {
+    use lumenna_core::model::Priority;
+    match text {
+        "p1" => Some(Priority::P1),
+        "p2" => Some(Priority::P2),
+        "p3" => Some(Priority::P3),
+        "p4" => Some(Priority::P4),
+        _ => None,
+    }
+}
+
+/// The name after a `#` or `@` at `at` (`##` too), and how many words it took.
+///
+/// Quoted, `#"Home Office"`, it runs to the closing quote; one never closed runs to the end,
+/// and `#""` names nothing. Unquoted, it is the longest run of words that spells a `known`
+/// name, else the first word alone, so `#My Project p1` takes the project and leaves the
+/// priority. Quick add and the filter language read it alike: two readers drifted, and one
+/// took `#"" now p1` to the end of the line.
+pub(crate) fn sigil_name(input: &str, tokens: &[Word], at: usize, known: &[String]) -> (String, usize) {
+    let first = tokens[at].raw(input).trim_start_matches(['#', '@']);
+    if let Some(opened) = first.strip_prefix('"') {
+        if let Some(name) = opened.strip_suffix('"') {
+            return (name.to_owned(), 1);
+        }
+        let mut name = opened.to_owned();
+        for (offset, word) in tokens.iter().enumerate().skip(at + 1) {
+            let raw = word.raw(input);
+            name.push(' ');
+            if let Some(closed) = raw.strip_suffix('"') {
+                name.push_str(closed);
+                return (name, offset - at + 1);
+            }
+            name.push_str(raw);
+        }
+        return (name, tokens.len() - at);
+    }
+    let mut best = (first.to_owned(), 1);
+    let mut candidate = first.to_owned();
+    for (offset, word) in tokens.iter().enumerate().skip(at + 1) {
+        candidate.push(' ');
+        candidate.push_str(word.raw(input));
+        if known.iter().any(|name| lumenna_core::suggest::same_name(name, &candidate)) {
+            best = (candidate.clone(), offset - at + 1);
+        }
+    }
+    best
+}
+
+/// A length glued into one word: `45m`, `90min`, `45minutes`, `2h`, `1hour`, `1h30m`, `1h30`.
+///
+/// The one reading of a length, for a task's estimate and a block line's `for 2h` alike;
+/// `None` for anything else, for nothing, and for more minutes than a `u32` holds.
+#[must_use]
+pub fn minutes_of(text: &str) -> Option<u32> {
+    let mut total: u32 = 0;
+    let mut rest = text;
+    let mut after_hours = false;
+    while !rest.is_empty() {
+        let split = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+        if split == 0 {
+            return None;
+        }
+        let value: u32 = rest[..split].parse().ok()?;
+        rest = &rest[split..];
+        if let Some(after) = ["hours", "hour", "hrs", "hr", "h"].iter().find_map(|unit| rest.strip_prefix(unit)) {
+            total = total.checked_add(value.checked_mul(60)?)?;
+            rest = after;
+            after_hours = true;
+        } else if rest.is_empty() && after_hours {
+            // "1h30": the minutes after the hours need no unit.
+            total = total.checked_add(value)?;
+        } else {
+            // Anything but a minute unit here means this word is not a length at all.
+            let after = ["minutes", "minute", "mins", "min", "m"].iter().find_map(|unit| rest.strip_prefix(unit))?;
+            total = total.checked_add(value)?;
+            rest = after;
+        }
+    }
+    (total > 0).then_some(total)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +238,30 @@ mod tests {
         // Caret after a trailing space is in no word.
         let spaced = words("add ");
         assert_eq!(word_at(&spaced, 4), None);
+    }
+
+    #[test]
+    fn a_position_counts_characters_from_one() {
+        assert_eq!(position("café #x", 6), 6);
+        assert_eq!(position("#x", 0), 1);
+    }
+
+    #[test]
+    fn a_length_reads_every_spelling_once_and_never_overflows() {
+        for (text, minutes) in [("45m", 45), ("90min", 90), ("45minutes", 45), ("2h", 120), ("1hour", 60), ("1h30m", 90), ("1h30", 90), ("2hours15mins", 135)] {
+            assert_eq!(minutes_of(text), Some(minutes), "{text}");
+        }
+        for text in ["", "0m", "h", "45", "45x", "99999999999h", "71582789h"] {
+            assert_eq!(minutes_of(text), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn an_empty_quoted_name_takes_only_itself() {
+        let input = r#"call #"" now p1"#;
+        let found = words(input);
+        assert_eq!(sigil_name(input, &found, 1, &[]), (String::new(), 1));
+        let input = r#"#"Home Office" p1"#;
+        assert_eq!(sigil_name(input, &words(input), 0, &[]), ("Home Office".to_owned(), 2));
     }
 }

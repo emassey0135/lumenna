@@ -171,8 +171,9 @@ impl Lumenna {
             store.load_all_years()?;
             let snapshot = repaired(store);
             let verbosity = snapshot.settings.verbosity;
-            let fired = firings(&snapshot, from, until, &jiff::tz::TimeZone::system(), device)
-                .map_err(|e| LumennaError::new(e.to_string()))?;
+            let lumenna_core::remind::Firings { firings: fired, unreadable } =
+                firings(&snapshot, from, until, &jiff::tz::TimeZone::system(), device);
+            let notices = unreadable.into_iter().map(|series| lumenna_records::reminders::unreadable_words(&snapshot, series)).collect();
             let stale = now.checked_sub(SignedDuration::from_mins(STALE_MINS)).unwrap_or(now);
             let (missed, due): (Vec<_>, Vec<_>) = fired
                 .iter()
@@ -191,7 +192,7 @@ impl Lumenna {
             };
             Ok(DueReminders {
                 announcement: count_line(due.len() + missed.len(), "reminder"),
-                notices: Vec::new(),
+                notices,
                 due,
                 missed,
                 missed_summary,

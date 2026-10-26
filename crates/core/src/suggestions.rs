@@ -8,8 +8,9 @@ use jiff::Zoned;
 
 use crate::filter::{Context, Expr};
 use crate::id::TaskId;
-use crate::model::BlockRef;
+use crate::model::{AssignmentStatus, BlockRef};
 use crate::snapshot::Snapshot;
+use crate::state::State;
 use crate::urgency::{Term, days_until_due, urgency};
 
 /// What fitting the time left adds to a task's score.
@@ -59,17 +60,25 @@ pub struct Suggestion {
     pub reasons: Vec<Reason>,
 }
 
-/// The minutes left in `block` (of `length` minutes) once what is in it is counted: each
-/// sitting's planned length, else its task's estimate, else nothing.
+/// The minutes left in `block` (of `length` minutes) once the time still owed in it is
+/// counted: each sitting planned or under way, of a task still open, at its planned length,
+/// else its task's estimate, less what has been worked in it already.
+///
+/// A sitting skipped, moved on or worked, or one whose task is done, takes no room; and the
+/// minutes already worked are not counted again, since for the block under way they are in
+/// the time already gone.
 #[must_use]
 pub fn remaining(snapshot: &Snapshot, block: BlockRef, length: u32) -> u32 {
-    let planned: u32 = snapshot
+    let owed: u32 = snapshot
         .assignments
         .values()
-        .filter(|a| a.block_ref == block)
-        .map(|a| a.planned_mins.or_else(|| snapshot.tasks.get(&a.task_id).and_then(|t| t.estimate_mins)).unwrap_or(0))
+        .filter(|a| a.block_ref == block && matches!(a.status, AssignmentStatus::Planned | AssignmentStatus::InProgress))
+        .filter_map(|a| {
+            let task = snapshot.tasks.get(&a.task_id).filter(|t| !t.is_deleted() && !snapshot.is_completed(t))?;
+            Some(a.planned_mins.or(task.estimate_mins).unwrap_or(0).saturating_sub(a.accumulated_mins))
+        })
         .sum();
-    length.saturating_sub(planned)
+    length.saturating_sub(owed)
 }
 
 /// The tasks to suggest for `block` (of `length` minutes), best first, at most `limit`:
@@ -102,16 +111,19 @@ pub fn suggest(
                 match term {
                     Term::Due => {
                         if let Some(days) = days_until_due(task, now) {
-                            reasons.push(if days < 0 { Reason::Overdue(-days) } else { Reason::DueIn(days) });
+                            // Due at nine and now noon is overdue, by no whole day.
+                            let overdue = days < 0 || facts.has_state(task, State::Overdue, now);
+                            reasons.push(if overdue { Reason::Overdue(-days.min(0)) } else { Reason::DueIn(days) });
                         }
                     }
                     Term::Priority if task.priority.as_u8() < 4 => reasons.push(Reason::Priority(task.priority.as_u8())),
                     Term::Started => reasons.push(Reason::Started),
                     Term::Blocking => reasons.push(Reason::Blocking(
-                        snapshot
-                            .tasks
-                            .values()
-                            .filter(|t| t.depends.contains(&task.id) && !t.is_deleted() && !facts.is_completed(t))
+                        facts
+                            .waiters_of(task.id)
+                            .iter()
+                            .filter_map(|id| snapshot.tasks.get(id))
+                            .filter(|t| !t.is_deleted() && !facts.is_completed(t))
                             .count(),
                     )),
                     _ => {}

@@ -1,6 +1,6 @@
-[1/5] unchecked | Get the data, task, priority 2, 1 of 5 | tsk Get the data priority 2 1/5
-[2/5] unchecked | Pay the rent, task, overdue, due yesterday, 2 of 5 | tsk Pay the rent ovd due yesterday 2/5
-[3/5] unchecked | Water the plants, task, recurring, due today at 6:00 PM, 3 of 5 | tsk Water the plants rec due today at 6:00 PM 3/5
-[4/5] expanded unchecked | Plan the trip, task, priority 1, 1 of 2 subtasks done, 4 of 5 | tsk Plan the trip priority 1, 1 of 2 subtasks done 4/5
-  [1/1] unchecked | Find a hotel, task, subtask | tsk Find a hotel sub
-[5/5] unchecked | Write the report, task, blocked, 5 of 5 | tsk Write the report wait 5/5
+[1/5] unchecked | Get the data | Task | priority 2
+[2/5] unchecked | Pay the rent | Task | overdue | due yesterday
+[3/5] unchecked | Water the plants | Task | recurring | due today | 18:00
+[4/5] expanded unchecked | Plan the trip | Task | priority 1, 1 of 2 subtasks done
+  [1/1] unchecked | Find a hotel | Task | subtask
+[5/5] unchecked | Write the report | Task | blocked

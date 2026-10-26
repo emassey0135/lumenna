@@ -290,7 +290,10 @@ pub fn advance(
     }
 
     let anchor = if recurrence.from_completion { completed_on } else { due.date };
-    match rule.next_after(anchor, anchor)? {
+    // Never on or before the occurrence just completed: finished early, `every! day` due
+    // tomorrow would otherwise come back tomorrow, the occurrence the completion names, and
+    // read as done for good.
+    match rule.next_after(anchor, anchor.max(due.date))? {
         Some(date) => Ok(Advanced::Next(Due { date, ..due.clone() })),
         None => Ok(Advanced::Finished),
     }
@@ -350,7 +353,7 @@ impl Occurrence {
     /// and would otherwise read as over all day.
     #[must_use]
     pub fn is_over_at(&self, time: civil::Time) -> bool {
-        let minutes = |t: civil::Time| i64::from(t.hour()) * 60 + i64::from(t.minute());
+        let minutes = crate::time::minutes_of_day;
         minutes(self.start_time) + i64::from(self.duration_mins) <= minutes(time)
     }
 }
@@ -449,13 +452,29 @@ pub fn expand_all(
     exceptions: &BTreeMap<(SeriesId, civil::Date), crate::model::BlockException>,
     range: &RangeInclusive<civil::Date>,
 ) -> Result<Vec<Occurrence>, RecurError> {
+    let (out, unreadable) = expand_readable(series, exceptions, range);
+    match unreadable.into_iter().next() {
+        Some((_, error)) => Err(error),
+        None => Ok(out),
+    }
+}
+
+/// As [`expand_all`], every series that can be expanded, and apart, each that cannot with
+/// why: for what must go on without one bad rule, such as reminders, where a series no
+/// device can read would otherwise silence every other block's.
+#[must_use]
+pub fn expand_readable(
+    series: &BTreeMap<SeriesId, BlockSeries>,
+    exceptions: &BTreeMap<(SeriesId, civil::Date), crate::model::BlockException>,
+    range: &RangeInclusive<civil::Date>,
+) -> (Vec<Occurrence>, Vec<(SeriesId, RecurError)>) {
     let mut out = Vec::new();
+    let mut unreadable = Vec::new();
     for one in series.values().filter(|s| s.deleted_at.is_none()) {
-        out.extend(expand(
-            one,
-            |date| exceptions.get(&(one.id, date)).map(|e| &e.action),
-            range,
-        )?);
+        match expand(one, |date| exceptions.get(&(one.id, date)).map(|e| &e.action), range) {
+            Ok(occurrences) => out.extend(occurrences),
+            Err(error) => unreadable.push((one.id, error)),
+        }
     }
     out.sort_by(|a, b| {
         a.date
@@ -464,5 +483,5 @@ pub fn expand_all(
             .then(a.duration_mins.cmp(&b.duration_mins))
             .then(a.series_id.cmp(&b.series_id))
     });
-    Ok(out)
+    (out, unreadable)
 }

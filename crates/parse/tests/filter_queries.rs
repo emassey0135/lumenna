@@ -196,9 +196,16 @@ fn a_saved_query_round_trips_through_its_own_readback() {
 fn an_unknown_word_says_where_it_is_and_what_was_meant() {
     let error = fails("#work & blokced");
     assert!(error.message.contains("'blokced'"), "{}", error.message);
-    assert!(error.message.contains("position 8"), "{}", error.message);
+    assert!(error.message.contains("position 9"), "counted from one: {}", error.message);
     assert!(error.message.contains("did you mean 'blocked'?"), "{}", error.message);
     assert_eq!(error.start, 8);
+}
+
+#[test]
+fn a_position_counts_characters_not_bytes() {
+    let error = fails("#école & blokced");
+    assert!(error.message.contains("position 10"), "{}", error.message);
+    assert_eq!(error.start, 10, "the span stays bytes, for slicing");
 }
 
 #[test]
@@ -244,4 +251,30 @@ fn a_list_query_may_end_in_its_order_and_nowhere_else() {
     assert!(parse_query("p1 sort:", &known).unwrap_err().message.contains("needs an order"));
     // A block's filter selects and does not order, so it says so rather than search for "sort:".
     assert!(parse_filter("p1 sort: urgency", &known).unwrap_err().message.contains("orders a list"));
+}
+
+#[test]
+fn a_quoted_search_glued_to_its_key_runs_to_its_closing_quote() {
+    assert_eq!(parse(r#"search:"buy milk""#), Expr::Predicate(Predicate::Search("buy milk".to_owned())));
+    assert_eq!(parse(r#"search:"buy milk" & p1"#), Expr::And(vec![Expr::Predicate(Predicate::Search("buy milk".to_owned())), Expr::Predicate(Predicate::Priority(Priority::P1))]));
+}
+
+#[test]
+fn a_key_is_its_whole_word() {
+    let error = fails("searching");
+    assert!(error.message.contains("'searching'"), "{}", error.message);
+}
+
+#[test]
+fn an_offset_no_calendar_reaches_is_refused_naming_it() {
+    for (input, named) in [("due before: in 99999999 days", "in 99999999 days"), ("99999999999 days", "99999999999 days"), ("in 99999999 years", "in 99999999 years")] {
+        let error = fails(input);
+        assert!(error.message.contains(named), "{input}: {}", error.message);
+    }
+}
+
+#[test]
+fn a_sigil_naming_nothing_is_refused() {
+    assert!(fails("#").message.contains("names nothing"));
+    assert!(fails(r#"@"" & p1"#).message.contains("names nothing"));
 }

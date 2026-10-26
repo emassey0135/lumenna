@@ -153,14 +153,25 @@ pub fn gap(offset_mins: i32) -> (String, std::cmp::Ordering) {
     (duration(minutes), 0.cmp(&offset_mins))
 }
 
-/// What a trigger reads as on a target's list.
+/// What a trigger reads as in a sentence: "5 minutes before it starts", or for a moment of its
+/// own its day in words and its time as `HH:MM`, "on Friday 15 May 2026 at 14:30".
 pub fn trigger_words(trigger: &Trigger) -> String {
+    match &trigger.anchor {
+        ReminderAnchor::Absolute(at) => format!("{} at {}", listed_words(trigger), crate::words::time_text(at.time())),
+        _ => listed_words(trigger),
+    }
+}
+
+/// What a trigger reads as on a target's list: as [`trigger_words`], but a moment of its own is
+/// its day alone, "on Friday 15 May 2026", since the list's line adds the time from the view's
+/// `time` in the person's clock.
+pub fn listed_words(trigger: &Trigger) -> String {
     let (span, when) = gap(trigger.offset_mins);
     let (verb, at) = match &trigger.anchor {
         ReminderAnchor::BlockStart => ("it starts", "when it starts"),
         ReminderAnchor::BlockEnd => ("it ends", "when it ends"),
         ReminderAnchor::Due => ("it is due", "when it is due"),
-        ReminderAnchor::Absolute(at) => return at.strftime("on %A %-d %B at %H:%M").to_string(),
+        ReminderAnchor::Absolute(at) => return format!("on {}", lumenna_core::time::long_date(at.date())),
     };
     match when {
         std::cmp::Ordering::Greater => format!("{span} before {verb}"),
@@ -217,11 +228,11 @@ pub fn delivery_choices(snapshot: &Snapshot, delivery: &Delivery) -> Vec<crate::
 
 /// One reminder as its list shows it.
 pub fn view(snapshot: &Snapshot, id: ReminderId, trigger: &Trigger, delivery: Option<&Delivery>) -> ReminderView {
-    let words = trigger_words(trigger);
+    let words = listed_words(trigger);
     let own = delivery.is_some();
     let devices = snapshot.devices.len() > 1;
     ReminderView {
-        actions: if own { crate::actions::reminder(&id.to_string(), &words, devices) } else { Vec::new() },
+        actions: if own { crate::actions::reminder(&id.to_string(), &trigger_words(trigger), devices) } else { Vec::new() },
         offered: Vec::new(),
         delivery: delivery.map(|d| delivery_words(snapshot, d)).unwrap_or_default(),
         id: id.to_string(),
@@ -237,7 +248,7 @@ pub fn view(snapshot: &Snapshot, id: ReminderId, trigger: &Trigger, delivery: Op
             _ => None,
         },
         time: match &trigger.anchor {
-            ReminderAnchor::Absolute(at) => Some(at.time().strftime("%H:%M").to_string()),
+            ReminderAnchor::Absolute(at) => Some(crate::words::time_text(at.time())),
             _ => None,
         },
         words,
@@ -252,6 +263,16 @@ pub fn reminder_target(snapshot: &Snapshot, input: &str) -> Result<ReminderTarge
     resolve::series_id(snapshot, input)
         .map(ReminderTarget::Block)
         .map_err(|_| LumennaError::new(format!("nothing here matches '{input}'")))
+}
+
+/// What is said of a block whose repetition no device can read: its reminders are left out,
+/// and every other block's still fire.
+#[must_use]
+pub fn unreadable_words(snapshot: &Snapshot, series: lumenna_core::id::SeriesId) -> String {
+    format!(
+        "Reminders for {} are left out: its repetition cannot be read",
+        target_name(snapshot, ReminderTarget::Block(series))
+    )
 }
 
 /// What a reminder target is called.
@@ -276,7 +297,13 @@ pub fn reminders_of(snapshot: &Snapshot, target: &str) -> Result<ReminderList> {
         .values()
         .filter(|r| r.target == target && r.deleted_at.is_none())
         .collect();
-    own.sort_by_key(|r| r.trigger.offset_mins);
+    // In the order they fire: a block's start before its end, each by its offset, then the
+    // moments of their own. By offset alone, "at end" came before "10 minutes before it starts".
+    own.sort_by_key(|r| match &r.trigger.anchor {
+        ReminderAnchor::Due | ReminderAnchor::BlockStart => (0, r.trigger.offset_mins, None),
+        ReminderAnchor::BlockEnd => (1, r.trigger.offset_mins, None),
+        ReminderAnchor::Absolute(at) => (2, 0, Some(at.timestamp())),
+    });
     // A task with no due date has nothing for the defaults to count from.
     let due = match target {
         ReminderTarget::Task(id) => snapshot.tasks.get(&id).is_some_and(|t| t.due.is_some()),
@@ -363,5 +390,27 @@ mod tests {
         assert_eq!(list.reminders[0].delivery, "only on Kitchen iPad");
         let choices = delivery_choices(&snapshot, &reminder.delivery);
         assert_eq!(choices.iter().find(|c| c.detail.is_some()).unwrap().title, "Only on Kitchen iPad");
+    }
+
+    #[test]
+    fn a_blocks_own_reminders_are_listed_in_the_order_they_fire() {
+        let mut snapshot = Snapshot::default();
+        let block = lumenna_core::model::BlockSeries::one_off("Deep work", lumenna_core::model::BlockKind::Work, jiff::civil::date(2026, 5, 6), jiff::civil::time(9, 0, 0, 0), 60).unwrap();
+        let target = ReminderTarget::Block(block.id);
+        snapshot.series.insert(block.id, block.clone());
+        for trigger in [Trigger::at(ReminderAnchor::BlockEnd), Trigger::before(ReminderAnchor::BlockStart, 10), Trigger::at(ReminderAnchor::BlockStart)] {
+            let reminder = Reminder::new(target, trigger).unwrap();
+            snapshot.reminders.insert(reminder.id, reminder);
+        }
+        let words: Vec<String> = reminders_of(&snapshot, &block.id.to_string()).unwrap().reminders.into_iter().map(|r| r.words).collect();
+        assert_eq!(words, ["10 minutes before it starts", "when it starts", "when it ends"]);
+    }
+
+    #[test]
+    fn a_moment_of_its_own_is_listed_by_its_day_for_the_app_to_add_its_time() {
+        let at = jiff::civil::date(2027, 5, 14).at(14, 30, 0, 0).in_tz("Europe/London").unwrap();
+        let trigger = Trigger { anchor: ReminderAnchor::Absolute(at), offset_mins: 0 };
+        assert_eq!(listed_words(&trigger), "on Friday 14 May 2027");
+        assert_eq!(trigger_words(&trigger), "on Friday 14 May 2027 at 14:30");
     }
 }

@@ -11,7 +11,7 @@
 
 use jiff::{Zoned, civil};
 
-use crate::model::{BlockRef, Task};
+use crate::model::Task;
 use crate::snapshot::Snapshot;
 use crate::state::Facts;
 
@@ -81,14 +81,6 @@ pub struct Urgency {
     pub weight: f32,
 }
 
-/// The day a sitting is on: its occurrence's, or a one-off block's own.
-pub(crate) fn sitting_day(snapshot: &Snapshot, block: BlockRef) -> Option<civil::Date> {
-    match block {
-        BlockRef::Occurrence(_, date) => Some(date),
-        BlockRef::OneOff(series) => snapshot.series.get(&series).map(|s| s.start_date),
-    }
-}
-
 /// How far a due date counts, 0.2 a fortnight or more away, rising to 1.0 at a week overdue.
 fn due_scale(days_until: f32) -> f32 {
     (0.2 + 0.8 * (14.0 - days_until) / 21.0).clamp(0.2, 1.0)
@@ -107,7 +99,9 @@ pub fn urgency(snapshot: &Snapshot, facts: &Facts<'_>, task: &Task, now: &Zoned,
     if let Some(due) = &task.due {
         // A date without a time is due by the end of that day.
         let time = due.time.unwrap_or(civil::time(23, 59, 0, 0));
-        let at = crate::remind::instant(due.date, time, now.time_zone());
+        // In the zone it is held to, if any: 9:00 in London is not 9:00 here.
+        let zone = crate::remind::zone_of(due.timezone.as_ref(), now.time_zone());
+        let at = crate::remind::instant(due.date, time, &zone);
         let days = at.duration_since(now.timestamp()).as_secs_f64() / 86_400.0;
         #[expect(clippy::cast_possible_truncation, reason = "a day count, rounded by far less than it means")]
         add(Term::Due, c.due * due_scale(days as f32));
@@ -120,19 +114,21 @@ pub fn urgency(snapshot: &Snapshot, facts: &Facts<'_>, task: &Task, now: &Zoned,
     #[expect(clippy::cast_possible_truncation, reason = "a fraction of a year")]
     add(Term::Age, c.age * (age_days / 365.0).clamp(0.0, 1.0) as f32);
 
-    let sittings: Vec<_> = snapshot.assignments.values().filter(|a| a.task_id == task.id).collect();
+    // Through `facts`, never a scan of every record: this runs once for every task a list
+    // sorts or a block is offered.
+    let sittings = facts.assignments_of(task.id);
     if sittings.iter().any(|a| a.accumulated_mins > 0 || a.is_running()) {
         add(Term::Started, c.started);
     }
-    let open = |id| snapshot.tasks.get(id).is_some_and(|t: &Task| !t.is_deleted() && !facts.is_completed(t));
-    if snapshot.tasks.values().any(|t| t.depends.contains(&task.id) && open(&t.id)) {
+    let open = |id: &_| snapshot.tasks.get(id).is_some_and(|t: &Task| !t.is_deleted() && !facts.is_completed(t));
+    if facts.waiters_of(task.id).iter().any(open) {
         add(Term::Blocking, c.blocking);
     }
     if task.depends.iter().any(open) {
         add(Term::Blocked, c.blocked);
     }
     let today = now.date();
-    if sittings.iter().any(|a| sitting_day(snapshot, a.block_ref) == Some(today)) {
+    if sittings.iter().any(|a| snapshot.assignment_date(a) == Some(today)) {
         add(Term::AssignedToday, c.assigned_today);
     }
 

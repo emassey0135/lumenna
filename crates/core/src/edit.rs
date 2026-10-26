@@ -80,7 +80,7 @@ pub enum EditError {
 
     /// The block does not occur on the day the assignment names — before its series
     /// starts, after it ends, on a day its rule skips, or on one that was cancelled.
-    #[error("that block does not happen on {date}")]
+    #[error("that block does not happen on {}", crate::time::long_date(*.date))]
     NoOccurrence {
         /// The day that was asked for.
         date: jiff::civil::Date,
@@ -273,7 +273,12 @@ impl Builder {
         self
     }
 
+    /// The edit, or [`Edit::nothing`] when nothing differs, so no caller says a change that
+    /// was never made.
     fn finish(&mut self) -> Edit {
+        if self.changes.is_empty() {
+            return Edit::nothing();
+        }
         Edit { description: std::mem::take(&mut self.description), changes: std::mem::take(&mut self.changes) }
     }
 }
@@ -597,15 +602,9 @@ pub enum MoveTo {
     /// A different project. Subtasks follow, since a subtask in another project from its
     /// parent has no view that can show both.
     Project(ProjectId),
-    /// Under a different parent, or to the top level.
+    /// Under a different parent, or to the top level. Tasks have no order of their own to
+    /// move within: a list orders them by urgency or by when they were added.
     Parent(Option<TaskId>),
-    /// A different position among its current siblings.
-    Between {
-        /// The task it should follow, if any.
-        after: Option<TaskId>,
-        /// The task it should precede, if any.
-        before: Option<TaskId>,
-    },
 }
 
 /// Moves a task.
@@ -663,17 +662,6 @@ pub fn move_task(snapshot: &Snapshot, id: TaskId, to: MoveTo) -> Result<Edit, Ed
                         builder.task(Transition::updated(target.clone(), moved));
                     }
                 }
-            }
-        }
-        MoveTo::Between { after, before } => {
-            let lower = after.and_then(|id| snapshot.tasks.get(&id)).map(|t| t.order.clone());
-            let upper = before.and_then(|id| snapshot.tasks.get(&id)).map(|t| t.order.clone());
-            if let Ok(order) = OrderKey::between(lower.as_ref(), upper.as_ref())
-                && order != task.order
-            {
-                let mut moved = task.clone();
-                moved.order = order;
-                builder.task(Transition::updated(task.clone(), moved));
             }
         }
     }
@@ -1006,8 +994,10 @@ pub fn except_occurrence(
         return Ok(Edit::nothing());
     }
     let description = match &after.action {
-        ExceptionAction::Cancelled => format!("Cancelled {} on {date}", series.title),
-        ExceptionAction::Modified { .. } => format!("Changed {} on {date} only", series.title),
+        // The day in words, never ISO digits; a whole date, since the description is kept for
+        // undo and "tomorrow" would not stay true.
+        ExceptionAction::Cancelled => format!("Cancelled {} on {}", series.title, time::long_date(date)),
+        ExceptionAction::Modified { .. } => format!("Changed {} on {} only", series.title, time::long_date(date)),
     };
     let transition = match before {
         Some(before) => Transition::updated(before, after),
@@ -1032,7 +1022,7 @@ pub fn restore_occurrence(
         return Ok(Edit::nothing());
     };
     Ok(Edit {
-        description: format!("Put {} on {date} back as the series has it", series.title),
+        description: format!("Put {} on {} back as the series has it", series.title, time::long_date(date)),
         changes: vec![Change::Exception(Box::new(Transition::removed(before)))],
     })
 }
@@ -1222,7 +1212,7 @@ pub fn stop_timer(
         ended.status = crate::model::AssignmentStatus::Worked;
         return Ok((
             Edit {
-                description: format!("Logged {} minutes", logged.mins),
+                description: format!("Logged {}", time::minutes_words(logged.mins)),
                 changes: vec![Change::Assignment {
                     year,
                     transition: Box::new(Transition::updated(assignment.clone(), ended)),
@@ -1238,7 +1228,7 @@ pub fn stop_timer(
     }
     Ok((
         Edit {
-            description: format!("Logged {} minutes", elapsed.mins),
+            description: format!("Logged {}", time::minutes_words(elapsed.mins)),
             changes: vec![Change::Assignment {
                 year,
                 transition: Box::new(Transition::updated(assignment.clone(), stopped)),
@@ -1276,7 +1266,7 @@ pub fn pause_timer(
     let elapsed = paused.pause(time::truncate(now.timestamp()), cap_mins);
     Ok((
         Edit {
-            description: format!("Paused timer, {} minutes so far", elapsed.mins),
+            description: format!("Paused timer, {} so far", time::minutes_words(elapsed.mins)),
             changes: vec![Change::Assignment {
                 year,
                 transition: Box::new(Transition::updated(assignment.clone(), paused)),
@@ -1320,7 +1310,7 @@ pub fn log_minutes(
         return Ok(Edit::nothing());
     }
     Ok(Edit {
-        description: format!("Logged {mins} minutes"),
+        description: format!("Logged {}", time::minutes_words(mins)),
         changes: vec![Change::Assignment {
             year,
             transition: Box::new(Transition::updated(assignment.clone(), logged)),
@@ -1353,7 +1343,7 @@ pub fn plan_minutes(
     planned.planned_mins = mins;
     Ok(Edit {
         description: match mins {
-            Some(mins) => format!("Planned {mins} minutes"),
+            Some(mins) => format!("Planned {}", time::minutes_words(mins)),
             None => "Cleared the planned length".to_owned(),
         },
         changes: vec![Change::Assignment {
@@ -1393,8 +1383,8 @@ pub fn defer_sitting(snapshot: &Snapshot, assignment_id: AssignmentId, year: i16
 ///
 /// # Errors
 ///
-/// [`EditError::NotFound`] if there is no such sitting; [`EditError::Invalid`] if it is
-/// neither planned (to skip) nor skipped (to plan again).
+/// [`EditError::NotFound`] if there is no such sitting; [`EditError::NotSkippable`] if it is
+/// not planned, to skip, or [`EditError::NotSkipped`] if it is not skipped, to plan again.
 pub fn skip_sitting(snapshot: &Snapshot, assignment_id: AssignmentId, year: i16, skip: bool) -> Result<Edit, EditError> {
     use crate::model::AssignmentStatus as S;
     let assignment = snapshot

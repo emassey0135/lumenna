@@ -434,3 +434,47 @@ fn a_task_whose_parent_was_filtered_out_nests_under_its_grandparent() {
     let shape: Vec<(&str, u32)> = rows.iter().map(|r| (r.title.as_str(), r.depth)).collect();
     assert_eq!(shape, vec![("Ship release", 0), ("Proofread", 1)]);
 }
+
+#[test]
+fn a_negation_of_several_conditions_reads_back_apart_from_one_of_one() {
+    let p1 = || Expr::Predicate(Predicate::Priority(Priority::P1));
+    let whole = Expr::Not(Box::new(Expr::And(vec![p1(), state(State::Overdue)])));
+    let first = Expr::And(vec![Expr::Not(Box::new(p1())), state(State::Overdue)]);
+    assert_eq!(whole.describe(), "tasks not both priority 1 and overdue");
+    assert_eq!(first.describe(), "tasks not priority 1, and overdue");
+    assert_eq!(Expr::Not(Box::new(Expr::Or(vec![p1(), state(State::Overdue)]))).describe(), "tasks neither priority 1 nor overdue");
+}
+
+#[test]
+fn assigned_next_week_follows_the_week_start_setting() {
+    let mut world = World::new();
+    let task = world.add(world.work, "planned for Sunday");
+    // Wednesday 6 May: next week starts Sunday 10 May, or Monday 11 May.
+    let sunday = BlockSeries::one_off("Plan", BlockKind::Work, date(2026, 5, 10), time(9, 0, 0, 0), 60).unwrap();
+    let sitting = BlockAssignment::new(BlockRef::OneOff(sunday.id), task, OrderKey::middle());
+    world.snapshot.series.insert(sunday.id, sunday);
+    world.snapshot.assignments.insert(sitting.id, sitting);
+    let next_week = Expr::Predicate(Predicate::Assigned(lumenna_core::time::DateSpec::WeekStart { weeks: 1 }));
+    assert!(world.titles(&next_week).is_empty());
+    world.snapshot.settings.week_start = jiff::civil::Weekday::Sunday;
+    assert_eq!(world.titles(&next_week), expect(&["planned for Sunday"]));
+}
+
+#[test]
+fn a_window_further_than_any_date_matches_nothing_rather_than_panicking() {
+    let mut world = World::new();
+    let task = world.add(world.work, "due");
+    world.snapshot.tasks.get_mut(&task).unwrap().due = Some(Due::on(date(2026, 5, 7)));
+    for days in [i64::MAX, i64::MIN, 99_999_999] {
+        assert!(world.titles(&Expr::Predicate(Predicate::Due(DueFilter::Within { days }))).is_empty());
+    }
+}
+
+#[test]
+fn a_name_is_found_whatever_its_case_beyond_ascii() {
+    let mut world = World::new();
+    let ecole = Project::new("École", OrderKey::middle());
+    world.snapshot.projects.insert(ecole.id, ecole);
+    assert!(world.snapshot.project_by_name("école").is_some());
+    assert!(world.snapshot.label_by_name("LAPTOP").is_some());
+}

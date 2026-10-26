@@ -19,7 +19,6 @@ use uuid::Uuid;
 
 use crate::id::{NodeId, ReminderId};
 use crate::model::{Delivery, ReminderAction, ReminderAnchor, ReminderTarget, Trigger};
-use crate::recur::RecurError;
 use crate::snapshot::Snapshot;
 
 /// One time a reminder goes off.
@@ -74,6 +73,13 @@ pub fn instant(date: civil::Date, time: civil::Time, zone: &TimeZone) -> Timesta
         .to_zoned(zone.clone())
         .or_else(|_| civil.to_zoned(TimeZone::UTC))
         .map_or(Timestamp::UNIX_EPOCH, |zoned| zoned.timestamp())
+}
+
+/// The zone a due time or a block is held to, else the device's own: what every instant
+/// made of one is made in.
+#[must_use]
+pub fn zone_of(held: Option<&crate::model::TzName>, local: &TimeZone) -> TimeZone {
+    held.and_then(|name| name.get().ok()).unwrap_or_else(|| local.clone())
 }
 
 /// The key a default reminder fires under: stable on every device, from the target and the
@@ -192,24 +198,33 @@ pub fn falls_short(snapshot: &Snapshot, facts: &crate::state::Facts<'_>, block: 
     })
 }
 
+/// What fires in a window, and what could not be looked at.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Firings {
+    /// Every firing, in time order.
+    pub firings: Vec<Firing>,
+    /// Each block series whose rule cannot be expanded: none of its reminders are in
+    /// `firings`, and the person is told so rather than left to wonder.
+    pub unreadable: Vec<crate::id::SeriesId>,
+}
+
 /// Every firing in `(from, until]`, in time order, for `device` (`None` for a device with no
 /// key of its own, such as the Apple Watch, which fires only what every device does).
 ///
 /// What fires: each open task's own reminders, or the default task reminders if it has
 /// none; each block occurrence's series' own, or the default block reminders; and each
 /// reminder at a fixed moment. A cancelled occurrence fires nothing, a completed or trashed
-/// task nothing, a dismissed firing nothing, and a snoozed one when its snooze ends.
-///
-/// # Errors
-///
-/// If a block series carries a rule that cannot be expanded.
+/// task nothing, a dismissed firing nothing, and a snoozed one when its snooze ends. A series
+/// whose rule cannot be expanded fires nothing and is named in [`Firings::unreadable`]; every
+/// other block's reminders still fire.
+#[must_use]
 pub fn firings(
     snapshot: &Snapshot,
     from: Timestamp,
     until: Timestamp,
     local: &TimeZone,
     device: Option<NodeId>,
-) -> Result<Vec<Firing>, RecurError> {
+) -> Firings {
     let facts = snapshot.facts();
     let delivered = |delivery: &Delivery| match device {
         Some(device) => delivery.includes(&device),
@@ -284,7 +299,7 @@ pub fn firings(
         if due.date < first || due.date > last {
             continue;
         }
-        let zone = due.timezone.as_ref().and_then(|name| name.get().ok()).unwrap_or_else(|| local.clone());
+        let zone = zone_of(due.timezone.as_ref(), local);
         let (time, all_day) = due.time.map_or((snapshot.settings.all_day_reminder_hour, true), |t| (t, false));
         let anchor_at = instant(due.date, time, &zone);
         let target = ReminderTarget::Task(task.id);
@@ -310,13 +325,13 @@ pub fn firings(
     }
 
     // Blocks: every occurrence in reach; a cancelled one is not expanded at all.
-    let occurrences = snapshot.occurrences(&(first..=last))?;
+    let (occurrences, unreadable) = crate::recur::expand_readable(&snapshot.series, &snapshot.exceptions, &(first..=last));
     for occurrence in &occurrences {
         let Some(series) = snapshot.series.get(&occurrence.series_id) else { continue };
         if series.deleted_at.is_some() {
             continue;
         }
-        let zone = series.timezone.as_ref().and_then(|name| name.get().ok()).unwrap_or_else(|| local.clone());
+        let zone = zone_of(series.timezone.as_ref(), local);
         let start = instant(occurrence.date, occurrence.start_time, &zone);
         // Its real length, across a change of the clocks too.
         let end = start
@@ -332,7 +347,11 @@ pub fn firings(
             crate::model::BlockRef::OneOff(occurrence.series_id)
         };
         let mut carry = series.flags.accepts_tasks && falls_short(snapshot, &facts, reference);
-        for (key, trigger, is_own) in triggers(target, &snapshot.settings.default_block_reminders) {
+        // The earliest reminder at or after the end carries it, whatever order they were made
+        // in: "at end" before "10m after end", never the other way round.
+        let mut triggers = triggers(target, &snapshot.settings.default_block_reminders);
+        triggers.sort_by_key(|(key, trigger, _)| (!matches!(trigger.anchor, ReminderAnchor::BlockEnd), trigger.offset_mins, *key));
+        for (key, trigger, is_own) in triggers {
             let anchor_at = match trigger.anchor {
                 ReminderAnchor::BlockStart => start,
                 ReminderAnchor::BlockEnd => end,
@@ -424,7 +443,7 @@ pub fn firings(
     }
 
     found.sort_by_key(|f| (f.at, f.key));
-    Ok(found)
+    Firings { firings: found, unreadable: unreadable.into_iter().map(|(id, _)| id).collect() }
 }
 
 #[cfg(test)]

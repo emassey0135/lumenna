@@ -66,7 +66,8 @@ surface's `reminders.rs` words them and answers the apps.
 - **What fires**: an open task at its due time or, date-only, the all-day hour; each block
   occurrence at its start or end, a cancelled one never; snoozed at the snooze's end;
   dismissed never. Windows are `(from, until]`, so checks in any steps fire each once, across
-  the spring change too.
+  the spring change too. A series whose rule cannot be expanded fires nothing and is named
+  (`Firings::unreadable`), which the host says; every other block's reminders still fire.
 - **The text is the whole message** ("Deep work starts in 5 minutes — 3 tasks assigned, first
   is Review PR"). `missed` is the same said of the past, for the one summary of what came
   while nothing ran (`STALE_MINS`).
@@ -134,9 +135,10 @@ move made by the change that completed a repeating task is not counted).
   repeating block's day alone, a one-off itself; End the Day and Clear the Rest of the Day
   cancel later repeating blocks for today and trash one-offs; Carry Forward marks the old
   sitting Deferred.
-- **A block's end offers Carry Forward** (`remind::falls_short`, `Firing::carry`): the first
-  reminder at or after the end says it, or, with none, a firing of its own under `carry_key`,
-  which scheduling devices re-arm as the sittings change. Its button runs
+- **A block's end offers Carry Forward** (`remind::falls_short`, `Firing::carry`): the
+  earliest reminder at or after the end says it, whatever order they were made in, or, with
+  none, a firing of its own under `carry_key`, which scheduling devices re-arm as the sittings
+  change. Its button runs
   `carry_rest_forward(<series>@<date>)`: every short sitting to its next block in one change.
 - **What Should I Work On?** (`whatnow.rs`, `lum next`) is a Pick whose answer starts at once,
   timer running, in the block under way or a block of its own in free time: one change.

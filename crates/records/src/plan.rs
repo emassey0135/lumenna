@@ -133,7 +133,12 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
         .collect();
     cancelled.sort_by(|a, b| (&a.start, &a.title).cmp(&(&b.start, &b.title)));
     let mut plan = Plan {
-        announcement: format!("{day}, {}", count_line(blocks.len(), "block")),
+        // The day in words: a screen reader reads "2026-10-26" as numbers.
+        announcement: format!(
+            "{}, {}",
+            crate::words::capitalised(&lumenna_core::time::day_words(day, now.date())),
+            count_line(blocks.len(), "block")
+        ),
         notices: Vec::new(),
         date: day.to_string(),
         count: to_u32(blocks.len()),
@@ -347,12 +352,12 @@ pub const fn kind_word(kind: BlockKind) -> &'static str {
 
 /// Minutes since midnight.
 pub fn minutes_of(time: jiff::civil::Time) -> i64 {
-    i64::from(time.hour()) * 60 + i64::from(time.minute())
+    lumenna_core::time::minutes_of_day(time)
 }
 
-/// Minutes since midnight as `HH:MM`.
+/// Minutes since midnight as `HH:MM`, the time it is then on the clock.
 pub fn clock(minutes: i64) -> String {
-    format!("{:02}:{:02}", minutes / 60, minutes % 60)
+    lumenna_core::time::clock_of_minutes(minutes, false)
 }
 
 /// Where now falls in today: in a block, or in the free time before the next one.

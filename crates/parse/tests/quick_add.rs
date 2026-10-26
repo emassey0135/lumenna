@@ -274,7 +274,7 @@ fn a_typo_is_reported_with_its_position_and_the_nearest_match() {
     let message = &p.diagnostics[0].message;
     assert!(message.contains("new label 'lapto'"), "{message}");
     assert!(message.contains("did you mean 'laptop'?"), "{message}");
-    assert!(message.contains("position 5"), "{message}");
+    assert!(message.contains("position 6"), "counted from one: {message}");
     assert_eq!(p.diagnostics[0].severity, Severity::Notice);
 
     let p = preview("task #Wrok");
@@ -421,7 +421,7 @@ fn a_word_ending_in_s_is_not_a_weekday_by_accident() {
 
 #[test]
 fn an_ordinary_preposition_is_not_reported_as_a_broken_date() {
-    for input in ["put files in the folder", "read the last chapter", "plan next steps"] {
+    for input in ["put files in the folder", "read the last chapter", "plan next steps", "read this 3 times", "finish this"] {
         let p = preview(input);
         assert!(p.diagnostics.is_empty(), "{input}: {:?}", p.diagnostics);
     }
@@ -444,12 +444,12 @@ fn a_hash_or_at_sign_with_no_name_stays_in_the_title_and_is_said() {
     assert_eq!(p.project, None, "not a project called nothing");
     assert_eq!(p.diagnostics.len(), 1, "{:?}", p.diagnostics);
     assert_eq!(p.diagnostics[0].severity, Severity::Notice);
-    assert_eq!(p.diagnostics[0].message, "'#' at position 14 has no project name after it; it stayed in the title");
+    assert_eq!(p.diagnostics[0].message, "'#' at position 15 has no project name after it; it stayed in the title");
 
     let p = preview("Buy milk @");
     assert_eq!(p.title, "Buy milk @");
     assert!(p.labels.is_empty() && p.new_labels.is_empty(), "no label called nothing: {:?}", p.new_labels);
-    assert_eq!(p.diagnostics[0].message, "'@' at position 9 has no label name after it; it stayed in the title");
+    assert_eq!(p.diagnostics[0].message, "'@' at position 10 has no label name after it; it stayed in the title");
 }
 
 #[test]
@@ -479,4 +479,83 @@ fn a_terse_readback_says_the_date_once_as_itself() {
     snapshot.settings.verbosity = lumenna_core::model::Verbosity::Terse;
     let terse = parse_quick_add(line, &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now()).announcement();
     assert_eq!(terse, "Call Sam, due Thursday 7 May at 3:00 PM, priority 1");
+}
+
+#[test]
+fn a_date_that_does_not_exist_is_an_error_naming_it_not_a_title_quietly_shortened() {
+    // 2026 is no leap year, and the search for the next 29 February reaches 2028.
+    assert_eq!(preview("pay rent feb 29").due.unwrap().date, date(2028, 2, 29));
+    for (line, named) in [("pay rent feb 30", "February 30"), ("x in 99999 months", "in 99999 months"), ("x in 9999999 days", "in 9999999 days"), ("x 99999999999 weeks ago", "99999999999 weeks ago"), ("x in 99999999 years", "in 99999999 years")] {
+        let p = preview(line);
+        assert!(p.due.is_none(), "{line}");
+        assert!(p.has_errors(), "{line}: {:?}", p.diagnostics);
+        assert!(p.diagnostics.iter().any(|d| d.message.contains(named)), "{line}: {:?}", p.diagnostics);
+    }
+}
+
+#[test]
+fn this_day_is_today_and_this_month_is_no_date_and_said() {
+    let p = preview("call this day");
+    assert_eq!(p.due.unwrap().date, date(2026, 5, 6));
+    let p = preview("call this month");
+    assert!(p.due.is_none());
+    assert_eq!(p.title, "call this month");
+    assert!(!p.diagnostics.is_empty(), "the phrase is said, not left silent");
+}
+
+#[test]
+fn a_day_after_the_time_is_the_same_phrase() {
+    let p = preview("meet at 3pm tomorrow");
+    assert_eq!(p.title, "meet");
+    let due = p.due.unwrap();
+    assert_eq!((due.date, due.time), (date(2026, 5, 7), Some(time(15, 0, 0, 0))));
+    assert!(p.diagnostics.is_empty(), "{:?}", p.diagnostics);
+}
+
+#[test]
+fn an_ordinal_before_a_unit_counts_the_units() {
+    let p = preview("run every 3rd day");
+    assert_eq!(p.title, "run");
+    assert_eq!(p.due.unwrap().recurrence.unwrap().rrule, "FREQ=DAILY;INTERVAL=3");
+    assert_eq!(preview("bins every 2nd week").due.unwrap().recurrence.unwrap().rrule, "FREQ=WEEKLY;INTERVAL=2");
+    assert_eq!(preview("rent every 15th").due.unwrap().recurrence.unwrap().rrule, "FREQ=MONTHLY;BYMONTHDAY=15", "with no unit it is still the day of the month");
+}
+
+#[test]
+fn every_other_weekday_is_said_rather_than_read_as_every_weekday() {
+    let p = preview("stretch every other weekday");
+    assert!(p.due.is_none(), "{:?}", p.due);
+    assert_eq!(p.title, "stretch every other weekday");
+    assert!(!p.diagnostics.is_empty());
+}
+
+#[test]
+fn the_readback_says_the_time_in_the_persons_clock() {
+    let mut p = preview("Call Sam tomorrow at 3pm");
+    p.twelve_hour = false;
+    assert!(p.announcement().contains("at 15:00"), "{}", p.announcement());
+}
+
+#[test]
+fn one_minute_is_said_as_one() {
+    assert!(preview("stretch 1m").announcement().contains("estimated 1 minute"), "{}", preview("stretch 1m").announcement());
+    assert_eq!(preview("read 45minutes").estimate_mins, Some(45));
+}
+
+#[test]
+fn an_empty_quoted_name_stays_in_the_title_and_takes_nothing_after_it() {
+    let p = preview(r#"call #"" now p1"#);
+    assert_eq!(p.priority, Priority::P1, "the priority after it is still read");
+    assert_eq!(p.title, r#"call #"" now"#);
+    assert!(p.project.is_none());
+}
+
+#[test]
+fn a_name_matches_whatever_its_case_beyond_ascii() {
+    let mut snapshot = store();
+    let project = Project::new("École", OrderKey::middle());
+    snapshot.projects.insert(project.id, project);
+    let p = parse_quick_add("enrol #école", &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now());
+    assert!(p.project.is_some(), "{:?}", p.diagnostics);
+    assert!(!p.has_errors());
 }

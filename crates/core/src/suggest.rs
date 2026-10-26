@@ -15,6 +15,15 @@
 /// every other — so the bound also scales with length below.
 const MAX_DISTANCE: usize = 3;
 
+/// Whether two names are the same name, whatever their case.
+///
+/// Unicode case, as [`nearest`] folds it: matched by ASCII case alone, `#école` found no
+/// project "École" and was then told "did you mean 'École'?".
+#[must_use]
+pub fn same_name(a: &str, b: &str) -> bool {
+    a == b || a.to_lowercase() == b.to_lowercase()
+}
+
 /// The closest candidate to `needle`, if any is close enough to be worth saying.
 ///
 /// Comparison is case-insensitive, and an exact match after case folding always wins: a user

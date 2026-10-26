@@ -7,7 +7,7 @@ use lumenna_core::model::{Due, Label, Project};
 use lumenna_core::order::OrderKey;
 use lumenna_core::snapshot::Snapshot;
 use lumenna_core::time::RecurrenceSpec;
-use lumenna_parse::quickadd::{Known, parse_quick_add};
+use lumenna_parse::quickadd::Known;
 use lumenna_parse::{parse_filter, words};
 
 use crate::error::{LumennaError, Result};
@@ -30,6 +30,10 @@ fn resolve(input: &str, candidates: impl Iterator<Item = String>) -> Result<Stri
         )));
     }
     let bare = input.split('@').next().unwrap_or(input).to_lowercase();
+    // Nothing is a prefix of everything: with one record, an empty identifier named it.
+    if bare.is_empty() {
+        return Err(LumennaError::new("no identifier was given"));
+    }
     let matches: Vec<String> = candidates.filter(|id| id.starts_with(&bare)).collect();
     match matches.as_slice() {
         [one] => Ok(one.clone()),
@@ -68,18 +72,24 @@ fn hint<'a>(name: &str, names: impl IntoIterator<Item = &'a str>) -> String {
         .map_or_else(String::new, |near| format!(" — did you mean '{near}'?"))
 }
 
-/// The project called `name`, or a sentence suggesting the nearest name.
+/// The project whose whole identifier `name` is, as a pick's choice names it, else the project
+/// called `name`, or a sentence suggesting the nearest name. A pick names a project by its
+/// identifier, since two projects under different parents may share a name, and a name finds
+/// the first.
 pub fn project<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a Project> {
-    snapshot.project_by_name(name).ok_or_else(|| {
+    let by_id = name.trim().parse().ok().and_then(|id| snapshot.projects.get(&id)).filter(|p| p.deleted_at.is_none());
+    by_id.or_else(|| snapshot.project_by_name(name)).ok_or_else(|| {
         let names = snapshot.projects.values().map(|p| p.name.as_str());
         LumennaError::new(format!("no project called '{name}'{}", hint(name, names)))
     })
 }
 
-/// The label called `name`, or a sentence suggesting the nearest name.
+/// The label whose whole identifier `name` is, as a pick's choice names it, else the label
+/// called `name`, or a sentence suggesting the nearest name.
 pub fn label<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a Label> {
     let name = name.trim_start_matches('@');
-    snapshot.label_by_name(name).ok_or_else(|| {
+    let by_id = name.trim().parse().ok().and_then(|id| snapshot.labels.get(&id)).filter(|l| l.deleted_at.is_none());
+    by_id.or_else(|| snapshot.label_by_name(name)).ok_or_else(|| {
         let names = snapshot.labels.values().map(|l| l.name.as_str());
         LumennaError::new(format!("no label called '{name}'{}", hint(name, names)))
     })
@@ -172,14 +182,14 @@ pub fn list_query(snapshot: &Snapshot, text: &str) -> Result<(Expr, Option<lumen
     Ok(lumenna_parse::parse_query(text, &Known::from_snapshot(snapshot))?)
 }
 
-/// `45m`, `2h`, `1h30m`, or a bare number of minutes.
+/// `45m`, `2h`, `1h30m`, `1h 30m`, `45 minutes`, or a bare number of minutes: the whole text,
+/// so `45m tomorrow` is refused rather than read as 45.
 pub fn minutes(text: &str) -> Result<u32> {
     if let Ok(plain) = text.trim().parse::<u32>() {
         return Ok(plain);
     }
-    parse_quick_add(&format!("x {text}"), &Known::default())
-        .estimate_mins
-        .map(|spanned| spanned.value)
+    let joined: String = text.to_lowercase().split_whitespace().collect();
+    lumenna_parse::words::minutes_of(&joined)
         .ok_or_else(|| LumennaError::new(format!("could not read a duration from '{text}'")))
 }
 
@@ -216,4 +226,38 @@ pub fn block_kind(word: &str) -> Result<lumenna_core::model::BlockKind> {
 /// If it names no day.
 pub fn split_day(target: &str) -> Result<(&str, &str)> {
     target.split_once('@').ok_or_else(|| LumennaError::new(format!("'{target}' does not name a day of a block")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lumenna_core::model::Task;
+
+    #[test]
+    fn an_empty_identifier_names_nothing_even_with_one_record() {
+        let mut snapshot = Snapshot::default();
+        let task = Task::new(Project::inbox().id, "Only", OrderKey::middle());
+        snapshot.tasks.insert(task.id, task);
+        assert!(task_id(&snapshot, "").is_err());
+        assert!(task_id(&snapshot, "  ").is_err());
+    }
+
+    #[test]
+    fn a_length_is_the_whole_text() {
+        assert_eq!(minutes("45m").unwrap(), 45);
+        assert_eq!(minutes("1h 30m").unwrap(), 90);
+        assert_eq!(minutes("45 minutes").unwrap(), 45);
+        assert!(minutes("45m tomorrow").is_err());
+    }
+
+    #[test]
+    fn a_project_picked_by_identifier_is_that_one_though_another_shares_its_name() {
+        let mut snapshot = Snapshot::default();
+        let first = Project::new("Home", OrderKey::middle());
+        let second = Project::new("Home", OrderKey::middle());
+        let wanted = second.id;
+        snapshot.projects.insert(first.id, first);
+        snapshot.projects.insert(second.id, second);
+        assert_eq!(project(&snapshot, &wanted.to_string()).unwrap().id, wanted);
+    }
 }
