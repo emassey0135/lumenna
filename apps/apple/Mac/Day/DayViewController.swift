@@ -96,7 +96,7 @@ struct MacDayScreen: View {
             label(node.row).tag(node.id)
         } else {
             DisclosureGroup(isExpanded: Binding(get: { node.row.item.expanded != false }, set: { open in
-                model.run([open ? .expand : .collapse], on: node.row.item)
+                model.key(open ? "expand" : "collapse", on: node.row.item)
             })) {
                 ForEach(node.children) { child in
                     label(child.row).tag(child.id)
@@ -148,9 +148,9 @@ struct MacDayScreen: View {
     private func activate() {
         guard let item = model.inHand else { return }
         switch item.kind {
-        case .block: model.run([.edit], on: item)
+        case .block: model.key("open", on: item)
         case .sitting: details()
-        case .free: model.run([.addBlock], on: item)
+        case .free: model.key("open", on: item)
         case .cancelled:
             let line = model.rows.first { $0.id == item.key }?.line?.text ?? ""
             choose(line, item.offered.map { action in (action.title, { model.run(action, on: item) }) })

@@ -136,14 +136,14 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func syncNow() { syncAndSay(core) }
 
     // The day's own actions from anywhere else: today's, on the day.
-    @objc func planTheDay() { onToday(.planDay) }
-    @objc func replanFromNow() { onToday(.replan) }
-    @objc func whatNow() { onToday(.whatNow) }
-    @objc func endTheDay() { onToday(.endDay) }
-    @objc func clearTheDay() { onToday(.clearDay) }
+    @objc func planTheDay() { onToday("plan-day") }
+    @objc func replanFromNow() { onToday("replan") }
+    @objc func whatNow() { onToday("what-now") }
+    @objc func endTheDay() { onToday("end-day") }
+    @objc func clearTheDay() { onToday("clear-day") }
 
-    private func onToday(_ kind: LumennaApp.ActionKind) {
-        show(.place(.today)) { ($0 as? DayViewController)?.runDay(kind) }
+    private func onToday(_ id: String) {
+        show(.place(.today)) { ($0 as? DayViewController)?.runDay(id) }
     }
 
     /// The overrun warning's Replan, which the app has taken: the day, Replan from Now over it.

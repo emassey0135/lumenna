@@ -104,12 +104,16 @@ final class DayModel: ObservableObject {
         core.app.run(action, on: row.key)
     }
 
-    /// The row's action of one of `kinds`; false if it has none.
-    @discardableResult
-    func run(_ kinds: [LumennaApp.ActionKind], on row: LumennaApp.DayItem) -> Bool {
-        guard let action = row.offered.first(where: { kinds.contains($0.kind) }) else { return false }
-        run(action, on: row)
-        return true
+    /// The core's command `id` on `row` ("open": a block's Edit, free time's Add Block), or the
+    /// app says why the row has none.
+    func key(_ id: String, on row: LumennaApp.DayItem) {
+        core.app.key(id, on: row.key)
+    }
+
+    /// One of the day's own commands by its id ("plan-day"), on the day shown, or why it has none.
+    func key(_ id: String) {
+        appear()
+        core.app.key(id)
     }
 
     /// One of the day's own actions.

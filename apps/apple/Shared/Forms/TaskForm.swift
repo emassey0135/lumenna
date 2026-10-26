@@ -125,23 +125,21 @@ final class TaskDetailModel: NSObject, ObservableObject {
         core.app.act(action, on: .details)
     }
 
+    /// The core's command `id` on this task ("mark-done", "put-in-block"), as a key asks, or the
+    /// app says why it has none.
+    func key(_ id: String) {
+        core.app.send(.details(.key(id)))
+    }
+
     /// Mark Done or Mark Not Done, as a key asks.
     func toggleDone() {
-        if let action = task?.offered.first(where: { [.markDone, .markNotDone].contains($0.kind) }) { run(action) }
+        key("mark-done")
     }
 
-    /// The task's action of `kind`, as a key asks, or the app says why it has none.
-    func run(_ kind: LumennaApp.ActionKind) {
-        if let action = task?.offered.first(where: { $0.kind == kind }) {
-            run(action)
-        } else {
-            core.app.send(.details(.run([kind])))
-        }
-    }
-
-    /// Move to Trash, as a key asks.
+    /// Move to Trash, as a key asks; the form leaves once the task has gone.
     func trash() {
-        if let action = task?.offered.first(where: { $0.kind == .delete }) { run(action) }
+        trashing = task?.offered.contains { $0.kind == .delete } == true
+        key("trash-task")
     }
 }
 

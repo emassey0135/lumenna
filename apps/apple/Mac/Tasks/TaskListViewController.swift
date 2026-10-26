@@ -115,7 +115,7 @@ struct MacTaskListScreen: View {
     /// Edit Block.
     private func open() {
         guard model.blocks else { return details() }
-        if let row = model.inHand { model.run([.edit], on: row, saying: .edit) }
+        if let row = model.inHand { model.key("open", on: row) }
     }
 
     /// The rows as the outline shows them, in its order.
@@ -170,7 +170,7 @@ struct MacTaskListScreen: View {
                     // check box was said before the title, and differently on a row with
                     // subtasks than on one without.
                     Toggle(isOn: Binding(get: { done }, set: { _ in
-                        model.run([.markDone, .markNotDone], on: row.row, saying: .markDone)
+                        model.key("mark-done", on: row.row)
                     })) { EmptyView() }
                     .toggleStyle(.checkbox)
                     .accessibilityHidden(true)

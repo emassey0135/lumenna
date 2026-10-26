@@ -112,7 +112,7 @@ struct TaskListScreen: View {
             model.moved(to: row.id)
             // A block's own screen is the block form, for every occurrence: its Edit Block.
             if model.blocks {
-                model.run([.edit], on: row.row, saying: .edit)
+                model.key("open", on: row.row)
             } else {
                 open(row.row)
             }
@@ -293,18 +293,18 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
 
     @objc func toggleDone() {
         guard let row = model.inHand else { return }
-        model.run([.markDone, .markNotDone], on: row, saying: .markDone)
+        model.key("mark-done", on: row)
     }
 
-    // The row's own action of each kind, or the app says why it has none.
-    @objc func putInBlock() { runInHand(.putInBlock) }
-    @objc func moveToProject() { runInHand(.moveToProject) }
-    @objc func makeSubtask() { runInHand(.makeSubtaskOf) }
-    @objc func waitFor() { runInHand(.waitFor) }
+    // The core's commands on the row in hand, or the app says why it has none.
+    @objc func putInBlock() { runInHand("put-in-block") }
+    @objc func moveToProject() { runInHand("move-to-project") }
+    @objc func makeSubtask() { runInHand("make-subtask") }
+    @objc func waitFor() { runInHand("wait-for") }
 
-    private func runInHand(_ kind: LumennaApp.ActionKind) {
+    private func runInHand(_ id: String) {
         guard let row = model.inHand else { return }
-        model.run([kind], on: row, saying: kind)
+        model.key(id, on: row)
     }
 
     @objc func moveToTrash() {

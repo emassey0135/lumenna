@@ -160,13 +160,13 @@ struct DayScreen: View {
     private func tapped(_ row: DayModel.Row) {
         let item = row.item
         switch item.kind {
-        case .block: model.run([.edit], on: item)
+        case .block: model.key("open", on: item)
         case .sitting:
             if let task = item.sitting?.task {
                 model.moved(to: item.key)
                 openTask(task)
             }
-        case .free: model.run([.addBlock], on: item)
+        case .free: model.key("open", on: item)
         case .cancelled: offering = row
         case .now, .summary: break
         }
@@ -289,16 +289,15 @@ final class DayViewController: UIHostingController<DayScreen> {
         model.appear()
         core.app.send(.block(.new(start: nil, minutes: nil)))
     }
-    // The day's own actions, from the Day menu: the day shown's of each kind.
-    @objc func planTheDay() { runDay(.planDay) }
-    @objc func replanFromNow() { runDay(.replan) }
-    @objc func whatNow() { runDay(.whatNow) }
-    @objc func endTheDay() { runDay(.endDay) }
-    @objc func clearTheDay() { runDay(.clearDay) }
+    // The day's own actions, from the Day menu: the core's commands on the day shown.
+    @objc func planTheDay() { runDay("plan-day") }
+    @objc func replanFromNow() { runDay("replan") }
+    @objc func whatNow() { runDay("what-now") }
+    @objc func endTheDay() { runDay("end-day") }
+    @objc func clearTheDay() { runDay("clear-day") }
 
-    /// The day's action of `kind`, or the app says why the day has none, whatever row is in hand.
-    func runDay(_ kind: LumennaApp.ActionKind) {
-        model.appear()
-        core.app.send(.runDay([kind]))
+    /// The day's command `id`, or the app says why the day has none, whatever row is in hand.
+    func runDay(_ id: String) {
+        model.key(id)
     }
 }

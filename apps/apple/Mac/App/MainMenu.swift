@@ -165,19 +165,19 @@ enum MainMenu {
                 action.pointee = item.action
                 return true
             }
-            guard modifiers == [.command, .option], let kind = DayKeys.kind(for: typed) else { return false }
-            pending = kind
+            guard modifiers == [.command, .option], let command = DayKeys.command(for: typed) else { return false }
+            pending = command
             target.pointee = self
             action.pointee = #selector(runPending(_:))
             return true
         }
 
-        private var pending: LumennaApp.ActionKind?
+        private var pending: String?
 
         @objc private func runPending(_ sender: Any?) {
-            guard let kind = pending, let app = AppDelegate.shared else { return }
+            guard let command = pending, let app = AppDelegate.shared else { return }
             pending = nil
-            app.runDay(kind)
+            app.runDay(command)
         }
     }
 

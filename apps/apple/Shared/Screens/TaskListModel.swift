@@ -130,13 +130,10 @@ final class TaskListModel: ObservableObject {
         rows.first { $0.id == row.id }?.actions ?? []
     }
 
-    /// The row's action of one of `kinds`, or why it has none, in the core's words.
-    func run(_ kinds: [LumennaApp.ActionKind], on row: LumennaApp.RowView, saying kind: LumennaApp.ActionKind) {
-        if let action = actions(of: row).first(where: { kinds.contains($0.kind) }) {
-            run(action, on: row)
-        } else {
-            core.app.refuse([kind], on: row.id)
-        }
+    /// The core's command `id` on `row` ("open", "mark-done"): what it runs is the core's, or
+    /// it says why the row has none.
+    func key(_ id: String, on row: LumennaApp.RowView) {
+        core.app.key(id, on: row.id)
     }
 
     /// The row in hand, if it is listed.
