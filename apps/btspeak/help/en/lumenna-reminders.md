@@ -6,10 +6,10 @@ A task with a due date and every block offer Reminders, r, in their context menu
 
 ## What came due
 
-Reminders, r, on the main menu, lists what came due over the last day and was not dismissed. Control-D dismisses one, on every device. Its context menu also has Snooze 10 minutes, z, and, where a block ended with work left short and the reminder asks whether to carry it on, Carry forward, f; and where a block's work outruns its time, Replan, p, which opens Replan from now.
+Reminders, r, on the main menu, lists what came due over the last day and was not dismissed. Control-D dismisses one, on every device. Its context menu also has Snooze, z, which says for how long, and, where a block ended with work left short and the reminder asks whether to carry it on, Carry forward, f; and where a block's work outruns its time, Replan, p, which opens Replan from now.
 
 ## Reminders on this device
 
 In Settings, Reminders, on this device: Reminders on this device turns them off here alone; every other device still gives them.
 
-While Lumenna is closed, reminders are given by Background reminders and sync, g, in Settings: with the notification sound, speech and braille. It keeps this device in sync with your other devices too, and starts whenever the device does. Enter on it chooses On or Off, after saying what it does.
+While Lumenna is open, it gives reminders itself, with the notification sound, speech and braille. While Lumenna is closed, reminders are given by Background reminders and sync, g, in Settings: with the notification sound, speech and braille. It keeps this device in sync with your other devices too, and starts whenever the device does. Enter on it chooses On or Off, after saying what it does.

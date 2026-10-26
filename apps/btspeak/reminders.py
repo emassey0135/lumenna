@@ -1,4 +1,5 @@
-"""Lumenna's reminders on BTSpeak, as the background service gives them (`background.py`).
+"""Lumenna's reminders on BTSpeak, as the app gives them while it runs (`give_in_background`)
+and the background service while it is closed (`background.py`).
 
 It opens the store itself, through the core the app runs (`core.py`), holds the right to give
 this device's reminders (`Device::deliver_reminders`), asks every twenty seconds what came due, and gives each: the device's
@@ -8,8 +9,8 @@ restart does not say the day again (it remembers when it last gave reminders), t
 while it was stopped is one summary, and that nothing is given while another process on the
 device gives them. There is no reminder logic here.
 
-Stopping the service lets go of the right so another process may take it; the app's Reminders
-on this device, which the core honours, turns them off alone.
+Closing the app or stopping the service lets go of the right so another process may take it;
+the app's Reminders on this device, which the core honours, turns them off alone.
 
 Dismissing, snoozing and carrying forward what a block's end left short (the reminder's
 `carry`, whose question ends its text) are the app's Reminders screen: a service has no keys
@@ -19,6 +20,7 @@ of its own.
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -58,10 +60,6 @@ def say(text: str) -> None:
     host.say_brl(text)
 
 
-def braille(text: str) -> None:
-    """Nothing more: `say` has shown it on the display already."""
-
-
 def open_store():
     """This device's store, through the core."""
     try:
@@ -77,11 +75,10 @@ class Giver:
     for tests; the service leaves it out and the core takes now.
     """
 
-    def __init__(self, open_store=open_store, sound=chime, speak=say, show=braille, now=None) -> None:
+    def __init__(self, open_store=open_store, sound=chime, speak=say, now=None) -> None:
         self._open = open_store
         self._sound = sound
         self._speak = speak
-        self._show = show
         self._now = now
         self.device = None
         #: Whether another process on the device gave reminders when last asked.
@@ -109,9 +106,38 @@ class Giver:
         for text in given:
             self._sound()
             self._speak(text)
-            self._show(text)
         return given
 
     def pause(self) -> float:
         """How long to wait before asking again: shorter while another process gives them."""
         return WAITING if self.elsewhere else INTERVAL
+
+
+def give_in_background(giver: Giver):
+    """Gives reminders on a thread of their own, as the background service does, while the app
+    runs: without it nothing was given while the app was open unless the service was on. The
+    core's lock keeps the two from both giving one. Returns what stops it, letting go of the
+    right for another process to take."""
+    stop = threading.Event()
+
+    def run() -> None:
+        try:
+            while not stop.is_set():
+                try:
+                    giver.once()
+                except LumennaError:
+                    # Tried again at the next look: a store busy for a moment must not end it.
+                    giver.let_go()
+                stop.wait(giver.pause())
+        finally:
+            giver.let_go()
+
+    thread = threading.Thread(target=run, name="lumenna-reminders", daemon=True)
+    thread.start()
+
+    def stopped() -> None:
+        stop.set()
+        # Let go only once a look under way is done, or it could take the right again.
+        thread.join(timeout=10)
+
+    return stopped

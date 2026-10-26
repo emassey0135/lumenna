@@ -99,6 +99,8 @@ class Script:
         self.shown: list = []
         self.offered: list[list[str]] = []
         self.prompts: list[str] = []
+        #: What each line asked for started with.
+        self.defaults: list[str] = []
         self.forms: list[list] = []
         #: Each confirmation asked, with the answer Enter gives.
         self.confirmations: list[tuple[str, bool]] = []
@@ -302,6 +304,7 @@ def request_input(prompt, default_text="", hotkeys=None, **_ignored):
     `("key", key, typed)` types `typed`, then presses `key`, which a hotkey answers, and the
     dialog stays open with what it left there; `...` in the next `input` accepts that."""
     script.prompts.append(prompt)
+    script.defaults.append(default_text)
     field = default_text
     while script.steps and script.steps[0][0] == "key":
         _, key, typed = script.steps.pop(0)

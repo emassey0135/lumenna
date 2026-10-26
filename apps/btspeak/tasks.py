@@ -250,13 +250,15 @@ actions.FORMS[(L.Subject.TASK, K.EDIT_TASK)] = open_task_form
 # ---------------------------------------------------------------------------------------
 
 
-def add_task(session: Session, prefix: str = "") -> str:
+def add_task(session: Session, prefix: str = "", refusal: str = "") -> str:
     """Capture, in the quick-add grammar: the app's quick-add line.
 
-    The line is read back before it is added when it cannot be — an unknown project is an
-    error, and an unknown label is a new label — and, where the person asked for it, always.
+    Where the person asked for it, the line is read back before it is added. A line the core
+    refuses — an unknown project — is asked again as typed, the app's sentence first, rather
+    than retyped on a braille keyboard.
     """
-    text = assisted_input(session, "Task", L.Syntax.QUICK_ADD, history_key="lumenna-add", default=prefix)
+    text = assisted_input(session, actions.prompt(refusal, "Task"), L.Syntax.QUICK_ADD,
+                          history_key="lumenna-add", default=prefix)
     if not text or not text.strip():
         return ""
     session.send(
@@ -264,16 +266,18 @@ def add_task(session: Session, prefix: str = "") -> str:
         L.ShellEventTyping(L.TypingText(text, len(text.encode("utf-8")))),
     )
     line = session.view().line
-    if line is not None and line.has_errors:
-        session.send(L.ShellEventTyping(L.TypingClose()))
-        dialogs.show_message(line.readback)
-        return ""
     if line is not None and options.get(options.READ_BACK, False):
         answer = choose({"add": "Add it", "change": "Change it"}, f"{line.readback}. Add it?")
         if answer != "add":
             session.send(L.ShellEventTyping(L.TypingClose()))
             return "" if answer is None else add_task(session, prefix=text)
-    return session.send(L.ShellEventQuickAdd(text))
+    said = session.send(L.ShellEventQuickAdd(text))
+    why = session.view().add_refused
+    if why:
+        # The refusal, said once: as the question asked again.
+        session.send(L.ShellEventTyping(L.TypingClose()))
+        return add_task(session, prefix=text, refusal=why)
+    return said
 
 
 def char_offset(text: str, byte_offset: int) -> int:

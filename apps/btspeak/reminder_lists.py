@@ -17,7 +17,7 @@ import datetime
 import actions
 from actions import K, L
 from rows import Row, items
-from session import Command, Session, live_menu, screen
+from session import Command, Session, live_menu, screen, sentences
 from tasks import undo_commands
 
 
@@ -104,10 +104,15 @@ def reminders_of(session: Session, row=None) -> str:
 def due(session: Session) -> str:
     """What came due over the last day and was not dismissed: the delete keys dismiss one,
     z snoozes it, on every device."""
-    state = {"heading": "Reminders"}
     looked = now()
-    # What a look finds is said as it arrives; here the screen says it, as its heading.
-    session.send(L.ShellEventDue(L.DueEventLook(_moment(looked - LOOK_BACK), _moment(looked))))
+    # What a look finds is said as it arrives; here the screen says it, as its heading as it
+    # opens, and only then: the rows say them after that.
+    found = session.send(L.ShellEventDue(L.DueEventLook(_moment(looked - LOOK_BACK), _moment(looked))))
+    state = {"heading": sentences("Reminders", found)}
+
+    def title() -> str:
+        shown, state["heading"] = state["heading"], "Reminders"
+        return shown
 
     def build():
         given = session.view().due
@@ -135,7 +140,7 @@ def due(session: Session) -> str:
 
     with screen("lumenna-reminders"):
         live_menu(
-            session, build, lambda: state["heading"],
+            session, build, title,
             context=lambda rows: [
                 Command(lambda row: row.record.dismiss, deal(L.DueEventDismiss), deletes=True),
                 Command(lambda row: row.record.snooze or "", deal(L.DueEventSnooze), key="z",

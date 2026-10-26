@@ -14,6 +14,7 @@ It holds what can be done to the task now, as every Lumenna app offers it, then 
 - Move to project, m.
 - Make subtask of, s; Move to top level, t, for a subtask.
 - Wait for, w; Stop waiting for each task it waits for, n.
+- Reminders, r, for a task with a due date. See [Lumenna Reminders](help:lumenna-reminders).
 - Move to trash. Control-D and the D chord do the same.
 - Details: everything about the task, to pan through.
 
@@ -25,7 +26,7 @@ It holds what can be done to the task now, as every Lumenna app offers it, then 
 
 ## Writing a task
 
-Write it the way you would say it: "water the plants every monday", "draft the report friday at 2pm p2 #Work @writing 45m". What was understood is said back before it is added. A project that does not exist stops the task; a label that does not exist becomes a new label.
+Write it the way you would say it: "water the plants every monday", "draft the report friday at 2pm p2 #Work @writing 45m". Once it is added, Lumenna says how it was understood; to hear that before it is added, and change it, turn on Read a task back before adding it in Settings, r. A project that does not exist stops the task, and Lumenna asks again with what you typed and why; a label that does not exist becomes a new label.
 
 ## The Trash
 

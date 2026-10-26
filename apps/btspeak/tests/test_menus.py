@@ -599,6 +599,20 @@ class Menus(unittest.TestCase):
         self.assertTrue(any("priority 1" in asked for asked in script.prompts), script.prompts)
         self.assertEqual(self.titles(), ["call mum"])
 
+    def test_a_refused_task_is_asked_again_as_typed_with_the_apps_reason(self):
+        script = self.run_script(
+            [
+                ("app", "Add a task"),
+                ("input", "call mum #Nowhere"),
+                ("input", "call mum"),
+                ("back",),
+            ],
+            lambda: tasks.task_list(self.session),
+        )
+        self.assertIn("Nowhere", script.prompts[1])
+        self.assertEqual(script.defaults[1], "call mum #Nowhere")
+        self.assertEqual(self.titles(), ["call mum"])
+
     def test_one_day_of_a_repeating_block_is_changed_cancelled_and_put_back(self):
         self.call("block.add", title="Run", at="7am", minutes=30, repeat="every day", date="today")
         self.run_script(

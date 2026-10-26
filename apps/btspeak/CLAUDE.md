@@ -63,7 +63,9 @@ test with a newer one (`PYTHON=…`).
   the device.
 - **The app syncs while it runs** (`App::in_front`), waiting its turn for the endpoint while the
   background service or the daemon holds it, and takes the automatic backups, hourly
-  (`Core.back_up_while_running`).
+  (`Core.back_up_while_running`). It gives reminders too, a `reminders.Giver` on a thread of its
+  own (`reminders.give_in_background`), waiting its turn for the core's lock while the service
+  has it, so nothing is said twice.
 - **One background service keeps the device in sync and gives its reminders** (`background.py`),
   so no one needs a shell for either: `Device::keep_in_sync` holds the endpoint as the daemon
   does, waiting its turn while another process has it, and serves the command surface while it

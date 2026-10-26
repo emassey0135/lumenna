@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import queue
+import socket
 import sys
 import threading
 import time
@@ -60,6 +61,14 @@ def profile_directory() -> Path:
     data_home = os.environ.get("XDG_DATA_HOME", "")
     base = Path(data_home) if os.path.isabs(data_home) else Path.home() / ".local" / "share"
     return base / "lumenna"
+
+
+def device_name() -> str:
+    """What this device is called on others, as `lum` names it: the host's name without
+    `.local`."""
+    name = socket.gethostname().strip()
+    name = name[: -len(".local")] if name.endswith(".local") else name
+    return name or "this device"
 
 
 def native():
