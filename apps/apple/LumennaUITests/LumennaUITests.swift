@@ -5,7 +5,21 @@ import XCTest
 final class LumennaUITests: XCTestCase {
     private var app: XCUIApplication!
 
-    override func setUp() {
+    /// The iPhone's Browse tab's tests: the iPad has no Browse, its sidebar making projects,
+    /// labels and filters (SidebarUITests). Skipped before the app launches, since launching it
+    /// and going to Tasks took a slow iPad runner most of a test's three minutes.
+    private static let browseOnly: Set<String> = [
+        "testATasksProjectIsChosenFromTheProjects",
+        "testAProjectHoldsTheTasksAddedInIt",
+        "testABrowseRowSaysItsNameOnceAndItsCountOnce",
+        "testLabelsAndSavedFiltersCanBeMade",
+        "testUndoIsOfferedOnBrowseScreensToo",
+    ]
+
+    override func setUpWithError() throws {
+        // "-[LumennaUITests.LumennaUITests testName]"
+        let test = name.split(separator: " ").last.map { String($0.dropLast()) } ?? name
+        try XCTSkipIf(pad && Self.browseOnly.contains(test), "the iPad makes projects, labels and filters from its sidebar (SidebarUITests)")
         continueAfterFailure = false
         app = XCUIApplication()
         // A fresh store for every test, in the app's temporary directory.
@@ -253,7 +267,6 @@ final class LumennaUITests: XCTestCase {
     }
 
     func testATasksProjectIsChosenFromTheProjects() throws {
-        try XCTSkipIf(pad, "the iPad makes projects from its sidebar (SidebarUITests)")
         tab("Browse")
         cell(containing: "Projects").tap()
         app.buttons["Add project"].tap()
@@ -600,7 +613,6 @@ final class LumennaUITests: XCTestCase {
     // MARK: - Browse
 
     func testAProjectHoldsTheTasksAddedInIt() throws {
-        try XCTSkipIf(pad, "the iPad makes projects, labels and filters from its sidebar (SidebarUITests)")
         tab("Browse")
         cell(containing: "Projects").tap()
         app.buttons["Add project"].tap()
@@ -619,7 +631,6 @@ final class LumennaUITests: XCTestCase {
     }
 
     func testABrowseRowSaysItsNameOnceAndItsCountOnce() throws {
-        try XCTSkipIf(pad, "the iPad makes projects, labels and filters from its sidebar (SidebarUITests)")
         tab("Browse")
         let projects = app.row("Projects")
         XCTAssertTrue(projects.waitForExistence(timeout: 5), "the label is the name alone")
@@ -627,7 +638,6 @@ final class LumennaUITests: XCTestCase {
     }
 
     func testLabelsAndSavedFiltersCanBeMade() throws {
-        try XCTSkipIf(pad, "the iPad makes projects, labels and filters from its sidebar (SidebarUITests)")
         tab("Browse")
         cell(containing: "Labels").tap()
         app.buttons["Add label"].tap()
@@ -755,24 +765,41 @@ final class LumennaUITests: XCTestCase {
         try audit(.all, "task detail", namedRows: true)
     }
 
-    /// The default reminders are phrases the core reads, saved on Return, never a keystroke at
-    /// a time; one it refuses stays in its field with the core's reason beside it.
-    func testADefaultReminderIsAPhraseSavedOnReturnAndARefusedOneStaysWithItsReason() {
+    /// The Reminders page's default for a task with a due date, scrolled to. The page's row is
+    /// found by its name alone: Settings lists five, and a slow runner took a minute and a half
+    /// over `reveal`'s search through every cell's text.
+    private func taskReminderDefault() -> XCUIElement {
         tab("Settings")
-        reveal("Reminders").tap()
+        let page = app.row("Reminders")
+        XCTAssertTrue(page.waitForExistence(timeout: 10), app.debugDescription)
+        page.tap()
         XCTAssertTrue(app.navigationBars["Reminders"].waitForExistence(timeout: 5))
         let field = app.textFields["Reminders for a task with a due date"]
         for _ in 0..<6 where !(field.exists && field.isHittable) { app.swipeUp() }
         XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        return field
+    }
+
+    /// A default reminder the core refuses stays in its field with the core's reason beside it.
+    /// The other half, a phrase saved, is its own test: together they ran past the three minutes
+    /// a test is given on a slow runner.
+    func testARefusedDefaultReminderStaysWithItsReason() {
+        let field = taskReminderDefault()
         XCTAssertTrue(app.switches["Reminders on this device"].exists, "this device's own, beside the defaults")
-        field.tap()
-        field.typeText("at end\n")
+        replace(field, with: "at end\n")
         let reason = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "counts from when it is due")).firstMatch
         XCTAssertTrue(reason.waitForExistence(timeout: 5), "the core's reason, with its field")
         XCTAssertEqual(field.value as? String, "at end", "what was typed stays")
+    }
+
+    /// The default reminders are phrases the core reads, saved on Return, never a keystroke at
+    /// a time, and read back as the core says them.
+    func testADefaultReminderIsAPhraseSavedOnReturn() {
+        let field = taskReminderDefault()
         replace(field, with: "30m before\n")
-        XCTAssertTrue(reason.waitForNonExistence(timeout: 5))
-        XCTAssertEqual(field.value as? String, "30m before due", "read back as the core says it")
+        let saved = NSPredicate(format: "value == %@", "30m before due")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: saved, evaluatedWith: field)], timeout: 5), .completed,
+                       "read back as the core says it, not \(field.value ?? "nothing")")
     }
 
     /// Every settings page at the largest accessibility text size, kept as screenshots: what
@@ -1049,7 +1076,6 @@ final class LumennaUITests: XCTestCase {
     }
 
     func testUndoIsOfferedOnBrowseScreensToo() throws {
-        try XCTSkipIf(pad, "the iPad makes projects, labels and filters from its sidebar (SidebarUITests)")
         tab("Browse")
         cell(containing: "Projects").tap()
         app.buttons["Add project"].tap()
