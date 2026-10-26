@@ -39,6 +39,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             // running reaches it.
             let responder = ReminderResponder(device: core.app.device) { reminded in
                 if reminded.replan {
+                    // The app's: today, with Replan from Now over it, which the screens follow.
+                    core.app.replan(from: reminded)
                     Self.root?.openReplan?()
                 } else {
                     Self.root?.openReminded?(kind: reminded.kind, target: reminded.target, day: reminded.day)

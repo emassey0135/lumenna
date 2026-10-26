@@ -221,12 +221,14 @@ final class LumennaWatchUITests: XCTestCase {
         app.buttons["Planning"].tap()
         XCTAssertTrue(app.switches["Completing a task completes its subtasks"].waitForExistence(timeout: 5))
         try audit("planning settings")
-        // The default reminders, phrases, and whether this watch gives them.
+        back()
+        // The default reminders, phrases, and whether this watch gives them: a page of their own.
+        app.buttons["Reminders"].tap()
         XCTAssertTrue(reveal(app.textFields["Reminders for a block"], form: true).exists)
         XCTAssertTrue(reveal(app.switches["Reminders on this device"], form: true).exists)
-        try audit("planning settings, reminders")
+        try audit("reminder settings")
         back()
-        app.buttons["Devices"].tap()
+        app.buttons["Devices and Sync"].tap()
         XCTAssertTrue(app.staticTexts["No devices are paired yet. Pair one to sync with it."].waitForExistence(timeout: 5), "the synced list, empty in a fresh store")
         try audit("devices")
     }

@@ -239,9 +239,9 @@ final class LumennaMacUITests: XCTestCase {
         // By identifier: the window takes each tab's name as its title.
         let settings = app.windows["settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
-        for tab in ["General", "Planning", "Devices", "Backups", "Export and Import"] {
+        for tab in ["General", "Planning", "Reminders", "Devices and Sync", "Backups", "Export and Import"] {
             settings.toolbars.buttons[tab].click()
-            if tab != "Devices" {
+            if tab != "Devices and Sync" {
                 // One level: a scroll area named for the page, not a group around one.
                 XCTAssertTrue(settings.scrollViews[tab].waitForExistence(timeout: 5), "\(tab): \(settings.debugDescription)")
                 XCTAssertFalse(settings.groups[tab].exists, tab)
@@ -266,7 +266,7 @@ final class LumennaMacUITests: XCTestCase {
         app.typeKey(",", modifierFlags: .command)
         let settings = app.windows["settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
-        settings.toolbars.buttons["Devices"].click()
+        settings.toolbars.buttons["Devices and Sync"].click()
         let pair = settings.buttons["Pair a Device…"]
         XCTAssertTrue(pair.waitForExistence(timeout: 5), settings.debugDescription)
         pair.click()
@@ -294,7 +294,7 @@ final class LumennaMacUITests: XCTestCase {
         app.typeKey(",", modifierFlags: .command)
         let settings = app.windows["settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
-        settings.toolbars.buttons["Devices"].click()
+        settings.toolbars.buttons["Devices and Sync"].click()
         let sync = settings.buttons["Sync Now"]
         XCTAssertTrue(sync.waitForExistence(timeout: 5), settings.debugDescription)
         sync.click()
@@ -630,7 +630,7 @@ final class LumennaMacUITests: XCTestCase {
         app.typeKey(",", modifierFlags: .command)
         let settings = app.windows["settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5))
-        settings.toolbars.buttons["Planning"].click()
+        settings.toolbars.buttons["Reminders"].click()
         let field = settings.textFields["Reminders for a task with a due date"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), settings.debugDescription)
         XCTAssertTrue(settings.checkBoxes["Reminders on this device"].exists || settings.switches["Reminders on this device"].exists,

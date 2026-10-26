@@ -22,9 +22,17 @@ struct SettingsView: View {
 
         var body: some View {
             List {
-                NavigationLink("Planning") { PlanningSettings(model: model).navigationTitle("Planning") }
-                NavigationLink("Devices") { DevicesView() }
+                // The core's pages that hold settings this watch has; files are the phone's.
+                ForEach(pages, id: \.id) { page in
+                    NavigationLink(page.title) { SettingsPageForm(model: model, id: page.id).navigationTitle(page.title) }
+                }
+                NavigationLink(model.page("devices")?.title ?? "Devices") { DevicesView() }
             }
+        }
+
+        private var pages: [LumennaApp.SettingsPage] {
+            let here = Set(model.settings.map(\.key))
+            return model.pages.filter { $0.id != "devices" && $0.keys.contains(where: here.contains) }
         }
     }
 }

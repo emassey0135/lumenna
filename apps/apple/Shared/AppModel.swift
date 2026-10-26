@@ -91,12 +91,10 @@ final class AppModel {
         app.send(event: event)
     }
 
-    /// Replan from Now on today, as an overrun warning's Replan opens it: the day with now in
-    /// hand, then the proposal, which each app's screens follow — the same three steps on every
-    /// Apple app, wherever the person was.
-    func replanFromNow() {
-        send(.day(.now))
-        send(.proposal(.replan))
+    /// An overrun warning's Replan, pressed in its notification: the app's (`DueEvent::Replan`),
+    /// which shows today with Replan from Now over it, the screens following.
+    func replan(from reminded: RemindedOf) {
+        send(.due(.replan(reminded.due)))
     }
 
     /// What a widget or complication shows for the next `hours`, the core's, worded in this
@@ -265,7 +263,7 @@ extension AppModel {
     /// away, and the level where it changes from the row shown before — what a tree control
     /// would say by itself, and a list cell does not.
     static func spoken(detail: String?, expanded: Bool?, level: String?) -> String {
-        [detail.flatMap { $0.isEmpty ? nil : $0 }, expanded.map { $0 ? "expanded" : "collapsed" }, level]
+        [detail.flatMap { $0.isEmpty ? nil : $0 }, expanded.map { LumennaApp.foldState(expanded: $0) }, level]
             .compactMap { $0 }
             .joined(separator: ", ")
     }
@@ -319,37 +317,33 @@ struct AppItem: Hashable {
 
 extension AppModel {
     /// The sidebar's rows as a list shows them, not folded away, each saying its detail, whether
-    /// it is folded and, against the row shown before, its level — what a tree would say itself.
-    /// `under` limits them to one heading's places, a level up.
+    /// it is folded and, against the row shown before, its level: the app's (`SidebarEntry`'s
+    /// `hidden`, `expanded`, `level`). `under` limits them to one heading's places, a level up,
+    /// whose level is said against those rows alone, in the core's words.
     func sidebarItems(under group: LumennaApp.SidebarGroup? = nil) -> [AppItem] {
-        // The rows the app has collapsed: what is deeper under each is left out.
-        let folded = Set(view.sidebarFolded)
         var items: [AppItem] = []
         var inside = group == nil
         var previous: UInt32 = 0
-        var hiddenBelow: UInt32?
         for entry in view.sidebar {
             if let group {
                 if entry.depth == 0 {
                     if case let .group(heading) = entry.kind { inside = heading == group } else { inside = false }
-                    hiddenBelow = nil
                     continue
                 }
                 guard inside else { continue }
             }
-            if let below = hiddenBelow {
-                if entry.depth > below { continue }
-                hiddenBelow = nil
-            }
-            if folded.contains(entry.key) { hiddenBelow = entry.depth }
+            guard !entry.hidden else { continue }
             let depth = group == nil ? entry.depth : entry.depth - 1
-            let expanded: Bool? = entry.offered.contains { $0.kind == .collapse } ? true
-                : entry.offered.contains { $0.kind == .expand } ? false : nil
-            let level = depth != previous ? "level \(depth + 1)" : nil
-            previous = depth
+            let level: String?
+            if group == nil {
+                level = entry.level
+            } else {
+                level = depth != previous ? LumennaApp.level(depth: depth) : nil
+                previous = depth
+            }
             var item = AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: depth, actions: entry.offered, swatch: entry.swatch)
-            item.spoken = AppModel.spoken(detail: entry.detail, expanded: expanded, level: level)
-            item.expanded = expanded
+            item.spoken = AppModel.spoken(detail: entry.detail, expanded: entry.expanded, level: level)
+            item.expanded = entry.expanded
             item.level = level
             if case .group = entry.kind { item.heading = true }
             items.append(item)

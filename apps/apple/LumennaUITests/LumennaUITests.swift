@@ -681,13 +681,13 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(cell(containing: "Planning").waitForExistence(timeout: 5))
         try audit(.all, "settings")
 
-        for page in ["Planning", "Backups", "Export and Import"] {
+        for page in ["Planning", "Reminders", "Backups", "Export and Import"] {
             reveal(page).tap()
             XCTAssertTrue(app.navigationBars[page].waitForExistence(timeout: 5))
             settle()
             // Planning's times are `NamedDatePicker`s, whose visible names are hidden as a
             // `NamedRow`'s are: the picker carries the name.
-            try audit(.all, page, namedRows: page == "Planning")
+            try audit(.all, page, namedRows: ["Planning", "Reminders"].contains(page))
             goBack()
         }
 
@@ -756,8 +756,8 @@ final class LumennaUITests: XCTestCase {
     /// a time; one it refuses stays in its field with the core's reason beside it.
     func testADefaultReminderIsAPhraseSavedOnReturnAndARefusedOneStaysWithItsReason() {
         tab("Settings")
-        reveal("Planning").tap()
-        XCTAssertTrue(app.navigationBars["Planning"].waitForExistence(timeout: 5))
+        reveal("Reminders").tap()
+        XCTAssertTrue(app.navigationBars["Reminders"].waitForExistence(timeout: 5))
         let field = app.textFields["Reminders for a task with a due date"]
         for _ in 0..<6 where !(field.exists && field.isHittable) { app.swipeUp() }
         XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
@@ -779,7 +779,7 @@ final class LumennaUITests: XCTestCase {
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         tab("Settings")
-        for page in ["Planning", "Backups", "Export and Import"] {
+        for page in ["Planning", "Reminders", "Backups", "Export and Import"] {
             reveal(page).tap()
             XCTAssertTrue(app.navigationBars[page].waitForExistence(timeout: 5))
             // The whole page, a screenful at a time.

@@ -146,10 +146,9 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
         show(.place(.today)) { ($0 as? DayViewController)?.runDay(kind) }
     }
 
-    /// The overrun warning's Replan: today, with Replan from Now over it, the app's.
+    /// The overrun warning's Replan, which the app has taken: the day, Replan from Now over it.
     @objc func openReplan() {
         show(.place(.today))
-        core.app.replanFromNow()
     }
 
     /// A reminder chosen in Notification Center: its task beside the task list, or its

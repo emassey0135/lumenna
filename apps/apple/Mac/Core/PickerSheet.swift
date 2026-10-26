@@ -121,7 +121,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
         shown = text.isEmpty ? items : items.filter {
             $0.title.lowercased().contains(text) || ($0.detail?.lowercased().contains(text) ?? false)
         }
-        count.stringValue = shown.count == 1 ? "1 choice" : "\(shown.count) choices"
+        count.stringValue = LumennaApp.choiceCount(count: UInt32(shown.count))
         table.reloadData()
         if !shown.isEmpty {
             table.selectRowIndexes([0], byExtendingSelection: false)

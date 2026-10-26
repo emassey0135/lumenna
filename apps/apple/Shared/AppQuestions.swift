@@ -8,6 +8,8 @@ struct Offered {
     let title: String
     let detail: String?
     let depth: UInt32
+    /// Its level where it changes from the choice before, the app's ("level 2").
+    let level: String?
     let reason: String?
     /// A colour's, drawn before its name.
     var swatch: LumennaApp.Swatch? = nil
@@ -124,7 +126,7 @@ final class AppQuestions {
                 let line = index < worded.count ? worded[index] : nil
                 return Offered(
                     id: choice.id, title: line?.title ?? choice.title, detail: line.flatMap { $0.detail.isEmpty ? nil : $0.detail },
-                    depth: choice.depth, reason: choice.reason, swatch: choice.swatch
+                    depth: choice.depth, level: line?.level, reason: choice.reason, swatch: choice.swatch
                 )
             }
             asker.pick(title: title, offered: rows, yes: yes) { picked in

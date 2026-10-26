@@ -125,7 +125,7 @@ struct RootView: View {
                 guard let reminded = note.object as? RemindedOf else { return }
                 if reminded.replan {
                     // The overrun warning's Replan: Replan from Now, the phone's screen.
-                    core.app.replanFromNow()
+                    core.app.replan(from: reminded)
                 } else if reminded.kind == "task" {
                     remindedTask = TaskOpened(id: reminded.target)
                 } else {

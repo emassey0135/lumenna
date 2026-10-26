@@ -237,13 +237,18 @@ impl Lumenna {
             DueEvent::Snooze(id) => self.deal(&id, Deal::Snooze, model),
             // A reminder without the button refuses it, in the core's words.
             DueEvent::Carry(id) if !offers(model, &id, |d| d.carry.is_some()) => say(not_offered(ActionKind::CarryRest)),
-            DueEvent::Replan(id) if !offers(model, &id, |d| d.replan.is_some()) => say(not_offered(ActionKind::Replan)),
+            // One this screen holds without Replan refuses it. One it never held — the system's
+            // notification, on a platform that schedules them and never looks here — opens Replan
+            // all the same: its button is what was pressed.
+            DueEvent::Replan(id) if offers(model, &id, |d| d.replan.is_none()) => say(not_offered(ActionKind::Replan)),
             DueEvent::Carry(id) => self.deal(&id, Deal::Carry, model),
             // Today, with Replan from Now open over it. Cancelled, the warning stays; something
             // replanned, it is dismissed.
             DueEvent::Replan(id) => {
                 let shown = model.show_day(None);
-                model.replanning = Some(id);
+                // Only a warning held here is dismissed once something is replanned: the system
+                // dismissed its own as it was pressed.
+                model.replanning = model.due.iter().any(|d| d.id == id).then_some(id);
                 shown.and(self.propose(proposal::Kind::Replan, model))
             }
         }

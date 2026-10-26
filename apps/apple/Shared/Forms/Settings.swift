@@ -33,6 +33,10 @@ final class SettingsModel: NSObject, ObservableObject {
     @Published private(set) var offered: [LumennaApp.Offered] = []
     /// What the core says under them: what erasing takes.
     @Published private(set) var offeredCaption = ""
+    /// The pages the settings are on, the core's, in its order, each setting on exactly one.
+    @Published private(set) var pages: [LumennaApp.SettingsPage] = LumennaApp.settingsPages(ownClock: true, sentence: false)
+    /// What a setting's own control says: a time's hint and example, a number's.
+    @Published private(set) var words = LumennaApp.settingWords()
     @Published var failure: String?
     private var observer: NSObjectProtocol?
 
@@ -64,6 +68,18 @@ final class SettingsModel: NSObject, ObservableObject {
         exports = shown.exports
         offered = shown.offered
         offeredCaption = shown.offeredCaption
+        if pages != shown.pages { pages = shown.pages }
+        if words != shown.words { words = shown.words }
+    }
+
+    /// The page `id`, the core's.
+    func page(_ id: String) -> LumennaApp.SettingsPage? {
+        pages.first { $0.id == id }
+    }
+
+    /// The settings on `page`, in its order, those this device has.
+    func settings(on page: LumennaApp.SettingsPage) -> [LumennaApp.Setting] {
+        page.keys.compactMap { key in settings.first { $0.key == key } }
     }
 
     /// One of the store's own actions, handed back to the app, which asks its question first.
@@ -305,83 +321,87 @@ struct LineSetting: View {
     }
 }
 
-extension SettingsModel {
-    /// The settings that sync, of `kinds`, in the core's order.
-    func synced(_ kinds: [LumennaApp.SettingKind]) -> [LumennaApp.Setting] {
-        settings.filter { $0.syncs && kinds.contains($0.kind) }
-    }
-
-    /// What reminders are given, in the core's order: the defaults and the all-day hour,
-    /// which sync, then whether this device gives them at all, which is its own.
-    var reminderSettings: [LumennaApp.Setting] {
-        settings.filter { $0.key.contains("reminder") && ($0.syncs || $0.key == "reminders") }
-    }
-
-    /// This device's backup settings: what the core keeps apart from what syncs, but the clock,
-    /// which the Apple apps take from the system.
-    func backups(_ kinds: [LumennaApp.SettingKind]) -> [LumennaApp.Setting] {
-        settings.filter { !$0.syncs && $0.key.hasPrefix("backup-") && kinds.contains($0.kind) }
-    }
-}
-
-/// The settings that sync, as the core describes them. Which page each goes on is the app's.
-struct PlanningSettings: View {
+/// One of the core's settings pages (`SettingsView.pages`): its settings in its order, a choice
+/// as a section of its own, its buttons, and its caption beneath, the core's words. What a page
+/// holds beyond the settings — the exports, the store's own actions — is drawn on the page the
+/// core puts it on.
+struct SettingsPageForm: View {
     @ObservedObject var model: SettingsModel
+    let id: String
 
     var body: some View {
         Form {
-            Section {
-                ForEach(model.synced([.toggle, .time, .number]).filter { !$0.key.contains("reminder") }, id: \.key) { setting in
+            if let page = model.page(id) {
+                let settings = model.settings(on: page)
+                let plain = settings.filter { $0.kind != .choice }
+                if !plain.isEmpty || !buttons(page).isEmpty {
+                    Section {
+                        ForEach(plain, id: \.key) { setting in
+                            SettingControl(model: model, setting: setting)
+                        }
+                        ForEach(buttons(page), id: \.id) { button in
+                            Button(named(button)) { press(button) }
+                        }
+                    } footer: {
+                        if !page.caption.isEmpty, id != "export" { FormParts.caption(page.caption) }
+                    }
+                }
+                ForEach(settings.filter { $0.kind == .choice }, id: \.key) { setting in
                     SettingControl(model: model, setting: setting)
                 }
-            } header: {
-                FormParts.heading("Planning")
-            } footer: {
-                FormParts.caption("These sync to all your devices.")
-            }
-            Section {
-                ForEach(model.reminderSettings, id: \.key) { setting in
-                    SettingControl(model: model, setting: setting)
+                #if !os(watchOS)
+                if id == "export" {
+                    Section {
+                        // Each format's button, the app's words.
+                        ForEach(model.exports, id: \.name) { choice in
+                            Button(choice.label + "…") { model.export(choice.format) }
+                        }
+                        ForEach(page.buttons, id: \.id) { button in
+                            Button(named(button)) { press(button) }
+                        }
+                    } footer: {
+                        FormParts.caption(page.caption)
+                    }
+                    StoreActions(model: model)
                 }
-            } header: {
-                FormParts.heading("Reminders")
-            } footer: {
-                FormParts.caption("The defaults sync to all your devices. Whether reminders are given here is this device's alone.")
-            }
-            ForEach(model.synced([.choice]), id: \.key) { setting in
-                SettingControl(model: model, setting: setting)
+                #endif
             }
         }
         .modifier(SettingsPage(model: model))
+    }
+
+    /// The page's buttons drawn with its settings: a backup's. Syncing and pairing are the
+    /// Devices page's own screen, the export page's beside its formats, and a watch has
+    /// nowhere to save a file or pick one.
+    private func buttons(_ page: LumennaApp.SettingsPage) -> [LumennaApp.SettingsButton] {
+        #if os(watchOS)
+        []
+        #else
+        id == "backups" ? page.buttons : []
+        #endif
+    }
+
+    /// A button's name, ending in "…" on the Mac where it asks something first.
+    private func named(_ button: LumennaApp.SettingsButton) -> String {
+        #if os(macOS)
+        button.asks ? button.title + "…" : button.title
+        #else
+        button.title
+        #endif
+    }
+
+    private func press(_ button: LumennaApp.SettingsButton) {
+        #if !os(watchOS)
+        switch button.id {
+        case "back-up": model.backUpNow()
+        case "restore-backup", "import": model.importFile()
+        default: break
+        }
+        #endif
     }
 }
 
 #if !os(watchOS)
-struct BackupSettings: View {
-    @ObservedObject var model: SettingsModel
-
-    var body: some View {
-        Form {
-            ForEach(model.backups([.choice]), id: \.key) { setting in
-                SettingControl(model: model, setting: setting)
-            }
-            Section {
-                ForEach(model.backups([.toggle, .time, .number, .folder]), id: \.key) { setting in
-                    SettingControl(model: model, setting: setting)
-                }
-                Button("Back Up Now") { model.backUpNow() }
-                #if os(macOS)
-                Button("Restore From a Backup…") { model.importFile() }
-                #endif
-            } footer: {
-                FormParts.caption("These settings are this device's alone.")
-            }
-            StoreActions(model: model)
-        }
-        .modifier(SettingsPage(model: model))
-    }
-}
-
 /// What is done to the store as a whole (`SettingsView.offered`), a destructive button each,
 /// drawn as the task form's are, beside the backups whose history it reaches, the core's caption
 /// beneath. What it does is said again by the app's question, asked before anything is done.
@@ -403,27 +423,6 @@ struct StoreActions: View {
                 if !model.offeredCaption.isEmpty { FormParts.caption(model.offeredCaption) }
             }
         }
-    }
-}
-
-struct ExportSettings: View {
-    @ObservedObject var model: SettingsModel
-
-    var body: some View {
-        Form {
-            Section {
-                // Each format's button, the app's words.
-                ForEach(model.exports, id: \.name) { choice in
-                    Button(choice.label + "…") { model.export(choice.format) }
-                }
-                Button("Import or Restore…") { model.importFile() }
-            } header: {
-                FormParts.heading("Export and Import")
-            } footer: {
-                FormParts.caption("An export is what you have now, with nothing from the trash. Importing a JSON export or restoring a backup adds what this device lacks and removes nothing.")
-            }
-        }
-        .modifier(SettingsPage(model: model))
     }
 }
 #endif

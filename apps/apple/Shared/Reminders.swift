@@ -459,6 +459,11 @@ struct RemindedOf {
     let day: String
     /// Whether it was the overrun warning's Replan: the app opens at Replan from Now.
     var replan = false
+    /// The firing's key, which with its day names it as the app's due list does.
+    var key = ""
+
+    /// The reminder as the app names one due (`Due.id`): its key, then its occurrence.
+    var due: String { "\(key)-\(day)" }
 }
 
 /// Answers a reminder's buttons, the core's Dismiss and Snooze, and opens what it is about
@@ -506,11 +511,11 @@ final class ReminderResponder: NSObject, UNUserNotificationCenterDelegate {
                 guard let target = info["target"] as? String else { return }
                 change = try device.carryRestForward(block: "\(target)@\(occurrence)")
             case Reminders.replanAction:
-                open(RemindedOf(kind: info["kind"] as? String ?? "block", target: info["target"] as? String ?? "", day: occurrence, replan: true))
+                open(RemindedOf(kind: info["kind"] as? String ?? "block", target: info["target"] as? String ?? "", day: occurrence, replan: true, key: key))
                 return
             case UNNotificationDefaultActionIdentifier:
                 if let kind = info["kind"] as? String, let target = info["target"] as? String {
-                    open(RemindedOf(kind: kind, target: target, day: occurrence))
+                    open(RemindedOf(kind: kind, target: target, day: occurrence, key: key))
                 }
                 return
             default: return

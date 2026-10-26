@@ -141,9 +141,8 @@ private struct OfferedPrompt: View {
 
     var body: some View {
         List {
-            ForEach(Array(offered.enumerated()), id: \.offset) { index, choice in
-                let previous = index > 0 ? offered[index - 1].depth : 0
-                let level = choice.depth != previous ? "level \(choice.depth + 1)" : nil
+            ForEach(Array(offered.enumerated()), id: \.offset) { _, choice in
+                let level = choice.level
                 Button {
                     picked(.chose(choice.id))
                     dismiss()

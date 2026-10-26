@@ -199,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if reminded.replan {
             // The overrun warning's Replan: today, with Replan from Now over it, the app's; the
             // window follows.
-            core.app.replanFromNow()
+            core.app.replan(from: reminded)
         } else if reminded.kind == "task" {
             go(.tasks)
             core.app.send(.focus(reminded.target))
@@ -327,7 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func exportOrImport(_ sender: Any?) {
         showSettings(nil)
-        settings?.show(.export)
+        settings?.show("export")
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {

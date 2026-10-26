@@ -318,7 +318,7 @@ struct ProjectChoices: View {
     static func spoken(_ choices: [LumennaApp.Choice], _ index: Int) -> String {
         let choice = choices[index]
         let previous = index > 0 ? choices[index - 1].depth : 0
-        return choice.depth != previous ? "\(choice.title), level \(choice.depth + 1)" : choice.title
+        return choice.depth != previous ? "\(choice.title), \(LumennaApp.level(depth: choice.depth))" : choice.title
     }
 }
 
