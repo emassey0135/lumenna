@@ -54,6 +54,13 @@ pub fn sandboxed() -> bool {
     ashpd::is_sandboxed()
 }
 
+/// Runs `work` on a thread of GIO's, for what the main thread must not wait on (a backup, a
+/// look for reminders, a search), and gives back what it returned. A panic there is a panic
+/// here, as it was when the work ran on the main thread.
+pub async fn off_main<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+    gio::spawn_blocking(work).await.unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+}
+
 /// Where the app's own icon is in this checkout, for a build run without `install.sh`, which
 /// puts it in the user's hicolor theme.
 pub fn icons_here() -> Option<&'static str> {

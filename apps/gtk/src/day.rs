@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::{gdk, glib};
-use lumenna_app::{ActingOn, DayItem, DayKind, Offered};
+use lumenna_app::{ActingOn, DayItem, DayKind};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::ActionKind;
 
@@ -28,8 +28,6 @@ pub struct DayView {
     pub tree: Rc<Tree>,
     /// The rows as last drawn.
     rows: RefCell<Vec<DayItem>>,
-    /// The day shown, ISO, as last drawn.
-    date: RefCell<Option<String>>,
     /// When focus goes to the row in hand.
     landing: Landing,
 }
@@ -60,7 +58,6 @@ impl DayView {
             widget,
             tree,
             rows: RefCell::new(Vec::new()),
-            date: RefCell::new(None),
             landing: Landing::default(),
         });
         day.connect();
@@ -100,13 +97,12 @@ impl DayView {
         self.tree.connect_menu(move |index, point| {
             let (Some(day), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(row) = day.rows.borrow().get(index).cloned() else { return };
-            // Folding is Left and Right's, as in every tree; the menu holds what the row is for.
-            let offered: Vec<Offered> =
-                row.offered.iter().filter(|a| !matches!(a.kind, ActionKind::Expand | ActionKind::Collapse)).cloned().collect();
-            if offered.is_empty() {
+            // Every action the row has, folding too, as the task list's menu offers it: which a
+            // row has is the core's.
+            if row.offered.is_empty() {
                 return;
             }
-            let (menu, group) = actions::menu(&offered, &ActingOn::Row(row.key.clone()), name_of(&row));
+            let (menu, group) = actions::menu(&row.offered, &ActingOn::Row(row.key.clone()), name_of(&row));
             app.popup(&menu, day.tree.view.upcast_ref(), point, Some(&group));
         });
         let weak = Rc::downgrade(self);
@@ -141,7 +137,6 @@ impl DayView {
             })
             .collect();
         *self.rows.borrow_mut() = day.items.clone();
-        *self.date.borrow_mut() = Some(day.date.clone());
         app.set_title(&lines.day_title);
         let rebuilt = self.tree.set(items);
         self.landing.land(&self.tree, app.window.upcast_ref(), view.focus.as_deref(), view.landing, rebuilt);

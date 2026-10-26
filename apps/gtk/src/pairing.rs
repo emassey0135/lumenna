@@ -95,9 +95,10 @@ impl Dialog {
             // Focus somewhere that stays: a disabled button that had it leaves it nowhere.
             self.cancel.grab_focus();
         }
-        self.wait.set_sensitive(!view.running);
-        // While waiting, a code can still be entered: it gives the wait up and joins instead.
-        self.with_code.set_sensitive(!view.running || view.waiting);
+        prompts::set_sensitive(&self.wait, !view.running, &[self.cancel.upcast_ref()]);
+        // While waiting, a code can still be entered: it gives the wait up and joins instead,
+        // and the button pressed to join goes off with focus on it.
+        prompts::set_sensitive(&self.with_code, !view.running || view.waiting, &[self.cancel.upcast_ref()]);
         let code = view.mine.clone().unwrap_or_default();
         if self.my_code.text() != code {
             self.my_code.set_text(&code);

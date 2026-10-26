@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use gtk::{gio, glib};
 use gtk::gio::prelude::*;
-use lumenna_app::speech::Clock;
+use lumenna_app::speech::{Clock, Formats as Formatting, Spoken};
 
 /// This desktop's way of saying times and dates.
 pub struct Locale {
@@ -33,7 +33,14 @@ impl Locale {
                 held.store(if settings.string("clock-format") == "12h" { 1 } else { 2 }, Ordering::Relaxed);
             };
             keep(settings);
-            settings.connect_changed(Some("clock-format"), move |settings, _| keep(settings));
+            settings.connect_changed(Some("clock-format"), move |settings, _| {
+                keep(settings);
+                // The sentences the core words whole (a replan's) follow the new clock too,
+                // and the lines are worded again in it.
+                if let Some(app) = crate::window::app() {
+                    app.model.send(lumenna_ffi::ShellEvent::Clock(app.clock.style()));
+                }
+            });
         }
         Self { interface, twelve }
     }
@@ -54,38 +61,54 @@ impl Locale {
     }
 }
 
+impl Locale {
+    /// How this desktop writes a time and a date, for a thread that cannot hold the settings.
+    pub fn formats(&self) -> Formats {
+        Formats { twelve: Arc::clone(&self.twelve) }
+    }
+}
+
+/// Saying a day ("Today", "Tomorrow", the year only when it is not this one) is the app's
+/// (`speech::Spoken`), so what is worded here reads as the app's own lines do.
 impl Clock for Locale {
     fn time(&self, clock: &str) -> String {
-        let Some((hours, minutes)) = clock.split_once(':') else { return clock.to_owned() };
-        let (Ok(hour), Ok(minute)) = (hours.parse::<i32>(), minutes.parse::<i32>()) else {
-            return clock.to_owned();
-        };
-        time(hour, minute, self.twelve_hour())
+        Spoken(self.formats()).time(clock)
     }
 
     fn day(&self, iso: &str) -> String {
-        let Ok(date) = iso.parse::<jiff::civil::Date>() else { return iso.to_owned() };
-        let today = jiff::Zoned::now().date();
-        if date == today {
-            return "Today".to_owned();
-        }
-        if today.tomorrow().is_ok_and(|d| d == date) {
-            return "Tomorrow".to_owned();
-        }
-        if today.yesterday().is_ok_and(|d| d == date) {
-            return "Yesterday".to_owned();
-        }
-        let day = glib::DateTime::from_local(
-            i32::from(date.year()),
-            i32::from(date.month()),
-            i32::from(date.day()),
-            12,
-            0,
-            0.0,
-        );
-        // The year only when it is not this one, as a person would say it.
-        let format = if date.year() == today.year() { "%A %-d %B" } else { "%A %-d %B %Y" };
-        day.and_then(|day| day.format(format)).map_or_else(|_| iso.to_owned(), |text| text.to_string())
+        Spoken(self.formats()).day(iso)
+    }
+}
+
+/// This desktop's way of writing a time and a date: all a platform formats itself.
+///
+/// The app calls it on its own thread, so it holds the desktop's clock setting as the number
+/// the main thread keeps current (`Locale::twelve`), not the settings object.
+#[derive(Clone)]
+pub struct Formats {
+    twelve: Arc<AtomicU8>,
+}
+
+impl Formatting for Formats {
+    fn time(&self, hour: i8, minute: i8) -> String {
+        time(i32::from(hour), i32::from(minute), twelve_from(self.twelve.load(Ordering::Relaxed)))
+    }
+
+    fn date(&self, year: i16, month: i8, day: i8, with_year: bool) -> String {
+        let format = if with_year { "%A %-d %B %Y" } else { "%A %-d %B" };
+        glib::DateTime::from_local(i32::from(year), i32::from(month), i32::from(day), 12, 0, 0.0)
+            .and_then(|date| date.format(format))
+            .map_or_else(|_| format!("{year}-{month:02}-{day:02}"), |text| text.to_string())
+    }
+}
+
+impl lumenna_ffi::Locale for Formats {
+    fn time(&self, hour: i8, minute: i8) -> String {
+        Formatting::time(self, hour, minute)
+    }
+
+    fn date(&self, year: i16, month: i8, day: i8, with_year: bool) -> String {
+        Formatting::date(self, year, month, day, with_year)
     }
 }
 

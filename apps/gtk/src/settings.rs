@@ -815,10 +815,11 @@ fn backups(app: &Rc<App>) -> Built {
         let (app, status) = (Rc::downgrade(app), built.status.clone());
         back_up.connect_clicked(move |button| {
             let Some(app) = app.upgrade() else { return };
-            match app.model.device.backup() {
+            let (status, window) = (status.clone(), window_of(button, &app));
+            app.model.back_up(move |done| match done {
                 Ok(done) => tell(&status, &lumenna_records::words::spoken(&done.announcement, &done.notices)),
-                Err(error) => prompts::fail(&window_of(button, &app), error.message()),
-            }
+                Err(error) => prompts::fail(&window, error.message()),
+            });
         });
     }
     restore.connect_clicked(|button| {

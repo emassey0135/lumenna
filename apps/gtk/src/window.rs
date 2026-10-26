@@ -632,9 +632,14 @@ impl App {
         simple("settings", |app| crate::settings::show(app, crate::settings::Page::General));
         simple("devices", |app| crate::settings::show(app, crate::settings::Page::Devices));
         simple("export-import", |app| crate::settings::show(app, crate::settings::Page::Export));
-        simple("back-up", |app| match app.model.device.backup() {
-            Ok(done) => app.say(&lumenna_records::words::spoken(&done.announcement, &done.notices)),
-            Err(error) => app.fail(error.message()),
+        simple("back-up", |app| {
+            app.model.back_up(|done| {
+                let Some(app) = self::app() else { return };
+                match done {
+                    Ok(done) => app.say(&lumenna_records::words::spoken(&done.announcement, &done.notices)),
+                    Err(error) => app.fail(error.message()),
+                }
+            });
         });
         simple("restore-backup", |app| {
             let window = app.window.clone().upcast::<gtk::Window>();
@@ -749,7 +754,8 @@ impl App {
             // Its own title is "About", so Orca never heard whose; focus starts on the version.
             adw::prelude::AdwDialogExt::set_title(&about, "About Lumenna");
             adw::prelude::AdwDialogExt::present(&about, Some(&app.window));
-        });    }
+        });
+    }
 }
 
 /// Adds a window action that runs `run` with the app.

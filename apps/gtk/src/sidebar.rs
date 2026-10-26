@@ -80,13 +80,11 @@ impl Sidebar {
         sidebar.tree.connect_menu(move |index, point| {
             let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };
             let Some(entry) = sidebar.entries.borrow().get(index).cloned() else { return };
-            // Folding is Left and Right's, as in every tree; the menu holds what the row is for.
-            let offered: Vec<Offered> =
-                entry.offered.iter().filter(|a| !matches!(a.kind, ActionKind::Expand | ActionKind::Collapse)).cloned().collect();
-            if offered.is_empty() {
+            // Every action the row has, folding too: which a row has is the core's.
+            if entry.offered.is_empty() {
                 return;
             }
-            let (menu, group) = actions::menu(&offered, &ActingOn::Held(Side::Sidebar, entry.key.clone()), Some(&entry.title));
+            let (menu, group) = actions::menu(&entry.offered, &ActingOn::Held(Side::Sidebar, entry.key.clone()), Some(&entry.title));
             app.popup(&menu, sidebar.tree.view.upcast_ref(), point, Some(&group));
         });
         let weak = Rc::downgrade(&sidebar);

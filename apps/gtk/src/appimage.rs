@@ -60,8 +60,12 @@ fn service_file() -> PathBuf {
 /// Whether the offer is this process's to make: run from an AppImage on the usual profile, whose
 /// identifier the entry is named by. Another profile's copy is a second one, for testing.
 fn ours(application: Option<gtk::Application>) -> Option<PathBuf> {
-    let usual = application.and_then(|application| application.application_id()).is_some_and(|id| id == crate::ID);
-    path().filter(|_| usual)
+    path().filter(|_| usual(application))
+}
+
+/// Whether this is the usual profile's copy, whose identifier the files are named by.
+fn usual(application: Option<gtk::Application>) -> bool {
+    application.and_then(|application| application.application_id()).is_some_and(|id| id == crate::ID)
 }
 
 /// On the first window shown, offers the applications menu, unless it was answered before or the
@@ -99,7 +103,9 @@ pub fn offer(window: &gtk::ApplicationWindow) {
 
 /// At each start, once added: the entry written again if it no longer says what it would, the
 /// AppImage having moved or been replaced by a newer one. An entry the person removed stays gone.
+/// Started otherwise (a checkout's build), what an AppImage since deleted left is taken away.
 pub fn keep_current(application: &gtk::Application) {
+    forget_if_gone(application);
     let Some(appimage) = ours(Some(application.clone())) else { return };
     if std::fs::read_to_string(answer_file()).map(|answer| answer.trim().to_owned()).ok().as_deref() != Some("added") {
         return;
@@ -114,6 +120,37 @@ pub fn keep_current(application: &gtk::Application) {
     {
         eprintln!("Lumenna could not bring its applications menu entry up to date: {error}");
     }
+}
+
+/// Takes away the AppImage's own entry, KRunner's runner and the search's service once the
+/// AppImage they name is gone: the entry hides itself (`TryExec`), but KRunner would go on asking
+/// the bus to start a program that is not there. Only from a start that is not an AppImage: one
+/// is, it writes them again naming itself. The answer goes too, so a later AppImage offers again.
+fn forget_if_gone(application: &gtk::Application) {
+    // A sandbox's data folder is its own, never the one these were written to.
+    if path().is_some() || crate::sandboxed() || !usual(Some(application.clone())) {
+        return;
+    }
+    let Ok(current) = std::fs::read_to_string(entry_file()) else { return };
+    if named_appimage(&current).is_none_or(|appimage| appimage.exists()) {
+        return;
+    }
+    for file in [service_file(), runner_file(), entry_file(), answer_file()] {
+        if let Err(error) = std::fs::remove_file(&file)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            eprintln!("Lumenna could not take away {}, left by an AppImage since deleted: {error}", file.display());
+        }
+    }
+}
+
+/// The AppImage an entry names, if it is the AppImage's own (`MARK`): its `TryExec`, as `entry`
+/// wrote it.
+fn named_appimage(entry: &str) -> Option<PathBuf> {
+    if !entry.lines().any(|line| line == MARK) {
+        return None;
+    }
+    entry.lines().find_map(|line| line.strip_prefix("TryExec=")).map(|path| PathBuf::from(path.replace("\\\\", "\\")))
 }
 
 fn remember(answer: &str) {
@@ -235,6 +272,13 @@ mod tests {
         assert!(main.contains("TryExec=/home/someone/Applications/Lumenna-1.0-x86_64.AppImage\n"));
         assert!(main.contains(MARK));
         assert!(text.contains("Actions=new-task;today;what-now;"));
+    }
+
+    #[test]
+    fn an_entry_of_the_appimage_names_the_file_it_runs_and_another_entry_names_none() {
+        let appimage = Path::new("/home/someone/odd\\name/Lumenna.AppImage");
+        assert_eq!(named_appimage(&entry(appimage)).as_deref(), Some(appimage));
+        assert_eq!(named_appimage(ENTRY), None, "one install.sh or a package wrote is never taken away");
     }
 
     #[test]

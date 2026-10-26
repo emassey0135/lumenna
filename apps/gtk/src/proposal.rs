@@ -150,8 +150,9 @@ impl Screen {
         self.others_heading.set_visible(!view.others.is_empty() && !view.words.others.is_empty());
         self.apply.set_visible(any);
         self.hint.set_visible(any);
-        self.apply.set_sensitive(!view.busy);
-        self.others.set_sensitive(!view.busy);
+        // Cancel stays while the store works, so focus waits there rather than nowhere.
+        prompts::set_sensitive(&self.apply, !view.busy, &[self.cancel.upcast_ref()]);
+        prompts::set_sensitive(&self.others, !view.busy, &[self.cancel.upcast_ref()]);
         if new && view.ready {
             match self.checks.borrow().first() {
                 Some(check) => prompts::focus_on(check),
