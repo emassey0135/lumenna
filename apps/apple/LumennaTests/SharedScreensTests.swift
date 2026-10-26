@@ -77,6 +77,10 @@ final class SharedScreensTests: XCTestCase {
     }
 
     func testANewBlockTypedInTheFormIsSavedAndTheFormCloses() throws {
+        // The day first, as a person is on it, once the app holds the store: asked for at once,
+        // on a slow runner a new block found no store yet and opened nothing.
+        core.app.send(.open(.today))
+        settle { core.app.view.day != nil }
         core.app.send(.block(.new(start: nil, minutes: nil)))
         settle { core.app.view.blockForm != nil }
         let form = AppBlockFormModel(core: core)
