@@ -103,3 +103,31 @@ fn the_timer_control_with_nothing_to_start_says_why_and_a_press_changes_nothing(
     assert!(!pressed.changed);
     assert_eq!(pressed.announcement, control.detail);
 }
+
+#[test]
+fn an_assistant_reads_the_timer_presses_it_and_pauses_and_stops_it_without_naming_a_sitting() {
+    use lumenna_records::assistant::Assisted;
+    let (_directory, lumenna) = open();
+    let refused = lumenna.assist("stop_timer", Vec::new()).unwrap_err();
+    assert_eq!(refused.message(), "No timer is running.");
+    assert!(lumenna.assist("pause_timer", Vec::new()).is_err());
+
+    lumenna.add_task("Email p1").unwrap();
+    let Assisted::Timer(idle) = lumenna.assist("timer", Vec::new()).unwrap() else { panic!("not the timer") };
+    assert!(!idle.running && idle.assignment.is_empty(), "{idle:?}");
+    assert_eq!(idle.announcement, "No timer is running. Starting it would start on Email.");
+
+    let Assisted::Change(started) = lumenna.assist("toggle_timer", Vec::new()).unwrap() else { panic!("not a change") };
+    assert!(started.changed && started.announcement.starts_with("Started on Email"), "{started:?}");
+    let Assisted::Timer(running) = lumenna.assist("timer", Vec::new()).unwrap() else { panic!("not the timer") };
+    assert!(running.running && !running.assignment.is_empty(), "{running:?}");
+    assert!(running.announcement.starts_with("The timer is running on Email: "), "{}", running.announcement);
+
+    let Assisted::Timer(paused) = lumenna.assist("pause_timer", Vec::new()).unwrap() else { panic!("not the timer") };
+    assert!(paused.changed && !paused.running, "{paused:?}");
+    assert_eq!(paused.assignment, running.assignment, "the one that ran");
+    lumenna.start_timer(&running.assignment).unwrap();
+    let Assisted::Timer(stopped) = lumenna.assist("stop_timer", Vec::new()).unwrap() else { panic!("not the timer") };
+    assert!(stopped.changed, "{stopped:?}");
+    assert_eq!(lumenna.assist("stop_timer", Vec::new()).unwrap_err().message(), "No timer is running.");
+}

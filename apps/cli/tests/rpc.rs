@@ -565,12 +565,12 @@ fn what_the_command_line_does_beyond_the_first_methods_is_a_method_too() {
     let out = rpc.talk(&[
         r#"{"jsonrpc":"2.0","id":1,"method":"project.colour","params":{"name":"Work","colour":"teal"}}"#,
         r#"{"jsonrpc":"2.0","id":2,"method":"history"}"#,
-        r#"{"jsonrpc":"2.0","id":3,"method":"timer.control"}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"assist","params":{"operation":"timer"}}"#,
         r#"{"jsonrpc":"2.0","id":4,"method":"reminder.give"}"#,
     ]);
     assert!(out.contains("teal"), "{out}");
     assert!(out.contains("Nothing done in the last two weeks"), "{out}");
-    assert!(out.contains(r#""result":"timer_control""#), "{out}");
+    assert!(out.contains("No timer is running."), "{out}");
     assert!(out.contains(r#""result":"due_reminders""#), "{out}");
 }
 

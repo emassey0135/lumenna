@@ -114,6 +114,16 @@ function Get-Taken($op) {
     @($op.parameters | Where-Object { $_.name -ne 'confirm' })
 }
 
+# What an operation acts on: its first required parameter; with none required, its first when
+# that names a record (a sitting left out meaning the timer running), so a record still pipes in.
+function Get-Acted($op) {
+    $taken = Get-Taken $op
+    $required = @($taken | Where-Object { -not $_.optional })
+    if ($required.Count) { return $required[0] }
+    if ($taken.Count -and $identifiers -contains $taken[0].kind) { return $taken[0] }
+    $null
+}
+
 $out = New-Object System.Text.StringBuilder
 function Add-Line([string] $line = '') { [void] $out.Append($line).Append("`n") }
 
@@ -128,8 +138,8 @@ foreach ($op in $operations) {
     $taken = Get-Taken $op
     $names = @($taken | ForEach-Object { "$(ConvertTo-Literal (Get-ParameterName $op.id $_)) = $(ConvertTo-Literal $_.name)" }) -join '; '
     $names = if ($names) { " $names " } else { '' }
-    $required = @($taken | Where-Object { -not $_.optional })
-    $targetName = if ($required.Count) { ConvertTo-Literal (Get-ParameterName $op.id $required[0]) } else { '$null' }
+    $acted = Get-Acted $op
+    $targetName = if ($acted) { ConvertTo-Literal (Get-ParameterName $op.id $acted) } else { '$null' }
     $switch = if ($naming[$op.id]['Switch']) { ConvertTo-Literal $naming[$op.id]['Switch'] } else { '$null' }
     Add-Line ("    $(ConvertTo-Literal $op.id) = @{ Cmdlet = $(ConvertTo-Literal $naming[$op.id].Cmdlet); Switch = $switch; " +
         "Title = $(ConvertTo-Literal $op.title); Writes = `$$($op.writes.ToString().ToLowerInvariant()); " +
@@ -172,6 +182,7 @@ foreach ($name in $cmdlets.Keys) {
     foreach ($op in $group) {
         $taken = Get-Taken $op
         $required = @($taken | Where-Object { -not $_.optional })
+        $acted = Get-Acted $op
         $position = 0
         $first = $true
         foreach ($parameter in $taken) {
@@ -189,7 +200,7 @@ foreach ($name in $cmdlets.Keys) {
                 $position++
             }
             # The record a cmdlet acts on comes down the pipeline by its id.
-            if ($required.Count -and $parameter -eq $required[0] -and $identifiers -contains $parameter.kind) {
+            if ($acted -and $parameter -eq $acted -and $identifiers -contains $parameter.kind) {
                 [void] $arguments.Add('ValueFromPipelineByPropertyName = $true')
                 if ($psName -ne 'Id' -and -not $entry.Aliases.Contains('Id')) { [void] $entry.Aliases.Add('Id') }
             }
