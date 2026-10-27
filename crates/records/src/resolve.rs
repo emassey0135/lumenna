@@ -95,6 +95,16 @@ pub fn label<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a Label> {
     })
 }
 
+/// The saved filter whose whole identifier `name` is, as its row's actions name it, else the one
+/// called `name`, or a sentence suggesting the nearest name.
+pub fn filter<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a lumenna_core::model::SavedFilter> {
+    let live = || snapshot.saved_filters.values().filter(|f| f.deleted_at.is_none());
+    let by_id = name.trim().parse().ok().and_then(|id| snapshot.saved_filters.get(&id)).filter(|f| f.deleted_at.is_none());
+    by_id.or_else(|| live().find(|f| lumenna_core::suggest::same_name(&f.name, name))).ok_or_else(|| {
+        LumennaError::new(format!("no saved filter called '{name}'{}", hint(name, live().map(|f| f.name.as_str()))))
+    })
+}
+
 /// A date phrase, resolved against now — `today`, `friday`, `2026-03-01`, `next week` from
 /// the week starting on `week_start` — or today when there is none.
 pub fn date(text: Option<&str>, now: &Zoned, week_start: civil::Weekday) -> Result<civil::Date> {
@@ -259,5 +269,35 @@ mod tests {
         snapshot.projects.insert(first.id, first);
         snapshot.projects.insert(second.id, second);
         assert_eq!(project(&snapshot, &wanted.to_string()).unwrap().id, wanted);
+    }
+
+    #[test]
+    fn a_projects_labels_and_filters_own_actions_name_it_by_identifier_and_find_it_again() {
+        use lumenna_core::model::{Label, SavedFilter};
+        let mut snapshot = Snapshot::default();
+        let home = Project::new("Home", OrderKey::middle());
+        let other = Project::new("Home", OrderKey::middle());
+        let calls = Label::new("calls", OrderKey::middle());
+        let urgent = SavedFilter {
+            id: lumenna_core::id::FilterId::new(),
+            name: "Urgent".to_owned(),
+            query: "p1".to_owned(),
+            order: OrderKey::middle(),
+            color: None,
+            deleted_at: None,
+        };
+        snapshot.projects.insert(other.id, other);
+        snapshot.projects.insert(home.id, home.clone());
+        snapshot.labels.insert(calls.id, calls.clone());
+        snapshot.saved_filters.insert(urgent.id, urgent.clone());
+        for action in crate::actions::project(&snapshot, &home) {
+            assert_eq!(project(&snapshot, &action.target).unwrap().id, home.id, "{:?}", action.kind);
+        }
+        for action in crate::actions::label(&snapshot, &calls) {
+            assert_eq!(label(&snapshot, &action.target).unwrap().id, calls.id, "{:?}", action.kind);
+        }
+        for action in crate::actions::filter(&snapshot, &urgent) {
+            assert_eq!(filter(&snapshot, &action.target).unwrap().id, urgent.id, "{:?}", action.kind);
+        }
     }
 }

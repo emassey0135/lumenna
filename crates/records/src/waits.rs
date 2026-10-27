@@ -9,7 +9,7 @@ use lumenna_core::snapshot::Snapshot;
 /// When a block's day starts it: the occurrence's own start on its day.
 fn starts(snapshot: &Snapshot, block: BlockRef) -> Option<DateTime> {
     let series = snapshot.series.get(&block.series_id())?;
-    let date = block.date().unwrap_or(series.start_date);
+    let date = snapshot.block_date(block)?;
     let occurrence = snapshot.day(date).ok()?.into_iter().find(|o| o.series_id == series.id)?;
     Some(date.to_datetime(occurrence.start_time))
 }

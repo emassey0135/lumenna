@@ -871,6 +871,26 @@ fn a_saved_filters_query_is_asked_in_the_filter_language_and_its_name_is_not() {
 }
 
 #[test]
+fn a_label_merged_from_its_place_and_a_filter_requeried_follow_to_the_place_by_its_name() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_filter("Urgent", "p1").unwrap();
+    app.session.tick();
+    app.add("Call the bank @cals");
+    app.add("Call home @calls");
+    app.send(Event::Open(Place::Label("cals".to_owned())));
+    app.send(sidebar_action(&app, "cals", ActionKind::MergeInto));
+    let choices = app.view().asking.expect("the pick").choices.expect("what it offers");
+    let calls = choices.choices.iter().find(|c| c.title == "calls").expect("calls is offered");
+    app.send(Event::Answer(Answer::Picked { id: calls.id.clone(), length: None }));
+    assert_eq!(app.view().place, Some(Place::Label("calls".to_owned())), "named, though the pick answered by identifier");
+
+    app.send(sidebar_action(&app, "Urgent", ActionKind::ChangeQuery));
+    app.send(Event::Answer(Answer::Text { text: "p2".to_owned() }));
+    assert!(matches!(app.view().place, Some(Place::Filter { name, query }) if name == "Urgent" && query == "p2"));
+}
+
+#[test]
 fn closing_a_proposal_makes_nothing() {
     let mut app = App::new();
     block(&mut app, "Deep work", "09:00", "tomorrow", None);

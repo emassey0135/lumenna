@@ -10,11 +10,8 @@ pub fn count_line(count: usize, noun: &str) -> String {
     }
 }
 
-/// A time of day as `HH:MM`, without the seconds nobody schedules by.
-#[must_use]
-pub fn time_text(time: jiff::civil::Time) -> String {
-    format!("{:02}:{:02}", time.hour(), time.minute())
-}
+/// A time of day as `HH:MM`: the core's, for every record that carries one.
+pub use lumenna_core::time::time_text;
 
 /// "45 minutes", "1 hour", "2 hours 30 minutes".
 #[must_use]
@@ -224,16 +221,9 @@ pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason], terse: b
     }
 }
 
-/// Parts as a list is said: "a", "a and b", "a, b, and c".
-#[must_use]
-pub fn listed(parts: &[String]) -> String {
-    match parts {
-        [] => String::new(),
-        [one] => one.clone(),
-        [first, second] => format!("{first} and {second}"),
-        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
-    }
-}
+/// Parts as a list is said: "a", "a and b", "a, b, and c". The core's, which its own
+/// sentences join with too.
+pub use lumenna_core::words::listed;
 
 /// The same with its first letter a capital: "3 blocks" as a sentence starts.
 #[must_use]

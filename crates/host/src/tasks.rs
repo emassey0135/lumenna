@@ -228,6 +228,17 @@ impl Lumenna {
         })
     }
 
+    /// The search documents of the tasks `ids` names, done and trashed ones too, each with what
+    /// a platform's entity for it holds: for the tasks a listing answered with, in one call.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn task_documents(&self, ids: &[String]) -> Result<Vec<lumenna_records::search::SearchDocument>> {
+        let now = Zoned::now();
+        self.with(|store| Ok(lumenna_records::search::task_documents(&repaired(store), ids, &now)))
+    }
+
     /// Everything about one task.
     ///
     /// # Errors

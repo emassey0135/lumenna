@@ -324,6 +324,18 @@ impl Device {
         self.lumenna.search_results(&text)
     }
 
+    /// The search documents of the tasks `ids` names, in that order, done and trashed ones too:
+    /// each carries what a platform's entity for a task holds (`SearchDocument::task`), so the
+    /// tasks a listing names become entities in one call (App Intents' `TaskEntity`, Android's
+    /// AppSearch), never one call a task.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn task_documents(&self, ids: Vec<String>) -> Result<Vec<SearchDocument>, LumennaError> {
+        self.lumenna.task_documents(&ids)
+    }
+
     // What the tests seed and check the store with.
 
     /// Adds a task from a quick-add line.

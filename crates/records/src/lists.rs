@@ -257,7 +257,7 @@ pub fn history(snapshot: &Snapshot, now: &Zoned) -> Result<Rows> {
     }
     for sitting in snapshot.assignments.values().filter(|a| a.accumulated_mins > 0) {
         let Some(series) = snapshot.series.get(&sitting.block_ref.series_id()) else { continue };
-        let day = sitting.block_ref.date().unwrap_or(series.start_date);
+        let Some(day) = snapshot.assignment_date(sitting) else { continue };
         if day < since || day > today {
             continue;
         }
