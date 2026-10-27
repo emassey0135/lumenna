@@ -109,8 +109,6 @@ pub const METHODS: &[&str] = &[
     "start",
     "pause",
     "stop",
-    "timer.control",
-    "timer.toggle",
     "what_now",
     "start_on",
     "replan",
@@ -222,8 +220,6 @@ const TAKES: &[(&str, &[&str])] = &[
     ("start", &["assignment"]),
     ("pause", &["assignment"]),
     ("stop", &["assignment", "minutes"]),
-    ("timer.control", &["now"]),
-    ("timer.toggle", &["now"]),
     ("what_now", &["now"]),
     ("start_on", &["choice", "now"]),
     ("replan", &["clock", "pins", "now"]),
@@ -853,11 +849,13 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         // A number, or null to clear it.
         "length" => Response::new(l.plan_minutes(&text_of(params, "assignment")?, maybe_number(params, "minutes")?)?),
         "start" => Response::new(l.start_timer(&text_of(params, "assignment")?)?),
-        "pause" => Response::new(l.pause_timer(&text_of(params, "assignment")?)?),
-        "stop" => Response::new(l.stop_timer(&text_of(params, "assignment")?, maybe_number(params, "minutes")?)?),
-        // The timer's one control, as a tile or a watch shows it, and pressing it.
-        "timer.control" => Response::new(api::TimerShown::from(l.timer_control(maybe_text(params, "now"))?)),
-        "timer.toggle" => Response::new(l.toggle_timer(maybe_text(params, "now"))?),
+        // Without an assignment, the timer running; the timer as it is, and its control pressed,
+        // are the assistant table's (`assist` with `timer` and `toggle_timer`).
+        "pause" => Response::new(l.pause_timer(&l.sitting_or_running(maybe_text(params, "assignment"))?)?),
+        "stop" => Response::new(l.stop_timer(
+            &l.sitting_or_running(maybe_text(params, "assignment"))?,
+            maybe_number(params, "minutes")?,
+        )?),
         "history" => Response::new(l.history()?),
 
         "config.get" => Response::new(l.settings(maybe_text(params, "key"))?),

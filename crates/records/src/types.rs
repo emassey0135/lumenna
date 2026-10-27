@@ -878,7 +878,7 @@ pub struct PlanAssignment {
     pub actions: Vec<crate::actions::Action>,
 }
 
-/// A timer stopped, or minutes logged by hand.
+/// A timer paused or stopped, minutes logged by hand, or the timer as it is now.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Timer {
@@ -895,6 +895,10 @@ pub struct Timer {
     pub minutes: u32,
     /// Whether the figure was capped at the block's length.
     pub capped: bool,
+    /// Whether a timer runs once this was done: never after a pause or a stop; for the timer as
+    /// it is now, whether the sitting's runs.
+    #[serde(default)]
+    pub running: bool,
 }
 
 // ---------------------------------------------------------------------------------------

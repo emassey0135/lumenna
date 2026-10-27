@@ -269,6 +269,7 @@ use ParameterKind as K;
 const ID: Param = Param("id", "Task", K::Task, false, "The task's identifier: a whole UUID, or a prefix that names one task.");
 const DAY: Param = Param("date", "Day", K::Date, true, "The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.");
 const SITTING: Param = Param("assignment", "Sitting", K::Sitting, false, "The sitting's identifier: a task's place in a block, as the day lists it.");
+const RUNNING: Param = Param("assignment", "Sitting", K::Sitting, true, "The sitting's identifier, as the day lists it; the sitting whose timer runs when left out.");
 const CONFIRM: Param = Param("confirm", "Confirm", K::Flag, true, "True only once the person has said yes to the question this asks without it.");
 
 const OPERATIONS: &[Op] = &[
@@ -291,6 +292,8 @@ const OPERATIONS: &[Op] = &[
         "What to work on now, ranked, each choice with the reason it is offered: in a block under way its own unfinished sittings, then its suggestions; in free time, what fits before the next block. Starting on one is `start_on`."),
     read("propose_replan", "Propose a Replan of Today", C::Planning, &["replan", "behind", "reschedule", "running late"], &[],
         "Proposes how to replan the rest of today, when the day has slipped: every change as a whole sentence. Nothing changes until `apply_replan` is given the ones the person accepted; say them to the person first."),
+    read("timer", "Show the Timer", C::Timers, &["timer", "running", "how long", "tracking"], &[],
+        "What the timer is doing now: running, on which task and how long so far; else what `toggle_timer` would start, or why nothing would."),
     read("propose_day_plan", "Propose a Plan for a Day", C::Planning, &["plan the day", "fill", "schedule"], &[DAY],
         "Proposes which tasks to put in each of a day's work blocks still to come, each with why. Nothing changes until `apply_day_plan` is given the sittings the person accepted."),
     write("add_task", "Add a Task", C::Tasks, &["new", "create", "remember", "capture", "remind"], &[
@@ -336,11 +339,14 @@ const OPERATIONS: &[Op] = &[
         "Takes a sitting out of its block; the task itself stays.").destructive(),
     write("start_timer", "Start a Timer", C::Timers, &["start", "begin", "work on", "resume"], &[SITTING],
         "Starts, or resumes, a sitting's timer."),
-    write("pause_timer", "Pause a Timer", C::Timers, &["pause", "break"], &[SITTING], "Pauses a sitting's timer, keeping what it has logged."),
+    write("pause_timer", "Pause a Timer", C::Timers, &["pause", "break"], &[RUNNING],
+        "Pauses a sitting's timer, keeping what it has logged: the timer running, unless a sitting is named. Refused when none runs."),
     write("stop_timer", "Stop a Timer", C::Timers, &["stop", "finish", "log time"], &[
-        SITTING,
+        RUNNING,
         Param("minutes", "Minutes", K::Minutes, true, "The minutes to log instead of the timer's, when it ran on by mistake."),
-    ], "Stops a sitting's timer and logs its time."),
+    ], "Stops a sitting's timer and logs its time: the timer running, unless a sitting is named. Refused when none runs."),
+    write("toggle_timer", "Start or Stop the Timer", C::Timers, &["timer", "toggle", "start", "stop", "track time"], &[],
+        "Presses the timer's one control: stops the timer running, or with none running starts on the first of What Should I Work On?'s choices, its timer running. `timer` says first which it would do."),
     write("start_on", "Start on a Choice", C::Planning, &["start", "work on", "focus"], &[
         Param("choice", "Choice", K::Choice, false, "The `id` of one of the choices What Should I Work On? offered."),
     ], "Starts on one of What Should I Work On?'s choices at once, its timer running: in the block under way, or in a block of its own in free time."),

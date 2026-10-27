@@ -15,6 +15,7 @@ $script:Operations = [ordered]@{
     'list_filters' = @{ Cmdlet = 'Get-LumennaFilter'; Switch = $null; Title = 'List Saved Filters'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'what_should_i_work_on' = @{ Cmdlet = 'Get-LumennaChoice'; Switch = $null; Title = 'What Should I Work On?'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'propose_replan' = @{ Cmdlet = 'Get-LumennaReplan'; Switch = $null; Title = 'Propose a Replan of Today'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
+    'timer' = @{ Cmdlet = 'Get-LumennaTimer'; Switch = $null; Title = 'Show the Timer'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'propose_day_plan' = @{ Cmdlet = 'Get-LumennaDayPlan'; Switch = $null; Title = 'Propose a Plan for a Day'; Writes = $false; Confirms = $false; Target = $null; Names = @{ 'Date' = 'date' } }
     'add_task' = @{ Cmdlet = 'Add-LumennaTask'; Switch = $null; Title = 'Add a Task'; Writes = $true; Confirms = $false; Target = 'Text'; Names = @{ 'Text' = 'text' } }
     'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
@@ -30,6 +31,7 @@ $script:Operations = [ordered]@{
     'start_timer' = @{ Cmdlet = 'Start-LumennaTimer'; Switch = $null; Title = 'Start a Timer'; Writes = $true; Confirms = $false; Target = 'Sitting'; Names = @{ 'Sitting' = 'assignment' } }
     'pause_timer' = @{ Cmdlet = 'Suspend-LumennaTimer'; Switch = $null; Title = 'Pause a Timer'; Writes = $true; Confirms = $false; Target = 'Sitting'; Names = @{ 'Sitting' = 'assignment' } }
     'stop_timer' = @{ Cmdlet = 'Stop-LumennaTimer'; Switch = $null; Title = 'Stop a Timer'; Writes = $true; Confirms = $false; Target = 'Sitting'; Names = @{ 'Sitting' = 'assignment'; 'Minutes' = 'minutes' } }
+    'toggle_timer' = @{ Cmdlet = 'Switch-LumennaTimer'; Switch = $null; Title = 'Start or Stop the Timer'; Writes = $true; Confirms = $false; Target = $null; Names = @{} }
     'start_on' = @{ Cmdlet = 'Start-LumennaChoice'; Switch = $null; Title = 'Start on a Choice'; Writes = $true; Confirms = $false; Target = 'Choice'; Names = @{ 'Choice' = 'choice' } }
     'apply_replan' = @{ Cmdlet = 'Approve-LumennaReplan'; Switch = $null; Title = 'Apply a Replan'; Writes = $true; Confirms = $false; Target = 'Proposal'; Names = @{ 'Proposal' = 'proposal'; 'Accepted' = 'accepted' } }
     'apply_day_plan' = @{ Cmdlet = 'Approve-LumennaDayPlan'; Switch = $null; Title = 'Apply a Day Plan'; Writes = $true; Confirms = $false; Target = 'Proposal'; Names = @{ 'Proposal' = 'proposal'; 'Accepted' = 'accepted' } }
@@ -363,6 +365,35 @@ function Get-LumennaReplan {
 
     process {
         Invoke-LumennaAssist $PSCmdlet 'propose_replan' $PSBoundParameters
+    }
+}
+
+function Get-LumennaTimer {
+    <#
+    .SYNOPSIS
+    Show the Timer
+
+    .DESCRIPTION
+    What the timer is doing now: running, on which task and how long so far; else what Switch-LumennaTimer would start, or why nothing would.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Get-LumennaTimer is the assistant operation timer (lum assist timer), also found by: timer, running, how long, tracking.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'timer' $PSBoundParameters
     }
 }
 
@@ -912,10 +943,10 @@ function Suspend-LumennaTimer {
     Pause a Timer
 
     .DESCRIPTION
-    Pauses a sitting's timer, keeping what it has logged.
+    Pauses a sitting's timer, keeping what it has logged: the timer running, unless a sitting is named. Refused when none runs.
 
     .PARAMETER Sitting
-    The sitting's identifier: a task's place in a block, as the day lists it.
+    The sitting's identifier, as the day lists it; the sitting whose timer runs when left out.
 
     .PARAMETER Profile
     The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
@@ -928,7 +959,7 @@ function Suspend-LumennaTimer {
     #>
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
     param(
-        [Parameter(Mandatory = $true, Position = 0, ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Position = 0, ValueFromPipelineByPropertyName = $true)]
         [Alias('Id', 'Assignment')]
         [string]
         $Sitting,
@@ -949,10 +980,10 @@ function Stop-LumennaTimer {
     Stop a Timer
 
     .DESCRIPTION
-    Stops a sitting's timer and logs its time.
+    Stops a sitting's timer and logs its time: the timer running, unless a sitting is named. Refused when none runs.
 
     .PARAMETER Sitting
-    The sitting's identifier: a task's place in a block, as the day lists it.
+    The sitting's identifier, as the day lists it; the sitting whose timer runs when left out.
 
     .PARAMETER Minutes
     The minutes to log instead of the timer's, when it ran on by mistake.
@@ -968,7 +999,7 @@ function Stop-LumennaTimer {
     #>
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
     param(
-        [Parameter(Mandatory = $true, Position = 0, ValueFromPipelineByPropertyName = $true)]
+        [Parameter(Position = 0, ValueFromPipelineByPropertyName = $true)]
         [Alias('Id', 'Assignment')]
         [string]
         $Sitting,
@@ -984,6 +1015,35 @@ function Stop-LumennaTimer {
 
     process {
         Invoke-LumennaAssist $PSCmdlet 'stop_timer' $PSBoundParameters
+    }
+}
+
+function Switch-LumennaTimer {
+    <#
+    .SYNOPSIS
+    Start or Stop the Timer
+
+    .DESCRIPTION
+    Presses the timer's one control: stops the timer running, or with none running starts on the first of What Should I Work On?'s choices, its timer running. Get-LumennaTimer says first which it would do.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Switch-LumennaTimer is the assistant operation toggle_timer (lum assist toggle_timer), also found by: timer, toggle, start, stop, track time.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+    param(
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'toggle_timer' $PSBoundParameters
     }
 }
 

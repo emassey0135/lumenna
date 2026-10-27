@@ -338,12 +338,12 @@ impl Answers {
             "what_should_i_work_on" => Answers::Choices,
             "propose_replan" => Answers::Replan,
             "propose_day_plan" => Answers::DayPlan,
-            "pause_timer" | "stop_timer" => Answers::Timer,
+            "pause_timer" | "stop_timer" | "timer" => Answers::Timer,
             "apply_replan" => Answers::Replanned,
             "apply_day_plan" => Answers::DayPlanned,
             "add_task" | "edit_task" | "complete_task" | "uncomplete_task" | "trash_task" | "erase_task_permanently"
             | "erase_everything_deleted" | "restore_task" | "move_task" | "assign" | "unassign" | "start_timer" | "start_on"
-            | "undo" | "redo" => Answers::Change,
+            | "toggle_timer" | "undo" | "redo" => Answers::Change,
             _ => return None,
         })
     }
@@ -504,7 +504,8 @@ pub fn automated(answer: &Assisted) -> Automated {
         Assisted::Replan(x) => (x.notices.clone(), vec![(&SENTENCES, x.changes.iter().map(|c| c.sentence.clone()).collect())]),
         Assisted::DayPlan(x) => (x.notices.clone(), vec![(&SENTENCES, x.sittings.iter().map(|s| s.sentence.clone()).collect())]),
         Assisted::Timer(x) => {
-            one(&SITTING_ID, Some(x.assignment.clone()));
+            // The timer as it is names no sitting with none running.
+            one(&SITTING_ID, Some(x.assignment.clone()).filter(|id| !id.is_empty()));
             one(&MINUTES, Some(x.minutes.to_string()));
             (x.notices.clone(), Vec::new())
         }

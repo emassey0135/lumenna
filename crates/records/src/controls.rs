@@ -82,6 +82,41 @@ pub fn running_sitting(snapshot: &Snapshot) -> Option<String> {
     snapshot.assignments.values().find(|a| a.running_since.is_some()).map(|a| a.id.to_string())
 }
 
+/// What is said when a timer was asked of that is not there: pausing or stopping "the timer"
+/// with none running.
+pub const NOTHING_RUNNING: &str = "No timer is running.";
+
+/// The timer as it is at `now`, as an assistant asks of it: running, on which task, and how long
+/// it has logged so far; else what pressing the timer's control would start, or why nothing
+/// would. The sitting (`assignment`) is empty with none running.
+///
+/// # Errors
+///
+/// If the day cannot be worked out.
+pub fn timer_now(snapshot: &Snapshot, now: &Zoned) -> Result<crate::Timer> {
+    if let Some(sitting) = snapshot.assignments.values().find(|a| a.running_since.is_some()) {
+        let task = snapshot.tasks.get(&sitting.task_id).map(|t| t.title.clone()).unwrap_or_default();
+        let since = sitting.running_since.map_or(0, |since| now.timestamp().duration_since(since).as_mins().max(0));
+        let minutes = sitting.accumulated_mins.saturating_add(u32::try_from(since).unwrap_or(u32::MAX));
+        return Ok(crate::Timer {
+            announcement: format!("The timer is running on {task}: {} so far.", crate::words::duration(minutes)),
+            notices: Vec::new(),
+            changed: false,
+            assignment: sitting.id.to_string(),
+            minutes,
+            capped: false,
+            running: true,
+        });
+    }
+    let control = timer_control(snapshot, now)?;
+    let announcement = if control.enabled {
+        format!("{NOTHING_RUNNING} Starting it would start on {}.", control.detail)
+    } else {
+        format!("{NOTHING_RUNNING} Nothing would start: {}", control.detail)
+    };
+    Ok(crate::Timer { announcement, notices: Vec::new(), changed: false, assignment: String::new(), minutes: 0, capped: false, running: false })
+}
+
 /// The timer's control at `now`.
 ///
 /// # Errors
@@ -142,6 +177,15 @@ mod tests {
             android_string("apps/android/wear/src/main/res/values/strings.xml", "complication_new_task"),
             new_task.sentence
         );
+    }
+
+    #[test]
+    fn the_timer_with_nothing_running_and_nothing_to_start_says_so_and_names_no_sitting() {
+        let snapshot = Snapshot::default();
+        let now = jiff::civil::date(2026, 10, 25).at(10, 0, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).unwrap();
+        let timer = timer_now(&snapshot, &now).unwrap();
+        assert!(!timer.running && timer.assignment.is_empty(), "{timer:?}");
+        assert!(timer.announcement.starts_with("No timer is running. Nothing would start"), "{}", timer.announcement);
     }
 
     #[test]

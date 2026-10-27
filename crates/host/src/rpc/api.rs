@@ -156,30 +156,8 @@ pub enum Outcome {
     Operations(Operations),
     /// What could come next in what is being typed.
     Completions(Completions),
-    /// What the timer's one control shows.
-    TimerControl(TimerShown),
 }
 
-/// What the timer's one control shows, as a tile or a watch has it, with the sentence a
-/// terminal says of it: its detail, which names the task timed or what a press would start.
-#[derive(Debug, Serialize)]
-pub struct TimerShown {
-    /// The control's detail.
-    pub announcement: String,
-    /// Always empty.
-    pub notices: Vec<String>,
-    /// The control.
-    #[serde(flatten)]
-    pub control: lumenna_records::controls::TimerControl,
-}
-
-impl From<lumenna_records::controls::TimerControl> for TimerShown {
-    fn from(control: lumenna_records::controls::TimerControl) -> Self {
-        Self { announcement: control.detail.clone(), notices: Vec::new(), control }
-    }
-}
-
-announced!(TimerShown);
 
 macro_rules! outcomes {
     ($($variant:ident($type:ty)),* $(,)?) => {
@@ -236,7 +214,6 @@ outcomes!(
     DayPlanned(crate::DayPlanned),
     Operations(Operations),
     Completions(Completions),
-    TimerControl(TimerShown),
 );
 
 impl From<lumenna_records::assistant::Assisted> for Outcome {

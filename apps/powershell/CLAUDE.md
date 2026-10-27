@@ -33,8 +33,9 @@ one `lum rpc` the module keeps for its session. `Lumenna/` is the module as it s
   alias), and a `Switch` where one cmdlet runs two operations (`Remove-LumennaTask` trashes;
   `-Permanently` erases). Nothing else about a cmdlet is decided here.
 - **The record a cmdlet acts on comes down the pipeline by its id**: an operation's first
-  required identifier (a task, sitting, choice or block) binds `ValueFromPipelineByPropertyName`,
-  aliased `Id`, so a listing's rows, the day's sittings and What Should I Work On?'s choices pipe
+  required identifier (a task, sitting, choice or block), or with nothing required its first
+  parameter when that is one (`Stop-LumennaTimer`'s sitting, the timer running when left out),
+  binds `ValueFromPipelineByPropertyName`, aliased `Id`, so a listing's rows, the day's sittings and What Should I Work On?'s choices pipe
   into what acts on them. No other parameter binds from the pipeline: a row's `title` piped into
   `Set-LumennaTask -Title` would send an unchanged field, which reverts a concurrent edit.
 - **Whatever writes has `-WhatIf` and `-Confirm`**: `ConfirmImpact` Low for a change, Medium for
