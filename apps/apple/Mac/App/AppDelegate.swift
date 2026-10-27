@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let alert = NSAlert()
             alert.messageText = LumennaApp.storeUnopened(reason: "")
             alert.informativeText = error.sentence
+            alert.addButton(withTitle: LumennaApp.close(sentence: false))
             alert.runModal()
             NSApp.terminate(nil)
             return
@@ -118,6 +119,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.activate(ignoringOtherApps: true)
         main?.showWindow(nil)
         main?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// About Lumenna: what the core says Lumenna is (`appMetadata()`), from the workspace's one
+    /// source, its version among it; the publisher, licence, home and where problems go beneath
+    /// what it is, each address a link.
+    @objc func showAbout(_ sender: Any?) {
+        let about = LumennaApp.appMetadata()
+        let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let credits = NSMutableAttributedString()
+        for line in [about.description, about.publisher, about.licence] {
+            credits.append(NSAttributedString(string: line + "\n", attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
+        }
+        for address in [about.homepage, about.issues] {
+            var attributes: [NSAttributedString.Key: Any] = [.font: font]
+            if let url = URL(string: address) { attributes[.link] = url }
+            credits.append(NSAttributedString(string: "\n" + address, attributes: attributes))
+        }
+        credits.addAttribute(.paragraphStyle, value: { let style = NSMutableParagraphStyle(); style.alignment = .center; return style }(), range: NSRange(location: 0, length: credits.length))
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: about.name,
+            .applicationVersion: about.version,
+            .credits: credits,
+        ])
     }
 
     @objc func showSettings(_ sender: Any?) {

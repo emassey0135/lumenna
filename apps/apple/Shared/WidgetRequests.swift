@@ -21,8 +21,8 @@ final class WidgetRequests {
     static let folder = "requests"
     /// Complete a Task's (`CompleteTaskIntent`), Today's Mark Done.
     static let completeTask = "complete_task"
-    /// The Timer control's press (`TimerControlIntent`): `Device.toggleTimer`, no assistant
-    /// operation.
+    /// The Timer control's press (`TimerControlIntent`): Start or Stop the Timer's
+    /// (`ToggleTimerIntent`), `Device.toggleTimer` as an assistant operation.
     static let toggleTimer = "toggle_timer"
     /// Every operation a request may run, each with the arguments it is given and must have:
     /// Complete a Task its task, the Timer's press nothing. Named one by one, never a pattern, so

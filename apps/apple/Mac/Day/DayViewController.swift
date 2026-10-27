@@ -39,7 +39,7 @@ struct MacDayScreen: View {
                 Button("Go to Day…") { goToDay() }
                 Button("Add Block…") { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
                 if !model.actions.isEmpty {
-                    Menu("Day Actions") {
+                    Menu(LumennaApp.dayActions(sentence: false)) {
                         ForEach(model.actions, id: \.self) { action in
                             Button(action.asksFirst ? action.title + "…" : action.title) { model.perform(action) }
                         }

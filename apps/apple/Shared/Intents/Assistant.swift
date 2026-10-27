@@ -71,23 +71,23 @@ final class AssistantStore: @unchecked Sendable {
         (try? using { try $0.searchResults(text: text) }) ?? []
     }
 
-    /// What a platform's search finds of each open task, by the task's identifier: its line
-    /// and the words it is found by, the core's.
-    func documents() -> [String: LumennaApp.SearchDocument] {
-        let tasks = searchDocuments().filter { $0.kind == .task }
-        return Dictionary(tasks.map { (String($0.id.dropFirst("task:".count)), $0) }) { first, _ in first }
+    /// The tasks `ids` names as entities, in that order, done and trashed ones too, from their
+    /// search documents in one call (`Device.taskDocuments`); an identifier naming no task is
+    /// left out.
+    func entities(_ ids: [String]) -> [TaskEntity] {
+        guard !ids.isEmpty else { return [] }
+        return ((try? using { try $0.taskDocuments(ids: ids) }) ?? []).compactMap(TaskEntity.init)
     }
 
-    /// A task as an entity, with what search finds of it.
-    func entity(_ task: LumennaApp.TaskDetail?, _ documents: [String: LumennaApp.SearchDocument]? = nil) -> TaskEntity? {
-        task.map { TaskEntity($0, found: (documents ?? self.documents())[$0.id]) }
+    /// A task an operation answered with, as an entity.
+    func entity(_ task: LumennaApp.TaskDetail?) -> TaskEntity? {
+        task.flatMap { entities([$0.id]).first }
     }
 
-    /// Each task a listing names, whole, in the listing's order.
+    /// Each task a listing names, in the listing's order.
     func tasks(_ assisted: LumennaApp.Assisted) -> [TaskEntity] {
         guard case let .rows(rows) = assisted else { return [] }
-        let documents = self.documents()
-        return rows.rows.filter { $0.role == "task" }.compactMap { row in entity(try? task(row.id), documents) }
+        return entities(rows.rows.filter { $0.role == "task" }.map(\.id))
     }
 
     /// A day, as a person says it, or today.

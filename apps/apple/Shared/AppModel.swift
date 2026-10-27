@@ -91,10 +91,12 @@ final class AppModel {
         app.send(event: event)
     }
 
-    /// An overrun warning's Replan, pressed in its notification: the app's (`DueEvent::Replan`),
-    /// which shows today with Replan from Now over it, the screens following.
+    /// An overrun warning's Replan, pressed in its notification: the app's
+    /// (`DueEvent::ReplanFiring`, by the firing, since the system gave the warning and the app's
+    /// own list never held it), which shows today with Replan from Now over it, the screens
+    /// following, and dismisses the warning on every device once something is replanned.
     func replan(from reminded: RemindedOf) {
-        send(.due(.replan(reminded.due)))
+        send(.due(.replanFiring(key: reminded.key, occurrence: reminded.day)))
     }
 
     /// What a widget or complication shows for the next `hours`, the core's, worded in this
@@ -319,9 +321,8 @@ extension AppModel {
     /// `hidden`, `expanded`, `level`). `under` limits them to one heading's places, a level up,
     /// whose level is said against those rows alone, in the core's words.
     func sidebarItems(under group: LumennaApp.SidebarGroup? = nil) -> [AppItem] {
-        var items: [AppItem] = []
+        var shown: [LumennaApp.SidebarEntry] = []
         var inside = group == nil
-        var previous: UInt32 = 0
         for entry in view.sidebar {
             if let group {
                 if entry.depth == 0 {
@@ -331,14 +332,15 @@ extension AppModel {
                 guard inside else { continue }
             }
             guard !entry.hidden else { continue }
-            let depth = group == nil ? entry.depth : entry.depth - 1
-            let level: String?
-            if group == nil {
-                level = entry.level
-            } else {
-                level = depth != previous ? LumennaApp.levelWords(depth: depth) : nil
-                previous = depth
-            }
+            shown.append(entry)
+        }
+        // One heading's places, cut out here, have their levels from the core against each other.
+        let depths = shown.map { group == nil ? $0.depth : $0.depth - 1 }
+        let levels = group == nil ? shown.map(\.level) : LumennaApp.levels(depths: depths).map { $0.isEmpty ? nil : $0 }
+        var items: [AppItem] = []
+        for (index, entry) in shown.enumerated() {
+            let depth = depths[index]
+            let level = levels[index]
             var item = AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: depth, actions: entry.offered, swatch: entry.swatch)
             item.spoken = AppModel.spoken(detail: entry.detail, expanded: entry.expanded, level: level)
             item.expanded = entry.expanded

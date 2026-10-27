@@ -95,7 +95,7 @@ struct DayScreen: View {
         Button("Go to Day") { chooseDay() }
         if !model.actions.isEmpty {
             Spacer(minLength: 0)
-            Menu("Day Actions") {
+            Menu(LumennaApp.dayActions(sentence: false)) {
                 ForEach(model.actions, id: \.self) { action in
                     Button(action.title, role: action.destructive ? .destructive : nil) { model.perform(action) }
                 }

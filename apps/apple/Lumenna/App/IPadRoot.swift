@@ -67,7 +67,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     func show(_ destination: Destination, then: ((UIViewController) -> Void)? = nil) {
         if let presented = presentedViewController { presented.dismiss(animated: false) }
         let screen = screen(for: destination)
-        empty = destination == .settings ? "No settings page open" : LumennaApp.detailsWords(sentence: false).none
+        empty = destination == .settings ? LumennaApp.noSettingsPage() : LumennaApp.detailsWords(sentence: false).none
         list.setViewControllers([screen], animated: false)
         sidebar.current = destination
         close()

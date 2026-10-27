@@ -133,6 +133,21 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(model.proposal?.others.isEmpty ?? false, "so no Other options heading")
     }
 
+    /// The system gave the warning, so the app's own list never held it: the app is told the
+    /// firing, not an id of its list's, and opens Replan from Now all the same.
+    func testAnOverrunsReplanPressedInItsNotificationOpensReplanFromNow() throws {
+        try block("Deep work", at: "09:00", minutes: 120)
+        try block("Lunch", kind: "break", at: "10:30", minutes: 30)
+        core.app.tick()
+        settle()
+        core.app.send(.planFrom("\(day)T10:40"))
+        core.app.replan(from: RemindedOf(kind: "block", target: "", day: day, replan: true, key: "overrun"))
+        settle { core.app.view.proposal?.ready == true }
+        let model = AppProposalModel(core: core)
+        XCTAssertEqual(model.title, "Replan from Now")
+        XCTAssertEqual(model.proposal?.changes.count, 1, "Lunch moves")
+    }
+
     func testReplanWithNothingToChangeSaysSoAndOffersNoApply() throws {
         let model = replan(at: "10:40")
         XCTAssertTrue(model.proposal?.changes.isEmpty ?? false)

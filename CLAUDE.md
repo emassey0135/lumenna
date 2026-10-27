@@ -152,10 +152,11 @@ crosses the FFI.
   `Cargo.toml`: name, description, version, homepage, issues, publisher, identifier, with the
   licence from `[workspace.package]`): `records`' build reads it into `words::metadata()`
   (`app_metadata()` over the FFI), which `lum`'s about, the About boxes and the autostart entry
-  say. Every platform file that must say it ahead (the desktop entry and metainfo, the MSIX and
-  Inno Setup, the Apple `Info.plist`s' version, Android's Gradle files and strings, the web's
-  package and manifest, the PowerShell module, BTSpeak's pyproject, the apps' crate versions) is
-  held to it by `records`' metadata test: change it there, then each file.
+  say. The Apple apps read their version and name from it as they build (`apps/apple/metadata.sh`).
+  Every other platform file that must say it ahead (the desktop entry and metainfo, the MSIX and
+  Inno Setup, Android's Gradle files and strings, the web's package and manifest, the PowerShell
+  module, BTSpeak's pyproject, the apps' crate versions) is held to it by `records`' metadata
+  test: change it there, then each file.
 - **Colours are the core's palette** (`lumenna_core::colour`, `records::colours`): eleven named
   colours, each with a value for a light background and one for a dark, both of 3:1 contrast.
   A project, label or saved filter takes one by its Colour pick (`colour_choices`, "No colour"

@@ -107,6 +107,8 @@ extension SettingsModel {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = exportName(format)
         panel.canCreateDirectories = true
+        // What a shell's own file dialogs ask, the core's.
+        panel.message = LumennaApp.fileWords(sentence: false).saveIn
         guard let window else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
@@ -126,6 +128,7 @@ extension SettingsModel {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json, UTType(filenameExtension: "lumbak") ?? .data]
         panel.prompt = "Import"
+        panel.message = LumennaApp.fileWords(sentence: false).`import`
         guard let window else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }

@@ -51,29 +51,30 @@ struct TaskEntity: AppEntity {
     @Property(title: "States") var states: [String]
     @Property(title: "Added") var added: Date?
     /// What a search shows under its name, the core's: when it is due, its project and labels.
-    /// A task done or in the trash has none.
     let line: String?
     /// The words a search finds it by beside its name: its notes, project and labels.
     let keywords: [String]
     /// What opening it hands the app (`ShellEvent.launch`), as its search document has it.
     let launch: String?
 
-    init(_ task: LumennaApp.TaskDetail, found document: LumennaApp.SearchDocument? = nil) {
-        id = task.id
-        line = document.map(\.line).flatMap { $0.isEmpty ? nil : $0 }
-        keywords = document?.keywords ?? []
-        launch = document?.launch
-        title = task.title
-        due = task.due.flatMap { moment($0, task.dueTime) }
+    /// A task as its search document has it (`SearchDocument.task`), the core's as the task
+    /// stands, so no figure is older than its line; none for a document that is not a task's.
+    init?(_ document: LumennaApp.SearchDocument) {
+        guard let task = document.task else { return nil }
+        id = String(document.id.dropFirst("task:".count))
+        line = document.line.isEmpty ? nil : document.line
+        keywords = document.keywords
+        launch = document.launch
+        title = document.title
+        due = document.due.flatMap { moment($0, task.dueTime) }
         project = task.project
         labels = task.labels
         priority = Int(task.priority)
-        // The core's state keyword, as its filters read it.
-        done = task.state.contains("completed")
+        done = task.done
         notes = task.notes
         estimate = task.estimateMins.map(Int.init)
         repeats = task.repetition
-        states = task.state
+        states = task.states
         added = Instant.parse(task.createdAt)
     }
 
@@ -199,16 +200,12 @@ struct TaskQuery: EntityStringQuery {
         // to the app (`WidgetRequests`), which is all it needs of the task.
         return identifiers.map { TaskEntity(id: $0, title: "") }
         #else
-        let documents = store.documents()
-        return identifiers.compactMap { id in store.entity(try? store.task(id), documents) }
+        return store.entities(identifiers)
         #endif
     }
 
     func entities(matching string: String) async throws -> [TaskEntity] {
-        let documents = store.documents()
-        return store.found(string).filter { $0.kind == .task }.compactMap { document in
-            store.entity(try? store.task(String(document.id.dropFirst("task:".count))), documents)
-        }
+        store.found(string).compactMap(TaskEntity.init)
     }
 
     /// The open tasks, most urgent first, as every list orders them.
@@ -531,16 +528,13 @@ struct SittingQuery: EntityStringQuery {
     }
 }
 
-/// Today's sittings, the one whose timer runs first in hand: what Pause and Stop act on.
-struct RunningSitting: DynamicOptionsProvider {
+/// Today's sittings, what Pause and Stop may name: left out, they act on the one whose timer
+/// runs, which the core finds as it acts rather than as the shortcut was set up.
+struct TodaysSittings: DynamicOptionsProvider {
     @AppDependency private var store: AssistantStore
 
     func results() async throws -> [SittingEntity] {
         try store.day(nil)?.sittingEntities ?? []
-    }
-
-    func defaultResult() async -> SittingEntity? {
-        (try? store.day(nil))?.sittingEntities.first { $0.running }
     }
 }
 

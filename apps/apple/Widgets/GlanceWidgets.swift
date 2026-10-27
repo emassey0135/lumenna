@@ -71,7 +71,7 @@ enum GlanceWidgets {
     /// What a task's Mark Done is called to VoiceOver: the core's action, then the task, as the
     /// Android widget names its button, so each says which task it marks.
     static func markDone(_ entry: LumennaApp.GlanceEntry, _ task: LumennaApp.Line) -> String {
-        "\(entry.markDone), \(task.title)"
+        LumennaApp.markDoneDescribed(markDone: entry.markDone, task: task.title)
     }
 
     /// Today's New Task (`GlancePart.newTask`): the core's launch shortcut it opens, whose title

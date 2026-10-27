@@ -140,12 +140,9 @@ private struct PlaceActions: View {
         core.app.view.sidebar.first { $0.kind == .place(place) && !$0.offered.isEmpty }
     }
 
+    /// What the place is, the core's, over its own actions.
     private var heading: String {
-        switch place {
-        case .project: "Project"
-        case .label: "Label"
-        default: "Saved Filter"
-        }
+        LumennaApp.placeHeading(place: place, sentence: false)
     }
 }
 

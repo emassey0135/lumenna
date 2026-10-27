@@ -1,3 +1,4 @@
+import LumennaApp
 import UIKit
 
 extension UIViewController {
@@ -5,7 +6,7 @@ extension UIViewController {
     /// question's own, or as the whole alert, which the sentence says by itself.
     func showFailure(_ message: String, title: String? = nil) {
         let alert = UIAlertController(title: title ?? message, message: title == nil ? nil : message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        alert.addAction(UIAlertAction(title: LumennaApp.close(sentence: false), style: .default))
         (presentedViewController ?? self).present(alert, animated: true)
     }
 }

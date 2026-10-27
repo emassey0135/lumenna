@@ -17,6 +17,18 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PLATFORM="${1:-${PLATFORM_NAME:-iphonesimulator}}"
 CONFIGURATION="${2:-${CONFIGURATION:-Debug}}"
 
+# What Lumenna is, as Cargo.toml says it now (metadata.sh). Xcode read the version and name from
+# Generated/Metadata.xcconfig as the build began, so a build begun before Cargo.toml changed
+# would say the old ones: it stops, the file written again for the next build.
+"$ROOT/apps/apple/metadata.sh"
+if [ -n "${MARKETING_VERSION:-}" ]; then
+  said="$(sed -n 's/^MARKETING_VERSION = //p' "$ROOT/apps/apple/Generated/Metadata.xcconfig")|$(sed -n 's/^LUMENNA_NAME = //p' "$ROOT/apps/apple/Generated/Metadata.xcconfig")"
+  if [ "$said" != "$MARKETING_VERSION|${LUMENNA_NAME:-}" ]; then
+    echo "error: Cargo.toml now says ${said/|/ and }, which this build began without; build again" >&2
+    exit 1
+  fi
+fi
+
 # The Mac app is built for every architecture Xcode asks for (ARCHS: Apple silicon and
 # Intel for a release, the Mac's own for a debug build) and the libraries joined into one.
 ARCHS="${ARCHS:-arm64}"

@@ -90,7 +90,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
 
-        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel))
+        let cancel = NSButton(title: LumennaApp.cancel(sentence: false), target: self, action: #selector(cancel))
         cancel.keyEquivalent = "\u{1b}"
         let choose = NSButton(title: yes, target: self, action: #selector(choose))
         choose.keyEquivalent = "\r"

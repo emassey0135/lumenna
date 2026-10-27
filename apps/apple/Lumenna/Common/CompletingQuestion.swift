@@ -72,7 +72,7 @@ final class CompletingQuestionViewController: UIViewController {
         // Down offers what fits, as on every keyboard.
         let down = UIKeyCommand(title: CompletionWords.show, action: #selector(showCompletions), input: UIKeyCommand.inputDownArrow)
         down.wantsPriorityOverSystemBehavior = true
-        return [UIKeyCommand(title: "Cancel", action: #selector(cancel), input: UIKeyCommand.inputEscape), down]
+        return [UIKeyCommand(title: LumennaApp.cancel(sentence: false), action: #selector(cancel), input: UIKeyCommand.inputEscape), down]
     }
 
     @objc private func showCompletions() { completions.showList() }

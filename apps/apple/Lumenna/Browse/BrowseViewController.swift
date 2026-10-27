@@ -6,7 +6,7 @@ import UIKit
 /// it, in the core's words.
 final class BrowseViewController: AppListViewController {
     init(core: Core) {
-        super.init(core: core, title: "Browse")
+        super.init(core: core, title: LumennaApp.browse(sentence: false))
     }
 
     // Each place's own list has Undo and Redo; Browse is somewhere to go.

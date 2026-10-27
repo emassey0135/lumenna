@@ -13,7 +13,7 @@ extension UIViewController {
         for (name, run) in actions {
             sheet.addAction(UIAlertAction(title: name, style: .default) { _ in run() })
         }
-        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        sheet.addAction(UIAlertAction(title: LumennaApp.cancel(sentence: false), style: .cancel))
         sheet.popoverPresentationController?.sourceView = source ?? view
         present(sheet, animated: true)
     }
@@ -69,7 +69,7 @@ extension PhoneAsker: QuestionAsking {
 
     func confirm(title: String, message: String, yes: String, destructive: Bool, answered: @escaping (Bool) -> Void) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answered(false) })
+        alert.addAction(UIAlertAction(title: LumennaApp.cancel(sentence: false), style: .cancel) { _ in answered(false) })
         alert.addAction(UIAlertAction(title: yes, style: destructive ? .destructive : .default) { _ in answered(true) })
         present(alert) { answered(false) }
     }
@@ -108,7 +108,7 @@ extension PhoneAsker: QuestionAsking {
             field.autocapitalizationType = .sentences
             field.clearButtonMode = .whileEditing
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answered(nil) })
+        alert.addAction(UIAlertAction(title: LumennaApp.cancel(sentence: false), style: .cancel) { _ in answered(nil) })
         let answer = UIAlertAction(title: yes, style: .default) { [weak alert] _ in
             answered(alert?.textFields?.first?.text ?? "")
         }
@@ -132,7 +132,7 @@ extension PhoneAsker: QuestionAsking {
         for answer in answers {
             sheet.addAction(UIAlertAction(title: answer.title, style: destructive ? .destructive : .default) { _ in answered(answer.id) })
         }
-        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in answered(nil) })
+        sheet.addAction(UIAlertAction(title: LumennaApp.cancel(sentence: false), style: .cancel) { _ in answered(nil) })
         sheet.popoverPresentationController?.sourceView = front?.view
         present(sheet) { answered(nil) }
     }

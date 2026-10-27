@@ -11,6 +11,8 @@ extension NSWindow {
         alert.messageText = title ?? message
         alert.informativeText = title == nil ? "" : message
         alert.alertStyle = .warning
+        // The core's Close: an alert left without a button says OK, which is never the answer.
+        alert.addButton(withTitle: LumennaApp.close(sentence: false))
         alert.beginSheetModal(for: self)
     }
 
@@ -29,7 +31,7 @@ extension NSWindow {
         alert.messageText = title
         alert.informativeText = message
         for (name, _) in actions { alert.addButton(withTitle: name) }
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
         alert.beginSheetModal(for: self) { response in
             let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
             if index >= 0, index < actions.count { actions[index].1() }
@@ -63,7 +65,7 @@ extension NSWindow: QuestionAsking {
         alert.alertStyle = .warning
         let go = alert.addButton(withTitle: yes)
         go.hasDestructiveAction = destructive
-        let cancel = alert.addButton(withTitle: "Cancel")
+        let cancel = alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
         // Cancel is the default, so a stray Return does nothing.
         go.keyEquivalent = ""
         cancel.keyEquivalent = "\r"
@@ -108,7 +110,7 @@ extension NSWindow: QuestionAsking {
             alert.accessoryView = field
         }
         alert.addButton(withTitle: yes)
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: front) { response in
             var text = response == .alertFirstButtonReturn ? field.stringValue : nil
@@ -133,7 +135,7 @@ extension NSWindow: QuestionAsking {
         for answer in answers {
             alert.addButton(withTitle: answer.title).hasDestructiveAction = destructive
         }
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
         alert.beginSheetModal(for: front) { response in
             let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
             let id = index >= 0 && index < answers.count ? answers[index].id : nil
