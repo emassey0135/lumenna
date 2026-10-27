@@ -429,7 +429,8 @@ pub fn nothing_changed() -> String {
 }
 
 /// Which occurrences of the repeating block `block` a change is for, asked before its form
-/// opens: that day alone (`day`, as said: "Tomorrow", "Monday 5 October"), whose answer is
+/// opens: that day alone (`day`, as said: "Tomorrow", "Monday 5 October", or empty for "this
+/// day"), whose answer is
 /// `day`, or every occurrence, `every`. In Title Case, or sentence case where `sentence`; the
 /// block's name and the day keep their own capitals either way.
 #[must_use]
@@ -439,7 +440,16 @@ pub fn edit_which_question(block: &str, day: &str, sentence: bool) -> crate::Que
         title: format!("{} {block}", cased("Change")),
         message: cased("Which Occurrences?"),
         answers: vec![
-            Choice { id: "day".to_owned(), title: format!("{day} {}", if sentence { "only" } else { "Only" }), ..Choice::default() },
+            Choice {
+                id: "day".to_owned(),
+                // A block with no day of its own is this one.
+                title: if day.trim().is_empty() {
+                    cased("This Day Only")
+                } else {
+                    format!("{day} {}", if sentence { "only" } else { "Only" })
+                },
+                ..Choice::default()
+            },
             Choice { id: "every".to_owned(), title: cased("Every Occurrence"), ..Choice::default() },
         ],
     }
@@ -694,6 +704,10 @@ pub struct SettingWords {
     pub sync_status: String,
     /// The Devices page's list of devices: its label.
     pub devices: String,
+    /// The Devices page's button that renames the device held, which asks.
+    pub rename: String,
+    /// The Devices page's button that unpairs the device held, which asks.
+    pub unpair: String,
 }
 
 /// What a setting's own control says (`SettingWords`), Title Case.
@@ -708,6 +722,8 @@ pub fn setting_words() -> SettingWords {
         choose_folder: "Choose a Folder".to_owned(),
         sync_status: "Sync Status".to_owned(),
         devices: "Paired Devices".to_owned(),
+        rename: "Rename".to_owned(),
+        unpair: "Unpair".to_owned(),
     }
 }
 
@@ -840,4 +856,154 @@ pub fn usual_lengths(optional: bool) -> Vec<Choice> {
             ..Choice::default()
         }))
         .collect()
+}
+
+/// A setting or field that is on or off, as a choice of two: "Yes", "No", for a shell whose
+/// form asks it so (BTSpeak's block form).
+#[must_use]
+pub fn yes_no() -> Vec<Choice> {
+    [("yes", "Yes"), ("no", "No")].into_iter().map(|(id, title)| Choice { id: id.to_owned(), title: title.to_owned(), ..Choice::default() }).collect()
+}
+
+/// What a shell's option of reading a quick-add line back before adding it says, where it
+/// offers one (BTSpeak): its name with its state, what turning it says, and the question.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadBackWords {
+    /// The option while on: "Read a task back before adding it, on".
+    pub title_on: String,
+    /// The option while off.
+    pub title_off: String,
+    /// Said once turned on.
+    pub turned_on: String,
+    /// Said once turned off.
+    pub turned_off: String,
+    /// The answer that adds the line read back.
+    pub add: String,
+    /// The answer that goes back to change it.
+    pub change: String,
+}
+
+/// What reading a line back says (`ReadBackWords`), its answers in sentence case where `sentence`.
+#[must_use]
+pub fn read_back_words(sentence: bool) -> ReadBackWords {
+    ReadBackWords {
+        title_on: "Read a task back before adding it, on".to_owned(),
+        title_off: "Read a task back before adding it, off".to_owned(),
+        turned_on: "A task is read back before it is added".to_owned(),
+        turned_off: "A task is added as soon as it is entered".to_owned(),
+        add: cased("Add It", sentence),
+        change: cased("Change It", sentence),
+    }
+}
+
+/// The question a line read back asks: "New task Pay rent, due tomorrow. Add it?", `readback`
+/// being quick add's (`LineView::readback`).
+#[must_use]
+pub fn add_it(readback: &str) -> String {
+    format!("{}. Add it?", readback.trim_end_matches('.'))
+}
+
+/// What a shell's own file and folder dialogs ask, where it words them (BTSpeak), and the
+/// export's button.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileWords {
+    /// Choosing a backup to restore: "Restore which backup?"
+    pub restore: String,
+    /// Choosing where an export or a backup goes: "Save it in which folder?"
+    pub save_in: String,
+    /// Choosing a file to import: "Import which file?"
+    pub import: String,
+    /// The button or item that exports.
+    pub export: String,
+}
+
+/// What a shell's own file dialogs ask (`FileWords`), the button in sentence case where `sentence`.
+#[must_use]
+pub fn file_words(sentence: bool) -> FileWords {
+    FileWords {
+        restore: "Restore which backup?".to_owned(),
+        save_in: "Save it in which folder?".to_owned(),
+        import: "Import which file?".to_owned(),
+        export: cased("Export", sentence),
+    }
+}
+
+/// What backing up into a folder of the person's says where the device keeps none of its own (a
+/// browser): what a backup is, what the browser takes by itself, and each button and sentence.
+/// Buttons in sentence case where `sentence`.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FolderWords {
+    /// What a backup is.
+    pub intro: String,
+    /// Where a folder can be given: what the device then takes by itself.
+    pub takes_itself: String,
+    /// Where none can: that it takes none by itself.
+    pub takes_none: String,
+    /// What restoring does.
+    pub restoring: String,
+    /// The section's name.
+    pub section: String,
+    /// The button that backs up into the folder now.
+    pub back_up_now: String,
+    /// The button that chooses a folder while one is chosen.
+    pub choose_another: String,
+    /// The button that stops backing up into a folder.
+    pub stop: String,
+    /// The button that chooses a folder while none is.
+    pub choose: String,
+    /// Said when asking again was refused.
+    pub still_not_allowed: String,
+    /// Said once stopped.
+    pub stopped: String,
+}
+
+/// What backing up into a folder says (`FolderWords`), `this_device` being how the device calls
+/// itself ("this browser").
+#[must_use]
+pub fn folder_words(this_device: &str, sentence: bool) -> FolderWords {
+    let c = |text: &str| cased(text, sentence);
+    let device = crate::words::capitalised(this_device);
+    FolderWords {
+        intro: "A backup is everything, its whole history and the trash included.".to_owned(),
+        takes_itself: format!(
+            "Choose a folder below and {this_device} takes them by itself; or download one now and then, and keep it somewhere safe."
+        ),
+        takes_none: format!("{device} takes none by itself: download one now and then, and keep it somewhere safe."),
+        restoring: format!("Restoring merges: it adds what {this_device} lacks, and never takes back a later change."),
+        section: c("Automatic Backups"),
+        back_up_now: c("Back Up to the Folder Now"),
+        choose_another: c("Choose Another Folder"),
+        stop: c("Stop Backing Up to a Folder"),
+        choose: c("Choose a Folder for Backups"),
+        still_not_allowed: "Still not allowed".to_owned(),
+        stopped: "No longer backing up to a folder".to_owned(),
+    }
+}
+
+/// Where backups go, while a folder is chosen and allowed: "Backing up to the folder Documents."
+#[must_use]
+pub fn backing_up_to_folder(folder: &str) -> String {
+    format!("Backing up to the folder {folder}.")
+}
+
+/// A folder chosen that must be allowed again first, `this_device` being how the device calls
+/// itself: "This browser needs asking again before it backs up to Documents."
+#[must_use]
+pub fn needs_asking_again(this_device: &str, folder: &str) -> String {
+    format!("{} needs asking again before it backs up to {folder}.", crate::words::capitalised(this_device))
+}
+
+/// The button that allows backups into a folder again: "Allow Backups to Documents".
+#[must_use]
+pub fn allow_backups_to(folder: &str, sentence: bool) -> String {
+    format!("{} {folder}", cased("Allow Backups to", sentence))
+}
+
+/// Said once backups go into a folder: "Backing up to Documents".
+#[must_use]
+pub fn backing_up_to(folder: &str) -> String {
+    format!("Backing up to {folder}")
 }

@@ -145,7 +145,7 @@ fn answer_with(lumenna: &Lumenna, request: HostRequest, after: &dyn Fn() -> Opti
             HostAnswer::Imported(Box::new(done), after())
         }
         HostRequest::Devices => HostAnswer::Devices(lumenna.devices()),
-        HostRequest::RemindersDue { since, now } => HostAnswer::Found(lumenna.reminders_due(since, now)),
+        HostRequest::RemindersDue { since, now } => HostAnswer::Found(lumenna.reminders_due(since, now), after()),
         HostRequest::Dismiss(firings) => wrote(each(&firings, |(key, occurrence)| lumenna.dismiss_reminder(key.clone(), occurrence.clone()))),
         HostRequest::Snooze(firings) => wrote(each(&firings, |(key, occurrence)| lumenna.snooze_reminder(key.clone(), occurrence.clone(), None))),
         HostRequest::CarryForward { block, firings } => wrote(lumenna.carry_rest_forward(&block).and_then(|carried| {

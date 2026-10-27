@@ -36,6 +36,16 @@ pub enum DueEvent {
     Carry(String),
     /// Open Replan from Now for an overrun; the warning is dismissed once something is replanned.
     Replan(String),
+    /// Open Replan from Now for an overrun the platform gave itself (`Device::deliver_reminders`,
+    /// the system's notification), which this app's list may never have held: the firing it is,
+    /// a `DueReminder`'s `key` and `occurrence`, is dismissed once something is replanned. What
+    /// every shell sends for an overrun's Replan button outside the app.
+    ReplanFiring {
+        /// The reminder, as a `DueReminder`'s `key`.
+        key: String,
+        /// Which firing of it, ISO.
+        occurrence: String,
+    },
 }
 
 /// One reminder due, as listed.
@@ -195,11 +205,15 @@ impl Lumenna {
     /// An overrun warning's Replan from Now closed: once something was replanned, the warning is
     /// dealt with.
     pub(crate) fn replanned(&self, model: &mut Screen) -> Command<Effect, Event> {
-        let Some(id) = model.replanning.take() else { return Command::done() };
+        let Some((id, firing)) = model.replanning.take() else { return Command::done() };
         if !model.proposal_made {
             return Command::done();
         }
-        self.deal(&id, Deal::Dismiss, model)
+        match firing {
+            // A warning this list never held: dismissed as the firing it is, on every device.
+            Some(firing) if !model.due.iter().any(|d| d.id == id) => write(model, HostRequest::Dismiss(vec![firing]), None).1,
+            _ => self.deal(&id, Deal::Dismiss, model),
+        }
     }
 
     /// Does what the reminder `id`'s button asks; it leaves the list once the host has done it,
@@ -234,6 +248,8 @@ impl Lumenna {
                 host(HostRequest::RemindersDue { since, now })
             }
             DueEvent::Dismiss(id) => self.deal(&id, Deal::Dismiss, model),
+            // A summary of what was missed has no Snooze: refused in the core's words.
+            DueEvent::Snooze(id) if !offers(model, &id, |d| d.snooze.is_some()) => say(lumenna_records::words::snooze_not_offered()),
             DueEvent::Snooze(id) => self.deal(&id, Deal::Snooze, model),
             // A reminder without the button refuses it, in the core's words.
             DueEvent::Carry(id) if !offers(model, &id, |d| d.carry.is_some()) => say(not_offered(ActionKind::CarryRest)),
@@ -248,14 +264,32 @@ impl Lumenna {
                 let shown = model.show_day(None);
                 // Only a warning held here is dismissed once something is replanned: the system
                 // dismissed its own as it was pressed.
-                model.replanning = model.due.iter().any(|d| d.id == id).then_some(id);
+                model.replanning = model.due.iter().any(|d| d.id == id).then_some((id, None));
+                shown.and(self.propose(proposal::Kind::Replan, model))
+            }
+            DueEvent::ReplanFiring { key, occurrence } => {
+                let shown = model.show_day(None);
+                model.replanning = Some((format!("{key}-{occurrence}"), Some((key, occurrence))));
                 shown.and(self.propose(proposal::Kind::Replan, model))
             }
         }
     }
 
-    pub(crate) fn found(&self, result: Result<lumenna_records::reminders::DueReminders, LumennaError>, model: &mut Screen) -> Command<Effect, Event> {
+    /// What a look for reminders due found, and the store as it was then: whatever the store says
+    /// was dealt with since, here or on another device, leaves the list, for a shell that looks but
+    /// is never told the store moved.
+    pub(crate) fn found(
+        &self,
+        result: Result<lumenna_records::reminders::DueReminders, LumennaError>,
+        store: Option<crate::host::Arrival>,
+        model: &mut Screen,
+    ) -> Command<Effect, Event> {
         model.looking = false;
+        if let Some(store) = store {
+            model.store = Some(store);
+            model.drop_acknowledged();
+            model.settle();
+        }
         let next = match model.look_next.take() {
             Some((since, now)) => {
                 model.looking = true;
