@@ -77,7 +77,8 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
   (`Due(Look)`, from just before the earliest firing to the moment delivered at), and lists,
   says and gives notices of what it finds (`ViewModel.due`). The due list draws that list from
   screen 0, each notice is a desktop notification, and every button is a `DueEvent`, so which
-  are still listed is the app's. `lumenna-disconnect` stops the mode (`lumenna-disconnected-hook`),
+  are still listed is the app's: one dismissed on another device leaves it, and Snooze on a
+  summary of what was missed is the app's to refuse. `lumenna-disconnect` stops the mode (`lumenna-disconnected-hook`),
   whose timer would connect again at once; connecting starts it again. A task's or block's
   reminder list is the app's.
 - **A new connection draws every buffer's screen again** (`lumenna--leave-screens`,

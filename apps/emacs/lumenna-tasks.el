@@ -150,6 +150,8 @@ A priority is its option's words; an empty field says so."
                                              (append (plist-get field :options) nil))
                                    :title)
                         id)))
+      ;; "none" is the core's `none_value', which RPC does not carry: a client there asks for
+      ;; no words, and the details' own lines say an empty field the same way.
       (_ (if (or (null value) (and (stringp value) (string-empty-p value))) "none" (format "%s" value))))))
 
 (defun lumenna--task-rows ()

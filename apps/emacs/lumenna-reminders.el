@@ -288,9 +288,7 @@ the app's words."
 (defun lumenna-reminders-snooze ()
   "Snooze the reminder at point, on every device, for as long as the core says."
   (interactive)
-  ;; What was missed, as one summary, has no Snooze, and the app would snooze it all.
-  (unless (plist-get (lumenna-reminders--at-point) :snooze)
-    (user-error "What was missed can be dismissed, not snoozed"))
+  ;; What was missed, as one summary, has no Snooze: the app refuses it in its words.
   (lumenna-reminders--press "Snooze" :snooze))
 
 (defun lumenna-reminders-carry ()
