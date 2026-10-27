@@ -214,21 +214,23 @@ data class WorkChoice(
     val reason: String?,
 )
 
-/** A sitting's timer, paused or stopped. */
+/** A sitting's timer, paused or stopped, or the timer as it is now. */
 @AppFunctionSerializable(isDescribedByKDoc = true)
-data class TimerStopped(
-    /** What happened, in one sentence, to say to the person. */
+data class TimerState(
+    /** What happened, or what the timer is doing, in one sentence, to say to the person. */
     val announcement: String,
     /** Anything else to say. */
     val notices: List<String>,
     /** Whether anything changed. */
     val changed: Boolean,
-    /** The sitting's identifier. */
+    /** The sitting's identifier; empty when none runs. */
     val assignment: String,
     /** The minutes it has logged. */
     val minutes: Int,
     /** Whether what it logged was cut to the block's end. */
     val capped: Boolean,
+    /** Whether a timer runs now: never after a pause or a stop. */
+    val running: Boolean,
 )
 
 /** A replan of the rest of today, proposed: nothing changes until it is applied. */

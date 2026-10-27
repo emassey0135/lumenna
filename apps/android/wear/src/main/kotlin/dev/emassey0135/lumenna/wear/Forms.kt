@@ -6,6 +6,7 @@ import dev.emassey0135.lumenna.app.detailsWords
 import androidx.compose.ui.semantics.semantics
 import dev.emassey0135.lumenna.app.durationWords
 import dev.emassey0135.lumenna.leveled
+import dev.emassey0135.lumenna.SHOWN_COMPLETIONS
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.ShowingBlockForm
 import dev.emassey0135.lumenna.text
@@ -52,7 +53,9 @@ fun TextFieldButton(name: String, value: String, example: String = "", ask: (Str
         onClick = { entry?.ask(name) { ask(it) } },
         modifier = Modifier.fillMaxWidth(),
         label = { Text(name) },
-        secondaryLabel = { Text(value.ifEmpty { example.takeIf { it.isNotEmpty() }?.let { "For example, $it" } ?: "Empty" }) },
+        secondaryLabel = {
+            Text(value.ifEmpty { example.takeIf { it.isNotEmpty() }?.let { dev.emassey0135.lumenna.app.forExample(it) } ?: dev.emassey0135.lumenna.app.emptyField() })
+        },
     )
 }
 
@@ -79,10 +82,11 @@ fun AddTaskScreen(core: Core, navigator: Navigator) {
         item { TextFieldButton(quickWords.label, text, quickWords.example) { set(it) } }
         if (text.isNotBlank()) {
             item {
-                Button(onClick = { entry?.ask("Add to the line") { more -> set("${text.trimEnd()} ${more.trim()}") } }, modifier = Modifier.fillMaxWidth(), label = { Text("Add to the line") })
+                val more = dev.emassey0135.lumenna.app.addToLine(true)
+                Button(onClick = { entry?.ask(more) { added -> set("${text.trimEnd()} ${added.trim()}") } }, modifier = Modifier.fillMaxWidth(), label = { Text(more) })
             }
         }
-        line?.offer?.candidates.orEmpty().take(8).forEachIndexed { index, candidate ->
+        line?.offer?.candidates.orEmpty().take(SHOWN_COMPLETIONS).forEachIndexed { index, candidate ->
             item {
                 Button(
                     onClick = { app.send(ShellEvent.Typing(Typing.Choose(index.toUInt()))) },

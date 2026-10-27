@@ -23,6 +23,7 @@ import dev.emassey0135.lumenna.app.ParameterKind
 import dev.emassey0135.lumenna.app.assistantOperations
 import dev.emassey0135.lumenna.app.automationOperations
 import dev.emassey0135.lumenna.app.automationWords
+import dev.emassey0135.lumenna.app.automationWordsFor
 import dev.emassey0135.lumenna.tasker.Tasker
 import dev.emassey0135.lumenna.tasker.TaskerAction
 import dev.emassey0135.lumenna.tasker.TaskerFireReceiver
@@ -74,7 +75,7 @@ class TaskerTest {
     }
 
     private fun setUp(before: TaskerAction? = null) {
-        rule.setContent { LumennaTheme { TaskerSetup(core, before) { operation, values, shown -> saved = Triple(operation, values, shown) } } }
+        rule.setContent { LumennaTheme { TaskerSetup(core, before, "Tasker") { operation, values, shown -> saved = Triple(operation, values, shown) } } }
     }
 
     private fun press(text: String) {
@@ -111,6 +112,15 @@ class TaskerTest {
         // A destructive operation says so with its name and description.
         val trash = automationOperations().first { it.id == "trash_task" }
         rule.onNode(hasText(trash.sentence) and hasText(automationWords().destructive) and hasClickAction()).performScrollTo()
+    }
+
+    @Test
+    fun theSetupSaysWhatSavingLetsTheAppThatOpenedItDo() {
+        setUp()
+        press("Add a task")
+        val consent = automationWordsFor("Tasker").consent
+        assertTrue(consent, consent.contains("Tasker"))
+        rule.onNode(hasText(consent)).performScrollTo().assertExists()
     }
 
     @Test

@@ -42,7 +42,6 @@ import androidx.wear.compose.material3.Text
 import dev.emassey0135.lumenna.Option
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.RowAction
-import dev.emassey0135.lumenna.levelChange
 import dev.emassey0135.lumenna.detailOf
 import dev.emassey0135.lumenna.sentence
 import dev.emassey0135.lumenna.name
@@ -216,12 +215,7 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
             }
         }
         // A project's, label's or filter's actions, the app's, as buttons at the foot of its list.
-        val heading = when (place) {
-            is Place.Project -> "Project"
-            is Place.Label -> "Label"
-            is Place.Filter -> "Saved filter"
-            else -> null
-        }
+        val heading = dev.emassey0135.lumenna.app.placeHeading(place, true).ifEmpty { null }
         val entry = view?.sidebar.orEmpty().firstOrNull { (it.kind as? SidebarKind.Place)?.field0 == place }
         if (heading != null && entry != null) {
             item { Heading(heading) }
@@ -283,7 +277,7 @@ fun ChooseScreen(screen: Screen.Choose) {
             item {
                 // In a tree, the level where it changes beside the detail, as a tree's rows say it.
                 // Why it is offered ("Suggested because …") beneath, as its description.
-                val detail = listOf(detailOf(screen.choices, index), choice.reason).filter { it.isNotEmpty() }.joinToString("\n")
+                val detail = listOf(detailOf(choice), choice.reason).filter { it.isNotEmpty() }.joinToString("\n")
                 Button(
                     onClick = { screen.chosen(choice) },
                     modifier = Modifier.fillMaxWidth(),

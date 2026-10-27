@@ -205,7 +205,9 @@ private fun ProjectField(label: String, value: String, options: List<Option>, ch
     var expanded by remember { mutableStateOf(false) }
     var typed by remember(value) { mutableStateOf(value) }
     val narrowing = typed != value
-    val shown = if (narrowing) options.filter { it.title.contains(typed.trim(), ignoreCase = true) } else options
+    val shown = remember(options, typed, narrowing) {
+        (if (narrowing) options.filter { it.title.contains(typed.trim(), ignoreCase = true) } else options).leveled()
+    }
     val take = { option: Option ->
         chosen(option.key)
         typed = option.key
@@ -235,8 +237,8 @@ private fun ProjectField(label: String, value: String, options: List<Option>, ch
             if (shown.isEmpty()) {
                 DropdownMenuItem(text = { Text(nothingToChoose()) }, onClick = {}, enabled = false)
             }
-            shown.forEachIndexed { index, option ->
-                val level = levelChange(shown, index)
+            shown.forEach { option ->
+                val level = option.level
                 DropdownMenuItem(
                     text = { Text(option.title) },
                     onClick = { take(option) },

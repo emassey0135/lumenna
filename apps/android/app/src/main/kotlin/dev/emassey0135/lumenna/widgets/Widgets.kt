@@ -228,7 +228,7 @@ private fun Tasks(entry: GlanceEntry) {
             Button(
                 text = entry.markDoneSentence,
                 onClick = actionRunCallback<MarkDone>(actionParametersOf(MarkDone.TASK to task.id)),
-                modifier = GlanceModifier.semantics { contentDescription = "${entry.markDoneSentence}, ${line.title}" },
+                modifier = GlanceModifier.semantics { contentDescription = dev.emassey0135.lumenna.app.markDoneDescribed(entry.markDoneSentence, line.title) },
             )
         }
     }

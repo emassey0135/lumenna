@@ -38,6 +38,10 @@ class SearchIndexTest {
         assertEquals(document.line, indexed.getPropertyString("line"))
         assertEquals(document.keywords, indexed.getPropertyStringArray("keywords")?.toList().orEmpty())
         assertEquals(document.launch, indexed.getPropertyString("launch"))
+        // What the task's entity holds, the core's, beside its line.
+        assertEquals(listOf("errands"), indexed.getPropertyStringArray("labels")?.toList())
+        assertEquals(4L, indexed.getPropertyLong("priority"))
+        assertEquals(false, indexed.getPropertyBoolean("done"))
         core.device.trashTask(task.id)
         SearchIndex.indexNow(context, core)
         val after = session.getByDocumentIdAsync(GetByDocumentIdRequest.Builder(SearchIndex.NAMESPACE).addIds(ids).build()).get()

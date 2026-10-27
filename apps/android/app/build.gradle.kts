@@ -13,8 +13,10 @@ android {
         applicationId = "dev.emassey0135.lumenna"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // The workspace's, from its Cargo.toml (the root build script).
+        versionCode = rootProject.extra["lumennaVersionCode"] as Int
+        versionName = rootProject.extra["lumennaVersion"] as String
+        resValue("string", "app_name", rootProject.extra["lumennaName"] as String)
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // A phone's ABIs: the core is built for 32-bit ARM too, for watches (build-core.sh).
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
@@ -32,6 +34,8 @@ android {
 
     buildFeatures {
         compose = true
+        // The app's name, from the workspace's metadata.
+        resValues = true
     }
 }
 

@@ -184,15 +184,15 @@ val LocalReminderAccess = staticCompositionLocalOf<(Context) -> ReminderAccess> 
 
 /**
  * What a reminder's notification opens: a task, or a block's day; for an overrun's Replan, the
- * firing it warned of too ([key], and the moment it fired, [at]).
+ * firing it warned of too ([key]).
  */
-data class ReminderOpened(val kind: String, val target: String, val occurrence: String, val key: String = "", val at: String = "") {
+data class ReminderOpened(val kind: String, val target: String, val occurrence: String, val key: String = "") {
     /** Where the screens go for it, on the phone and the watch alike. */
     val reminded: Reminded?
         get() = when (kind) {
             "task" -> Reminded.Task(target)
             "block" -> Reminded.Block(occurrence.takeIf { it.isNotEmpty() }?.let { BlockOn(target, it) })
-            Reminders.REPLAN -> Reminded.Replan(key, occurrence, at)
+            Reminders.REPLAN -> Reminded.Replan(key, occurrence)
             else -> null
         }
 }
@@ -210,9 +210,9 @@ sealed interface Reminded {
 
     /**
      * An overrun's Replan button: the rest of today, worked out again, the warning of [key] at
-     * [occurrence], which fired [at], dismissed once something is replanned ([replan]).
+     * [occurrence] dismissed once something is replanned ([replan]).
      */
-    data class Replan(val key: String, val occurrence: String, val at: String) : Reminded
+    data class Replan(val key: String, val occurrence: String) : Reminded
 }
 
 object Reminders {
@@ -240,7 +240,6 @@ object Reminders {
     private const val OPEN_TARGET = "dev.emassey0135.lumenna.open.target"
     private const val OPEN_OCCURRENCE = "dev.emassey0135.lumenna.open.occurrence"
     private const val OPEN_KEY = "dev.emassey0135.lumenna.open.key"
-    private const val OPEN_AT = "dev.emassey0135.lumenna.open.at"
     /** The notification to take away once the app has opened for it: a button's, which does not cancel itself. */
     private const val OPEN_CANCEL = "dev.emassey0135.lumenna.open.cancel"
 
@@ -493,7 +492,6 @@ object Reminders {
                         putExtra(OPEN_TARGET, due.target)
                         putExtra(OPEN_OCCURRENCE, due.occurrence)
                         putExtra(OPEN_KEY, due.key)
-                        putExtra(OPEN_AT, due.at)
                         putExtra(OPEN_CANCEL, id)
                     }
                     replan?.let {
@@ -519,7 +517,7 @@ object Reminders {
         val target = intent.getStringExtra(OPEN_TARGET) ?: return null
         return ReminderOpened(
             kind, target, intent.getStringExtra(OPEN_OCCURRENCE).orEmpty(),
-            intent.getStringExtra(OPEN_KEY).orEmpty(), intent.getStringExtra(OPEN_AT).orEmpty(),
+            intent.getStringExtra(OPEN_KEY).orEmpty(),
         )
     }
 
@@ -661,19 +659,10 @@ class ReminderRearmReceiver : BroadcastReceiver() {
 }
 
 /**
- * Replan from Now for an overrun warning, as its button asks (`DueEvent.Replan`), so that once
- * something is replanned the warning is dismissed on every device. The app acts only on a
- * reminder in its own list, which Android's alarms do not fill, so it first looks at the one
- * moment the warning fired; one dealt with elsewhere since is not found, and the day is
- * replanned all the same.
+ * Replan from Now for an overrun warning, as its button asks: the firing it is, which the app's
+ * own list never held, since Android's alarms gave it, so that once something is replanned the
+ * warning is dismissed on every device.
  */
-suspend fun AppModel.replan(warning: Reminded.Replan) {
-    val at = runCatching { Instant.parse(warning.at) }.getOrNull()
-    val id = "${warning.key}-${warning.occurrence}"
-    if (at != null && warning.key.isNotEmpty()) {
-        send(ShellEvent.Due(DueEvent.Look(at.minusSeconds(1).toString(), at.toString())))
-        settle()
-    }
-    if (view.value?.due.orEmpty().any { it.id == id }) send(ShellEvent.Due(DueEvent.Replan(id)))
-    else send(ShellEvent.Proposal(dev.emassey0135.lumenna.app.ProposalEvent.Replan))
+fun AppModel.replan(warning: Reminded.Replan) {
+    send(ShellEvent.Due(DueEvent.ReplanFiring(warning.key, warning.occurrence)))
 }

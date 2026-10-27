@@ -85,7 +85,7 @@ fun BrowseScreen(core: Core, navigator: Navigator) {
         Item("trash", "Trash", trash?.detail.orEmpty()),
     )
     MenuScreen(
-        "Browse", core, navigator, items,
+        Tab.BROWSE.title, core, navigator, items,
         open = { item ->
             navigator.push(
                 when (item.key) {

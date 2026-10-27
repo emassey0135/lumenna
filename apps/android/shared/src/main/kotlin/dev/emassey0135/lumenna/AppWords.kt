@@ -33,6 +33,9 @@ fun commandTitle(id: String): String = sharedCommands[id]?.title ?: id
 /** What quick add and a list's filter say, the core's words in sentence case. */
 val quickWords: dev.emassey0135.lumenna.app.QuickAddWords by lazy { dev.emassey0135.lumenna.app.quickAddWords(true) }
 
+/** How many completions are offered at once beside a line: the core's. */
+val SHOWN_COMPLETIONS: Int by lazy { dev.emassey0135.lumenna.app.completionsShown().toInt() }
+
 /** An action's name in this platform's capitals: sentence case, as Material and Wear OS write. */
 val Action.name: String get() = sentence.ifEmpty { title }
 
@@ -139,13 +142,12 @@ fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> = entries.map { entry
 /**
  * Some of the sidebar's [entries] as a list of their own (the projects alone, a level up), the
  * folding and levels worked out among themselves: the app's are the whole sidebar's, where a
- * folded heading hides them all. A row is open while it offers Collapse; [word] is the core's
- * "level 2".
+ * folded heading hides them all. A row is open while it offers Collapse; [levels] is the core's
+ * ([levelsOf]), among the rows shown.
  */
-fun placeRowsWithin(entries: List<SidebarEntry>, word: (UInt) -> String = { dev.emassey0135.lumenna.app.levelWords(it) }): List<PlaceRow> {
-    var previous = 0u
+fun placeRowsWithin(entries: List<SidebarEntry>, levels: (List<UInt>) -> List<String?> = ::levelsOf): List<PlaceRow> {
     var hiddenBelow: UInt? = null
-    return entries.map { entry ->
+    val rows = entries.map { entry ->
         val below = hiddenBelow
         if (below != null && entry.depth <= below) hiddenBelow = null
         val hidden = hiddenBelow != null
@@ -157,8 +159,9 @@ fun placeRowsWithin(entries: List<SidebarEntry>, word: (UInt) -> String = { dev.
             }
         }
         if (expanded == false && !hidden) hiddenBelow = entry.depth
-        val level = if (!hidden && entry.depth != previous) word(entry.depth) else null
-        if (!hidden) previous = entry.depth
-        PlaceRow(entry.key, entry, entry.title, entry.detail, entry.depth.toInt(), hidden, expanded, level)
+        PlaceRow(entry.key, entry, entry.title, entry.detail, entry.depth.toInt(), hidden, expanded)
     }
+    val shown = rows.indices.filter { !rows[it].hidden }
+    val said = shown.zip(levels(shown.map { rows[it].depth.toUInt() })).toMap()
+    return rows.mapIndexed { index, row -> said[index]?.let { row.copy(level = it) } ?: row }
 }

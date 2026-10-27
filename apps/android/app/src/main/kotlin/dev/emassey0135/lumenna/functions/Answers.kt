@@ -103,9 +103,9 @@ internal object Assistant {
         return WorkChoices(choices.announcement, choices.notices, choices.choices.map { WorkChoice(it.id, it.title, it.detail, it.reason) })
     }
 
-    fun timerStopped(answer: Assisted): TimerStopped {
+    fun timer(answer: Assisted): TimerState {
         val timer = (answer as? Assisted.Timer)?.field0 ?: unexpected(answer)
-        return TimerStopped(timer.announcement, timer.notices, timer.changed, timer.assignment, timer.minutes.toInt(), timer.capped)
+        return TimerState(timer.announcement, timer.notices, timer.changed, timer.assignment, timer.minutes.toInt(), timer.capped, timer.running)
     }
 
     fun replanProposed(answer: Assisted) = (answer as? Assisted.Replan)?.field0?.proposed() ?: unexpected(answer)

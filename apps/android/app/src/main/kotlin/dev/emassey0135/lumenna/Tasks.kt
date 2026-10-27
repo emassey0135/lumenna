@@ -413,7 +413,7 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
             val candidates = line?.offer?.candidates.orEmpty()
             if (candidates.isNotEmpty()) {
                 FlowRow(Modifier.padding(top = 4.dp)) {
-                    candidates.take(8).forEachIndexed { index, candidate ->
+                    candidates.take(SHOWN_COMPLETIONS).forEachIndexed { index, candidate ->
                         SuggestionChip(
                             onClick = {
                                 typed = null
