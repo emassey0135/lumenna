@@ -424,13 +424,18 @@ impl Snapshot {
         None
     }
 
-    /// The day an assignment's block falls on: its own date for a recurring block's
-    /// occurrence, the series' for a one-off — unknown if that series is not loaded.
+    /// The day an assignment's block falls on. See [`Snapshot::block_date`].
     #[must_use]
     pub fn assignment_date(&self, assignment: &BlockAssignment) -> Option<civil::Date> {
-        assignment.block_ref.date().or_else(|| {
-            self.series.get(&assignment.block_ref.series_id()).map(|series| series.start_date)
-        })
+        self.block_date(assignment.block_ref)
+    }
+
+    /// The day a block falls on: its own date for a recurring block's occurrence, the series'
+    /// for a one-off — unknown if that series is not loaded. The one place a sitting's day is
+    /// worked out.
+    #[must_use]
+    pub fn block_date(&self, block: crate::model::BlockRef) -> Option<civil::Date> {
+        block.date().or_else(|| self.series.get(&block.series_id()).map(|series| series.start_date))
     }
 
     /// Whether a task's current occurrence is finished. See [`Facts::is_completed`].

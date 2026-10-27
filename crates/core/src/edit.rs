@@ -1106,7 +1106,7 @@ pub fn occurrence_of(snapshot: &Snapshot, block: BlockRef) -> Result<recur::Occu
         .get(&block.series_id())
         .filter(|s| s.deleted_at.is_none())
         .ok_or(EditError::NotFound { kind: "block" })?;
-    let date = block.date().unwrap_or(series.start_date);
+    let date = snapshot.block_date(block).unwrap_or(series.start_date);
     recur::expand(
         series,
         |day| snapshot.exceptions.get(&(series.id, day)).map(|e| &e.action),

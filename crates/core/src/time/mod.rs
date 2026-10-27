@@ -116,6 +116,13 @@ pub fn clock_in(time: jiff::civil::Time, twelve_hour: bool) -> String {
     clock_of_minutes(minutes_of_day(time), twelve_hour)
 }
 
+/// A time of day as `HH:MM`, without the seconds nobody schedules by: how every record
+/// carries one, for the app to say in its own clock.
+#[must_use]
+pub fn time_text(time: jiff::civil::Time) -> String {
+    clock_in(time, false)
+}
+
 /// *"3:00 PM"*.
 #[must_use]
 pub fn clock_words(time: jiff::civil::Time) -> String {
