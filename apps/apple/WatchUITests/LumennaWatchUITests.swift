@@ -219,7 +219,8 @@ final class LumennaWatchUITests: XCTestCase {
         reveal(app.buttons["Settings"]).tap()
         XCTAssertTrue(app.buttons["Planning"].waitForExistence(timeout: 5))
         app.buttons["Planning"].tap()
-        XCTAssertTrue(app.switches["Completing a task completes its subtasks"].waitForExistence(timeout: 5))
+        // Sixth on the page, below the day's hours and the week's start: off a watch's screen.
+        XCTAssertTrue(reveal(app.switches["Completing a task completes its subtasks"], form: true).exists)
         try audit("planning settings")
         back()
         // The default reminders, phrases, and whether this watch gives them: a page of their own.
@@ -243,7 +244,13 @@ final class LumennaWatchUITests: XCTestCase {
         reveal(app.buttons["Rename"]).tap()
         type("Yard", into: app.textFields["Rename Garden"], clearing: "Garden".count)
         // The question's own button, which answers it, over the action that asked it.
-        let answer = app.buttons.matching(NSPredicate(format: "label == 'Rename'")).allElementsBoundByIndex.last { $0.isHittable }
+        // Below the field, it can be off the screen once the input screen gives the sheet back.
+        let answers = app.buttons.matching(NSPredicate(format: "label == 'Rename'"))
+        var answer = answers.allElementsBoundByIndex.last { $0.isHittable }
+        for _ in 0..<5 where answer == nil {
+            drag(by: -90)
+            answer = answers.allElementsBoundByIndex.last { $0.isHittable }
+        }
         XCTAssertNotNil(answer, "the question answers with Rename")
         answer?.tap()
         let yard = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Yard'")).firstMatch

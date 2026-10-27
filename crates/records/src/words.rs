@@ -821,6 +821,14 @@ mod tests {
         for crate_manifest in ["apps/cli/Cargo.toml", "apps/windows/Cargo.toml", "apps/gtk/Cargo.toml"] {
             assert!(has_line(&repo_file(crate_manifest), &format!("version = \"{}\"", m.version)), "{crate_manifest}'s version");
         }
+        // The Apple apps read it from here as they build (apps/apple/metadata.sh, an xcconfig
+        // XcodeGen and every build write afresh), so their files name the setting, not a copy.
+        let project = repo_file("apps/apple/project.yml");
+        assert!(has_line(&project, "preGenCommand: ./metadata.sh"), "XcodeGen writes the Apple apps' metadata first");
+        assert!(project.contains("Release: Generated/Metadata.xcconfig"), "the Apple project reads it");
+        // XcodeGen writes each plist from its target's `info`, so that is where it is named.
+        assert_eq!(project.matches("CFBundleShortVersionString: $(MARKETING_VERSION)").count(), 6, "every Apple target's version");
+        assert_eq!(project.matches("CFBundleDisplayName: $(LUMENNA_NAME)").count(), 6, "every Apple target's name");
         for plist in [
             "apps/apple/Lumenna/Info.plist",
             "apps/apple/Mac/Info.plist",
@@ -830,7 +838,8 @@ mod tests {
             "apps/apple/Widgets/Watch/Info.plist",
         ] {
             let text = repo_file(plist).replace(['\t', '\r', '\n'], "");
-            assert!(text.contains(&format!("<key>CFBundleShortVersionString</key><string>{}</string>", m.version)), "{plist}'s version");
+            assert!(text.contains("<key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>"), "{plist}'s version");
+            assert!(text.contains("<key>CFBundleDisplayName</key><string>$(LUMENNA_NAME)</string>"), "{plist}'s name");
         }
     }
 

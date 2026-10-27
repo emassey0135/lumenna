@@ -36,10 +36,28 @@ struct LumennaShortcuts: AppShortcutsProvider {
             systemImageName: "play.circle"
         )
         AppShortcut(
+            intent: ToggleTimerIntent(),
+            phrases: [
+                "Start the timer in \(.applicationName)",
+                "Start or stop the timer in \(.applicationName)",
+                "Toggle the timer in \(.applicationName)",
+            ],
+            shortTitle: "Start or Stop the Timer",
+            systemImageName: "playpause"
+        )
+        AppShortcut(
+            intent: ShowTimerIntent(),
+            phrases: [
+                "Show the timer in \(.applicationName)",
+                "How long have I been working in \(.applicationName)",
+            ],
+            shortTitle: "Show the Timer",
+            systemImageName: "timer"
+        )
+        AppShortcut(
             intent: StartTimerIntent(),
             phrases: [
                 "Start a timer in \(.applicationName)",
-                "Start the timer in \(.applicationName)",
             ],
             shortTitle: "Start a Timer",
             systemImageName: "play"

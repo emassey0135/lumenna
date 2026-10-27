@@ -278,8 +278,8 @@ final class LumennaMacUITests: XCTestCase {
         let asked = app.staticTexts["Type or paste the code the other device shows."]
         XCTAssertTrue(asked.waitForExistence(timeout: 5), "no need_code: \(app.debugDescription)")
         XCTAssertEqual(entry.value as? String ?? "", "", "the clipboard was read")
-        // The alert's OK, in a sheet: the Touch Bar has one of the same name.
-        app.sheets.buttons["OK"].firstMatch.click()
+        // The alert's Close, the core's, in a sheet: the Touch Bar has one of the same name.
+        app.sheets.buttons["Close"].firstMatch.click()
         XCTAssertTrue(asked.waitForNonExistence(timeout: 5))
 
         // Command-V into the field is the way a copied code comes in.

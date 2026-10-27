@@ -196,7 +196,7 @@ enum HotKeys {
         let alert = NSAlert()
         alert.messageText = "\(LumennaApp.hotkeyWords().dialog): \(kind.name)"
         alert.informativeText = "Press the keys now, with Command or Control. With VoiceOver on, Control-Command keys reach Lumenna as they are. Escape keeps \(description(kind))."
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
         var monitor: Any?
         var finished = false
         let finish = { (shortcut: Shortcut?) in

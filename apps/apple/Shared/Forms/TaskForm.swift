@@ -267,9 +267,9 @@ struct TaskDetailView: View {
         #else
         Named(words["project"].label) {
             Picker(words["project"].label, selection: $model.project) {
-                ForEach(Array(model.projects.enumerated()), id: \.element.id) { index, choice in
+                ForEach(Array(zip(model.projects, ProjectChoices.spoken(model.projects))), id: \.0.id) { choice, spoken in
                     Text(choice.title)
-                        .accessibilityLabel(ProjectChoices.spoken(model.projects, index))
+                        .accessibilityLabel(spoken)
                         .tag(choice.id)
                 }
             }
@@ -288,7 +288,7 @@ struct ProjectChoices: View {
 
     var body: some View {
         List {
-            ForEach(Array(choices.enumerated()), id: \.element.id) { index, choice in
+            ForEach(Array(zip(choices, Self.spoken(choices))), id: \.0.id) { choice, spoken in
                 Button {
                     selection = choice.id
                     dismiss()
@@ -301,18 +301,19 @@ struct ProjectChoices: View {
                         }
                     }
                 }
-                .accessibilityLabel(Self.spoken(choices, index))
+                .accessibilityLabel(spoken)
                 .accessibilityAddTraits(choice.id == selection ? .isSelected : [])
             }
         }
         .navigationTitle(name)
     }
 
-    /// A project's name, then its level where that differs from the one before it.
-    static func spoken(_ choices: [LumennaApp.Choice], _ index: Int) -> String {
-        let choice = choices[index]
-        let previous = index > 0 ? choices[index - 1].depth : 0
-        return choice.depth != previous ? "\(choice.title), \(LumennaApp.levelWords(depth: choice.depth))" : choice.title
+    /// Each project's name, then its level where that differs from the one before it, the
+    /// core's (`levels`).
+    static func spoken(_ choices: [LumennaApp.Choice]) -> [String] {
+        zip(choices, LumennaApp.levels(depths: choices.map(\.depth))).map { choice, level in
+            level.isEmpty ? choice.title : "\(choice.title), \(level)"
+        }
     }
 }
 

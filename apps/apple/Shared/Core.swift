@@ -162,12 +162,7 @@ final class Core: ObservableObject {
     private func takeRequests() {
         let device = app.device
         let ran = requests?.take { operation, arguments in
-            // The Timer's press is the core's toggle, which no assistant operation is.
-            if operation == WidgetRequests.toggleTimer {
-                _ = try device.toggleTimer()
-            } else {
-                _ = try device.assist(operation: operation, arguments: arguments)
-            }
+            _ = try device.assist(operation: operation, arguments: arguments)
         }
         guard ran == true else { return }
         glance?.soon()

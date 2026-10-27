@@ -28,7 +28,7 @@ final class AppProposalViewController: UIHostingController<AppProposalForm> {
         super.init(rootView: AppProposalForm(model: model))
         title = model.title
         navigationItem.leftBarButtonItem = UIBarButtonItem(
-            title: model.proposal?.words.cancel ?? "Cancel", primaryAction: UIAction { _ in model.cancel() }
+            title: model.proposal?.words.cancel ?? LumennaApp.cancel(sentence: false), primaryAction: UIAction { _ in model.cancel() }
         )
     }
 

@@ -840,7 +840,7 @@ final class LumennaUITests: XCTestCase {
         let asked = app.alerts.staticTexts["Type or paste the code the other device shows."]
         XCTAssertTrue(asked.waitForExistence(timeout: 5), "no need_code: \(app.debugDescription)")
         XCTAssertEqual(entry.value as? String ?? "", "", "the clipboard was read")
-        app.alerts.buttons["OK"].tap()
+        app.alerts.buttons["Close"].tap()
         XCTAssertTrue(app.alerts.firstMatch.waitForNonExistence(timeout: 5))
 
         // The system's Paste control, named as VoiceOver says it, beside the field.

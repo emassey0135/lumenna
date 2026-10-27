@@ -36,6 +36,14 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   or C objects target the SDK's own version; heed that linker warning. The Swift is generated
   afresh and put in place only when it differs, so an unchanged core compiles nothing again;
   `cargo` and `boltffi` are found on the caller's `PATH`.
+- **The version and name are Cargo.toml's** (`[workspace.metadata.lumenna]`): `metadata.sh`
+  writes them into `Generated/Metadata.xcconfig` as `MARKETING_VERSION` and `LUMENNA_NAME`, which
+  every target's `info` in project.yml names (`CFBundleShortVersionString`,
+  `CFBundleDisplayName`), so a version bump is that one edit. XcodeGen writes the `Info.plist`s
+  from `info`: a value put in a plist alone is gone at the next `xcodegen`. XcodeGen runs it first (`preGenCommand`), since the project reads the
+  file, and `build-core.sh` runs it again on every build and stops a build that began with what
+  Cargo.toml no longer says (Xcode reads an xcconfig only as a build begins): the next build has
+  it. `records`' metadata test holds the plists and project.yml to this.
 - **The core is linked statically, by the `.a`'s full path** (`-force_load`). `-llumenna_ffi`
   picks the dylib Cargo builds beside it, which works in the simulator and crashes on a phone
   at launch. A post-build phase fails the build on any `liblumenna_` reference. A launch is
@@ -175,10 +183,11 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   all, so the carry one is set from the last carry reminder seen whenever any is handed over:
   one already showing keeps its button. An overrun warning (`replan` set) is a third, its
   button the core's Replan, `.foreground`: `ReminderResponder` hands on a `RemindedOf` with
-  `replan`, and each app sends the app's `DueEvent::Replan` with the firing's id
-  (`AppModel.replan(from:)`, `<key>-<occurrence>`), which shows today with Replan from Now over
-  it, the screens following. The app opens it for a warning it never held, as no Apple app fills
-  its due list (`DueEvent::Look`): the system holds the reminders. A reminder's block is the
+  `replan`, and each app sends the app's `DueEvent::ReplanFiring` with the firing's key and
+  occurrence (`AppModel.replan(from:)`), never `ProposalEvent::Replan`: today with Replan from Now
+  over it, the screens following, and the warning dismissed on every device once something is
+  replanned. No Apple app fills the app's due list (`DueEvent::Look`), the system holding the
+  reminders, so `DueEvent::Replan(id)`, for one that list holds, is never sent. A reminder's block is the
   app's `ShowBlock` on every Apple app.
 - **The day's own actions** (`Plan.actions`) are a Day Actions menu button among the day's
   buttons (in the navigation bar it crowds the title, which the iPad's narrow column clips)
@@ -265,15 +274,16 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   and given back by its identifier (a project or label by name). An erasure asks first: the
   task's own Erase Permanently question, else the core's unconfirmed refusal, then runs with
   `confirm`. Apply a Replan and Apply a Day Plan propose afresh, say the proposal's sentences
-  and ask before applying; what is accepted defaults to every change. Pause and Stop default to
-  the sitting whose timer runs (`RunningSitting`). Shortcuts' Find Tasks (`TaskQuery`'s
+  and ask before applying; what is accepted defaults to every change. Pause and Stop left
+  without a sitting act on the one whose timer runs, as the core finds it when they run
+  (`TodaysSittings` only offers the day's). Shortcuts' Find Tasks (`TaskQuery`'s
   `EntityPropertyQuery`) builds each comparison into a filter-language query run through
   `list_tasks`, so what matches is the core's; a comparison the language cannot say is not
   offered, and only the order Shortcuts asks for (due, priority, title) is Swift's. Every
   listing returns its entities, and a write on a task returns the task, so a found task passes
   on to the next action. `LumennaShortcuts` is what Siri, Spotlight
-  and the Action Button offer unasked (New Task, What Should I Work On?, start, pause and stop,
-  Today, Complete). What Spotlight, Siri and Shortcuts find is the core's search
+  and the Action Button offer unasked (New Task, What Should I Work On?, start on a choice, the
+  timer's press and how it stands, start, pause and stop, Today, Complete: ten, App Intents' most). What Spotlight, Siri and Shortcuts find is the core's search
   (`records::search`), as on every platform: every search document (open tasks, projects,
   labels, saved filters, blocks) is indexed as its entity, its attributes the document's title,
   line and keywords (`SearchIndex`, `IndexedEntity`, iOS 18 and macOS 15; the watch has none),
@@ -643,8 +653,8 @@ iPhone's and iPad's and the Mac's are behind `#available`, the watch's always th
     core's control into the group (`TimerControlFile`, `timer-control.json` through the core's
     `timerControlFile`) with the glance, after every change and on the minute, since what a press
     would start moves with the clock; the control reads that. A press is handed to the app as a
-    request (`WidgetRequests`, `toggle_timer`, beside Complete a Task's), which the app runs with
-    `Device.toggleTimer` within a second, or at its next start. Before the app has written the
+    request (`WidgetRequests`, `toggle_timer`, beside Complete a Task's), which the app runs through
+    `Device.assist` as Start or Stop the Timer within a second, or at its next start. Before the app has written the
     file, the control is dimmed with the core's store-unopened sentence.
 - **New Task is a `ControlWidgetButton` opening the app on the core's `new-task` launch**
   (`NewTaskControlIntent`, `openAppWhenRun`, compiled into the apps as well as the extensions,

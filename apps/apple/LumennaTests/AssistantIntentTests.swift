@@ -75,3 +75,41 @@ final class AssistantIntentTests: XCTestCase {
         }
     }
 }
+
+/// A task as Siri, Shortcuts and Spotlight have it: its search document, the core's, made as the
+/// task stands, so its figures are never older than its line.
+@MainActor
+final class TaskEntityTests: XCTestCase {
+    private var core: Core!
+    private var store: AssistantStore!
+
+    override func setUp() async throws {
+        setenv("LUMENNA_TEST_PROFILE", "unit-\(UUID().uuidString)", 1)
+        core = try Core()
+        store = AssistantStore(device: core.app.device)
+    }
+
+    private func added(_ line: String) throws -> String {
+        try XCTUnwrap(store.entity(try XCTUnwrap(store.assist("add_task", ["text": .text(line)]).task))).id
+    }
+
+    func testTasksBecomeEntitiesInTheOrderNamedDoneOnesTooAndAnUnknownOneLeftOut() throws {
+        let rent = try added("Pay the rent p1")
+        _ = try store.assist("edit_task", ["id": .text(rent), "estimate": .text("30m")])
+        let call = try added("Call the bank")
+        _ = try store.assist("complete_task", ["id": .text(call)])
+
+        let entities = store.entities([call, "0190a000-0000-7000-8000-000000000000", rent])
+        XCTAssertEqual(entities.map(\.title), ["Call the bank", "Pay the rent"])
+        XCTAssertTrue(entities[0].done)
+        XCTAssertEqual(entities[1].priority, 1)
+        XCTAssertEqual(entities[1].estimate, 30)
+        XCTAssertEqual(entities[1].launch, "task:\(rent)")
+    }
+
+    func testATaskChangedSinceIsTheEntityAsItIsNow() throws {
+        let rent = try added("Pay the rent")
+        _ = try store.assist("edit_task", ["id": .text(rent), "priority": .number(2)])
+        XCTAssertEqual(store.entities([rent]).first?.priority, 2)
+    }
+}

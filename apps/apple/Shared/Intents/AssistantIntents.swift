@@ -17,12 +17,12 @@ import LumennaApp
 let assistantIntents: [any OperationIntent.Type] = [
     ListTasksIntent.self, SearchTasksIntent.self, ShowTaskIntent.self, ShowDayIntent.self,
     ListBlocksIntent.self, ListProjectsIntent.self, ListLabelsIntent.self, ListSavedFiltersIntent.self,
-    WhatShouldIWorkOnIntent.self, ProposeReplanIntent.self, ProposeDayPlanIntent.self, AddTaskIntent.self,
-    EditTaskIntent.self, CompleteTaskIntent.self, UncompleteTaskIntent.self, TrashTaskIntent.self,
-    EraseTaskPermanentlyIntent.self, EraseEverythingDeletedIntent.self, RestoreTaskIntent.self, MoveTaskIntent.self,
-    AssignIntent.self, UnassignIntent.self, StartTimerIntent.self, PauseTimerIntent.self,
-    StopTimerIntent.self, StartOnIntent.self, ApplyReplanIntent.self, ApplyDayPlanIntent.self,
-    UndoIntent.self, RedoIntent.self,
+    WhatShouldIWorkOnIntent.self, ProposeReplanIntent.self, ShowTimerIntent.self, ProposeDayPlanIntent.self,
+    AddTaskIntent.self, EditTaskIntent.self, CompleteTaskIntent.self, UncompleteTaskIntent.self,
+    TrashTaskIntent.self, EraseTaskPermanentlyIntent.self, EraseEverythingDeletedIntent.self, RestoreTaskIntent.self,
+    MoveTaskIntent.self, AssignIntent.self, UnassignIntent.self, StartTimerIntent.self,
+    PauseTimerIntent.self, StopTimerIntent.self, ToggleTimerIntent.self, StartOnIntent.self,
+    ApplyReplanIntent.self, ApplyDayPlanIntent.self, UndoIntent.self, RedoIntent.self,
 ]
 
 /// What a write answers: the core's sentence.
@@ -460,6 +460,22 @@ struct UnassignIntent: OperationIntent {
 
 // MARK: - Timers
 
+struct ShowTimerIntent: OperationIntent {
+    static let persistentIdentifier = "timer"
+    static let title: LocalizedStringResource = "Show the Timer"
+    static let description: IntentDescription? = IntentDescription(
+        "What the timer is doing now: running, on which task and how long so far; else what `toggle_timer` would start, or why nothing would.",
+        categoryName: "Timers",
+        searchKeywords: ["timer", "running", "how long", "tracking"]
+    )
+
+    @AppDependency private var store: AssistantStore
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        said(try store.assist(Self.persistentIdentifier))
+    }
+}
+
 struct StartTimerIntent: OperationIntent {
     static let persistentIdentifier = "start_timer"
     static let title: LocalizedStringResource = "Start a Timer"
@@ -483,18 +499,18 @@ struct PauseTimerIntent: OperationIntent {
     static let persistentIdentifier = "pause_timer"
     static let title: LocalizedStringResource = "Pause a Timer"
     static let description: IntentDescription? = IntentDescription(
-        "Pauses a sitting's timer, keeping what it has logged.",
+        "Pauses a sitting's timer, keeping what it has logged: the timer running, unless a sitting is named. Refused when none runs.",
         categoryName: "Timers",
         searchKeywords: ["pause", "break"]
     )
 
-    @Parameter(title: "Sitting", description: "The sitting's identifier: a task's place in a block, as the day lists it.", optionsProvider: RunningSitting())
-    var assignment: SittingEntity
+    @Parameter(title: "Sitting", description: "The sitting's identifier, as the day lists it; the sitting whose timer runs when left out.", optionsProvider: TodaysSittings())
+    var assignment: SittingEntity?
 
     @AppDependency private var store: AssistantStore
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        said(try store.assist(Self.persistentIdentifier, ["assignment": .text(assignment.id)]))
+        said(try store.assist(Self.persistentIdentifier, ["assignment": assignment.map { .text($0.id) }]))
     }
 }
 
@@ -502,13 +518,13 @@ struct StopTimerIntent: OperationIntent {
     static let persistentIdentifier = "stop_timer"
     static let title: LocalizedStringResource = "Stop a Timer"
     static let description: IntentDescription? = IntentDescription(
-        "Stops a sitting's timer and logs its time.",
+        "Stops a sitting's timer and logs its time: the timer running, unless a sitting is named. Refused when none runs.",
         categoryName: "Timers",
         searchKeywords: ["stop", "finish", "log time"]
     )
 
-    @Parameter(title: "Sitting", description: "The sitting's identifier: a task's place in a block, as the day lists it.", optionsProvider: RunningSitting())
-    var assignment: SittingEntity
+    @Parameter(title: "Sitting", description: "The sitting's identifier, as the day lists it; the sitting whose timer runs when left out.", optionsProvider: TodaysSittings())
+    var assignment: SittingEntity?
     @Parameter(title: "Minutes", description: "The minutes to log instead of the timer's, when it ran on by mistake.")
     var minutes: Int?
 
@@ -516,9 +532,25 @@ struct StopTimerIntent: OperationIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         said(try store.assist(Self.persistentIdentifier, [
-            "assignment": .text(assignment.id),
+            "assignment": assignment.map { .text($0.id) },
             "minutes": minutes.map { .number(Int64($0)) },
         ]))
+    }
+}
+
+struct ToggleTimerIntent: OperationIntent {
+    static let persistentIdentifier = "toggle_timer"
+    static let title: LocalizedStringResource = "Start or Stop the Timer"
+    static let description: IntentDescription? = IntentDescription(
+        "Presses the timer's one control: stops the timer running, or with none running starts on the first of What Should I Work On?'s choices, its timer running. `timer` says first which it would do.",
+        categoryName: "Timers",
+        searchKeywords: ["timer", "toggle", "start", "stop", "track time"]
+    )
+
+    @AppDependency private var store: AssistantStore
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        said(try store.assist(Self.persistentIdentifier))
     }
 }
 

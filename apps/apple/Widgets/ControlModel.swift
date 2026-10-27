@@ -54,10 +54,11 @@ struct TimerControlState: Equatable {
         enabled = control.enabled
     }
 
-    /// What VoiceOver hears: the name, what a press does, then what it does it to, each the
-    /// core's, joined as VoiceOver says a list of parts.
+    /// What VoiceOver hears: the name, what a press does, then what it does it to, joined by the
+    /// core (`timerDescribed`). A control draws one label whether or not the device is locked,
+    /// so it is the whole one.
     var spoken: String {
-        [title, action, value].filter { !$0.isEmpty }.joined(separator: ", ")
+        LumennaApp.timerDescribed(name: title, action: action, detail: value, locked: false)
     }
 }
 

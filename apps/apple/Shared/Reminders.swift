@@ -455,15 +455,12 @@ final class ReminderDelivery {
 struct RemindedOf {
     let kind: String
     let target: String
-    /// The occurrence's day, ISO.
+    /// The occurrence's day, ISO: with the key, which firing it was.
     let day: String
     /// Whether it was the overrun warning's Replan: the app opens at Replan from Now.
     var replan = false
-    /// The firing's key, which with its day names it as the app's due list does.
+    /// The firing's key (`DueReminder.key`).
     var key = ""
-
-    /// The reminder as the app names one due (`Due.id`): its key, then its occurrence.
-    var due: String { "\(key)-\(day)" }
 }
 
 /// Answers a reminder's buttons, the core's Dismiss and Snooze, and opens what it is about

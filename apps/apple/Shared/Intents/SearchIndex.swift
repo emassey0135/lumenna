@@ -95,8 +95,7 @@ enum SearchIndex {
             queue.asyncAfter(deadline: .now() + delay) {
                 waiting = false
                 let documents = store.searchDocuments()
-                let ofTasks = store.documents()
-                let tasks = ofTasks.keys.compactMap { id in store.entity(try? store.task(id), ofTasks) }
+                let tasks = documents.compactMap(TaskEntity.init)
                 let projects = rows(store, "list_projects", "project").map { ProjectEntity($0, found: documents) }
                 let labels = rows(store, "list_labels", "label").map { LabelEntity($0, found: documents) }
                 var filters: [SavedFilterEntity] = []
