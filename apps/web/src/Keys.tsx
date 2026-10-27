@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
 import { core } from "./core";
 import type { KeyGroup } from "./core";
-import { commandTitle } from "./words";
+import { commandTitle, words } from "./words";
 
 /**
  * The key the web uses for each shared command, by the table's id, where it differs from the
@@ -192,7 +192,7 @@ export function KeyboardShortcuts(props: { isOpen: boolean; onClose: () => void 
           </section>
         ))}
         <div className="buttons">
-          <Button onPress={props.onClose}>Close</Button>
+          <Button onPress={props.onClose}>{words().close}</Button>
         </div>
       </Dialog>
     </Modal>

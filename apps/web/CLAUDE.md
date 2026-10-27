@@ -42,7 +42,7 @@ pairing with `lum`.
   keystroke (`App::complete`) for where the cursor is *now*, the list opened once its candidates
   have rendered (opened as they are set, it opens on none). Quick add's offer is the app's own
   (`offers`, from the line told it with the cursor), worded as its lines are ("Inbox, project");
-  the others' labels are the completion's own.
+  the others' labels are the completion's own, worded the same by the core.
 - **What cannot be undone is an `alertdialog` with Cancel focused first**, never `confirm()`.
   A refused answer stays in its dialog.
 - **A row's action runs after its menu has closed** and focus is back on the row, so a
@@ -63,8 +63,12 @@ pairing with `lum`.
   add's and the filter's (`quick_add_words`), the details' (`details_words`) and each shared
   command's name (the key table's, which names the header's and the day toolbar's buttons).
   What comes with the screen (a setting's, Settings' pages, pairing's, a reminder's buttons) is
-  the screen's. Words left here are the browser's alone: the folder backups, reminders on in
-  this browser, the tab already open, storage that may be evicted.
+  the screen's. What only a browser says is the core's too, in its words for "this browser"
+  (`fixedWords`: the folder backups, reminders on in this browser, storage that may be evicted,
+  a dialog's Cancel and Close; `backingUpToFolder` and the rest, which name the folder); the
+  worker loads the module before the store's lock, so the tab already open and "Opening
+  Lumenna…" are the core's as well. A project offered in the details says the core's level
+  where it changes (`Lines::projects`), never one worded here.
 - **Settings' tabs are the core's pages** (`SettingsView::pages`), in its order, a page's
   settings by its keys, its caption and its buttons by id (`back-up` a download here,
   `restore-backup`, `import`); a page a browser has nothing of (the general page's clock and
@@ -108,7 +112,9 @@ pairing with `lum`.
   again, and React's development mode, which starts the app twice, finds it gone the second time.
 - **No widgets**: no browser offers a widget a web app could fill worth targeting, so the glance
   (`records::glance`) has no client here; the installed app's badge counts what is due.
-- **Installed, it is a PWA** (`public/manifest.webmanifest`, `public/sw.js`, registered only in a
+- **Installed, it is a PWA** (`manifest.webmanifest`, its name and description the workspace's
+  `[workspace.metadata.lumenna]`, which `vite.config.ts` reads and writes in, as it serves it in
+  development; `package.json` has no version, so a bump is one edit; `public/sw.js`, registered only in a
   production build): the page is fetched afresh while online and kept for when there is none, and
   every other file of the origin kept as first fetched, its name carrying its hash, so the app
   opens offline with its store; the manifest and the icons, named without a hash, are fetched

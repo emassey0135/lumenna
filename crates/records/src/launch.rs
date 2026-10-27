@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn the_web_app_manifest_lists_every_launch_shortcut_as_the_core_words_it() {
-        let Some(manifest) = ["apps/web/public/manifest.webmanifest", "apps/web/public/manifest.json"]
+        let Some(manifest) = ["apps/web/manifest.webmanifest"]
             .iter()
             .find_map(|path| std::fs::read_to_string(root().join(path)).ok())
         else {

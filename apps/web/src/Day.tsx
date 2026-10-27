@@ -25,7 +25,7 @@ import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
-import { commandTitle } from "./words";
+import { commandTitle, words } from "./words";
 
 /** Each kind of row's class, for the styles: the kind crosses as a number. */
 const KIND_CLASS: Record<DayKind, string> = {
@@ -124,7 +124,7 @@ export function Day(props: { screen: Screen }) {
         <Button onPress={addBlock}>{commandTitle("new-block")}</Button>
         {/* The day's own actions, wherever focus is: its summary row offers them too. */}
         <RowMenu
-          label="Day actions"
+          label={words().dayActions}
           actions={day?.offered ?? []}
           onAction={(action) => act(actOn({ tag: "Day" }, action))}
           isOpen={dayMenu}

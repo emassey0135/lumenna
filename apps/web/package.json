@@ -1,6 +1,5 @@
 {
   "name": "lumenna-web",
-  "version": "0.1.0",
   "description": "Lumenna in the browser: the Rust core as WebAssembly, under React Aria.",
   "scripts": {
     "core": "node scripts/build-core.mjs",

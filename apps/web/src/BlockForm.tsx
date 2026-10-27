@@ -30,6 +30,7 @@ import { CompletingField } from "./Completing";
 import { DayPicker, TimePicker } from "./Pickers";
 import { send } from "./session";
 import { SwatchMark } from "./Swatch";
+import { words } from "./words";
 
 /**
  * A field's place in the form's values. A field is named as the core names it ("accepts_tasks"),
@@ -172,7 +173,7 @@ function Form(props: { form: BlockFormView }) {
           </p>
         )}
         <div className="buttons">
-          <Button onPress={() => void send({ tag: "Block", value0: { tag: "Cancel" } })}>Cancel</Button>
+          <Button onPress={() => void send({ tag: "Block", value0: { tag: "Cancel" } })}>{words().cancel}</Button>
           <Button type="submit">{form.yes}</Button>
         </div>
       </form>

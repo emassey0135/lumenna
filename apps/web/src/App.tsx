@@ -46,6 +46,8 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
+  // What shows while the store opens, the core's once its module has loaded.
+  const [openingWords, setOpeningWords] = useState("");
   const screen = useScreen();
   const place: Place = screen?.place ?? { tag: "Tasks" };
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -57,6 +59,11 @@ export function App() {
   useFolderBackups(ready);
 
   useEffect(() => {
+    void core.opening().then(setOpeningWords, () => undefined);
+    // In a local-first app the browser may hold changes that are nowhere else yet: storage it
+    // may evict under pressure is data loss. Ask for it to be kept, at once; whether it was is
+    // said once the core's words are read.
+    const kept = navigator.storage?.persist?.() ?? Promise.resolve(true);
     // Open in another tab, it says so until that tab is closed, then opens here.
     core.open(profile, Comlink.proxy((why: string) => setFailure(why))).then(
       () =>
@@ -64,18 +71,10 @@ export function App() {
           setFailure(undefined);
           setReady(true);
           launchFromAddress();
+          void kept.then((kept) => !kept && setNotice(words().storageMayBeCleared), () => undefined);
         }),
       (error: Error) => setFailure(error.message),
     );
-    // In a local-first app the browser may hold changes that are nowhere else yet: storage it
-    // may evict under pressure is data loss. Ask for it to be kept.
-    void navigator.storage?.persist?.().then((kept) => {
-      if (!kept) {
-        setNotice(
-          "This browser may clear Lumenna's data when it runs short of space. Installing Lumenna, or allowing it to keep data, prevents that.",
-        );
-      }
-    });
   }, []);
 
 
@@ -234,7 +233,7 @@ export function App() {
     );
   }
   if (!ready || !screen) {
-    return <p role="status">Opening Lumenna…</p>;
+    return <p role="status">{openingWords}</p>;
   }
 
   return (

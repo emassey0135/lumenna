@@ -801,11 +801,13 @@ mod tests {
         for strings in ["apps/android/app/src/main/res/values/strings.xml", "apps/android/wear/src/main/res/values/strings.xml"] {
             assert!(repo_file(strings).contains(&format!("<string name=\"app_name\">{}</string>", m.name)), "{strings}'s app_name");
         }
+        // The web's build reads the workspace's table itself (apps/web/vite.config.ts), so its
+        // package and manifest carry none of it, and nothing there can fall behind.
         let package = repo_file("apps/web/package.json");
-        assert!(has_line(&package, &format!("\"version\": \"{}\",", m.version)), "the web package's version");
-        let manifest = repo_file("apps/web/public/manifest.webmanifest");
-        assert!(manifest.contains(&format!("\"name\": \"{}\"", m.name)), "the web manifest's name");
-        assert!(manifest.contains(&format!("\"description\": \"{}\"", m.description)), "the web manifest's description");
+        assert!(!package.contains("\"version\""), "the web package has no version of its own");
+        let manifest = repo_file("apps/web/manifest.webmanifest");
+        assert!(!manifest.contains(&format!("\"{}\"", m.description)), "the web manifest has no description of its own");
+        assert!(repo_file("apps/web/vite.config.ts").contains("workspace\\.metadata\\.lumenna"), "the web build reads the workspace's table");
         let module = repo_file("apps/powershell/Lumenna/Lumenna.psd1");
         for part in [
             format!("'{}'", m.version),
