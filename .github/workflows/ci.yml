@@ -225,10 +225,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build lum
         run: cargo build -p lumenna-cli
-      # Saved once, for both editions: Windows PowerShell 5.1 ships Pester 3.
+      # Saved once, for both editions: Windows PowerShell 5.1 ships Pester 3. Some runners
+      # come without the gallery registered ("Unable to find repository 'PSGallery'").
       - name: Pester
         shell: pwsh
-        run: Save-Module -Name Pester -MinimumVersion 5.5 -Repository PSGallery -Path "$env:RUNNER_TEMP/modules" -Force
+        run: |
+          if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { Register-PSRepository -Default }
+          Save-Module -Name Pester -MinimumVersion 5.5 -Repository PSGallery -Path "$env:RUNNER_TEMP/modules" -Force
       # Each runs in well under a minute: one that hangs fails, keeping its log, rather than
       # holding a runner until it is cancelled with none.
       - name: PowerShell 7
