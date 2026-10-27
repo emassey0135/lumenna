@@ -15,7 +15,7 @@ import { actOn, isDelete, keyPressed, rowHeld } from "./actions";
 import { ChooseDialog } from "./Questions";
 import { say } from "./say";
 import { send } from "./session";
-import { commandTitle } from "./words";
+import { commandTitle, words as fixed } from "./words";
 
 
 /** What this browser is called on the other devices until someone renames it: the core's words
@@ -102,7 +102,7 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
             </ListBox>
           </div>
           <p id="devices-hint" className="quiet">
-            Delete unpairs the selected device.
+            {fixed().deleteUnpairs}
           </p>
           <div className="buttons">
             <Button isDisabled={others === 0 || !props.devices?.syncing} onPress={() => void syncNow()}>
@@ -185,10 +185,10 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
         isDisabled={pairing.running}
         autoFocus
       >
-        <Label>Name for this browser</Label>
+        <Label>{fixed().deviceNameLabel}</Label>
         <Input />
         <Text slot="description" className="quiet">
-          What your other devices call it.
+          {fixed().deviceNameHint}
         </Text>
       </TextField>
       {pairing.mine ? (
@@ -202,7 +202,7 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
               onPress={() =>
                 void navigator.clipboard.writeText(pairing.mine ?? "").then(
                   () => say(words.copied),
-                  () => say("Could not copy the code; select it and copy it instead."),
+                  () => say(fixed().copyFailed),
                 )
               }
             >
@@ -235,7 +235,7 @@ function Pairing(props: { words: PairingWords; pairing: PairingView }) {
         </p>
       )}
       <div className="buttons">
-        <Button onPress={() => void pair({ tag: "Cancel" })}>Cancel</Button>
+        <Button onPress={() => void pair({ tag: "Cancel" })}>{fixed().cancel}</Button>
         {/* Typed or pasted: the clipboard is never read unasked, which a browser would have to
             prompt for, and which would send whatever happened to be copied. */}
         <Button isDisabled={pairing.running && !pairing.waiting} onPress={() => void pair({ tag: "Join" })}>

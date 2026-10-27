@@ -179,6 +179,34 @@ until the app has taken it in."
     (forward-line 1)
     (should (equal (lumenna-test--line) "Nothing has come due"))))
 
+(ert-deftest lumenna-a-summary-of-what-was-missed-is-not-snoozed-in-the-apps-words ()
+  (lumenna-test--reminding
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--deliver)
+    (setq now "2030-01-15T09:30:00Z")
+    (lumenna-test--deliver)
+    (lumenna-reminders-due)
+    (lumenna-test--goto "1 reminder missed")
+    (should (equal (cadr (should-error (lumenna-reminders-snooze) :type 'user-error))
+                   "What was missed can be dismissed, not snoozed."))
+    (should (= (length (lumenna-test--due)) 1))))
+
+(ert-deftest lumenna-a-reminder-dismissed-elsewhere-leaves-the-due-list ()
+  (lumenna-test--reminding
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "2030-01-15")
+    (lumenna-test--deliver)
+    (setq now "2030-01-15T08:55:30Z")
+    (lumenna-test--deliver)
+    (lumenna-reminders-due)
+    (lumenna-test--goto "Deep work starts in 5 minutes")
+    (let ((firing (aref (plist-get (car (lumenna-test--due)) :firings) 0)))
+      ;; Dismissed as another device would, through the store: the app learns it from the store.
+      (lumenna-test--seed "reminder.dismiss" :key (plist-get firing :key) :occurrence (plist-get firing :occurrence)))
+    (should-not (lumenna-test--due))
+    (goto-char (point-min))
+    (forward-line 1)
+    (should (equal (lumenna-test--line) "Nothing has come due"))))
+
 (ert-deftest lumenna-a-blocks-reminders-are-listed-added-by-a-phrase-and-removed ()
   (lumenna-test--with-store
     (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "tomorrow")

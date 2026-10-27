@@ -174,7 +174,7 @@ function TextQuestion(props: {
         )}
         {props.day && <DayPicker line={text} from={props.day} onPick={setText} />}
         <div className="buttons">
-          <Button onPress={props.cancel}>Cancel</Button>
+          <Button onPress={props.cancel}>{words().cancel}</Button>
           <Button type="submit">{props.yes}</Button>
         </div>
       </form>
@@ -189,7 +189,7 @@ function PickQuestion(props: { heading: string; items: ShownChoice[]; count: str
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (chosen === null) {
-      setProblem(props.items.length ? "Choose one first." : words().nothingToChoose);
+      setProblem(props.items.length ? words().chooseOneFirst : words().nothingToChoose);
       return;
     }
     void send({ tag: "Answer", value0: { tag: "Picked", id: String(chosen), length: null } });
@@ -247,7 +247,7 @@ function PickQuestion(props: { heading: string; items: ShownChoice[]; count: str
           </Popover>
         </ComboBox>
         <div className="buttons">
-          <Button onPress={props.cancel}>Cancel</Button>
+          <Button onPress={props.cancel}>{words().cancel}</Button>
           <Button type="submit">{props.yes}</Button>
         </div>
       </form>

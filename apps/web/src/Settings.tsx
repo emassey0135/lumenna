@@ -45,7 +45,7 @@ import { TimePicker } from "./Pickers";
 import { send } from "./session";
 import { remindersOn, setRemindersOn } from "./Reminders";
 import { say } from "./say";
-import { commandTitle } from "./words";
+import { commandTitle, words } from "./words";
 
 export function Settings(props: {
   isOpen: boolean;
@@ -78,7 +78,7 @@ export function Settings(props: {
           ))}
         </Tabs>
         <div className="buttons">
-          <Button onPress={props.onClose}>Close</Button>
+          <Button onPress={props.onClose}>{words().close}</Button>
         </div>
       </Dialog>
     </Modal>
@@ -137,13 +137,13 @@ function SettingRows(props: { rows: SettingView[]; settings: SettingsView | null
             onChange={(checked) => {
               setRemindersOn(checked);
               setOn(checked);
-              say(checked ? "Reminders are on in this browser" : "Reminders are off in this browser");
+              say(checked ? words().remindersOn : words().remindersOff);
             }}
           >
             <span className="box" aria-hidden="true" />
             {title}
           </Checkbox>
-          {hint && <p className="quiet">{hint} Reminders are given while Lumenna is open in this tab.</p>}
+          {hint && <p className="quiet">{hint} {words().remindersWhileOpen}</p>}
         </div>
       );
     }
@@ -263,13 +263,11 @@ function ReadFile(props: { label: string; accept: string }) {
 }
 
 function Backups(props: { page: SettingsPage; settings: SettingsView | null }) {
+  const folder = words().folder;
   return (
     <>
       <p>
-        A backup is everything, its whole history and the trash included.{" "}
-        {folders.supported
-          ? "Choose a folder below and this browser takes them by itself; or download one now and then, and keep it somewhere safe."
-          : "This browser takes none by itself: download one now and then, and keep it somewhere safe."}
+        {folder.intro} {folders.supported ? folder.takesItself : folder.takesNone}
       </p>
       {folders.supported && <BackupFolder />}
       <div className="buttons">
@@ -277,7 +275,7 @@ function Backups(props: { page: SettingsPage; settings: SettingsView | null }) {
         <Button onPress={() => void send({ tag: "Settings", value0: { tag: "Backup" } })}>{button(props.page, "back-up")}</Button>
         <ReadFile label={button(props.page, "restore-backup")} accept=".lumbak" />
       </div>
-      <p className="quiet">Restoring merges: it adds what this browser lacks, and never takes back a later change.</p>
+      <p className="quiet">{folder.restoring}</p>
       <div className="buttons">
         {(props.settings?.offered ?? []).map((action) => (
           <Button
@@ -301,23 +299,38 @@ function Backups(props: { page: SettingsPage; settings: SettingsView | null }) {
 
 /** Automatic backups into a folder the person chose, where the browser can be given one. */
 function BackupFolder() {
-  const [shown, setShown] = useState<{ name: string; allowed: boolean } | undefined>();
-  const [words, setWords] = useState("");
-  const look = () => void folders.folder().then(setShown, () => setShown(undefined));
+  // The folder chosen, with what is said of it: whether backups go there, or it must be allowed
+  // again, and the button that allows it. The core's words, which name the folder.
+  const [shown, setShown] = useState<{ name: string; allowed: boolean; state: string; allow: string } | undefined>();
+  const [about, setAbout] = useState("");
+  const folder = words().folder;
+  const look = () =>
+    void folders.folder().then(
+      async (found) =>
+        setShown(
+          found && {
+            ...found,
+            state: await (found.allowed ? core.backingUpToFolder(found.name) : core.needsAskingAgain(found.name)),
+            allow: await core.allowBackupsTo(found.name),
+          },
+        ),
+      () => setShown(undefined),
+    );
   useEffect(() => {
     look();
-    void core.folderBackupWords().then(setWords);
+    void core.folderBackupWords().then(setAbout);
   }, []);
   const done = (said: string) => {
     say(said);
     look();
   };
+  const chosen = (name: string | undefined) => void (name && core.backingUpTo(name).then(done));
   return (
-    <section aria-label="Automatic backups">
-      <p>{words}</p>
+    <section aria-label={folder.section}>
+      <p>{about}</p>
       {shown ? (
         <>
-          <p>{shown.allowed ? `Backing up to the folder ${shown.name}.` : `This browser needs asking again before it backs up to ${shown.name}.`}</p>
+          <p>{shown.state}</p>
           <div className="buttons">
             {shown.allowed ? (
               <Button
@@ -328,20 +341,24 @@ function BackupFolder() {
                   )
                 }
               >
-                Back up to the folder now
+                {folder.backUpNow}
               </Button>
             ) : (
-              <Button onPress={() => void folders.allow().then((allowed) => done(allowed ? `Backing up to ${shown.name}` : "Still not allowed"))}>
-                Allow backups to {shown.name}
+              <Button
+                onPress={() =>
+                  void folders.allow().then(async (allowed) => done(allowed ? await core.backingUpTo(shown.name) : folder.stillNotAllowed))
+                }
+              >
+                {shown.allow}
               </Button>
             )}
-            <Button onPress={() => void folders.choose().then((name) => name && done(`Backing up to ${name}`))}>Choose another folder</Button>
-            <Button onPress={() => void folders.stop().then(() => done("No longer backing up to a folder"))}>Stop backing up to a folder</Button>
+            <Button onPress={() => void folders.choose().then(chosen)}>{folder.chooseAnother}</Button>
+            <Button onPress={() => void folders.stop().then(() => done(folder.stopped))}>{folder.stop}</Button>
           </div>
         </>
       ) : (
         <div className="buttons">
-          <Button onPress={() => void folders.choose().then((name) => name && done(`Backing up to ${name}`))}>Choose a folder for backups</Button>
+          <Button onPress={() => void folders.choose().then(chosen)}>{folder.choose}</Button>
         </div>
       )}
     </section>

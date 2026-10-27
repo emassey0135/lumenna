@@ -73,7 +73,7 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
   if (!details || !fields) {
     return <p className="quiet">{said.none}</p>;
   }
-  const { task, projects, form } = details;
+  const { task, projects, projectLevels, form } = details;
 
   const set = (key: keyof TaskFields, value: string | number) => {
     setFields({ ...fields, [key]: value });
@@ -86,8 +86,8 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
 
   // Each field as the core describes it. The title is one line, so Enter saves; the project
   // is a choice of the projects the core offers, found by typing its name. An option has no
-  // level of its own in ARIA, so one under another says its level in its name, after the
-  // title, as the desktop apps' rows do; it is indented to be seen.
+  // level of its own in ARIA, so one says the core's level in its name where it changes, after
+  // the title, as the desktop apps' rows do; it is indented to be seen.
   const control = (field: FormField) => {
     const key = field.key as keyof TaskFields;
     const help = field.hint && (
@@ -96,18 +96,19 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
       </Text>
     );
     if (field.kind === FieldKind.Choice) {
-      const items: { id: string | number; title: string; depth: number }[] =
+      const items: { id: string | number; title: string; depth: number; level: string | null }[] =
         key === "project"
           ? [
-              ...projects.map((option) => ({ id: option.id, title: option.title, depth: option.depth ?? 0 })),
+              ...projects.map((option, index) => ({ id: option.id, title: option.title, depth: option.depth ?? 0, level: projectLevels[index] ?? null })),
               // An archived project is offered to no task, but the one this task is in stays
               // its value until another is chosen.
-              ...(projects.some((option) => option.id === fields.project) ? [] : [{ id: fields.project, title: fields.project, depth: 0 }]),
+              ...(projects.some((option) => option.id === fields.project) ? [] : [{ id: fields.project, title: fields.project, depth: 0, level: null }]),
             ]
           : (field.options ?? []).map((option) => ({
               id: key === "priority" ? Number(option.id) : option.id,
               title: option.title,
               depth: 0,
+              level: null,
             }));
       return (
         <Select key={field.key} className="field" value={fields[key]} onChange={(chosen) => set(key, key === "priority" ? Number(chosen) : String(chosen))}>
@@ -122,7 +123,7 @@ export const Details = forwardRef<DetailsHandle, { screen: Screen }>(function De
                 <ListBoxItem
                   id={item.id}
                   textValue={item.title}
-                  aria-label={item.depth > 0 ? `${item.title}, level ${item.depth + 1}` : undefined}
+                  aria-label={item.level ? `${item.title}, ${item.level}` : undefined}
                   style={item.depth > 0 ? { paddingInlineStart: `${item.depth * 1.25 + 0.5}em` } : undefined}
                 >
                   {item.title}

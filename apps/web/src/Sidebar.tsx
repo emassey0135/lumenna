@@ -18,6 +18,7 @@ import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
+import { words } from "./words";
 
 /** What identifies a place's entry across reloads. */
 export function placeKey(entries: SidebarEntry[], place: Place): string | undefined {
@@ -147,7 +148,7 @@ export function Sidebar(props: {
           }}
           isOpen={menu}
           onOpenChange={setMenu}
-          label="Place actions"
+          label={words().placeActions}
         />
       </div>
     </>

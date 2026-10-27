@@ -22,6 +22,27 @@ import init, {
   browserDeviceName,
   choiceCount,
   nothingToChoose,
+  folderWords,
+  backingUpToFolder,
+  needsAskingAgain,
+  allowBackupsTo,
+  backingUpTo,
+  remindersOnHere,
+  remindersWhileOpen,
+  storageMayBeCleared,
+  opening as openingWords,
+  openElsewhere,
+  remindersDue,
+  dayActions,
+  placeActions,
+  deleteUnpairs,
+  deviceNameLabel,
+  deviceNameHint,
+  copyFailed,
+  chooseOneFirst,
+  cancel,
+  close,
+  completionHint,
 } from "./core/lumenna_web.js";
 import type {
   App,
@@ -48,6 +69,7 @@ import type {
   PickerWords,
   QuickAddWords,
   DetailsWords,
+  FolderWords,
 } from "./core/lumenna_web.js";
 import { Capitals, TimeStyle } from "./core/lumenna_web.js";
 
@@ -68,6 +90,14 @@ function unitsAt(text: string, bytes: number): number {
 }
 
 let opening: Promise<void> | undefined;
+let loading: Promise<unknown> | undefined;
+
+/** The module, and its wasm beside it, which Vite serves as an asset: loaded once, before the
+ * store, so even what a tab says while it waits is the core's. */
+function loaded(): Promise<unknown> {
+  loading ??= fetch(new URL("./core/lumenna_web_bg.wasm", import.meta.url)).then((wasm) => init(wasm));
+  return loading;
+}
 
 /** Takes the lock `name`, held while this worker lives; with `ifAvailable`, only if no other
  * tab holds it. Whether it was taken. */
@@ -82,13 +112,12 @@ function hold(name: string, options: LockOptions): Promise<boolean> {
 
 async function opened(name: string, waiting?: (why: string) => void): Promise<void> {
   const lock = `lumenna:${name}`;
+  await loaded();
   if (!(await hold(lock, { ifAvailable: true }))) {
     // Another tab has it: this one says so, and opens the store once that tab is closed.
-    void waiting?.("Lumenna is open in another tab. Close it there to use it here.");
+    void waiting?.(openElsewhere());
     await hold(lock, {});
   }
-  // The module, and its wasm beside it, which Vite serves as an asset.
-  await init(await fetch(new URL("./core/lumenna_web_bg.wasm", import.meta.url)));
   app = await open(name);
   // The clock the core's whole sentences say times in: this browser's.
   const hour12 = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hour12;
@@ -133,9 +162,11 @@ export interface ShownDay extends Omit<DayView, "items"> {
   items: ShownDayItem[];
 }
 
-/** The details as the page draws them: the task's state as a line. */
+/** The details as the page draws them: the task's state as a line, and each project offered
+ * with its level where that changes ("level 2"), since an option says none of its own. */
 export interface ShownDetails extends DetailsView {
   state: string;
+  projectLevels: (string | null)[];
 }
 
 /** The quick-add line as the page draws it: offsets in UTF-16 units, as an input counts. */
@@ -220,7 +251,11 @@ function screen(view: ViewModel, lines: Lines): Screen {
     title: lines.dayTitle,
     items: view.day.items.map((item, index) => ({ ...item, text: lines.day[index]?.text ?? "", braille: lines.day[index]?.braille ?? "" })),
   };
-  const details = view.details && { ...view.details, state: lines.taskState };
+  const details = view.details && {
+    ...view.details,
+    state: lines.taskState,
+    projectLevels: view.details.projects.map((_, index) => lines.projects[index]?.level ?? null),
+  };
   const asking = view.asking && {
     ...view.asking,
     lines: view.asking.choices && view.asking.choices.choices.map((choice, index) => ({
@@ -381,7 +416,65 @@ const api = {
 
   /** What a pick with nothing in it says. */
   nothingToChoose: (): string => nothingToChoose(),
+
+  /** What shows while the store opens: the module is loaded first, the store not yet. */
+  opening: async (): Promise<string> => {
+    await loaded();
+    return openingWords();
+  },
+
+  /** The browser's own fixed words that are the core's, in sentence case, read once. */
+  fixedWords: (): FixedWords => ({
+    folder: folderWords(),
+    remindersOn: remindersOnHere(true),
+    remindersOff: remindersOnHere(false),
+    remindersWhileOpen: remindersWhileOpen(),
+    storageMayBeCleared: storageMayBeCleared(),
+    remindersDue: remindersDue(),
+    dayActions: dayActions(),
+    placeActions: placeActions(),
+    deleteUnpairs: deleteUnpairs(),
+    deviceNameLabel: deviceNameLabel(),
+    deviceNameHint: deviceNameHint(),
+    copyFailed: copyFailed(),
+    chooseOneFirst: chooseOneFirst(),
+    cancel: cancel(),
+    close: close(),
+    completionHint: completionHint(),
+  }),
+
+  /** Where backups go while the folder `folder` is chosen and allowed. */
+  backingUpToFolder: (folder: string): string => backingUpToFolder(folder),
+
+  /** The folder `folder`, which this browser must be allowed again to back up to. */
+  needsAskingAgain: (folder: string): string => needsAskingAgain(folder),
+
+  /** The button that allows backups into `folder` again. */
+  allowBackupsTo: (folder: string): string => allowBackupsTo(folder),
+
+  /** Said once backups go into `folder`. */
+  backingUpTo: (folder: string): string => backingUpTo(folder),
 };
+
+/** The fixed words the core gives a browser, beside those of quick add and the details. */
+export interface FixedWords {
+  folder: FolderWords;
+  remindersOn: string;
+  remindersOff: string;
+  remindersWhileOpen: string;
+  storageMayBeCleared: string;
+  remindersDue: string;
+  dayActions: string;
+  placeActions: string;
+  deleteUnpairs: string;
+  deviceNameLabel: string;
+  deviceNameHint: string;
+  copyFailed: string;
+  chooseOneFirst: string;
+  cancel: string;
+  close: string;
+  completionHint: string;
+}
 
 export type Api = typeof api;
 

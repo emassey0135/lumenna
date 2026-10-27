@@ -17,6 +17,7 @@ import { send } from "./session";
 import type { ActingOn, Due, DueEvent, ShortAction, ShownReminders } from "./core";
 import { actOn, rowHeld } from "./actions";
 import { ActionKind, Side } from "./core";
+import { words } from "./words";
 
 const ON = "lumenna:reminders";
 
@@ -113,7 +114,7 @@ export function RemindersDue(props: { due: Due[] }) {
   };
   return (
     <section className="due" aria-labelledby="due-heading" data-list="due">
-      <h2 id="due-heading">Reminders due</h2>
+      <h2 id="due-heading">{words().remindersDue}</h2>
       <ul>
         {props.due.map((due) => (
           <li key={due.id} id={`due-${due.id}`} data-key={due.id}>
@@ -186,7 +187,7 @@ function Reminders(props: { list: ShownReminders; close: () => void }) {
             {action.sentence ?? action.title}
           </Button>
         ))}
-        <Button onPress={props.close}>Close</Button>
+        <Button onPress={props.close}>{words().close}</Button>
       </div>
     </Dialog>
   );

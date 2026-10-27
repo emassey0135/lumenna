@@ -15,10 +15,6 @@ import { words } from "./words";
 
 const nothing: Offered = { announcement: "", start: 0, end: 0, candidates: [] };
 
-/** How a line in the filter language completes, in the web's keys: the core says it only as part
- * of quick add's hint. */
-const OFFERS = "Down arrow offers what could come next.";
-
 export function CompletingField(props: {
   label: string;
   value: string;
@@ -135,7 +131,7 @@ export function CompletingField(props: {
         <Input ref={(element) => void (input.current = element)} placeholder={props.placeholder} autoFocus={props.autoFocus} />
       </div>
       <Text slot="description" className="quiet">
-        {props.hint ?? [props.description, OFFERS].filter(Boolean).join(" ")}
+        {props.hint ?? [props.description, words().completionHint].filter(Boolean).join(" ")}
       </Text>
       <FieldError>{props.error}</FieldError>
       <Popover>
