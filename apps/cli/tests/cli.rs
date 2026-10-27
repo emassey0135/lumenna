@@ -10,6 +10,7 @@ use std::process::Command;
 
 struct Lum {
     profile: tempfile::TempDir,
+    zone: Option<String>,
 }
 
 struct Output {
@@ -20,18 +21,30 @@ struct Output {
 
 impl Lum {
     fn new() -> Self {
-        Self { profile: tempfile::tempdir().unwrap() }
+        Self { profile: tempfile::tempdir().unwrap(), zone: None }
+    }
+
+    /// A profile whose clock reads between noon and one, whenever the test runs: in the
+    /// last minutes before the day's end there is no time to suggest a task for.
+    fn at_midday() -> Self {
+        let hour = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() / 3600 % 24;
+        let ahead = (12 - hour as i64 + 36) % 24 - 12;
+        // A POSIX zone counts west of Greenwich as positive.
+        Self { zone: Some(format!("LUM{}", -ahead)), ..Self::new() }
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        let output = Command::new(env!("CARGO_BIN_EXE_lum"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_lum"));
+        command
             .args(args)
             .env("LUMENNA_PROFILE", self.profile.path())
             // Automatic backups land here rather than beside the temporary profile.
             .env("LUMENNA_BACKUP_DIR", self.profile.path().join("backups"))
-            .env("NO_COLOR", "1")
-            .output()
-            .expect("the binary should run");
+            .env("NO_COLOR", "1");
+        if let Some(zone) = &self.zone {
+            command.env("TZ", zone);
+        }
+        let output = command.output().expect("the binary should run");
         Output {
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
@@ -1638,7 +1651,7 @@ fn a_project_and_a_saved_filter_take_a_colour_and_a_task_and_a_block_a_time_zone
 
 #[test]
 fn the_timer_is_read_pressed_and_stopped_without_naming_a_sitting() {
-    let lum = Lum::new();
+    let lum = Lum::at_midday();
     assert!(lum.fails(&["stop"]).contains("No timer is running."));
     lum.ok(&["task", "add", "Email p1"]);
     assert!(lum.ok(&["timer"]).contains("Starting it would start on Email"));
