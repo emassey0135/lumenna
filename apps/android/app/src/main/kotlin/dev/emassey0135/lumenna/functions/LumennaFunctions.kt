@@ -100,6 +100,11 @@ abstract class LumennaFunctions : AppFunctionService() {
         Assistant.replanProposed(assist("propose_replan"))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("What the timer is doing now: running, on which task and how long so far; else what `toggle_timer` would start, or why nothing would.")
+    suspend fun timer(): TimerState =
+        Assistant.timer(assist("timer"))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Proposes which tasks to put in each of a day's work blocks still to come, each with why. Nothing changes until `apply_day_plan` is given the sittings the person accepted.")
     suspend fun proposeDayPlan(
         @AppFunctionInstruction("The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.")
@@ -234,22 +239,27 @@ abstract class LumennaFunctions : AppFunctionService() {
         Assistant.changeMade(assist("start_timer", Assistant.text("assignment", assignment)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
-    @AppFunctionInstruction("Pauses a sitting's timer, keeping what it has logged.")
+    @AppFunctionInstruction("Pauses a sitting's timer, keeping what it has logged: the timer running, unless a sitting is named. Refused when none runs.")
     suspend fun pauseTimer(
-        @AppFunctionInstruction("The sitting's identifier: a task's place in a block, as the day lists it.")
-        assignment: String,
-    ): TimerStopped =
-        Assistant.timerStopped(assist("pause_timer", Assistant.text("assignment", assignment)))
+        @AppFunctionInstruction("The sitting's identifier, as the day lists it; the sitting whose timer runs when left out.")
+        assignment: String? = null,
+    ): TimerState =
+        Assistant.timer(assist("pause_timer", Assistant.text("assignment", assignment)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
-    @AppFunctionInstruction("Stops a sitting's timer and logs its time.")
+    @AppFunctionInstruction("Stops a sitting's timer and logs its time: the timer running, unless a sitting is named. Refused when none runs.")
     suspend fun stopTimer(
-        @AppFunctionInstruction("The sitting's identifier: a task's place in a block, as the day lists it.")
-        assignment: String,
+        @AppFunctionInstruction("The sitting's identifier, as the day lists it; the sitting whose timer runs when left out.")
+        assignment: String? = null,
         @AppFunctionInstruction("The minutes to log instead of the timer's, when it ran on by mistake.")
         minutes: Int? = null,
-    ): TimerStopped =
-        Assistant.timerStopped(assist("stop_timer", Assistant.text("assignment", assignment), Assistant.number("minutes", minutes)))
+    ): TimerState =
+        Assistant.timer(assist("stop_timer", Assistant.text("assignment", assignment), Assistant.number("minutes", minutes)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("Presses the timer's one control: stops the timer running, or with none running starts on the first of What Should I Work On?'s choices, its timer running. `timer` says first which it would do.")
+    suspend fun toggleTimer(): ChangeMade =
+        Assistant.changeMade(assist("toggle_timer"))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Starts on one of What Should I Work On?'s choices at once, its timer running: in the block under way, or in a block of its own in free time.")

@@ -24,8 +24,10 @@ import kotlinx.coroutines.launch
 /**
  * The core's search documents (`Device.searchDocuments()`, `records::search`) in AppSearch, the
  * system's own index (Android 12 and later), so what searches the device finds tasks, projects,
- * labels, saved filters and blocks there. Each document is the core's, field for field; what
- * matches a search and how a result reads are the core's, never this index's to decide.
+ * labels, saved filters and blocks there. Each document is the core's, field for field, a task's
+ * with what its entity holds beside (`SearchTask`: its project, labels, priority, states…), for
+ * an agent to tell tasks apart by; what matches a search and how a result reads are the core's,
+ * never this index's to decide.
  *
  * It is kept current as the store changes: what changed is written again and what went is
  * removed, as the last indexing (remembered by each document's fingerprint) tells them apart.
@@ -57,6 +59,31 @@ object SearchIndex {
         )
         .addProperty(kept("due", StringPropertyConfig.INDEXING_TYPE_NONE, StringPropertyConfig.TOKENIZER_TYPE_NONE))
         .addProperty(kept("launch", StringPropertyConfig.INDEXING_TYPE_NONE, StringPropertyConfig.TOKENIZER_TYPE_NONE))
+        // A task's own, from `SearchTask`.
+        .addProperty(kept("project", StringPropertyConfig.INDEXING_TYPE_EXACT_TERMS, StringPropertyConfig.TOKENIZER_TYPE_VERBATIM))
+        .addProperty(several("labels"))
+        .addProperty(number("priority"))
+        .addProperty(kept("dueTime", StringPropertyConfig.INDEXING_TYPE_NONE, StringPropertyConfig.TOKENIZER_TYPE_NONE))
+        .addProperty(number("estimateMinutes"))
+        .addProperty(kept("repetition", StringPropertyConfig.INDEXING_TYPE_NONE, StringPropertyConfig.TOKENIZER_TYPE_NONE))
+        .addProperty(several("states"))
+        .addProperty(kept("createdAt", StringPropertyConfig.INDEXING_TYPE_NONE, StringPropertyConfig.TOKENIZER_TYPE_NONE))
+        .addProperty(flag("done"))
+        .addProperty(flag("deleted"))
+        .build()
+
+    private fun several(name: String) = StringPropertyConfig.Builder(name)
+        .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_REPEATED)
+        .setIndexingType(StringPropertyConfig.INDEXING_TYPE_EXACT_TERMS)
+        .setTokenizerType(StringPropertyConfig.TOKENIZER_TYPE_VERBATIM)
+        .build()
+
+    private fun number(name: String) = AppSearchSchema.LongPropertyConfig.Builder(name)
+        .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
+        .build()
+
+    private fun flag(name: String) = AppSearchSchema.BooleanPropertyConfig.Builder(name)
+        .setCardinality(AppSearchSchema.PropertyConfig.CARDINALITY_OPTIONAL)
         .build()
 
     private fun kept(name: String, indexing: Int, tokenizer: Int) = StringPropertyConfig.Builder(name)
@@ -83,11 +110,25 @@ object SearchIndex {
         .setPropertyString("keywords", *doc.keywords.toTypedArray())
         .apply { doc.due?.let { setPropertyString("due", it) } }
         .setPropertyString("launch", doc.launch)
+        .apply {
+            doc.task?.let { task ->
+                task.project?.let { setPropertyString("project", it) }
+                setPropertyString("labels", *task.labels.toTypedArray())
+                setPropertyLong("priority", task.priority.toLong())
+                task.dueTime?.let { setPropertyString("dueTime", it) }
+                task.estimateMins?.let { setPropertyLong("estimateMinutes", it.toLong()) }
+                task.repetition?.let { setPropertyString("repetition", it) }
+                setPropertyString("states", *task.states.toTypedArray())
+                setPropertyString("createdAt", task.createdAt)
+                setPropertyBoolean("done", task.done)
+                setPropertyBoolean("deleted", task.deleted)
+            }
+        }
         .build()
 
     /** What tells one version of a document from another, kept between indexings. */
     internal fun fingerprint(doc: SearchDocument): String = fingerprint(
-        listOf(doc.kind.name, doc.title, doc.line, doc.keywords.joinToString("\u001f"), doc.due.orEmpty(), doc.launch),
+        listOf(doc.kind.name, doc.title, doc.line, doc.keywords.joinToString("\u001f"), doc.due.orEmpty(), doc.launch, doc.task.toString()),
     )
 
     /**

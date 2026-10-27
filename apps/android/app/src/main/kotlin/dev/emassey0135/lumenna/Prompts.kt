@@ -115,8 +115,11 @@ fun AskText(
 @Composable
 fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Unit, chosen: (Option) -> Unit) {
     var narrow by remember { mutableStateOf("") }
-    val shown = choices.filter {
-        narrow.isBlank() || it.title.contains(narrow, ignoreCase = true) || it.detail.contains(narrow, ignoreCase = true)
+    // Narrowed, a level is said where it changes among what is left: the core's against the
+    // whole list no longer follows the choice before.
+    val shown = remember(choices, narrow) {
+        if (narrow.isBlank()) choices
+        else choices.filter { it.title.contains(narrow, ignoreCase = true) || it.detail.contains(narrow, ignoreCase = true) }.leveled()
     }
     AlertDialog(
         onDismissRequest = dismiss,
@@ -157,7 +160,7 @@ fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Uni
                                 Text(choice.title, style = MaterialTheme.typography.bodyLarge)
                             }
                             // The level where it changes, as a tree's rows say it: the indent says nothing aloud.
-                            val detail = detailOf(shown, index, whole = narrow.isBlank())
+                            val detail = detailOf(choice)
                             if (detail.isNotEmpty()) {
                                 Text(detail, style = MaterialTheme.typography.bodyMedium, color = quiet())
                             }

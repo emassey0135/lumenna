@@ -53,7 +53,7 @@ import dev.emassey0135.lumenna.app.LumennaError
 import dev.emassey0135.lumenna.app.automationCheck
 import dev.emassey0135.lumenna.app.automationFields
 import dev.emassey0135.lumenna.app.automationOperations
-import dev.emassey0135.lumenna.app.automationWords
+import dev.emassey0135.lumenna.app.automationWordsFor
 import dev.emassey0135.lumenna.app.sentenceCase
 import dev.emassey0135.lumenna.app.storeUnopened
 import dev.emassey0135.lumenna.quiet
@@ -74,12 +74,13 @@ class TaskerEditActivity : ComponentActivity() {
         val core = (application as LumennaApplication).core
         val before = TaskerAction.from(intent.getBundleExtra(Tasker.EXTRA_BUNDLE))
         val secrets = TaskerSecrets(this)
+        val caller = caller()
         setContent {
             LumennaTheme {
                 Surface(Modifier.fillMaxSize()) {
                     core.fold(
                         onSuccess = { opened ->
-                            TaskerSetup(opened, before) { operation, values, shown ->
+                            TaskerSetup(opened, before, caller) { operation, values, shown ->
                                 val secret = secrets.forSaving(before?.secret)
                                 secrets.keep(secret, operation)
                                 setResult(Activity.RESULT_OK, Tasker.edited(TaskerAction(operation, values, shown, secret)))
@@ -94,21 +95,32 @@ class TaskerEditActivity : ComponentActivity() {
             }
         }
     }
+
+    /**
+     * The name of the app that opened the setup and will run the action, as the system labels
+     * it, so the consent names whom it lets act; empty when the system will not say.
+     */
+    private fun caller(): String = runCatching {
+        val name = callingActivity?.packageName ?: callingPackage ?: return ""
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(name, 0)).toString()
+    }.getOrDefault("")
 }
 
 /**
  * The setup itself: the core's operations an action may run, then the one chosen's fields, each
- * labelled and described in the core's words, with what it can be chosen from beside it.
- * [save] is given the operation, each value as typed (a Tasker variable among them) and each as
+ * labelled and described in the core's words, with what it can be chosen from beside it, and
+ * what saving lets [caller] (the app that opened it, by name; empty if unknown) do. [save] is
+ * given the operation, each value as typed (a Tasker variable among them) and each as
  * it was shown when chosen.
  */
 @Composable
 fun TaskerSetup(
     core: Core,
     before: TaskerAction?,
+    caller: String,
     save: (operation: String, values: Map<String, String>, shown: Map<String, String>) -> Unit,
 ) {
-    val words = remember { automationWords() }
+    val words = remember(caller) { automationWordsFor(caller) }
     val operations = remember { automationOperations() }
     // An action set up before opens on what it does; a new one on the choice of operation.
     var chosen by remember { mutableStateOf(operations.firstOrNull { it.id == before?.operation }) }
@@ -137,6 +149,7 @@ fun TaskerSetup(
         } else {
             Parameters(core, operation, values, shown, words.parameters, words.variables, words.destructive, words.nothingToChoose)
             var refused by remember(operation.id) { mutableStateOf<String?>(null) }
+            Text(words.consent, style = MaterialTheme.typography.bodyMedium)
             Button(
                 onClick = {
                     val given = automationFields(operation.id).map { AutomationGiven(it.name, values[it.name].orEmpty()) }

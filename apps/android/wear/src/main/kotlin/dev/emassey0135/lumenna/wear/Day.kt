@@ -29,7 +29,6 @@ import dev.emassey0135.lumenna.Option
 import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.RowAction
-import dev.emassey0135.lumenna.levelChange
 import dev.emassey0135.lumenna.commandTitle
 import java.time.LocalDate
 

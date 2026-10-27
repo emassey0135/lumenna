@@ -5,6 +5,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PlaceRowsTest {
+    // The core's `levels`, as its own tests have it, without the native library.
+    private val levels = { depths: List<UInt> ->
+        depths.mapIndexed { index, depth -> if (depth != (depths.getOrNull(index - 1) ?: 0u)) "level ${depth + 1u}" else null }
+    }
+
     @Test
     fun aRowIsOpenWhileItOffersCollapseAndWhatIsUnderAFoldedOneIsHidden() {
         val rows = placeRowsWithin(
@@ -15,7 +20,7 @@ class PlaceRowsTest {
                 project("Home", 1u, folded = true),
                 project("Garden", 2u),
             ),
-            word = { "level ${it + 1u}" },
+            levels = levels,
         )
         assertEquals(listOf(true, true, null, false, null), rows.map { it.expanded })
         assertEquals(listOf(false, false, false, false, true), rows.map { it.hidden })
@@ -33,7 +38,7 @@ class PlaceRowsTest {
                 project("Reports", 2u),
                 group(SidebarGroup.LABELS),
             ),
-            word = { "level ${it + 1u}" },
+            levels = levels,
         )
         assertEquals(listOf(false, true, true, false), rows.map { it.hidden })
     }

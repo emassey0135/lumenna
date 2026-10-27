@@ -132,12 +132,12 @@ sealed interface Screen {
 
 /**
  * The four tabs, as on the iPhone: each its own back stack. Named as the core names the places
- * and the commands that go to them; Browse, the iPhone's own, is a tab no other app has.
+ * and the commands that go to them; Browse, the phones' own, is a tab no desktop app has.
  */
 enum class Tab(private val named: () -> String, val icon: ImageVector, val root: Screen) {
     TODAY({ placeTitle(Place.Today) }, Icons.Filled.DateRange, Screen.Day()),
     TASKS({ placeTitle(Place.Tasks) }, Icons.Filled.CheckCircle, Screen.Tasks()),
-    BROWSE({ "Browse" }, Icons.AutoMirrored.Filled.List, Screen.Browse),
+    BROWSE({ dev.emassey0135.lumenna.app.browse(true) }, Icons.AutoMirrored.Filled.List, Screen.Browse),
     SETTINGS({ Command.SETTINGS.title }, Icons.Filled.Settings, Screen.Settings),
     ;
 

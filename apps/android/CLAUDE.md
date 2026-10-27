@@ -84,10 +84,14 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   left out, Export and Import on the watch, which has nowhere to save a file. Where they are
   Android's own (whether notifications and exact alarms are allowed), the words are
   `notification_words`.
-- **An overrun's Replan** is the app's `DueEvent.Replan`, so replanning dismisses the warning on
-  every device: the notification carries its firing, and the app looks at that one moment first
-  (`DueEvent.Look`), since its own list of what is due is not filled by Android's alarms
-  (`AppModel.replan`).
+- **An overrun's Replan** from its notification is the app's `DueEvent.ReplanFiring(key,
+  occurrence)`, the firing the notification carries, so replanning dismisses the warning on every
+  device though the app's own list of what is due, which Android's alarms do not fill, never held
+  it (`AppModel.replan`). Never `ProposalEvent.Replan`.
+- **The version and name are the workspace's** (`[workspace.metadata.lumenna]` in the root
+  `Cargo.toml`), read by the root build script into `versionName`, a `versionCode` counting up
+  with it and the `app_name` resource, for the phone and the watch: a version bump is one edit
+  there. A test of the core checks the build scripts read them.
 - **Material's text and outlined buttons are 40dp**, and a radio row is as tall as its
   padding: both fail the touch-target check. `Target` gives 48dp.
 - **A row is one node** (`ListRow`: `clearAndSetSemantics`, custom actions) with one
@@ -101,7 +105,9 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   value by its key (`BlockFields.text`), the kind and the colour alike.
 - **Nested lists fold, as the app folds them**: a row with something under it has the app's
   Collapse or Expand among its actions and says which it is. The level is the app's, said
-  against the row shown before, after folding.
+  against the row shown before, after folding; a list the app narrows or cuts out itself (a pick
+  narrowed by typing, Browse's groups, the details' projects) takes the core's `levels(depths)`
+  (`levelsOf`), so no Kotlin counts where a level changes.
 - **What changes say, the phone shows as a snackbar**, a newer one taking the place of the one
   showing (`collectLatest`), which TalkBack has begun saying: waiting for each, the last of a
   run came long after. The announcements are a buffer of 64 that drops the oldest, so a run
@@ -220,7 +226,7 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   from an annotation written ahead (`@AppFunctionInstruction`), so the table's words are copied
   there, and `AppFunctionsTest` reads the indexed XML and fails when a function is missing, extra,
   or worded or parametered otherwise than the table: an operation added to the table needs its
-  function. The records answered (`functions/Records.kt`) carry each answer's announcement and
+  function. It is in the smoke set, so a branch that adds an operation finds out there. The records answered (`functions/Records.kt`) carry each answer's announcement and
   identifiers; a replan or day plan is carried field for field, since it goes back whole.
 - **Tasker's action plugin is the core's automation** (`tasker/`, `records::automation`), spoken
   directly over Locale's API rather than through joaomgcd's Tasker Plugin library, which runs
@@ -282,7 +288,8 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   checks against `controls()`.
 - **The system's search index holds the core's search documents** (`SearchIndex`,
   `androidx.appsearch` platform storage, Android 12 and later): `Device.searchDocuments()`, one
-  `GenericDocument` each under a schema of `SearchDocument`'s fields, written again as the store
+  `GenericDocument` each under a schema of `SearchDocument`'s fields (a task's with its
+  `SearchTask`: project, labels, priority, states, done…), written again as the store
   changes (a fingerprint per document, kept in preferences, says what changed and what went).
   Visible to the system's UI, the home screen's and assistant's search, and to callers that may
   execute App Functions, so an agent finds a task there to name it to a function. What matches

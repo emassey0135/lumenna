@@ -19,23 +19,20 @@ data class Option(
 )
 
 /**
- * "level 2" where an option's level changes from the option shown before it, or nothing:
- * indentation alone says nothing aloud. For a list narrowed by typing, where the core's level,
- * against the whole list, no longer follows the option before; the words are the core's.
+ * The core's "level 2" where each of [depths], rows shown in order, changes from the one before,
+ * else null: for a list a shell narrows or cuts out itself, so no shell counts levels.
  */
-fun levelChange(shown: List<Option>, index: Int, word: (UInt) -> String = { dev.emassey0135.lumenna.app.levelWords(it) }): String? {
-    val previous = if (index > 0) shown[index - 1].depth else 0
-    val depth = shown[index].depth
-    return if (depth != previous) word(depth.toUInt()) else null
-}
-
-/** These options, each with its level where it changes from the one before, for a list the core gives no lines for. */
-fun List<Option>.leveled(word: (UInt) -> String = { dev.emassey0135.lumenna.app.levelWords(it) }): List<Option> =
-    mapIndexed { index, option -> option.copy(level = levelChange(this, index, word)) }
+@OptIn(ExperimentalUnsignedTypes::class)
+fun levelsOf(depths: List<UInt>): List<String?> =
+    dev.emassey0135.lumenna.app.levels(depths.toUIntArray()).map { it.ifEmpty { null } }
 
 /**
- * What tells an option apart beneath its title: its detail and its level where that changes,
- * the core's in a [whole] list, else worked out against the options shown.
+ * These options, each with its level where it changes from the one shown before it: for a list
+ * the core gives no lines for, or one narrowed by typing, where the core's level, against the
+ * whole list, no longer follows the option before. [levels] is the core's ([levelsOf]).
  */
-fun detailOf(shown: List<Option>, index: Int, whole: Boolean = true, word: (UInt) -> String = { dev.emassey0135.lumenna.app.levelWords(it) }): String =
-    listOfNotNull(shown[index].detail.ifEmpty { null }, if (whole) shown[index].level else levelChange(shown, index, word)).joinToString(", ")
+fun List<Option>.leveled(levels: (List<UInt>) -> List<String?> = ::levelsOf): List<Option> =
+    zip(levels(map { it.depth.toUInt() })) { option, level -> option.copy(level = level) }
+
+/** What tells an option apart beneath its title: its detail, and its level where that changes. */
+fun detailOf(option: Option): String = listOfNotNull(option.detail.ifEmpty { null }, option.level).joinToString(", ")

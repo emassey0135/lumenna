@@ -16,8 +16,10 @@ android {
         // Wear OS 3, the oldest any current watch runs.
         minSdk = 30
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // The workspace's, from its Cargo.toml (the root build script).
+        versionCode = rootProject.extra["lumennaVersionCode"] as Int
+        versionName = rootProject.extra["lumennaVersion"] as String
+        resValue("string", "app_name", rootProject.extra["lumennaName"] as String)
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // A watch's ABIs: many Wear OS watches run a 32-bit Android, and the emulator x86_64
         // on Intel machines and CI.
@@ -36,6 +38,8 @@ android {
 
     buildFeatures {
         compose = true
+        // The app's name, from the workspace's metadata.
+        resValues = true
     }
 }
 

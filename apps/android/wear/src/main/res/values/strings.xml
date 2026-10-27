@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Lumenna</string>
     <!-- The tile and the complication as the watch's pickers list them, which a manifest names ahead. -->
     <string name="tile_today">Today</string>
     <string name="tile_today_description">What is happening now, what is next, and the timer running</string>

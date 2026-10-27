@@ -10,6 +10,7 @@ import android.service.quicksettings.TileService
 import dev.emassey0135.lumenna.app.LumennaError
 import dev.emassey0135.lumenna.app.TimerControl
 import dev.emassey0135.lumenna.app.controls
+import dev.emassey0135.lumenna.app.timerDescribed
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -106,15 +107,20 @@ class TimerTile : TileService() {
          * press would do nothing. Beside it the task (or why nothing would start), else, behind a
          * secure lock, only what a press does; after a press, what the core said of it.
          */
-        fun shown(control: TimerControl, locked: Boolean, said: String? = null, name: String = name()): Shown {
+        fun shown(
+            control: TimerControl,
+            locked: Boolean,
+            said: String? = null,
+            name: String = name(),
+            described: (name: String, action: String, detail: String, locked: Boolean) -> String = ::timerDescribed,
+        ): Shown {
             val state = when {
                 !control.enabled -> Tile.STATE_UNAVAILABLE
                 control.running -> Tile.STATE_ACTIVE
                 else -> Tile.STATE_INACTIVE
             }
             val detail = if (locked) control.actionSentence else said ?: control.detail
-            val description = if (locked) listOf(name, control.actionSentence) else listOf(name, control.actionSentence, detail)
-            return Shown(state, name, detail, description.filter { it.isNotBlank() }.joinToString(", "))
+            return Shown(state, name, detail, described(name, control.actionSentence, detail, locked))
         }
 
         /** Asks the system to have the tile draw itself again, though Quick Settings is closed. */
