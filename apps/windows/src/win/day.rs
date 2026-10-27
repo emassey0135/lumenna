@@ -26,6 +26,7 @@ use super::rows::{Rows, Shown};
 use super::tree::Item;
 use super::view::{Metrics, View};
 use super::actions;
+use super::menu;
 
 const PREVIOUS: u16 = 500;
 const TODAY: u16 = 501;
@@ -40,12 +41,15 @@ pub struct DayView {
 
 impl DayView {
     pub fn create(_app: &App, pane: HWND) -> Rc<Self> {
-        let button = |text: &str, id: u16| controls::create(pane, WC_BUTTONW, text, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, id);
+        // Each the command's own, as the menus name it.
+        let button = |command: &str, id: u16| {
+            controls::create(pane, WC_BUTTONW, &menu::button(command), BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, id)
+        };
         let buttons = [
-            button("Previous Day", PREVIOUS),
-            button("Today", TODAY),
-            button("Next Day", NEXT),
-            button("Add Block...", ADD),
+            button("previous-day", PREVIOUS),
+            button("go-today", TODAY),
+            button("next-day", NEXT),
+            button("new-block", ADD),
         ];
         Rc::new(Self { buttons, rows: Rows::create(pane, TREE, "The day", false) })
     }

@@ -168,6 +168,14 @@ pub fn windows_title<'a>(id: &str, title: &'a str) -> &'a str {
     if id == "quit" { "Exit" } else { title }
 }
 
+/// A button that runs a command, as its menu item names it: an ellipsis when it asks first, and
+/// without the menu's access key or keys.
+pub fn button(id: &str) -> String {
+    let Some(command) = keys::command_of(id) else { return String::new() };
+    let title = windows_title(id, command.title);
+    if command.asks { format!("{title}...") } else { title.to_owned() }
+}
+
 /// A menu item's text: its name as Windows words it with its access key marked, an ellipsis when
 /// it asks first, and its keys after a tab.
 pub fn text(id: &str, title: &str, asks: bool, keys: &[String], letters: &[(&str, char)]) -> String {

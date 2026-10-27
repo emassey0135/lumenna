@@ -23,7 +23,7 @@ use lumenna_app::settings::SettingsEvent;
 use lumenna_app::{ActingOn, BackgroundEvent, DevicesEvent, Side, ViewModel};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::background::BackgroundKind;
-use lumenna_records::fields::{SettingWords, SettingsPage, settings_pages, setting_words};
+use lumenna_records::fields::{SettingWords, SettingsPage, file_words, settings_pages, setting_words};
 use lumenna_records::{ActionKind, ExportFormat, Offered, Setting, SettingKind};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
@@ -148,7 +148,7 @@ pub fn show(app: &App, id: &str) {
     });
     app.open_settings(Some(Rc::clone(&open)));
     let pages: Vec<&dyn Dialog> = open.pages.iter().map(|page| page as &dyn Dialog).collect();
-    dialog::sheet(app.main, "Settings", &pages, start);
+    dialog::sheet(app.main, lumenna_app::keys::command_of("settings").map_or("", |c| c.title), &pages, start);
     app.open_settings(None);
     app.crux.send(ShellEvent::Settings(SettingsEvent::Close));
     let live = open.live.get();
@@ -173,7 +173,7 @@ pub fn save(owner: HWND, file: &lumenna_app::SaveFile) {
     let extension = file.name.rsplit('.').next().unwrap_or("txt").to_owned();
     let pattern = format!("*.{extension}");
     let kind = format!("{} files", extension.to_uppercase());
-    let Some(path) = system::save_file(owner, "Save", &file.name, &[(&kind, &pattern)]) else { return };
+    let Some(path) = system::save_file(owner, &file_words(false).export, &file.name, &[(&kind, &pattern)]) else { return };
     // The dialog already asked about replacing a file that was there.
     if let Err(error) = std::fs::write(&path, &file.bytes) {
         prompts::fail(owner, &format!("Lumenna could not save {}. {error}.", path.display()));
@@ -535,15 +535,10 @@ impl Page {
             // Into this device's backups, as the automatic ones are; where is said on this page,
             // the dialog in front, once it is taken.
             "back-up" => app.back_up(),
-            "restore-backup" => import(sheet(page), &self.button_title(id), &BACKUPS),
-            "import" => import(sheet(page), &self.button_title(id), &IMPORTABLE),
+            "restore-backup" => import(sheet(page), &file_words(false).restore, &BACKUPS),
+            "import" => import(sheet(page), &file_words(false).import, &IMPORTABLE),
             _ => {}
         }
-    }
-
-    /// A button's name, as the core words it: a file dialog it opens is titled so.
-    fn button_title(&self, id: &str) -> String {
-        self.page.buttons.iter().find(|b| b.id == id).map(|b| b.title.clone()).unwrap_or_default()
     }
 }
 
@@ -876,7 +871,7 @@ impl Dialog for Recorder {
             .item(Class::Static, "&Keys:", u16::MAX, 0, 7, 38, 226, 9)
             .named("msctls_hotkey32", "", KEYS, WS_BORDER.0 | WS_TABSTOP.0, 7, 48, 226, 14)
             .item(Class::Button, "OK", IDOK.0 as u16, windows::Win32::UI::WindowsAndMessaging::BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 129, 71, 50, 14)
-            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, BUTTON, 183, 71, 50, 14)
+            .item(Class::Button, &lumenna_records::words::cancel(false), IDCANCEL.0 as u16, BUTTON, 183, 71, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {

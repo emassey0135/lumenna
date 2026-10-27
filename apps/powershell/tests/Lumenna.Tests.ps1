@@ -282,6 +282,21 @@ Describe 'Round trips' {
         @((Get-LumennaDay -Date tomorrow).blocks | ForEach-Object { $_.assignments }).Count | Should -Be 1
     }
 
+    It 'times a sitting down the pipeline, and stops the timer running with no sitting given' {
+        $task = (Add-LumennaTask 'deep work on the draft').task.id
+        Add-LumennaTask 'block Writing 12am to 11:59pm every day' | Out-Null
+        $block = @((Get-LumennaDay).blocks)[0].id
+        Add-LumennaSitting -Task $task -Block $block -Minutes 30 | Out-Null
+        $sittings = @((Get-LumennaDay).blocks | ForEach-Object { $_.assignments })
+        ($sittings | Start-LumennaTimer).changed | Should -BeTrue
+        (Get-LumennaTimer).running | Should -BeTrue
+        ($sittings | Stop-LumennaTimer).changed | Should -BeTrue
+        (Get-LumennaTimer).running | Should -BeFalse
+        $sittings | Start-LumennaTimer | Out-Null
+        (Stop-LumennaTimer).changed | Should -BeTrue
+        (Get-LumennaTimer).running | Should -BeFalse
+    }
+
     It 'runs any operation by its id, and lists every one with its cmdlet' {
         Invoke-LumennaOperation add_task @{ text = 'by its id' } | Out-Null
         @(Invoke-LumennaOperation list_tasks | ForEach-Object { $_.title }) | Should -Be @('by its id')

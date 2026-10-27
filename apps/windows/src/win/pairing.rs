@@ -130,7 +130,7 @@ impl Dialog for Pairing {
             .item(Class::Edit, "", THEIR_CODE, field, 7, 106, 266, 14)
             .item(Class::Button, &key(&words.join, 'P'), WITH_CODE, button, 7, 124, 120, 14)
             .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 144, 266, 28)
-            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, button, 223, 176, 50, 14)
+            .item(Class::Button, &lumenna_records::words::cancel(false), IDCANCEL.0 as u16, button, 223, 176, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {

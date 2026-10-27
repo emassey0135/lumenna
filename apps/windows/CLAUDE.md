@@ -95,6 +95,12 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   "Lumenna <profile key>" for each other (`tray::profile_key`), so each profile's is its own, and
   it counts as on only while it starts this executable on this profile; `LUMENNA_RUN_NAME` for
   tests, so they never change the person's.
+- **What Lumenna is, its name, version, publisher, links and identity, is the workspace's
+  `[workspace.metadata.lumenna]`**, read as each package is built, never copied into it: the Inno
+  Setup script reads Cargo.toml itself (ISPP's `ReadIni`), and `pack.ps1` and `test.ps1` through
+  `installer/metadata.ps1`, filling the MSIX manifest's `@NAME@`, `@DESCRIPTION@` and
+  `@VERSION@`. `records`' metadata test holds both to it. About is the core's
+  `words::metadata`.
 - **The installer is Inno Setup's** (`installer/lumenna.iss`, built per architecture by
   `release.yml`): the app and `lum` for one person, with no administrator, into
   `%LOCALAPPDATA%\Programs\Lumenna`, `lum` on their `PATH`, the Start menu shortcut carrying the
@@ -223,8 +229,9 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   (`lumenna_app::due::arrived`: the summary of what was missed, then each due) with its buttons
   in the core's order and words (`Due::buttons`): Carry Forward and Replan where a firing has
   them, then Dismiss and Snooze; a button's sentence is its change's, else the core's `said`.
-  An overrun's Replan is the app's Replan from Now over Today, not `DueEvent::Replan`, which
-  works on the reminders the app looked for itself. Tests can read a shown toast's XML from the
+  An overrun's Replan is `DueEvent::ReplanFiring`, naming the firing as the device delivered it
+  (not `DueEvent::Replan`, which works on the reminders the app looked for itself): the app opens
+  Today with Replan from Now and dismisses the warning once something is replanned. Tests can read a shown toast's XML from the
   notification history but cannot press its buttons, so what each button does is checked by
   hand.
 - **UI tests** (`tests/ui.rs`) drive the real app and assert on UI Automation. They take the

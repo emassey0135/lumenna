@@ -269,7 +269,7 @@ unsafe extern "system" fn sheet_callback(hwnd: HWND, message: u32, _lparam: LPAR
         }
         dark::window(hwnd);
         controls::show(item(hwnd, IDOK.0 as u16), false);
-        controls::set_text(item(hwnd, IDCANCEL.0 as u16), "Close");
+        controls::set_text(item(hwnd, IDCANCEL.0 as u16), &lumenna_records::words::close(false));
     }
     0
 }

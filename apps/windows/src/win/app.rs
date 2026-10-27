@@ -355,7 +355,7 @@ impl App {
             }
         };
         // In this order, which is also the order Tab goes through them.
-        let panes = [pane("Places"), pane("List"), pane("Task details")];
+        let panes = [pane("Places"), pane("List"), pane(&lumenna_records::fields::details_words(false).title)];
         let status = controls::create(main, WC_STATICW, "", SS_NOPREFIX.0 | SS_ENDELLIPSIS.0, 0, 0);
         a11y::make_live(status);
         let sidebar = Sidebar::create(panes[0]);
@@ -1177,7 +1177,7 @@ impl App {
             "settings" => settings::show(self, "general"),
             "devices" => settings::show(self, "devices"),
             "export-import" => settings::show(self, "export"),
-            "restore-backup" => settings::import(self.main, "Restore from a Backup", &settings::BACKUPS),
+            "restore-backup" => settings::import(self.main, &lumenna_records::fields::file_words(false).restore, &settings::BACKUPS),
             // This device's own backup, into its backups, as the automatic ones are.
             "back-up" => self.back_up(),
             "new-task" => self.quick_add(false),
@@ -1246,16 +1246,24 @@ impl App {
         }
     }
 
-    /// About Lumenna: its version, what it is in the core's words, and where its data is.
+    /// About Lumenna: what it is, from the core's one source (`words::metadata`), and where this
+    /// profile's data is.
     fn about(&self) {
+        let m = lumenna_records::words::metadata();
         let text = format!(
-            "Lumenna {}\n\n{}.\nData folder: {}",
-            env!("CARGO_PKG_VERSION"),
-            lumenna_records::words::DESCRIPTION,
+            "{} {}\n{}.\n\n{}, {}\n{}\n{}\n\nData folder: {}",
+            m.name,
+            m.version,
+            m.description,
+            m.publisher,
+            m.licence,
+            m.homepage,
+            m.issues,
             self.directory.display()
         );
+        let title = lumenna_app::keys::command_of("about").map_or("About", |command| command.title);
         unsafe {
-            MessageBoxW(Some(self.main), &HSTRING::from(text), w!("About Lumenna"), MB_OK | MB_ICONINFORMATION);
+            MessageBoxW(Some(self.main), &HSTRING::from(text), &HSTRING::from(title), MB_OK | MB_ICONINFORMATION);
         }
     }
 
@@ -1438,14 +1446,14 @@ impl App {
             "dismiss" => firings.iter().map(|f| self.device.dismiss_reminder(f.key.clone(), f.occurrence.clone())).collect(),
             "snooze" => firings.iter().map(|f| self.device.snooze_reminder(f.key.clone(), f.occurrence.clone(), None)).collect(),
             "carry" => firings.iter().map(|f| self.device.carry_rest_forward(format!("{}@{}", f.target, f.occurrence))).collect(),
-            // Today, with the app's Replan from Now open over it, once the window is in front.
-            // Not the app's `DueEvent::Replan`, which also dismisses the warning once something is
-            // replanned: that works on the reminders the app looked for itself, and these are the
-            // device's own delivery.
+            // The app's Today with Replan from Now open over it, the window in front: the firing
+            // named as the device delivered it, so the app dismisses its warning once something
+            // is replanned.
             "replan" => {
+                let Some(firing) = firings.into_iter().next() else { return };
                 self.show_window();
-                self.go(Place::Today, true);
-                return self.crux.send(ShellEvent::Proposal(lumenna_app::ProposalEvent::Replan));
+                let replan = lumenna_app::DueEvent::ReplanFiring { key: firing.key, occurrence: firing.occurrence };
+                return self.crux.send(ShellEvent::Due(replan));
             }
             _ => return,
         };

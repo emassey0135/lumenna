@@ -159,7 +159,7 @@ impl Dialog for Reminders {
         }
         template
             .item(Class::Button, "", ITS, button, x, 126, 80, 14)
-            .item(Class::Button, "Close", IDCANCEL.0 as u16, button, 203, 172, 50, 14)
+            .item(Class::Button, &lumenna_records::words::close(false), IDCANCEL.0 as u16, button, 203, 172, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {

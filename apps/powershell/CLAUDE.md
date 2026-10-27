@@ -27,6 +27,10 @@ one `lum rpc` the module keeps for its session. `Lumenna/` is the module as it s
   When the table changes, add the operation's name to `Cmdlets.psd1` and to the manifest's
   `FunctionsToExport`, then run it with the `lum` this tree builds on `PATH`. The tests run it
   with `-Check` and fail on any difference.
+- **The manifest's version, author, copyright and links are the workspace's**
+  (`[workspace.metadata.lumenna]` in Cargo.toml): `Write-Operations.ps1` writes them into
+  `Lumenna.psd1`, which is data PowerShell reads before anything of the module runs, and `-Check`
+  fails while they differ. A version is changed in Cargo.toml, then the generator run.
 - **`Cmdlets.psd1` is the only naming that is the module's**, as App Intents' type names are
   Swift's: an approved verb and a noun per operation, a parameter renamed where the table's name
   reads badly here (`query` is `-Filter`, `assignment` `-Sitting`, the table's name kept as an

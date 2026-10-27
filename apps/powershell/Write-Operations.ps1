@@ -7,7 +7,8 @@ Reads every operation of the assistant table (`assist.list` over `lum rpc`, whic
 `lum assist --list` writes too) and the module's naming of each in Cmdlets.psd1, and writes
 Lumenna/Lumenna.Operations.ps1: a cmdlet per operation, its help the table's words, its
 parameters of the types the table's kinds say, -WhatIf and -Confirm on what changes the store.
-Run it again whenever the table changes.
+It also writes what Lumenna.psd1 says of the module that the workspace's Cargo.toml says first:
+its version, author, copyright and links. Run it again whenever the table or those change.
 
 With -Check it writes nothing, and fails if the file is not what it would write: the Pester
 tests run it so, so a cmdlet cannot fall behind the table.
@@ -300,12 +301,50 @@ foreach ($name in $cmdlets.Keys) {
 }
 
 $written = $out.ToString()
+
+# The manifest says what the module is as the workspace's Cargo.toml does
+# ([workspace.metadata.lumenna], the licence from [workspace.package]), so a version is changed
+# there alone and written here: a module's manifest is data, read before anything of it could run.
+$lumenna = @{}
+$section = ''
+foreach ($line in [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '../../Cargo.toml'))) {
+    if ($line -match '^\s*\[(.+)\]\s*$') { $section = $Matches[1]; continue }
+    if ($line -notmatch '^\s*(\w+)\s*=\s*"(.*)"\s*$') { continue }
+    if ($section -eq 'workspace.metadata.lumenna') { $lumenna[$Matches[1]] = $Matches[2] }
+    elseif ($section -eq 'workspace.package' -and $Matches[1] -eq 'license') { $lumenna['licence'] = $Matches[2] }
+}
+foreach ($key in 'version', 'publisher', 'homepage', 'licence') {
+    if (-not $lumenna.ContainsKey($key)) { throw "The workspace's Cargo.toml says no $key of Lumenna ([workspace.metadata.lumenna])." }
+}
+$said = [ordered]@{
+    ModuleVersion = $lumenna.version
+    Author        = $lumenna.publisher
+    Copyright     = "(c) $($lumenna.publisher). $($lumenna.licence)."
+    LicenseUri    = "$($lumenna.homepage)/blob/master/LICENSE"
+    ProjectUri    = $lumenna.homepage
+}
+$manifestPath = Join-Path $PSScriptRoot 'Lumenna/Lumenna.psd1'
+$manifestText = [IO.File]::ReadAllText($manifestPath)
+$stamped = $manifestText
+foreach ($key in $said.Keys) {
+    $pattern = "(?m)^(\s*$key\s*=\s*)'[^']*'"
+    if ([regex]::Matches($stamped, $pattern).Count -ne 1) { throw "Lumenna.psd1 has no one $key to write." }
+    $literal = "'" + ($said[$key] -replace "'", "''") + "'"
+    $stamped = [regex]::Replace($stamped, $pattern, '${1}' + $literal.Replace('$', '$$'))
+}
+
 if ($Check) {
     $current = if (Test-Path -LiteralPath $target) { [IO.File]::ReadAllText($target) -replace "`r`n", "`n" } else { '' }
     if ($current -ne $written) {
         throw "Lumenna.Operations.ps1 is not what the assistant table makes now: run apps/powershell/Write-Operations.ps1."
     }
+    if ($stamped -ne $manifestText) {
+        throw "Lumenna.psd1 does not say what the workspace's Cargo.toml does: run apps/powershell/Write-Operations.ps1."
+    }
 } else {
     # With a byte order mark, which Windows PowerShell 5.1 needs to read anything but ASCII as UTF-8.
     [IO.File]::WriteAllText($target, $written, (New-Object System.Text.UTF8Encoding $true))
+    if ($stamped -ne $manifestText) {
+        [IO.File]::WriteAllText($manifestPath, $stamped, (New-Object System.Text.UTF8Encoding ($stamped -match '[^\x00-\x7F]')))
+    }
 }

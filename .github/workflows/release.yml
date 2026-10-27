@@ -135,8 +135,8 @@ jobs:
       - name: The installer, the app and lum together
         shell: pwsh
         run: |
-          $version = (cargo pkgid -p lumenna-windows).Split('@')[-1]
-          & $env:ISCC /Qp "/DAppVersion=$version" "/DArch=${{ matrix.arch }}" "/DSource=$env:GITHUB_WORKSPACE\target\release" "/DOutput=$env:GITHUB_WORKSPACE\dist" apps\windows\installer\lumenna.iss
+          # Its name and version are the workspace's, which the script reads itself.
+          & $env:ISCC /Qp "/DArch=${{ matrix.arch }}" "/DSource=$env:GITHUB_WORKSPACE\target\release" "/DOutput=$env:GITHUB_WORKSPACE\dist" apps\windows\installer\lumenna.iss
           if ($LASTEXITCODE -ne 0) { throw "the installer did not build" }
           Get-ChildItem dist
       - name: It installs, puts lum on PATH, and uninstalls, keeping the store
@@ -161,21 +161,25 @@ jobs:
           if ((Get-ItemProperty HKCU:\Environment).Path -like "*$app*") { throw "the uninstaller left lum on the PATH" }
           if (-not (Test-Path "$store\kept")) { throw "a silent uninstall deleted the store" }
       - name: The MSIX for the Store, and a signed copy installed and checked
-        # Unsigned, as the Store takes it. Its identity is a stand-in until Partner Center gives
-        # the real one, set then as the repository's variables.
+        # Unsigned, as the Store takes it. Its name, version and, until Partner Center gives the
+        # real identity (set then as the repository's variables), its identity are the
+        # workspace's, which the scripts read themselves.
         shell: pwsh
         env:
-          IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'dev.emassey0135.Lumenna' }}
-          PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=Elijah Massey' }}
-          PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME || 'Elijah Massey' }}
+          IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME }}
+          PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+          PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}
         run: |
-          $version = (cargo pkgid -p lumenna-windows).Split('@')[-1]
+          # Only what is set, so an empty one never takes the next parameter's name as its value.
+          $identity = @()
+          if ($env:IDENTITY_NAME) { $identity += '-IdentityName', $env:IDENTITY_NAME }
+          if ($env:PUBLISHER) { $identity += '-Publisher', $env:PUBLISHER }
+          $display = if ($env:PUBLISHER_DISPLAY_NAME) { '-PublisherDisplayName', $env:PUBLISHER_DISPLAY_NAME } else { @() }
           $msix = powershell -NoProfile -ExecutionPolicy Bypass -File apps\windows\installer\msix\pack.ps1 `
-            -Arch ${{ matrix.arch }} -Version $version -Source "$env:GITHUB_WORKSPACE\target\release" -Output "$env:GITHUB_WORKSPACE\dist" `
-            -IdentityName $env:IDENTITY_NAME -Publisher $env:PUBLISHER -PublisherDisplayName $env:PUBLISHER_DISPLAY_NAME | Select-Object -Last 1
+            -Arch ${{ matrix.arch }} -Source "$env:GITHUB_WORKSPACE\target\release" -Output "$env:GITHUB_WORKSPACE\dist" `
+            @identity @display | Select-Object -Last 1
           if ($LASTEXITCODE -ne 0) { throw "the MSIX did not pack" }
-          powershell -NoProfile -ExecutionPolicy Bypass -File apps\windows\installer\msix\test.ps1 `
-            -Package $msix -IdentityName $env:IDENTITY_NAME -Publisher $env:PUBLISHER
+          powershell -NoProfile -ExecutionPolicy Bypass -File apps\windows\installer\msix\test.ps1 -Package $msix @identity
           if ($LASTEXITCODE -ne 0) { throw "the MSIX did not install and run" }
       - name: lum alone, for the command line without the app
         # A zip as Scoop and winget's portable packages take it, and as servers want it.

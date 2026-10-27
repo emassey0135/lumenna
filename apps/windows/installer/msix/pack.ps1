@@ -1,25 +1,31 @@
 # Packs Lumenna as an MSIX: the app and `lum` from -Source, the manifest beside this script filled
-# in, and its logos drawn from the app's icon at the sizes the manifest names. Unsigned: the
+# in, and its logos drawn from the app's icon at the sizes the manifest names. Its name,
+# description, version and publisher are the workspace's (`..\metadata.ps1`). Unsigned: the
 # Microsoft Store signs what it is given. Run by the release workflow, and by hand the same way:
 #
-#   powershell -File apps\windows\installer\msix\pack.ps1 -Arch x64 -Version 0.1.0 `
-#     -Source target\release -Output dist
+#   powershell -File apps\windows\installer\msix\pack.ps1 -Arch x64 -Source target\release -Output dist
 #
 # Windows PowerShell, for System.Drawing.
 param(
     [Parameter(Mandatory)] [ValidateSet('x64', 'arm64')] [string] $Arch,
-    [Parameter(Mandatory)] [string] $Version,
     [Parameter(Mandatory)] [string] $Source,
     [Parameter(Mandatory)] [string] $Output,
-    # Stand-ins until Partner Center gives the package's identity.
-    [string] $IdentityName = 'dev.emassey0135.Lumenna',
-    [string] $Publisher = 'CN=Elijah Massey',
-    [string] $PublisherDisplayName = 'Elijah Massey'
+    # Partner Center's identity once it gives one; until then, empty, the workspace's stand-ins:
+    # its id, and its publisher.
+    [string] $IdentityName,
+    [string] $Publisher,
+    [string] $PublisherDisplayName
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
 $here = $PSScriptRoot
+. "$here\..\metadata.ps1"
+$lumenna = Read-LumennaMetadata
+$Version = $lumenna.version
+if (-not $IdentityName) { $IdentityName = $lumenna.id }
+if (-not $Publisher) { $Publisher = "CN=$($lumenna.publisher)" }
+if (-not $PublisherDisplayName) { $PublisherDisplayName = $lumenna.publisher }
 $root = (Resolve-Path "$here\..\..\..\..").Path
 $layout = Join-Path ([IO.Path]::GetTempPath()) "lumenna-msix-$Arch"
 Remove-Item -Recurse -Force $layout -ErrorAction SilentlyContinue
@@ -35,6 +41,9 @@ $manifest = Get-Content -Raw "$here\AppxManifest.xml"
 $manifest = $manifest.Replace('@IDENTITY_NAME@', $IdentityName).Replace('@PUBLISHER@', [Security.SecurityElement]::Escape($Publisher))
 $manifest = $manifest.Replace('@PUBLISHER_DISPLAY_NAME@', [Security.SecurityElement]::Escape($PublisherDisplayName))
 $manifest = $manifest.Replace('@VERSION@', $packageVersion).Replace('@ARCH@', $Arch)
+$manifest = $manifest.Replace('@NAME@', [Security.SecurityElement]::Escape($lumenna.name))
+$manifest = $manifest.Replace('@DESCRIPTION@', [Security.SecurityElement]::Escape($lumenna.description))
+if ($manifest -match '@[A-Z_]+@') { throw "The manifest has $($Matches[0]) left unfilled" }
 [IO.File]::WriteAllText("$layout\AppxManifest.xml", $manifest, (New-Object Text.UTF8Encoding $false))
 
 # The logos, square, from the largest of the icon's images (GTK's, which Windows' is drawn from).

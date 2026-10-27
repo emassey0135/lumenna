@@ -19,6 +19,7 @@ use super::rows::{Rows, Shown};
 use super::tree::Item;
 use super::view::{Metrics, View};
 use super::actions;
+use super::menu;
 
 const TREE: u16 = 600;
 const ADD: u16 = 601;
@@ -34,7 +35,7 @@ impl BlockList {
         // The count first: an empty static made after the button would be named after it.
         let count = controls::create(pane, WC_STATICW, "", SS_NOPREFIX.0, 0, 0);
         // The day's own button, as the day has it: a new block, which the app lands on here.
-        let add = controls::create(pane, WC_BUTTONW, "Add Block...", BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, ADD);
+        let add = controls::create(pane, WC_BUTTONW, &menu::button("new-block"), BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, ADD);
         let rows = Rows::create(pane, TREE, "Blocks", false);
         Rc::new(Self { add, count, rows })
     }

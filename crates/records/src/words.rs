@@ -788,12 +788,30 @@ mod tests {
             assert!(metainfo.contains(&line), "the metainfo says {line}");
         }
         assert!(metainfo.contains(&format!("<name>{}</name>", m.publisher)), "the metainfo's developer");
+        // Windows' packages are filled in from the workspace as they are built, so they say it in
+        // no words of their own: the MSIX's manifest by `pack.ps1`, through `metadata.ps1`, and
+        // Inno Setup's script by reading the table itself.
         let msix = repo_file("apps/windows/installer/msix/AppxManifest.xml");
-        assert!(msix.contains(&format!("Description=\"{}\"", m.description)), "the MSIX's description");
-        assert!(msix.contains(&format!("<DisplayName>{}</DisplayName>", m.name)), "the MSIX's name");
+        let app = msix.lines().find(|line| line.contains("<uap:VisualElements") && line.contains("@NAME@")).unwrap_or_default();
+        assert!(app.contains(r#"Description="@DESCRIPTION@""#), "the MSIX's app takes the workspace's description: {app}");
+        assert!(msix.contains("<DisplayName>@NAME@</DisplayName>"), "the MSIX takes the workspace's name");
+        assert!(msix.contains(r#"Version="@VERSION@""#), "the MSIX takes the workspace's version");
+        let pack = repo_file("apps/windows/installer/msix/pack.ps1");
+        for part in ["Read-LumennaMetadata", "$lumenna.version", "'@NAME@'", "'@DESCRIPTION@'"] {
+            assert!(pack.contains(part), "pack.ps1 fills the manifest from the workspace: {part}");
+        }
+        assert!(repo_file("apps/windows/installer/metadata.ps1").contains("workspace.metadata.lumenna"), "metadata.ps1 reads the workspace");
         let inno = repo_file("apps/windows/installer/lumenna.iss");
-        for line in [format!("AppName={}", m.name), format!("AppPublisher={}", m.publisher), format!("AppPublisherURL={}", m.homepage)] {
-            assert!(has_line(&inno, &line), "the installer says {line}");
+        assert!(
+            has_line(&inno, r#"#define Workspace AddBackslash(SourcePath) + "..\..\..\Cargo.toml""#),
+            "the installer reads the workspace's Cargo.toml"
+        );
+        for (define, key) in [("Name", "name"), ("AppVersion", "version"), ("Publisher", "publisher"), ("Homepage", "homepage"), ("Issues", "issues"), ("AppUserModelId", "id")] {
+            let line = format!(r#"#define {define} ReadIni(Workspace, "workspace.metadata.lumenna", "{key}")"#);
+            assert!(has_line(&inno, &line), "the installer reads its {key}: {line}");
+        }
+        for line in ["AppName={#Name}", "AppVersion={#AppVersion}", "AppPublisher={#Publisher}", "AppPublisherURL={#Homepage}", "AppSupportURL={#Issues}"] {
+            assert!(has_line(&inno, line), "the installer says {line}");
         }
         // Android's builds read the version and name from the workspace itself, written nowhere else.
         assert!(repo_file("apps/android/build.gradle.kts").contains("\"workspace.metadata.lumenna\""), "Gradle reads the workspace's metadata");
@@ -845,13 +863,6 @@ mod tests {
             assert!(text.contains("<key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>"), "{plist}'s version");
             assert!(text.contains("<key>CFBundleDisplayName</key><string>$(LUMENNA_NAME)</string>"), "{plist}'s name");
         }
-    }
-
-    #[test]
-    fn the_windows_packages_app_says_what_lumenna_is_in_the_cores_words() {
-        let manifest = include_str!("../../../apps/windows/installer/msix/AppxManifest.xml");
-        let app = manifest.lines().find(|line| line.contains(r#"<uap:VisualElements DisplayName="Lumenna""#)).unwrap_or_default();
-        assert!(app.contains(&format!(r#"Description="{DESCRIPTION}""#)), "{app}");
     }
 
     #[test]
