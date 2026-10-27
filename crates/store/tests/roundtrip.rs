@@ -106,6 +106,7 @@ fn every_core_record_round_trips() {
         },
         acked_at: now(),
         acked_by: NodeId::from_bytes([9; 32]),
+        target: Some(ReminderTarget::Task(task.id)),
     };
     let device = Device {
         node_id: NodeId::from_bytes([3; 32]),

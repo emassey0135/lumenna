@@ -467,7 +467,7 @@ impl Lumenna {
         let acked_by = self.reminder_device().unwrap_or_else(|| NodeId::from_bytes([0; 32]));
         self.told(|store| {
             let snapshot = repaired(store);
-            let ack = ReminderAck { reminder_id, occurrence_date, action, acked_at: lumenna_core::time::now(), acked_by };
+            let ack = ReminderAck { reminder_id, occurrence_date, action, acked_at: lumenna_core::time::now(), acked_by, target: None };
             let change = edit::acknowledge(&snapshot, ack, said);
             if change.is_empty() {
                 return Ok(Change::unchanged("it was already dealt with"));

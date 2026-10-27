@@ -446,31 +446,31 @@ impl<'a, T: Transactable> Writer<'a, T> {
     /// way the user would expect. Sets get the opposite treatment for the opposite reason;
     /// see [`Writer::set_members`].
     ///
-    /// `known` names every field this build writes there. Any other a newer build wrote is
-    /// carried into the new map as it stands, as a record moved elsewhere keeps what this build
-    /// cannot read: replaced wholesale, it would be dropped by every edit an older build made.
-    pub(crate) fn set_nested<V, F>(
+    /// Whatever stood there that this build does not write, at any depth (a field a newer build
+    /// added to a due date's recurrence as much as to the due date), is carried into the new
+    /// map as it stands, as a record moved elsewhere keeps what this build cannot read:
+    /// replaced wholesale, it would be dropped by every edit an older build made. What this
+    /// build writes is found by writing `before` and `now` ([`Known::of`]): what `now` writes is
+    /// written, what only `before` wrote the edit took away, with anything inside it, and only
+    /// what neither names is carried.
+    pub(crate) fn set_nested<V: Nested + PartialEq>(
         &mut self,
         key: &str,
-        known: &[&str],
         before: Option<Option<&V>>,
         now: Option<&V>,
-        write: F,
-    ) -> Result<()>
-    where
-        V: PartialEq,
-        F: FnOnce(&mut Writer<'_, T>, &V) -> Result<()>,
-    {
+    ) -> Result<()> {
         if before == Some(now) {
             return Ok(());
         }
         match now {
             Some(value) => {
-                let kept = self.unknown_within(key, known)?;
+                let known = Known::of(value);
+                let was = before.flatten().map(Known::of);
+                let kept = self.unknown_within(key, &known, was.as_ref())?;
                 let mut nested = self.replace_map(key)?;
-                write(&mut nested, value)?;
-                for (field, raw) in kept {
-                    nested.put_raw(&field, &raw)?;
+                value.write(&mut nested)?;
+                for (path, raw) in kept {
+                    nested.put_raw(&path, &raw)?;
                 }
             }
             None => self.clear(key)?,
@@ -478,39 +478,119 @@ impl<'a, T: Transactable> Writer<'a, T> {
         Ok(())
     }
 
-    /// The fields of the nested map at `key` that `known` does not name, each by its key
-    /// within it (inline, the rest of its key after the map's prefix).
-    fn unknown_within(&self, key: &str, known: &[&str]) -> Result<Vec<(String, Raw)>> {
+    /// What stands in the nested map at `key` that `known` does not name, at any depth, each
+    /// by its path within it.
+    fn unknown_within(&self, key: &str, known: &Known, was: Option<&Known>) -> Result<Vec<(Vec<String>, Raw)>> {
         let full = self.full(key);
         if self.prefix.is_some() {
+            // Inline, a nested map's fields are keys `<map>.<field>.<field>…` of the collection.
             let nested = format!("{full}.");
             let mut kept = Vec::new();
             for k in self.tx.keys(&self.obj).filter(|k| k.starts_with(&nested)) {
-                let rest = &k[nested.len()..];
-                if known.contains(&rest.split('.').next().unwrap_or(rest)) {
+                let path: Vec<String> = k[nested.len()..].split('.').map(str::to_owned).collect();
+                if !Known::unnamed(Some(known), was, &path) {
                     continue;
                 }
                 if let Some((value, id)) = self.tx.get(&self.obj, k.as_str())? {
-                    kept.push((rest.to_owned(), Raw::read(&*self.tx, value, &id)));
+                    kept.push((path, Raw::read(&*self.tx, value, &id)));
                 }
             }
             return Ok(kept);
         }
         let Some((Value::Object(ObjType::Map), obj)) = self.tx.get(&self.obj, full.as_str())? else { return Ok(Vec::new()) };
-        Ok(match Raw::read_map(&*self.tx, &obj) {
-            Raw::Map(fields) => fields.into_iter().filter(|(field, _)| !known.contains(&field.as_str())).collect(),
-            _ => Vec::new(),
-        })
+        let mut kept = Vec::new();
+        Known::unknown_in(Some(known), was, Vec::new(), Raw::read_map(&*self.tx, &obj), &mut kept);
+        Ok(kept)
     }
 
-    /// Writes a value as it stood elsewhere at `key`: whole, or inline as the key it had.
-    fn put_raw(&mut self, key: &str, raw: &Raw) -> Result<()> {
-        match (&self.prefix, raw) {
-            (Some(_), Raw::Scalar(scalar)) => self.put(key, scalar.clone()),
-            (Some(_), Raw::Text(text)) => self.put(key, text.as_str()),
-            // The inline form holds nothing else.
-            (Some(_), _) => Ok(()),
-            (None, raw) => raw.write_at(self.tx, &self.obj, key),
+    /// Writes a value as it stood elsewhere at `path` within this map, making the maps on the
+    /// way: whole, or inline as the key it had.
+    fn put_raw(&mut self, path: &[String], raw: &Raw) -> Result<()> {
+        let Some((last, within)) = path.split_last() else { return Ok(()) };
+        if self.prefix.is_some() {
+            let key = path.join(".");
+            return match raw {
+                Raw::Scalar(scalar) => self.put(&key, scalar.clone()),
+                Raw::Text(text) => self.put(&key, text.as_str()),
+                // The inline form holds nothing else.
+                _ => Ok(()),
+            };
+        }
+        match within.split_first() {
+            None => raw.write_at(self.tx, &self.obj, last),
+            Some((first, _)) => self.map(first)?.put_raw(&path[1..], raw),
+        }
+    }
+}
+
+/// A small composite written whole ([`Writer::set_nested`]).
+pub(crate) trait Nested {
+    /// Writes every field into `w`, a fresh map.
+    fn write<T: Transactable>(&self, w: &mut Writer<'_, T>) -> Result<()>;
+}
+
+/// The keys a composite's writing makes, at every depth: a map's keys, each with what it
+/// holds, or a value.
+#[derive(Debug, Default)]
+pub(crate) enum Known {
+    /// A value, or anything that is not a map: named whole.
+    #[default]
+    Value,
+    /// A map, by key.
+    Map(std::collections::BTreeMap<String, Known>),
+}
+
+impl Known {
+    /// What writing `value` makes, read back from a document of its own.
+    fn of<V: Nested>(value: &V) -> Self {
+        let mut scratch = automerge::AutoCommit::new();
+        let Ok(obj) = scratch.put_object(automerge::ROOT, "value", ObjType::Map) else { return Self::Value };
+        if value.write(&mut Writer::new(&mut scratch, obj.clone())).is_err() {
+            return Self::Value;
+        }
+        Self::from_raw(&Raw::read_map(&scratch, &obj))
+    }
+
+    fn from_raw(raw: &Raw) -> Self {
+        match raw {
+            Raw::Map(fields) => Self::Map(fields.iter().map(|(key, value)| (key.clone(), Self::from_raw(value))).collect()),
+            _ => Self::Value,
+        }
+    }
+
+    /// What `known` names at `key`, when it is a map; `None` when it names nothing there or
+    /// names the whole value (see [`unnamed`](Self::unnamed)).
+    fn at<'a>(known: Option<&'a Self>, key: &str) -> Option<&'a Self> {
+        match known {
+            Some(Self::Map(fields)) => fields.get(key),
+            _ => None,
+        }
+    }
+
+    /// Whether what stands at `path` is named neither by what is written now (`now`) nor by
+    /// what was there before (`was`), nor lies within a value either names whole: carried.
+    fn unnamed(now: Option<&Self>, was: Option<&Self>, path: &[String]) -> bool {
+        match (now, was, path.split_first()) {
+            (None, None, _) => true,
+            (Some(Self::Value), _, _) | (_, Some(Self::Value), _) | (_, _, None) => false,
+            // Written before and not now: the edit took it away, and what was inside it.
+            (None, Some(_), _) => false,
+            (Some(_), _, Some((first, rest))) => Self::unnamed(Self::at(now, first), Self::at(was, first), rest),
+        }
+    }
+
+    /// Everything in `raw`, the map at `path`, that [`unnamed`](Self::unnamed) would carry,
+    /// into `kept`.
+    fn unknown_in(now: Option<&Self>, was: Option<&Self>, path: Vec<String>, raw: Raw, kept: &mut Vec<(Vec<String>, Raw)>) {
+        let Raw::Map(values) = raw else { return };
+        for (key, value) in values {
+            let mut at = path.clone();
+            at.push(key.clone());
+            match (Self::at(now, &key), Self::at(was, &key)) {
+                (None, None) => kept.push((at, value)),
+                (Some(inner @ Self::Map(_)), was) => Self::unknown_in(Some(inner), was, at, value, kept),
+                _ => {}
+            }
         }
     }
 }

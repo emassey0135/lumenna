@@ -585,6 +585,7 @@ impl Lumenna {
                 assignment: id.to_string(),
                 minutes: elapsed.mins,
                 capped: elapsed.capped,
+                running: false,
             };
             if change.is_empty() {
                 return Ok(Timer {
@@ -632,6 +633,7 @@ impl Lumenna {
                 assignment: id.to_string(),
                 minutes,
                 capped,
+                running: false,
             };
 
             if let Some(minutes) = minutes {

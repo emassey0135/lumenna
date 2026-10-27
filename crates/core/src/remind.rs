@@ -82,6 +82,31 @@ pub fn zone_of(held: Option<&crate::model::TzName>, local: &TimeZone) -> TimeZon
     held.and_then(|name| name.get().ok()).unwrap_or_else(|| local.clone())
 }
 
+/// What the reminder `id` is for: an explicit reminder's target, or the task or block whose
+/// default reminder, carried-forward offer or overrun warning fires under `id`, with the default
+/// reminders as they are now. `None` when nothing in `snapshot` fires under it.
+#[must_use]
+pub fn target_of(snapshot: &Snapshot, id: ReminderId) -> Option<ReminderTarget> {
+    if let Some(reminder) = snapshot.reminders.get(&id) {
+        return Some(reminder.target);
+    }
+    let settings = &snapshot.settings;
+    let task = snapshot
+        .tasks
+        .keys()
+        .map(|task| ReminderTarget::Task(*task))
+        .find(|target| settings.default_task_reminders.iter().any(|trigger| default_key(target, trigger) == id));
+    task.or_else(|| {
+        snapshot.series.keys().find_map(|series| {
+            let target = ReminderTarget::Block(*series);
+            let fires = carry_key(*series) == id
+                || overrun_key(*series) == id
+                || settings.default_block_reminders.iter().any(|trigger| default_key(&target, trigger) == id);
+            fires.then_some(target)
+        })
+    })
+}
+
 /// The key a default reminder fires under: stable on every device, from the target and the
 /// trigger, so dismissing it anywhere dismisses it everywhere.
 #[must_use]

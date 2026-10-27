@@ -40,16 +40,33 @@ pub struct AutomationWords {
     pub choose_first: String,
     /// The refusal of a run the person did not set up on this device, or set up again since.
     pub not_set_up: String,
+    /// What saving consents to, naming the app that will run it: "Saving lets Tasker run this
+    /// in Lumenna whenever it likes, with nobody asked first." A sentence, as said.
+    pub consent: String,
 }
 
-/// What a screen setting up an action says (`AutomationWords`).
+/// What a screen setting up an action says (`AutomationWords`), of whichever app runs it.
 #[must_use]
 pub fn words() -> AutomationWords {
+    words_for(None)
+}
+
+/// What a screen setting up an action says, naming the app that asked for it and will run it
+/// (`caller`, the name its platform gives it, such as Tasker), so the person knows whom they
+/// let act; none when the platform cannot say which app it is.
+#[must_use]
+pub fn words_for(caller: Option<&str>) -> AutomationWords {
+    let caller = caller.map(str::trim).filter(|c| !c.is_empty());
+    let app = caller.unwrap_or("the app running it");
     AutomationWords {
         title: "Set Up an Action".to_owned(),
         operations: "What It Does".to_owned(),
         parameters: "What It Takes".to_owned(),
-        variables: "Any of these can be a variable of the app running it, such as %name, given its value each time it runs.".to_owned(),
+        variables: format!("Any of these can be a variable of {app}, such as %name, given its value each time it runs."),
+        consent: match caller {
+            Some(caller) => format!("Saving lets {caller} run this in Lumenna whenever it likes, with nobody asked first."),
+            None => "Saving lets the app that opened this run it in Lumenna whenever it likes, with nobody asked first.".to_owned(),
+        },
         destructive: "Removes something".to_owned(),
         save: "Save".to_owned(),
         cancel: "Cancel".to_owned(),
@@ -321,12 +338,12 @@ impl Answers {
             "what_should_i_work_on" => Answers::Choices,
             "propose_replan" => Answers::Replan,
             "propose_day_plan" => Answers::DayPlan,
-            "pause_timer" | "stop_timer" => Answers::Timer,
+            "pause_timer" | "stop_timer" | "timer" => Answers::Timer,
             "apply_replan" => Answers::Replanned,
             "apply_day_plan" => Answers::DayPlanned,
             "add_task" | "edit_task" | "complete_task" | "uncomplete_task" | "trash_task" | "erase_task_permanently"
             | "erase_everything_deleted" | "restore_task" | "move_task" | "assign" | "unassign" | "start_timer" | "start_on"
-            | "undo" | "redo" => Answers::Change,
+            | "toggle_timer" | "undo" | "redo" => Answers::Change,
             _ => return None,
         })
     }
@@ -487,7 +504,8 @@ pub fn automated(answer: &Assisted) -> Automated {
         Assisted::Replan(x) => (x.notices.clone(), vec![(&SENTENCES, x.changes.iter().map(|c| c.sentence.clone()).collect())]),
         Assisted::DayPlan(x) => (x.notices.clone(), vec![(&SENTENCES, x.sittings.iter().map(|s| s.sentence.clone()).collect())]),
         Assisted::Timer(x) => {
-            one(&SITTING_ID, Some(x.assignment.clone()));
+            // The timer as it is names no sitting with none running.
+            one(&SITTING_ID, Some(x.assignment.clone()).filter(|id| !id.is_empty()));
             one(&MINUTES, Some(x.minutes.to_string()));
             (x.notices.clone(), Vec::new())
         }
@@ -503,6 +521,18 @@ pub fn automated(answer: &Assisted) -> Automated {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_setup_names_the_app_it_lets_run_the_action() {
+        let named = words_for(Some("Tasker"));
+        assert_eq!(named.consent, "Saving lets Tasker run this in Lumenna whenever it likes, with nobody asked first.");
+        assert!(named.variables.contains("a variable of Tasker,"), "{}", named.variables);
+        for unnamed in [words_for(None), words_for(Some("  ")), words()] {
+            assert!(unnamed.consent.contains("the app that opened this"), "{}", unnamed.consent);
+            assert!(unnamed.variables.contains("the app running it"));
+        }
+    }
+
     use super::*;
     use crate::assistant::operations as table;
 

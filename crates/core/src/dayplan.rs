@@ -72,11 +72,7 @@ pub fn propose_day(
     let mut taken: BTreeSet<TaskId> = excluded.clone();
     // A task already in a block today is planned already.
     for assignment in snapshot.assignments.values() {
-        let on = match assignment.block_ref {
-            BlockRef::Occurrence(_, date) => Some(date),
-            BlockRef::OneOff(series) => snapshot.series.get(&series).map(|s| s.start_date),
-        };
-        if on == Some(day) {
+        if snapshot.assignment_date(assignment) == Some(day) {
             taken.insert(assignment.task_id);
         }
     }

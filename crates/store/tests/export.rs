@@ -135,7 +135,7 @@ fn populated() -> Populated {
         OrderKey::middle(),
     );
     sitting.planned_mins = Some(45);
-    sitting.accumulated_mins = 20;
+    sitting.set_logged_secs(20 * 60 + 35);
     sitting.running_since = Some(now());
     sitting.status = AssignmentStatus::InProgress;
     sitting.created_at = now();

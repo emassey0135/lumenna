@@ -167,11 +167,14 @@ impl Lumenna {
             }
             "unassign" => Assisted::Change(self.unassign(&given.required("assignment")?)?),
             "start_timer" => Assisted::Change(self.start_timer(&given.required("assignment")?)?),
-            "pause_timer" => Assisted::Timer(self.pause_timer(&given.required("assignment")?)?),
+            // Left out, the sitting is the one whose timer runs: "stop my timer" names none.
+            "pause_timer" => Assisted::Timer(self.pause_timer(&self.sitting_or_running(given.text("assignment")?)?)?),
             "stop_timer" => {
-                let sitting = given.required("assignment")?;
+                let sitting = self.sitting_or_running(given.text("assignment")?)?;
                 Assisted::Timer(self.stop_timer(&sitting, given.minutes("minutes")?)?)
             }
+            "timer" => Assisted::Timer(self.timer_now(None)?),
+            "toggle_timer" => Assisted::Change(self.toggle_timer(None)?),
             "start_on" => Assisted::Change(self.start_on(&given.required("choice")?, None)?),
             "apply_replan" => {
                 let (Some(ArgumentValue::Replan(proposal)), Some(ArgumentValue::ReplanChanges(accepted))) =

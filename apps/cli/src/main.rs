@@ -46,7 +46,8 @@ use render::Format;
 
 /// A task manager and day planner that keeps them in one place.
 #[derive(Debug, Parser)]
-#[command(name = "lum", version, about, long_about = None)]
+// What Lumenna is, as every platform says it: the workspace's one source.
+#[command(name = "lum", version, about = lumenna_host::words::DESCRIPTION, long_about = None)]
 struct Cli {
     /// Use a specific profile directory instead of the default.
     #[arg(long, global = true, value_name = "DIR")]
@@ -237,8 +238,9 @@ pub(crate) enum Command {
     /// Pause the timer: the time so far is kept and the sitting stays in progress, to be
     /// resumed with `lum start` or ended with `lum stop`.
     Pause {
-        /// The assignment identifier.
-        assignment: String,
+        /// A row number from `lum plan`, or the assignment identifier; the timer running when
+        /// left out.
+        assignment: Option<String>,
     },
 
     /// Stop the timer and log the minutes.
@@ -246,8 +248,9 @@ pub(crate) enum Command {
     /// With --minutes, record that figure as the whole of the sitting instead — how time is
     /// logged without a timer, and how a capped figure from a forgotten one is put right.
     Stop {
-        /// The assignment identifier.
-        assignment: String,
+        /// A row number from `lum plan`, or the assignment identifier; the timer running when
+        /// left out.
+        assignment: Option<String>,
         /// The sitting's total, replacing whatever was logged.
         #[arg(long)]
         minutes: Option<u32>,
@@ -1365,16 +1368,18 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         Command::Carry { assignment, to } => {
             Response::new(profile.carry_forward(&profile.row(assignment, "assignment")?, &profile.row(to, "block")?)?)
         }
-        Command::Timer { what: None } => Response::new(api::TimerShown::from(profile.timer_control(None)?)),
+        Command::Timer { what: None } => Response::new(profile.timer_now(None)?),
         Command::Timer { what: Some(TimerCommand::Toggle) } => Response::new(profile.toggle_timer(None)?),
         Command::Start { assignment } => {
             Response::new(profile.start_timer(&profile.row(assignment, "assignment")?)?)
         }
         Command::Pause { assignment } => {
-            Response::new(profile.pause_timer(&profile.row(assignment, "assignment")?)?)
+            let sitting = assignment.as_deref().map(|a| profile.row(a, "assignment")).transpose()?;
+            Response::new(profile.pause_timer(&profile.sitting_or_running(sitting)?)?)
         }
         Command::Stop { assignment, minutes } => {
-            let timer = profile.stop_timer(&profile.row(assignment, "assignment")?, *minutes)?;
+            let sitting = assignment.as_deref().map(|a| profile.row(a, "assignment")).transpose()?;
+            let timer = profile.stop_timer(&profile.sitting_or_running(sitting)?, *minutes)?;
             let capped = timer.changed && timer.capped && profile.at_terminal();
             let id = timer.assignment.clone();
             let response = Response::new(timer);
@@ -1636,8 +1641,7 @@ fn listing_of(outcome: &Outcome) -> Option<(Vec<String>, Listed)> {
         | Outcome::SyncStatus(_)
         | Outcome::Devices(_)
         | Outcome::Operations(_)
-        | Outcome::Completions(_)
-        | Outcome::TimerControl(_) => None,
+        | Outcome::Completions(_) => None,
     }
 }
 

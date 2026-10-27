@@ -18,6 +18,7 @@
     list_filters             = @{ Cmdlet = 'Get-LumennaFilter' }
     what_should_i_work_on    = @{ Cmdlet = 'Get-LumennaChoice' }
     propose_replan           = @{ Cmdlet = 'Get-LumennaReplan' }
+    timer                    = @{ Cmdlet = 'Get-LumennaTimer' }
     propose_day_plan         = @{ Cmdlet = 'Get-LumennaDayPlan' }
     add_task                 = @{ Cmdlet = 'Add-LumennaTask' }
     edit_task                = @{ Cmdlet = 'Set-LumennaTask' }
@@ -33,6 +34,7 @@
     start_timer              = @{ Cmdlet = 'Start-LumennaTimer'; Parameters = @{ assignment = 'Sitting' } }
     pause_timer              = @{ Cmdlet = 'Suspend-LumennaTimer'; Parameters = @{ assignment = 'Sitting' } }
     stop_timer               = @{ Cmdlet = 'Stop-LumennaTimer'; Parameters = @{ assignment = 'Sitting' } }
+    toggle_timer             = @{ Cmdlet = 'Switch-LumennaTimer' }
     start_on                 = @{ Cmdlet = 'Start-LumennaChoice' }
     apply_replan             = @{ Cmdlet = 'Approve-LumennaReplan' }
     apply_day_plan           = @{ Cmdlet = 'Approve-LumennaDayPlan' }

@@ -310,11 +310,7 @@ impl Lumenna {
 
 /// The saved filter called `name`, ignoring case.
 pub(crate) fn filter_named<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a SavedFilter> {
-    snapshot
-        .saved_filters
-        .values()
-        .find(|f| f.deleted_at.is_none() && f.name.eq_ignore_ascii_case(name))
-        .ok_or_else(|| LumennaError::new(format!("no filter called '{name}'")))
+    resolve::filter(snapshot, name)
 }
 
 impl Lumenna {
@@ -522,11 +518,7 @@ impl Lumenna {
 }
 
 fn live_filter<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a SavedFilter> {
-    snapshot
-        .saved_filters
-        .values()
-        .find(|f| f.deleted_at.is_none() && f.name.eq_ignore_ascii_case(name))
-        .ok_or_else(|| LumennaError::new(format!("no filter called '{name}'")))
+    resolve::filter(snapshot, name)
 }
 
 pub(crate) const fn edge(direction: Direction) -> &'static str {

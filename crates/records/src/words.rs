@@ -10,11 +10,8 @@ pub fn count_line(count: usize, noun: &str) -> String {
     }
 }
 
-/// A time of day as `HH:MM`, without the seconds nobody schedules by.
-#[must_use]
-pub fn time_text(time: jiff::civil::Time) -> String {
-    format!("{:02}:{:02}", time.hour(), time.minute())
-}
+/// A time of day as `HH:MM`: the core's, for every record that carries one.
+pub use lumenna_core::time::time_text;
 
 /// "45 minutes", "1 hour", "2 hours 30 minutes".
 #[must_use]
@@ -224,16 +221,9 @@ pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason], terse: b
     }
 }
 
-/// Parts as a list is said: "a", "a and b", "a, b, and c".
-#[must_use]
-pub fn listed(parts: &[String]) -> String {
-    match parts {
-        [] => String::new(),
-        [one] => one.clone(),
-        [first, second] => format!("{first} and {second}"),
-        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
-    }
-}
+/// Parts as a list is said: "a", "a and b", "a, b, and c". The core's, which its own
+/// sentences join with too.
+pub use lumenna_core::words::listed;
 
 /// The same with its first letter a capital: "3 blocks" as a sentence starts.
 #[must_use]
@@ -364,7 +354,7 @@ pub fn reminders_for(name: &str) -> String {
 }
 
 /// What Lumenna is, in one line: the About box, the store's listing, the desktop entry's comment.
-pub const DESCRIPTION: &str = "Tasks, and the time blocks you work through them in";
+pub const DESCRIPTION: &str = env!("LUMENNA_DESCRIPTION");
 
 /// What Lumenna is, in one line (`DESCRIPTION`).
 #[must_use]
@@ -469,14 +459,379 @@ pub fn overdue_count(count: u32) -> String {
 }
 
 
+/// Why a summary of missed reminders cannot be snoozed: it has no Snooze, only Dismiss.
+#[must_use]
+pub fn snooze_not_offered() -> String {
+    "What was missed can be dismissed, not snoozed.".to_owned()
+}
+
+/// `text` in sentence case where `sentence`, else as given (Title Case).
+fn cased(text: &str, sentence: bool) -> String {
+    if sentence { crate::fields::sentence_case(text.to_owned()) } else { text.to_owned() }
+}
+
+/// What a shell asks when a command could run more than one of the row's actions of a kind:
+/// "Which?", over the actions' names.
+#[must_use]
+pub fn which() -> String {
+    "Which?".to_owned()
+}
+
+/// What a shell says of an action whose form it has not drawn yet: "Edit Details has no form in
+/// this app yet", `action` its name.
+#[must_use]
+pub fn no_form_here(action: &str) -> String {
+    format!("{action} has no form in this app yet")
+}
+
+/// What a shell says of a question it cannot ask yet, built before the core asked it so:
+/// "This app cannot ask that question yet; update it to Put in a Block", `action` its name.
+#[must_use]
+pub fn cannot_ask_here(action: &str) -> String {
+    format!("This app cannot ask that question yet; update it to {action}")
+}
+
+/// A shell's own menu of what can be done where the person is, named after it: "Day menu",
+/// "Lumenna menu". In sentence case, as the shells that have such menus (BTSpeak) write.
+#[must_use]
+pub fn menu_of(name: &str) -> String {
+    format!("{name} menu")
+}
+
+/// What an empty list says of the key that adds to it: "Press a to add one." `key` is the
+/// platform's own, as it reads it.
+#[must_use]
+pub fn press_to_add(key: &str) -> String {
+    format!("Press {key} to add one.")
+}
+
+/// What an empty list that can be filtered says: "Press a to add one, or slash to filter now."
+#[must_use]
+pub fn press_to_add_or_filter(key: &str, filter: &str) -> String {
+    format!("Press {key} to add one, or {filter} to filter now.")
+}
+
+/// What an empty list of devices says: "Press p to pair one."
+#[must_use]
+pub fn press_to_pair(key: &str) -> String {
+    format!("Press {key} to pair one.")
+}
+
+/// The list of reminders due, as its heading or screen names it.
+#[must_use]
+pub fn reminders_due(sentence: bool) -> String {
+    cased("Reminders Due", sentence)
+}
+
+/// A device's own menu of the day's actions, as a toolbar or a menu button names it.
+#[must_use]
+pub fn day_actions(sentence: bool) -> String {
+    cased("Day Actions", sentence)
+}
+
+/// A place's own actions (a project's, a label's), as a menu button names it.
+#[must_use]
+pub fn place_actions(sentence: bool) -> String {
+    cased("Place Actions", sentence)
+}
+
+/// Whether reminders are given on this device, said once changed: "Reminders are on in this
+/// browser", `this_device` being how the device calls itself.
+#[must_use]
+pub fn reminders_on_here(on: bool, this_device: &str) -> String {
+    format!("Reminders are {} in {this_device}", if on { "on" } else { "off" })
+}
+
+/// Where reminders come only while Lumenna is open: what a browser tab adds to the setting's hint.
+#[must_use]
+pub fn reminders_while_open() -> String {
+    "Reminders are given while Lumenna is open in this tab.".to_owned()
+}
+
+/// What a browser says when it may clear Lumenna's data short of space.
+#[must_use]
+pub fn storage_may_be_cleared() -> String {
+    "This browser may clear Lumenna's data when it runs short of space. Installing Lumenna, or allowing it to keep data, prevents that."
+        .to_owned()
+}
+
+/// What shows while the store opens.
+#[must_use]
+pub fn opening() -> String {
+    "Opening Lumenna…".to_owned()
+}
+
+/// What a second tab says while another has the store open.
+#[must_use]
+pub fn open_elsewhere() -> String {
+    "Lumenna is open in another tab. Close it there to use it here.".to_owned()
+}
+
+/// What the devices list says Delete does there.
+#[must_use]
+pub fn delete_unpairs() -> String {
+    "Delete unpairs the selected device.".to_owned()
+}
+
+/// The field naming this device for pairing: "Name for this browser", and its description.
+#[must_use]
+pub fn device_name_label(this_device: &str) -> String {
+    format!("Name for {this_device}")
+}
+
+/// What the field naming this device for pairing is for.
+#[must_use]
+pub fn device_name_hint() -> String {
+    "What your other devices call it.".to_owned()
+}
+
+/// What is said when a pairing code could not be copied.
+#[must_use]
+pub fn copy_failed() -> String {
+    "Could not copy the code; select it and copy it instead.".to_owned()
+}
+
+/// What a pick says when its answer is given with nothing chosen.
+#[must_use]
+pub fn choose_one_first() -> String {
+    "Choose one first.".to_owned()
+}
+
+/// A dialog's button that closes it, making nothing.
+#[must_use]
+pub fn cancel(sentence: bool) -> String {
+    cased("Cancel", sentence)
+}
+
+/// A dialog's button that closes what only shows something.
+#[must_use]
+pub fn close(sentence: bool) -> String {
+    cased("Close", sentence)
+}
+
+/// What a line that completes says of it, after its own hint: the completion's key.
+#[must_use]
+pub fn completion_hint() -> String {
+    "Down arrow offers what could come next.".to_owned()
+}
+
+/// What is said when the shortcuts from anywhere cannot be had on this desktop, and why
+/// (`reason`, the platform's).
+#[must_use]
+pub fn hotkeys_unavailable(reason: &str) -> String {
+    let reason = reason.trim();
+    if reason.is_empty() {
+        "The shortcuts from anywhere are not available here.".to_owned()
+    } else {
+        format!("The shortcuts from anywhere are not available here. {reason}")
+    }
+}
+
+/// The tab or screen of every project, label and saved filter.
+#[must_use]
+pub fn browse(sentence: bool) -> String {
+    cased("Browse", sentence)
+}
+
+/// A field's placeholder showing the shape of an answer: "For example, tomorrow".
+#[must_use]
+pub fn for_example(example: &str) -> String {
+    format!("For example, {example}")
+}
+
+/// What an empty field says of itself where its value is shown apart from it: "Empty".
+#[must_use]
+pub fn empty_field() -> String {
+    "Empty".to_owned()
+}
+
+/// An empty value as a line of text says it: "none".
+#[must_use]
+pub fn none_value() -> String {
+    "none".to_owned()
+}
+
+/// What a place is, as the heading over its own actions says it: "Project", "Label", "Saved
+/// Filter"; none for a place of the app's own.
+#[must_use]
+pub fn place_heading(place: &crate::places::Place, sentence: bool) -> Option<String> {
+    use crate::places::Place;
+    let heading = match place {
+        Place::Project(_) => "Project",
+        Place::Label(_) => "Label",
+        Place::Filter { .. } => "Saved Filter",
+        _ => return None,
+    };
+    Some(cased(heading, sentence))
+}
+
+/// A button that asks for more of a line to put at its end.
+#[must_use]
+pub fn add_to_line(sentence: bool) -> String {
+    cased("Add to the Line", sentence)
+}
+
+/// The list of what could come next, as its dialog or menu is called.
+#[must_use]
+pub fn completions(sentence: bool) -> String {
+    cased("Completions", sentence)
+}
+
+/// How many completions a shell lists at once: the most likely come first.
+pub const COMPLETIONS_SHOWN: usize = 8;
+
+/// A widget's button marking `task` done, as a screen reader names it: "Mark done, Pay rent",
+/// `mark_done` the core's name for the action.
+#[must_use]
+pub fn mark_done_described(mark_done: &str, task: &str) -> String {
+    format!("{mark_done}, {task}")
+}
+
+/// A timer control, as a screen reader names it: its name, what pressing it does, and what it
+/// would run or runs, each that says something, joined. A locked device leaves out what runs.
+#[must_use]
+pub fn timer_described(name: &str, action: &str, detail: &str, locked: bool) -> String {
+    let parts: Vec<&str> = if locked { vec![name, action] } else { vec![name, action, detail] };
+    parts.into_iter().filter(|part| !part.trim().is_empty()).collect::<Vec<_>>().join(", ")
+}
+
+/// What an iPad's settings say with no page open.
+#[must_use]
+pub fn no_settings_page() -> String {
+    "No settings page open".to_owned()
+}
+
+/// What Lumenna is, its name, version, home and licence: read from the workspace's
+/// `[workspace.metadata.lumenna]` and `[workspace.package]` as it builds, the one source every
+/// platform's own files are checked against.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AppMetadata {
+    /// "Lumenna".
+    pub name: String,
+    /// What it is, in one line.
+    pub description: String,
+    /// The version every platform's build says.
+    pub version: String,
+    /// Where it lives.
+    pub homepage: String,
+    /// Where problems are reported.
+    pub issues: String,
+    /// Who publishes it.
+    pub publisher: String,
+    /// Its licence, as SPDX names it.
+    pub licence: String,
+    /// The identifier it is known by on the desktop and in stores: "dev.emassey0135.Lumenna".
+    pub id: String,
+}
+
+/// What Lumenna is (`AppMetadata`), from the one source.
+#[must_use]
+pub fn metadata() -> AppMetadata {
+    AppMetadata {
+        name: NAME.to_owned(),
+        description: DESCRIPTION.to_owned(),
+        version: VERSION.to_owned(),
+        homepage: HOMEPAGE.to_owned(),
+        issues: ISSUES.to_owned(),
+        publisher: PUBLISHER.to_owned(),
+        licence: LICENCE.to_owned(),
+        id: ID.to_owned(),
+    }
+}
+
+/// Lumenna's name.
+pub const NAME: &str = env!("LUMENNA_NAME");
+/// The version every platform's build says.
+pub const VERSION: &str = env!("LUMENNA_VERSION");
+/// Where Lumenna lives.
+pub const HOMEPAGE: &str = env!("LUMENNA_HOMEPAGE");
+/// Where problems are reported.
+pub const ISSUES: &str = env!("LUMENNA_ISSUES");
+/// Who publishes it.
+pub const PUBLISHER: &str = env!("LUMENNA_PUBLISHER");
+/// Its licence, as SPDX names it.
+pub const LICENCE: &str = env!("LUMENNA_LICENCE");
+/// The identifier it is known by on the desktop and in stores.
+pub const ID: &str = env!("LUMENNA_ID");
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// A file of the repository's, from the workspace's root.
+    fn repo_file(path: &str) -> String {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        std::fs::read_to_string(root.join(path)).unwrap_or_else(|error| panic!("{path}: {error}"))
+    }
+
+    /// Whether `file` has a line that is `line` once trimmed.
+    fn has_line(file: &str, line: &str) -> bool {
+        file.lines().any(|l| l.trim() == line)
+    }
+
     #[test]
-    fn the_desktop_entry_says_what_lumenna_is_in_the_cores_words() {
-        let entry = include_str!("../../../apps/gtk/data/dev.emassey0135.Lumenna.desktop");
-        assert!(entry.lines().any(|line| line == format!("Comment={DESCRIPTION}")), "{entry}");
+    fn every_platform_file_says_what_lumenna_is_as_the_workspace_does() {
+        let m = metadata();
+        let desktop = repo_file("apps/gtk/data/dev.emassey0135.Lumenna.desktop");
+        assert!(has_line(&desktop, &format!("Comment={}", m.description)), "the desktop entry's Comment");
+        assert!(has_line(&desktop, &format!("Name={}", m.name)), "the desktop entry's Name");
+        let metainfo = repo_file("apps/gtk/data/dev.emassey0135.Lumenna.metainfo.xml");
+        for line in [
+            format!("<id>{}</id>", m.id),
+            format!("<name>{}</name>", m.name),
+            format!("<summary>{}</summary>", m.description),
+            format!("<project_license>{}</project_license>", m.licence),
+            format!("<url type=\"homepage\">{}</url>", m.homepage),
+            format!("<url type=\"bugtracker\">{}</url>", m.issues),
+        ] {
+            assert!(metainfo.contains(&line), "the metainfo says {line}");
+        }
+        assert!(metainfo.contains(&format!("<name>{}</name>", m.publisher)), "the metainfo's developer");
+        let msix = repo_file("apps/windows/installer/msix/AppxManifest.xml");
+        assert!(msix.contains(&format!("Description=\"{}\"", m.description)), "the MSIX's description");
+        assert!(msix.contains(&format!("<DisplayName>{}</DisplayName>", m.name)), "the MSIX's name");
+        let inno = repo_file("apps/windows/installer/lumenna.iss");
+        for line in [format!("AppName={}", m.name), format!("AppPublisher={}", m.publisher), format!("AppPublisherURL={}", m.homepage)] {
+            assert!(has_line(&inno, &line), "the installer says {line}");
+        }
+        for gradle in ["apps/android/app/build.gradle.kts", "apps/android/wear/build.gradle.kts"] {
+            assert!(has_line(&repo_file(gradle), &format!("versionName = \"{}\"", m.version)), "{gradle}'s versionName");
+        }
+        for strings in ["apps/android/app/src/main/res/values/strings.xml", "apps/android/wear/src/main/res/values/strings.xml"] {
+            assert!(repo_file(strings).contains(&format!("<string name=\"app_name\">{}</string>", m.name)), "{strings}'s app_name");
+        }
+        let package = repo_file("apps/web/package.json");
+        assert!(has_line(&package, &format!("\"version\": \"{}\",", m.version)), "the web package's version");
+        let manifest = repo_file("apps/web/public/manifest.webmanifest");
+        assert!(manifest.contains(&format!("\"name\": \"{}\"", m.name)), "the web manifest's name");
+        assert!(manifest.contains(&format!("\"description\": \"{}\"", m.description)), "the web manifest's description");
+        let module = repo_file("apps/powershell/Lumenna/Lumenna.psd1");
+        for part in [
+            format!("'{}'", m.version),
+            format!("'{}'", m.publisher),
+            format!("ProjectUri = '{}'", m.homepage),
+            m.licence.clone(),
+        ] {
+            assert!(module.contains(&part), "the PowerShell module says {part}");
+        }
+        let pyproject = repo_file("apps/btspeak/pyproject.toml");
+        assert!(has_line(&pyproject, &format!("version = \"{}\"", m.version)), "BTSpeak's version");
+        assert!(pyproject.contains(&format!("name = \"{}\"", m.publisher)), "BTSpeak's author");
+        for crate_manifest in ["apps/cli/Cargo.toml", "apps/windows/Cargo.toml", "apps/gtk/Cargo.toml"] {
+            assert!(has_line(&repo_file(crate_manifest), &format!("version = \"{}\"", m.version)), "{crate_manifest}'s version");
+        }
+        for plist in [
+            "apps/apple/Lumenna/Info.plist",
+            "apps/apple/Mac/Info.plist",
+            "apps/apple/Watch/Info.plist",
+            "apps/apple/Widgets/iOS/Info.plist",
+            "apps/apple/Widgets/Mac/Info.plist",
+            "apps/apple/Widgets/Watch/Info.plist",
+        ] {
+            let text = repo_file(plist).replace(['\t', '\r', '\n'], "");
+            assert!(text.contains(&format!("<key>CFBundleShortVersionString</key><string>{}</string>", m.version)), "{plist}'s version");
+        }
     }
 
     #[test]

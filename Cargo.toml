@@ -8,6 +8,19 @@ rust-version = "1.90"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/emassey0135/lumenna"
 
+# What Lumenna is, said once: the core reads it as it builds (`records::words::metadata`), and every
+# platform's own file that must say it ahead (the desktop entry and metainfo, the MSIX and Inno
+# Setup, Android's Gradle files, the web's package and manifest, the PowerShell module, BTSpeak's
+# pyproject) is held to it by `records`' metadata test.
+[workspace.metadata.lumenna]
+name = "Lumenna"
+description = "Tasks, and the time blocks you work through them in"
+version = "0.1.0"
+homepage = "https://github.com/emassey0135/lumenna"
+issues = "https://github.com/emassey0135/lumenna/issues"
+publisher = "Elijah Massey"
+id = "dev.emassey0135.Lumenna"
+
 [workspace.dependencies]
 automerge = "0.11"
 anstream = "0.6"

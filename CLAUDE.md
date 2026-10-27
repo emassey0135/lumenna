@@ -142,8 +142,20 @@ crosses the FFI.
   `PairingView::matching` and `mine_line`, a reminder list's `reminders_title`, the backup's
   failure, the app's `DESCRIPTION`, a browser's device name, a watch's sync with its phone,
   `checked`, `fold_state`, `level`, `choice_count`), and the shortcuts from anywhere are
-  `lumenna_app::hotkeys`. A sidebar entry says its own folding (`hidden`, `expanded`, `level`), as
-  a list's rows and a pick's lines (`Line::level`) do.
+  `lumenna_app::hotkeys`. That includes what only one shell needs today (BTSpeak's menus and file
+  prompts, the web's folder backups and tab notices, a watch's placeholders): a shell writes no
+  sentence of its own, a key it names being a part (`press_to_add(key)`). A sidebar entry says its
+  own folding (`hidden`, `expanded`, `level`), as a list's rows and a pick's lines (`Line::level`)
+  do; a list a shell narrows or cuts out itself takes its levels from `lines::levels(depths)`
+  (`levels()` over the FFI), so no shell counts them.
+- **What Lumenna is is said once** (`[workspace.metadata.lumenna]` in the workspace's
+  `Cargo.toml`: name, description, version, homepage, issues, publisher, identifier, with the
+  licence from `[workspace.package]`): `records`' build reads it into `words::metadata()`
+  (`app_metadata()` over the FFI), which `lum`'s about, the About boxes and the autostart entry
+  say. Every platform file that must say it ahead (the desktop entry and metainfo, the MSIX and
+  Inno Setup, the Apple `Info.plist`s' version, Android's Gradle files and strings, the web's
+  package and manifest, the PowerShell module, BTSpeak's pyproject, the apps' crate versions) is
+  held to it by `records`' metadata test: change it there, then each file.
 - **Colours are the core's palette** (`lumenna_core::colour`, `records::colours`): eleven named
   colours, each with a value for a light background and one for a dark, both of 3:1 contrast.
   A project, label or saved filter takes one by its Colour pick (`colour_choices`, "No colour"
@@ -250,8 +262,12 @@ directly (8805659 is the last commit before the move). How the app works inside 
   platform adds only what is its own (Cut, Copy and Paste).
 - **A reminder due carries its buttons in order** (`Due::buttons`), and a button pressed holds
   the next reminder (`Side::Due`, `ViewModel::due_held`). An overrun's Replan is
-  `DueEvent::Replan(id)`: today, Replan from Now open, the warning dismissed once something is
-  replanned. A reminder dealt with elsewhere leaves the list once the store says so.
+  `DueEvent::Replan(id)` for one the app's list holds, and `DueEvent::ReplanFiring { key,
+  occurrence }` for one the platform gave itself (`Device::deliver_reminders`, the system's
+  notification): today, Replan from Now open, the warning dismissed once something is replanned.
+  An overrun never sends `ProposalEvent::Replan`. A reminder dealt with elsewhere leaves the list
+  once the store says so, at the next look for reminders as at the next tick; a summary of what was
+  missed refuses Snooze in the core's words.
 - **Erasing permanently is never what deleting does**: a trashed task's Erase Permanently
   (`ErasePermanently`) is a menu away, after Delete from Trash, and no key runs it. It begins the
   store's history again without what it erased, on every device (`crates/store/CLAUDE.md`).

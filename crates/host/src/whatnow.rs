@@ -50,6 +50,38 @@ impl Lumenna {
         })
     }
 
+    /// The timer as it is now (`lumenna_records::controls::timer_now`): running, on what and how
+    /// long so far; else what [`toggle_timer`](Self::toggle_timer) would start, or why nothing
+    /// would. `now` is for tests, a local date and time.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn timer_now(&self, now: Option<String>) -> Result<crate::Timer> {
+        let now = crate::replan::now_or(now.as_deref())?;
+        self.with(|store| {
+            store.load_all_years()?;
+            lumenna_records::controls::timer_now(&repaired(store), &now)
+        })
+    }
+
+    /// The sitting `given`, or with none given the one whose timer runs: what "pause the timer"
+    /// and "stop the timer" act on.
+    ///
+    /// # Errors
+    ///
+    /// If none was given and no timer runs, or the store cannot be read.
+    pub fn sitting_or_running(&self, given: Option<String>) -> Result<String> {
+        if let Some(given) = given.filter(|g| !g.trim().is_empty()) {
+            return Ok(given);
+        }
+        let running = self.with(|store| {
+            store.load_all_years()?;
+            Ok(lumenna_records::controls::running_sitting(&repaired(store)))
+        })?;
+        running.ok_or_else(|| crate::LumennaError::new(lumenna_records::controls::NOTHING_RUNNING))
+    }
+
     /// The timer control pressed: stops the timer running, else starts on the first of What
     /// Should I Work On?'s choices, else says why there is nothing to start. `now` is for tests,
     /// a local date and time.

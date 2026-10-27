@@ -33,7 +33,7 @@ use lumenna_core::model::{
 
 use crate::doc::Domain;
 use crate::error::Result;
-use crate::value::{Reader, Writer, date_key};
+use crate::value::{Nested, Reader, Writer, date_key};
 
 /// A type that lives in a keyed collection at the root of a document.
 pub(crate) trait Record: Sized {
@@ -136,13 +136,24 @@ fn provider_str(provider: ExternalProvider) -> &'static str {
 // Small composites, written wholesale (see Writer::set_nested).
 // ---------------------------------------------------------------------------------------
 
-/// The fields each small composite is written with, so an edit keeps any other a newer build
-/// wrote beside them (see `Writer::set_nested`).
-const DUE_FIELDS: &[&str] = &["date", "time", "timezone", "recurrence"];
-const EXTERNAL_FIELDS: &[&str] = &["provider", "external_id", "read_only", "last_synced"];
-const TRIGGER_FIELDS: &[&str] = &["at", "anchor", "offset_mins"];
-const DELIVERY_FIELDS: &[&str] = &["mode", "devices"];
-const BLOCK_REF_FIELDS: &[&str] = &["series", "date"];
+/// Each small composite as `Writer::set_nested` writes it.
+macro_rules! nested {
+    ($($ty:ty => $write:ident;)*) => {
+        $(impl Nested for $ty {
+            fn write<T: Transactable>(&self, w: &mut Writer<'_, T>) -> Result<()> {
+                $write(w, self)
+            }
+        })*
+    };
+}
+
+nested! {
+    Due => write_due;
+    ExternalRef => write_external;
+    Trigger => write_trigger;
+    Delivery => write_delivery;
+    BlockRef => write_block_ref;
+}
 
 fn read_due<D: ReadDoc>(r: &Reader<'_, D>) -> Option<Due> {
     Some(Due {
@@ -261,6 +272,18 @@ fn write_block_ref<T: Transactable>(w: &mut Writer<'_, T>, block: &BlockRef) -> 
     w.set_opt_str("date", None, block.date().as_ref())
 }
 
+/// The seconds a sitting logged beyond its whole minutes. Stored as `accumulated_secs`, every
+/// second logged, beside `accumulated_mins`, which a build from before reads and writes alone:
+/// when the two no longer agree, such a build changed the minutes since, and they stand, with no
+/// seconds over.
+fn extra_secs<D: ReadDoc>(r: &Reader<'_, D>) -> u32 {
+    let mins = r.u32("accumulated_mins").unwrap_or(0);
+    match r.int("accumulated_secs").and_then(|secs| u64::try_from(secs).ok()) {
+        Some(secs) if secs / 60 == u64::from(mins) => u32::try_from(secs % 60).unwrap_or(0),
+        _ => 0,
+    }
+}
+
 /// Splits `<uuid>@<date>` — the key shape shared by exceptions and reminder
 /// acknowledgements, both of which address one occurrence of a repeating thing.
 fn split_occurrence_key(text: &str) -> Option<(&str, civil::Date)> {
@@ -324,15 +347,13 @@ impl Record for Task {
         )?;
         w.set_members("labels", was.map(|b| &b.labels), &self.labels)?;
         w.set_members("depends", was.map(|b| &b.depends), &self.depends)?;
-        w.set_nested("due", DUE_FIELDS, was.map(|b| b.due.as_ref()), self.due.as_ref(), write_due)?;
+        w.set_nested("due", was.map(|b| b.due.as_ref()), self.due.as_ref())?;
         w.set_opt_u32("estimate_mins", was.map(|b| b.estimate_mins), self.estimate_mins)?;
         w.set_str("order", was.map(|b| &b.order), &self.order)?;
         w.set_nested(
             "external",
-            EXTERNAL_FIELDS,
             was.map(|b| b.external.as_ref()),
             self.external.as_ref(),
-            write_external,
         )?;
         w.set_time("created_at", was.map(|b| &b.created_at), &self.created_at)?;
         w.set_opt_time("deleted_at", was.map(|b| b.deleted_at.as_ref()), self.deleted_at.as_ref())
@@ -594,10 +615,8 @@ impl Record for BlockSeries {
         )?;
         w.set_nested(
             "external",
-            EXTERNAL_FIELDS,
             was.map(|b| b.external.as_ref()),
             self.external.as_ref(),
-            write_external,
         )?;
         w.set_opt_time("deleted_at", was.map(|b| b.deleted_at.as_ref()), self.deleted_at.as_ref())
     }
@@ -717,6 +736,7 @@ impl Record for BlockAssignment {
             task_id: r.parsed("task_id")?,
             planned_mins: r.u32("planned_mins"),
             accumulated_mins: r.u32("accumulated_mins").unwrap_or(0),
+            extra_secs: extra_secs(r),
             running_since: r.timestamp("running_since"),
             status: status(r.string("status")),
             order: r.parsed("order")?,
@@ -727,10 +747,8 @@ impl Record for BlockAssignment {
     fn write<T: Transactable>(&self, w: &mut Writer<'_, T>, was: Option<&Self>) -> Result<()> {
         w.set_nested(
             "block",
-            BLOCK_REF_FIELDS,
             was.map(|b| Some(&b.block_ref)),
             Some(&self.block_ref),
-            write_block_ref,
         )?;
         w.set_str("task_id", was.map(|b| &b.task_id), &self.task_id)?;
         w.set_opt_u32("planned_mins", was.map(|b| b.planned_mins), self.planned_mins)?;
@@ -738,6 +756,11 @@ impl Record for BlockAssignment {
             "accumulated_mins",
             was.map(|b| i64::from(b.accumulated_mins)),
             i64::from(self.accumulated_mins),
+        )?;
+        w.set_int(
+            "accumulated_secs",
+            was.map(|b| i64::try_from(b.logged_secs()).unwrap_or(i64::MAX)),
+            i64::try_from(self.logged_secs()).unwrap_or(i64::MAX),
         )?;
         w.set_opt_time(
             "running_since",
@@ -807,17 +830,13 @@ impl Record for Reminder {
         w.set_string("target_id", was_target.as_ref().map(|(_, id)| id.as_str()), &id)?;
         w.set_nested(
             "trigger",
-            TRIGGER_FIELDS,
             was.map(|b| Some(&b.trigger)),
             Some(&self.trigger),
-            write_trigger,
         )?;
         w.set_nested(
             "delivery",
-            DELIVERY_FIELDS,
             was.map(|b| Some(&b.delivery)),
             Some(&self.delivery),
-            write_delivery,
         )?;
         w.set_opt_time("deleted_at", was.map(|b| b.deleted_at.as_ref()), self.deleted_at.as_ref())
     }
@@ -855,6 +874,11 @@ impl Record for ReminderAck {
             action,
             acked_at: r.timestamp("acked_at")?,
             acked_by: r.parsed("acked_by")?,
+            target: match r.string("target_kind").as_deref() {
+                Some("task") => r.parsed("target_id").map(ReminderTarget::Task),
+                Some("block") => r.parsed("target_id").map(ReminderTarget::Block),
+                _ => None,
+            },
         })
     }
 
@@ -872,7 +896,21 @@ impl Record for ReminderAck {
             }
         }
         w.set_time("acked_at", was.map(|b| &b.acked_at), &self.acked_at)?;
-        w.set_str("acked_by", was.map(|b| &b.acked_by), &self.acked_by)
+        w.set_str("acked_by", was.map(|b| &b.acked_by), &self.acked_by)?;
+        let target = |ack: &Self| {
+            ack.target.map(|target| match target {
+                ReminderTarget::Task(id) => ("task", id.to_string()),
+                ReminderTarget::Block(id) => ("block", id.to_string()),
+            })
+        };
+        let (was_target, target) = (was.map(target), target(self));
+        if was_target.as_ref() != Some(&target)
+            && let Some((kind, id)) = &target
+        {
+            w.set_string("target_kind", None, kind)?;
+            w.set_string("target_id", None, id)?;
+        }
+        Ok(())
     }
 }
 

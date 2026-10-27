@@ -1635,3 +1635,15 @@ fn a_project_and_a_saved_filter_take_a_colour_and_a_task_and_a_block_a_time_zone
     lum.ok(&["block", "list"]);
     lum.ok(&["block", "zone", "1", "Europe/London"]);
 }
+
+#[test]
+fn the_timer_is_read_pressed_and_stopped_without_naming_a_sitting() {
+    let lum = Lum::new();
+    assert!(lum.fails(&["stop"]).contains("No timer is running."));
+    lum.ok(&["task", "add", "Email p1"]);
+    assert!(lum.ok(&["timer"]).contains("Starting it would start on Email"));
+    assert!(lum.ok(&["timer", "toggle"]).contains("Started on Email"));
+    assert!(lum.ok(&["timer"]).contains("The timer is running on Email"));
+    lum.ok(&["pause"]);
+    assert!(lum.ok(&["timer"]).contains("No timer is running"));
+}

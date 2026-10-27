@@ -139,8 +139,8 @@ pub enum HostAnswer {
     Wrote(Box<Result<Change, LumennaError>>, Option<Arrival>),
     /// The paired devices.
     Devices(Result<lumenna_records::types::DeviceList, LumennaError>),
-    /// What came due.
-    Found(Result<lumenna_records::reminders::DueReminders, LumennaError>),
+    /// What came due, and the store as it was read then.
+    Found(Result<lumenna_records::reminders::DueReminders, LumennaError>, Option<Arrival>),
     /// Every setting.
     Listed(Result<lumenna_records::types::SettingList, LumennaError>),
     /// A file to save, and what to say about it.
@@ -178,7 +178,7 @@ impl PartialEq for HostAnswer {
             (Self::Saved(a), Self::Saved(b)) => a == b,
             (Self::Imported(a, x), Self::Imported(b, y)) => a == b && x == y,
             (Self::Devices(a), Self::Devices(b)) => a == b,
-            (Self::Found(a), Self::Found(b)) => a == b,
+            (Self::Found(a, x), Self::Found(b, y)) => a == b && x == y,
             _ => false,
         }
     }

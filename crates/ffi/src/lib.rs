@@ -286,10 +286,19 @@ pub fn automation_operations() -> Vec<AssistantOperation> {
     lumenna_records::automation::operations()
 }
 
-/// What the screen setting up such an action says, beside the operations' own words.
+/// What the screen setting up such an action says, beside the operations' own words, of
+/// whichever app runs it.
 #[export]
 pub fn automation_words() -> AutomationWords {
     lumenna_records::automation::words()
+}
+
+/// The same, naming the app that asked for the setup and will run the action (`caller`, the
+/// name the platform gives it: on Android the calling package's label), in its consent and its
+/// variables, so the platform words none of it; empty when it cannot say which app it is.
+#[export]
+pub fn automation_words_for(caller: String) -> AutomationWords {
+    lumenna_records::automation::words_for(Some(&caller))
 }
 
 /// The fields that screen asks for the operation `id`: each parameter's label, hint, and the

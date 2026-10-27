@@ -1106,7 +1106,7 @@ pub fn occurrence_of(snapshot: &Snapshot, block: BlockRef) -> Result<recur::Occu
         .get(&block.series_id())
         .filter(|s| s.deleted_at.is_none())
         .ok_or(EditError::NotFound { kind: "block" })?;
-    let date = block.date().unwrap_or(series.start_date);
+    let date = snapshot.block_date(block).unwrap_or(series.start_date);
     recur::expand(
         series,
         |day| snapshot.exceptions.get(&(series.id, day)).map(|e| &e.action),
@@ -1296,7 +1296,7 @@ pub fn log_minutes(
         .get(&assignment_id)
         .ok_or(EditError::NotFound { kind: "assignment" })?;
     let mut logged = assignment.clone();
-    logged.accumulated_mins = mins;
+    logged.set_logged_mins(mins);
     logged.running_since = None;
     if mins > 0
         && matches!(
@@ -1634,6 +1634,8 @@ pub fn deliver_reminder(
 /// dismissal after a snooze ends it. It syncs, so every device stops showing that firing.
 #[must_use]
 pub fn acknowledge(snapshot: &Snapshot, ack: ReminderAck, description: String) -> Edit {
+    // What it is for, said now, while the default reminders are the ones it fired under.
+    let ack = ReminderAck { target: ack.target.or_else(|| crate::remind::target_of(snapshot, ack.reminder_id)), ..ack };
     let before = snapshot.acks.get(&(ack.reminder_id, ack.occurrence_date)).cloned();
     if before.as_ref() == Some(&ack) {
         return Edit::nothing();
