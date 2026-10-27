@@ -83,6 +83,9 @@ pub fn remaining(snapshot: &Snapshot, block: BlockRef, length: u32) -> u32 {
 
 /// The tasks to suggest for `block` (of `length` minutes), best first, at most `limit`:
 /// open ones `filter` admits (every open one when absent), none already in it.
+///
+/// A task worked in the block and still open is not in it any more: a task takes as many
+/// sittings as it needs, so once its timer stops it can be suggested again.
 #[must_use]
 pub fn suggest(
     snapshot: &Snapshot,
@@ -96,7 +99,7 @@ pub fn suggest(
     let facts = snapshot.facts();
     let left = remaining(snapshot, block, length);
     let inside: std::collections::BTreeSet<TaskId> =
-        snapshot.assignments.values().filter(|a| a.block_ref == block).map(|a| a.task_id).collect();
+        snapshot.assignments.values().filter(|a| a.block_ref == block && a.status != AssignmentStatus::Worked).map(|a| a.task_id).collect();
     let coefficients = snapshot.settings.urgency;
     let mut found: Vec<Suggestion> = snapshot
         .tasks

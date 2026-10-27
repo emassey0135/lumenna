@@ -174,3 +174,24 @@ fn a_task_due_earlier_today_is_suggested_as_overdue_not_due_today() {
     let found = suggest(&world.snapshot, None, block, 60, &now(), 5);
     assert!(found[0].reasons.contains(&Reason::Overdue(0)), "{:?}", found[0].reasons);
 }
+
+#[test]
+fn a_task_worked_in_the_block_and_still_open_is_suggested_again_but_one_skipped_there_is_not() {
+    use lumenna_core::suggestions::suggest;
+    let mut world = World::new();
+    let series = BlockSeries::one_off("Writing", BlockKind::Work, now().date(), time(14, 0, 0, 0), 120).unwrap();
+    let block = BlockRef::OneOff(series.id);
+    world.snapshot.series.insert(series.id, series);
+    let mut sit = |title: &str, status| {
+        let task = world.task(title);
+        let mut sitting = BlockAssignment::new(block, task, OrderKey::middle());
+        (sitting.status, sitting.accumulated_mins) = (status, 20);
+        world.snapshot.assignments.insert(sitting.id, sitting);
+        task
+    };
+    let worked = sit("draft the chapter", AssignmentStatus::Worked);
+    let skipped = sit("outline", AssignmentStatus::Skipped);
+    let found: Vec<_> = suggest(&world.snapshot, None, block, 120, &now(), 5).into_iter().map(|s| s.task).collect();
+    assert!(found.contains(&worked), "{found:?}");
+    assert!(!found.contains(&skipped), "{found:?}");
+}
