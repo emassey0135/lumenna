@@ -17,14 +17,16 @@ function metadata(): Record<string, string> {
 }
 
 /**
- * The web app's manifest: `manifest.webmanifest` beside this file (its icons and launch
- * shortcuts), its name and description the workspace's, served by the dev server and written
- * into a build at `/manifest.webmanifest`.
+ * The web app's manifest: `manifest.json` beside this file (its icons and launch shortcuts),
+ * its name and description the workspace's, served by the dev server and written into a build
+ * at `/manifest.webmanifest`. The source is named otherwise because Vite bundles a file the
+ * page links that it finds at that path, under a hashed name: the service worker and an
+ * installed app need the address to stay.
  */
 function manifest(): Plugin {
   const text = () => {
     const { name, description } = metadata();
-    const own = JSON.parse(readFileSync(new URL("./manifest.webmanifest", import.meta.url), "utf8"));
+    const own = JSON.parse(readFileSync(new URL("./manifest.json", import.meta.url), "utf8"));
     return JSON.stringify({ name, short_name: name, description, ...own }, null, 2) + "\n";
   };
   return {

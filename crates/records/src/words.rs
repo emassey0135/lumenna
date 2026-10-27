@@ -805,7 +805,7 @@ mod tests {
         // package and manifest carry none of it, and nothing there can fall behind.
         let package = repo_file("apps/web/package.json");
         assert!(!package.contains("\"version\""), "the web package has no version of its own");
-        let manifest = repo_file("apps/web/manifest.webmanifest");
+        let manifest = repo_file("apps/web/manifest.json");
         assert!(!manifest.contains(&format!("\"{}\"", m.description)), "the web manifest has no description of its own");
         assert!(repo_file("apps/web/vite.config.ts").contains("workspace\\.metadata\\.lumenna"), "the web build reads the workspace's table");
         let module = repo_file("apps/powershell/Lumenna/Lumenna.psd1");

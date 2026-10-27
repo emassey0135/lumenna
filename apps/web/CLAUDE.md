@@ -112,7 +112,7 @@ pairing with `lum`.
   again, and React's development mode, which starts the app twice, finds it gone the second time.
 - **No widgets**: no browser offers a widget a web app could fill worth targeting, so the glance
   (`records::glance`) has no client here; the installed app's badge counts what is due.
-- **Installed, it is a PWA** (`manifest.webmanifest`, its name and description the workspace's
+- **Installed, it is a PWA** (`manifest.json`, served as `/manifest.webmanifest`, its name and description the workspace's
   `[workspace.metadata.lumenna]`, which `vite.config.ts` reads and writes in, as it serves it in
   development; `package.json` has no version, so a bump is one edit; `public/sw.js`, registered only in a
   production build): the page is fetched afresh while online and kept for when there is none, and
