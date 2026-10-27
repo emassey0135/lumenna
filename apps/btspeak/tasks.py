@@ -88,8 +88,8 @@ def task_list(
                 *(more or []),
                 *undo_commands(session),
             ],
-            empty=empty_then(lambda: readback(session), "Press a to add one."),
-            app_title=f"{title} menu",
+            empty=empty_then(lambda: readback(session), L.press_to_add("a")),
+            app_title=L.menu_of(title),
             focus=lambda: session.view().focus,
         )
     return ""
@@ -176,10 +176,11 @@ def edit_task(session: Session, task: str) -> str:
         value = str(getattr(before, field.key))
         if field.key == "project":
             # Chosen from the projects the app offers, by name, each with its level where it
-            # sits under another, since a list says nothing of indentation.
+            # changes, since a list says nothing of indentation.
+            levels = L.levels([choice.depth for choice in details.projects])
             choices = {
-                choice.id: choice.title if not choice.depth else f"{choice.title}, {L.level_words(choice.depth)}"
-                for choice in details.projects
+                choice.id: f"{choice.title}, {level}" if level else choice.title
+                for choice, level in zip(details.projects, levels)
             }
             fields.append(form_field(field, value, choices=choices))
             continue
@@ -242,7 +243,8 @@ def add_task(session: Session, prefix: str = "", refusal: str = "") -> str:
     )
     line = session.view().line
     if line is not None and options.get(options.READ_BACK, False):
-        answer = choose({"add": "Add it", "change": "Change it"}, f"{line.readback}. Add it?")
+        words = L.read_back_words(True)
+        answer = choose({"add": words.add, "change": words.change}, L.add_it(line.readback))
         if answer != "add":
             session.send(L.ShellEventTyping(L.TypingClose()))
             return "" if answer is None else add_task(session, prefix=text)

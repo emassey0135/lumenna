@@ -42,13 +42,15 @@ STATUS_FOR = 5
 
 def read_back_title() -> str:
     on = options.get(options.READ_BACK, False)
-    return f"Read a task back before adding it, {'on' if on else 'off'}"
+    words = L.read_back_words(True)
+    return words.title_on if on else words.title_off
 
 
 def toggle_read_back() -> str:
     on = not options.get(options.READ_BACK, False)
     options.put(options.READ_BACK, on)
-    return "A task is read back before it is added" if on else "A task is added as soon as it is entered"
+    words = L.read_back_words(True)
+    return words.turned_on if on else words.turned_off
 
 
 def setting_title(setting) -> str:
@@ -176,7 +178,7 @@ def setting_page(session: Session, page_id: str) -> str:
             return ""
         live_menu(
             session, lambda: setting_items(session, page_id), lambda: page_title(page_of(session, page_id)),
-            app=[*button_commands(session, page), *undo_commands(session)], app_title=f"{page.title} menu",
+            app=[*button_commands(session, page), *undo_commands(session)], app_title=L.menu_of(page.title),
         )
     return ""
 
@@ -266,8 +268,8 @@ def devices(session: Session) -> str:
                 Command("Pair a device", lambda _: pair(session), key="p"),
             ],
             # The status heading already says nothing is paired; the empty list adds only the key.
-            empty="Press p to pair one.",
-            app_title="Devices menu",
+            empty=L.press_to_pair("p"),
+            app_title=L.menu_of("Devices"),
             focus=lambda: session.view().devices_held.focus,
         )
     return ""
@@ -447,7 +449,7 @@ def restore(session: Session) -> str:
     start = setting_value(session, "backup-dir") or str(Path.home())
     if not Path(start).is_dir():
         start = str(Path.home())
-    chosen = dialogs.request_file(start, ["lumbak"], prompt="Restore which backup?")
+    chosen = dialogs.request_file(start, ["lumbak"], prompt=L.file_words(True).restore)
     if chosen is None:
         return ""
     return import_path(session, Path(chosen))
@@ -464,7 +466,7 @@ def _export_import(session: Session) -> str:
     page = page_of(session, "export")
     runs = {"import": import_file}
     menu = [
-        dialogs.DynamicMenuItem(title="Export", action=lambda: export(session)),
+        dialogs.DynamicMenuItem(title=L.file_words(True).export, action=lambda: export(session)),
         *[
             dialogs.DynamicMenuItem(title=button.title, action=lambda run=runs[button.id]: run(session))
             for button in (page.buttons if page is not None else []) if button.id in runs
@@ -491,7 +493,7 @@ def _export(session: Session) -> str:
     if index is None:
         return ""
     picked = offered[index]
-    folder = dialogs.request_directory(str(Path.home()), prompt="Save it in which folder?")
+    folder = dialogs.request_directory(str(Path.home()), prompt=L.file_words(True).save_in)
     if folder is None:
         return ""
     path = Path(folder) / picked.name
@@ -511,7 +513,7 @@ def _export(session: Session) -> str:
 
 def import_file(session: Session) -> str:
     """Reads a JSON export or a backup; the core tells them apart."""
-    chosen = dialogs.request_file(str(Path.home()), ["json", "lumbak"], prompt="Import which file?")
+    chosen = dialogs.request_file(str(Path.home()), ["json", "lumbak"], prompt=L.file_words(True).import_)
     if chosen is None:
         return ""
     return import_path(session, Path(chosen))

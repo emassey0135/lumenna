@@ -327,7 +327,7 @@ def live_menu(
             app_menu=app_commands(offered),
             # A heading says more than a name (a list's readback after it), so the screen names
             # its menu; a title cut at its first comma broke a name like "Work, home".
-            app_menu_title=app_title or f"{heading} menu",
+            app_menu_title=app_title or native().menu_of(heading),
             global_keys=keys(here, offered),
             empty_message=empty() if callable(empty) else empty,
         )

@@ -180,7 +180,7 @@ def ask(session: Session, asking, row=None) -> str:
         form = FORMS.get((action.subject, action.kind)) if action is not None else None
         session.send(cancel)
         if form is None:
-            return f"{named(action)} has no form in this app yet" if action is not None else ""
+            return L.no_form_here(named(action)) if action is not None else ""
         return form(session, action, row)
     if isinstance(question, L.QuestionImmediate):
         return answer(L.AnswerYes())
@@ -215,7 +215,7 @@ def ask(session: Session, asking, row=None) -> str:
             return session.send(cancel)
         return answer(L.AnswerPicked(picked, None))
     session.send(cancel)
-    return f"This app cannot ask that question yet; update it to {named(action)}" if action else ""
+    return L.cannot_ask_here(named(action)) if action else ""
 
 
 def ask_pick(session: Session, asking, question, wrong: str) -> str:
@@ -242,7 +242,7 @@ def run_kind(session: Session, row, *kinds) -> str:
     if not matching:
         return ""
     if len(matching) > 1:
-        index = choose({i: named(a) for i, a in enumerate(matching)}, "Which?")
+        index = choose({i: named(a) for i, a in enumerate(matching)}, L.which())
         if index is None:
             return ""
         return act(session, matching[index], row)

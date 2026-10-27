@@ -135,7 +135,7 @@ def proposal_screen(session: Session) -> str:
             refresh_interval=REFRESH,
             announce_title=opening,
             app_menu=commands(proposal),
-            app_menu_title=f"{proposal.words.title} menu",
+            app_menu_title=L.menu_of(proposal.words.title),
         )
         if session.view().proposal is None:
             break

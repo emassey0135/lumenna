@@ -96,8 +96,8 @@ def reminders_of(session: Session, row=None) -> str:
                 session, build, title,
                 context=lambda rows: actions.commands(session, rows),
                 app=own,
-                empty="Press a to add one.",
-                app_title="Reminders menu",
+                empty=L.press_to_add("a"),
+                app_title=L.menu_of("Reminders"),
                 focus=lambda: session.view().reminders_held.focus,
                 until=lambda: session.view().reminders is None,
             )
@@ -120,10 +120,11 @@ def due(session: Session) -> str:
     # What a look finds is said as it arrives; here the screen says it, as its heading as it
     # opens, and only then: the rows say them after that.
     found = session.send(L.ShellEventDue(L.DueEventLook(_moment(looked - LOOK_BACK), _moment(looked))))
-    state = {"heading": sentences("Reminders", found)}
+    named = L.reminders_due(True)
+    state = {"heading": sentences(named, found)}
 
     def title() -> str:
-        shown, state["heading"] = state["heading"], "Reminders"
+        shown, state["heading"] = state["heading"], named
         return shown
 
     def build():
@@ -182,6 +183,6 @@ def due(session: Session) -> str:
             context=commands,
             app=undo_commands(session),
             empty="Nothing has come due.",
-            app_title="Reminders menu",
+            app_title=L.menu_of("Reminders"),
         )
     return ""

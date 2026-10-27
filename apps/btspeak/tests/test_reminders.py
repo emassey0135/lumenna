@@ -174,7 +174,7 @@ class Reminders(unittest.TestCase):
         )
         self.assertIn("Dismissed", script.said)
         # What the look found is said once, as the screen opens; the rows say it after that.
-        self.assertEqual(script.titles, ["Reminders. Deep work starts in 5 minutes — nothing assigned yet.", "Reminders"])
+        self.assertEqual(script.titles, ["Reminders due. Deep work starts in 5 minutes — nothing assigned yet.", "Reminders due"])
         self.assertEqual(script.menus[-1]["empty"], "Nothing has come due.")
 
     def test_what_came_due_is_snoozed_by_its_letter(self):
@@ -228,7 +228,7 @@ class Reminders(unittest.TestCase):
             [("context", overrun, "Replan"), ("menu", "Cancel"), ("key", overrun, "p"), ("menu", "Cancel"), ("back",)],
             lambda: reminder_lists.due(self.session),
         )
-        self.assertEqual(script.titles[0], f"Reminders. {overrun}.")
+        self.assertEqual(script.titles[0], f"Reminders due. {overrun}.")
         replans = [title for title in script.titles if title.startswith("Replan from now. ")]
         self.assertEqual(len(replans), 2, script.titles)
         self.assertNotIn("Nothing needs to change", replans[0])

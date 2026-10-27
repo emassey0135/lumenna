@@ -20,21 +20,20 @@ def group_rows(session: Session, group) -> list[Row]:
 
     What is folded and whether a row's own are shown are the app's (`hidden`, `expanded`). The
     app's `level` counts from the whole sidebar, its headings the first level; this list is one
-    heading's places alone, its first level theirs, so the level is counted from here, in the
-    core's words."""
-    rows: list[Row] = []
+    heading's places alone, its first level theirs, so the core words the levels from their
+    depths under the heading (`levels`)."""
+    shown = []
     under = False
-    previous = 0
     for entry in session.view().sidebar:
         if entry.depth == 0:
             under = isinstance(entry.kind, L.SidebarKindGroup) and entry.kind.field_0 == group
             continue
-        if not under or entry.hidden:
-            continue
-        depth = entry.depth - 1
-        level = L.level_words(depth) if depth != previous else None
-        previous = depth
-        row = Row(entry.key, entry.text, entry.offered, entry, level=level, expanded=entry.expanded, title=entry.title)
+        if under and not entry.hidden:
+            shown.append(entry)
+    rows: list[Row] = []
+    for entry, level in zip(shown, L.levels([entry.depth - 1 for entry in shown])):
+        row = Row(entry.key, entry.text, entry.offered, entry, level=level or None, expanded=entry.expanded,
+                  title=entry.title)
         row.side = L.Side.SIDEBAR
         rows.append(row)
     return rows
@@ -82,7 +81,7 @@ def group_screen(session: Session, group, title: str, show: str, add: str, empty
             ]),
             app=[*actions.heading_command(session, group), *tasks.undo_commands(session)],
             empty=empty_then(lambda: L.group_empty(group), empty),
-            app_title=f"{title} menu",
+            app_title=L.menu_of(title),
             focus=lambda: session.view().sidebar_held.focus,
         )
     return ""
@@ -96,11 +95,11 @@ def projects(session: Session) -> str:
 def labels(session: Session) -> str:
     """Labels: a first-class axis, with their own list."""
     return group_screen(session, L.SidebarGroup.LABELS, "Labels", "Show the tasks wearing it", "Add a task wearing it",
-                        "Press a to add one.")
+                        L.press_to_add("a"))
 
 
 def saved_filters(session: Session) -> str:
     """Saved filters, and the lists they open. A filter is stored as text and evaluated when it
     is used, so one saved as "today" still means today next month."""
     return group_screen(session, L.SidebarGroup.FILTERS, "Filters", "Show its tasks", "Add a task to it",
-                        "Press a to add one, or slash to filter now.")
+                        L.press_to_add_or_filter("a", "slash"))
