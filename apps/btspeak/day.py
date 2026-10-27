@@ -20,7 +20,6 @@ import tasks
 
 
 #: A block form's yes-or-no fields, as a choice.
-YES_NO = {"yes": "Yes", "no": "No"}
 
 
 # ---------------------------------------------------------------------------------------
@@ -106,7 +105,7 @@ def day_plan(session: Session) -> str:
                 *tasks.undo_commands(session),
             ],
             empty="Nothing planned.",
-            app_title="Day menu",
+            app_title=L.menu_of("Day"),
             focus=lambda: session.view().focus,
         )
     return ""
@@ -152,8 +151,8 @@ def blocks(session: Session) -> str:
             main=lambda row: actions.press(session, "open", row),
             context=lambda rows: actions.commands(session, rows),
             app=[Command("Add a block", lambda _: add_block(session), key="a"), *tasks.undo_commands(session)],
-            empty=empty_then(lambda: tasks.readback(session), "Press a to add one."),
-            app_title="Blocks menu",
+            empty=empty_then(lambda: tasks.readback(session), L.press_to_add("a")),
+            app_title=L.menu_of("Blocks"),
             focus=lambda: session.view().focus,
         )
     return ""
@@ -186,7 +185,7 @@ def block_form(session: Session) -> str:
             value = value_of(form, field.key)
             if field.kind == L.FieldKind.TOGGLE:
                 fields.append(dialogs.InputField(
-                    key=field.key, prompt=field.label, field_type="choice", choices=YES_NO,
+                    key=field.key, prompt=field.label, field_type="choice", choices={choice.id: choice.title for choice in L.yes_no()},
                     default_text="yes" if value else "no",
                 ))
             else:

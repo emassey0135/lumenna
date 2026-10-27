@@ -13,6 +13,10 @@ the device's site packages put the real `dialogs` in place of the stub, and it n
 terminal. On the Mac the system's Python is 3.9: build and
 test with a newer one (`PYTHON=…`).
 
+- **Its version is Lumenna's** (`[workspace.metadata.lumenna]`), which `build-core.sh` writes
+  into `pyproject.toml` as a plain value: BT Code reads `project.version` itself when it sends the
+  app to the Code Store, so it cannot be `dynamic`. `records`' metadata test holds the copy
+  committed to it.
 - **A shell and nothing else.** No date parsing, no computed states, no folding of its own:
   each screen sends what the person did (`Session.send`, which waits until the app is still and
   says what it said) and draws `view()` with the core's `lines()`. Turns arrive on the app's
@@ -51,7 +55,8 @@ test with a newer one (`PYTHON=…`).
 - **Depth is never indentation**: it says nothing in speech. The app says the level only where
   it *changes*, against the previous *visible* row, so folding keeps it right. The projects,
   labels and filters screens each list one heading's places, so their level counts from there:
-  folding is the app's (`hidden`, `expanded`), the level worded by `level_words`.
+  folding is the app's (`hidden`, `expanded`), the levels the core's `levels` of their depths
+  under the heading, as a project pick's are of its choices'.
 - **A menu reopens on the app's row in hand** (`live_menu`'s `focus`), and is drawn after it is
   built, the arrival flag cleared then (`session.settle`): building sends (a place opened), and
   a flag left set draws every screen twice.

@@ -109,7 +109,7 @@ def main_menu(session: Session) -> None:
             item(title="Settings", shortcut="s", action=lambda: preferences.settings(session)),
         ]
 
-    live_menu(session, build, "Lumenna", app_title="Lumenna menu")
+    live_menu(session, build, "Lumenna", app_title=L.menu_of("Lumenna"))
 
 
 def add_task(session: Session) -> str:

@@ -41,3 +41,23 @@ rm -rf "$APP/native"
 mkdir -p "$APP/native"
 "$PYTHON" -m zipfile -e "$BOLT"/wheels/*.whl "$APP/native"
 rm -rf "$APP"/native/*.dist-info
+
+# The app's version is Lumenna's (`[workspace.metadata.lumenna]` in the workspace's Cargo.toml),
+# written into pyproject.toml here, so a version bump is that one edit. pyproject keeps it as a
+# plain value, not `dynamic`: BT Code reads `project.version` itself when it sends the app to the
+# Code Store, and writes the next free one back there.
+"$PYTHON" - "$ROOT/Cargo.toml" "$APP/pyproject.toml" <<'PY'
+import re
+import sys
+
+cargo, pyproject = sys.argv[1:3]
+with open(cargo, encoding="utf-8") as f:
+    section = f.read().split("[workspace.metadata.lumenna]", 1)[1].split("\n[", 1)[0]
+version = re.search(r'^version = "([^"]+)"$', section, re.M).group(1)
+with open(pyproject, encoding="utf-8") as f:
+    text = f.read()
+written = re.sub(r'^version = "[^"]*"$', f'version = "{version}"', text, count=1, flags=re.M)
+if written != text:
+    with open(pyproject, "w", encoding="utf-8") as f:
+        f.write(written)
+PY
