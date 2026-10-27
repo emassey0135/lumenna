@@ -12,6 +12,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use super::controls;
+use super::menu;
 use super::dialog::{self, Class, Dialog, Template};
 use crate::keys::{self, Group, Shortcut};
 
@@ -50,10 +51,10 @@ struct Help;
 impl Dialog for Help {
     fn template(&self) -> Template {
         let text = (ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
-        Template::new("Keyboard Shortcuts", 300, 230)
+        Template::new(&menu::button("keyboard-help"), 300, 230)
             .item(Class::Static, "&Shortcuts:", u16::MAX, 0, 7, 7, 286, 9)
             .item(Class::Edit, "", TEXT, text, 7, 17, 286, 186)
-            .item(Class::Button, "Close", IDCANCEL.0 as u16, BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 243, 209, 50, 14)
+            .item(Class::Button, &lumenna_records::words::close(false), IDCANCEL.0 as u16, BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 243, 209, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {

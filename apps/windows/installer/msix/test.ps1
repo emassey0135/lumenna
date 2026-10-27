@@ -6,10 +6,15 @@
 #   powershell -File apps\windows\installer\msix\test.ps1 -Package dist\Lumenna-0.1.0-x64.msix
 param(
     [Parameter(Mandatory)] [string] $Package,
-    [string] $IdentityName = 'dev.emassey0135.Lumenna',
-    [string] $Publisher = 'CN=Elijah Massey'
+    # As pack.ps1 was given them: empty, the workspace's stand-ins.
+    [string] $IdentityName,
+    [string] $Publisher
 )
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\..\metadata.ps1"
+$lumenna = Read-LumennaMetadata
+if (-not $IdentityName) { $IdentityName = $lumenna.id }
+if (-not $Publisher) { $Publisher = "CN=$($lumenna.publisher)" }
 
 $machine = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 $sdk = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*" -Directory | Sort-Object { [version]$_.Name } -Descending

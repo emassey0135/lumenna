@@ -2,15 +2,28 @@
 ;
 ; Built by the release workflow (`.github/workflows/release.yml`), once per architecture:
 ;
-;   iscc /DAppVersion=0.1.0 /DArch=x64 /DSource=<folder with lumenna.exe and lum.exe>
+;   iscc /DArch=x64 /DSource=<folder with lumenna.exe and lum.exe>
 ;        /DOutput=<folder> apps\windows\installer\lumenna.iss
 ;
 ; The two share one store as they always do, the profile's own (%LOCALAPPDATA%\lumenna), and `lum`
 ; is put on the person's PATH. Unsigned, as winget accepts and a direct download allows.
 
-#ifndef AppVersion
-  #define AppVersion "0.0.0"
+; What Lumenna is, read from the workspace's Cargo.toml (`[workspace.metadata.lumenna]`) as the
+; installer is built, so its version and name are changed there alone. ReadIni reads a TOML table
+; of plain strings as an INI section, taking the quotes off.
+#define Workspace AddBackslash(SourcePath) + "..\..\..\Cargo.toml"
+#define Name ReadIni(Workspace, "workspace.metadata.lumenna", "name")
+#define AppVersion ReadIni(Workspace, "workspace.metadata.lumenna", "version")
+#define Publisher ReadIni(Workspace, "workspace.metadata.lumenna", "publisher")
+#define Homepage ReadIni(Workspace, "workspace.metadata.lumenna", "homepage")
+#define Issues ReadIni(Workspace, "workspace.metadata.lumenna", "issues")
+; The notification identity the app gives itself (toast.rs), which the Start menu shortcut carries
+; so Windows ties the app's notifications to it.
+#define AppUserModelId ReadIni(Workspace, "workspace.metadata.lumenna", "id")
+#if Name == "" || AppVersion == "" || Publisher == "" || Homepage == "" || Issues == "" || AppUserModelId == ""
+  #error The workspace's Cargo.toml does not say all of what Lumenna is ([workspace.metadata.lumenna])
 #endif
+
 #ifndef Arch
   #define Arch "x64"
 #endif
@@ -21,19 +34,15 @@
   #define Output "..\..\..\target\installer"
 #endif
 
-; The notification identity the app gives itself (toast.rs), which the Start menu shortcut carries
-; so Windows ties the app's notifications to it.
-#define AppUserModelId "dev.emassey0135.Lumenna"
-
 [Setup]
 ; Never to change: Windows knows an upgrade, and winget an installed copy, by it.
 AppId={{4FFFD1BB-2C81-432A-9E26-1F7935D5B7D0}
-AppName=Lumenna
+AppName={#Name}
 AppVersion={#AppVersion}
-AppVerName=Lumenna {#AppVersion}
-AppPublisher=Elijah Massey
-AppPublisherURL=https://github.com/emassey0135/lumenna
-AppSupportURL=https://github.com/emassey0135/lumenna/issues
+AppVerName={#Name} {#AppVersion}
+AppPublisher={#Publisher}
+AppPublisherURL={#Homepage}
+AppSupportURL={#Issues}
 VersionInfoVersion={#AppVersion}
 ; For the person installing it alone: into %LOCALAPPDATA%\Programs, their PATH and their Start menu.
 PrivilegesRequired=lowest
@@ -53,7 +62,7 @@ CloseApplications=yes
 RestartApplications=no
 SetupIconFile=..\lumenna.ico
 UninstallDisplayIcon={app}\lumenna.exe
-UninstallDisplayName=Lumenna
+UninstallDisplayName={#Name}
 WizardStyle=modern
 Compression=lzma2/max
 SolidCompression=yes
@@ -72,8 +81,8 @@ Source: "{#Source}\lum.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"
 
 [Icons]
-Name: "{autoprograms}\Lumenna"; Filename: "{app}\lumenna.exe"; AppUserModelID: "{#AppUserModelId}"
-Name: "{autodesktop}\Lumenna"; Filename: "{app}\lumenna.exe"; AppUserModelID: "{#AppUserModelId}"; Tasks: desktopicon
+Name: "{autoprograms}\{#Name}"; Filename: "{app}\lumenna.exe"; AppUserModelID: "{#AppUserModelId}"
+Name: "{autodesktop}\{#Name}"; Filename: "{app}\lumenna.exe"; AppUserModelID: "{#AppUserModelId}"; Tasks: desktopicon
 
 [Registry]
 ; `lum` on the person's PATH; taken off again on uninstalling (RemoveFromPath, below).
@@ -90,7 +99,7 @@ Root: HKCU; Subkey: "Software\Classes\AppUserModelId\{#AppUserModelId}"; ValueTy
 ; winget's, nor by an upgrade, which does not uninstall.
 
 [Run]
-Filename: "{app}\lumenna.exe"; Description: "{cm:LaunchProgram,Lumenna}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\lumenna.exe"; Description: "{cm:LaunchProgram,{#Name}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 ; What the app wrote that only it can name: every profile's value opening it at sign-in, and the

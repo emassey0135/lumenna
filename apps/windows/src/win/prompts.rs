@@ -65,7 +65,7 @@ impl Dialog for AskText<'_> {
         };
         template
             .item(Class::Button, self.yes, IDOK.0 as u16, (BS_DEFPUSHBUTTON as u32) | WS_TABSTOP.0, 149, top + 32, 50, 14)
-            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, (BS_PUSHBUTTON as u32) | WS_TABSTOP.0, 203, top + 32, 50, 14)
+            .item(Class::Button, &lumenna_records::words::cancel(false), IDCANCEL.0 as u16, (BS_PUSHBUTTON as u32) | WS_TABSTOP.0, 203, top + 32, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {
@@ -183,7 +183,7 @@ impl Dialog for Pick<'_> {
             .item(Class::Static, self.label, u16::MAX, 0, 7, 7, 246, 9)
             .item(Class::ListBox, "", LIST, style, 7, 17, 246, 152)
             .item(Class::Button, self.yes, IDOK.0 as u16, (BS_DEFPUSHBUTTON as u32) | WS_TABSTOP.0, 149, 175, 50, 14)
-            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, (BS_PUSHBUTTON as u32) | WS_TABSTOP.0, 203, 175, 50, 14)
+            .item(Class::Button, &lumenna_records::words::cancel(false), IDCANCEL.0 as u16, (BS_PUSHBUTTON as u32) | WS_TABSTOP.0, 203, 175, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {

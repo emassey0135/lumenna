@@ -341,7 +341,7 @@ impl Dialog for Form {
 
         template = template
             .item(Class::Button, &self.first.yes, IDOK.0 as u16, BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, width - 111, bottom + 4, 50, 14)
-            .item(Class::Button, "Cancel", IDCANCEL.0 as u16, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, width - 57, bottom + 4, 50, 14);
+            .item(Class::Button, &lumenna_records::words::cancel(false), IDCANCEL.0 as u16, BS_PUSHBUTTON as u32 | WS_TABSTOP.0, width - 57, bottom + 4, 50, 14);
         // The height is known only once the fields are in.
         template.resize(width, bottom + 25)
     }
