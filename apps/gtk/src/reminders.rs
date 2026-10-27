@@ -16,7 +16,7 @@ use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
 use lumenna_app::{ActingOn, Side};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::reminders::{DueReminder, ReminderList};
+use lumenna_records::reminders::ReminderList;
 use lumenna_records::{ActionKind, Change, LumennaError};
 
 use crate::actions;
@@ -69,42 +69,51 @@ pub fn start(app: &Rc<App>) {
 
 fn deliver(app: &App, found: &lumenna_records::reminders::DueReminders) {
     // Each with its buttons in the core's order (`Due::buttons`): what it offers of its own,
-    // then Dismiss and Snooze.
-    // The summary of what was missed, if any, comes before them, and is shown apart below.
-    let arrived = lumenna_app::due::arrived(found);
-    let from = arrived.len().saturating_sub(found.due.len());
-    for (due, firing) in arrived[from..].iter().zip(&found.due) {
-        notify(app, firing, &due.buttons);
-    }
-    if !found.missed_summary.is_empty() {
-        let notification = gio::Notification::new("Lumenna");
-        notification.set_body(Some(&found.missed_summary));
-        notification.set_default_action("app.show-window");
-        app.application.send_notification(Some("reminders-missed"), &notification);
+    // then Dismiss and Snooze; the summary of what was missed, if any, first, with Dismiss alone.
+    for (at, due) in lumenna_app::due::arrived(found).iter().enumerate() {
+        notify(app, due, at == 0 && !found.missed_summary.is_empty());
     }
 }
 
 /// One reminder as a notification: its title and message, the core's buttons, and activating
-/// it opens what it is about.
-fn notify(app: &App, due: &DueReminder, buttons: &[lumenna_app::due::DueButton]) {
+/// it opens what it is about (a summary of what was missed, the window).
+fn notify(app: &App, due: &lumenna_app::due::Due, missed: bool) {
     let notification = gio::Notification::new(&due.title);
     notification.set_body(Some(&due.text));
+    let firings: Vec<(String, String)> = due.firings.iter().map(|f| (f.key.clone(), f.occurrence.clone())).collect();
+    // What was missed, as one, has no firing of its own: dismissing it dismisses every one.
+    let (Some(first), false) = (due.firings.first(), missed) else {
+        add_buttons(&notification, MISSED, due, &firings);
+        notification.set_default_action("app.show-window");
+        app.application.send_notification(Some(MISSED), &notification);
+        return;
+    };
+    let shown = id(&first.key, &first.occurrence);
     notification.set_priority(gio::NotificationPriority::High);
-    for button in buttons {
+    add_buttons(&notification, &shown, due, &firings);
+    let target = (first.kind.clone(), first.target.clone(), first.occurrence.clone()).to_variant();
+    notification.set_default_action_and_target_value("app.reminder-open", Some(&target));
+    app.application.send_notification(Some(&shown), &notification);
+}
+
+/// The summary of what was missed, as the desktop knows it: one at a time.
+const MISSED: &str = "reminders-missed";
+
+/// The core's buttons on `notification`, each the application's action for it.
+fn add_buttons(notification: &gio::Notification, shown: &str, due: &lumenna_app::due::Due, firings: &[(String, String)]) {
+    let first = &firings[0];
+    for button in &due.buttons {
         // What each button says once done goes with it: the app is not there to say it.
         let (action, target) = match button.id.as_str() {
-            "dismiss" | "snooze" => (format!("app.reminder-{}", button.id), (due.key.clone(), due.occurrence.clone(), button.said.clone()).to_variant()),
+            "dismiss" | "snooze" => (format!("app.reminder-{}", button.id), (shown, firings.to_vec(), button.said.as_str()).to_variant()),
             // At a block's end with work left short; the message already ends in the question.
-            "carry" => ("app.reminder-carry".to_owned(), (due.key.clone(), due.occurrence.clone(), due.target.clone()).to_variant()),
+            "carry" => ("app.reminder-carry".to_owned(), (first.0.clone(), first.1.clone(), due.block.clone().unwrap_or_default()).to_variant()),
             // When a block's work outruns its time: Replan from Now.
-            "replan" => ("app.reminder-replan".to_owned(), (due.key.clone(), due.occurrence.clone()).to_variant()),
+            "replan" => ("app.reminder-replan".to_owned(), first.to_variant()),
             _ => continue,
         };
         notification.add_button_with_target_value(&button.title, &action, Some(&target));
     }
-    let target = (due.kind.clone(), due.target.clone(), due.occurrence.clone()).to_variant();
-    notification.set_default_action_and_target_value("app.reminder-open", Some(&target));
-    app.application.send_notification(Some(&id(&due.key, &due.occurrence)), &notification);
 }
 
 fn id(key: &str, occurrence: &str) -> String {
@@ -116,15 +125,27 @@ fn id(key: &str, occurrence: &str) -> String {
 fn add_actions(app: &App) {
     let pair = glib::VariantTy::new("(ss)").expect("a valid type");
     let answer = |name: &str, run: fn(&App, String, String) -> Result<Change, LumennaError>| {
-        let action = gio::SimpleAction::new(name, Some(glib::VariantTy::new("(sss)").expect("a valid type")));
+        let action = gio::SimpleAction::new(name, Some(glib::VariantTy::new("(sa(ss)s)").expect("a valid type")));
         action.connect_activate(move |_, parameter| {
-            let (Some(app), Some((key, occurrence, said))) =
-                (crate::window::app(), parameter.and_then(|p| p.get::<(String, String, String)>()))
+            let (Some(app), Some((shown, firings, said))) =
+                (crate::window::app(), parameter.and_then(|p| p.get::<(String, Vec<(String, String)>, String)>()))
             else {
                 return;
             };
-            app.application.withdraw_notification(&id(&key, &occurrence));
-            answered(&app, run(&app, key, occurrence), &said);
+            app.application.withdraw_notification(&shown);
+            // Every firing a summary stands for; the first refusal is what is said.
+            let mut done = None;
+            for (key, occurrence) in firings {
+                let result = run(&app, key, occurrence);
+                let failed = result.is_err();
+                done = Some(result);
+                if failed {
+                    break;
+                }
+            }
+            if let Some(done) = done {
+                answered(&app, done, &said);
+            }
         });
         action
     };
@@ -136,13 +157,14 @@ fn add_actions(app: &App) {
     }));
     let carry = gio::SimpleAction::new("reminder-carry", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
     carry.connect_activate(|_, parameter| {
-        let (Some(app), Some((key, occurrence, target))) =
+        // What carrying carries, `<series>@<date>`, is the core's (`Due::block`).
+        let (Some(app), Some((key, occurrence, block))) =
             (crate::window::app(), parameter.and_then(|p| p.get::<(String, String, String)>()))
         else {
             return;
         };
         app.application.withdraw_notification(&id(&key, &occurrence));
-        answered(&app, app.model.device.carry_rest_forward(format!("{target}@{occurrence}")), "");
+        answered(&app, app.model.device.carry_rest_forward(block), "");
     });
     app.application.add_action(&carry);
     let open = gio::SimpleAction::new("reminder-open", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
@@ -164,7 +186,9 @@ fn add_actions(app: &App) {
         };
         app.application.withdraw_notification(&id(&key, &occurrence));
         app.show_window();
-        crate::proposal::replan(&app);
+        // The app opens today with Replan from Now, and dismisses the warning once something
+        // is replanned, so other devices stop showing it too.
+        app.model.send(ShellEvent::Due(lumenna_app::due::DueEvent::ReplanFiring { key, occurrence }));
     });
     app.application.add_action(&replan);
     let show = gio::SimpleAction::new("show-window", None);

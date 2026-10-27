@@ -714,17 +714,22 @@ impl Tree {
     /// the row shown before, as the BTSpeak, iPhone and Android apps say it, so a run of
     /// siblings is not each told its level. Elsewhere a row shows its text as given.
     fn word_levels(&self) {
-        let mut previous = 0;
-        for position in 0..self.model.n_items() {
-            let Some(list_row) = self.model.item(position).and_downcast::<gtk::TreeListRow>() else { continue };
-            let Some(row) = list_row.item().and_downcast::<Row>() else { continue };
-            let depth = list_row.depth();
-            let shown =
-                if self.level_in_text && depth != previous { format!("{}, {}", row.text(), lumenna_records::words::level(depth)) } else { row.text() };
-            if row.shown() != shown {
-                row.set_shown(shown);
+        let shown: Vec<(gtk::TreeListRow, Row)> = (0..self.model.n_items())
+            .filter_map(|position| {
+                let list_row = self.model.item(position).and_downcast::<gtk::TreeListRow>()?;
+                let row = list_row.item().and_downcast::<Row>()?;
+                Some((list_row, row))
+            })
+            .collect();
+        let depths: Vec<u32> = shown.iter().map(|(list_row, _)| list_row.depth()).collect();
+        for ((_, row), level) in shown.iter().zip(lumenna_app::lines::levels(&depths)) {
+            let text = match level.filter(|_| self.level_in_text) {
+                Some(level) => format!("{}, {level}", row.text()),
+                None => row.text(),
+            };
+            if row.shown() != text {
+                row.set_shown(text);
             }
-            previous = depth;
         }
     }
 

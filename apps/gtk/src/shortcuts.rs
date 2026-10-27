@@ -62,7 +62,7 @@ pub fn start(
             },
             false => error.to_string(),
         };
-        say(format!("The shortcuts from anywhere are not available here. {error}"));
+        say(lumenna_records::words::hotkeys_unavailable(&error));
     });
 }
 

@@ -712,17 +712,27 @@ impl App {
     }
 
     fn about(&self) {
+        // What Lumenna is, from the one source every platform's files are checked against.
+        let metadata = lumenna_records::words::metadata();
         let about = adw::AboutDialog::builder()
-            .application_name("Lumenna")
-            .application_icon(crate::ID)
-            .comments(lumenna_records::words::app_description())
-            .version(env!("CARGO_PKG_VERSION"))
-            .license_type(gtk::License::Agpl30)
-            .website("https://github.com/emassey0135/lumenna")
-            .developer_name("Elijah Massey")
+            .application_name(&metadata.name)
+            .application_icon(&metadata.id)
+            .comments(&metadata.description)
+            .version(&metadata.version)
+            .website(&metadata.homepage)
+            .issue_url(&metadata.issues)
+            .developer_name(&metadata.publisher)
             .build();
-        // Its own title is "About", so Orca never heard whose; focus starts on the version.
-        adw::prelude::AdwDialogExt::set_title(&about, "About Lumenna");
+        // GTK names a licence by its own list; one it lacks is said by its SPDX name.
+        match metadata.licence.as_str() {
+            "AGPL-3.0-or-later" => about.set_license_type(gtk::License::Agpl30),
+            "AGPL-3.0-only" => about.set_license_type(gtk::License::Agpl30Only),
+            other => about.set_license(other),
+        }
+        // Its own title is "About", so Orca never heard whose; focus starts on the version. The
+        // command's own name says whose.
+        let title = lumenna_app::keys::command_of("about").map_or("About", |command| command.title);
+        adw::prelude::AdwDialogExt::set_title(&about, title);
         adw::prelude::AdwDialogExt::present(&about, Some(&self.window));
     }
 }

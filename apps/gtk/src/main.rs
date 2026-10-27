@@ -46,7 +46,7 @@ use gtk::prelude::*;
 use lumenna_ffi::profile;
 
 /// The application identifier, which is also the name it owns on the session bus.
-pub const ID: &str = "dev.emassey0135.Lumenna";
+pub const ID: &str = lumenna_records::words::ID;
 
 /// Whether the app runs in a sandbox, a Flatpak's: it opens at sign-in through the Background
 /// portal (`autostart.rs`), and its tray owns no well-known name (`tray.rs`). Its store is the

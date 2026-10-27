@@ -19,6 +19,7 @@ use gtk::{gdk, gio, glib};
 use lumenna_app::devices::marked;
 use lumenna_app::{ActingOn, Asks, DevicesEvent, Offered, Side, SettingsEvent, SettingsView};
 use lumenna_ffi::ShellEvent;
+use lumenna_records::fields::{sentence_case, setting_words};
 use lumenna_records::{ActionKind, ExportFormat, Setting, SettingKind};
 
 use crate::prompts;
@@ -738,7 +739,7 @@ impl DevicesPage {
         Self {
             sync_status: prompts::read_only_text(),
             label: gtk::Label::new(None),
-            list: Tree::new("Paired devices"),
+            list: Tree::new(&sentence_case(setting_words().devices)),
             devices: RefCell::new(Vec::new()),
             landing: Landing::default(),
         }
@@ -782,10 +783,14 @@ impl DevicesPage {
 fn devices_page(spec: &lumenna_records::fields::SettingsPage) -> Built {
     let page = PageBox::new();
     let devices = Rc::new(DevicesPage::empty());
-    page.field("S_ync status", &devices.sync_status);
+    // The core's words, a label in GNOME's sentence case and a button in Title Case, with this
+    // app's mnemonics; a button that asks first ends in "…".
+    let words = setting_words();
+    let marked = |text: &str, letter: char| lumenna_app::devices::marked(text, letter, '_');
+    page.field(&sentence_case(marked(&words.sync_status, 'y')), &devices.sync_status);
     devices.list.fit(160);
     devices.list.view.update_property(&[gtk::accessible::Property::Description("Delete unpairs the selected device.")]);
-    devices.label.set_label("Paired _devices");
+    devices.label.set_label(&sentence_case(marked(&words.devices, 'D')));
     devices.label.set_use_underline(true);
     devices.label.set_xalign(0.0);
     devices.label.set_margin_top(6);
@@ -797,8 +802,8 @@ fn devices_page(spec: &lumenna_records::fields::SettingsPage) -> Built {
         None => gtk::Box::new(gtk::Orientation::Horizontal, 6),
     };
     // A device's own actions, held there before they run.
-    let rename = gtk::Button::with_mnemonic("_Rename…");
-    let unpair = gtk::Button::with_mnemonic("_Unpair…");
+    let rename = gtk::Button::with_mnemonic(&format!("{}…", marked(&words.rename, 'R')));
+    let unpair = gtk::Button::with_mnemonic(&format!("{}…", marked(&words.unpair, 'U')));
     row.append(&rename);
     row.append(&unpair);
     page.add(&row);
