@@ -423,13 +423,18 @@ impl App {
     }
 
     /// What could go at `cursor` (UTF-8 bytes) in `text` written in `syntax`: a keystroke-rate
-    /// question of the store, as every app's filter field asks it.
+    /// question of the store, as every app's filter field asks it. Each candidate's `label` is worded
+    /// as a completion's line is everywhere (`speech::candidate`: "Inbox, project").
     ///
     /// # Errors
     ///
     /// If the store cannot be read.
     pub fn complete(&self, text: String, cursor: u32, syntax: Syntax) -> Result<Completions, LumennaError> {
-        self.lumenna.complete_text(&text, cursor, syntax)
+        let mut found = self.lumenna.complete_text(&text, cursor, syntax)?;
+        for candidate in &mut found.candidates {
+            candidate.label = lumenna_app::speech::candidate(candidate);
+        }
+        Ok(found)
     }
 
     /// A backup taken now, for a folder the person gave this browser: its name and bytes.

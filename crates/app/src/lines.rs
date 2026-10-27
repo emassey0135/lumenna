@@ -32,6 +32,26 @@ pub struct Lines {
     /// What the details list besides their form (`DetailsView::lines`): each its label, then
     /// what it says.
     pub details: Vec<Line>,
+    /// The projects the details' Project field offers (`DetailsView::projects`), each with its
+    /// level where it changes.
+    pub projects: Vec<Line>,
+}
+
+/// Where the level changes among rows shown at `depths`, in order: "level 2" on a row deeper or
+/// shallower than the one shown before it, none on the rest. What a shell hands a list it
+/// narrowed or cut out itself (a pick narrowed by typing, one group's places), so no shell
+/// counts levels.
+#[must_use]
+pub fn levels(depths: &[u32]) -> Vec<Option<String>> {
+    let mut previous = 0;
+    depths
+        .iter()
+        .map(|&depth| {
+            let level = (depth != previous).then(|| lumenna_records::words::level(depth));
+            previous = depth;
+            level
+        })
+        .collect()
 }
 
 /// How a list's query was understood and what it found, or why it is not one yet: the
@@ -150,6 +170,14 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
             .map(|line| line.offer.candidates.iter().map(speech::candidate).collect())
             .unwrap_or_default(),
         task_state: view.details.as_ref().map(|details| speech::task_state(&details.task)).unwrap_or_default(),
+        projects: view
+            .details
+            .as_ref()
+            .map(|details| {
+                let depths: Vec<u32> = details.projects.iter().map(|p| p.depth).collect();
+                details.projects.iter().zip(levels(&depths)).map(|(project, level)| Line { level, ..speech::choice_line(project, clock) }).collect()
+            })
+            .unwrap_or_default(),
         details: view
             .details
             .as_ref()

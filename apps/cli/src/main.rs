@@ -46,7 +46,8 @@ use render::Format;
 
 /// A task manager and day planner that keeps them in one place.
 #[derive(Debug, Parser)]
-#[command(name = "lum", version, about, long_about = None)]
+// What Lumenna is, as every platform says it: the workspace's one source.
+#[command(name = "lum", version, about = lumenna_host::words::DESCRIPTION, long_about = None)]
 struct Cli {
     /// Use a specific profile directory instead of the default.
     #[arg(long, global = true, value_name = "DIR")]

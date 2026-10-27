@@ -614,7 +614,12 @@ impl Lumenna {
         match event {
             // Taken apart before a screen's turn.
             Event::On(..) | Event::CloseScreen(_) => Command::done(),
-            Event::Start => Command::stream_from_shell(Watch).then_send(Event::Arrived).and(host(HostRequest::Devices)),
+            // Once: a second would watch the store twice.
+            Event::Start if model.watching => Command::done(),
+            Event::Start => {
+                model.watching = true;
+                Command::stream_from_shell(Watch).then_send(Event::Arrived).and(host(HostRequest::Devices))
+            }
             Event::Arrived(store) => self.arrived(store, model),
             Event::Open(place) => {
                 model.open = None;
@@ -660,7 +665,7 @@ impl Lumenna {
             Event::SyncStatus(answer) => self.sync_status(answer, model),
             Event::Pairing(answer) => self.pairing(answer, model),
             Event::Answered(HostAnswer::Devices(result)) => self.devices_listed(result, model),
-            Event::Answered(HostAnswer::Found(result)) => self.found(result, model),
+            Event::Answered(HostAnswer::Found(result, store)) => self.found(result, store, model),
             Event::Answered(HostAnswer::Listed(result)) => self.listed(result, model),
             Event::Answered(HostAnswer::Saved(result)) => self.saved(*result),
             Event::Answered(HostAnswer::Imported(result, store)) => self.imported(*result, store, model),

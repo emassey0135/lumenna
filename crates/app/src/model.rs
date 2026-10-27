@@ -141,8 +141,9 @@ pub struct Screen {
     pub looking: bool,
     /// The looks asked for meanwhile, as one: the earliest `since`, and the latest moment.
     pub look_next: Option<(String, Option<String>)>,
-    /// An overrun warning whose Replan from Now is open: dismissed once something is replanned.
-    pub replanning: Option<String>,
+    /// An overrun warning whose Replan from Now is open, by its id, and the firing it is when the
+    /// platform gave it itself: dismissed once something is replanned.
+    pub replanning: Option<(String, Option<(String, String)>)>,
     /// Counted: each time the app moves focus itself, which is when a shell moves it.
     pub landing: u32,
     /// How many times the person has moved the row in hand themselves (`Event::Focus`).
@@ -165,6 +166,8 @@ pub struct Screen {
     /// The side list the person last moved in, until they move in the main list or open a
     /// place: a change it makes lands there, not in the main list.
     pub acting: Option<crate::held::Side>,
+    /// Whether this screen watches the store already: Start is taken once.
+    pub watching: bool,
     /// What this screen read last from the store it holds: the listing and the day's plan.
     pub(crate) worked: Worked,
 }

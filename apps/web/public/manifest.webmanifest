@@ -1,7 +1,7 @@
 {
   "name": "Lumenna",
   "short_name": "Lumenna",
-  "description": "Tasks and the day's time blocks, worked on across sittings until they are done.",
+  "description": "Tasks, and the time blocks you work through them in",
   "id": "/",
   "start_url": "/",
   "scope": "/",

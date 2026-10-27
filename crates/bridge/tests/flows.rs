@@ -1349,7 +1349,7 @@ fn looks_for_reminders_asked_for_while_one_is_with_the_host_go_as_one_after_it()
         missed: Vec::new(),
         missed_summary: String::new(),
         elsewhere: false,
-    }));
+    }), None);
     let next = core.resolve(&mut handle, found).unwrap();
     assert_eq!(
         looks(&next),
@@ -1837,7 +1837,7 @@ fn a_failed_dismiss_says_why_and_leaves_the_reminder_listed_and_the_question_alo
         missed: Vec::new(),
         missed_summary: String::new(),
         elsewhere: false,
-    }))));
+    }), None)));
     let due = app.view().due;
     assert_eq!(due.len(), 1);
     let ids: Vec<&str> = due[0].buttons.iter().map(|b| b.id.as_str()).collect();
@@ -1923,7 +1923,7 @@ fn an_overruns_replan_opens_on_today_and_its_warning_stays_when_nothing_is_repla
         missed: Vec::new(),
         missed_summary: String::new(),
         elsewhere: false,
-    }))));
+    }), None)));
     let due = app.view().due;
     assert_eq!(due[0].buttons[0].id, "replan", "what it offers of its own comes first");
     app.send(Event::Open(Place::Tasks));
@@ -2223,4 +2223,98 @@ fn another_option_of_replan_from_now_is_proposed_in_place_at_the_moment_pinned()
     let taken = app.view().proposal.unwrap();
     assert!(taken.shown > shown, "a new proposal, in place");
     assert!(taken.changes.iter().any(|c| c.sentence.starts_with("Lunch is skipped") && c.state == "checked"), "{:?}", taken.changes);
+}
+
+#[test]
+fn an_overrun_the_platform_gave_itself_opens_replan_and_is_dismissed_once_something_is_replanned() {
+    let mut app = ByHand::new(|_| {});
+    app.send(Event::Open(Place::Tasks));
+    app.send(Event::Due(lumenna_app::DueEvent::ReplanFiring {
+        key: "0199a000-0000-7000-8000-000000000001".to_owned(),
+        occurrence: "2030-01-15".to_owned(),
+    }));
+    let view = app.view();
+    assert_eq!(view.place, Some(Place::Today), "Replan from Now is the day's");
+    assert_eq!(view.proposal.map(|p| p.kind), Some(ActionKind::Replan), "never refused, though this list never held it");
+    app.answer_all();
+    app.send(Event::Proposal(ProposalEvent::Close));
+    assert!(app.held.is_empty(), "nothing replanned: nothing dismissed");
+}
+
+#[test]
+fn a_reminder_dealt_with_elsewhere_leaves_the_list_at_the_next_look_though_the_store_was_never_ticked() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    let since = jiff::Timestamp::now().to_string();
+    let tz = jiff::tz::TimeZone::system();
+    let at = |minute| jiff::Zoned::now().date().tomorrow().unwrap().at(8, minute, 0, 0).to_zoned(tz.clone()).unwrap().timestamp().to_string();
+    app.send(Event::Due(lumenna_app::DueEvent::Look { since: since.clone(), now: Some(at(56)) }));
+    let due = app.view().due;
+    assert_eq!(due.len(), 1);
+    let firing = &due[0].firings[0];
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().dismiss_reminder(firing.key.clone(), firing.occurrence.clone()).unwrap();
+    app.send(Event::Due(lumenna_app::DueEvent::Look { since: at(56), now: Some(at(57)) }));
+    assert!(app.view().due.is_empty(), "the look brought the store as it is");
+}
+
+#[test]
+fn a_summary_of_missed_reminders_refuses_snooze_in_the_cores_words() {
+    let mut app = ByHand::new(|_| {});
+    let missed = lumenna_records::reminders::DueReminder {
+        key: "0199a000-0000-7000-8000-000000000002".to_owned(),
+        occurrence: "2030-01-15".to_owned(),
+        at: "2030-01-15T09:00:00Z".to_owned(),
+        target: "nothing".to_owned(),
+        kind: "task".to_owned(),
+        title: "Pay rent".to_owned(),
+        text: "Pay rent was due".to_owned(),
+        missed: "Pay rent was due".to_owned(),
+        dismiss: "Dismiss".to_owned(),
+        snooze: "Snooze".to_owned(),
+        carry: String::new(),
+        replan: String::new(),
+    };
+    app.send(Event::Answered(lumenna_app::HostAnswer::Found(
+        Ok(lumenna_records::reminders::DueReminders {
+            announcement: String::new(),
+            notices: Vec::new(),
+            due: Vec::new(),
+            missed: vec![missed],
+            missed_summary: "1 reminder missed: Pay rent".to_owned(),
+            elsewhere: false,
+        }),
+        None,
+    )));
+    let due = app.view().due;
+    assert_eq!(due.len(), 1);
+    assert!(due[0].snooze.is_none());
+    app.send(Event::Due(lumenna_app::DueEvent::Snooze(due[0].id.clone())));
+    assert!(app.held.is_empty(), "nothing is snoozed");
+    assert_eq!(app.view().due.len(), 1);
+}
+
+#[test]
+fn a_second_start_watches_the_store_once() {
+    use crux_core::Core;
+    let core: Core<lumenna_app::Lumenna> = Core::new();
+    let watches = |effects: &[Effect]| effects.iter().filter(|e| matches!(e, Effect::Watch(_))).count();
+    assert_eq!(watches(&core.process_event(Event::Start)), 1);
+    assert_eq!(watches(&core.process_event(Event::Start)), 0, "a second Start watches nothing more");
+}
+
+#[test]
+fn a_repeating_block_with_no_day_asks_which_occurrences_in_the_cores_words() {
+    let question = lumenna_records::fields::edit_which_question("Standup", "", false);
+    let Question::Choose { answers, .. } = question else { panic!() };
+    assert_eq!(answers[0].title, "This Day Only");
+    let Question::Choose { answers, .. } = lumenna_records::fields::edit_which_question("Standup", "", true) else { panic!() };
+    assert_eq!(answers[0].title, "This day only");
+}
+
+#[test]
+fn levels_are_said_where_they_change_among_the_rows_a_shell_shows() {
+    assert_eq!(
+        lumenna_app::lines::levels(&[0, 1, 1, 0, 2]),
+        [None, Some("level 2".to_owned()), None, Some("level 1".to_owned()), Some("level 3".to_owned())]
+    );
 }

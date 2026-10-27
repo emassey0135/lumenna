@@ -265,7 +265,7 @@ impl Lumenna {
                 let date = block.id.split('@').nth(1).and_then(|d| d.parse::<Date>().ok());
                 let day = match (date, today) {
                     (Some(date), Some(today)) => lumenna_records::words::capitalised(&lumenna_core::time::day_words(date, today)),
-                    _ => "This day".to_owned(),
+                    _ => String::new(),
                 };
                 model.open = Some(Open::new(crate::asking::Purpose::EditWhich(block, day)));
                 render()
