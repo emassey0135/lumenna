@@ -117,7 +117,9 @@ function Get-Taken($op) {
 # What an operation acts on: its first required parameter; with none required, its first when
 # that names a record (a sitting left out meaning the timer running), so a record still pipes in.
 function Get-Acted($op) {
-    $taken = Get-Taken $op
+    # Wrapped, since a function's one result comes back unrolled, and strict mode refuses
+    # indexing it.
+    $taken = @(Get-Taken $op)
     $required = @($taken | Where-Object { -not $_.optional })
     if ($required.Count) { return $required[0] }
     if ($taken.Count -and $identifiers -contains $taken[0].kind) { return $taken[0] }
