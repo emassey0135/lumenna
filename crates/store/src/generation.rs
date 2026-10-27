@@ -72,6 +72,15 @@ impl RebuiltFrom {
 /// What a generation has erased, as `<collection>/<key>`.
 pub(crate) type Erased = BTreeSet<String>;
 
+/// The text of a value read whole, if it is text.
+fn raw_text(raw: &Raw) -> Option<String> {
+    match raw {
+        Raw::Scalar(automerge::ScalarValue::Str(text)) => Some(text.to_string()),
+        Raw::Text(text) => Some(text.clone()),
+        _ => None,
+    }
+}
+
 /// The generation a set of documents is, as its `core` says; `None` for the first.
 pub(crate) fn of(docs: &Documents) -> Option<String> {
     docs.core_ref().root_text("generation")
@@ -98,12 +107,16 @@ pub(crate) struct Gone<'a> {
     erased: &'a Erased,
     tasks: BTreeSet<String>,
     reminders: BTreeSet<String>,
+    /// Acknowledgements, by `<reminder>@<date>`, that say they were for something erased.
+    acks: BTreeSet<String>,
 }
 
 impl<'a> Gone<'a> {
-    /// What goes from `docs` with `erased`: every reminder of an erased task, its own and the
-    /// defaults its acknowledgements are kept under (`remind::default_key`, from the default
-    /// reminders set now).
+    /// What goes from `docs` with `erased`: every reminder of an erased task, and every
+    /// acknowledgement of one or of something erased. An acknowledgement says what it was for
+    /// (`target`), so one of a default reminder is found whatever the default reminders are now;
+    /// one from a build before that is found by the defaults' keys as they are set now
+    /// (`remind::default_key`).
     pub(crate) fn of(erased: &'a Erased, docs: &Documents) -> Self {
         let tasks: BTreeSet<String> = erased.iter().filter_map(|key| key.strip_prefix("tasks/")).map(str::to_owned).collect();
         let mut reminders: BTreeSet<String> =
@@ -114,13 +127,33 @@ impl<'a> Gone<'a> {
                 reminders.insert(key);
             }
         }
+        let mut by_ack: BTreeMap<String, (Option<String>, Option<String>)> = BTreeMap::new();
+        for (key, raw) in core.entries("acks").unwrap_or_default() {
+            let Some((record, field)) = key.split_once('/') else { continue };
+            let text = || raw_text(&raw);
+            let entry = by_ack.entry(record.to_owned()).or_default();
+            match field {
+                "target_kind" => entry.0 = text(),
+                "target_id" => entry.1 = text(),
+                _ => {}
+            }
+        }
+        let acks = by_ack
+            .into_iter()
+            .filter(|(_, target)| match target {
+                (Some(kind), Some(id)) if kind == "task" => tasks.contains(id),
+                (Some(kind), Some(id)) if kind == "block" => erased.contains(&format!("series/{id}")),
+                _ => false,
+            })
+            .map(|(record, _)| record)
+            .collect();
         let defaults = core.settings().default_task_reminders;
         for task in &tasks {
             let Ok(task) = task.parse() else { continue };
             let target = lumenna_core::model::ReminderTarget::Task(task);
             reminders.extend(defaults.iter().map(|trigger| lumenna_core::remind::default_key(&target, trigger).to_string()));
         }
-        Self { erased, tasks, reminders }
+        Self { erased, tasks, reminders, acks }
     }
 
     /// Whether the reminder `id` stays: not erased, nor one of an erased task's.
@@ -141,7 +174,10 @@ impl<'a> Gone<'a> {
             "completions" | "assignments" => raw.text_at("task_id").is_none_or(|task| !self.tasks.contains(task)),
             "reminders" => !self.reminders.contains(record),
             // Keyed `<reminder>@<date>`.
-            "acks" => !record.split_once('@').is_some_and(|(reminder, _)| self.reminders.contains(reminder)),
+            "acks" => {
+                !self.acks.contains(record)
+                    && !record.split_once('@').is_some_and(|(reminder, _)| self.reminders.contains(reminder))
+            }
             _ => true,
         }
     }

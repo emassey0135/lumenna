@@ -330,7 +330,7 @@ fn field_words(key: &str) -> String {
         "deleted_at" => "trash state".to_owned(),
         "due" => "due date".to_owned(),
         "estimate_mins" => "estimate".to_owned(),
-        "accumulated_mins" => "logged time".to_owned(),
+        "accumulated_mins" | "extra_secs" => "logged time".to_owned(),
         "running_since" => "timer".to_owned(),
         "planned_mins" => "planned time".to_owned(),
         "depends" => "dependencies".to_owned(),

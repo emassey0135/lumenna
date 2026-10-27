@@ -351,9 +351,15 @@ pub struct BlockAssignment {
     pub task_id: TaskId,
     /// How long this sitting is meant to take.
     pub planned_mins: Option<u32>,
-    /// Completed timer runs, plus anything entered by hand. The timer is optional, not
-    /// mandatory.
+    /// Completed timer runs, plus anything entered by hand, in whole minutes: what is shown,
+    /// and what a build from before [`extra_secs`](Self::extra_secs) reads. The timer is
+    /// optional, not mandatory.
     pub accumulated_mins: u32,
+    /// The seconds timer runs logged beyond those whole minutes, under a minute: kept so short
+    /// runs add up (ten runs of 50 seconds are 500 seconds, 8 minutes), where rounding each to
+    /// a minute logged 10 and flooring logged none. See [`logged_secs`](Self::logged_secs).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub extra_secs: u32,
     /// `Some` exactly while a timer is running.
     pub running_since: Option<Timestamp>,
     /// How this sitting went.
@@ -389,6 +395,7 @@ impl BlockAssignment {
             task_id,
             planned_mins: None,
             accumulated_mins: 0,
+            extra_secs: 0,
             running_since: None,
             status: AssignmentStatus::Planned,
             order,
@@ -410,22 +417,44 @@ impl BlockAssignment {
         }
     }
 
-    /// Stops the timer, folding the running interval into
-    /// [`accumulated_mins`](Self::accumulated_mins).
+    /// Every second logged: the whole minutes and the seconds beyond them.
+    #[must_use]
+    pub const fn logged_secs(&self) -> u64 {
+        self.accumulated_mins as u64 * 60 + self.extra_secs as u64
+    }
+
+    /// Logs `secs` in all, as whole minutes and the seconds left over.
+    pub fn set_logged_secs(&mut self, secs: u64) {
+        self.accumulated_mins = u32::try_from(secs / 60).unwrap_or(u32::MAX);
+        self.extra_secs = u32::try_from(secs % 60).unwrap_or(0);
+    }
+
+    /// Logs `mins` in all, entered by hand: nothing left over from the timer's seconds.
+    pub fn set_logged_mins(&mut self, mins: u32) {
+        self.accumulated_mins = mins;
+        self.extra_secs = 0;
+    }
+
+    /// Stops the timer, adding the running interval to what is logged, to the second.
     ///
     /// `cap_mins` is the containing block's duration, as for [`elapsed`](Self::elapsed): a
     /// timer left running past the end of its block contributes at most the block's length.
-    ///
-    /// The run is logged to the nearest minute, not floored: only whole minutes are kept, and
-    /// floored, ten runs of 50 seconds logged nothing at all. Rounded, what one run gains
-    /// another loses, rather than every run losing.
     pub fn pause(&mut self, now: Timestamp, cap_mins: Option<u32>) -> Elapsed {
-        let half_a_minute = SignedDuration::from_secs(30);
-        let rounded = if self.is_running() { now.saturating_add(half_a_minute).unwrap_or(now) } else { now };
-        let elapsed = self.elapsed(rounded, cap_mins);
-        self.accumulated_mins = elapsed.mins;
+        let (running, capped) = self.running_secs(now, cap_mins);
+        self.set_logged_secs(self.logged_secs().saturating_add(running));
         self.running_since = None;
-        elapsed
+        Elapsed { mins: self.accumulated_mins, capped }
+    }
+
+    /// The running interval in seconds, capped at `cap_mins`, and whether it was.
+    fn running_secs(&self, now: Timestamp, cap_mins: Option<u32>) -> (u64, bool) {
+        let running = self.running_since.map_or(0, |since| {
+            u64::try_from(now.duration_since(since).max(SignedDuration::ZERO).as_secs()).unwrap_or(0)
+        });
+        match cap_mins.map(|cap| u64::from(cap) * 60) {
+            Some(cap) if running > cap => (cap, true),
+            _ => (running, false),
+        }
     }
 
     /// Time spent on this sitting: accumulated, plus the running interval if there is one.
@@ -444,15 +473,9 @@ impl BlockAssignment {
     /// that legitimately exceeds the block is never cut back down to it.
     #[must_use]
     pub fn elapsed(&self, now: Timestamp, cap_mins: Option<u32>) -> Elapsed {
-        let running_mins = self.running_since.map_or(0, |since| {
-            let secs = now.duration_since(since).max(SignedDuration::ZERO).as_secs();
-            u32::try_from(secs / 60).unwrap_or(u32::MAX)
-        });
-        let (running_mins, capped) = match cap_mins {
-            Some(cap) if running_mins > cap => (cap, true),
-            _ => (running_mins, false),
-        };
-        Elapsed { mins: self.accumulated_mins.saturating_add(running_mins), capped }
+        let (running, capped) = self.running_secs(now, cap_mins);
+        let secs = self.logged_secs().saturating_add(running);
+        Elapsed { mins: u32::try_from(secs / 60).unwrap_or(u32::MAX), capped }
     }
 }
 
@@ -590,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn short_runs_are_logged_to_the_nearest_minute_rather_than_lost() {
+    fn short_runs_are_logged_to_the_second_and_add_up() {
         let mut a = assignment();
         let mut t = Timestamp::from_second(1_700_000_000).unwrap();
         for _ in 0..10 {
@@ -599,10 +622,20 @@ mod tests {
             a.pause(t, None);
             t += SignedDuration::from_secs(60);
         }
-        assert_eq!(a.accumulated_mins, 10, "ten runs of 50 seconds are not nothing");
+        assert_eq!(a.logged_secs(), 500, "ten runs of 50 seconds are 500 seconds");
+        assert_eq!(a.accumulated_mins, 8, "shown as the whole minutes in them");
         a.start(t);
-        a.pause(t + SignedDuration::from_secs(20), None);
-        assert_eq!(a.accumulated_mins, 10, "20 seconds rounds down");
+        a.pause(t + SignedDuration::from_secs(40), None);
+        assert_eq!(a.logged_secs(), 540);
+        assert_eq!(a.accumulated_mins, 9);
+    }
+
+    #[test]
+    fn time_entered_by_hand_leaves_no_seconds_over() {
+        let mut a = assignment();
+        a.set_logged_secs(500);
+        a.set_logged_mins(30);
+        assert_eq!(a.logged_secs(), 30 * 60);
     }
 
     #[test]

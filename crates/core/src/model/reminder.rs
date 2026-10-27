@@ -188,6 +188,11 @@ pub struct ReminderAck {
     pub acked_at: Timestamp,
     /// Which device it happened on.
     pub acked_by: NodeId,
+    /// What the reminder was for when it was dealt with: a default reminder's key cannot be
+    /// worked back to its task or block once the default reminders change, and erasing that
+    /// task or block for good must take its acknowledgements too. `None` from builds before it.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub target: Option<ReminderTarget>,
 }
 
 /// What the user did with a reminder.
