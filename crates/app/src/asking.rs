@@ -111,12 +111,20 @@ fn after_place(open: &Open, store: &Arrival, shown: &Place) -> Option<Place> {
         Purpose::Action(action) => match (action.subject, action.kind) {
             (Subject::Project | Subject::Label | Subject::Filter, ActionKind::Delete) => gone(shown, store).then_some(Place::Tasks),
             (Subject::Project, ActionKind::New | ActionKind::NewInside | ActionKind::Rename) => Some(Place::Project(answered?)),
-            (Subject::Label, ActionKind::New | ActionKind::Rename | ActionKind::MergeInto) => Some(Place::Label(answered?)),
+            (Subject::Label, ActionKind::New | ActionKind::Rename) => Some(Place::Label(answered?)),
+            // A pick answers with the label's identifier; the place is named by its name.
+            (Subject::Label, ActionKind::MergeInto) => {
+                Some(Place::Label(lumenna_records::resolve::label(&store.snapshot, &answered?).ok()?.name.clone()))
+            }
             (Subject::Filter, ActionKind::Rename) => {
                 let name = answered?;
                 Some(Place::Filter { query: filter_named(&name)?, name })
             }
-            (Subject::Filter, ActionKind::ChangeQuery) => Some(Place::Filter { name: action.target.clone(), query: answered? }),
+            // Its row's actions name the filter by identifier.
+            (Subject::Filter, ActionKind::ChangeQuery) => Some(Place::Filter {
+                name: lumenna_records::resolve::filter(&store.snapshot, &action.target).ok()?.name.clone(),
+                query: answered?,
+            }),
             _ => None,
         },
         _ => None,

@@ -738,8 +738,10 @@ fn position_of<T: PartialEq>(siblings: &[T], item: &T) -> usize {
 /// and weighed.
 pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     use ActionKind as K;
+    // Acted on by identifier, said by name: two projects under different parents may share one.
     let name = project.name.clone();
-    let a = |kind, title: &str| action(kind, Subject::Project, title, name.clone());
+    let target = project.id.to_string();
+    let a = |kind, title: &str| action(kind, Subject::Project, title, target.clone());
     let mut siblings: Vec<&Project> = snapshot
         .projects
         .values()
@@ -760,7 +762,7 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     ));
     let mut actions = Vec::new();
     if project.is_inbox {
-        reorder(&mut actions, Subject::Project, &name, position_of(&ids, &project.id), ids.len());
+        reorder(&mut actions, Subject::Project, &target, position_of(&ids, &project.id), ids.len());
         actions.push(weight);
         return actions;
     }
@@ -770,9 +772,9 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     if project.parent_id.is_some() {
         actions.push(a(K::MoveToTopLevel, "Move to Top Level"));
     }
-    reorder(&mut actions, Subject::Project, &name, position_of(&ids, &project.id), ids.len());
+    reorder(&mut actions, Subject::Project, &target, position_of(&ids, &project.id), ids.len());
     actions.push(weight);
-    actions.push(colour(Subject::Project, &name));
+    actions.push(colour(Subject::Project, &target, &name));
     actions.push(if project.archived { a(K::Unarchive, "Unarchive") } else { a(K::Archive, "Archive") });
     actions.push(a(K::Delete, "Delete").asking(Question::Choose {
         title: format!("Delete {name}?"),
@@ -795,8 +797,8 @@ fn time_zone(subject: Subject, target: &str, name: &str, zone: Option<&str>) -> 
 }
 
 /// A project's, label's or saved filter's Colour, a pick of the palette's colours.
-fn colour(subject: Subject, name: &str) -> Action {
-    action(ActionKind::Colour, subject, "Colour", name).asking(Question::Pick {
+fn colour(subject: Subject, target: &str, name: &str) -> Action {
+    action(ActionKind::Colour, subject, "Colour", target).asking(Question::Pick {
         title: format!("Colour of {name}"),
         length: None,
         yes: "Set Colour".to_owned(),
@@ -807,16 +809,17 @@ fn colour(subject: Subject, name: &str) -> Action {
 pub fn label(snapshot: &Snapshot, label: &Label) -> Vec<Action> {
     use ActionKind as K;
     let name = label.name.clone();
-    let a = |kind, title: &str| action(kind, Subject::Label, title, name.clone());
+    let target = label.id.to_string();
+    let a = |kind, title: &str| action(kind, Subject::Label, title, target.clone());
     let mut live: Vec<&Label> = snapshot.labels.values().filter(|l| l.deleted_at.is_none()).collect();
     live.sort_by(|x, y| x.order.cmp_with(&x.id, &y.order, &y.id));
     let ids: Vec<_> = live.iter().map(|l| l.id).collect();
     let mut actions = vec![
         a(K::Rename, "Rename").asking(text(format!("Rename {name}"), "Name", name.clone(), "", false)),
         a(K::MergeInto, "Merge Into").asking(pick(format!("Merge {name} into"), "Merge")),
-        colour(Subject::Label, &name),
+        colour(Subject::Label, &target, &name),
     ];
-    reorder(&mut actions, Subject::Label, &name, position_of(&ids, &label.id), ids.len());
+    reorder(&mut actions, Subject::Label, &target, position_of(&ids, &label.id), ids.len());
     actions.push(a(K::Delete, "Delete").asking(confirm(
         format!("Delete {name}?"),
         "Tasks wearing it stay; they just stop showing it.",
@@ -829,7 +832,8 @@ pub fn label(snapshot: &Snapshot, label: &Label) -> Vec<Action> {
 pub fn filter(snapshot: &Snapshot, filter: &SavedFilter) -> Vec<Action> {
     use ActionKind as K;
     let name = filter.name.clone();
-    let a = |kind, title: &str| action(kind, Subject::Filter, title, name.clone());
+    let target = filter.id.to_string();
+    let a = |kind, title: &str| action(kind, Subject::Filter, title, target.clone());
     let mut live: Vec<&SavedFilter> = snapshot.saved_filters.values().filter(|f| f.deleted_at.is_none()).collect();
     live.sort_by(|x, y| x.order.cmp_with(&x.id, &y.order, &y.id));
     let ids: Vec<_> = live.iter().map(|f| f.id).collect();
@@ -843,8 +847,8 @@ pub fn filter(snapshot: &Snapshot, filter: &SavedFilter) -> Vec<Action> {
             false,
         )),
     ];
-    reorder(&mut actions, Subject::Filter, &name, position_of(&ids, &filter.id), ids.len());
-    actions.push(colour(Subject::Filter, &name));
+    reorder(&mut actions, Subject::Filter, &target, position_of(&ids, &filter.id), ids.len());
+    actions.push(colour(Subject::Filter, &target, &name));
     actions.push(a(K::Delete, "Delete").asking(confirm(
         format!("Delete {name}?"),
         "The tasks it shows are not touched.",
