@@ -84,11 +84,15 @@ fn project_rows(choices: &Rc<RefCell<Vec<Choice>>>) -> gtk::SignalListItemFactor
         };
         let name = text.string();
         // Found by name: a search filters the list, so positions no longer match.
-        let choice = choices.borrow().iter().find(|choice| choice.id == name).cloned().unwrap_or_default();
+        let choices = choices.borrow();
+        let at = choices.iter().position(|choice| choice.id == name);
+        let choice = at.and_then(|at| choices.get(at)).cloned().unwrap_or_default();
         label.set_label(&name);
         label.set_margin_start(i32::try_from(choice.depth * 16).unwrap_or(0));
-        // The level in the core's words, which the indent alone never says.
-        let level = (choice.depth > 0).then(|| lumenna_records::words::level(choice.depth));
+        // The level in the core's words where it changes, which the indent alone never says:
+        // against the list as a whole, since the drop-down's search does not say what it shows.
+        let depths: Vec<u32> = choices.iter().map(|choice| choice.depth).collect();
+        let level = at.and_then(|at| lumenna_app::lines::levels(&depths).swap_remove(at));
         item.set_accessible_description(choice.reason.as_deref().or(choice.detail.as_deref()).or(level.as_deref()).unwrap_or_default());
     });
     factory

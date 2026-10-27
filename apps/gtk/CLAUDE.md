@@ -43,7 +43,8 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   (`view.proposal`): a new proposal (`shown` moving) is a new list of check boxes whose first
   takes focus. What the app says while it is open is said on its own status line
   (`proposal::say`), the first held until the window is in front. An overrun's Replan button
-  sends `Proposal(Replan)`.
+  sends `Due(ReplanFiring)` with its firing: the app opens today with Replan from Now and
+  dismisses the warning once something is replanned, so other devices stop showing it.
 - **A reminder list is a dialog the app opens and closes** (`view.reminders`), named as
   `view.reminders_title` names it; its buttons are titled from `offered`; its rows' actions are held there
   (`Hold(Side::Reminders, …)`), and focus goes to a reminder just added, or to Add Reminder
@@ -180,7 +181,8 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   after its name.
 - **GTK gives AT-SPI a tree item's level from 4.16, and its position and set size from
   4.22.** Below 4.16 (Ubuntu 24.04, Debian 13) a row says "level 2" in its text where the
-  level changes against the row shown before; position is left to the platform. Decided at
+  level changes against the row shown before (`lines::levels`, as the project drop-down's
+  description too); position is left to the platform. Decided at
   run time; `LUMENNA_LEVEL_IN_TEXT=1` forces it for tests. CI runs the UI tests on Arch, so
   the native path is what it covers by default.
 - **Space, Delete and Enter are the core's keys** (`Key("toggle")`, `Key("delete")`,
@@ -254,7 +256,9 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   (`app.reminder-dismiss`, `-snooze`, `-carry`, `-replan`, `-open`), which reach the app with
   its window closed, and answer through the device (`Device::dismiss_reminder` and the rest),
   their buttons the core's in its order (`due::arrived`'s `Due::buttons`: Carry Forward,
-  Replan, Dismiss, Snooze), each saying its `said` once done, else the change's sentence. Opening a task's reminder is
+  Replan, Dismiss, Snooze), each saying its `said` once done, else the change's sentence. The
+  summary of what was missed is one notification (`reminders-missed`) with the core's Dismiss,
+  which dismisses every firing it stands for. Opening a task's reminder is
   the app's `Launch("task:<id>")`, a block's `ShowBlock`.
   It asks `Device::deliver_reminders` every five seconds while another process gives them
   (`elsewhere`), and every 20 once it gives them itself. The UI tests stand in for the shell with a
@@ -279,6 +283,13 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   `Presentation` box styled `.swatch-<name>` from the core's palette, the light or dark value
   by libadwaita's `StyleManager::is_dark`, restyled as that changes; the row's name is its
   text alone. The block form's Colour is a drop-down of the core's options, as Kind is.
+- **What the desktop entry and the metainfo say of Lumenna is the workspace's**
+  (`[workspace.metadata.lumenna]`): `data/metadata fill` writes their name, description, icon,
+  licence, developer, links and a release for the version as they are installed (`install.sh`,
+  the Flatpak's build, the AppImage job), and `metadata get version` names the bundles. The files
+  as committed say the same but the release, which `records`' metadata test holds them to; so a
+  version bump is Cargo.toml's line alone. POSIX `sh` and `awk`, since mawk is Ubuntu's.
+  About is `words::metadata` too.
 - **The icon** (`data/icons`, an SVG and PNGs drawn from it) goes into the user's hicolor
   theme with `install.sh`; a build run from the checkout adds `data/icons` to the icon
   theme's search path (`icons_here`).

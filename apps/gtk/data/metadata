@@ -1,0 +1,83 @@
+#!/bin/sh
+# What Lumenna is, from the workspace's Cargo.toml (`[workspace.metadata.lumenna]`, and the
+# licence from `[workspace.package]`), the one source: so a version bump there is the only edit.
+#
+#   apps/gtk/data/metadata get version       # one value: name, description, version, homepage,
+#                                            # issues, publisher, id, licence
+#   apps/gtk/data/metadata fill FILE         # the desktop entry or metainfo, its fields filled
+#
+# Filling writes the desktop entry's Name, Comment and Icon (its main group's, not an action's),
+# and the metainfo's id, name, summary, licence, developer, links and launchable, and a release
+# for the version when the file names none for it, dated today (or SOURCE_DATE_EPOCH). The files
+# as committed say the same, which `records`' metadata test holds them to; what this adds is the
+# version, which nothing else need repeat. CARGO_TOML names another manifest.
+set -e
+here=$(cd "$(dirname "$0")" && pwd)
+manifest=${CARGO_TOML:-$here/../../../Cargo.toml}
+
+values() {
+    awk '
+        /^\[/ { section = $0; gsub(/[][]/, "", section); next }
+        {
+            line = $0
+            at = index(line, "=")
+            if (at == 0) next
+            key = substr(line, 1, at - 1); value = substr(line, at + 1)
+            gsub(/^[ \t]+|[ \t]+$/, "", key); gsub(/^[ \t]+|[ \t]+$/, "", value)
+            gsub(/^"|"$/, "", value)
+            if (section == "workspace.metadata.lumenna") print key "\t" value
+            else if (section == "workspace.package" && key == "license") print "licence\t" value
+        }
+    ' "$manifest"
+}
+
+case $1 in
+get)
+    found=$(values | awk -F '\t' -v key="$2" '$1 == key { print $2; exit }')
+    [ -n "$found" ] || { echo "metadata: Cargo.toml says no $2" >&2; exit 1; }
+    printf '%s\n' "$found"
+    ;;
+fill)
+    if [ -n "$SOURCE_DATE_EPOCH" ]; then
+        today=$(date -u -d "@$SOURCE_DATE_EPOCH" +%F)
+    else
+        today=$(date -u +%F)
+    fi
+    values | awk -F '\t' -v today="$today" -v file="$2" '
+        FNR == NR { v[$1] = $2; next }
+        function xml(s) { gsub(/&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s); return s }
+        # The line with what is between its tag and its closing tag (or its quotes) put back.
+        function tag(before, value, after) { match($0, /^[ \t]*/); return substr($0, 1, RLENGTH) before xml(value) after }
+        function key(name, value) { return name "=" value }
+        FILENAME ~ /\.desktop$/ {
+            if ($0 ~ /^\[/) group = $0
+            if (group == "[Desktop Entry]") {
+                if ($0 ~ /^Name=/) { print key("Name", v["name"]); next }
+                if ($0 ~ /^Comment=/) { print key("Comment", v["description"]); next }
+                if ($0 ~ /^Icon=/) { print key("Icon", v["id"]); next }
+            }
+            print; next
+        }
+        /<developer[ >]/ { developer = 1 }
+        /<\/developer>/ { developer = 0 }
+        /<id>.*<\/id>/ { print tag("<id>", v["id"], "</id>"); next }
+        /<name>.*<\/name>/ { print tag("<name>", developer ? v["publisher"] : v["name"], "</name>"); next }
+        /<summary>.*<\/summary>/ { print tag("<summary>", v["description"], "</summary>"); next }
+        /<project_license>.*<\/project_license>/ { print tag("<project_license>", v["licence"], "</project_license>"); next }
+        /<url type="(homepage|vcs-browser)">/ { match($0, /type="[^"]*"/); print tag("<url " substr($0, RSTART, RLENGTH) ">", v["homepage"], "</url>"); next }
+        /<url type="bugtracker">/ { print tag("<url type=\"bugtracker\">", v["issues"], "</url>"); next }
+        /<launchable type="desktop-id">/ { print tag("<launchable type=\"desktop-id\">", v["id"] ".desktop", "</launchable>"); next }
+        /<releases>/ { print; releases = 1; next }
+        releases && /<release / {
+            releases = 0
+            if (index($0, "version=\"" v["version"] "\"") == 0)
+                print tag("<release version=\"", v["version"], "\" date=\"" today "\" />")
+        }
+        { print }
+    ' - "$2"
+    ;;
+*)
+    echo "usage: $0 get KEY | fill FILE" >&2
+    exit 2
+    ;;
+esac

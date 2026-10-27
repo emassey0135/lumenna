@@ -20,9 +20,9 @@ fi
 mkdir -p "$bin" "$data/applications"
 install -m 755 "$built" "$bin/lumenna-gtk"
 # The entry names the program by its full path, since a desktop session's PATH may not hold
-# ~/.local/bin.
-sed "s|^Exec=lumenna-gtk|Exec=$bin/lumenna-gtk|" "$here/data/dev.emassey0135.Lumenna.desktop" \
-    > "$data/applications/dev.emassey0135.Lumenna.desktop"
+# ~/.local/bin; what it says of Lumenna is the workspace's (`data/metadata`).
+"$here/data/metadata" fill "$here/data/dev.emassey0135.Lumenna.desktop" \
+    | sed "s|^Exec=lumenna-gtk|Exec=$bin/lumenna-gtk|" > "$data/applications/dev.emassey0135.Lumenna.desktop"
 update-desktop-database "$data/applications" 2>/dev/null || true
 # KRunner's runner, and the service that starts the app in the background to answer a search.
 # GNOME Shell's search provider is not installed: the shell reads providers only from the system's

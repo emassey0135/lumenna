@@ -280,9 +280,3 @@ fn build(app: &App, view: &ProposalView) -> Rc<Screen> {
     });
     screen
 }
-
-/// Replan from Now, from wherever it is asked for: an overrun warning's Replan button
-/// (`app.reminder-replan`), which brings the window up first.
-pub fn replan(app: &App) {
-    app.model.send(ShellEvent::Proposal(ProposalEvent::Replan));
-}

@@ -230,7 +230,10 @@ jobs:
           DEPLOY_GTK_VERSION: "4"
           ARCH: ${{ matrix.appimage }}
         run: |
-          version=$(cargo pkgid -p lumenna-gtk | sed 's/.*@//')
+          # What the entry and the metainfo say of Lumenna, the version too, is the workspace's.
+          version=$(apps/gtk/data/metadata get version)
+          apps/gtk/data/metadata fill apps/gtk/data/dev.emassey0135.Lumenna.desktop > "$RUNNER_TEMP/dev.emassey0135.Lumenna.desktop"
+          apps/gtk/data/metadata fill apps/gtk/data/dev.emassey0135.Lumenna.metainfo.xml > "$RUNNER_TEMP/dev.emassey0135.Lumenna.metainfo.xml"
           tools="$RUNNER_TEMP/tools"
           mkdir -p "$tools" dist
           curl -fsSL -o "$tools/linuxdeploy" "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.appimage }}.AppImage"
@@ -241,11 +244,11 @@ jobs:
           export PATH="$tools:$PATH"
           linuxdeploy --appdir AppDir \
             --executable target/release/lumenna-gtk \
-            --desktop-file apps/gtk/data/dev.emassey0135.Lumenna.desktop \
+            --desktop-file "$RUNNER_TEMP/dev.emassey0135.Lumenna.desktop" \
             --icon-file apps/gtk/data/icons/hicolor/256x256/apps/dev.emassey0135.Lumenna.png \
             --icon-file apps/gtk/data/icons/hicolor/scalable/apps/dev.emassey0135.Lumenna.svg \
             --plugin gtk
-          install -Dm644 apps/gtk/data/dev.emassey0135.Lumenna.metainfo.xml AppDir/usr/share/metainfo/dev.emassey0135.Lumenna.metainfo.xml
+          install -Dm644 "$RUNNER_TEMP/dev.emassey0135.Lumenna.metainfo.xml" AppDir/usr/share/metainfo/dev.emassey0135.Lumenna.metainfo.xml
           # zstd at its strongest with 1 MiB blocks: 42 MB where appimagetool's own (128 KiB blocks)
           # made 45, and it unpacks as fast at any level. xz made 38, but starts slower.
           appimagetool --no-appstream --comp zstd \
@@ -406,7 +409,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Its version, for the bundle's name
         id: version
-        run: echo "version=$(sed -n 's/^version = "\(.*\)"/\1/p' apps/gtk/Cargo.toml | head -1)" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(sh apps/gtk/data/metadata get version)" >> "$GITHUB_OUTPUT"
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           manifest-path: apps/gtk/flatpak/dev.emassey0135.Lumenna.yml
