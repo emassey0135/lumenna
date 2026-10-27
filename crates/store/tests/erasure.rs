@@ -525,3 +525,94 @@ fn a_store_opened_again_still_counts_how_often_a_task_was_put_off() {
     let mut reopened = Store::open(&path).unwrap();
     assert_eq!(reopened.snapshot().0.postponed.get(&essay.id).copied(), Some(1));
 }
+
+#[test]
+fn an_erased_task_s_dismissed_default_reminder_goes_with_it_after_the_defaults_change() {
+    use lumenna_core::model::{ReminderAck, ReminderAction, ReminderAnchor, ReminderTarget, Trigger};
+    let mut store = Store::open_in_memory().unwrap();
+    let ten_before = Trigger::before(ReminderAnchor::Due, 10);
+    let settings = store.snapshot().0.settings;
+    let with_default = lumenna_core::model::Settings { default_task_reminders: vec![ten_before.clone()], ..settings.clone() };
+    store.write(|docs| docs.put_settings(&with_default, Some(&settings))).unwrap();
+    let secret = add(&mut store, "the secret");
+    let groceries = add(&mut store, "the groceries");
+    for task in [&secret, &groceries] {
+        let key = lumenna_core::remind::default_key(&ReminderTarget::Task(task.id), &ten_before);
+        let ack = ReminderAck {
+            reminder_id: key,
+            occurrence_date: jiff::civil::date(2026, 5, 1),
+            action: ReminderAction::Dismissed,
+            acked_at: jiff::Timestamp::now(),
+            acked_by: lumenna_core::id::NodeId::from_bytes([1; 32]),
+            target: None,
+        };
+        let edit = lumenna_core::edit::acknowledge(&store.snapshot().0, ack, "Dismissed".to_owned());
+        store.apply_recorded(&edit).unwrap();
+    }
+    assert!(store.snapshot().0.acks.values().all(|ack| ack.target.is_some()), "each says what it was for");
+
+    // The default changes, so the old key is no longer one any task's default fires under.
+    let thirty_before = lumenna_core::model::Settings {
+        default_task_reminders: vec![Trigger::before(ReminderAnchor::Due, 30)],
+        ..with_default.clone()
+    };
+    store.write(|docs| docs.put_settings(&thirty_before, Some(&with_default))).unwrap();
+    erase(&mut store, &secret);
+
+    let acks = store.snapshot().0.acks;
+    assert_eq!(acks.len(), 1, "{acks:?}");
+    assert!(acks.values().all(|ack| ack.target == Some(ReminderTarget::Task(groceries.id))));
+}
+
+fn note(store: &mut Store, task: &Task, notes: &str) {
+    let before = store.snapshot().0.tasks[&task.id].clone();
+    let after = Task { notes: notes.to_owned(), ..before.clone() };
+    store.apply_recorded(&update_task(before, after)).unwrap();
+}
+
+fn notes_of(store: &mut Store, task: &Task) -> String {
+    store.snapshot().0.tasks[&task.id].notes.clone()
+}
+
+#[test]
+fn two_devices_taking_in_one_erasure_with_notes_edited_apart_keep_both_edits() {
+    for _ in 0..12 {
+        let (mut a, mut b, mut c, secret) = three_devices();
+        let task = add(&mut a, "the essay");
+        note(&mut a, &task, "Read the sources.");
+        sync(&mut a, &mut c);
+        erase(&mut b, &secret);
+        // Apart, before either has taken the erasure in: each adds to the notes.
+        note(&mut a, &task, "Read the sources. Draft the outline.");
+        note(&mut c, &task, "Read the sources twice.");
+
+        sync(&mut a, &mut b);
+        sync(&mut c, &mut b);
+        sync_all(&mut a, &mut b, &mut c);
+        let notes = notes_of(&mut a, &task);
+        for store in [&mut b, &mut c] {
+            assert_eq!(notes_of(store, &task), notes, "all three agree");
+        }
+        assert!(notes.contains("Draft the outline.") && notes.contains("twice"), "neither edit lost: {notes:?}");
+        assert_eq!(notes.matches("Read the sources").count(), 1, "the shared text once: {notes:?}");
+    }
+}
+
+#[test]
+fn notes_one_device_went_further_with_are_taken_whole_not_doubled() {
+    for _ in 0..12 {
+        let (mut a, mut b, mut c, secret) = three_devices();
+        let task = add(&mut a, "the essay");
+        note(&mut a, &task, "Read the sources.");
+        sync(&mut a, &mut c);
+        erase(&mut b, &secret);
+        note(&mut a, &task, "Read the sources. Draft the outline.");
+
+        sync(&mut a, &mut b);
+        sync(&mut c, &mut b);
+        sync_all(&mut a, &mut b, &mut c);
+        for store in [&mut a, &mut b, &mut c] {
+            assert_eq!(notes_of(store, &task), "Read the sources. Draft the outline.");
+        }
+    }
+}

@@ -19,7 +19,9 @@ what each holds apart, as adoption does (`Doc::fold`, `Maker`): a map is made by
 device makes byte for byte alike (an actor named from the generation, document, parent object
 and key, on the change that made the parent, at time zero), a field's value as the chain of the
 values the device's history gave it, link on link, so devices with the same history make the
-same changes and the one that went further replaces the others' as its history did.
+same changes and the one that went further replaces the others' as its history did. A text is
+the same chain of whole texts, each link the splices from the last, so edits made apart merge
+as text rather than one whole text replacing the other.
 
 **A record keyed by something two devices can produce on their own is inline.** Exceptions
 (series and date) and reminder acks (reminder and date) store each field as its own key,
@@ -109,7 +111,9 @@ new **generation** (a UUIDv7; newest wins). What is easy to break:
   them, rather than make what they made again under a random actor.
 - **Nothing erased comes back**: core's `erased` names every record erased so far, and
   `Gone::keeps` leaves out those and every completion, sitting and reminder of an erased task,
-  and every acknowledgement of a reminder that went (its own, or a default's key), in a rebuild,
+  and every acknowledgement of a reminder that went or of something erased (an acknowledgement
+  says what it was for, `ReminderAck::target`; one from before that, by the default reminders'
+  keys as they are set now), in a rebuild,
   a fold and an import (which counts them in `Imports::erased`). A device whose own erasure the
   newer generation lacks erases again on top of it.
 - **What only the history held is carried**: core's `postponed`, the tally `Store::tally`
@@ -139,7 +143,14 @@ update. So:
   (`Raw`) and write only the changes over it, so an unknown field, or a value read as a
   default (an unknown block kind reads as work), survives those too. A new rewrite must do
   the same. So does a small composite written whole (`Writer::set_nested`: a due date, a
-  trigger, a delivery), which names the fields it writes and carries over any other. So do the two places that build a record from the model alone: an undo that
+  trigger, a delivery): what the edit writes is found by writing its `before` and `now` into a
+  scratch document (`Known`), and anything else that stood there, at any depth (a field inside a
+  due date's recurrence), is carried over, bar what `before` wrote and `now` does not, which the
+  edit took away with what was inside it.
+- **A field a newer build added beside one an older build still writes** is believed only while
+  the two agree: a sitting's `accumulated_secs` (every second logged) beside `accumulated_mins`,
+  which a build from before writes alone; when its minutes no longer match the seconds, the
+  minutes stand, with none over. So do the two places that build a record from the model alone: an undo that
   creates again what its edit removed writes the record back as it stood first
   (`Documents::removed_by`, kept in the undo entry, format 2), and the JSON export carries what
   each record holds beyond the model (`export_json_keeping`, its `unknown` list), which an

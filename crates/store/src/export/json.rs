@@ -905,6 +905,11 @@ impl ExceptionOut {
     }
 }
 
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde's skip_serializing_if hands a reference")]
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
 #[derive(Serialize, Deserialize)]
 struct AssignmentOut {
     id: String,
@@ -916,6 +921,9 @@ struct AssignmentOut {
     planned_mins: Option<u32>,
     #[serde(default)]
     logged_mins: u32,
+    /// Seconds logged beyond `logged_mins`, under a minute; absent from files from before.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    logged_extra_secs: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     running_since: Option<String>,
     status: String,
@@ -932,6 +940,7 @@ impl From<&BlockAssignment> for AssignmentOut {
             task: a.task_id.to_string(),
             planned_mins: a.planned_mins,
             logged_mins: a.accumulated_mins,
+            logged_extra_secs: a.extra_secs,
             running_since: a.running_since.map(|t| t.to_string()),
             status: match a.status {
                 AssignmentStatus::Planned => "planned",
@@ -961,6 +970,7 @@ impl AssignmentOut {
             task_id: field(&record, "identifier", &self.task)?,
             planned_mins: self.planned_mins,
             accumulated_mins: self.logged_mins,
+            extra_secs: self.logged_extra_secs.min(59),
             running_since: optional(&record, "timestamp", self.running_since.as_ref())?,
             status: match self.status.as_str() {
                 "in_progress" => AssignmentStatus::InProgress,

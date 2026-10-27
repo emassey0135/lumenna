@@ -125,6 +125,7 @@ fn a_dismissal_stops_one_firing_and_a_snooze_moves_it() {
         action,
         acked_at: Timestamp::now(),
         acked_by: NodeId::from_bytes([1; 32]),
+        target: None,
     };
     world.snapshot.acks.insert((reminder.id, date(2026, 5, 6)), ack(date(2026, 5, 6), ReminderAction::Dismissed));
     let later = date(2026, 5, 7).at(9, 10, 0, 0).to_zoned(zone()).unwrap();
@@ -147,6 +148,7 @@ fn a_default_dismissed_on_one_device_is_dismissed_on_all() {
             action: ReminderAction::Dismissed,
             acked_at: Timestamp::now(),
             acked_by: NodeId::from_bytes([2; 32]),
+            target: None,
         },
     );
     assert!(world.fired(at(2026, 5, 6, 0, 0), at(2026, 5, 7, 0, 0)).is_empty());

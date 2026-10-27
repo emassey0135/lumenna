@@ -1522,7 +1522,11 @@ impl Mine<'_> {
 ///   the same values make the same links, and where one has gone further (a rename the other
 ///   never heard of) its later links stand on the shared ones and replace them, as the rename
 ///   replaced the name in the history before.
-/// - **A list or a text** is made whole, its contents in the change and in its actor's name.
+/// - **A text** is made empty as a map is, then given the chain of texts this device's history
+///   gave it, each link the splices from the one before: devices with the same history make the
+///   same links, and two that edited it apart each splice onto the shared links, so their edits
+///   merge as any concurrent text edits do, rather than one whole text replacing the other.
+/// - **A list** is made whole, its contents in the change and in its actor's name.
 ///
 /// Only where the newer history has written the field since its own rebuild does this
 /// device's value go on top with its own actor, as any edit does.
@@ -1532,6 +1536,9 @@ struct Maker {
     /// The values each field took in this device's history since the base, by the object
     /// holding it there and its key, oldest first.
     history: BTreeMap<(String, String), Vec<automerge::ScalarValue>>,
+    /// Each change since the base, oldest first, with the objects it wrote inside: a text's
+    /// edits are written inside it.
+    within: Vec<(ChangeHash, std::collections::BTreeSet<String>)>,
     /// The change that made each object this has made.
     made: BTreeMap<ObjId, ChangeHash>,
     /// The document as it stood at each change built on.
@@ -1543,14 +1550,26 @@ struct Maker {
 impl Maker {
     fn new(doc: DocId, generation: &str, since: &[automerge::Change]) -> Self {
         let mut history: BTreeMap<(String, String), Vec<automerge::ScalarValue>> = BTreeMap::new();
+        let mut within = Vec::new();
         for change in since {
+            let mut objects = std::collections::BTreeSet::new();
             for op in change.decode().operations {
                 if let (automerge::legacy::OpType::Put(value), automerge::legacy::Key::Map(key)) = (&op.action, &op.key) {
                     history.entry((op.obj.to_string(), key.to_string())).or_default().push(value.clone());
                 }
+                objects.insert(op.obj.to_string());
             }
+            within.push((change.hash(), objects));
         }
-        Self { doc, generation: generation.to_owned(), history, made: BTreeMap::new(), states: BTreeMap::new(), made_by: None }
+        Self {
+            doc,
+            generation: generation.to_owned(),
+            history,
+            within,
+            made: BTreeMap::new(),
+            states: BTreeMap::new(),
+            made_by: None,
+        }
     }
 
     /// One value of a three-way fold: as it was at the base, as this device has it (`at`, its
@@ -1612,11 +1631,56 @@ impl Maker {
                 }
                 Ok(())
             }
-            Raw::List(_) | Raw::Text(_) => {
+            Raw::Text(text) => self.text(doc, obj, key, text, at),
+            Raw::List(_) => {
                 self.make(doc, obj, key, Some(raw))?;
                 Ok(())
             }
         }
+    }
+
+    /// Writes `text` at `key` of `obj` as the chain of the texts this device's history gave
+    /// it since the base, ending in `text`, into the text already there or one made empty.
+    fn text(&mut self, doc: &mut AutoCommit, obj: &ObjId, key: &str, text: &str, at: &Mine<'_>) -> Result<()> {
+        let target = match doc.get(obj, key)? {
+            Some((Value::Object(ObjType::Text), id)) => id,
+            _ => self.make(doc, obj, key, Some(&Raw::Text(String::new())))?,
+        };
+        let mut values: Vec<String> = Vec::new();
+        if let Some(mine) = at.child(key).obj {
+            let name = mine.to_string();
+            for (hash, objects) in &self.within {
+                if objects.contains(&name)
+                    && let Ok(then) = at.doc.text_at(&mine, &[*hash])
+                    && values.last() != Some(&then)
+                {
+                    values.push(then);
+                }
+            }
+        }
+        if values.last().map(String::as_str) != Some(text) {
+            values.push(text.to_owned());
+        }
+        let mut state = self.base(doc, &target)?;
+        let mut before = state.get_heads().first().map(ToString::to_string).unwrap_or_default();
+        for link in &values {
+            let name = format!(
+                "lumenna-fold-text\0{}\0{}\0{target}\0{before}\0{}",
+                self.generation,
+                self.doc.name(),
+                Raw::Text(link.clone()).to_json()
+            );
+            let mut next = state.fork();
+            next.set_actor(actor_named(&name));
+            next.update_text(&target, link)?;
+            // A link that changes nothing, from a text already as it was, is no change at all.
+            let Some(hash) = next.commit_with(CommitOptions::default().with_time(0)) else { continue };
+            let change = next.get_change_by_hash(&hash).ok_or_else(|| self.cannot(key))?;
+            doc.load_incremental(change.raw_bytes())?;
+            before = hash.to_string();
+            state = next;
+        }
+        Ok(())
     }
 
     /// Puts `value` at `key` of `obj` as the chain of the values this device's history gave it
@@ -2129,7 +2193,7 @@ mod unknown_fields {
     use automerge::{ObjType, ROOT, ReadDoc, Value};
     use jiff::civil::{date, time};
     use lumenna_core::id::NodeId;
-    use lumenna_core::model::{BlockKind, BlockSeries, Device, Due, Project, Task};
+    use lumenna_core::model::{BlockKind, BlockSeries, Device, Due, Project, Recurrence, Task};
     use lumenna_core::order::OrderKey;
 
     use super::{Doc, Documents};
@@ -2176,6 +2240,74 @@ mod unknown_fields {
         let Some((Value::Object(ObjType::Map), due)) = docs.core.doc.get(&obj, "due").unwrap() else { panic!("no due map") };
         assert_eq!(string_at(&docs.core, &due, "written_by_a_newer_build").as_deref(), Some("keep me"));
         assert_eq!(string_at(&docs.core, &due, "date").as_deref(), Some("2026-05-12"), "the edit itself lands");
+    }
+
+    #[test]
+    fn a_due_date_edited_keeps_a_field_a_newer_build_wrote_inside_its_recurrence() {
+        let mut docs = Documents::new();
+        let mut due = Due::on(date(2026, 5, 10));
+        due.recurrence = Some(Recurrence { rrule: "FREQ=WEEKLY".to_owned(), from_completion: false });
+        let task = Task { due: Some(due.clone()), ..Task::new(Project::inbox().id, "essay", OrderKey::middle()) };
+        docs.core().put(&task, None).unwrap();
+        let obj = record_map::<Task>(&docs.core, &task.id);
+        let recurrence = |docs: &Documents| {
+            let Some((Value::Object(ObjType::Map), due)) = docs.core.doc.get(&obj, "due").unwrap() else { panic!("no due map") };
+            let Some((Value::Object(ObjType::Map), recurrence)) = docs.core.doc.get(&due, "recurrence").unwrap() else {
+                panic!("no recurrence map")
+            };
+            recurrence
+        };
+        let inner = recurrence(&docs);
+        docs.core.doc.put(&inner, "written_by_a_newer_build", "keep me").unwrap();
+        let list = docs.core.doc.put_object(&inner, "a_newer_list", ObjType::List).unwrap();
+        docs.core.doc.insert(&list, 0, "first").unwrap();
+
+        let edited = Task { due: Some(Due { date: date(2026, 5, 12), ..due }), ..task.clone() };
+        docs.core().put(&edited, Some(&task)).unwrap();
+        let inner = recurrence(&docs);
+        assert_eq!(string_at(&docs.core, &inner, "written_by_a_newer_build").as_deref(), Some("keep me"));
+        let Some((Value::Object(ObjType::List), list)) = docs.core.doc.get(&inner, "a_newer_list").unwrap() else {
+            panic!("the list went")
+        };
+        assert_eq!(docs.core.doc.length(&list), 1);
+        assert_eq!(docs.snapshot().0.tasks[&task.id].due, edited.due, "the edit itself lands");
+    }
+
+    #[test]
+    fn a_recurrence_taken_away_takes_what_a_newer_build_wrote_inside_it() {
+        let mut docs = Documents::new();
+        let mut due = Due::on(date(2026, 5, 10));
+        due.recurrence = Some(Recurrence { rrule: "FREQ=WEEKLY".to_owned(), from_completion: false });
+        let task = Task { due: Some(due.clone()), ..Task::new(Project::inbox().id, "essay", OrderKey::middle()) };
+        docs.core().put(&task, None).unwrap();
+        let obj = record_map::<Task>(&docs.core, &task.id);
+        let Some((Value::Object(ObjType::Map), due_map)) = docs.core.doc.get(&obj, "due").unwrap() else { panic!() };
+        let Some((Value::Object(ObjType::Map), inner)) = docs.core.doc.get(&due_map, "recurrence").unwrap() else { panic!() };
+        docs.core.doc.put(&inner, "written_by_a_newer_build", "goes with it").unwrap();
+
+        let edited = Task { due: Some(Due { recurrence: None, ..due }), ..task.clone() };
+        docs.core().put(&edited, Some(&task)).unwrap();
+        let Some((Value::Object(ObjType::Map), due_map)) = docs.core.doc.get(&obj, "due").unwrap() else { panic!() };
+        assert!(docs.core.doc.get(&due_map, "recurrence").unwrap().is_none());
+    }
+
+    #[test]
+    fn a_sitting_keeps_its_seconds_and_an_older_build_changing_its_minutes_stands() {
+        let mut docs = Documents::new();
+        let series = BlockSeries::one_off("Deep work", BlockKind::Work, date(2027, 4, 1), time(9, 0, 0, 0), 60).unwrap();
+        let mut sitting = lumenna_core::model::BlockAssignment::new(
+            lumenna_core::model::BlockRef::OneOff(series.id),
+            lumenna_core::id::TaskId::new(),
+            OrderKey::middle(),
+        );
+        sitting.set_logged_secs(500);
+        docs.put_assignment(2027, &sitting, None).unwrap();
+        assert_eq!(docs.snapshot().0.assignments[&sitting.id].logged_secs(), 500);
+
+        // A build from before the seconds logs 12 minutes by hand, writing the minutes alone.
+        let obj = record_map::<lumenna_core::model::BlockAssignment>(docs.blocks(2027), &sitting.id);
+        docs.blocks(2027).doc.put(&obj, "accumulated_mins", 12_i64).unwrap();
+        assert_eq!(docs.snapshot().0.assignments[&sitting.id].logged_secs(), 12 * 60);
     }
 
     #[test]
