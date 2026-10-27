@@ -219,7 +219,8 @@ final class LumennaWatchUITests: XCTestCase {
         reveal(app.buttons["Settings"]).tap()
         XCTAssertTrue(app.buttons["Planning"].waitForExistence(timeout: 5))
         app.buttons["Planning"].tap()
-        XCTAssertTrue(app.switches["Completing a task completes its subtasks"].waitForExistence(timeout: 5))
+        // Sixth on the page, below the day's hours and the week's start: off a watch's screen.
+        XCTAssertTrue(reveal(app.switches["Completing a task completes its subtasks"], form: true).exists)
         try audit("planning settings")
         back()
         // The default reminders, phrases, and whether this watch gives them: a page of their own.
