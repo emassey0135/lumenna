@@ -228,7 +228,8 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   where a click while it closes is lost). A contrast finding is looked at again, once, two
   seconds on, for text still fading in on a slow runner; text that fails at rest fails both
   looks. Exemptions, all narrow: "potentially inaccessible text" on `NamedRow` screens, the
-  keyboard's `TUIPredictionViewCell`, contrast on text under a navigation bar or the soft
+  keyboard's `TUIPredictionViewCell`, a navigation bar's own title clipped (a record's name
+  makes it any length; UIKit shows it whole in the large content viewer), contrast on text under a navigation bar or the soft
   scroll edge just beneath it, contrast the audit judges of a SwiftUI text on the iPad by its
   whole row's frame (`judgesAPadRowNotItsText`), and "partially unsupported" Dynamic Type on
   SwiftUI nodes (the audit reports it even for a stock button), or with no element at all on a

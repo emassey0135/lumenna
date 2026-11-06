@@ -347,6 +347,15 @@ final class LumennaUITests: XCTestCase {
                     return true
                 }
                 if issue.judgesAPadRowNotItsText { return true }
+                // A navigation bar's own title, cut short where a record's name makes it long
+                // ("Reminders for Deep work"): the bar's to shorten, and UIKit shows it whole in
+                // the large content viewer at the accessibility sizes. Only clipping, only the
+                // title of the bar in front.
+                if issue.auditType == .textClipped, let element = issue.element,
+                   self.app.navigationBars.firstMatch.identifier == element.label,
+                   self.app.navigationBars.firstMatch.frame.contains(element.frame) {
+                    return true
+                }
                 // SwiftUI text is reported as only *partly* scaling — captions, and once even a
                 // stock button — though `testSettingsPagesAtTheLargestTextSize` keeps screenshots
                 // of every form page at the largest size showing it at full size. Only that
