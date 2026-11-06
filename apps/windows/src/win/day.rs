@@ -51,7 +51,7 @@ impl DayView {
             button("next-day", NEXT),
             button("new-block", ADD),
         ];
-        Rc::new(Self { buttons, rows: Rows::create(pane, TREE, "The day", false) })
+        Rc::new(Self { buttons, rows: Rows::create(pane, TREE, &super::words().the_day, false) })
     }
 
     /// Draws the app's day: `landed` when the app moved the row in hand itself.

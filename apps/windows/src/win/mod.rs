@@ -39,6 +39,13 @@ mod tree;
 mod view;
 mod widgets;
 
+/// Every fixed word the app draws, the core's, in Windows' Title Case as a PC calls itself:
+/// taken once, so no word is written here.
+fn words() -> &'static lumenna_app::words::ShellWords {
+    static WORDS: std::sync::OnceLock<lumenna_app::words::ShellWords> = std::sync::OnceLock::new();
+    WORDS.get_or_init(|| lumenna_app::words::shell_words(lumenna_app::Capitals::Title, lumenna_app::words::ThisDevice::Pc))
+}
+
 /// What the installer's uninstaller starts `lumenna.exe` with, to take away what it wrote of
 /// its own that the installer cannot name: every profile's value opening it at sign-in, and the
 /// Jump List.

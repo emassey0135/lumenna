@@ -23,7 +23,7 @@ use lumenna_app::settings::SettingsEvent;
 use lumenna_app::{ActingOn, BackgroundEvent, DevicesEvent, Side, ViewModel};
 use lumenna_ffi::ShellEvent;
 use lumenna_records::background::BackgroundKind;
-use lumenna_records::fields::{SettingWords, SettingsPage, file_words, settings_pages, setting_words};
+use lumenna_records::fields::{SettingWords, SettingsPage, settings_pages};
 use lumenna_records::{ActionKind, ExportFormat, Offered, Setting, SettingKind};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::SystemServices::SS_NOPREFIX;
@@ -124,7 +124,7 @@ pub fn show(app: &App, id: &str) {
     // The core's pages: the app's, else as the core lays them out for a shell that follows its
     // platform's clock, which this does (`Clock`).
     let pages = view.as_ref().map(|s| s.pages.clone()).filter(|pages| !pages.is_empty()).unwrap_or_else(|| settings_pages(true, false));
-    let words = view.as_ref().map_or_else(setting_words, |s| s.words.clone());
+    let words = view.as_ref().map_or_else(|| super::words().settings.clone(), |s| s.words.clone());
     let (offered, offered_caption) = view.map(|s| (s.offered, s.offered_caption)).unwrap_or_default();
     let start = pages.iter().position(|page| page.id == id).unwrap_or(0);
     let open = Rc::new(Sheet {
@@ -164,7 +164,7 @@ pub fn import(owner: HWND, title: &str, types: &[(&str, &str)]) {
     let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
     match std::fs::read(&path) {
         Ok(bytes) => app::send(ShellEvent::Settings(SettingsEvent::Import { name, bytes })),
-        Err(error) => prompts::fail(owner, &format!("Lumenna could not read {}. {error}.", path.display())),
+        Err(error) => prompts::fail(owner, &lumenna_app::words::could_not_read(&path.display().to_string(), &format!("{error}."))),
     }
 }
 
@@ -172,18 +172,25 @@ pub fn import(owner: HWND, title: &str, types: &[(&str, &str)]) {
 pub fn save(owner: HWND, file: &lumenna_app::SaveFile) {
     let extension = file.name.rsplit('.').next().unwrap_or("txt").to_owned();
     let pattern = format!("*.{extension}");
-    let kind = format!("{} files", extension.to_uppercase());
-    let Some(path) = system::save_file(owner, &file_words(false).export, &file.name, &[(&kind, &pattern)]) else { return };
+    let kind = lumenna_app::words::files_of(&extension);
+    let Some(path) = system::save_file(owner, &super::words().files.export, &file.name, &[(&kind, &pattern)]) else { return };
     // The dialog already asked about replacing a file that was there.
     if let Err(error) = std::fs::write(&path, &file.bytes) {
-        prompts::fail(owner, &format!("Lumenna could not save {}. {error}.", path.display()));
+        prompts::fail(owner, &lumenna_app::words::could_not_save(&path.display().to_string(), &format!("{error}.")));
     }
 }
 
 /// What a backup file is called in a file dialog.
-pub const BACKUPS: [(&str, &str); 2] = [("Lumenna backups", "*.lumbak"), ("All files", "*.*")];
+pub fn backups() -> [(&'static str, &'static str); 2] {
+    let words = super::words();
+    [(&words.backups, "*.lumbak"), (&words.all_files, "*.*")]
+}
+
 /// What can be read in.
-pub const IMPORTABLE: [(&str, &str); 2] = [("Lumenna exports and backups", "*.json;*.lumbak"), ("All files", "*.*")];
+pub fn importable() -> [(&'static str, &'static str); 2] {
+    let words = super::words();
+    [(&words.importable, "*.json;*.lumbak"), (&words.all_files, "*.*")]
+}
 
 // ---------------------------------------------------------------------------------------
 // What every page shares
@@ -489,7 +496,7 @@ impl Page {
 
     /// The shortcuts from anywhere as this PC has them, on General.
     fn show_shortcuts(&self, page: HWND) {
-        let words = hotkeys::hotkey_words();
+        let words = super::words().hotkeys.clone();
         for (index, kind) in HotKind::ALL.into_iter().enumerate() {
             let index = index as u16;
             controls::set_text(dialog::item(page, SHORTCUT + index), &shortcuts::describe(kind));
@@ -535,8 +542,8 @@ impl Page {
             // Into this device's backups, as the automatic ones are; where is said on this page,
             // the dialog in front, once it is taken.
             "back-up" => app.back_up(),
-            "restore-backup" => import(sheet(page), &file_words(false).restore, &BACKUPS),
-            "import" => import(sheet(page), &file_words(false).import, &IMPORTABLE),
+            "restore-backup" => import(sheet(page), &super::words().files.restore, &backups()),
+            "import" => import(sheet(page), &super::words().files.import, &importable()),
             _ => {}
         }
     }
@@ -672,7 +679,7 @@ impl Dialog for Page {
 
         // General: the shortcuts from anywhere, this PC's.
         if self.is("general") {
-            let words = hotkeys::hotkey_words();
+            let words = super::words().hotkeys.clone();
             template = template.item(Class::Button, &words.heading, u16::MAX, BS_GROUPBOX as u32, LEFT, y, INNER, 92);
             for (index, kind) in HotKind::ALL.into_iter().enumerate() {
                 let top = y + 12 + index as i16 * 38;
@@ -722,7 +729,7 @@ impl Dialog for Page {
             self.show_shortcuts(page);
         }
         if self.is("devices") {
-            a11y::set_description(dialog::item(page, DEVICES), "Delete unpairs the selected device, and F2 renames it.");
+            a11y::set_description(dialog::item(page, DEVICES), &lumenna_app::words::delete_unpairs_or_renames("F2"));
             self.offer_device(page);
             // The devices and how syncing is going, as the app finds them.
             app::send(ShellEvent::Devices(DevicesEvent::Show));
@@ -864,14 +871,14 @@ const KEYS: u16 = 100;
 
 impl Dialog for Recorder {
     fn template(&self) -> Template {
-        let words = hotkeys::hotkey_words();
+        let words = super::words().hotkeys.clone();
         let message = hotkeys::press_keys_for(&self.kind.name(false));
         Template::new(&words.dialog, 240, 92)
             .item(Class::Static, &message, u16::MAX, SS_NOPREFIX.0, 7, 7, 226, 28)
-            .item(Class::Static, "&Keys:", u16::MAX, 0, 7, 38, 226, 9)
+            .item(Class::Static, &format!("&{}:", super::words().keys), u16::MAX, 0, 7, 38, 226, 9)
             .named("msctls_hotkey32", "", KEYS, WS_BORDER.0 | WS_TABSTOP.0, 7, 48, 226, 14)
-            .item(Class::Button, "OK", IDOK.0 as u16, windows::Win32::UI::WindowsAndMessaging::BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 129, 71, 50, 14)
-            .item(Class::Button, &lumenna_records::words::cancel(false), IDCANCEL.0 as u16, BUTTON, 183, 71, 50, 14)
+            .item(Class::Button, &super::words().settings.set, IDOK.0 as u16, windows::Win32::UI::WindowsAndMessaging::BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 129, 71, 50, 14)
+            .item(Class::Button, &super::words().cancel, IDCANCEL.0 as u16, BUTTON, 183, 71, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {
@@ -897,7 +904,7 @@ impl Dialog for Recorder {
             id if id == IDOK.0 => {
                 let value = controls::send(dialog::item(hwnd, KEYS), HKM_GETHOTKEY, 0, 0) as u32;
                 let (key, flags) = (value & 0xFF, (value >> 8) & 0xFF);
-                let words = hotkeys::hotkey_words();
+                let words = super::words().hotkeys.clone();
                 if key == 0 {
                     prompts::fail(hwnd, &words.press_first);
                     return None;

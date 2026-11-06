@@ -78,7 +78,7 @@ impl App {
         let window = automation.window_of(child.id(), Duration::from_secs(30)).expect("the app shows its window");
         // Settled on Today, with the store read: the day drawn, and focus in it. A cold start
         // — the first test — takes longer than the rest, and a key posted before then is lost.
-        automation::wait(Duration::from_secs(30), || automation.named(window, "The day")).expect("the day is drawn");
+        automation::wait(Duration::from_secs(30), || automation.named(window, "The Day")).expect("the day is drawn");
         automation.activate(window);
         automation::wait(Duration::from_secs(10), || automation.focus(window).contains("TreeItem").then_some(()))
             .expect("focus is on the day");
@@ -156,7 +156,7 @@ fn add(lumenna: &Lumenna, text: &str) {
 fn the_day_opens_with_its_summary_first_and_focus_on_a_row() {
     let app = App::launch(|_| {});
     let lines = app.automation.dump(app.window, 6);
-    let day = lines.iter().position(|l| l.trim_start().starts_with("Tree 'The day'")).expect("the day is a tree");
+    let day = lines.iter().position(|l| l.trim_start().starts_with("Tree 'The Day'")).expect("the day is a tree");
     let first = lines[day + 1..].iter().find(|l| l.contains("TreeItem")).expect("the day has rows");
     assert!(first.contains("TreeItem 'Today."), "the summary comes first: {first}");
     assert!(app.focus().contains("TreeItem"), "focus lands on a row: {}", app.focus());

@@ -62,9 +62,9 @@ pub fn open_at_sign_in(on: bool) -> Result<(), String> {
     match task.RequestEnableAsync().and_then(|asked| asked.join()).map_err(reason)? {
         StartupTaskState::Enabled | StartupTaskState::EnabledByPolicy => Ok(()),
         StartupTaskState::DisabledByUser => {
-            Err("it is turned off in Startup apps, in Settings or Task Manager, which is where it is turned back on".to_owned())
+            Err(super::words().startup_apps_off.clone())
         }
-        StartupTaskState::DisabledByPolicy => Err("your organisation's policy turns it off".to_owned()),
-        _ => Err("Windows did not turn it on".to_owned()),
+        StartupTaskState::DisabledByPolicy => Err(super::words().policy_off.clone()),
+        _ => Err(lumenna_app::words::did_not_turn_it_on("Windows")),
     }
 }

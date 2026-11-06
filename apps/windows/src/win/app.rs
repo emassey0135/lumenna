@@ -208,7 +208,7 @@ pub fn run() {
         arguments.launch = profile::arguments(super::package::launched_with()).launch;
     }
     let Some(directory) = profile::directory(arguments.profile) else {
-        prompts::fail(HWND::default(), "Lumenna cannot find a folder for its data. Set LUMENNA_PROFILE to one.");
+        prompts::fail(HWND::default(), &super::words().no_data_folder);
         return;
     };
     let Some(_instance) = tray::claim(&directory, arguments.launch.as_deref()) else { return };
@@ -320,7 +320,7 @@ impl App {
             CreateWindowExW(
                 WS_EX_CONTROLPARENT,
                 &class,
-                w!("Lumenna"),
+                &HSTRING::from(&super::words().metadata.name),
                 WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
@@ -355,7 +355,8 @@ impl App {
             }
         };
         // In this order, which is also the order Tab goes through them.
-        let panes = [pane("Places"), pane("List"), pane(&lumenna_records::fields::details_words(false).title)];
+        let words = super::words();
+        let panes = [pane(&words.places), pane(&words.list), pane(&words.details.title)];
         let status = controls::create(main, WC_STATICW, "", SS_NOPREFIX.0 | SS_ENDELLIPSIS.0, 0, 0);
         a11y::make_live(status);
         let sidebar = Sidebar::create(panes[0]);
@@ -364,7 +365,7 @@ impl App {
         let crux = match lumenna_ffi::App::new(&device, "windows".to_owned(), Arc::new(Formats), relay) {
             Ok(crux) => crux,
             Err(error) => {
-                prompts::fail(main, &format!("Lumenna could not start. {}", sentence(&error)));
+                prompts::fail(main, &lumenna_app::words::could_not_start(&sentence(&error)));
                 return None;
             }
         };
@@ -376,13 +377,13 @@ impl App {
         // lines leave it out.
         crux.send(ShellEvent::Checkboxes(true));
         // How pairing's sentences call this device; it finds devices on its own network.
-        crux.send(ShellEvent::PairingAs { called: "this PC".to_owned(), nearby: true });
+        crux.send(ShellEvent::PairingAs { called: super::words().this_device.clone(), nearby: true });
         // Whether it opens at sign-in, the app's setting of keeping Lumenna running.
         crux.send(settings::background(&directory));
         // Resident, so in front for as long as it runs: the device's sync process once another
         // device is paired, which then answers the command surface at the profile's pipe, as
         // the daemon would, so Emacs and the BTSpeak app reach it.
-        crux.serve_commands("Lumenna for Windows".to_owned(), system::computer_name());
+        crux.serve_commands(lumenna_app::words::lumenna_for("Windows"), system::computer_name());
         let app = Rc::new(Self {
             crux,
             device: Arc::new(device),
@@ -593,7 +594,7 @@ impl App {
         let said: Vec<String> = turn
             .said
             .into_iter()
-            .filter(|said| !(folded && (said == "Expanded" || said == "Collapsed")))
+            .filter(|said| !(folded && (*said == lumenna_records::words::folded_said(true) || *said == lumenna_records::words::folded_said(false))))
             .filter(|said| opening.as_ref() != Some(said))
             .collect();
         let said = said.join(" ");
@@ -803,7 +804,7 @@ impl App {
     }
 
     pub fn set_title(&self, title: &str) {
-        controls::set_text(self.main, &format!("{title} - Lumenna"));
+        controls::set_text(self.main, &format!("{title} - {}", super::words().metadata.name));
     }
 
     // -------------------------------------------------------------------------------------
@@ -1177,7 +1178,7 @@ impl App {
             "settings" => settings::show(self, "general"),
             "devices" => settings::show(self, "devices"),
             "export-import" => settings::show(self, "export"),
-            "restore-backup" => settings::import(self.main, &lumenna_records::fields::file_words(false).restore, &settings::BACKUPS),
+            "restore-backup" => settings::import(self.main, &super::words().files.restore, &settings::backups()),
             // This device's own backup, into its backups, as the automatic ones are.
             "back-up" => self.back_up(),
             "new-task" => self.quick_add(false),
@@ -1249,9 +1250,9 @@ impl App {
     /// About Lumenna: what it is, from the core's one source (`words::metadata`), and where this
     /// profile's data is.
     fn about(&self) {
-        let m = lumenna_records::words::metadata();
+        let m = &super::words().metadata;
         let text = format!(
-            "{} {}\n{}.\n\n{}, {}\n{}\n{}\n\nData folder: {}",
+            "{} {}\n{}.\n\n{}, {}\n{}\n{}\n\n{}",
             m.name,
             m.version,
             m.description,
@@ -1259,7 +1260,7 @@ impl App {
             m.licence,
             m.homepage,
             m.issues,
-            self.directory.display()
+            lumenna_app::words::data_folder(&self.directory.display().to_string())
         );
         let title = lumenna_app::keys::command_of("about").map_or("About", |command| command.title);
         unsafe {

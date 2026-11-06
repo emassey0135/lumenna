@@ -213,5 +213,5 @@ fn set_types(dialog: &IFileDialog, types: &[(&str, &str)]) -> Option<()> {
 
 /// What this PC is called, to name it to another device when pairing.
 pub fn computer_name() -> String {
-    std::env::var("COMPUTERNAME").ok().filter(|n| !n.is_empty()).unwrap_or_else(|| "Windows PC".to_owned())
+    lumenna_app::words::device_named(&std::env::var("COMPUTERNAME").unwrap_or_default(), lumenna_app::words::ThisDevice::Pc)
 }

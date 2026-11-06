@@ -16,7 +16,7 @@ use lumenna_app::details::DetailsEvent;
 use lumenna_app::lines::Lines;
 use lumenna_app::{ActingOn, DetailsView, ViewModel};
 use lumenna_ffi::ShellEvent;
-use lumenna_records::fields::{DetailsWords, details_words};
+use lumenna_records::fields::DetailsWords;
 use lumenna_records::{ActionKind, Asks, Choice, Offered, TaskDetail, priorities, task_form};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::System::SystemServices::{SS_CENTER, SS_NOPREFIX};
@@ -104,7 +104,7 @@ pub struct Detail {
 
 impl Detail {
     pub fn create(pane: HWND) -> Self {
-        let words = details_words(false);
+        let words = super::words().details.clone();
         let placeholder = controls::create(pane, WC_STATICW, &words.none, SS_CENTER.0 | SS_NOPREFIX.0, 0, 0);
         let mut fields = Vec::new();
         let mut field = |label: &str, class, style: u32, id: u16, column: Column, lines: i32, description: &str| {

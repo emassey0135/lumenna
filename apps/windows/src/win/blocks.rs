@@ -36,7 +36,7 @@ impl BlockList {
         let count = controls::create(pane, WC_STATICW, "", SS_NOPREFIX.0, 0, 0);
         // The day's own button, as the day has it: a new block, which the app lands on here.
         let add = controls::create(pane, WC_BUTTONW, &menu::button("new-block"), BS_PUSHBUTTON as u32 | WS_TABSTOP.0, 0, ADD);
-        let rows = Rows::create(pane, TREE, "Blocks", false);
+        let rows = Rows::create(pane, TREE, &lumenna_records::places::place_title(&lumenna_records::places::Place::Blocks), false);
         Rc::new(Self { add, count, rows })
     }
 
