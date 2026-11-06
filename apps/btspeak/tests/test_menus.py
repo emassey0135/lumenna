@@ -105,7 +105,7 @@ class Menus(unittest.TestCase):
     def test_a_task_added_and_completed_comes_back_with_undo(self):
         script = self.run_script(
             [
-                ("menu", "Add a task"),
+                ("menu", "New task"),
                 ("input", "buy milk tomorrow"),
                 ("menu", "Tasks"),
                 ("key", "buy milk", "c"),
@@ -287,7 +287,7 @@ class Menus(unittest.TestCase):
         self.call("config.set", key="day-start", value="07:30")
         offered = self.session.device.new_block_start("today")
         script = self.run_script(
-            [("app", "Add a block"), ("form", {"title": "Run", "date": "tomorrow"}), ("back",)],
+            [("app", "New block"), ("form", {"title": "Run", "date": "tomorrow"}), ("back",)],
             lambda: day.day_plan(self.session),
         )
         fields = {f.key: f for f in script.forms[0]}
@@ -297,7 +297,7 @@ class Menus(unittest.TestCase):
         # A start typed is kept. Not on the hour: an offer always is, and one typed the same as
         # the offer counts as left as offered (between 17:00 and 18:00 the offer is 18:00).
         script = self.run_script(
-            [("app", "Add a block"), ("form", {"title": "Swim", "date": "tomorrow", "start": "18:15"}), ("back",)],
+            [("app", "New block"), ("form", {"title": "Swim", "date": "tomorrow", "start": "18:15"}), ("back",)],
             lambda: day.day_plan(self.session),
         )
         times = sorted(row["due_time"] for row in self.call("block.list")["rows"])
@@ -307,7 +307,7 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
             [
-                ("app", "Add a block"),
+                ("app", "New block"),
                 # Ending at midnight, so it is never over while the test runs.
                 ("form", {"title": "Deep work", "start": "11pm", "minutes": "60"}),
                 ("key", "Deep work", "i"),
@@ -589,7 +589,7 @@ class Menus(unittest.TestCase):
         options.put(options.READ_BACK, True)
         script = self.run_script(
             [
-                ("app", "Add a task"),
+                ("app", "New task"),
                 ("input", "call mum tomorrow"),
                 ("choose", "Change it"),
                 ("input", "call mum tomorrow p1"),
@@ -604,7 +604,7 @@ class Menus(unittest.TestCase):
     def test_a_refused_task_is_asked_again_as_typed_with_the_apps_reason(self):
         script = self.run_script(
             [
-                ("app", "Add a task"),
+                ("app", "New task"),
                 ("input", "call mum #Nowhere"),
                 ("input", "call mum"),
                 ("back",),
@@ -675,7 +675,7 @@ class Menus(unittest.TestCase):
 
     def test_the_block_form_names_its_fields_and_kinds_as_the_core_does(self):
         script = self.run_script(
-            [("app", "Add a block"), ("form", None), ("back",)],
+            [("app", "New block"), ("form", None), ("back",)],
             lambda: day.day_plan(self.session),
         )
         fields = {f.key: f for f in script.forms[0]}
@@ -716,7 +716,7 @@ class Menus(unittest.TestCase):
 
     def test_going_to_a_day_and_a_new_filter_ask_in_the_cores_words(self):
         script = self.run_script(
-            [("app", "Go to a day"), ("input", "tomorrow"), ("back",)],
+            [("app", "Go to day"), ("input", "tomorrow"), ("back",)],
             lambda: day.day_plan(self.session),
         )
         self.assertIn("Go to day. A date, such as Friday, or 12 October. Day", script.prompts)
@@ -893,7 +893,7 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
             [
-                ("app", "Add a block"),
+                ("app", "New block"),
                 # Ending at midnight, so it is never over while the test runs.
                 ("form", {"title": "Deep work", "start": "11pm", "minutes": "60"}),
                 ("key", "Deep work", "i"),
@@ -925,7 +925,7 @@ class Menus(unittest.TestCase):
 
     def test_the_main_menu_lists_the_cores_places(self):
         script = self.run_script([("menu", "Saved filters"), ("back",), ("back",)], lambda: menus.main_menu(self.session))
-        self.assertTrue(script.titles[1].startswith("Filters"), script.titles)
+        self.assertTrue(script.titles[1].startswith("Saved filters"), script.titles)
 
     def test_a_priority_is_chosen_by_the_cores_words(self):
         self.call("task.add", text="file taxes")

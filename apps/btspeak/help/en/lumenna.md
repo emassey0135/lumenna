@@ -18,7 +18,7 @@ Press H-Chord on any Lumenna screen for help about that screen. Press Z-Chord to
 
 - Today, shortcut t: the day's blocks, free time and now. See [Lumenna Day](help:lumenna-day).
 - Tasks, shortcut k: every open task. See [Lumenna Tasks](help:lumenna-tasks).
-- Add a task, shortcut a: type it the way you would say it, such as "call the bank tomorrow at 3pm p1 #Home".
+- New task, shortcut a: type it the way you would say it, such as "call the bank tomorrow at 3pm p1 #Home".
 - Projects, shortcut p; Labels, shortcut l; Saved filters, shortcut f: see [Lumenna Projects, Labels and Filters](help:lumenna-organise).
 - Blocks, shortcut b: every block, including ones on no day near today.
 - History, shortcut h: what was completed or worked on over the last two weeks, newest first.

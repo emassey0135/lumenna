@@ -20,8 +20,8 @@ It holds what can be done to the task now, as every Lumenna app offers it, then 
 
 ## The list's main menu, M-Chord
 
-- Add a task, a. In a project's or label's list, the line starts with it, so the task lands there.
-- Search or filter, slash: a filter such as "#Work & overdue", or "search:" and words to look through titles and notes.
+- New task, a. In a project's or label's list, the line starts with it, so the task lands there.
+- Filter tasks, slash: a filter such as "#Work & overdue", or "search:" and words to look through titles and notes.
 - Undo, u, and Redo, y.
 
 ## Writing a task

@@ -283,6 +283,17 @@ pub struct ShellWords {
     pub opening: String,
     /// A second tab, while another has the store open.
     pub open_elsewhere: String,
+
+    // BTSpeak's.
+    /// The key "/" as a menu says it after a label: "slash".
+    pub slash: String,
+    /// The key ",": "comma".
+    pub comma: String,
+    /// The key ".": "period".
+    pub period: String,
+    /// What a process serving the store without the screens calls itself to a client:
+    /// "Lumenna background service".
+    pub background_service: String,
 }
 
 /// A pick's words, its buttons in sentence case where `sentence`.
@@ -405,6 +416,11 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         storage_may_be_cleared: core::storage_may_be_cleared(),
         opening: core::opening(),
         open_elsewhere: core::open_elsewhere(),
+
+        slash: "slash".to_owned(),
+        comma: "comma".to_owned(),
+        period: "period".to_owned(),
+        background_service: format!("{} background service", core::NAME),
     }
 }
 

@@ -30,8 +30,8 @@ from __future__ import annotations
 from BTSpeak import dialogs
 
 from actions import L
-from core import Core, LumennaError
-from session import Session, announce, live_menu
+from core import Core, LumennaError, words
+from session import Session, announce, command_title, live_menu
 import day
 import organise
 import preferences
@@ -100,16 +100,17 @@ def main_menu(session: Session) -> None:
                 places.append(item(title=entry.text, shortcut=key, action=lambda screen=screen: screen(session)))
         # The task list sits beside adding a task, as it always has here.
         at = next((i + 1 for i, it in enumerate(places) if it.shortcut == "k"), len(places))
-        places.insert(at, item(title="Add a task", shortcut="a", action=lambda: add_task(session)))
+        places.insert(at, item(title=command_title("new-task"), shortcut="a", action=lambda: add_task(session)))
         return places + [
-            item(title="Undo", shortcut="u", action=lambda: session.send(L.ShellEventUndo())),
-            item(title="Redo", shortcut="y", action=lambda: session.send(L.ShellEventRedo())),
-            item(title="Reminders", shortcut="r", action=lambda: reminder_lists.due(session)),
-            item(title="Sync now", shortcut="n", action=lambda: preferences.sync_now(session)),
-            item(title="Settings", shortcut="s", action=lambda: preferences.settings(session)),
+            item(title=command_title("undo"), shortcut="u", action=lambda: session.send(L.ShellEventUndo())),
+            item(title=command_title("redo"), shortcut="y", action=lambda: session.send(L.ShellEventRedo())),
+            item(title=words().reminders_due, shortcut="r", action=lambda: reminder_lists.due(session)),
+            item(title=command_title("sync-now"), shortcut="n", action=lambda: preferences.sync_now(session)),
+            item(title=command_title("settings"), shortcut="s", action=lambda: preferences.settings(session)),
         ]
 
-    live_menu(session, build, "Lumenna", app_title=L.menu_of("Lumenna"))
+    name = words().metadata.name
+    live_menu(session, build, name, app_title=L.menu_of(name))
 
 
 def add_task(session: Session) -> str:

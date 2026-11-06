@@ -18,4 +18,4 @@ Enter shows the tasks wearing a label. Its context menu: Show the tasks wearing 
 
 ## Saved filters
 
-Enter opens a filter's tasks. A filter is kept as you typed it, so "today" means today whenever it is opened. Its context menu: Rename, r. Change query, q. Move up and Move down. Delete. The main menu has New saved filter, a, and Search or filter now, slash.
+Enter opens a filter's tasks. A filter is kept as you typed it, so "today" means today whenever it is opened. Its context menu: Rename, r. Change query, q. Move up and Move down. Delete. The main menu has New saved filter, a, and Filter tasks, slash.

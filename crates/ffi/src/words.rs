@@ -295,12 +295,6 @@ pub fn could_not_start(reason: String) -> String {
     w::could_not_start(&reason)
 }
 
-/// When the store would not open, the error's sentence after it.
-#[export]
-pub fn store_unopened(reason: String) -> String {
-    lumenna_records::words::store_unopened(&reason)
-}
-
 /// What is asked before a file is replaced.
 #[export]
 pub fn already_there(name: String) -> String {

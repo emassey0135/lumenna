@@ -33,7 +33,7 @@ On free time, Add block here, a. On a cancelled day, Restore this day, o.
 ## The day's main menu, M-Chord
 
 - First, what the day offers itself, as it does: Plan the day; Replan from now; What should I work on?, w, which offers the tasks to start on, each saying after a moment why it is suggested; End the day; Clear the rest of the day.
-- Add a block, a. Previous day, p. Next day, n. Go to a day, g: any date you can say, such as "next friday". Today, t.
+- New block, a. Previous day, p. Next day, n. Go to day, g: any date you can say, such as "next friday". Go to now, t.
 - Undo, u, and Redo, y.
 
 ## Replan from now and Plan the day

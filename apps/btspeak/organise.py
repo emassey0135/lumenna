@@ -8,9 +8,10 @@ change made from a row lands back on it, or on the row now in its place.
 from __future__ import annotations
 
 import actions
+import core
 from actions import L
 from rows import Row, items
-from session import Command, Session, empty_then, live_menu, screen
+from session import Command, Session, empty_then, key_label, live_menu, screen
 import tasks
 
 
@@ -51,9 +52,19 @@ def add_in(session: Session, place) -> str:
     return tasks.add_task(session, session.view().quick_add)
 
 
-def group_screen(session: Session, group, title: str, show: str, add: str, empty: str = "") -> str:
-    """One heading's places: Enter shows one's tasks; its context menu shows them, adds a task
-    there, and has the row's own actions; the main menu adds one, as the heading does."""
+def group_title(session: Session, group) -> str:
+    """What the app's sidebar calls `group`'s heading: "Saved filters"."""
+    return next(
+        entry.title for entry in session.view().sidebar
+        if isinstance(entry.kind, L.SidebarKindGroup) and entry.kind.field_0 == group
+    )
+
+
+def group_screen(session: Session, group, show: str, add: str, empty: str = "") -> str:
+    """One heading's places, under the sidebar's name for it: Enter shows one's tasks; its
+    context menu shows them, adds a task there, and has the row's own actions; the main menu
+    adds one, as the heading does."""
+    title = group_title(session, group)
     state = {"heading": title}
 
     def build():
@@ -89,17 +100,20 @@ def group_screen(session: Session, group, title: str, show: str, add: str, empty
 
 def projects(session: Session) -> str:
     """The project tree, foldable, with weights and what is archived."""
-    return group_screen(session, L.SidebarGroup.PROJECTS, "Projects", "Show its tasks", "Add a task to it")
+    named = core.words()
+    return group_screen(session, L.SidebarGroup.PROJECTS, named.show_its_tasks, named.add_task_to_it)
 
 
 def labels(session: Session) -> str:
     """Labels: a first-class axis, with their own list."""
-    return group_screen(session, L.SidebarGroup.LABELS, "Labels", "Show the tasks wearing it", "Add a task wearing it",
+    named = core.words()
+    return group_screen(session, L.SidebarGroup.LABELS, named.show_tasks_wearing_it, named.add_task_wearing_it,
                         L.press_to_add("a"))
 
 
 def saved_filters(session: Session) -> str:
     """Saved filters, and the lists they open. A filter is stored as text and evaluated when it
     is used, so one saved as "today" still means today next month."""
-    return group_screen(session, L.SidebarGroup.FILTERS, "Filters", "Show its tasks", "Add a task to it",
-                        L.press_to_add_or_filter("a", "slash"))
+    named = core.words()
+    return group_screen(session, L.SidebarGroup.FILTERS, named.show_its_tasks, named.add_task_to_it,
+                        L.press_to_add_or_filter("a", key_label("/")))

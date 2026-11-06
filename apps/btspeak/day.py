@@ -13,8 +13,9 @@ from BTSpeak import dialogs
 
 import actions
 from actions import L
+import core
 from rows import Row, items
-from session import Command, Session, empty_then, heading, live_menu, screen
+from session import Command, Session, command_title, empty_then, heading, live_menu, screen
 import proposals  # noqa: F401 - Replan from now's and Plan the day's screen
 import tasks
 
@@ -97,15 +98,15 @@ def day_plan(session: Session) -> str:
             context=lambda rows: actions.commands(session, rows),
             app=lambda: [
                 *day_commands(session),
-                Command("Add a block", lambda _: add_block(session), key="a"),
-                Command("Previous day", lambda _: move(L.DayMove.PREVIOUS), key="p"),
-                Command("Next day", lambda _: move(L.DayMove.NEXT), key="n"),
-                Command("Go to a day", lambda _: move(L.DayMove.ASK), key="g"),
-                Command("Today", lambda _: move(L.DayMove.TODAY), key="t"),
+                Command(command_title("new-block"), lambda _: add_block(session), key="a"),
+                Command(command_title("previous-day"), lambda _: move(L.DayMove.PREVIOUS), key="p"),
+                Command(command_title("next-day"), lambda _: move(L.DayMove.NEXT), key="n"),
+                Command(command_title("go-to-day"), lambda _: move(L.DayMove.ASK), key="g"),
+                Command(command_title("go-to-now"), lambda _: move(L.DayMove.TODAY), key="t"),
                 *tasks.undo_commands(session),
             ],
-            empty="Nothing planned.",
-            app_title=L.menu_of("Day"),
+            empty=core.words().nothing_planned,
+            app_title=L.menu_of(L.place_title(L.PlaceToday())),
             focus=lambda: session.view().focus,
         )
     return ""
@@ -137,12 +138,12 @@ def add_block(session: Session) -> str:
 
 def blocks(session: Session) -> str:
     """Every block series: Enter edits one, the delete keys delete it, a adds one."""
-    state = {"heading": "Blocks"}
+    state = {"heading": L.place_title(L.PlaceBlocks())}
 
     def build():
         session.show(L.PlaceBlocks())
         rows = tasks.list_rows(session)
-        state["heading"] = heading("Blocks", tasks.readback(session), bool(rows))
+        state["heading"] = heading(L.place_title(L.PlaceBlocks()), tasks.readback(session), bool(rows))
         return items(rows)
 
     with screen("lumenna-day"):
@@ -150,9 +151,9 @@ def blocks(session: Session) -> str:
             session, build, lambda: state["heading"],
             main=lambda row: actions.press(session, "open", row),
             context=lambda rows: actions.commands(session, rows),
-            app=[Command("Add a block", lambda _: add_block(session), key="a"), *tasks.undo_commands(session)],
+            app=[Command(command_title("new-block"), lambda _: add_block(session), key="a"), *tasks.undo_commands(session)],
             empty=empty_then(lambda: tasks.readback(session), L.press_to_add("a")),
-            app_title=L.menu_of("Blocks"),
+            app_title=L.menu_of(L.place_title(L.PlaceBlocks())),
             focus=lambda: session.view().focus,
         )
     return ""
@@ -185,7 +186,7 @@ def block_form(session: Session) -> str:
             value = value_of(form, field.key)
             if field.kind == L.FieldKind.TOGGLE:
                 fields.append(dialogs.InputField(
-                    key=field.key, prompt=field.label, field_type="choice", choices={choice.id: choice.title for choice in L.yes_no()},
+                    key=field.key, prompt=field.label, field_type="choice", choices={choice.id: choice.title for choice in core.words().yes_no},
                     default_text="yes" if value else "no",
                 ))
             else:

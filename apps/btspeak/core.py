@@ -14,6 +14,7 @@ them in when they wake (`Session`).
 
 from __future__ import annotations
 
+import functools
 import os
 import queue
 import socket
@@ -65,10 +66,23 @@ def profile_directory() -> Path:
 
 def device_name() -> str:
     """What this device is called on others, as `lum` names it: the host's name without
-    `.local`."""
-    name = socket.gethostname().strip()
-    name = name[: -len(".local")] if name.endswith(".local") else name
-    return name or "this device"
+    `.local`, else the core's name for a device with none."""
+    module = native()
+    return module.device_named(socket.gethostname(), module.ThisDevice.DEVICE)
+
+
+@functools.cache
+def words():
+    """Every fixed word the app draws, the core's (`ShellWords`), in sentence case as a BTSpeak
+    calls itself: asked for once, so no word is written here."""
+    module = native()
+    return module.shell_words(module.Capitals.SENTENCE, module.ThisDevice.DEVICE)
+
+
+def could_not_start(reason: str) -> str:
+    """What is said when Lumenna could not start: the core's words, unless the core itself is
+    what is missing, which then says so alone."""
+    return native().could_not_start(reason) if core is not None else reason
 
 
 def native():
@@ -122,7 +136,7 @@ class Core:
         try:
             self.device = module.Device(str(self.profile))
         except Exception as error:  # noqa: BLE001 - the core's own refusal
-            raise LumennaError(f"The store could not be opened. {refused(error)}") from error
+            raise LumennaError(native().store_unopened(refused(error))) from error
         self.turns: queue.Queue = queue.Queue()
         self.arrived = threading.Event()
         self._locale = _Locale()
@@ -154,5 +168,5 @@ class Core:
         deadline = time.monotonic() + timeout
         while not self.app.is_still():
             if time.monotonic() > deadline:
-                raise LumennaError("Lumenna stopped responding")
+                raise LumennaError(words().stopped_responding)
             time.sleep(0.002)

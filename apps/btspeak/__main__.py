@@ -14,7 +14,7 @@ import sys
 
 from BTSpeak import dialogs, host
 
-from core import Core, LumennaError
+from core import Core, LumennaError, could_not_start
 from menus import run
 from session import HELP
 
@@ -42,7 +42,7 @@ def main() -> int:
             # Said in a dialog rather than printed: with self-voice on, nothing is reading
             # the screen, so a print here would be silence. This is also the failure most
             # likely to happen on a first run, before the core is built.
-            dialogs.show_message(f"Lumenna could not start. {error.message}")
+            dialogs.show_message(could_not_start(error.message))
             return 1
         return run(core)
     finally:

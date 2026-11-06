@@ -14,9 +14,10 @@ from BTSpeak import dialogs
 import actions
 import options
 from actions import K, L
+import core
 from core import refused
 from rows import Row, items
-from session import Command, Session, choose, empty_then, heading, live_menu, screen
+from session import Command, Session, choose, command_title, empty_then, heading, live_menu, screen
 
 
 # ---------------------------------------------------------------------------------------
@@ -27,8 +28,8 @@ from session import Command, Session, choose, empty_then, heading, live_menu, sc
 def undo_commands(session: Session) -> list[Command]:
     """Undo and redo, on every screen's main menu, with the same keys everywhere."""
     return [
-        Command("Undo", lambda _: session.send(L.ShellEventUndo()), key="u"),
-        Command("Redo", lambda _: session.send(L.ShellEventRedo()), key="y"),
+        Command(command_title("undo"), lambda _: session.send(L.ShellEventUndo()), key="u"),
+        Command(command_title("redo"), lambda _: session.send(L.ShellEventRedo()), key="y"),
     ]
 
 
@@ -58,7 +59,7 @@ def readback(session: Session) -> str:
 
 
 def task_list(
-    session: Session, place=None, title: str = "Tasks", query: str | None = None, more: list | None = None,
+    session: Session, place=None, title: str = "", query: str | None = None, more: list | None = None,
     main=None,
 ) -> str:
     """One of the app's places as a foldable list of tasks, with `query` typed over it.
@@ -69,6 +70,7 @@ def task_list(
     project's list can add a project inside it.
     """
     place = place or L.PlaceTasks()
+    title = title or L.place_title(place)
     state = {"heading": title}
 
     def build():
@@ -83,8 +85,8 @@ def task_list(
             main=main or (lambda row: show(session, row)),
             context=lambda rows: task_commands(session, rows),
             app=[
-                Command("Add a task", lambda _: add_task(session, session.view().quick_add), key="a"),
-                Command("Search or filter", lambda _: query_tasks(session), key="/"),
+                Command(command_title("new-task"), lambda _: add_task(session, session.view().quick_add), key="a"),
+                Command(command_title("filter"), lambda _: query_tasks(session), key="/"),
                 *(more or []),
                 *undo_commands(session),
             ],
@@ -97,30 +99,30 @@ def task_list(
 
 def query_tasks(session: Session) -> str:
     """A filter typed now rather than saved; `search: words` looks through titles and notes."""
-    words = L.quick_add_words(True)
+    words = core.words().quick_add
     query = assisted_input(session, actions.prompt(words.filter, words.filter_hint), L.Syntax.FILTER,
                            history_key="lumenna-filter")
     if not query:
         return ""
-    return task_list(session, L.PlaceTasks(), "Query", query=query)
+    return task_list(session, L.PlaceTasks(), core.words().query, query=query)
 
 
 def task_commands(session: Session, rows) -> list[Command]:
     """What can be done to a task: the app's actions for it, then its details."""
-    return actions.commands(session, rows, after=[Command(L.details_words(True).title, lambda row: show(session, row))])
+    return actions.commands(session, rows, after=[Command(core.words().details.title, lambda row: show(session, row))])
 
 
 def history(session: Session) -> str:
     """What was done over the last two weeks, newest first, each a task's row: Enter shows its
     details."""
-    return task_list(session, L.PlaceHistory(), "History")
+    return task_list(session, L.PlaceHistory())
 
 
 def trash(session: Session) -> str:
     """Deleted tasks: Enter puts one back; deleting one from the trash is its context menu's,
     or the delete keys'."""
     return task_list(
-        session, L.PlaceTrash(), "Trash",
+        session, L.PlaceTrash(),
         main=lambda row: actions.press(session, "restore-task", row),
     )
 
@@ -233,7 +235,7 @@ def add_task(session: Session, prefix: str = "", refusal: str = "") -> str:
     refuses — an unknown project — is asked again as typed, the app's sentence first, rather
     than retyped on a braille keyboard.
     """
-    text = assisted_input(session, actions.prompt(refusal, L.quick_add_words(True).label), L.Syntax.QUICK_ADD,
+    text = assisted_input(session, actions.prompt(refusal, core.words().quick_add.label), L.Syntax.QUICK_ADD,
                           history_key="lumenna-add", default=prefix)
     if not text or not text.strip():
         return ""
@@ -243,7 +245,7 @@ def add_task(session: Session, prefix: str = "", refusal: str = "") -> str:
     )
     line = session.view().line
     if line is not None and options.get(options.READ_BACK, False):
-        words = L.read_back_words(True)
+        words = core.words().read_back
         answer = choose({"add": words.add, "change": words.change}, L.add_it(line.readback))
         if answer != "add":
             session.send(L.ShellEventTyping(L.TypingClose()))
@@ -286,12 +288,12 @@ def completing_key(session: Session, syntax) -> dict:
             cursor = dialog.cursor() if dialog.input_grade == 0 else len(text)
             found = session.app.complete(text, len(text[:cursor].encode("utf-8")), syntax)
         except Exception:  # noqa: BLE001 - a line that cannot be completed is still a line
-            return L.quick_add_words(True).nothing_to_complete
+            return core.words().quick_add.nothing_to_complete
         if not found.candidates:
-            return found.announcement or L.quick_add_words(True).nothing_to_complete
+            return found.announcement or core.words().quick_add.nothing_to_complete
         start, end = char_offset(text, found.start), char_offset(text, found.end)
         choice = choose({c.text: L.candidate_line(c) for c in found.candidates},
-                        found.announcement or L.quick_add_words(True).show_completions)
+                        found.announcement or core.words().quick_add.show_completions)
         if choice is None:
             return None
         line = text[:start] + choice + text[end:]
@@ -330,7 +332,7 @@ def assisted_input(session: Session, prompt: str, syntax, history_key: str | Non
         return text
     choice = choose(
         {candidate.text: L.candidate_line(candidate) for candidate in candidates},
-        found.announcement or L.quick_add_words(True).show_completions,
+        found.announcement or core.words().quick_add.show_completions,
     )
     if choice is None:
         return text

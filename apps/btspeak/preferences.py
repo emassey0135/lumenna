@@ -18,10 +18,11 @@ from BTSpeak import clipboard, dialogs
 
 import actions
 from actions import L
+import core
 from core import device_name, refused
 import options
 from rows import Row, items
-from session import REFRESH, Command, Session, choose, confirm, live_menu, screen, sentences
+from session import REFRESH, Command, Session, choose, command_title, confirm, live_menu, screen, sentences
 from tasks import undo_commands
 
 
@@ -42,14 +43,14 @@ STATUS_FOR = 5
 
 def read_back_title() -> str:
     on = options.get(options.READ_BACK, False)
-    words = L.read_back_words(True)
+    words = core.words().read_back
     return words.title_on if on else words.title_off
 
 
 def toggle_read_back() -> str:
     on = not options.get(options.READ_BACK, False)
     options.put(options.READ_BACK, on)
-    words = L.read_back_words(True)
+    words = core.words().read_back
     return words.turned_on if on else words.turned_off
 
 
@@ -99,11 +100,6 @@ def settings(session: Session) -> str:
         menu.append(dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back))
         dialogs.dynamic_menu(menu, title=command_title("settings"))
     return ""
-
-
-def command_title(command: str) -> str:
-    """A command of the shared table's name, as the core's menus give it: "Settings"."""
-    return next((item.title for group in L.menus(True) for item in group.items if item.id == command), command)
 
 
 def open_page(session: Session, page_id: str) -> str:
@@ -239,9 +235,17 @@ def device_rows(session: Session) -> list[Row]:
     return made
 
 
+def devices_page(session: Session):
+    """The core's Devices and sync page, whether or not settings are open."""
+    return page_of(session, "devices") or next(
+        page for page in L.settings_pages(False, True) if page.id == "devices"
+    )
+
+
 def devices(session: Session) -> str:
     """How syncing is going, device by device, and pairing another."""
-    state = {"heading": "Devices and sync"}
+    page = devices_page(session)
+    state = {"heading": page.title}
     session.send(L.ShellEventDevices(L.DevicesEventShow()))
     # How syncing is going comes from the network, which answers later than the store: waited
     # for a moment, so the heading the page opens with is not replaced as it is read.
@@ -255,7 +259,7 @@ def devices(session: Session) -> str:
     def build():
         view = session.view().devices
         rows = device_rows(session)
-        state["heading"] = view.status if view is not None and view.status else "Devices and sync"
+        state["heading"] = view.status if view is not None and view.status else page.title
         return items(rows)
 
     with screen("lumenna-settings"):
@@ -263,13 +267,10 @@ def devices(session: Session) -> str:
             session, build, lambda: state["heading"],
             main=lambda row: actions.press(session, "rename", row),
             context=lambda rows: actions.commands(session, rows),
-            app=[
-                Command("Sync now", lambda _: sync_now(session), key="s"),
-                Command("Pair a device", lambda _: pair(session), key="p"),
-            ],
+            app=button_commands(session, page),
             # The status heading already says nothing is paired; the empty list adds only the key.
             empty=L.press_to_pair("p"),
-            app_title=L.menu_of("Devices"),
+            app_title=L.menu_of(page.title),
             focus=lambda: session.view().devices_held.focus,
         )
     return ""
@@ -279,7 +280,7 @@ def sync_now(session: Session) -> str:
     """One round with every paired device, through whatever on this device holds the sync
     endpoint (the background service, once it is on); the app says how it went once it has."""
     session.send(L.ShellEventDevices(L.DevicesEventSyncNow()))
-    with dialogs.activity("Syncing"):
+    with dialogs.activity(core.words().syncing):
         return session.wait_said(SYNC_FOR)
 
 
@@ -405,7 +406,7 @@ def pairing_screen(session: Session) -> str:
             dialogs.DynamicMenuItem(title=lambda *_: status(), action=read_code),
             *([dialogs.DynamicMenuItem(title=words.copy_code, action=copy_code)] if pairing.mine else []),
             *([dialogs.DynamicMenuItem(title=words.join, action=code_instead)] if pairing.waiting and pairing.running else []),
-            dialogs.DynamicMenuItem(title=session.sentence("Cancel"), action=cancel),
+            dialogs.DynamicMenuItem(title=core.words().cancel, action=cancel),
         ]
         choice = dialogs.dynamic_menu(menu, title=words.title, exit_condition=session.restless, refresh_interval=REFRESH)
         if session.restless():
@@ -449,7 +450,7 @@ def restore(session: Session) -> str:
     start = setting_value(session, "backup-dir") or str(Path.home())
     if not Path(start).is_dir():
         start = str(Path.home())
-    chosen = dialogs.request_file(start, ["lumbak"], prompt=L.file_words(True).restore)
+    chosen = dialogs.request_file(start, ["lumbak"], prompt=core.words().files.restore)
     if chosen is None:
         return ""
     return import_path(session, Path(chosen))
@@ -466,7 +467,7 @@ def _export_import(session: Session) -> str:
     page = page_of(session, "export")
     runs = {"import": import_file}
     menu = [
-        dialogs.DynamicMenuItem(title=L.file_words(True).export, action=lambda: export(session)),
+        dialogs.DynamicMenuItem(title=core.words().files.export, action=lambda: export(session)),
         *[
             dialogs.DynamicMenuItem(title=button.title, action=lambda run=runs[button.id]: run(session))
             for button in (page.buttons if page is not None else []) if button.id in runs
@@ -488,16 +489,16 @@ def _export(session: Session) -> str:
     view = session.view().settings
     offered = view.exports if view is not None else []
     if not offered:
-        return L.nothing_to_choose()
-    index = choose({i: choice.label for i, choice in enumerate(offered)}, "Export as")
+        return core.words().nothing_to_choose
+    index = choose({i: choice.label for i, choice in enumerate(offered)}, core.words().export_as)
     if index is None:
         return ""
     picked = offered[index]
-    folder = dialogs.request_directory(str(Path.home()), prompt=L.file_words(True).save_in)
+    folder = dialogs.request_directory(str(Path.home()), prompt=core.words().files.save_in)
     if folder is None:
         return ""
     path = Path(folder) / picked.name
-    if path.exists() and not confirm(f"{picked.name} is already there. Replace it?"):
+    if path.exists() and not confirm(L.already_there(picked.name)):
         return ""
     session.files.clear()
     said = session.send(L.ShellEventSettings(L.SettingsEventExport(picked.format)))
@@ -507,13 +508,13 @@ def _export(session: Session) -> str:
     try:
         path.write_bytes(bytes(made.bytes))
     except OSError as error:
-        return f"{made.name} could not be saved: {error.strerror or error}"
-    return said or f"Saved {path}"
+        return L.could_not_save(made.name, str(error.strerror or error))
+    return said or L.saved(str(path))
 
 
 def import_file(session: Session) -> str:
     """Reads a JSON export or a backup; the core tells them apart."""
-    chosen = dialogs.request_file(str(Path.home()), ["json", "lumbak"], prompt=L.file_words(True).import_)
+    chosen = dialogs.request_file(str(Path.home()), ["json", "lumbak"], prompt=core.words().files.import_)
     if chosen is None:
         return ""
     return import_path(session, Path(chosen))
@@ -524,6 +525,6 @@ def import_path(session: Session, path: Path) -> str:
     try:
         contents = path.read_bytes()
     except OSError as error:
-        return f"{path.name} could not be read: {error.strerror or error}"
+        return L.could_not_read(path.name, str(error.strerror or error))
     with opened(session):
         return session.send(L.ShellEventSettings(L.SettingsEventImport(path.name, contents)))

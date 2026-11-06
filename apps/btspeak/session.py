@@ -14,7 +14,7 @@ from pathlib import Path
 
 from BTSpeak import dialogs, host
 
-from core import Core, LumennaError, native, profile_directory
+from core import Core, LumennaError, native, profile_directory, words
 import service
 
 
@@ -74,7 +74,7 @@ class Session:
             self.lumenna.ShellEventCapitals(self.lumenna.Capitals.SENTENCE),
             # What pairing's sentences call this device, which finds others on its network: words
             # said here, not the name others see, which is `device_name()`.
-            self.lumenna.ShellEventPairingAs("this device", True),
+            self.lumenna.ShellEventPairingAs(words().this_device, True),
             # Its background service, and whether it is on.
             self.background(),
             # A place to show from the start: the main menu shows none, and without one the
@@ -171,7 +171,7 @@ class Session:
         deadline = time.monotonic() + 30
         while not self.view().ready:
             if time.monotonic() > deadline:
-                raise LumennaError("Lumenna's store did not open")
+                raise LumennaError(native().store_unopened(""))
             self.core.still()
             time.sleep(0.01)
 
@@ -279,7 +279,7 @@ def _menu(items, braille_title: str = "", **arguments):
 
 def live_menu(
     session: Session, build, title, default: int = 0, moved=None, *,
-    main=None, context=(), app=(), empty="Nothing here", app_title: str = "", focus=None, until=None,
+    main=None, context=(), app=(), empty=None, app_title: str = "", focus=None, until=None,
     braille_title=None,
 ) -> None:
     """A menu rebuilt whenever the store moves, reopened where the cursor was.
@@ -329,7 +329,7 @@ def live_menu(
             # its menu; a title cut at its first comma broke a name like "Work, home".
             app_menu_title=app_title or native().menu_of(heading),
             global_keys=keys(here, offered),
-            empty_message=empty() if callable(empty) else empty,
+            empty_message=empty() if callable(empty) else (words().nothing_here if empty is None else empty),
         )
         nudged = bool(moved and moved(clear=True))
         if until is not None and until():
@@ -386,9 +386,15 @@ def app_commands(app):
     ]
 
 
+def command_title(command: str) -> str:
+    """A command of the shared table's name, as the core's menus give it: "Settings"."""
+    return next((item.title for group in native().menus(True) for item in group.items if item.id == command), command)
+
+
 def key_label(key: str) -> str:
     """The key as the menus announce it."""
-    return {"/": "slash", ",": "comma", ".": "period"}.get(key, key)
+    named = words()
+    return {"/": named.slash, ",": named.comma, ".": named.period}.get(key, key)
 
 
 def selected_row(dialog):
