@@ -49,7 +49,7 @@ impl DayView {
             let label = if command.asks { format!("{}…", command.title) } else { command.title.to_owned() };
             buttons.append(&gtk::Button::builder().label(label).action_name(format!("win.{id}")).build());
         }
-        let tree = Tree::new("The day");
+        let tree = Tree::new(&lumenna_records::sentence_case(crate::words().the_day.clone()));
         widget.append(&buttons);
         widget.append(&tree.widget);
         let day = Rc::new(Self {

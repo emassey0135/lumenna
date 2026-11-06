@@ -22,6 +22,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use lumenna_records::places::Place;
+use lumenna_records::words::folded_said;
 
 use crate::clock::Locale;
 use crate::core::Event;
@@ -148,7 +149,7 @@ pub fn take(turn: lumenna_ffi::Turn) {
         }
     }
     for said in &turn.said {
-        if matches!(said.as_str(), "Expanded" | "Collapsed") && QUIET_FOLD.replace(false) {
+        if (*said == folded_said(true) || *said == folded_said(false)) && QUIET_FOLD.replace(false) {
             continue;
         }
         // A screen in front says it on its own status line: the main window's is behind it.
@@ -217,7 +218,7 @@ impl App {
     fn build(application: &gtk::Application, model: crate::model::Model, clock: Locale, autostart: crate::autostart::Autostart) -> Rc<Self> {
         let window = gtk::ApplicationWindow::builder()
             .application(application)
-            .title("Lumenna")
+            .title(crate::words().metadata.name.as_str())
             .default_width(1100)
             .default_height(700)
             .show_menubar(true)
@@ -225,7 +226,7 @@ impl App {
         let sidebar = Sidebar::new();
         let content_slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
         let detail = Detail::new();
-        detail.widget.update_property(&[gtk::accessible::Property::Label("Details")]);
+        detail.widget.update_property(&[gtk::accessible::Property::Label(&crate::words().details.title)]);
         let sidebar_pane = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .margin_top(8)
@@ -457,7 +458,7 @@ impl App {
 
     /// Names the window after what it shows.
     pub fn set_title(&self, title: &str) {
-        self.window.set_title(Some(&format!("{title} – Lumenna")));
+        self.window.set_title(Some(&format!("{title} – {}", crate::words().metadata.name)));
     }
 
     /// Goes to a place: shows it, and — when `focus` — moves focus into it. The sidebar
@@ -660,7 +661,7 @@ impl App {
             }),
             "restore-backup" => {
                 let window = self.window.clone().upcast::<gtk::Window>();
-                spawn(async move { crate::settings::import(&window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await });
+                spawn(async move { crate::settings::import(&window, crate::command_title("restore-backup"), &crate::settings::backup_files()).await });
             }
             "new-project" => crate::sidebar::new_in(self, lumenna_records::places::SidebarGroup::Projects),
             "new-label" => crate::sidebar::new_in(self, lumenna_records::places::SidebarGroup::Labels),
@@ -731,7 +732,7 @@ impl App {
         }
         // Its own title is "About", so Orca never heard whose; focus starts on the version. The
         // command's own name says whose.
-        let title = lumenna_app::keys::command_of("about").map_or("About", |command| command.title);
+        let title = crate::command_title("about");
         adw::prelude::AdwDialogExt::set_title(&about, title);
         adw::prelude::AdwDialogExt::present(&about, Some(&self.window));
     }

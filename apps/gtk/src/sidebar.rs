@@ -31,7 +31,7 @@ pub struct Sidebar {
 
 impl Sidebar {
     pub fn new() -> Rc<Self> {
-        let sidebar = Rc::new(Self { tree: Tree::new("Places"), entries: RefCell::new(Vec::new()), landed: Cell::new(None) });
+        let sidebar = Rc::new(Self { tree: Tree::new(&lumenna_records::sentence_case(crate::words().places.clone())), entries: RefCell::new(Vec::new()), landed: Cell::new(None) });
         let weak = Rc::downgrade(&sidebar);
         sidebar.tree.connect_selected(move |index| {
             let (Some(sidebar), Some(app)) = (weak.upgrade(), crate::window::app()) else { return };

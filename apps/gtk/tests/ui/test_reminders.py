@@ -136,7 +136,7 @@ class SettingsTest(unittest.TestCase):
     def setUp(self):
         self.session = Session([])
         self.session.press("Control+comma")
-        self.session.wait_for_window("Preferences")
+        self.session.wait_for_window("Settings")
         self.session.said()
 
     def tearDown(self):

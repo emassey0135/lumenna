@@ -60,7 +60,7 @@ impl Autostart {
                 Ok(()) => self.offered(),
                 Err(error) => failed(error.to_string()),
             },
-            Ok(_) => failed("it was not allowed".to_owned()),
+            Ok(_) => failed(crate::words().not_allowed.clone()),
             Err(error) => failed(error.to_string()),
         }
     }
@@ -134,8 +134,9 @@ impl Autostart {
         std::fs::write(
             &self.file,
             format!(
-                "[Desktop Entry]\nType=Application\nName=Lumenna\nComment={}\nExec={exec}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
-                lumenna_records::words::DESCRIPTION
+                "[Desktop Entry]\nType=Application\nName={}\nComment={}\nExec={exec}\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
+                crate::words().metadata.name,
+                crate::words().metadata.description
             ),
         )
     }

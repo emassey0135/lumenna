@@ -73,7 +73,7 @@ fn grab_on_x11(pressed: Rc<dyn Fn(Kind)>) -> Result<(), String> {
     use x11rb::protocol::Event;
     use x11rb::protocol::xproto::{ConnectionExt, GrabMode, ModMask};
 
-    let failed = |error: &dyn std::fmt::Display| format!("X did not answer: {error}");
+    let failed = |error: &dyn std::fmt::Display| lumenna_app::words::did_not_answer("X", &error.to_string());
     let (connection, screen) = x11rb::connect(None).map_err(|e| failed(&e))?;
     let setup = connection.setup();
     let root = setup.roots[screen].root;
@@ -91,7 +91,7 @@ fn grab_on_x11(pressed: Rc<dyn Fn(Kind)>) -> Result<(), String> {
             .position(|syms| syms.contains(&keysym(kind)))
             .and_then(|at| u8::try_from(at).ok())
             .map(|at| first + at)
-            .ok_or_else(|| "This keyboard has no key for them.".to_owned())?;
+            .ok_or_else(|| crate::words().no_key_for_them.clone())?;
         codes.push((code, kind));
     }
     let held = ModMask::CONTROL | ModMask::M1 | ModMask::SHIFT;

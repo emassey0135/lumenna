@@ -1,5 +1,5 @@
 //! Keyboard help, on F1 and Ctrl+?: every key, from the table the desktop apps share
-//! (`lumenna_app::keys`) with this app's own added and worded as GNOME words them.
+//! (`lumenna_app::keys`) with this app's own keys added, in the core's words.
 //!
 //! A dialog of ours, a tree of the groups and their keys, on every libadwaita. Not
 //! libadwaita 1.8's `AdwShortcutsDialog`: under Orca its items were nameless list items read
@@ -27,18 +27,18 @@ fn entries() -> Vec<Entry> {
     let mut entries = Vec::new();
     for group in Group::ALL {
         for shortcut in keys::in_group(group) {
-            // GNOME's words, and GNOME's key first where it has its own.
-            let (title, keys): (&str, Vec<&str>) = match shortcut.id {
-                "settings" => ("Preferences", shortcut.keys.to_vec()),
-                "redo" => ("Redo", vec!["Ctrl+Shift+Z", "Ctrl+Y"]),
-                "keyboard-help" => (shortcut.title, vec!["F1", "Ctrl+?"]),
-                _ => (shortcut.title, shortcut.keys.to_vec()),
+            // GNOME's key first where it has its own.
+            let keys: Vec<&str> = match shortcut.id {
+                "redo" => vec!["Ctrl+Shift+Z", "Ctrl+Y"],
+                "keyboard-help" => vec!["F1", "Ctrl+?"],
+                _ => shortcut.keys.to_vec(),
             };
-            entries.push(Entry { group, title: title.to_owned(), keys: keys.into_iter().map(str::to_owned).collect() });
+            entries.push(Entry { group, title: shortcut.title.to_owned(), keys: keys.into_iter().map(str::to_owned).collect() });
         }
+        let words = crate::words();
         let own: &[(&str, &[&str])] = match group {
-            Group::Edit => &[("Properties: a Task's Details or a Block's Form", &["Alt+Enter", "Ctrl+I"])],
-            Group::Help => &[("Menu Bar", &["F10"])],
+            Group::Edit => &[(&words.properties, &["Alt+Enter", "Ctrl+I"])],
+            Group::Help => &[(&words.menu_bar, &["F10"])],
             _ => &[],
         };
         for (title, keys) in own {
@@ -51,7 +51,8 @@ fn entries() -> Vec<Entry> {
 /// Opens the keyboard help: the groups as a tree's top level, each key under its group as
 /// "<title>, <keys>", read as every list here is.
 pub fn show(app: &Rc<App>) {
-    let tree = Tree::new("Keyboard shortcuts");
+    let title = crate::command_title("keyboard-help");
+    let tree = Tree::new(&lumenna_records::sentence_case(title.to_owned()));
     tree.widget.set_min_content_height(360);
     let mut items = Vec::new();
     for group in Group::ALL {
@@ -59,7 +60,7 @@ pub fn show(app: &Rc<App>) {
         for (index, entry) in entries().iter().filter(|e| e.group == group).enumerate() {
             items.push(Item {
                 key: format!("{}:{index}", group.title()),
-                text: format!("{}, {}", entry.title, entry.keys.join(" or ")),
+                text: format!("{}, {}", entry.title, entry.keys.join(&format!(" {} ", crate::words().or))),
                 depth: 1,
                 ..Default::default()
             });
@@ -68,7 +69,7 @@ pub fn show(app: &Rc<App>) {
     if tree.set(items) {
         tree.select_key_or_near(None, Some(0));
     }
-    let close = gtk::Button::with_mnemonic("_Close");
+    let close = gtk::Button::with_mnemonic(&lumenna_app::devices::marked(&crate::words().close, 'C', '_'));
     close.set_halign(gtk::Align::End);
     let body = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -81,7 +82,7 @@ pub fn show(app: &Rc<App>) {
     body.append(&tree.widget);
     body.append(&close);
     let window = gtk::Window::builder()
-        .title("Keyboard Shortcuts")
+        .title(title)
         .modal(true)
         .transient_for(&app.window)
         .destroy_with_parent(true)

@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use gtk::glib;
 use lumenna_app::lines::Lines;
+use lumenna_app::words::ThisDevice;
 use lumenna_app::{Capitals, ViewModel};
 use lumenna_ffi::{App, Device, Shell, ShellEvent, Turn};
 use lumenna_records::LumennaError;
@@ -36,7 +37,7 @@ impl Model {
         app.send(ShellEvent::Clock(clock.style()));
         // Title Case, as GNOME writes buttons and menus.
         app.send(ShellEvent::Capitals(Capitals::Title));
-        app.send(ShellEvent::PairingAs { called: "this computer".to_owned(), nearby: true });
+        app.send(ShellEvent::PairingAs { called: crate::words().this_device.clone(), nearby: true });
         // Opening at sign-in, in the background, and whether it does: the app's setting to offer.
         app.send(autostart.offered());
         app.send(ShellEvent::PlanFrom(crate::clock::pinned_now()));
@@ -72,7 +73,8 @@ impl Model {
     /// Serves the command surface at the profile's address whenever this device's sync runs
     /// here, as the daemon would, so Emacs and the BTSpeak app reach the resident app.
     pub fn serve_commands(&self) {
-        self.app.serve_commands("Lumenna for Linux".to_owned(), glib::host_name().to_string());
+        let name = lumenna_app::words::device_named(&glib::host_name(), ThisDevice::Computer);
+        self.app.serve_commands(lumenna_app::words::lumenna_for("Linux"), name);
     }
 
     /// Takes the automatic backup if one is due, off the main thread, and says so only if it

@@ -68,7 +68,7 @@ impl TaskList {
         }
         widget.append(&readback);
         if blocks {
-            let title = lumenna_app::keys::command_of("new-block").map_or("New Block", |command| command.title);
+            let title = crate::command_title("new-block");
             let add = gtk::Button::builder().label(format!("{title}…")).action_name("win.new-block").halign(gtk::Align::Start).build();
             widget.append(&add);
         }

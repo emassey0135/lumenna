@@ -285,7 +285,7 @@ class UrgencyTest(unittest.TestCase):
         session = Session([])
         self.addCleanup(session.close)
         session.press("Control+comma")
-        session.wait_for_window("Preferences")
+        session.wait_for_window("Settings")
         session.press("Control+Page_Down", "Alt+u")
         self.assertEqual(session.focus(), "[text] 'How urgency is weighed'")
         # A drop-down's mnemonic opens its list; Escape closes it on the drop-down.

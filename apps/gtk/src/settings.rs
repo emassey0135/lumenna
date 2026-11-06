@@ -160,6 +160,8 @@ struct Window {
     /// The refusal last told for each line, so each is told once.
     told: RefCell<HashMap<String, String>>,
     folder: gtk::Entry,
+    /// The folder's label: the setting's own title, once the app has said it.
+    folder_label: gtk::Label,
     devices: Rc<DevicesPage>,
     /// Where what is done to the store as a whole goes, a button each with the core's caption
     /// under them, and what they are.
@@ -202,7 +204,7 @@ pub fn say(text: &str) -> bool {
 pub fn save(app: &App, file: &lumenna_app::SaveFile) {
     let Some(path) = open().and_then(|open| open.saving.take()) else { return };
     if let Err(error) = std::fs::write(&path, &file.bytes) {
-        prompts::fail(&app.window, &format!("The export could not be saved. {error}"));
+        prompts::fail(&app.window, &lumenna_app::words::could_not_save(&file_name(&path), &error.to_string()));
     }
 }
 
@@ -275,7 +277,7 @@ pub fn show(app: &Rc<App>, page: Page) {
     body.append(&switcher);
     body.append(&stack);
     let window = gtk::Window::builder()
-        .title("Preferences")
+        .title(crate::command_title("settings"))
         .transient_for(&app.window)
         .destroy_with_parent(true)
         .default_width(560)
@@ -324,7 +326,8 @@ pub fn show(app: &Rc<App>, page: Page) {
         controls: RefCell::new(HashMap::new()),
         filling: Rc::new(Cell::new(false)),
         told: RefCell::new(HashMap::new()),
-        folder: folder.unwrap_or_default(),
+        folder: folder.as_ref().map(|(entry, _)| entry.clone()).unwrap_or_default(),
+        folder_label: folder.map(|(_, label)| label).unwrap_or_default(),
         devices: devices.unwrap_or_else(|| Rc::new(DevicesPage::empty())),
         store: store.unwrap_or_default(),
         store_offered: RefCell::new((Vec::new(), String::new())),
@@ -470,10 +473,14 @@ impl Window {
                 }
             }
         }
-        if let Some(folder) = find("backup-dir")
-            && self.folder.text() != folder.typed
-        {
-            self.folder.set_text(&folder.typed);
+        if let Some(folder) = find("backup-dir") {
+            if self.folder_label.label().is_empty() {
+                let title = &folder.setting.title;
+                self.folder_label.set_label(&marked(title, mnemonic("backup-dir", title, &mut vec!['a', 'k']), '_'));
+            }
+            if self.folder.text() != folder.typed {
+                self.folder.set_text(&folder.typed);
+            }
         }
         self.filling.set(false);
     }
@@ -616,7 +623,7 @@ struct Built {
     widget: gtk::Widget,
     status: gtk::Label,
     slot: gtk::Box,
-    folder: Option<gtk::Entry>,
+    folder: Option<(gtk::Entry, gtk::Label)>,
     devices: Option<Rc<DevicesPage>>,
     store: Option<gtk::Box>,
 }
@@ -687,7 +694,7 @@ fn page_buttons(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage, sta
     for button in &spec.buttons {
         let title = marked(&button.title, mnemonic(&button.id, &button.title, &mut used), '_');
         let made = gtk::Button::with_mnemonic(&if button.asks { format!("{title}…") } else { title });
-        let (id, app, status) = (button.id.clone(), Rc::downgrade(app), status.clone());
+        let (id, name, app, status) = (button.id.clone(), button.title.clone(), Rc::downgrade(app), status.clone());
         made.connect_clicked(move |made| {
             let Some(app) = app.upgrade() else { return };
             let window = window_of(made, &app);
@@ -701,8 +708,10 @@ fn page_buttons(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage, sta
                         Err(error) => prompts::fail(&window, error.message()),
                     });
                 }
-                "restore-backup" => spawn(async move { import(&window, "Restore from a Backup", &[("Lumenna backups", "*.lumbak")]).await }),
-                "import" => spawn(async move { import(&window, "Import or Restore", &IMPORTABLE).await }),
+                "restore-backup" | "import" => {
+                    let (name, files) = (name.clone(), if id == "import" { importable_files() } else { backup_files() });
+                    spawn(async move { import(&window, &name, &files).await });
+                }
                 _ => {}
             }
         });
@@ -789,7 +798,7 @@ fn devices_page(spec: &lumenna_records::fields::SettingsPage) -> Built {
     let marked = |text: &str, letter: char| lumenna_app::devices::marked(text, letter, '_');
     page.field(&sentence_case(marked(&words.sync_status, 'y')), &devices.sync_status);
     devices.list.fit(160);
-    devices.list.view.update_property(&[gtk::accessible::Property::Description("Delete unpairs the selected device.")]);
+    devices.list.view.update_property(&[gtk::accessible::Property::Description(&crate::words().delete_unpairs)]);
     devices.label.set_label(&sentence_case(marked(&words.devices, 'D')));
     devices.label.set_use_underline(true);
     devices.label.set_xalign(0.0);
@@ -851,7 +860,7 @@ fn backups(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage) -> Built
     let page = PageBox::new();
     page.settings();
     let folder = gtk::Entry::builder().editable(false).hexpand(true).build();
-    let choose = gtk::Button::with_mnemonic("C_hoose…");
+    let choose = gtk::Button::with_mnemonic(&format!("{}…", marked(&crate::words().choose, 'h', '_')));
     let row = gtk::Box::builder().spacing(6).build();
     row.append(&folder);
     row.append(&choose);
@@ -862,14 +871,14 @@ fn backups(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage) -> Built
     page.add(&page_buttons(app, spec, &page.status));
     page.footer(&spec.caption);
     let mut built = page.finish();
-    built.folder = Some(folder.clone());
+    built.folder = Some((folder.clone(), label));
     {
         let (app, folder) = (Rc::downgrade(app), folder.clone());
         choose.connect_clicked(move |button| {
             let Some(app) = app.upgrade() else { return };
             let (folder, window) = (folder.clone(), window_of(button, &app));
             spawn(async move {
-                let dialog = gtk::FileDialog::builder().title("Back Up Here").modal(true).build();
+                let dialog = gtk::FileDialog::builder().title(crate::words().back_up_here.as_str()).modal(true).build();
                 let current = folder.text().to_string();
                 if !current.is_empty() {
                     dialog.set_initial_folder(Some(&gio::File::for_path(&current)));
@@ -884,18 +893,12 @@ fn backups(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage) -> Built
             });
         });
     }
-    // The folder's own label is the core's: the setting's title, once the app has said it.
-    let title = app.model.view().settings.as_ref().and_then(|settings| {
-        settings.settings.iter().find(|shown| shown.setting.key == "backup-dir").map(|shown| shown.setting.title.clone())
-    });
-    let title = title.unwrap_or_else(|| "Backups go to".to_owned());
-    label.set_label(&marked(&title, mnemonic("backup-dir", &title, &mut vec!['a', 'k']), '_'));
     built
 }
 
 /// Reads a file in — a JSON export or a backup, the app tells which by its name — and the app
 /// says what it did.
-pub async fn import(window: &gtk::Window, title: &str, types: &[(&str, &str)]) {
+pub async fn import(window: &gtk::Window, title: &str, types: &[(String, &str)]) {
     let filters = gio::ListStore::new::<gtk::FileFilter>();
     for (name, pattern) in types {
         let filter = gtk::FileFilter::new();
@@ -912,12 +915,24 @@ pub async fn import(window: &gtk::Window, title: &str, types: &[(&str, &str)]) {
             let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
             send(ShellEvent::Settings(SettingsEvent::Import { name, bytes }));
         }
-        Err(error) => prompts::tell(window, &format!("That file could not be read. {error}")).await,
+        Err(error) => prompts::tell(window, &lumenna_app::words::could_not_read(&file_name(&path), &error.to_string())).await,
     }
 }
 
-/// What can be read in.
-pub const IMPORTABLE: [(&str, &str); 1] = [("Lumenna exports and backups", "*.json;*.lumbak")];
+/// A file's own name, as a sentence about it says it.
+fn file_name(path: &std::path::Path) -> String {
+    path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned())
+}
+
+/// The kinds a restore opens: backups.
+pub fn backup_files() -> [(String, &'static str); 1] {
+    [(crate::words().backups.clone(), "*.lumbak")]
+}
+
+/// The kinds an import opens: exports and backups.
+fn importable_files() -> [(String, &'static str); 1] {
+    [(crate::words().importable.clone(), "*.json;*.lumbak")]
+}
 
 // ---------------------------------------------------------------------------------------
 // Export and import: what you have now, and reading it back
@@ -955,7 +970,7 @@ fn export(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage) -> Built 
 async fn export_to(window: &gtk::Window, format: ExportFormat) {
     let today = jiff::Zoned::now().date();
     let name = lumenna_records::exports::export_name(format, today);
-    let dialog = gtk::FileDialog::builder().title("Export").initial_name(&name).modal(true).build();
+    let dialog = gtk::FileDialog::builder().title(crate::words().files.export.as_str()).initial_name(&name).modal(true).build();
     // The dialog already asked about replacing a file that was there.
     let Some(path) = dialog.save_future(Some(window)).await.ok().and_then(|file| file.path()) else { return };
     if let Some(open) = open() {

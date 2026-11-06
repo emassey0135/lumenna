@@ -7,6 +7,11 @@ Read when working in `apps/gtk/`. The root `CLAUDE.md` holds what every part of 
 the view model's types and how every line reads and `lumenna-records` for the records it is
 made of. It names neither `lumenna-host` nor a connection of its own to the store.
 
+- **No word is GTK's own** (`crate::words()`, the core's `ShellWords` in Title Case on a
+  computer, taken once; `crate::command_title` for a command's name; the functions beside it
+  for a word with parts): this app adds only mnemonics, the "…" of a button that asks, and
+  GNOME's sentence case for a label (`sentence_case`). A word missing goes in `ShellWords`
+  (`crates/app/src/words.rs`, after its `// GTK's.` comment), never here.
 - **The app's turns go to GTK's main thread** (`model.rs`, `glib::MainContext::invoke`) and
   are taken in order (`window::take`): the screens draw, then what the turn says is said, on
   the status line of whichever of its windows is in front. The screens: the task list and the
