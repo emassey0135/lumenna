@@ -88,9 +88,10 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   occurrence)`, the firing the notification carries, so replanning dismisses the warning on every
   device though the app's own list of what is due, which Android's alarms do not fill, never held
   it (`AppModel.replan`). Never `ProposalEvent.Replan`.
-- **The version and name are the workspace's** (`[workspace.metadata.lumenna]` in the root
-  `Cargo.toml`), read by the root build script into `versionName`, a `versionCode` counting up
-  with it and the `app_name` resource, for the phone and the watch: a version bump is one edit
+- **The version, name and package are the workspace's** (`[workspace.metadata.lumenna]` in the
+  root `Cargo.toml`), read by the root build script into `versionName`, a `versionCode` counting
+  up with it, the `app_name` resource and the `applicationId` (`package_id`), for the phone and
+  the watch: a version bump is one edit
   there. A test of the core checks the build scripts read them.
 - **Material's text and outlined buttons are 40dp**, and a radio row is as tall as its
   padding: both fail the touch-target check. `Target` gives 48dp.

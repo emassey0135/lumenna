@@ -10,7 +10,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.emassey0135.lumenna"
+        applicationId = rootProject.extra["lumennaPackageId"] as String
         minSdk = 28
         targetSdk = 37
         // The workspace's, from its Cargo.toml (the root build script).

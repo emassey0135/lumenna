@@ -723,6 +723,9 @@ pub struct AppMetadata {
     pub licence: String,
     /// The identifier it is known by on the desktop and in stores: "dev.emassey0135.Lumenna".
     pub id: String,
+    /// The identifier Apple's bundles and Android's packages build on, lowercase as theirs are:
+    /// "dev.emassey0135.lumenna".
+    pub package_id: String,
 }
 
 /// What Lumenna is (`AppMetadata`), from the one source.
@@ -737,6 +740,7 @@ pub fn metadata() -> AppMetadata {
         publisher: PUBLISHER.to_owned(),
         licence: LICENCE.to_owned(),
         id: ID.to_owned(),
+        package_id: PACKAGE_ID.to_owned(),
     }
 }
 
@@ -754,6 +758,8 @@ pub const PUBLISHER: &str = env!("LUMENNA_PUBLISHER");
 pub const LICENCE: &str = env!("LUMENNA_LICENCE");
 /// The identifier it is known by on the desktop and in stores.
 pub const ID: &str = env!("LUMENNA_ID");
+/// The identifier Apple's bundles and Android's packages build on.
+pub const PACKAGE_ID: &str = env!("LUMENNA_PACKAGE_ID");
 
 #[cfg(test)]
 mod tests {
@@ -820,6 +826,11 @@ mod tests {
             assert!(has_line(&gradle_file, "versionName = rootProject.extra[\"lumennaVersion\"] as String"), "{gradle}'s versionName");
             assert!(has_line(&gradle_file, "resValue(\"string\", \"app_name\", rootProject.extra[\"lumennaName\"] as String)"), "{gradle}'s app_name");
         }
+        assert!(repo_file("apps/android/build.gradle.kts").contains("lumenna.getValue(\"package_id\")"), "Gradle reads the package's identifier");
+        for gradle in ["apps/android/app/build.gradle.kts", "apps/android/wear/build.gradle.kts"] {
+            let line = "applicationId = rootProject.extra[\"lumennaPackageId\"] as String";
+            assert!(has_line(&repo_file(gradle), line), "{gradle}'s applicationId");
+        }
         for strings in ["apps/android/app/src/main/res/values/strings.xml", "apps/android/wear/src/main/res/values/strings.xml"] {
             assert!(!repo_file(strings).contains("name=\"app_name\""), "{strings} names the app itself");
         }
@@ -853,6 +864,16 @@ mod tests {
         // XcodeGen writes each plist from its target's `info`, so that is where it is named.
         assert_eq!(project.matches("CFBundleShortVersionString: $(MARKETING_VERSION)").count(), 6, "every Apple target's version");
         assert_eq!(project.matches("CFBundleDisplayName: $(LUMENNA_NAME)").count(), 6, "every Apple target's name");
+        assert!(repo_file("apps/apple/metadata.sh").contains("LUMENNA_PACKAGE_ID = $PACKAGE_ID"), "metadata.sh writes the package's identifier");
+        // Every bundle and App Group builds on the workspace's identifier, so none says it itself;
+        // but the Mac's group, named by its team alone to keep the socket's path short.
+        for line in project.lines().map(str::trim) {
+            for key in ["PRODUCT_BUNDLE_IDENTIFIER:", "LUMENNA_APP_GROUP:", "WKCompanionAppBundleIdentifier:", "- CFBundleURLName:"] {
+                if let Some(value) = line.strip_prefix(key).filter(|value| !value.contains("$(DEVELOPMENT_TEAM)")) {
+                    assert!(value.contains("$(LUMENNA_PACKAGE_ID)"), "the Apple project's {key} builds on the workspace's: {line}");
+                }
+            }
+        }
         for plist in [
             "apps/apple/Lumenna/Info.plist",
             "apps/apple/Mac/Info.plist",

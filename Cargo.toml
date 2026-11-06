@@ -20,6 +20,8 @@ homepage = "https://github.com/emassey0135/lumenna"
 issues = "https://github.com/emassey0135/lumenna/issues"
 publisher = "Elijah Massey"
 id = "dev.emassey0135.Lumenna"
+# Apple's bundles and Android's packages, lowercase as theirs are; each target adds its own suffix.
+package_id = "dev.emassey0135.lumenna"
 
 [workspace.dependencies]
 automerge = "0.11"

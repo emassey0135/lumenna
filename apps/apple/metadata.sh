@@ -1,8 +1,10 @@
 #!/bin/bash
 # Writes Generated/Metadata.xcconfig from the workspace's Cargo.toml, `[workspace.metadata.lumenna]`,
 # the one place what Lumenna is is said (crates/records' build reads the same): the version as
-# MARKETING_VERSION, which every Info.plist's CFBundleShortVersionString takes, and the name as
-# LUMENNA_NAME, their CFBundleDisplayName. A version bump is that one edit.
+# MARKETING_VERSION, which every Info.plist's CFBundleShortVersionString takes; the name as
+# LUMENNA_NAME, their CFBundleDisplayName; and the identifier Apple's bundles share as
+# LUMENNA_PACKAGE_ID, on which each target's bundle identifier and App Group build. A version
+# bump is that one edit.
 #
 #   apps/apple/metadata.sh
 #
@@ -34,11 +36,13 @@ field() {
 
 VERSION="$(field version)"
 NAME="$(field name)"
-[ -n "$VERSION" ] && [ -n "$NAME" ] || { echo "error: Cargo.toml's [workspace.metadata.lumenna] has no version or name" >&2; exit 1; }
+PACKAGE_ID="$(field package_id)"
+[ -n "$VERSION" ] && [ -n "$NAME" ] && [ -n "$PACKAGE_ID" ] || { echo "error: Cargo.toml's [workspace.metadata.lumenna] has no version, name or package_id" >&2; exit 1; }
 
 TEXT="// Written by apps/apple/metadata.sh from the workspace's Cargo.toml: change it there.
 MARKETING_VERSION = $VERSION
-LUMENNA_NAME = $NAME"
+LUMENNA_NAME = $NAME
+LUMENNA_PACKAGE_ID = $PACKAGE_ID"
 
 mkdir -p "$(dirname "$OUT")"
 [ -f "$OUT" ] && [ "$(cat "$OUT")" = "$TEXT" ] || printf '%s\n' "$TEXT" > "$OUT"

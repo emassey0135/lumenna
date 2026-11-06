@@ -22,6 +22,7 @@ val lumenna: Map<String, String> = run {
 }
 val lumennaVersion = lumenna.getValue("version")
 extra["lumennaName"] = lumenna.getValue("name")
+extra["lumennaPackageId"] = lumenna.getValue("package_id")
 extra["lumennaVersion"] = lumennaVersion
 extra["lumennaVersionCode"] = lumennaVersion.split('.').map { it.takeWhile(Char::isDigit).toInt() }
     .let { (major, minor, patch) -> major * 1_000_000 + minor * 1_000 + patch }

@@ -42,6 +42,7 @@ pub const METHODS: &[&str] = &[
     "app.view",
     "app.close",
     "app.still",
+    "app.words",
     "app.tick",
     "app.in_front",
     "app.clock",
