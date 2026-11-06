@@ -8,11 +8,19 @@ import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.Reminders
 import dev.emassey0135.lumenna.SyncWorker
+import dev.emassey0135.lumenna.app.ThisDevice
+import dev.emassey0135.lumenna.thisDevice
 import androidx.wear.phone.interactions.notifications.BridgingConfig
 import androidx.wear.phone.interactions.notifications.BridgingManager
 
 /** Holds the one open store for the life of the process, as the phone app does. */
 class WearApplication : Application(), CoreHolder, GlanceShower {
+    // The core's sentences call this device "this watch", which every word is asked for as: said
+    // as the process is made, before an alarm, the tile or an activity can word anything.
+    init {
+        thisDevice = ThisDevice.WATCH
+    }
+
     /** Opened on first use, so a failure to open is shown rather than crashing. */
     override val core: Result<Core> by lazy { runCatching { Core(Core.profileDirectory(this), PLATFORM) } }
 

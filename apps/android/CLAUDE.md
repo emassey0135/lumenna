@@ -29,8 +29,10 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   list lands), `Front` (the activity coming to the front and leaving it, the same on both),
   `Launching` and `ReminderOpened.reminded` (where a launch or a tapped reminder takes the
   screens), `Words.kt` (the locale's time and date, handed to the core as `Clock.locale`),
-  `AppWords.kt` (what a tree control would say by itself and a Compose list does not: folding
-  and the level), landing on a row (`Landing.kt`: `rememberLanding`, `RowFocus`, `RowKey`), a
+  `AppWords.kt` (every fixed word drawn, `appWords`: the core's `shellWords` in sentence case as
+  `thisDevice` calls itself, which the watch's Application makes `WATCH` before anything is
+  worded; and what a tree control would say by itself and a Compose list does not: folding and
+  the level), so no Kotlin writes a word, landing on a row (`Landing.kt`: `rememberLanding`, `RowFocus`, `RowKey`), a
   screen on what the app has open (`Showing.kt`), the forms' fields by the core's keys
   (`FormFields.kt`), reminders, the watch's link and `SyncWorker` (through `CoreHolder`, which
   each app's Application is). Each app draws the app's questions once at its root
@@ -200,7 +202,7 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   own (tag `carried`, no `@`, so arming does not take it for a firing), since the app may not be
   open to say it.
 - **A day or a time has Android's own picker beside its line** (`Pickers.kt`: `ChooseDay`,
-  `ChooseTime`, named by the core's `picker_words`, shared's `pickers`), in the block form, Go to
+  `ChooseTime`, named by the core's picker words, `appWords.picker`), in the block form, Go to
   Day and a time setting's dialog, filling the line. The day is Material's calendar without its
   switch to typing (the line is that, and the switch is a 40dp target); the time is Material's
   time input, not its dial, whose inner numbers are 32dp targets. On a 12-hour clock its AM and

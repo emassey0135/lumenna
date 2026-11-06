@@ -112,7 +112,7 @@ fun CompletingField(
         )
         if (candidates.isNotEmpty()) {
             FlowRow(Modifier.padding(top = 4.dp)) {
-                candidates.take(SHOWN_COMPLETIONS).forEach { candidate ->
+                candidates.take(appWords.completionsShown.toInt()).forEach { candidate ->
                     SuggestionChip(
                         onClick = { choose(candidate) },
                         label = { Text(candidate.text) },
@@ -128,10 +128,10 @@ fun CompletingField(
     if (listing) {
         AlertDialog(
             onDismissRequest = { listing = false },
-            title = { Text(dev.emassey0135.lumenna.app.completions(true)) },
+            title = { Text(appWords.completions) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    if (candidates.isEmpty()) Text(quickWords.nothingToComplete)
+                    if (candidates.isEmpty()) Text(appWords.quickAdd.nothingToComplete)
                     candidates.forEach { candidate ->
                         Text(
                             dev.emassey0135.lumenna.app.candidateLine(candidate),
@@ -145,10 +145,10 @@ fun CompletingField(
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(modifier = Target, onClick = { listing = false }) { Text(quickWords.cancel) } },
+            dismissButton = { TextButton(modifier = Target, onClick = { listing = false }) { Text(appWords.quickAdd.cancel) } },
         )
     }
 }
 
 /** The field's action and button that open the list, the core's words. */
-val SHOW_COMPLETIONS: String get() = quickWords.showCompletions
+val SHOW_COMPLETIONS: String get() = appWords.quickAdd.showCompletions

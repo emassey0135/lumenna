@@ -294,6 +294,12 @@ pub struct ShellWords {
     /// What a process serving the store without the screens calls itself to a client:
     /// "Lumenna background service".
     pub background_service: String,
+
+    // Android's.
+    /// The key that unfolds a row, where a keyboard help names it apart from a row: "Expand".
+    pub expand: String,
+    /// The key that folds one: "Collapse".
+    pub collapse: String,
 }
 
 /// A pick's words, its buttons in sentence case where `sentence`.
@@ -421,6 +427,9 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         comma: "comma".to_owned(),
         period: "period".to_owned(),
         background_service: format!("{} background service", core::NAME),
+
+        expand: c("Expand"),
+        collapse: c("Collapse"),
     }
 }
 

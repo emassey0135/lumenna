@@ -14,7 +14,7 @@ import dev.emassey0135.lumenna.app.Answer
 import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.option
-import dev.emassey0135.lumenna.pickers
+import dev.emassey0135.lumenna.appWords
 
 /**
  * The question the app has open (`ViewModel.asking`), asked the watch's way: Wear's AlertDialog
@@ -68,7 +68,7 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
                 } else if (asked.day != null) {
                     // A day: the line first, said or typed, then the watch's own calendar.
                     val from = asked.day
-                    navigator.choose(question.title, listOf(Option("line", question.label), Option("calendar", pickers.day)), cancelled = cancel) { way ->
+                    navigator.choose(question.title, listOf(Option("line", question.label), Option("calendar", appWords.picker.day)), cancelled = cancel) { way ->
                         if (way.key == "calendar") calendar = from else entry?.ask(label(question.title), cancel) { answer(Answer.Text(it)) }
                     }
                 } else {

@@ -54,7 +54,7 @@ enum class Place(private val group: String?) {
     ROW("lists"),
     ;
 
-    val title: String by lazy { group?.let { id -> keyboardShortcuts().firstOrNull { it.id == id }?.title } ?: "Lumenna" }
+    val title: String by lazy { group?.let { id -> keyboardShortcuts().firstOrNull { it.id == id }?.title } ?: appWords.metadata.name }
 }
 
 /**
@@ -66,7 +66,7 @@ enum class Command(
     val id: String?,
     val place: Place,
     private val ownKeys: List<Keys> = emptyList(),
-    private val ownTitle: String? = null,
+    private val ownTitle: (() -> String)? = null,
     private val own: String? = null,
 ) {
     NEW_TASK("new-task", Place.APP),
@@ -95,8 +95,8 @@ enum class Command(
     ACTIONS("actions", Place.ROW),
     // Android's own keys, a tree control's folding, which a Compose list does not give; what
     // they run is the core's Expand and Collapse.
-    EXPAND(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_RIGHT)), "Expand", "expand"),
-    COLLAPSE(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_LEFT)), "Collapse", "collapse"),
+    EXPAND(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_RIGHT)), { appWords.expand }, "expand"),
+    COLLAPSE(null, Place.ROW, listOf(Keys(KeyEvent.KEYCODE_DPAD_LEFT)), { appWords.collapse }, "collapse"),
     ;
 
     /** What the app runs for it (`ShellEvent.Key`): the shared table's command, or the core's of Android's own keys. */
@@ -107,7 +107,7 @@ enum class Command(
     // on Android does what it does there, and the system's shortcuts helper says so.
 
     /** What it is called, in the shared table's words. */
-    val title: String by lazy { id?.let { sharedCommands[it]?.title } ?: ownTitle ?: name }
+    val title: String by lazy { id?.let { sharedCommands[it]?.title } ?: ownTitle?.invoke() ?: name }
 
     /** The keys that run it: the shared table's, read as Android's key codes. */
     val keys: List<Keys> by lazy { id?.let { sharedCommands[it]?.keys?.mapNotNull(::keysOf) } ?: ownKeys }

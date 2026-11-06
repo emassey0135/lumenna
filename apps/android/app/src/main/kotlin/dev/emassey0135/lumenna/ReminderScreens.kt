@@ -52,7 +52,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
     // Every action the list offers, Add reminder an icon; adding the first reminder is when
     // notifications are asked for.
     val offered = list?.offered.orEmpty()
-    ScreenFrame("Reminders", core, navigator, actions = {
+    ScreenFrame(view?.remindersTitle.orEmpty(), core, navigator, actions = {
         offered.forEach { action ->
             val run = {
                 if (action.kind == ActionKind.NEW) ask()
@@ -87,7 +87,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
                     actions = app.rowActions(reminder.id, reminder.offered, side = Side.REMINDERS),
                     keys = app.rowKeys(reminder.id, Side.REMINDERS),
                     open = null,
-                    openLabel = "Open",
+                    openLabel = appWords.open,
                     focus = focus.requester(reminder.id),
                     key = reminder.id,
                     say = core::say,

@@ -1,8 +1,6 @@
 package dev.emassey0135.lumenna
 
 import dev.emassey0135.lumenna.app.DetailsLine
-import dev.emassey0135.lumenna.app.detailsWords
-import dev.emassey0135.lumenna.app.nothingToChoose
 import dev.emassey0135.lumenna.app.ActingOn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -95,13 +93,13 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
         }
     }
 
-    ScreenFrame(details?.task?.title ?: detailsWords.title, core, navigator, actions = {
+    ScreenFrame(details?.task?.title ?: appWords.details.title, core, navigator, actions = {
         if (details != null) {
-            IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = detailsWords.save) }
+            IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = appWords.details.save) }
         }
     }) {
         if (details == null || form == null) {
-            Text(if (shown) detailsWords.gone else "", Modifier.padding(16.dp), color = quiet())
+            Text(if (shown) appWords.details.gone else "", Modifier.padding(16.dp), color = quiet())
             return@ScreenFrame
         }
         val current = details.task
@@ -146,11 +144,11 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
 
             // What it is, the core's lines: its state, the rule it repeats by, what it waits for,
             // and what the records hold of it. On its own screen only, never a list.
-            Heading(detailsWords.about)
+            Heading(appWords.details.about)
             details.lines.forEach { line -> DetailsLineText(line) }
 
             // The core's, in its order: this screen is the task's form, so no Edit Details.
-            Heading(detailsWords.actions)
+            Heading(appWords.details.actions)
             current.offered.forEach { action ->
                 TextButton(modifier = Target, onClick = { app.send(ShellEvent.ActOn(ActingOn.Details, action)) }) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
@@ -235,7 +233,7 @@ private fun ProjectField(label: String, value: String, options: List<Option>, ch
             typed = value
         }) {
             if (shown.isEmpty()) {
-                DropdownMenuItem(text = { Text(nothingToChoose()) }, onClick = {}, enabled = false)
+                DropdownMenuItem(text = { Text(appWords.nothingToChoose) }, onClick = {}, enabled = false)
             }
             shown.forEach { option ->
                 val level = option.level
@@ -265,7 +263,6 @@ fun Heading(text: String) {
 }
 
 /** The task details' words, the core's, in sentence case. */
-private val detailsWords by lazy { detailsWords(true) }
 
 /** One of the details' lines: its label, then what it says, one stop for TalkBack. */
 @Composable

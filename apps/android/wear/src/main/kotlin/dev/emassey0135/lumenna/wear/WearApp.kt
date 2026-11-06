@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna.wear
 
+import dev.emassey0135.lumenna.appWords
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -179,7 +180,7 @@ private fun Confirmation(navigator: Navigator) {
                 navigator.answered()
                 asked?.dismissed?.invoke()
             }) {
-                Icon(glyph(CLOSE), contentDescription = dev.emassey0135.lumenna.quickWords.cancel)
+                Icon(glyph(CLOSE), contentDescription = dev.emassey0135.lumenna.appWords.quickAdd.cancel)
             }
         },
     )

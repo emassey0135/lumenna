@@ -578,7 +578,7 @@ object Reminders {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL) != null) return
         // Its name and description, the core's words.
-        val words = dev.emassey0135.lumenna.app.notificationWords("this device", true)
+        val words = appWords.notifications
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, words.channel, NotificationManager.IMPORTANCE_HIGH).apply {
                 description = words.channelDescription

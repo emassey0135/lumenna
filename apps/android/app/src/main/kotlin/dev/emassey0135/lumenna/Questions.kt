@@ -78,7 +78,7 @@ fun AppQuestions(core: Core, form: (Action) -> Unit) {
                                 Text(choice.title, color = if (action?.destructive == true) MaterialTheme.colorScheme.error else Color.Unspecified)
                             }
                         }
-                        TextButton(modifier = Target, onClick = cancel) { Text("Cancel") }
+                        TextButton(modifier = Target, onClick = cancel) { Text(appWords.cancel) }
                     }
                 },
             )

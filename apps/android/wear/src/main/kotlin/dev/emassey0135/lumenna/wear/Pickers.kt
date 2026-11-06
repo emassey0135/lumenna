@@ -12,7 +12,7 @@ import androidx.wear.compose.material3.DatePicker
 import androidx.wear.compose.material3.Dialog
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimePicker
-import dev.emassey0135.lumenna.pickers
+import dev.emassey0135.lumenna.appWords
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -43,7 +43,7 @@ fun DayDialog(visible: Boolean, start: LocalDate, dismissed: () -> Unit, picked:
 @Composable
 fun ChooseDay(line: String, from: String? = null, picked: (String) -> Unit) {
     var open by rememberSaveable { mutableStateOf(false) }
-    Button(onClick = { open = true }, modifier = Modifier.fillMaxWidth(), label = { Text(pickers.day) })
+    Button(onClick = { open = true }, modifier = Modifier.fillMaxWidth(), label = { Text(appWords.picker.day) })
     DayDialog(open, dayOf(line, from), dismissed = { open = false }) {
         open = false
         picked(it)
@@ -60,7 +60,7 @@ fun ChooseTime(line: String, of: String? = null, picked: (String) -> Unit) {
     Button(
         onClick = { open = true },
         modifier = Modifier.fillMaxWidth(),
-        label = { Text(pickers.time) },
+        label = { Text(appWords.picker.time) },
         secondaryLabel = of?.let { { Text(it) } },
     )
     val shown = clockTime.matchEntire(line.trim())

@@ -138,7 +138,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
     ScreenFrame(here?.title ?: placeTitle(screen.place), core, navigator, actions = {
         if (!trash) {
             IconButton(onClick = { navigator.push(Screen.QuickAdd) }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add task")
+                Icon(Icons.Filled.Add, contentDescription = Command.NEW_TASK.title)
             }
         }
     }) {
@@ -146,8 +146,8 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
             CompletingField(
                 core = core,
                 syntax = Syntax.FILTER,
-                label = quickWords.filter,
-                example = quickWords.filterHint,
+                label = appWords.quickAdd.filter,
+                example = appWords.quickAdd.filterHint,
                 value = filter,
                 onValueChange = {
                     if (it.text != filter.text) app.send(ShellEvent.Filter(it.text))
@@ -188,7 +188,7 @@ fun AppTaskRows(
     items: List<Pair<Item, Line?>>,
     list: dev.emassey0135.lumenna.app.ListView?,
     open: ((RowView) -> Unit)?,
-    openLabel: String = "Show details",
+    openLabel: String = appWords.showDetails,
     local: (dev.emassey0135.lumenna.app.Offered) -> Boolean = { false },
 ) {
     val state = rememberLazyListState()
@@ -290,9 +290,9 @@ fun ListRow(
                     if (!acts) Modifier
                     else Modifier.combinedClickable(
                         onClick = { if (open != null) open() else menu = true },
-                        onClickLabel = if (open != null) openLabel else "Actions",
+                        onClickLabel = if (open != null) openLabel else appWords.details.actions,
                         onLongClick = if (actions.isEmpty()) null else ({ menu = true }),
-                        onLongClickLabel = "Actions",
+                        onLongClickLabel = appWords.details.actions,
                     ),
                 )
                 .clearAndSetSemantics {
@@ -307,7 +307,7 @@ fun ListRow(
                     if (selected) this.selected = true
                     customActions = actions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
                     if (acts) {
-                        onClick(label = if (open != null) openLabel else "Actions") {
+                        onClick(label = if (open != null) openLabel else appWords.details.actions) {
                             if (open != null) open() else menu = true
                             true
                         }
@@ -389,8 +389,8 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
     LaunchedEffect(view?.line) { if (pending > 0) pending-- }
     val add = { app.send(ShellEvent.QuickAdd(shown.text)) }
 
-    ScreenFrame(quickWords.title, core, navigator, actions = {
-        IconButton(onClick = { add() }) { Icon(Icons.Filled.Check, contentDescription = quickWords.add) }
+    ScreenFrame(appWords.quickAdd.title, core, navigator, actions = {
+        IconButton(onClick = { add() }) { Icon(Icons.Filled.Check, contentDescription = appWords.quickAdd.add) }
     }) {
         val focus = remember { FocusRequester() }
         // Typing starts at once, as it does on the iPhone.
@@ -399,9 +399,9 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
             OutlinedTextField(
                 value = shown,
                 onValueChange = { if (it.text != shown.text || it.selection != shown.selection) tell(it) },
-                label = { Text(quickWords.label) },
-                placeholder = { Text(quickWords.example) },
-                supportingText = { Text(quickWords.hint) },
+                label = { Text(appWords.quickAdd.label) },
+                placeholder = { Text(appWords.quickAdd.example) },
+                supportingText = { Text(appWords.quickAdd.hint) },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
@@ -413,7 +413,7 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
             val candidates = line?.offer?.candidates.orEmpty()
             if (candidates.isNotEmpty()) {
                 FlowRow(Modifier.padding(top = 4.dp)) {
-                    candidates.take(SHOWN_COMPLETIONS).forEachIndexed { index, candidate ->
+                    candidates.take(appWords.completionsShown.toInt()).forEachIndexed { index, candidate ->
                         SuggestionChip(
                             onClick = {
                                 typed = null
@@ -435,7 +435,7 @@ fun QuickAddScreen(core: Core, navigator: Navigator) {
             color = quiet(),
             modifier = Modifier
                 .padding(16.dp)
-                .semantics { contentDescription = if (said.isEmpty()) "" else "${quickWords.willAdd}: $said" },
+                .semantics { contentDescription = if (said.isEmpty()) "" else "${appWords.quickAdd.willAdd}: $said" },
         )
     }
 }
