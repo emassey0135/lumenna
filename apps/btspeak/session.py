@@ -386,6 +386,11 @@ def app_commands(app):
     ]
 
 
+def command_title(command: str) -> str:
+    """A command of the shared table's name, as the core's menus give it: "Settings"."""
+    return next((item.title for group in native().menus(True) for item in group.items if item.id == command), command)
+
+
 def key_label(key: str) -> str:
     """The key as the menus announce it."""
     named = words()

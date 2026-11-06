@@ -26,10 +26,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import reminders  # noqa: E402
+import core  # noqa: E402
 from core import Core, LumennaError, device_name, native  # noqa: E402
 
 #: What a client of the command surface is told is answering.
-PROCESS = "Lumenna background service"
+PROCESS = core.words().background_service
 
 #: How often an automatic backup is looked for, in seconds, as the app does: whether one is
 #: due is the core's.

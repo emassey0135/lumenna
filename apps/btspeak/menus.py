@@ -31,7 +31,7 @@ from BTSpeak import dialogs
 
 from actions import L
 from core import Core, LumennaError, words
-from session import Session, announce, live_menu
+from session import Session, announce, command_title, live_menu
 import day
 import organise
 import preferences
@@ -100,13 +100,13 @@ def main_menu(session: Session) -> None:
                 places.append(item(title=entry.text, shortcut=key, action=lambda screen=screen: screen(session)))
         # The task list sits beside adding a task, as it always has here.
         at = next((i + 1 for i, it in enumerate(places) if it.shortcut == "k"), len(places))
-        places.insert(at, item(title=preferences.command_title("new-task"), shortcut="a", action=lambda: add_task(session)))
+        places.insert(at, item(title=command_title("new-task"), shortcut="a", action=lambda: add_task(session)))
         return places + [
-            item(title=preferences.command_title("undo"), shortcut="u", action=lambda: session.send(L.ShellEventUndo())),
-            item(title=preferences.command_title("redo"), shortcut="y", action=lambda: session.send(L.ShellEventRedo())),
+            item(title=command_title("undo"), shortcut="u", action=lambda: session.send(L.ShellEventUndo())),
+            item(title=command_title("redo"), shortcut="y", action=lambda: session.send(L.ShellEventRedo())),
             item(title=words().reminders_due, shortcut="r", action=lambda: reminder_lists.due(session)),
-            item(title=preferences.command_title("sync-now"), shortcut="n", action=lambda: preferences.sync_now(session)),
-            item(title=preferences.command_title("settings"), shortcut="s", action=lambda: preferences.settings(session)),
+            item(title=command_title("sync-now"), shortcut="n", action=lambda: preferences.sync_now(session)),
+            item(title=command_title("settings"), shortcut="s", action=lambda: preferences.settings(session)),
         ]
 
     name = words().metadata.name

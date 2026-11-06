@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from BTSpeak import dialogs
 
+import core
 from core import native, refused
 from session import Command, Session, choose, confirm, sentences
 
@@ -242,7 +243,7 @@ def run_kind(session: Session, row, *kinds) -> str:
     if not matching:
         return ""
     if len(matching) > 1:
-        index = choose({i: named(a) for i, a in enumerate(matching)}, L.which())
+        index = choose({i: named(a) for i, a in enumerate(matching)}, core.words().which)
         if index is None:
             return ""
         return act(session, matching[index], row)
