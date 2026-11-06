@@ -1670,7 +1670,10 @@ fn plan_the_day_says_why_each_sitting_and_proposes_again_around_one_turned_down(
     app.post(&["space", "enter"]);
     let front = app.automation.front(app.window);
     assert!(front != app.window, "the screen stays while there is more to plan");
-    assert_eq!(app.automation.status(front).as_deref(), Some("Planned 1 task. Now: Plans 1 task: Filing in Morning."));
+    // Said with the write's answer, which a slow machine takes a while to give.
+    let planned = "Planned 1 task. Now: Plans 1 task: Filing in Morning.";
+    let said = automation::wait(Duration::from_secs(5), || (app.automation.status(front).as_deref() == Some(planned)).then_some(()));
+    assert!(said.is_some(), "{:?}", app.automation.status(front));
     let rows = tree_items(&app);
     assert!(rows.len() == 1 && rows[0].starts_with("TreeItem 'Filing goes in Morning") && rows[0].contains(" checked"), "{rows:#?}");
     app.post(&["esc"]);
