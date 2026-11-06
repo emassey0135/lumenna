@@ -4,12 +4,13 @@
 use boltffi::export;
 use lumenna_records::places::{Place, SidebarGroup, SidebarKind};
 use lumenna_app::glance::GlanceEntry;
-use lumenna_app::hotkeys::{HotKeyWords, HotKind};
+use lumenna_app::Capitals;
+use lumenna_app::hotkeys::HotKind;
+use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_records::fields::{DetailsWords, NotificationWords, QuickAddWords, SettingWords, SettingsPage};
-use lumenna_records::fields::{FileWords, ReadBackWords};
-use lumenna_records::words::{AppMetadata, PhoneSync};
-use lumenna_records::{Candidate, Choice, PickerWords};
+use lumenna_records::fields::SettingsPage;
+use lumenna_records::words::PhoneSync;
+use lumenna_records::Candidate;
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
 #[export]
@@ -27,12 +28,6 @@ pub fn candidate_line(candidate: Candidate) -> String {
 #[export]
 pub fn sidebar_key(kind: SidebarKind) -> String {
     lumenna_records::places::SidebarEntry::key_of(&kind)
-}
-
-/// What a shell's own day or time picker says, beside the line it fills.
-#[export]
-pub fn picker_words() -> PickerWords {
-    lumenna_records::picker_words()
 }
 
 /// How many places a sidebar group holds, in words: "no projects", "1 label".
@@ -74,12 +69,6 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
     lumenna_records::fields::settings_pages(own_clock, sentence)
 }
 
-/// What a setting's own control says: a time's hint and example, a number's.
-#[export]
-pub fn setting_words() -> SettingWords {
-    lumenna_records::fields::setting_words()
-}
-
 /// What is said once a backup is taken into a folder of the person's.
 #[export]
 pub fn backed_up_to(folder: String, name: String) -> String {
@@ -92,34 +81,10 @@ pub fn backup_failed(reason: String) -> String {
     lumenna_records::words::backup_failed(&reason)
 }
 
-/// What the task details say around their form: every label and button.
-#[export]
-pub fn details_words(sentence: bool) -> DetailsWords {
-    lumenna_records::fields::details_words(sentence)
-}
-
-/// What quick add and a list's filter say.
-#[export]
-pub fn quick_add_words(sentence: bool) -> QuickAddWords {
-    lumenna_records::fields::quick_add_words(sentence)
-}
-
 /// A completion's button or menu item: "Complete with Work, project".
 #[export]
 pub fn complete_with(candidate: Candidate) -> String {
     lumenna_records::fields::complete_with(&lumenna_app::speech::candidate(&candidate))
-}
-
-/// What a device says of its notifications, `this_device` being how it calls itself.
-#[export]
-pub fn notification_words(this_device: String, sentence: bool) -> NotificationWords {
-    lumenna_records::fields::notification_words(&this_device, sentence)
-}
-
-/// What Lumenna is, in one line: About, a store's listing, a desktop entry.
-#[export]
-pub fn app_description() -> String {
-    lumenna_records::words::app_description()
 }
 
 /// What a browser calls itself when it pairs: "Firefox on Windows".
@@ -140,12 +105,6 @@ pub fn choice_count(count: u32) -> String {
     lumenna_records::words::choice_count(count as usize)
 }
 
-/// What a list a shell offers of its own says with nothing in it to choose.
-#[export]
-pub fn nothing_to_choose() -> String {
-    lumenna_records::words::nothing_to_choose()
-}
-
 /// A row with rows under it, as its state is said where the platform's control does not say it.
 #[export]
 pub fn fold_state(expanded: bool) -> String {
@@ -164,12 +123,6 @@ pub fn level_words(depth: u32) -> String {
 #[export]
 pub fn duration_words(minutes: u32) -> String {
     lumenna_records::words::duration(minutes)
-}
-
-/// What Settings says of the shortcuts from anywhere.
-#[export]
-pub fn hotkey_words() -> HotKeyWords {
-    lumenna_app::hotkeys::hotkey_words()
 }
 
 /// A shortcut from anywhere's name, in the shell's capitals.
@@ -215,19 +168,6 @@ pub fn levels(depths: Vec<u32>) -> Vec<String> {
     lumenna_app::lines::levels(&depths).into_iter().map(Option::unwrap_or_default).collect()
 }
 
-/// What Lumenna is: its name, description, version, home, issues, publisher, licence and
-/// identifier, from the workspace's one source.
-#[export]
-pub fn app_metadata() -> AppMetadata {
-    lumenna_records::words::metadata()
-}
-
-/// What a shell asks when a command could run more than one of the row's actions of a kind.
-#[export]
-pub fn which() -> String {
-    lumenna_records::words::which()
-}
-
 /// What a shell says of an action whose form it has not drawn yet, `action` its name.
 #[export]
 pub fn no_form_here(action: String) -> String {
@@ -264,70 +204,10 @@ pub fn press_to_pair(key: String) -> String {
     lumenna_records::words::press_to_pair(&key)
 }
 
-/// The list of reminders due, as its heading or screen names it.
-#[export]
-pub fn reminders_due(sentence: bool) -> String {
-    lumenna_records::words::reminders_due(sentence)
-}
-
-/// The day's own actions, as a menu button names them.
-#[export]
-pub fn day_actions(sentence: bool) -> String {
-    lumenna_records::words::day_actions(sentence)
-}
-
-/// A place's own actions, as a menu button names them.
-#[export]
-pub fn place_actions(sentence: bool) -> String {
-    lumenna_records::words::place_actions(sentence)
-}
-
-/// What the devices list says Delete does there.
-#[export]
-pub fn delete_unpairs() -> String {
-    lumenna_records::words::delete_unpairs()
-}
-
 /// The field naming this device for pairing, `this_device` how it calls itself.
 #[export]
 pub fn device_name_label(this_device: String) -> String {
     lumenna_records::words::device_name_label(&this_device)
-}
-
-/// What the field naming this device is for.
-#[export]
-pub fn device_name_hint() -> String {
-    lumenna_records::words::device_name_hint()
-}
-
-/// What is said when a pairing code could not be copied.
-#[export]
-pub fn copy_failed() -> String {
-    lumenna_records::words::copy_failed()
-}
-
-/// What a pick says when answered with nothing chosen.
-#[export]
-pub fn choose_one_first() -> String {
-    lumenna_records::words::choose_one_first()
-}
-
-/// A dialog's Cancel.
-#[export]
-pub fn cancel(sentence: bool) -> String {
-    lumenna_records::words::cancel(sentence)
-}
-
-/// A dialog's Close.
-#[export]
-pub fn close(sentence: bool) -> String {
-    lumenna_records::words::close(sentence)
-}
-
-/// What a line that completes says of it, after its own hint.
-#[export]
-pub fn completion_hint() -> String {
-    lumenna_records::words::completion_hint()
 }
 
 /// What is said when the shortcuts from anywhere cannot be had here, and the platform's why.
@@ -336,52 +216,16 @@ pub fn hotkeys_unavailable(reason: String) -> String {
     lumenna_records::words::hotkeys_unavailable(&reason)
 }
 
-/// The tab or screen of every project, label and saved filter.
-#[export]
-pub fn browse(sentence: bool) -> String {
-    lumenna_records::words::browse(sentence)
-}
-
 /// A field's placeholder showing the shape of an answer: "For example, tomorrow".
 #[export]
 pub fn for_example(example: String) -> String {
     lumenna_records::words::for_example(&example)
 }
 
-/// What an empty field says of itself where its value is shown apart from it.
-#[export]
-pub fn empty_field() -> String {
-    lumenna_records::words::empty_field()
-}
-
-/// An empty value, said in a line: "none".
-#[export]
-pub fn none_value() -> String {
-    lumenna_records::words::none_value()
-}
-
 /// What a place is, as the heading over its own actions says it; empty for the app's own places.
 #[export]
 pub fn place_heading(place: Place, sentence: bool) -> String {
     lumenna_records::words::place_heading(&place, sentence).unwrap_or_default()
-}
-
-/// A button that asks for more of a line to put at its end.
-#[export]
-pub fn add_to_line(sentence: bool) -> String {
-    lumenna_records::words::add_to_line(sentence)
-}
-
-/// The list of what could come next, as its dialog or menu is called.
-#[export]
-pub fn completions(sentence: bool) -> String {
-    lumenna_records::words::completions(sentence)
-}
-
-/// How many completions a shell lists at once.
-#[export]
-pub fn completions_shown() -> u32 {
-    u32::try_from(lumenna_records::words::COMPLETIONS_SHOWN).unwrap_or(u32::MAX)
 }
 
 /// A widget's button marking `task` done, as a screen reader names it.
@@ -396,38 +240,153 @@ pub fn timer_described(name: String, action: String, detail: String, locked: boo
     lumenna_records::words::timer_described(&name, &action, &detail, locked)
 }
 
-/// What an iPad's settings say with no page open.
-#[export]
-pub fn no_settings_page() -> String {
-    lumenna_records::words::no_settings_page()
-}
-
-/// A field that is on or off, as a choice of two.
-#[export]
-pub fn yes_no() -> Vec<Choice> {
-    lumenna_records::fields::yes_no()
-}
-
-/// What a shell's option of reading a line back before adding it says.
-#[export]
-pub fn read_back_words(sentence: bool) -> ReadBackWords {
-    lumenna_records::fields::read_back_words(sentence)
-}
-
 /// The question a line read back asks: "… Add it?"
 #[export]
 pub fn add_it(readback: String) -> String {
     lumenna_records::fields::add_it(&readback)
 }
 
-/// What a shell's own file and folder dialogs ask, and the export's button.
-#[export]
-pub fn file_words(sentence: bool) -> FileWords {
-    lumenna_records::fields::file_words(sentence)
-}
-
 /// Whether reminders are given on this device, said once changed.
 #[export]
 pub fn reminders_on_here(on: bool, this_device: String) -> String {
     lumenna_records::words::reminders_on_here(on, &this_device)
+}
+
+/// Every fixed word a shell draws, in its `capitals`, for a device that is `device`: asked for
+/// once, as it starts.
+#[export]
+pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
+    w::shell_words(capitals, device)
+}
+
+/// What another device calls this one: `host` without `.local`, else what it is.
+#[export]
+pub fn device_named(host: String, device: ThisDevice) -> String {
+    w::device_named(&host, device)
+}
+
+/// What answers a client through an app: "Lumenna for Windows".
+#[export]
+pub fn lumenna_for(system: String) -> String {
+    w::lumenna_for(&system)
+}
+
+/// Where About says the store is.
+#[export]
+pub fn data_folder(path: String) -> String {
+    w::data_folder(&path)
+}
+
+/// A file that could not be read in, the error's sentence after it.
+#[export]
+pub fn could_not_read(what: String, reason: String) -> String {
+    w::could_not_read(&what, &reason)
+}
+
+/// A file that could not be written, the error's sentence after it.
+#[export]
+pub fn could_not_save(what: String, reason: String) -> String {
+    w::could_not_save(&what, &reason)
+}
+
+/// When Lumenna could not start, the error's sentence after it.
+#[export]
+pub fn could_not_start(reason: String) -> String {
+    w::could_not_start(&reason)
+}
+
+/// When the store would not open, the error's sentence after it.
+#[export]
+pub fn store_unopened(reason: String) -> String {
+    lumenna_records::words::store_unopened(&reason)
+}
+
+/// What is asked before a file is replaced.
+#[export]
+pub fn already_there(name: String) -> String {
+    w::already_there(&name)
+}
+
+/// What is said once a file is written.
+#[export]
+pub fn saved(what: String) -> String {
+    w::saved(&what)
+}
+
+/// A file dialog's kind for an extension: "JSON files".
+#[export]
+pub fn files_of(extension: String) -> String {
+    w::files_of(&extension)
+}
+
+/// What narrows the pick called `title`.
+#[export]
+pub fn narrow(title: String) -> String {
+    w::narrow(&title)
+}
+
+/// What syncs a watch with its phone now.
+#[export]
+pub fn sync_with(phone: String) -> String {
+    w::sync_with(&phone)
+}
+
+/// A device list's description where `key` renames.
+#[export]
+pub fn delete_unpairs_or_renames(key: String) -> String {
+    w::delete_unpairs_or_renames(&key)
+}
+
+/// Why the shortcuts from anywhere cannot be had: `what` did not answer.
+#[export]
+pub fn did_not_answer(what: String, reason: String) -> String {
+    w::did_not_answer(&what, &reason)
+}
+
+/// Why `system` would not start Lumenna at sign-in, where it gives no reason.
+#[export]
+pub fn did_not_turn_it_on(system: String) -> String {
+    w::did_not_turn_it_on(&system)
+}
+
+/// The warning that `keys` are someone else's.
+#[export]
+pub fn keys_taken(keys: String) -> String {
+    w::keys_taken(&keys)
+}
+
+/// Its button that keeps the keys as they were.
+#[export]
+pub fn keep_keys(keys: String) -> String {
+    w::keep_keys(&keys)
+}
+
+/// Its question, after whose they are.
+#[export]
+pub fn use_anyway_for(whose: String, name: String) -> String {
+    w::use_anyway_for(&whose, &name)
+}
+
+/// What is said once the shortcut called `name` is changed, to `described` or off.
+#[export]
+pub fn shortcut_changed(name: String, described: Option<String>) -> String {
+    lumenna_app::hotkeys::changed(&name, described.as_deref())
+}
+
+/// What the dialog for new keys asks, for the shortcut called `name`.
+#[export]
+pub fn press_keys_for(name: String) -> String {
+    lumenna_app::hotkeys::press_keys_for(&name)
+}
+
+/// The button that changes the shortcut called `name`, as a screen reader names it.
+#[export]
+pub fn change_shortcut_for(name: String) -> String {
+    lumenna_app::hotkeys::change_shortcut_for(&name)
+}
+
+/// What is asked before keys warned about are kept.
+#[export]
+pub fn use_keys(described: String) -> String {
+    lumenna_app::hotkeys::use_keys(&described)
 }

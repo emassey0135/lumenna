@@ -87,8 +87,9 @@ endpoint (`Endpoint::serve`, `Lumenna::serve_commands`).
   `notices`, `background`), worded in English in the clock `app.clock {twenty_four}` gave.
   `app.view`, `app.close`, `app.still`, `app.tick`, `app.in_front` and `app.complete` (at
   keystroke rate, straight from the store) answer the rest. A client keeps no copy of any rule
-  and asks for no words: there are no form helpers over RPC, since the app's own forms,
-  questions and words are what a client draws. In a `lum rpc` of the client's own (nothing
+  and writes no word of its own: there are no form helpers over RPC, since the app's own forms,
+  questions and words are what a client draws, and every fixed word around them is
+  `app.words {capitals, device}` (`lumenna_app::words::ShellWords`), asked for once. In a `lum rpc` of the client's own (nothing
   else held the endpoint, or it would have relayed) the app keeps the device in sync once
   paired, as every app does, and serves the profile's address while it holds the endpoint
   (`Apps::keeps_in_sync`); wherever the process's own service syncs, it never does.

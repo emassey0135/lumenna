@@ -69,6 +69,16 @@ impl AppSession for Session {
                 json!({ "view": self.app.view_on(screen), "lines": self.app.lines_on(screen) })
             }
             "still" => Value::Bool(self.app.is_still()),
+            // Every fixed word the client draws, asked for once: in Title Case unless `capitals`
+            // says "Sentence", for a device that is `device` ("Computer" unless it says).
+            "words" => {
+                let given = |key: &str, default: &str| params.get(key).cloned().unwrap_or_else(|| json!(default));
+                let capitals: lumenna_app::Capitals =
+                    serde_json::from_value(given("capitals", "Title")).map_err(|e| format!("not capitals: {e}"))?;
+                let device: lumenna_app::words::ThisDevice =
+                    serde_json::from_value(given("device", "Computer")).map_err(|e| format!("not a device: {e}"))?;
+                serde_json::to_value(lumenna_app::words::shell_words(capitals, device)).map_err(|e| e.to_string())?
+            }
             "tick" => {
                 self.app.tick();
                 Value::Null

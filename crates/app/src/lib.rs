@@ -45,6 +45,7 @@ pub mod shell;
 pub mod speech;
 pub mod typing;
 mod view;
+pub mod words;
 
 
 use crux_core::render::render;

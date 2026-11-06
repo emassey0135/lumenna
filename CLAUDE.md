@@ -137,14 +137,19 @@ crosses the FFI.
   `Lines::details`: the state, a rule the form cannot say, what it waits for, its history). The
   buttons a details pane shows by themselves are the task's `primary` offered actions, the rest a
   menu away.
-- **Every other fixed word a shell used to write is the core's** too, in `records::fields` and
-  `records::words` (quick add's and the filter's, notifications', pairing's whole match sentence
-  `PairingView::matching` and `mine_line`, a reminder list's `reminders_title`, the backup's
-  failure, the app's `DESCRIPTION`, a browser's device name, a watch's sync with its phone,
-  `checked`, `fold_state`, `level`, `choice_count`), and the shortcuts from anywhere are
-  `lumenna_app::hotkeys`. That includes what only one shell needs today (BTSpeak's menus and file
+- **Every other fixed word a shell used to write is the core's** too, and **a shell has them all
+  in one record**, `lumenna_app::words::ShellWords`, asked for once as it starts in its capitals
+  and as it calls itself (`shell_words(capitals, ThisDevice)` over the FFI and the web's core,
+  `app.words` over RPC): its panes' and lists' names, its dialogs' buttons, its file dialogs'
+  kinds, a row's hint, a keyboard help's headings, the words of quick add, the details, the
+  file and folder dialogs, notifications and the shortcuts from anywhere, and what the device
+  calls itself (`this_device`, what it says as `PairingAs`). A word with parts is a function,
+  since it is said with them (`could_not_read(what, reason)`, `press_to_add(key)`,
+  `reminders_for(name)`, pairing's `PairingView::matching`); what changes with what is shown
+  comes with the view. That includes what only one shell needs today (BTSpeak's menus and file
   prompts, the web's folder backups and tab notices, a watch's placeholders): a shell writes no
-  sentence of its own, a key it names being a part (`press_to_add(key)`). A sidebar entry says its
+  sentence of its own, a key it names being a part. A word a shell finds missing is added to
+  the record, never written in the shell. A sidebar entry says its
   own folding (`hidden`, `expanded`, `level`), as a list's rows and a pick's lines (`Line::level`)
   do; a list a shell narrows or cuts out itself takes its levels from `lines::levels(depths)`
   (`levels()` over the FFI), so no shell counts them.
