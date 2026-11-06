@@ -222,7 +222,7 @@ targets:
         # A widget opens the app on one of the core's launches: lumenna://launch/<id>
         # (Shared/LaunchURL.swift).
         CFBundleURLTypes:
-          - CFBundleURLName: dev.emassey0135.lumenna
+          - CFBundleURLName: $(LUMENNA_PACKAGE_ID)
             CFBundleURLSchemes:
               - lumenna
         # The App Group shared with the app's extensions, which holds the store and the glance
@@ -259,9 +259,9 @@ targets:
                 UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID)
         TARGETED_DEVICE_FAMILY: "1,2"
-        LUMENNA_APP_GROUP: group.dev.emassey0135.lumenna
+        LUMENNA_APP_GROUP: group.$(LUMENNA_PACKAGE_ID)
         CODE_SIGN_ENTITLEMENTS: Lumenna/Lumenna.entitlements
         # The script writes into the source tree and runs Cargo, neither of which the
         # script sandbox allows.
@@ -306,9 +306,9 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID).widgets
         TARGETED_DEVICE_FAMILY: "1,2"
-        LUMENNA_APP_GROUP: group.dev.emassey0135.lumenna
+        LUMENNA_APP_GROUP: group.$(LUMENNA_PACKAGE_ID)
         CODE_SIGN_ENTITLEMENTS: Lumenna/Lumenna.entitlements
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
         LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks @executable_path/../../Frameworks
@@ -395,20 +395,20 @@ targets:
         CFBundleDisplayName: $(LUMENNA_NAME)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         WKApplication: true
-        WKCompanionAppBundleIdentifier: dev.emassey0135.lumenna
+        WKCompanionAppBundleIdentifier: $(LUMENNA_PACKAGE_ID)
         # A widget opens the app on one of the core's launches: lumenna://launch/<id>
         # (Shared/LaunchURL.swift).
         CFBundleURLTypes:
-          - CFBundleURLName: dev.emassey0135.lumenna
+          - CFBundleURLName: $(LUMENNA_PACKAGE_ID)
             CFBundleURLSchemes:
               - lumenna
         LumennaAppGroup: $(LUMENNA_APP_GROUP)
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID).watchkitapp
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         # The watch's own: an App Group is one device's, and the watch's store is its own.
-        LUMENNA_APP_GROUP: group.dev.emassey0135.lumenna.watch
+        LUMENNA_APP_GROUP: group.$(LUMENNA_PACKAGE_ID).watch
         CODE_SIGN_ENTITLEMENTS: Watch/Watch.entitlements
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/Watch/App/include
         "EXCLUDED_ARCHS[sdk=watchsimulator*]": x86_64
@@ -430,8 +430,8 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.watchkitapp.widgets
-        LUMENNA_APP_GROUP: group.dev.emassey0135.lumenna.watch
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID).watchkitapp.widgets
+        LUMENNA_APP_GROUP: group.$(LUMENNA_PACKAGE_ID).watch
         CODE_SIGN_ENTITLEMENTS: Watch/Watch.entitlements
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/Watch/App/include
         LD_RUNPATH_SEARCH_PATHS: $(inherited) @executable_path/Frameworks @executable_path/../../Frameworks
@@ -446,7 +446,7 @@ targets:
       - target: LumennaWatch
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.watchkitapp.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID).watchkitapp.uitests
         TEST_TARGET_NAME: LumennaWatch
         GENERATE_INFOPLIST_FILE: YES
         "EXCLUDED_ARCHS[sdk=watchsimulator*]": x86_64
@@ -460,7 +460,7 @@ targets:
       - target: Lumenna
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID).uitests
         TEST_TARGET_NAME: Lumenna
         GENERATE_INFOPLIST_FILE: YES
         "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
@@ -484,7 +484,7 @@ targets:
       - target: Lumenna
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.tests
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID).tests
         GENERATE_INFOPLIST_FILE: YES
         # The app's module refers to the core's C module, which tests importing it need too.
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
@@ -548,7 +548,7 @@ targets:
         # A widget opens the app on one of the core's launches: lumenna://launch/<id>
         # (Shared/LaunchURL.swift).
         CFBundleURLTypes:
-          - CFBundleURLName: dev.emassey0135.lumenna
+          - CFBundleURLName: $(LUMENNA_PACKAGE_ID)
             CFBundleURLSchemes:
               - lumenna
         LumennaAppGroup: $(LUMENNA_APP_GROUP)
@@ -559,7 +559,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Lumenna
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID)
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/App/include
@@ -607,7 +607,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID).widgets
         ENABLE_HARDENED_RUNTIME: YES
         LUMENNA_APP_GROUP: $(DEVELOPMENT_TEAM).lumenna
         CODE_SIGN_ENTITLEMENTS: Widgets/Mac/Widgets.entitlements
@@ -627,7 +627,7 @@ targets:
       - target: LumennaMac
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.emassey0135.lumenna.mac.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: $(LUMENNA_PACKAGE_ID).mac.uitests
         TEST_TARGET_NAME: LumennaMac
         GENERATE_INFOPLIST_FILE: YES
 

@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         // The phone app's identifier, as a watch app of the same app has it.
-        applicationId = "dev.emassey0135.lumenna"
+        applicationId = rootProject.extra["lumennaPackageId"] as String
         // Wear OS 3, the oldest any current watch runs.
         minSdk = 30
         targetSdk = 37

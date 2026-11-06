@@ -24,7 +24,7 @@ fn main() {
             _ => {}
         }
     }
-    for key in ["NAME", "DESCRIPTION", "VERSION", "HOMEPAGE", "ISSUES", "PUBLISHER", "ID", "LICENCE"] {
+    for key in ["NAME", "DESCRIPTION", "VERSION", "HOMEPAGE", "ISSUES", "PUBLISHER", "ID", "PACKAGE_ID", "LICENCE"] {
         let value = found.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()).unwrap_or_else(|| panic!("the workspace's metadata has no {key}"));
         println!("cargo:rustc-env=LUMENNA_{key}={value}");
     }

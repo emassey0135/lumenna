@@ -22,7 +22,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>dev.emassey0135.lumenna</string>
+			<string>$(LUMENNA_PACKAGE_ID)</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>lumenna</string>
@@ -36,6 +36,6 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>dev.emassey0135.lumenna</string>
+	<string>$(LUMENNA_PACKAGE_ID)</string>
 </dict>
 </plist>

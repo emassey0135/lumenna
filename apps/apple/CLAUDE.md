@@ -36,10 +36,12 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   or C objects target the SDK's own version; heed that linker warning. The Swift is generated
   afresh and put in place only when it differs, so an unchanged core compiles nothing again;
   `cargo` and `boltffi` are found on the caller's `PATH`.
-- **The version and name are Cargo.toml's** (`[workspace.metadata.lumenna]`): `metadata.sh`
-  writes them into `Generated/Metadata.xcconfig` as `MARKETING_VERSION` and `LUMENNA_NAME`, which
-  every target's `info` in project.yml names (`CFBundleShortVersionString`,
-  `CFBundleDisplayName`), so a version bump is that one edit. XcodeGen writes the `Info.plist`s
+- **The version, name and identifier are Cargo.toml's** (`[workspace.metadata.lumenna]`):
+  `metadata.sh` writes them into `Generated/Metadata.xcconfig` as `MARKETING_VERSION`,
+  `LUMENNA_NAME` and `LUMENNA_PACKAGE_ID`. Every target's `info` in project.yml names the first two
+  (`CFBundleShortVersionString`, `CFBundleDisplayName`), and every bundle identifier and App Group
+  builds on the third (`$(LUMENNA_PACKAGE_ID).widgets`, `group.$(LUMENNA_PACKAGE_ID)`; the Mac's
+  group alone is its team's), so a version bump is that one edit. XcodeGen writes the `Info.plist`s
   from `info`: a value put in a plist alone is gone at the next `xcodegen`. XcodeGen runs it first (`preGenCommand`), since the project reads the
   file, and `build-core.sh` runs it again on every build and stops a build that began with what
   Cargo.toml no longer says (Xcode reads an xcconfig only as a build begins): the next build has

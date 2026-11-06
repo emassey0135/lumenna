@@ -149,10 +149,12 @@ crosses the FFI.
   do; a list a shell narrows or cuts out itself takes its levels from `lines::levels(depths)`
   (`levels()` over the FFI), so no shell counts them.
 - **What Lumenna is is said once** (`[workspace.metadata.lumenna]` in the workspace's
-  `Cargo.toml`: name, description, version, homepage, issues, publisher, identifier, with the
-  licence from `[workspace.package]`): `records`' build reads it into `words::metadata()`
-  (`app_metadata()` over the FFI), which `lum`'s about, the About boxes and the autostart entry
-  say. The Apple apps read their version and name from it as they build (`apps/apple/metadata.sh`).
+  `Cargo.toml`: name, description, version, homepage, issues, publisher, the identifier `id` in
+  freedesktop's and Windows' capitals and `package_id` lowercase for Apple's bundles and Android's
+  packages, with the licence from `[workspace.package]`): `records`' build reads it into
+  `words::metadata()` (`app_metadata()` over the FFI), which `lum`'s about, the About boxes and
+  the autostart entry say. The Apple apps read their version, name and bundle identifier from it
+  as they build (`apps/apple/metadata.sh`), and Android's Gradle its version, name and package.
   Every other platform file that must say it ahead (the desktop entry and metainfo, the MSIX and
   Inno Setup, Android's Gradle files and strings, the web's package and manifest, the PowerShell
   module, BTSpeak's pyproject, the apps' crate versions) is held to it by `records`' metadata
