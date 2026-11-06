@@ -11,8 +11,6 @@
 //! may use: this module is loaded by the app's worker, never by the page itself.
 
 use std::path::Path;
-// Imported, not named by its path: BoltFFI finds another crate's type only so.
-use lumenna_app::keys::KeyGroup;
 
 use boltffi::export;
 use lumenna_host::Lumenna;
@@ -44,14 +42,6 @@ async fn open_store(name: &str) -> Result<Lumenna, LumennaError> {
 #[export]
 pub fn sentence_case(text: String) -> String {
     lumenna_host::sentence_case(text)
-}
-
-/// The keyboard commands every desktop app shares (`lumenna_app::keys`), grouped as their
-/// menus are, in the web's sentence case, so the web's help names a command as theirs do. The
-/// web lists only those it binds, and adds its own.
-#[export]
-pub fn keyboard_shortcuts() -> Vec<KeyGroup> {
-    lumenna_app::keys::grouped(true)
 }
 
 /// What automatic backups to a folder do, in a sentence (`lumenna_host::folder_backup_words`).

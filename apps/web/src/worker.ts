@@ -11,38 +11,19 @@
 import * as Comlink from "comlink";
 import init, {
   open,
-  pickerWords,
   sentenceCase,
-  keyboardShortcuts,
   folderBackupWords,
-  quickAddWords,
-  detailsWords,
   backedUpTo,
   backupFailed,
   browserDeviceName,
   choiceCount,
-  nothingToChoose,
-  folderWords,
   backingUpToFolder,
   needsAskingAgain,
   allowBackupsTo,
   backingUpTo,
   remindersOnHere,
-  remindersWhileOpen,
-  storageMayBeCleared,
-  opening as openingWords,
-  openElsewhere,
-  remindersDue,
-  dayActions,
-  placeActions,
-  deleteUnpairs,
   deviceNameLabel,
-  deviceNameHint,
-  copyFailed,
-  chooseOneFirst,
-  cancel,
-  close,
-  completionHint,
+  shellWords,
 } from "./core/lumenna_web.js";
 import type {
   App,
@@ -64,12 +45,8 @@ import type {
   ReminderView,
   Turn,
   ViewModel,
-  KeyGroup,
   Syntax,
-  PickerWords,
-  QuickAddWords,
-  DetailsWords,
-  FolderWords,
+  ShellWords,
 } from "./core/lumenna_web.js";
 import { Capitals, TimeStyle } from "./core/lumenna_web.js";
 
@@ -91,12 +68,20 @@ function unitsAt(text: string, bytes: number): number {
 
 let opening: Promise<void> | undefined;
 let loading: Promise<unknown> | undefined;
+let shell: ShellWords | undefined;
 
 /** The module, and its wasm beside it, which Vite serves as an asset: loaded once, before the
  * store, so even what a tab says while it waits is the core's. */
 function loaded(): Promise<unknown> {
   loading ??= fetch(new URL("./core/lumenna_web_bg.wasm", import.meta.url)).then((wasm) => init(wasm));
   return loading;
+}
+
+/** Every fixed word the page draws, the core's, read once the module has loaded. */
+async function words(): Promise<ShellWords> {
+  await loaded();
+  shell ??= shellWords();
+  return shell;
 }
 
 /** Takes the lock `name`, held while this worker lives; with `ifAvailable`, only if no other
@@ -112,10 +97,10 @@ function hold(name: string, options: LockOptions): Promise<boolean> {
 
 async function opened(name: string, waiting?: (why: string) => void): Promise<void> {
   const lock = `lumenna:${name}`;
-  await loaded();
+  const said = await words();
   if (!(await hold(lock, { ifAvailable: true }))) {
     // Another tab has it: this one says so, and opens the store once that tab is closed.
-    void waiting?.(openElsewhere());
+    void waiting?.(said.openElsewhere);
     await hold(lock, {});
   }
   app = await open(name);
@@ -124,15 +109,15 @@ async function opened(name: string, waiting?: (why: string) => void): Promise<vo
   void app.send({ tag: "Clock", value0: hour12 ? TimeStyle.TwelveHour : TimeStyle.TwentyFourHour });
   // The web's capitals: buttons, headings and questions in sentence case.
   void app.send({ tag: "Capitals", value0: Capitals.Sentence });
-  // Pairing's sentences call a browser "this browser"; with no network of its own to search,
+  // Pairing's sentences call a browser as the core does; with no network of its own to search,
   // it pairs by code.
-  void app.send({ tag: "PairingAs", called: "this browser", nearby: false });
+  void app.send({ tag: "PairingAs", called: said.thisDevice, nearby: false });
   // Open once the app has the store.
   await app.settled();
 }
 
 function session(): App {
-  if (!app) throw new Error("The store is not open yet.");
+  if (!app) throw new Error(shell?.storeNotOpen);
   return app;
 }
 
@@ -367,12 +352,6 @@ const api = {
   /** Fixed text — a button, a question with no one's name in it — in sentence case. */
   sentence: (text: string): string => sentenceCase(text),
 
-  /** What the web's own day and time pickers say, in sentence case. */
-  pickerWords: (): PickerWords => pickerWords(),
-
-  /** The keyboard commands the desktop apps share, grouped as their menus are, in sentence case. */
-  keyboardShortcuts: (): KeyGroup[] => keyboardShortcuts(),
-
   /** A backup taken now, for the folder the person chose: its name there and its bytes. */
   backupFile: (): { name: string; bytes: Uint8Array } => {
     const file = session().backupFile();
@@ -396,12 +375,6 @@ const api = {
   /** What automatic backups to a folder do, in a sentence. */
   folderBackupWords: (): string => folderBackupWords(),
 
-  /** What quick add and a list's filter say, in sentence case. */
-  quickAddWords: (): QuickAddWords => quickAddWords(),
-
-  /** What the task details say around their form, in sentence case. */
-  detailsWords: (): DetailsWords => detailsWords(),
-
   /** What is said once a backup is taken into the folder `folder` as `name`. */
   backedUpTo: (folder: string, name: string): string => backedUpTo(folder, name),
 
@@ -414,33 +387,14 @@ const api = {
   /** How many a pick offers, in words. */
   choiceCount: (count: number): string => choiceCount(count),
 
-  /** What a pick with nothing in it says. */
-  nothingToChoose: (): string => nothingToChoose(),
-
-  /** What shows while the store opens: the module is loaded first, the store not yet. */
-  opening: async (): Promise<string> => {
-    await loaded();
-    return openingWords();
-  },
-
-  /** The browser's own fixed words that are the core's, in sentence case, read once. */
-  fixedWords: (): FixedWords => ({
-    folder: folderWords(),
+  /** Every fixed word the page draws, in sentence case, as a browser calls itself, with the
+   * few that have a part given here; ready before the store is, so even a waiting tab's words
+   * are the core's. */
+  words: async (): Promise<FixedWords> => ({
+    ...(await words()),
     remindersOn: remindersOnHere(true),
     remindersOff: remindersOnHere(false),
-    remindersWhileOpen: remindersWhileOpen(),
-    storageMayBeCleared: storageMayBeCleared(),
-    remindersDue: remindersDue(),
-    dayActions: dayActions(),
-    placeActions: placeActions(),
-    deleteUnpairs: deleteUnpairs(),
     deviceNameLabel: deviceNameLabel(),
-    deviceNameHint: deviceNameHint(),
-    copyFailed: copyFailed(),
-    chooseOneFirst: chooseOneFirst(),
-    cancel: cancel(),
-    close: close(),
-    completionHint: completionHint(),
   }),
 
   /** Where backups go while the folder `folder` is chosen and allowed. */
@@ -456,24 +410,11 @@ const api = {
   backingUpTo: (folder: string): string => backingUpTo(folder),
 };
 
-/** The fixed words the core gives a browser, beside those of quick add and the details. */
-export interface FixedWords {
-  folder: FolderWords;
+/** The fixed words the core gives a browser: its record of them, and those with a part. */
+export interface FixedWords extends ShellWords {
   remindersOn: string;
   remindersOff: string;
-  remindersWhileOpen: string;
-  storageMayBeCleared: string;
-  remindersDue: string;
-  dayActions: string;
-  placeActions: string;
-  deleteUnpairs: string;
   deviceNameLabel: string;
-  deviceNameHint: string;
-  copyFailed: string;
-  chooseOneFirst: string;
-  cancel: string;
-  close: string;
-  completionHint: string;
 }
 
 export type Api = typeof api;

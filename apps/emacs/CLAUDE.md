@@ -30,8 +30,18 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
   takes before any list's name for a row. Never a key: erasing is a line chosen, then asked.
 - **Depth is an outline level**: `outline-level` reads the `lumenna-level` text property, for
   Emacspeak's level announcements; the folding is the app's (TAB runs Collapse or Expand).
+- **Every fixed word is the core's** (`app.words`, asked once as the connection opens, in
+  Title Case as a computer calls itself; `lumenna-words`, `lumenna-word`): a key's description,
+  a help's heading, a prompt, a refusal, a buffer's and a mode's name (`lumenna--buffer-name`,
+  `lumenna--mode-name`, from Lumenna's name and a command's or a place's). A word with a part
+  is a template, `%s` where each goes. A word found missing goes in `ShellWords` (`EmacsWords`
+  for Emacs's alone, `crates/app/src/words.rs`), never here. Only what is said before there is
+  a connection to ask stays here: `lum` not found, a contract `lum` does not speak, and the
+  menu's name before Lumenna is first opened.
 - **A list's keys are defined once** (`lumenna-define-keys`), which binds them, builds the
-  menu, and lists them for `?` in an ordinary buffer. A row's key runs the row's action of
+  menu, and lists them for `?` in an ordinary buffer. Each names its words as `lumenna-word`
+  takes them: Emacs's own (`:next_line`), a command's (`(command "undo")`), a group's, or the
+  row action kinds it runs (`(kinds "rename")`); the menu reads them as it is drawn (`:label`). A row's key runs the row's action of
   that kind (`lumenna-define-action`, `lumenna-act-kind`); `.` offers them all by title, and a
   key the row does not offer refuses with the app's sentence (`Run`, `lumenna--refuse`). A key
   of the shared table is the core's whole: `d` sends `Key("delete")` on the row put in hand

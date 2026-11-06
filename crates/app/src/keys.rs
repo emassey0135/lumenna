@@ -396,7 +396,7 @@ pub fn in_group(group: Group) -> impl Iterator<Item = &'static Shortcut> {
 
 /// One command and its keys, as an app across the FFI takes them: Android's and the web's.
 #[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KeyCommand {
     /// What the app matches its own binding to: "undo".
     pub id: String,
@@ -408,7 +408,7 @@ pub struct KeyCommand {
 
 /// One heading of the keyboard help, and its commands in order.
 #[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KeyGroup {
     /// Which group: "file", "edit", "view", "task", "day", "lists", "help".
     pub id: String,

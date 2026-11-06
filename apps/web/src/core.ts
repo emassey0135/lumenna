@@ -50,6 +50,7 @@ export type {
   DetailsWords,
   DetailsLine,
   FolderWords,
+  ShellWords,
   DueButton,
   SettingsPage,
   SettingsButton,

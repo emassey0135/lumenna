@@ -31,6 +31,7 @@ SPC or RET turns one off or on;
 \\<lumenna-proposal-mode-map>\\[lumenna-proposal-apply] makes the ones checked; \\[lumenna-proposal-cancel] closes, making nothing.
 
 \\{lumenna-proposal-mode-map}"
+  (lumenna--mode-name :proposal)
   (setq-local lumenna--draw #'lumenna-proposal--rows)
   (setq-local lumenna--activate #'lumenna-proposal--activate))
 
@@ -47,7 +48,7 @@ SPC or RET turns one off or on;
          (others (append (plist-get proposal :others) nil)))
     (setq-local lumenna--empty nil)
     (if (null proposal)
-        (list "Nothing proposed")
+        (list (lumenna-words :nothing_here))
       (cons (lumenna--heading (plist-get words :title) (plist-get proposal :announcement))
             (append
              (when-let* ((refused (plist-get proposal :refusal)))
@@ -95,7 +96,7 @@ Run after what the person asked of the app; a proposal already shown stays."
       (let ((screen lumenna--screen)
             (view lumenna--view)
             (lines lumenna--lines)
-            (buffer (get-buffer-create (format "*Lumenna: %s*" (plist-get (plist-get proposal :words) :title)))))
+            (buffer (get-buffer-create (lumenna--buffer-name (plist-get (plist-get proposal :words) :title)))))
         (with-current-buffer buffer
           (lumenna-proposal-mode)
           (lumenna--attach screen)
@@ -162,7 +163,7 @@ Each work block is given its most urgent tasks."
   "Take the other option at point: the core's proposal for it, in place."
   (interactive)
   (let ((row (lumenna-row)))
-    (unless (eq (plist-get row :button) 'other) (user-error "No other option on this line"))
+    (unless (eq (plist-get row :button) 'other) (lumenna--refusal :nothing_to_do))
     (lumenna-proposal--send (list :Take (plist-get row :index)))
     (goto-char (point-min))
     (forward-line 1)))
@@ -202,14 +203,14 @@ moved past is refused: the core's sentence is shown, over a new proposal."
   (lumenna-proposal--send "Close"))
 
 (lumenna-define-keys lumenna-proposal-mode
-  ("The proposal"
-   ("SPC" "Check or uncheck the change at point" lumenna-proposal-toggle)
-   ("x" "Check or uncheck the change at point" lumenna-proposal-toggle)
-   ("RET" "Check or uncheck a change, or press a button" lumenna-activate)
-   ("o" "Take the other option at point" lumenna-proposal-take-other)
-   ("C-c C-c" "Make the changes checked" lumenna-proposal-apply)
-   ("C-c C-k" "Cancel, making nothing" lumenna-proposal-cancel)
-   ("q" "Cancel, making nothing" lumenna-proposal-cancel)))
+  (:the_proposal
+   ("SPC" :check_change lumenna-proposal-toggle)
+   ("x" :check_change lumenna-proposal-toggle)
+   ("RET" :check_or_press lumenna-activate)
+   ("o" :take_other lumenna-proposal-take-other)
+   ("C-c C-c" :make_checked lumenna-proposal-apply)
+   ("C-c C-k" :cancel_making_nothing lumenna-proposal-cancel)
+   ("q" :cancel_making_nothing lumenna-proposal-cancel)))
 
 (provide 'lumenna-proposal)
 

@@ -175,9 +175,9 @@ until the app has taken it in."
     (lumenna-test--goto "1 reminder missed")
     (lumenna-reminders-dismiss)
     (goto-char (point-min))
-    (should (equal (lumenna-test--line) "Reminders due"))
+    (should (equal (lumenna-test--line) "Reminders Due"))
     (forward-line 1)
-    (should (equal (lumenna-test--line) "Nothing has come due"))))
+    (should (equal (lumenna-test--line) "Nothing has come due."))))
 
 (ert-deftest lumenna-a-summary-of-what-was-missed-is-not-snoozed-in-the-apps-words ()
   (lumenna-test--reminding
@@ -205,7 +205,7 @@ until the app has taken it in."
     (should-not (lumenna-test--due))
     (goto-char (point-min))
     (forward-line 1)
-    (should (equal (lumenna-test--line) "Nothing has come due"))))
+    (should (equal (lumenna-test--line) "Nothing has come due."))))
 
 (ert-deftest lumenna-a-blocks-reminders-are-listed-added-by-a-phrase-and-removed ()
   (lumenna-test--with-store
@@ -213,7 +213,7 @@ until the app has taken it in."
     (lumenna-blocks)
     (lumenna-test--goto "Deep work")
     (lumenna-act-reminders)
-    (should (equal (buffer-name) "*Lumenna reminders: Deep work*"))
+    (should (equal (buffer-name) "*Lumenna: Reminders: Deep work*"))
     (goto-char (point-min))
     (should (equal (lumenna-test--line) "1 reminder, the defaults"))
     (forward-line 1)
@@ -250,7 +250,7 @@ until the app has taken it in."
     (let* ((heard nil)
            (lumenna-announce-function (lambda (text _) (push text heard))))
       (lumenna-act-reminders)
-      (should (equal (buffer-name) "*Lumenna reminders: someday*"))
+      (should (equal (buffer-name) "*Lumenna: Reminders: someday*"))
       (should (seq-some (lambda (said) (string-match-p "a moment of its own" said)) heard)))))
 
 (ert-deftest lumenna-a-default-reminder-the-core-refuses-is-asked-again-with-its-sentence ()
@@ -674,13 +674,19 @@ until the app has taken it in."
         (lumenna-act-delete))
       (should (equal asked "Tasks wearing it stay; they just stop showing it. Delete calls? ")))))
 
-(ert-deftest lumenna-menus-are-in-title-case-and-the-help-as-written ()
-  (should (equal (lumenna--title-case "Fold or unfold what sits under this line")
-                 "Fold or Unfold What Sits under This Line"))
-  (should (equal (lumenna--title-case "Mark Done, or Mark Not Done") "Mark Done, or Mark Not Done"))
-  (let ((menu (lumenna--menu 'lumenna-day-mode)))
-    (should (assoc "The Day" (cdr menu)))
-    (should (seq-find (lambda (item) (equal (aref item 0) "Add a Block")) (cdr (assoc "The Day" (cdr menu)))))))
+(ert-deftest lumenna-menus-and-the-help-name-each-key-in-the-cores-words ()
+  (lumenna-test--with-store
+    (lumenna--connection)
+    (should (equal (lumenna-word '(kinds "mark_done" "mark_not_done")) "Mark Done or Mark Not Done"))
+    (should (equal (lumenna-word '(command "new-block")) "New Block"))
+    (let* ((label (lambda (thing) (eval (plist-get thing :label) t)))
+           (menu (lumenna--menu 'lumenna-day-mode))
+           (day (seq-find (lambda (group) (and (consp group) (equal (funcall label (cdr group)) "The Day")))
+                          (cddr (cdr menu)))))
+      (should (equal (funcall label (cdr menu)) "Lumenna"))
+      (should day)
+      (should (seq-find (lambda (item) (and (vectorp item) (equal (funcall label (append (seq-drop item 2) nil)) "New Block")))
+                        day)))))
 
 ;;;; Organising
 
@@ -781,10 +787,10 @@ until the app has taken it in."
       (should (string-match-p "\\`Keys in Lumenna: Tasks\\." (lumenna-test--line)))
       ;; The list's own RET, not the one every list has; and each key once.
       (should (= (how-many "^  RET: ") 1))
-      (lumenna-test--goto "RET: Details")
-      (lumenna-test--goto "Every list")
+      (lumenna-test--goto "RET: Show Details")
+      (lumenna-test--goto "Every List")
       (lumenna-test--goto "  u: Undo")
-      (lumenna-test--goto "  c: Mark Done, or Mark Not Done")
+      (lumenna-test--goto "  c: Mark Done or Mark Not Done")
       (lumenna-activate)
       (should (eq (current-buffer) list))
       (should (equal (lumenna-test--titles) nil)))))

@@ -87,7 +87,7 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
           <p id="sync-status">{props.devices?.status ?? ""}</p>
           <div onKeyDownCapture={keys} data-list="devices">
             <ListBox
-              aria-label="Paired devices"
+              aria-label={fixed().settings.devices}
               aria-describedby="devices-hint"
               items={devices.map((device) => ({ ...device, id: device.nodeId }))}
               selectionMode="single"
@@ -108,12 +108,13 @@ export function DevicesPage(props: { devices: Screen["devices"]; held: Screen["d
             <Button isDisabled={others === 0 || !props.devices?.syncing} onPress={() => void syncNow()}>
               {commandTitle("sync-now")}
             </Button>
-            <Button
-              isDisabled={!words}
-              onPress={() => void browserName().then((name) => send({ tag: "Devices", value0: { tag: "Pair", value0: { tag: "Open", value0: name } } }))}
-            >
-              {words?.title ?? "Pair a device"}
-            </Button>
+            {words && (
+              <Button
+                onPress={() => void browserName().then((name) => send({ tag: "Devices", value0: { tag: "Pair", value0: { tag: "Open", value0: name } } }))}
+              >
+                {words.title}
+              </Button>
+            )}
             {chosen?.offered?.map((action) => (
               <Button
                 key={action.kind}

@@ -114,6 +114,9 @@ from here, in a buffer of its own.")
 (defvar lumenna--connection nil
   "The open `jsonrpc-process-connection', or nil.")
 
+(defvar lumenna--words nil
+  "Every fixed word this client draws, the core's, once asked: `app.words'.")
+
 (defun lumenna-profile-directory ()
   "The profile directory, by the rule `lum' itself uses."
   (or lumenna-profile
@@ -173,6 +176,8 @@ The daemon's socket if it answers, else a `lum rpc' of its own."
           (jsonrpc-shutdown connection)
           (user-error "This client reads version %s of Lumenna's data and `lum' speaks version %s; update whichever is older"
                       lumenna-contract (plist-get server :contract))))
+      ;; Every fixed word this client draws, the core's, before anything is drawn.
+      (setq lumenna--words (jsonrpc-request connection 'app.words (list :capitals "Title" :device "Computer")))
       ;; The buffers of a connection that went (a daemon restarted, a `lum rpc' gone)
       ;; draw screens the new app has never had.
       (let ((left (lumenna--leave-screens)))
@@ -181,7 +186,7 @@ The daemon's socket if it answers, else a `lum rpc' of its own."
         (setq lumenna--clock nil)
         (lumenna--follow-clock)
         ;; What pairing's sentences call this device, which finds others on its network.
-        (jsonrpc-notify connection 'app.send (list :screen 0 :event (list :PairingAs (list :called "this computer" :nearby t))))
+        (jsonrpc-notify connection 'app.send (list :screen 0 :event (list :PairingAs (list :called (plist-get lumenna--words :this_device) :nearby t))))
         (lumenna--reopen-screens left))
       (lumenna--start-ticking)
       (run-hooks 'lumenna-connected-hook)))
@@ -293,6 +298,64 @@ Every speech system reads the echo area."
     ('lumenna/turn (lumenna--turned params))
     ;; Another process wrote: the app takes it in, and its turns redraw.
     ('lumenna/changed (run-at-time 0 nil #'lumenna--tick))))
+
+;;;; The core's words
+
+;; Every fixed word a Lumenna buffer shows -- a heading, a prompt, a key's
+;; description, a buffer's name -- is the core's (`ShellWords'), asked for once
+;; as the connection opens: in Title Case, as Emacs's menus are, and as a
+;; computer calls itself.  Nothing here is worded in Elisp, so what Emacs says
+;; is what every other app says.
+
+(defun lumenna-words (&rest path)
+  "The core's words, or the one at PATH into them: (lumenna-words :or).
+Asked for with the connection, which is opened if it is not."
+  (unless lumenna--words (lumenna--connection))
+  (let ((value lumenna--words))
+    (dolist (key path value) (setq value (plist-get value key)))))
+
+(defun lumenna--titled (records id key)
+  "The title of the one of RECORDS whose KEY is ID."
+  (plist-get (seq-find (lambda (one) (equal (plist-get one key) id)) (append records nil)) :title))
+
+(defun lumenna--any-of (titles)
+  "TITLES as one name, the last joined by the core's or: \"Archive or Unarchive\"."
+  (if (cdr titles)
+      (format "%s %s %s" (string-join (butlast titles) ", ") (lumenna-words :or) (car (last titles)))
+    (car titles)))
+
+(defun lumenna-word (spec)
+  "The core's word that SPEC names.
+A keyword is one of Emacs's own (`:next_line'); (word KEY...) a path into
+every word, (word :places); (command ID) a command's name, (command \"undo\");
+\(group ID) a heading of the shared keys; (kinds KIND...) the names of the row
+actions of those kinds, as one."
+  (pcase spec
+    ((pred keywordp) (lumenna-words :emacs spec))
+    (`(word . ,path) (apply #'lumenna-words path))
+    (`(command ,id) (lumenna--titled (lumenna-words :commands) id :id))
+    (`(group ,id) (lumenna--titled (lumenna-words :key_groups) id :id))
+    (`(kinds . ,kinds)
+     (lumenna--any-of (mapcar (lambda (kind) (lumenna--titled (lumenna-words :action_titles) kind :kind)) kinds)))
+    (_ (error "Not a word: %S" spec))))
+
+(defun lumenna--name ()
+  "What Lumenna is called."
+  (lumenna-words :metadata :name))
+
+(defun lumenna--buffer-name (&rest parts)
+  "A buffer's name from Lumenna's and PARTS, words: \"*Lumenna: Tasks*\"."
+  (format "*%s*" (string-join (cons (lumenna--name) parts) ": ")))
+
+(defun lumenna--mode-name (&rest specs)
+  "Name this buffer's mode after Lumenna and SPECS' words, once they are known.
+A mode turned on before any connection keeps its own name."
+  (when lumenna--words
+    (setq mode-name (string-join (cons (lumenna--name) (mapcar #'lumenna-word specs)) " "))))
+
+(defun lumenna--refusal (spec &rest parts)
+  "Refuse in SPEC's words, PARTS put in its places."
+  (user-error "%s" (apply #'format (lumenna-word spec) parts)))
 
 ;;;; The app's screens
 
@@ -406,12 +469,13 @@ EVENT is the app's in its JSON shape: \"Undo\", (:Focus ID),
 
 (defun lumenna--save-file (file)
   "Save FILE, a backup or an export the app made, where the person says."
-  (let ((name (expand-file-name (read-file-name "Save as: " nil nil nil (plist-get file :name)))))
-    (if (and (file-exists-p name) (not (yes-or-no-p (format "%s exists; replace it? " (abbreviate-file-name name)))))
-        (message "Not saved")
+  (let ((name (expand-file-name (read-file-name (lumenna--prompt (lumenna-word :save_as)) nil nil nil (plist-get file :name)))))
+    (if (and (file-exists-p name)
+             (not (yes-or-no-p (lumenna--prompt (format (lumenna-word :already_there) (abbreviate-file-name name))))))
+        (message "%s" (lumenna-word :not_saved))
       (let ((coding-system-for-write 'binary))
         (write-region (base64-decode-string (plist-get file :data)) nil name))
-      (message "Saved %s" (abbreviate-file-name name)))))
+      (message "%s" (format (lumenna-word :saved) (abbreviate-file-name name))))))
 
 (defvar lumenna--ticking nil
   "The timer that takes in another process's writes and the minute.")
@@ -463,9 +527,9 @@ already draws one.  EVENTS are sent there first."
 
 (defun lumenna--home-buffer ()
   "The places' buffer, screen 0, made if it is not there yet, not shown."
-  (or (get-buffer "*Lumenna*")
-      (with-current-buffer (get-buffer-create "*Lumenna*")
-        (lumenna--connection)
+  (lumenna--connection)
+  (or (get-buffer (lumenna--buffer-name))
+      (with-current-buffer (get-buffer-create (lumenna--buffer-name))
         (lumenna-home-mode)
         (lumenna--attach 0)
         (lumenna--settle)
@@ -525,7 +589,7 @@ the colour's name in the line.  Nothing where the display has no colour."
 (defun lumenna-row ()
   "The row at point, or a `user-error'."
   (or (get-text-property (line-beginning-position) 'lumenna-row)
-      (user-error "No item on this line")))
+      (lumenna--refusal :no_item)))
 
 (defun lumenna--row-here ()
   "The row on this line, or nil."
@@ -632,7 +696,7 @@ up): never because a sync or a minute redrew the list."
   (interactive)
   (if lumenna--activate
       (funcall lumenna--activate (lumenna-row))
-    (user-error "Nothing to do here")))
+    (lumenna--refusal :nothing_to_do)))
 
 ;;;; The app's questions, asked in the minibuffer
 
@@ -745,13 +809,13 @@ form opened, another day's blocks asked for)."
       ("choose" (lumenna--ask-choose question))
       ("form"
        (let ((open (alist-get (cons (plist-get action :subject) (plist-get action :kind)) lumenna--forms nil nil #'equal)))
-         (unless open (user-error "%s has no form in this client yet" (plist-get action :title)))
+         (unless open (lumenna--refusal :no_form_here (plist-get action :title)))
          ;; The form is this client's: the app's question is let go, and the form opens.
          (lumenna-send "Cancel")
          (lumenna--settle)
          (funcall open action)
          :again))
-      (other (user-error "This client cannot ask a question of kind %s; update it" other)))))
+      (_ (lumenna--refusal :cannot_ask_here (or (plist-get action :title) ""))))))
 
 (defvar lumenna--block-form-function nil
   "What fills in the app's block form while it is open: `lumenna-day''s.")
@@ -785,7 +849,7 @@ action's sentence unsaid when nothing came of it."
                               (when (equal asking (plist-get lumenna--view :asking)) (throw 'done nil)))
                       (t (lumenna-send "Cancel") (lumenna--settle)
                          (setq lumenna--acting nil)
-                         (unless quietly (message "Nothing done"))
+                         (unless quietly (message "%s" (lumenna-word :nothing_done)))
                          (throw 'done nil)))))
              ((and (plist-get lumenna--view :block_form) lumenna--block-form-function)
               (funcall lumenna--block-form-function)
@@ -832,7 +896,7 @@ One task's buffer offers the task's, whatever field point is on.")
 A task's buffer offers its task's; a side list's row is named there; a row
 standing for something else names it as its `:on' (Settings' own buttons)."
   (cond (lumenna--actions-function "Details")
-        ((null row) (user-error "Nothing to do that to here"))
+        ((null row) (lumenna--refusal :nothing_to_do))
         ((plist-get row :on))
         (lumenna--held (list :Held (vector (lumenna--side) (lumenna--row-key row))))
         (t (list :Row (lumenna--row-key row)))))
@@ -858,9 +922,9 @@ where it offers none, the core's sentence says why."
   (let* ((actions (lumenna-actions))
          (row (lumenna--row-here))
          (matching (seq-filter (lambda (a) (member (plist-get a :kind) kinds)) actions)))
-    (cond ((cdr matching) (lumenna-act (lumenna--choose-action "Which one: " matching) row))
+    (cond ((cdr matching) (lumenna-act (lumenna--choose-action (lumenna--prompt (lumenna-words :which)) matching) row))
           (matching (lumenna-act (car matching) row))
-          ((null actions) (user-error "Nothing to do here"))
+          ((null actions) (lumenna--refusal :nothing_to_do))
           (t (lumenna--refuse row kinds)))))
 
 (defun lumenna--refuse (row kinds)
@@ -872,14 +936,14 @@ A task's buffer runs them on the details' task, which no row holds."
                       (list :Details (list :Run (vconcat kinds)))
                     (list :Run (vconcat kinds))))
     (lumenna--settle)
-    (user-error "%s" (string-join (or (cdr lumenna--heard) '("Nothing to do here")) " "))))
+    (user-error "%s" (string-join (or (cdr lumenna--heard) (list (lumenna-word :nothing_to_do))) " "))))
 
 (defun lumenna-act-at-point ()
   "Choose one of the actions offered on this line, by name, and do it."
   (interactive)
   (let ((actions (lumenna-actions)))
-    (unless actions (user-error "Nothing to do here"))
-    (lumenna-act (lumenna--choose-action "Do: " actions) (lumenna--row-here))))
+    (unless actions (lumenna--refusal :nothing_to_do))
+    (lumenna-act (lumenna--choose-action (lumenna--prompt (lumenna-words :details :actions)) actions) (lumenna--row-here))))
 
 (defmacro lumenna-define-action (name kinds doc)
   "Define NAME, a command doing the row's action of one of KINDS.
@@ -900,7 +964,7 @@ What it runs there is the core's, the same on every app; a row it runs
 nothing on says why in the app's words.  A task's buffer presses it on the
 details' task, which no row holds."
   (let ((row (lumenna--row-here)))
-    (unless (or lumenna--actions-function row) (user-error "Nothing to do here"))
+    (unless (or lumenna--actions-function row) (lumenna--refusal :nothing_to_do))
     (setq lumenna--acted-on row lumenna--acting nil)
     (if lumenna--actions-function
         (lumenna-send (list :Details (list :Key key)))
@@ -966,8 +1030,9 @@ its ? lists the rest.")
 (defmacro lumenna-define-keys (owner &rest groups)
   "Bind GROUPS in OWNER's keymap, and keep them for its help.
 OWNER is a mode, whose map is OWNER-map, or a keymap variable.  Each group
-is (HEADING (KEY DESCRIPTION COMMAND)...).  The same definition does both,
-so the help cannot name a key the buffer lacks."
+is (HEADING (KEY DESCRIPTION COMMAND)...), HEADING and DESCRIPTION naming
+the core's words as `lumenna-word' takes them.  The same definition does
+both, so the help cannot name a key the buffer lacks."
   (declare (indent 1))
   `(lumenna--define-keys ',owner ',groups))
 
@@ -1002,38 +1067,37 @@ A key is listed once, under the nearest mode that binds it, as it acts."
       (setq owner (get owner 'derived-mode-parent)))
     (nreverse groups)))
 
-(defconst lumenna--minor-words
-  '("a" "an" "the" "and" "or" "nor" "but" "as" "at" "by" "for" "from" "in" "into" "of" "on" "to" "under" "with")
-  "Words a title leaves in lower case, unless they start it.")
+(defun lumenna--label (spec fallback)
+  "SPEC's word, for a menu drawn now; FALLBACK while no word is known yet.
+A menu is drawn without asking for them, which would connect from inside
+redisplay: before Lumenna is first opened, its menu names each command by
+its function."
+  (if lumenna--words (lumenna-word spec) fallback))
 
-(defun lumenna--title-case (text)
-  "TEXT in Title Case, as Emacs's menus have their items.
-A word with a capital already, a key or a name, is left as it is."
-  (let ((first t) (case-fold-search nil))
-    (mapconcat (lambda (word)
-                 (prog1 (if (and (not first) (member word lumenna--minor-words))
-                            word
-                          (if (or (string-empty-p word) (string-match-p "[[:upper:]]" word))
-                              word
-                            (concat (upcase (substring word 0 1)) (substring word 1))))
-                   (setq first nil)))
-               (split-string text " ")
-               " ")))
+(defun lumenna--menu-name ()
+  "The name of Lumenna's menus.
+Before Lumenna is first opened nothing has said its name, and the menu bar
+needs one: then it is the package's."
+  (if lumenna--words (lumenna--name) "Lumenna"))
 
 (defun lumenna--menu (owner)
   "A menu of OWNER's keys, grouped as its help groups them.
 Where two keys run one command, the menu lists it once; the menu shows
-whichever key it is reached by."
-  (cons "Lumenna"
-        (mapcar (lambda (group)
-                  (let (seen)
-                    (cons (lumenna--title-case (car group))
-                          (delq nil (mapcar (lambda (binding)
-                                              (unless (memq (nth 2 binding) seen)
-                                                (push (nth 2 binding) seen)
-                                                (vector (lumenna--title-case (nth 1 binding)) (nth 2 binding))))
-                                            (cdr group))))))
-                (lumenna--key-groups owner))))
+whichever key it is reached by.  Every name is the core's, read as the menu
+is drawn (`:label')."
+  (append (list "Lumenna" :label '(lumenna--menu-name))
+          (seq-map-indexed
+           (lambda (group index)
+             (let (seen)
+               (append (list (format "%s" index) :label `(lumenna--label ',(car group) ,(format "%s" index)))
+                       (delq nil (mapcar (lambda (binding)
+                                           (let ((command (nth 2 binding)))
+                                             (unless (memq command seen)
+                                               (push command seen)
+                                               (vector (symbol-name command) command
+                                                       :label `(lumenna--label ',(nth 1 binding) ,(symbol-name command))))))
+                                         (cdr group))))))
+           (lumenna--key-groups owner))))
 
 (defun lumenna--define-menu (owner)
   "Give OWNER's keys a menu: a mode's in its own map, the global ones under Tools.
@@ -1043,13 +1107,14 @@ use whichever they prefer and find the same commands."
       (easy-menu-define nil (symbol-value (derived-mode-map-name owner))
         "Lumenna's commands here." (lumenna--menu owner))
     (define-key-after (lookup-key global-map [menu-bar tools]) [lumenna]
-      (cons "Lumenna" (easy-menu-create-menu "Lumenna" (cdr (lumenna--menu owner)))))))
+      (list 'menu-item '(lumenna--menu-name) (easy-menu-create-menu "Lumenna" (cddr (cdr (lumenna--menu owner))))))))
 
 (define-derived-mode lumenna-list-mode special-mode "Lumenna"
   "A Lumenna list: one item per line, said in words.
 Subtasks sit under their task, a level deeper; TAB folds them, as the app does.
 
 \\{lumenna-list-mode-map}"
+  (lumenna--mode-name)
   (setq-local truncate-lines nil)
   (setq-local revert-buffer-function (lambda (&rest _) (lumenna-refresh)))
   ;; Every line is an outline heading, its level the item's depth, for
@@ -1059,19 +1124,19 @@ Subtasks sit under their task, a level deeper; TAB folds them, as the app does.
   (setq-local imenu-create-index-function #'lumenna--imenu-index))
 
 (lumenna-define-keys lumenna-list-mode
-  ("Every list"
-   ("n" "Next line" next-line)
-   ("p" "Previous line" previous-line)
-   ("RET" "Do the main thing for this line" lumenna-activate)
-   ("." "This line's actions, by name" lumenna-act-at-point)
-   ("TAB" "Fold or unfold what sits under this line" lumenna-toggle)
-   ("g" "Read the list again" lumenna-refresh)
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("?" "These keys" lumenna-help)
-   ("h" "These keys" lumenna-help)
-   ("L" "Lumenna's places" lumenna)
-   ("q" "Leave this list" quit-window)))
+  (:every_list
+   ("n" :next_line next-line)
+   ("p" :previous_line previous-line)
+   ("RET" :main_thing lumenna-activate)
+   ("." :line_actions lumenna-act-at-point)
+   ("TAB" (kinds "collapse" "expand") lumenna-toggle)
+   ("g" :read_again lumenna-refresh)
+   ("u" (command "undo") lumenna-undo)
+   ("y" (command "redo") lumenna-redo)
+   ("?" :these_keys lumenna-help)
+   ("h" :these_keys lumenna-help)
+   ("L" :all_places lumenna)
+   ("q" :leave_list quit-window)))
 
 ;; Emacs's own undo has nothing to undo in a read-only list; what is meant
 ;; there is the store's.
@@ -1161,7 +1226,7 @@ priority and labels, or a filter's meaning and how many tasks it matches."
         (cursor (- (point) (minibuffer-prompt-end))))
     (funcall lumenna-announce-function
              (if (string-blank-p text)
-                 "Nothing typed yet"
+                 (lumenna-word :nothing_typed)
                (with-current-buffer (or lumenna--reading-for (lumenna--home-buffer))
                  (if (equal syntax "quick-add")
                      (progn (lumenna-send (list :Typing (list :Text (list :text text :cursor (lumenna--byte-offset text cursor)))))
@@ -1200,10 +1265,10 @@ line starts with the project, as the app has it."
     (let* ((start (plist-get lumenna--view :quick_add))
            (_ (lumenna-send (list :Typing "Open")))
            (text (unwind-protect
-                     (lumenna-read-line "Add a task: " "quick-add"
+                     (lumenna-read-line (lumenna--prompt (lumenna-word :add_a_task)) "quick-add"
                                         (and start (not (string-empty-p start)) start) 'lumenna-add-history)
                    (lumenna-send (list :Typing "Close")))))
-      (when (string-blank-p text) (user-error "Nothing to add"))
+      (when (string-blank-p text) (lumenna--refusal :nothing_to_add))
       (lumenna-send (list :QuickAdd text))
       (lumenna--follow)
       (when-let* ((refused (plist-get lumenna--view :add_refused)))
@@ -1217,6 +1282,7 @@ Under each heading are its projects, labels or saved filters, each with
 its own actions; a heading's adds another.
 
 \\{lumenna-home-mode-map}"
+  (lumenna--mode-name)
   (setq-local lumenna--held :sidebar_held)
   (setq-local lumenna--draw #'lumenna--place-rows)
   (setq-local lumenna--activate #'lumenna--open-place))
@@ -1234,8 +1300,9 @@ What the app folded away under a collapsed row (`:hidden') is left out."
                     :role (if (plist-get (plist-get entry :kind) :Group) "heading" "place")
                     :state (and (lumenna--true (plist-get entry :archived)) ["archived"]))
               rows)))
-    (cons "Lumenna"
-          (nreverse (cons (list :key "Settings" :title "Settings" :place '(:Place "Settings")) rows)))))
+    (cons (lumenna--name)
+          (nreverse (cons (list :key "Settings" :title (lumenna-word '(command "settings")) :place '(:Place "Settings"))
+                          rows)))))
 
 (declare-function lumenna-open-place "lumenna-tasks" (place))
 
@@ -1252,7 +1319,7 @@ What the app folded away under a collapsed row (`:hidden') is left out."
     (let ((entry (seq-find (lambda (e) (equal (plist-get (plist-get e :kind) :Group) group))
                            (append (plist-get lumenna--view :sidebar) nil))))
       (or (car (append (plist-get entry :offered) nil))
-          (user-error "Nothing adds one here")))))
+          (lumenna--refusal :nothing_to_do)))))
 
 ;;;###autoload
 (defun lumenna ()
@@ -1261,12 +1328,12 @@ What the app folded away under a collapsed row (`:hidden') is left out."
   (pop-to-buffer-same-window (lumenna--home-buffer)))
 
 (lumenna-define-keys lumenna-home-mode
-  ("The place at point"
-   ("RET" "Open it, or fold a heading" lumenna-activate)
-   ("r" "Rename" lumenna-act-rename)
-   ("M-p" "Move Up" lumenna-act-move-up)
-   ("M-n" "Move Down" lumenna-act-move-down)
-   ("d" "Delete" lumenna-act-delete)))
+  (:place_at_point
+   ("RET" :open_or_fold lumenna-activate)
+   ("r" (kinds "rename") lumenna-act-rename)
+   ("M-p" (kinds "move_up") lumenna-act-move-up)
+   ("M-n" (kinds "move_down") lumenna-act-move-down)
+   ("d" (kinds "delete") lumenna-act-delete)))
 
 ;;;; Keys, listed
 
@@ -1278,7 +1345,8 @@ What the app folded away under a collapsed row (`:hidden') is left out."
 (define-derived-mode lumenna-help-mode lumenna-list-mode "Lumenna Keys"
   "The keys of a Lumenna buffer, one per line.  RET runs one there.
 
-\{lumenna-help-mode-map}")
+\{lumenna-help-mode-map}"
+  (lumenna--mode-name '(word :keys)))
 
 (defvar-local lumenna--help-origin nil
   "The buffer whose keys this lists, where RET runs them.")
@@ -1288,24 +1356,24 @@ What the app folded away under a collapsed row (`:hidden') is left out."
   (let ((origin (current-buffer))
         (groups (lumenna--key-groups owner)))
     (lumenna--show-list
-     "*Lumenna keys*" #'lumenna-help-mode
+     (lumenna--buffer-name (lumenna-words :keys)) #'lumenna-help-mode
      (lambda ()
-       (cons (format "Keys in %s. RET runs one there, q goes back" title)
+       (cons (format (lumenna-word :keys_in) title "RET" "q")
              (mapcan (lambda (group)
-                       (cons (list :role "heading" :key (car group) :title (car group)
-                                   :face 'lumenna-heading)
-                             (mapcar (lambda (binding)
-                                       (list :role "key" :key (car binding) :depth 1
-                                             :title (format "%s: %s" (car binding) (nth 1 binding))
-                                             :command (nth 2 binding)))
-                                     (cdr group))))
+                       (let ((heading (lumenna-word (car group))))
+                         (cons (list :role "heading" :key heading :title heading :face 'lumenna-heading)
+                               (mapcar (lambda (binding)
+                                         (list :role "key" :key (car binding) :depth 1
+                                               :title (format "%s: %s" (car binding) (lumenna-word (nth 1 binding)))
+                                               :command (nth 2 binding)))
+                                       (cdr group)))))
                      groups)))
      'lumenna--help-origin origin
      'lumenna--activate #'lumenna--help-run)))
 
 (defun lumenna--help-run (row)
   "Go back to the buffer the keys are for, and run ROW's command there."
-  (let ((command (or (plist-get row :command) (user-error "A heading; its keys are under it")))
+  (let ((command (or (plist-get row :command) (lumenna--refusal :a_heading)))
         (origin lumenna--help-origin))
     (quit-window)
     (when (buffer-live-p origin) (pop-to-buffer-same-window origin))
@@ -1319,34 +1387,34 @@ What the app folded away under a collapsed row (`:hidden') is left out."
     (lumenna-dispatch)))
 
 (lumenna-define-keys lumenna-command-map
-  ("Places"
-   ("t" "Today" lumenna-today)
-   ("k" "Tasks" lumenna-tasks)
-   ("p" "Projects" lumenna-projects)
-   ("l" "Labels" lumenna-labels)
-   ("f" "Saved filters" lumenna-filters)
-   ("b" "Blocks" lumenna-blocks)
-   ("h" "History" lumenna-history)
-   ("x" "Trash" lumenna-trash)
-   ("L" "All of Lumenna's places" lumenna))
-  ("Do"
-   ("a" "Add a task" lumenna-add)
-   ("/" "Search or filter" lumenna-search)
-   ("u" "Undo" lumenna-undo)
-   ("y" "Redo" lumenna-redo)
-   ("n" "Sync now" lumenna-sync-now)
-   ("r" "Reminders due" lumenna-reminders-due))
-  ("Settings"
-   ("d" "Devices and sync" lumenna-devices)
-   ("s" "Settings" lumenna-settings))
-  ("Help"
-   ("?" "These keys" lumenna-dispatch)))
+  ((word :places)
+   ("t" (command "go-today") lumenna-today)
+   ("k" (command "go-tasks") lumenna-tasks)
+   ("p" :projects lumenna-projects)
+   ("l" :labels lumenna-labels)
+   ("f" (word :filters) lumenna-filters)
+   ("b" (command "go-blocks") lumenna-blocks)
+   ("h" (command "go-history") lumenna-history)
+   ("x" (command "go-trash") lumenna-trash)
+   ("L" :all_places lumenna))
+  (:doing
+   ("a" :add_task lumenna-add)
+   ("/" :search lumenna-search)
+   ("u" (command "undo") lumenna-undo)
+   ("y" (command "redo") lumenna-redo)
+   ("n" (command "sync-now") lumenna-sync-now)
+   ("r" (word :reminders_due) lumenna-reminders-due))
+  ((command "settings")
+   ("d" (command "devices") lumenna-devices)
+   ("s" (command "settings") lumenna-settings))
+  ((group "help")
+   ("?" :these_keys lumenna-dispatch)))
 
 ;;;###autoload
 (defun lumenna-dispatch ()
   "List everything Lumenna does from anywhere; RET on one runs it."
   (interactive)
-  (lumenna--show-help 'lumenna-command-map "Lumenna, from anywhere"))
+  (lumenna--show-help 'lumenna-command-map (lumenna-word :from_anywhere)))
 
 (provide 'lumenna)
 

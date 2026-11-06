@@ -23,6 +23,7 @@ come first, then this device's own, then what is done to the store as a
 whole, a line each, which RET does, asking first.
 
 \\{lumenna-settings-mode-map}"
+  (lumenna--mode-name '(command "settings"))
   (setq-local lumenna--draw #'lumenna--setting-rows)
   (setq-local lumenna--activate #'lumenna--change-setting))
 
@@ -41,10 +42,10 @@ whole, a line each, which RET does, asking first.
          (own (seq-remove (lambda (s) (lumenna--true (plist-get (plist-get s :setting) :syncs))) settings))
          (status (plist-get (plist-get lumenna--view :devices) :status)))
     (setq-local lumenna--empty nil)
-    (cons "Settings"
+    (cons (lumenna-word '(command "settings"))
           ;; Devices and sync first, as every app's settings have it.
-          (cons (list :key "devices" :title "Devices and sync"
-                      :text (lumenna--heading "Devices and sync" status))
+          (cons (list :key "devices" :title (lumenna-word '(command "devices"))
+                      :text (lumenna--heading (lumenna-word '(command "devices")) status))
                 (append
                  (mapcar (lambda (shown)
                            (let ((setting (plist-get shown :setting)))
@@ -78,7 +79,7 @@ still reads, as the empty list's words are."
   ;; again, its line follows when `lum' answers.
   (when (and lumenna--connection (jsonrpc-running-p lumenna--connection))
     (lumenna--offer-daemon))
-  (lumenna--show-screen "*Lumenna: Settings*" #'lumenna-settings-mode
+  (lumenna--show-screen (lumenna--buffer-name (lumenna-word '(command "settings"))) #'lumenna-settings-mode
                         (list (list :Settings "Open") (list :Devices "Show"))))
 
 (defun lumenna--change-setting (row)
@@ -86,7 +87,7 @@ still reads, as the empty list's words are."
 A button does its action, which the app asks about first."
   (cond ((equal (plist-get row :key) "devices") (lumenna-devices))
         ((plist-get row :action) (lumenna-act (plist-get row :action) row))
-        ((equal (plist-get row :role) "caption") (user-error "Nothing to do here"))
+        ((equal (plist-get row :role) "caption") (lumenna--refusal :nothing_to_do))
         (t (lumenna--change-setting-value row))))
 
 (defun lumenna--set (key value)
@@ -186,7 +187,7 @@ it failed, in `lum''s words."
              (kill-buffer out)
              (kill-buffer err)
              (if ok (funcall then response nil) (funcall then nil why)))))))
-    (funcall then nil (format "Cannot find `%s'" (or lumenna--daemon-program lumenna-lum-program)))))
+    (funcall then nil (format (lumenna-word :cannot_find) (or lumenna--daemon-program lumenna-lum-program)))))
 
 (defun lumenna--offer-daemon (&optional screen answering)
   "Tell the app whether the sync daemon is installed, once `lum' has said.
@@ -228,6 +229,7 @@ the app's asking, which is then told why when `lum' cannot say."
   "Paired devices and how syncing with each last went.  RET renames one.
 
 \\{lumenna-devices-mode-map}"
+  (lumenna--mode-name '(word :settings :devices))
   (setq-local lumenna--held :devices_held)
   (setq-local lumenna--draw #'lumenna--device-rows)
   (setq-local lumenna--activate (lambda (_row) (lumenna-act-rename))))
@@ -240,7 +242,7 @@ the app's asking, which is then told why when `lum' cannot say."
          (lines (append (plist-get lumenna--lines :devices) nil)))
     ;; With no devices, the line under the heading says so, in the device list's words.
     (setq-local lumenna--empty (plist-get list :empty))
-    (cons (lumenna--heading (if shown (plist-get devices :status) "Devices and sync")
+    (cons (lumenna--heading (if shown (plist-get devices :status) (lumenna-word '(command "devices")))
                             (plist-get (plist-get devices :pairing) :problem))
           (cl-mapcar (lambda (device line)
                        (list :key (plist-get device :node_id) :text (plist-get line :text)
@@ -251,12 +253,16 @@ the app's asking, which is then told why when `lum' cannot say."
 (defun lumenna-devices ()
   "Show the paired devices, and how syncing with each is going."
   (interactive)
-  (lumenna--show-screen "*Lumenna: Devices*" #'lumenna-devices-mode (list (list :Devices "Show"))))
+  (lumenna--show-screen (lumenna--devices-buffer) #'lumenna-devices-mode (list (list :Devices "Show"))))
+
+(defun lumenna--devices-buffer ()
+  "The Devices buffer's name."
+  (lumenna--buffer-name (lumenna-words :settings :devices)))
 
 (defmacro lumenna--on-devices (&rest body)
   "Run BODY in the Devices buffer, opened if it is not."
   (declare (indent 0))
-  `(with-current-buffer (or (get-buffer "*Lumenna: Devices*")
+  `(with-current-buffer (or (get-buffer (lumenna--devices-buffer))
                             (save-window-excursion (lumenna-devices)))
      ,@body))
 
@@ -313,7 +319,7 @@ Only when asked: the clipboard is the person's own."
   (interactive)
   (lumenna--on-devices
     (let ((code (plist-get (lumenna--pairing) :mine)))
-      (unless code (user-error "No code is shown; this device is not waiting to be found"))
+      (unless code (lumenna--refusal :no_code))
       (kill-new code)
       (message "%s" (string-remove-suffix "." (plist-get (lumenna--pairing-words) :copied))))))
 
@@ -321,7 +327,7 @@ Only when asked: the clipboard is the person's own."
   "Give up the pairing under way."
   (interactive)
   (lumenna--on-devices
-    (unless (lumenna--pairing) (user-error "No pairing is under way"))
+    (unless (lumenna--pairing) (lumenna--refusal :no_pairing))
     (lumenna--pair "Cancel")))
 
 (defvar lumenna--words-asked nil
@@ -365,7 +371,7 @@ MATCHING is the question whole and WORDS are pairing's, the core's both."
 
 (defun lumenna-restore-backup (file)
   "Merge backup FILE into the store.  Nothing here is lost; it only adds."
-  (interactive (list (read-file-name "Restore backup: " nil nil t)))
+  (interactive (list (read-file-name (lumenna--prompt (lumenna-words :files :restore)) nil nil t)))
   (lumenna-say (lumenna-call "restore" :file (expand-file-name file)))
   (lumenna--tick))
 
@@ -376,39 +382,39 @@ the file, and where to keep it is asked."
   (interactive)
   (let* ((choices (mapcar (lambda (choice) (cons (plist-get choice :label) (plist-get choice :format)))
                           (append (plist-get (plist-get lumenna--view :settings) :exports) nil)))
-         (format (or (cdr (assoc (completing-read "Export: " choices nil t) choices))
-                     (user-error "Nothing exported"))))
+         (format (or (cdr (assoc (completing-read (lumenna--prompt (lumenna-words :files :export)) choices nil t) choices))
+                     (lumenna--refusal :nothing_done))))
     (lumenna-send (list :Settings (list :Export format)))
     (lumenna--follow)))
 
 (defun lumenna-import (file)
   "Read FILE, a JSON export or a backup, into the store.  Nothing is removed."
-  (interactive (list (read-file-name "Import: " nil nil t)))
+  (interactive (list (read-file-name (lumenna--prompt (lumenna-words :files :import)) nil nil t)))
   (lumenna-say (lumenna-call "import" :file (expand-file-name file)))
   (lumenna--tick))
 
 ;;;; Menus
 
 (lumenna-define-keys lumenna-settings-mode
-  ("The setting at point"
-   ("RET" "Change it" lumenna-activate))
-  ("Devices"
-   ("d" "Devices and sync" lumenna-devices))
-  ("Data"
-   ("b" "Back up now" lumenna-back-up-now)
-   ("R" "Restore from a backup" lumenna-restore-backup)
-   ("E" "Export" lumenna-export)
-   ("I" "Import an export or a backup" lumenna-import)))
+  (:setting_at_point
+   ("RET" :change_it lumenna-activate))
+  ((word :settings :devices)
+   ("d" (command "devices") lumenna-devices))
+  (:data
+   ("b" (command "back-up") lumenna-back-up-now)
+   ("R" (command "restore-backup") lumenna-restore-backup)
+   ("E" (word :files :export) lumenna-export)
+   ("I" :import_any lumenna-import)))
 
 (lumenna-define-keys lumenna-devices-mode
-  ("The device at point"
-   ("r" "Rename" lumenna-act-rename)
-   ("d" "Unpair" lumenna-act-delete))
-  ("Syncing"
-   ("s" "Sync now" lumenna-sync-now)
-   ("P" "Pair a device" lumenna-pair)
-   ("w" "Copy code" lumenna-pair-copy-code)
-   ("c" "Cancel a pairing" lumenna-pair-cancel)))
+  (:device_at_point
+   ("r" (kinds "rename") lumenna-act-rename)
+   ("d" (kinds "unpair") lumenna-act-delete))
+  (:syncing
+   ("s" (command "sync-now") lumenna-sync-now)
+   ("P" :pair_a_device lumenna-pair)
+   ("w" :copy_code lumenna-pair-copy-code)
+   ("c" :cancel_pairing lumenna-pair-cancel)))
 
 (provide 'lumenna-settings)
 

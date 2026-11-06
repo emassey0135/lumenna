@@ -64,7 +64,7 @@ export function Settings(props: {
       <Dialog>
         <Heading slot="title">{commandTitle("settings")}</Heading>
         <Tabs>
-          <TabList aria-label="Settings pages">
+          <TabList aria-label={words().settingsPages}>
             {pages.map((page) => (
               <Tab key={page.id} id={page.id}>
                 {page.title}

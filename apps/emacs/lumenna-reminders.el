@@ -106,7 +106,7 @@ Its buttons are the core's words, and each is the app's to carry out."
            (first (aref (plist-get due :firings) 0)))
       (ignore-errors
         (notifications-notify
-         :title (plist-get due :title) :body (plist-get due :text) :app-name "Lumenna"
+         :title (plist-get due :title) :body (plist-get due :text) :app-name (lumenna--name)
          ;; The app's buttons, in the order every platform shows them: what the reminder
          ;; offers of its own (Carry Forward, Replan), then Dismiss and Snooze.
          :actions (append (mapcan (lambda (button) (list (plist-get button :id) (plist-get button :title)))
@@ -145,11 +145,11 @@ Its buttons are the core's words, and each is the app's to carry out."
                          (lumenna-reminders--hand-over found now))
            :error-fn (lambda (err)
                        (setq lumenna-reminders--asking nil)
-                       (message "Lumenna reminders: %s" (plist-get err :message)))
+                       (message "%s" (format (lumenna-word :reminders_failed) (plist-get err :message))))
            :timeout-fn (lambda () (setq lumenna-reminders--asking nil))
            :timeout 30)
         (error (setq lumenna-reminders--asking nil)
-               (message "Lumenna reminders: %s" (error-message-string err)))))))
+               (message "%s" (format (lumenna-word :reminders_failed) (error-message-string err))))))))
 
 (defun lumenna-reminders--start (every)
   "Ask what came due every EVERY seconds from now."
@@ -234,6 +234,7 @@ the reminder due ID.  The app takes it off the list and says what it did."
   "What came due and was not dealt with yet.  d dismisses one, z snoozes it.
 
 \\{lumenna-reminders-due-mode-map}"
+  (lumenna--mode-name '(word :reminders_due))
   (setq-local lumenna--draw #'lumenna-reminders--due-rows)
   ;; The app's side list: after a button, the reminder that took its place is in hand.
   (setq-local lumenna--held :due_held)
@@ -242,8 +243,8 @@ the reminder due ID.  The app takes it off the list and says what it did."
 (defun lumenna-reminders--due-rows ()
   "The reminders the app lists as due, as rows."
   (let ((due (append (plist-get lumenna--view :due) nil)))
-    (setq-local lumenna--empty "Nothing has come due")
-    (cons (if due (format "Reminders due, %d" (length due)) "Reminders due")
+    (setq-local lumenna--empty (lumenna-words :nothing_due))
+    (cons (if due (format "%s, %d" (lumenna-words :reminders_due) (length due)) (lumenna-words :reminders_due))
           (mapcar (lambda (one)
                     (list :key (plist-get one :id) :role "reminder" :due one :title (plist-get one :text)))
                   due))))
@@ -253,7 +254,7 @@ the reminder due ID.  The app takes it off the list and says what it did."
   "List what came due and was not dealt with: d dismisses one, z snoozes it."
   (interactive)
   (let ((home (lumenna--home-buffer))
-        (buffer (get-buffer-create "*Lumenna: Reminders due*")))
+        (buffer (get-buffer-create (lumenna--buffer-name (lumenna-words :reminders_due)))))
     (with-current-buffer buffer
       (unless (derived-mode-p 'lumenna-reminders-due-mode)
         (lumenna-reminders-due-mode)
@@ -265,7 +266,7 @@ the reminder due ID.  The app takes it off the list and says what it did."
 
 (defun lumenna-reminders--at-point ()
   "The reminder due at point, as the app lists it, or a `user-error'."
-  (or (plist-get (lumenna-row) :due) (user-error "No reminder on this line")))
+  (or (plist-get (lumenna-row) :due) (lumenna--refusal :no_item)))
 
 (defun lumenna-reminders--press (event button)
   "Send EVENT for the reminder at point.
@@ -278,7 +279,7 @@ the app's words."
       (let ((lumenna--heard (list 'heard)))
         (lumenna-send (list :Due (list (intern (concat ":" event)) id)) 0)
         (lumenna--settle)
-        (user-error "%s" (string-join (or (cdr lumenna--heard) '("Nothing to do here")) " "))))))
+        (user-error "%s" (string-join (or (cdr lumenna--heard) (list (lumenna-word :nothing_to_do))) " "))))))
 
 (defun lumenna-reminders-dismiss ()
   "Dismiss the reminder at point, on every device."
@@ -315,6 +316,7 @@ Once something is replanned, the app dismisses the warning."
 a adds one, by a phrase such as \"5m before start\"; d removes one of its own.
 
 \\{lumenna-reminder-list-mode-map}"
+  (lumenna--mode-name :reminders)
   (setq-local lumenna--held :reminders_held)
   (setq-local lumenna--draw #'lumenna-reminders--rows)
   (add-hook 'kill-buffer-hook #'lumenna-reminders--close nil t))
@@ -329,7 +331,7 @@ a adds one, by a phrase such as \"5m before start\"; d removes one of its own.
          (lines (append (plist-get lumenna--lines :reminders) nil)))
     (setq-local lumenna--empty nil)
     (if (null list)
-        (list "No reminders shown")
+        (list (lumenna-words :nothing_here))
       (cons (plist-get list :announcement)
             (cl-mapcar (lambda (reminder line)
                          (list :key (plist-get reminder :id) :id (plist-get reminder :id) :role "reminder"
@@ -344,11 +346,10 @@ a adds one, by a phrase such as \"5m before start\"; d removes one of its own.
                           (lumenna--buffers-of lumenna--screen)))
       (let ((screen lumenna--screen) (view lumenna--view) (lines lumenna--lines)
             (buffer (get-buffer-create
-                     (format "*Lumenna reminders: %s*"
-                             (or (plist-get (plist-get lumenna--acted-on :block) :title)
-                                 (plist-get lumenna--acted-on :title)
-                                 (plist-get (plist-get (plist-get lumenna--view :details) :task) :title)
-                                 "Reminders")))))
+                     (apply #'lumenna--buffer-name (lumenna-word :reminders)
+                            (delq nil (list (or (plist-get (plist-get lumenna--acted-on :block) :title)
+                                                (plist-get lumenna--acted-on :title)
+                                                (plist-get (plist-get (plist-get lumenna--view :details) :task) :title))))))))
         (with-current-buffer buffer
           (lumenna-reminder-list-mode)
           (lumenna--attach screen)
@@ -368,23 +369,23 @@ a adds one, by a phrase such as \"5m before start\"; d removes one of its own.
 One the core cannot read is asked again, with the core's sentence first."
   (interactive)
   (lumenna-act (or (car (append (plist-get (lumenna-reminders--list) :offered) nil))
-                   (user-error "Nothing adds a reminder here"))
+                   (lumenna--refusal :nothing_to_do))
                nil "Reminders"))
 
 ;;;; Menus
 
 (lumenna-define-keys lumenna-reminders-due-mode
-  ("The reminder at point"
-   ("RET" "Open what it is about" lumenna-activate)
-   ("d" "Dismiss" lumenna-reminders-dismiss)
-   ("z" "Snooze" lumenna-reminders-snooze)
-   ("c" "Carry Forward, where it offers to" lumenna-reminders-carry)
-   ("r" "Replan from Now, where it offers to" lumenna-reminders-replan)))
+  (:reminder_at_point
+   ("RET" :open_about lumenna-activate)
+   ("d" :dismiss lumenna-reminders-dismiss)
+   ("z" :snooze lumenna-reminders-snooze)
+   ("c" (kinds "carry_rest") lumenna-reminders-carry)
+   ("r" (kinds "replan") lumenna-reminders-replan)))
 
 (lumenna-define-keys lumenna-reminder-list-mode
-  ("Reminders"
-   ("a" "Add Reminder" lumenna-reminders-add)
-   ("d" "Remove Reminder" lumenna-act-delete)))
+  (:reminders
+   ("a" (kinds "new") lumenna-reminders-add)
+   ("d" (kinds "delete") lumenna-act-delete)))
 
 (provide 'lumenna-reminders)
 

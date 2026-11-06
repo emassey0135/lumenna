@@ -27,6 +27,7 @@ import { Sidebar } from "./Sidebar";
 import { TaskList } from "./TaskList";
 import { useFolderBackups } from "./backups";
 import { commandTitle, loadWords, words } from "./words";
+import type { Words } from "./words";
 
 /** The store's name in this browser: one, unless a page asks for another (`?profile=`). */
 const profile = new URLSearchParams(location.search).get("profile") ?? "default";
@@ -46,8 +47,8 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
-  // What shows while the store opens, the core's once its module has loaded.
-  const [openingWords, setOpeningWords] = useState("");
+  // The core's words once its module has loaded, which may be before the store opens or fails to.
+  const [said, setSaid] = useState<Words | undefined>();
   const screen = useScreen();
   const place: Place = screen?.place ?? { tag: "Tasks" };
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -59,7 +60,10 @@ export function App() {
   useFolderBackups(ready);
 
   useEffect(() => {
-    void core.opening().then(setOpeningWords, () => undefined);
+    // The words need the core's module, not the store, so even a tab waiting on another's says
+    // the core's.
+    const read = loadWords();
+    void read.then(() => setSaid(words()), () => undefined);
     // In a local-first app the browser may hold changes that are nowhere else yet: storage it
     // may evict under pressure is data loss. Ask for it to be kept, at once; whether it was is
     // said once the core's words are read.
@@ -67,7 +71,7 @@ export function App() {
     // Open in another tab, it says so until that tab is closed, then opens here.
     core.open(profile, Comlink.proxy((why: string) => setFailure(why))).then(
       () =>
-        Promise.all([start(), loadWords()]).then(() => {
+        Promise.all([start(), read]).then(() => {
           setFailure(undefined);
           setReady(true);
           launchFromAddress();
@@ -227,19 +231,19 @@ export function App() {
   if (failure) {
     return (
       <main className="app">
-        <h1>Lumenna</h1>
+        {said && <h1>{said.metadata.name}</h1>}
         <p role="alert">{failure}</p>
       </main>
     );
   }
   if (!ready || !screen) {
-    return <p role="status">{openingWords}</p>;
+    return <p role="status">{said?.opening}</p>;
   }
 
   return (
     <div className="app">
       <header>
-        <h1>Lumenna</h1>
+        <h1>{words().metadata.name}</h1>
         <Button onPress={newTask}>{commandTitle("new-task")}</Button>
         <Button onPress={() => void undo(false)}>{commandTitle("undo")}</Button>
         <Button onPress={() => void undo(true)}>{commandTitle("redo")}</Button>
@@ -253,7 +257,7 @@ export function App() {
         )}
         <RemindersDue due={screen.due ?? []} />
       </header>
-      <nav aria-label="Places">
+      <nav aria-label={words().places}>
         <Sidebar entries={screen.sidebar} place={place} onPlace={(to) => void send({ tag: "Open", value0: to })} />
       </nav>
       <main aria-label={screen.title}>

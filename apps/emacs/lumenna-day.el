@@ -43,7 +43,7 @@ actions, then each row in the app's words and order."
                       items lines))))
     (setq-local lumenna--empty nil)
     (if (null day)
-        (list "No day")
+        (list (lumenna-words :nothing_here))
       (cons (append (car rows) (list :heading t)) (cdr rows)))))
 
 (define-derived-mode lumenna-day-mode lumenna-list-mode "Lumenna Day"
@@ -53,6 +53,7 @@ a cancelled day back.  [ and ] move between days.  On the first line, . offers
 the day's own actions: Plan the Day, Replan from Now and the rest.
 
 \\{lumenna-day-mode-map}"
+  (lumenna--mode-name '(group "day"))
   (setq-local lumenna--draw #'lumenna--day-rows)
   (setq-local lumenna--activate #'lumenna--day-activate))
 
@@ -60,7 +61,7 @@ the day's own actions: Plan the Day, Replan from Now and the rest.
 (defun lumenna-today ()
   "Show today, opening on now."
   (interactive)
-  (lumenna--show-screen "*Lumenna: Day*" #'lumenna-day-mode (list (list :Open "Today"))))
+  (lumenna--show-screen (lumenna--buffer-name (lumenna-word '(group "day"))) #'lumenna-day-mode (list (list :Open "Today"))))
 
 (defun lumenna--day-move (step)
   "Move through the days by STEP, as the app names it: Previous, Next, Now, Ask."
@@ -126,7 +127,7 @@ A day that does not offer it says the app's sentence."
       (let ((lumenna--heard (list 'heard)))
         (lumenna-send (list :RunDay (vector kind)))
         (lumenna--settle)
-        (user-error "%s" (string-join (or (cdr lumenna--heard) '("Nothing to do here")) " "))))))
+        (user-error "%s" (string-join (or (cdr lumenna--heard) (list (lumenna-word :nothing_to_do))) " "))))))
 
 (defun lumenna-day-plan ()
   "Plan the day shown: each work block still to come given its most urgent tasks."
@@ -208,7 +209,10 @@ now are lines to hear again."
          (prompt (lumenna--prompt (plist-get field :hint) (plist-get field :label)))
          (example (plist-get field :example)))
     (pcase (plist-get field :kind)
-      ("toggle" (if (y-or-n-p (format "%s (now %s)? " (plist-get field :label) (if (equal now "true") "yes" "no")))
+      ("toggle" (if (y-or-n-p (lumenna--prompt
+                               (concat (format (lumenna-word :now_is) (plist-get field :label)
+                                               (plist-get (aref (lumenna-words :yes_no) (if (equal now "true") 0 1)) :title))
+                                       "?")))
                     "true" "false"))
       ("choice"
        (let* ((choices (mapcar (lambda (o) (cons (plist-get o :title) (plist-get o :id)))
@@ -239,7 +243,7 @@ Refused, the core's reason is said and a field asked for again."
                                              (append (plist-get (plist-get lumenna--view :block_form) :fields) nil))))
                   (lumenna--block-field key (lumenna--read-block-field (plist-get lumenna--view :block_form) field))))
             (let* ((choices (mapcar (lambda (f) (cons (plist-get f :label) f)) fields))
-                   (field (cdr (assoc (completing-read (lumenna--prompt (plist-get form :refusal) (plist-get form :heading) "Change")
+                   (field (cdr (assoc (completing-read (lumenna--prompt (plist-get form :refusal) (plist-get form :heading) (lumenna-word :change))
                                                        choices nil t)
                                       choices))))
               (lumenna--block-field (plist-get field :key) (lumenna--read-block-field form field))))
@@ -259,6 +263,7 @@ Refused, the core's reason is said and a field asked for again."
   "Every block series.  RET or e changes every occurrence; d deletes one.
 
 \\{lumenna-blocks-mode-map}"
+  (lumenna--mode-name '(command "go-blocks"))
   (setq-local lumenna--draw #'lumenna--list-rows)
   (setq-local lumenna--activate (lambda (_row) (lumenna-act-edit))))
 
@@ -271,39 +276,39 @@ Refused, the core's reason is said and a field asked for again."
 ;;;; Menus
 
 (lumenna-define-keys lumenna-day-mode
-  ("The day"
-   ("a" "Add a block" lumenna-day-add-block)
-   ("[" "Previous day" lumenna-day-previous)
-   ("]" "Next day" lumenna-day-next)
-   ("t" "Today, at now" lumenna-day-today)
-   ("j" "Go to a day" lumenna-day-go-to)
-   ("P" "Plan the Day" lumenna-day-plan)
-   ("r" "Replan from Now" lumenna-day-replan)
-   ("w" "What Should I Work On?" lumenna-day-what-now)
-   ("E" "End the Day" lumenna-day-end)
-   ("C" "Clear the Rest of the Day" lumenna-day-clear))
-  ("A block"
-   ("e" "Edit Block, or a sitting's Edit Task Details" lumenna-act-edit)
-   ("i" "Assign a Task" lumenna-act-assign)
-   ("x" "Cancel This Day" lumenna-act-cancel-day)
-   ("o" "Restore This Day" lumenna-act-restore)
-   ("R" "Reminders" lumenna-act-reminders)
-   ("N" "End Now" lumenna-act-end-now)
-   ("+" "Add 15 Minutes" lumenna-act-extend)
-   ("f" "Carry Forward, or a block's Carry the Rest Forward" lumenna-act-carry)
-   ("d" "Delete Block, or a sitting's Unassign" lumenna-act-delete))
-  ("A task in a block"
-   ("RET" "The task itself" lumenna-activate)
-   ("s" "Start, Pause or Resume Timer" lumenna-act-timer)
-   ("S" "Stop Timer" lumenna-act-stop-timer)
-   ("l" "Planned Length" lumenna-act-planned-length)
-   ("m" "Log Minutes" lumenna-act-log-minutes)))
+  ((word :the_day)
+   ("a" (command "new-block") lumenna-day-add-block)
+   ("[" (command "previous-day") lumenna-day-previous)
+   ("]" (command "next-day") lumenna-day-next)
+   ("t" (command "go-to-now") lumenna-day-today)
+   ("j" (command "go-to-day") lumenna-day-go-to)
+   ("P" (command "plan-day") lumenna-day-plan)
+   ("r" (command "replan") lumenna-day-replan)
+   ("w" (command "what-now") lumenna-day-what-now)
+   ("E" (command "end-day") lumenna-day-end)
+   ("C" (command "clear-day") lumenna-day-clear))
+  (:a_block
+   ("e" (kinds "edit" "edit_task") lumenna-act-edit)
+   ("i" (kinds "assign_task") lumenna-act-assign)
+   ("x" (kinds "cancel_day") lumenna-act-cancel-day)
+   ("o" (kinds "restore" "restore_day") lumenna-act-restore)
+   ("R" (kinds "reminders") lumenna-act-reminders)
+   ("N" (kinds "end_now") lumenna-act-end-now)
+   ("+" (kinds "extend") lumenna-act-extend)
+   ("f" (kinds "carry_forward" "carry_rest") lumenna-act-carry)
+   ("d" (kinds "delete" "unassign") lumenna-act-delete))
+  (:a_task_in_a_block
+   ("RET" :the_task_itself lumenna-activate)
+   ("s" (kinds "start_timer" "pause_timer" "resume_timer") lumenna-act-timer)
+   ("S" (kinds "stop_timer") lumenna-act-stop-timer)
+   ("l" (kinds "planned_length") lumenna-act-planned-length)
+   ("m" (kinds "log_minutes") lumenna-act-log-minutes)))
 
 (lumenna-define-keys lumenna-blocks-mode
-  ("The block at point"
-   ("e" "Edit Block" lumenna-act-edit)
-   ("R" "Reminders" lumenna-act-reminders)
-   ("d" "Delete Block" lumenna-act-delete)))
+  (:block_at_point
+   ("e" (kinds "edit") lumenna-act-edit)
+   ("R" (kinds "reminders") lumenna-act-reminders)
+   ("d" (kinds "delete") lumenna-act-delete)))
 
 (provide 'lumenna-day)
 

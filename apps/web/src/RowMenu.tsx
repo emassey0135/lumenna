@@ -6,6 +6,7 @@
 // when it closes, and only then does the chosen action run, so a dialog the action opens
 // returns focus to the row rather than to a menu item that no longer exists.
 
+import { words } from "./words";
 import { Button, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import type { KeyboardEvent } from "react";
 import type { Named } from "./actions";
@@ -20,7 +21,7 @@ export function RowMenu<A extends Named>(props: {
   const items = props.actions.map((action, index) => ({ id: index, action }));
   return (
     <MenuTrigger isOpen={props.isOpen} onOpenChange={props.onOpenChange}>
-      <Button isDisabled={props.actions.length === 0}>{props.label ?? "Actions"}</Button>
+      <Button isDisabled={props.actions.length === 0}>{props.label ?? words().details.actions}</Button>
       <Popover>
         <Menu
           items={items}
