@@ -41,7 +41,7 @@ impl ksni::Tray for Tray {
     }
 
     fn title(&self) -> String {
-        "Lumenna".to_owned()
+        crate::words().metadata.name.clone()
     }
 
     fn icon_name(&self) -> String {

@@ -92,7 +92,7 @@ impl Control {
 /// it completed.
 fn described(field: &lumenna_records::FormField) -> String {
     match field.syntax {
-        Some(lumenna_records::Syntax::Filter) => format!("{} {}", field.hint, crate::completion::HINT).trim().to_owned(),
+        Some(lumenna_records::Syntax::Filter) => format!("{} {}", field.hint, crate::words().completion_hint).trim().to_owned(),
         _ => field.hint.clone(),
     }
 }
@@ -297,10 +297,10 @@ fn build(app: &App, view: &BlockFormView) -> Rc<Open> {
         fields.insert(key, (control, with));
     }
     // The app's word for the button; its mnemonic this app's, clear of every field's.
-    let yes = if view.yes == "Save" { "Sa_ve".to_owned() } else { view.yes.replace('_', "__") };
+    let yes = lumenna_app::devices::marked(&view.yes, 'v', '_');
     let ok = gtk::Button::with_mnemonic(&yes);
     ok.add_css_class("suggested-action");
-    let cancel = gtk::Button::with_label("Cancel");
+    let cancel = gtk::Button::with_label(&crate::words().cancel);
     let buttons = gtk::Box::builder().spacing(8).halign(gtk::Align::End).margin_top(12).build();
     buttons.append(&cancel);
     buttons.append(&ok);

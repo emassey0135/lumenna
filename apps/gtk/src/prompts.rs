@@ -12,6 +12,7 @@ use futures_channel::oneshot;
 use adw::prelude::{AdwDialogExt, AlertDialogExt, AlertDialogExtManual};
 use gtk::prelude::*;
 use gtk::{gdk, glib};
+use lumenna_app::devices::marked;
 use lumenna_records::types::Swatch;
 
 use crate::tree::{Item, Tree};
@@ -34,7 +35,7 @@ fn response_label(text: &str) -> String {
 /// Says something went wrong, with a Close button.
 pub fn fail(parent: &impl IsA<gtk::Widget>, message: &str) {
     let dialog = alert(message, "");
-    dialog.add_response("close", "_Close");
+    dialog.add_response("close", &marked(&crate::words().close, 'C', '_'));
     dialog.set_default_response(Some("close"));
     dialog.set_close_response("close");
     dialog.present(Some(parent));
@@ -43,7 +44,7 @@ pub fn fail(parent: &impl IsA<gtk::Widget>, message: &str) {
 /// Says something went wrong, and waits for Close.
 pub async fn tell(parent: &impl IsA<gtk::Widget>, message: &str) {
     let dialog = alert(message, "");
-    dialog.add_response("close", "_Close");
+    dialog.add_response("close", &marked(&crate::words().close, 'C', '_'));
     dialog.set_default_response(Some("close"));
     dialog.set_close_response("close");
     dialog.choose_future(Some(parent)).await;
@@ -53,7 +54,7 @@ pub async fn tell(parent: &impl IsA<gtk::Widget>, message: &str) {
 /// a `destructive` answer is drawn as one, as GNOME marks what cannot be put right.
 pub async fn confirm(parent: &impl IsA<gtk::Widget>, heading: &str, detail: &str, action: &str, destructive: bool) -> bool {
     let appearance = if destructive { adw::ResponseAppearance::Destructive } else { adw::ResponseAppearance::Suggested };
-    answer(parent, heading, detail, "_Cancel", action, appearance).await
+    answer(parent, heading, detail, &marked(&crate::words().cancel, 'C', '_'), action, appearance).await
 }
 
 /// Asks a question answered yes or no, `no` first and the default, as GNOME puts the safe
@@ -89,7 +90,7 @@ pub async fn choose(
     destructive: bool,
 ) -> Option<usize> {
     let dialog = alert(heading, detail);
-    dialog.add_response("cancel", "_Cancel");
+    dialog.add_response("cancel", &marked(&crate::words().cancel, 'C', '_'));
     for (index, option) in options.iter().enumerate() {
         let id = index.to_string();
         dialog.add_response(&id, &response_label(option));
@@ -119,7 +120,7 @@ fn open<T: 'static>(
         .destroy_with_parent(true)
         .default_width(420)
         .build();
-    let cancel = gtk::Button::with_mnemonic("_Cancel");
+    let cancel = gtk::Button::with_mnemonic(&marked(&crate::words().cancel, 'C', '_'));
     let ok = gtk::Button::with_mnemonic(&with_mnemonic(confirm_label));
     ok.add_css_class("suggested-action");
     let buttons = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(8).halign(gtk::Align::End).build();
@@ -299,7 +300,7 @@ pub async fn ask(
     let message = match line {
         Line::Filter => {
             crate::completion::attach(&entry, crate::completion::Source::Filter);
-            format!("{message} {}", crate::completion::HINT).trim().to_owned()
+            format!("{message} {}", crate::words().completion_hint).trim().to_owned()
         }
         _ => message.to_owned(),
     };

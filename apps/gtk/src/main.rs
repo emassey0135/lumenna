@@ -40,13 +40,28 @@ mod tree;
 mod window;
 
 use std::path::Path;
+use std::sync::OnceLock;
 
 use gtk::{gio, glib};
 use gtk::prelude::*;
+use lumenna_app::Capitals;
+use lumenna_app::words::{ShellWords, ThisDevice, shell_words};
 use lumenna_ffi::profile;
 
 /// The application identifier, which is also the name it owns on the session bus.
 pub const ID: &str = lumenna_records::words::ID;
+
+/// Every fixed word this app draws, the core's: in Title Case, as GNOME writes buttons and
+/// menus, on a computer. A label GNOME writes in sentence case takes `sentence_case` of it.
+pub fn words() -> &'static ShellWords {
+    static WORDS: OnceLock<ShellWords> = OnceLock::new();
+    WORDS.get_or_init(|| shell_words(Capitals::Title, ThisDevice::Computer))
+}
+
+/// A command's name, the core's (`keys::command_of`): its id only if the table lost it.
+pub fn command_title(id: &'static str) -> &'static str {
+    lumenna_app::keys::command_of(id).map_or(id, |command| command.title)
+}
 
 /// Whether the app runs in a sandbox, a Flatpak's: it opens at sign-in through the Background
 /// portal (`autostart.rs`), and its tray owns no well-known name (`tray.rs`). Its store is the
@@ -87,7 +102,7 @@ fn application_id(directory: &Path) -> String {
 fn main() -> glib::ExitCode {
     let arguments = profile::arguments(std::env::args().skip(1));
     let Some(directory) = profile::directory(arguments.profile) else {
-        eprintln!("Lumenna cannot find a folder for its data. Set LUMENNA_PROFILE to one.");
+        eprintln!("{}", words().no_data_folder);
         return glib::ExitCode::FAILURE;
     };
     let application = gtk::Application::builder().application_id(application_id(&directory)).build();

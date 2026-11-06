@@ -374,12 +374,15 @@ impl List {
 
 fn build(app: &App) -> Rc<List> {
     // What it is for, as the core names it: "Reminders for Call the bank".
-    let title = app.model.view().reminders_title.clone().unwrap_or_else(|| "Reminders".to_owned());
+    let title = app.model.view().reminders_title.clone().unwrap_or_default();
     let status = gtk::Label::builder().xalign(0.0).wrap(true).build();
-    let tree = Tree::new("Reminders");
-    let add = gtk::Button::with_label("Add Reminder…");
-    let remove = gtk::Button::with_label("Remove Reminder");
-    let close = gtk::Button::with_label("Close");
+    let tree = Tree::new(&title);
+    // Titled as the core titles them as the list is drawn (`List::show`); Remove Reminder
+    // before any reminder offers it, so the button never goes nameless.
+    let add = gtk::Button::new();
+    let remove_title = lumenna_records::actions::reminder("", "", false).pop().map(|remove| remove.title).unwrap_or_default();
+    let remove = gtk::Button::with_label(&remove_title);
+    let close = gtk::Button::with_label(&crate::words().close);
     let buttons = gtk::Box::builder().spacing(8).margin_top(12).build();
     buttons.append(&add);
     buttons.append(&remove);

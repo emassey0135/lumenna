@@ -121,7 +121,7 @@ fn ask(app: &Rc<App>, open: Asking, worded: Vec<String>) {
                 if let Some(refusal) = refusal {
                     prompts::tell(&window, &refusal).await;
                 }
-                let picked = prompts::pick(&window, &title, "C_hoices", &options, &yes).await.and_then(|index| offered.choices.get(index));
+                let picked = prompts::pick(&window, &title, &lumenna_app::devices::marked(&crate::words().choices, 'h', '_'), &options, &yes).await.and_then(|index| offered.choices.get(index));
                 answer(&app, number, picked.map(|choice| Answer::Picked { id: choice.id.clone(), length: None }));
             });
         }

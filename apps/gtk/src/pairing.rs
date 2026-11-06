@@ -167,7 +167,7 @@ fn build(parent: &gtk::Window, words: PairingWords) -> Rc<Dialog> {
     their_label.set_mnemonic_widget(Some(&their_code));
     let with_code = gtk::Button::with_mnemonic(&marked(&words.join, 'P', '_'));
     let status = gtk::Label::builder().wrap(true).xalign(0.0).build();
-    let cancel = gtk::Button::with_mnemonic("_Cancel");
+    let cancel = gtk::Button::with_mnemonic(&lumenna_app::devices::marked(&crate::words().cancel, 'C', '_'));
     let body = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(6)

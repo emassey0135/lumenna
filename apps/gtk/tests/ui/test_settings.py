@@ -11,7 +11,7 @@ class SettingsTest(unittest.TestCase):
     def setUp(self):
         self.session = Session([])
         self.session.press("Control+comma")
-        self.session.wait_for_window("Preferences")
+        self.session.wait_for_window("Settings")
         self.session.said()
 
     def tearDown(self):
@@ -107,7 +107,7 @@ class SettingsTest(unittest.TestCase):
         self.session.press("Tab")
         self.session.wait_for_alert()
         self.session.press("Return")
-        self.session.wait_for_window("Preferences")
+        self.session.wait_for_window("Settings")
         self.assertEqual(self.session.lum("config", "get", "day-start").strip(), "08:00")
 
     def test_the_devices_page_says_the_sync_state_and_skips_an_empty_list(self):
@@ -169,7 +169,7 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(self.session.focus(), "[button] 'Cancel'", "Cancel is the default")
         self.session.tab_to("Erase Everything Deleted")
         self.session.press("Return", wait=2)
-        self.session.wait_for_window("Preferences")
+        self.session.wait_for_window("Settings")
         said = self.session.said()
         self.assertTrue(said and said[0].startswith("Erased 1 task and the history of everything deleted"), said)
         self.assertNotIn("Buy milk", self.session.lum("task", "list", "deleted"))
