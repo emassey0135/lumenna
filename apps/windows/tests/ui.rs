@@ -837,8 +837,12 @@ fn a_blocks_reminders_are_listed_added_and_removed_as_the_core_offers_them() {
 
     // Add Reminder asks for a phrase, and the block's own replaces the default.
     app.post(&["invoke:Add Reminder...", "text:at end", "enter"]);
-    let own = store.reminders_of(series.clone()).unwrap();
-    assert!(own.reminders.len() == 1 && own.reminders[0].own, "{own:?}");
+    // Written with the answer, which a slow machine takes a while to give.
+    let added = automation::wait(Duration::from_secs(5), || {
+        let own = store.reminders_of(series.clone()).unwrap();
+        (own.reminders.len() == 1 && own.reminders[0].own).then_some(own)
+    });
+    let own = added.unwrap_or_else(|| panic!("{:?}", store.reminders_of(series.clone()).unwrap()));
     let dialog = app.front();
     assert!(dialog.iter().any(|l| l.contains(&own.reminders[0].words)), "{dialog:#?}");
     // A phrase the core cannot read is refused, and asked again.
