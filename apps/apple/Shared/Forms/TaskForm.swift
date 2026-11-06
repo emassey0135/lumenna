@@ -35,7 +35,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
     /// what it waits for, its history.
     @Published private(set) var lines: [LumennaApp.DetailsLine] = []
     /// The details' own words, the core's.
-    let words = LumennaApp.detailsWords(sentence: false)
+    let words = Wording.details
     @Published var failure: String?
 
     /// Whether the fields are being set from the app's, not typed.

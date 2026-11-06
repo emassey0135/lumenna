@@ -33,13 +33,13 @@ struct MacDayScreen: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 12)
             HStack(spacing: 8) {
-                Button("Previous Day") { model.move(.previous) }
-                Button("Today") { model.move(.now) }
-                Button("Next Day") { model.move(.next) }
-                Button("Go to Day…") { goToDay() }
-                Button("Add Block…") { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
+                Button(Commands.title("previous-day")) { model.move(.previous) }
+                Button(Commands.title("go-to-now")) { model.move(.now) }
+                Button(Commands.title("next-day")) { model.move(.next) }
+                Button(Commands.asking("go-to-day")) { goToDay() }
+                Button(Commands.asking("new-block")) { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
                 if !model.actions.isEmpty {
-                    Menu(LumennaApp.dayActions(sentence: false)) {
+                    Menu(Wording.dayActions) {
                         ForEach(model.actions, id: \.self) { action in
                             Button(action.asksFirst ? action.title + "…" : action.title) { model.perform(action) }
                         }
@@ -59,7 +59,7 @@ struct MacDayScreen: View {
                         nodeView(node)
                     }
                 }
-                .accessibilityLabel("The day")
+                .accessibilityLabel(Wording.theDay)
                 .focused($listFocused)
                 .contextMenu(forSelectionType: String.self) { keys in
                     if let key = keys.first, let item = model.rows.first(where: { $0.id == key })?.item {
@@ -173,7 +173,7 @@ final class DayViewController: NSViewController {
         model = DayModel(core: core)
         main = window
         super.init(nibName: nil, bundle: nil)
-        title = "Today"
+        title = LumennaApp.placeTitle(place: .today)
         screen = MacDayScreen(
             model: model,
             goToDay: { [weak self] in self?.goToDay(nil) },

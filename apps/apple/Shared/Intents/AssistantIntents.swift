@@ -41,7 +41,7 @@ struct ListTasksIntent: OperationIntent {
         searchKeywords: ["tasks", "to do", "overdue", "due"]
     )
 
-    @Parameter(title: "Query", description: "A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `p1`, or `search: words`; empty for every open task.")
+    @Parameter(title: "Filter", description: "A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `p1`, or `search: words`; empty for every open task.")
     var query: String?
 
     @AppDependency private var store: AssistantStore
@@ -61,7 +61,7 @@ struct SearchTasksIntent: OperationIntent {
         searchKeywords: ["find", "search"]
     )
 
-    @Parameter(title: "Text", description: "Words to search titles and notes for.")
+    @Parameter(title: "Words", description: "Words to search titles and notes for.")
     var text: String
 
     @AppDependency private var store: AssistantStore
@@ -158,7 +158,7 @@ struct AddTaskIntent: OperationIntent {
         searchKeywords: ["new", "create", "remember", "capture", "remind"]
     )
 
-    @Parameter(title: "Text", description: "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
+    @Parameter(title: "Line", description: "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
     var text: String
 
     @AppDependency private var store: AssistantStore
@@ -184,7 +184,7 @@ struct EditTaskIntent: OperationIntent {
     var title: String?
     @Parameter(title: "Due", description: "A date phrase (\"next monday\", \"in 3 days at 9am\"), or `none` to clear it.")
     var due: String?
-    @Parameter(title: "Repeat", description: "A repetition (\"every monday\", \"every! 2 weeks\"), or `none` to stop it repeating.")
+    @Parameter(title: "Repeats", description: "A repetition (\"every monday\", \"every! 2 weeks\"), or `none` to stop it repeating.")
     var `repeat`: String?
     @Parameter(title: "Priority", description: "1 to 4, where 1 is highest.", inclusiveRange: (1, 4))
     var priority: Int?
@@ -246,11 +246,11 @@ struct MoveTaskIntent: OperationIntent {
 
     @Parameter(title: "Task", description: "The task's identifier: a whole UUID, or a prefix that names one task.")
     var id: TaskEntity
-    @Parameter(title: "Parent", description: "A task to make it a subtask of, by identifier.")
+    @Parameter(title: "Parent Task", description: "A task to make it a subtask of, by identifier.")
     var parent: TaskEntity?
     @Parameter(title: "Project", description: "A project to move it to, by name.")
     var project: ProjectEntity?
-    @Parameter(title: "Top", description: "True to make it a task of its own again, under no other.", default: false)
+    @Parameter(title: "A Task of Its Own", description: "True to make it a task of its own again, under no other.", default: false)
     var top: Bool
 
     @AppDependency private var store: AssistantStore
@@ -374,7 +374,7 @@ struct ShowDayIntent: OperationIntent {
         searchKeywords: ["today", "schedule", "agenda", "blocks", "plan"]
     )
 
-    @Parameter(title: "Date", description: "The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.")
+    @Parameter(title: "Day", description: "The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.")
     var date: String?
 
     @AppDependency private var store: AssistantStore
@@ -422,7 +422,7 @@ struct AssignIntent: OperationIntent {
     var task: TaskEntity
     @Parameter(title: "Block", description: "The block's identifier, as the day lists it.")
     var block: BlockEntity
-    @Parameter(title: "Date", description: "The day, for a block that repeats; the block's own day otherwise.")
+    @Parameter(title: "Day", description: "The day, for a block that repeats; the block's own day otherwise.")
     var date: String?
     @Parameter(title: "Minutes", description: "How long the sitting is planned to take, in minutes.")
     var minutes: Int?
@@ -620,7 +620,7 @@ struct ProposeDayPlanIntent: OperationIntent {
         searchKeywords: ["plan the day", "fill", "schedule"]
     )
 
-    @Parameter(title: "Date", description: "The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.")
+    @Parameter(title: "Day", description: "The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.")
     var date: String?
 
     @AppDependency private var store: AssistantStore
@@ -669,7 +669,7 @@ struct ApplyDayPlanIntent: OperationIntent {
     )
 
     /// The day whose plan the core proposes now, as Propose a Plan for a Day takes it.
-    @Parameter(title: "Date", description: "The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.")
+    @Parameter(title: "Day", description: "The day, as a person says it (\"tomorrow\", \"friday\", \"2026-11-03\"); today if left out.")
     var date: String?
     /// Left out, every sitting proposed.
     @Parameter(title: "Accepted", description: "Those of its `sittings` the person accepted, each as it was proposed.")

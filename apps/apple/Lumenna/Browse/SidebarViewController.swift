@@ -25,7 +25,7 @@ final class SidebarViewController: AppListViewController {
 
     init(core: Core, chose: @escaping (Destination) -> Void) {
         self.chose = chose
-        super.init(core: core, title: "Places")
+        super.init(core: core, title: Wording.places)
     }
 
     override var isSidebar: Bool { true }
@@ -40,7 +40,7 @@ final class SidebarViewController: AppListViewController {
     }
 
     override func rows() -> (items: [AppItem], count: String)? {
-        (core.app.sidebarItems() + [AppItem(key: "settings", title: "Settings")], "")
+        (core.app.sidebarItems() + [AppItem(key: "settings", title: Commands.title("settings"))], "")
     }
 
     override func open(_ item: AppItem) {

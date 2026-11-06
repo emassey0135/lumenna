@@ -12,7 +12,7 @@ extension NSWindow {
         alert.informativeText = title == nil ? "" : message
         alert.alertStyle = .warning
         // The core's Close: an alert left without a button says OK, which is never the answer.
-        alert.addButton(withTitle: LumennaApp.close(sentence: false))
+        alert.addButton(withTitle: Wording.close)
         alert.beginSheetModal(for: self)
     }
 
@@ -23,7 +23,7 @@ extension NSWindow {
                 on: self, title: title,
                 items: actions.enumerated().map { PickerItem(key: String($0.offset), title: $0.element.0) },
                 // Each item is what it does, so the button only goes ahead with it.
-                yes: "Go Ahead"
+                yes: Wording.goAhead
             ) { item in actions[Int(item.key)!].1() }
             return
         }
@@ -31,7 +31,7 @@ extension NSWindow {
         alert.messageText = title
         alert.informativeText = message
         for (name, _) in actions { alert.addButton(withTitle: name) }
-        alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
+        alert.addButton(withTitle: Wording.cancel)
         alert.beginSheetModal(for: self) { response in
             let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
             if index >= 0, index < actions.count { actions[index].1() }
@@ -65,7 +65,7 @@ extension NSWindow: QuestionAsking {
         alert.alertStyle = .warning
         let go = alert.addButton(withTitle: yes)
         go.hasDestructiveAction = destructive
-        let cancel = alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
+        let cancel = alert.addButton(withTitle: Wording.cancel)
         // Cancel is the default, so a stray Return does nothing.
         go.keyEquivalent = ""
         cancel.keyEquivalent = "\r"
@@ -110,7 +110,7 @@ extension NSWindow: QuestionAsking {
             alert.accessoryView = field
         }
         alert.addButton(withTitle: yes)
-        alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
+        alert.addButton(withTitle: Wording.cancel)
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: front) { response in
             var text = response == .alertFirstButtonReturn ? field.stringValue : nil
@@ -135,7 +135,7 @@ extension NSWindow: QuestionAsking {
         for answer in answers {
             alert.addButton(withTitle: answer.title).hasDestructiveAction = destructive
         }
-        alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
+        alert.addButton(withTitle: Wording.cancel)
         alert.beginSheetModal(for: front) { response in
             let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
             let id = index >= 0 && index < answers.count ? answers[index].id : nil

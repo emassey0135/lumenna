@@ -1,3 +1,4 @@
+import LumennaApp
 import UIKit
 
 /// A one-line entry that wraps instead of scrolling sideways — quick add and the filter.
@@ -28,7 +29,7 @@ final class LineEntry: UITextView, UITextViewDelegate {
         get { placeholderLabel.text }
         set {
             placeholderLabel.text = newValue
-            accessibilityHint = newValue.map { "Such as: \($0)" }
+            accessibilityHint = newValue.map { LumennaApp.forExample(example: $0) }
         }
     }
 

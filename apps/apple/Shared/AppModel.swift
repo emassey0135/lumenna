@@ -54,7 +54,10 @@ final class AppModel {
             // Resident, so in front for as long as it runs: the device's sync process, with no
             // daemon to set up. While it holds the device's endpoint it answers the command
             // surface, as the daemon would, so Emacs and the BTSpeak app reach it.
-            app.serveCommands(app: "Lumenna for Mac", deviceName: Host.current().localizedName ?? "Mac")
+            app.serveCommands(
+                app: LumennaApp.lumennaFor(system: "Mac"),
+                deviceName: LumennaApp.deviceNamed(host: Host.current().localizedName ?? "", device: .mac)
+            )
         }
         // Opening at login, which Settings offers in the core's words; told again as the app
         // comes to the front, since System Settings can change it meanwhile.
@@ -246,16 +249,8 @@ extension AppModel {
         send(.key(id))
     }
 
-    /// How pairing's sentences name this device: "this iPhone", "this Mac".
-    static var thisDevice: String {
-        #if os(iOS)
-        "this \(UIDevice.current.model)"
-        #elseif os(macOS)
-        "this Mac"
-        #else
-        "this watch"
-        #endif
-    }
+    /// How pairing's sentences name this device: "this iPhone", "this Mac", the core's.
+    static var thisDevice: String { Wording.thisDevice }
 
     /// A row's speech after its title: its line's detail, whether what is under it is folded
     /// away, and the level where it changes from the row shown before — what a tree control

@@ -38,7 +38,7 @@ final class AppSheets {
         }
         if view.reminders != nil, reminders == nil {
             let model = RemindersModel(core: core)
-            reminders = present(HostedForm("Reminders", rootView: RemindersForm(model: model)), on: window) { model.close = $0 }
+            reminders = present(HostedForm(view.remindersTitle ?? "", rootView: RemindersForm(model: model)), on: window) { model.close = $0 }
         }
     }
 

@@ -24,7 +24,7 @@ final class DayModel: ObservableObject {
     /// The day's heading, as every app says it: "<day>. <summary>".
     @Published private(set) var heading = ""
     /// "Today", "Tomorrow", or the date: what the screen is called.
-    @Published private(set) var title = "Today"
+    @Published private(set) var title = LumennaApp.placeTitle(place: .today)
     /// The day's own actions (`DayView.actions`): Plan the Day, Replan from Now, End the Day.
     @Published private(set) var actions: [LumennaApp.Offered] = []
     /// The row in hand, the app's.

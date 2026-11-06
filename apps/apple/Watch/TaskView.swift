@@ -24,7 +24,7 @@ struct TaskView: View {
         var body: some View {
             // The task's actions' questions are the root's sheets (`AppQuestions`).
             TaskDetailView(model: model)
-                .navigationTitle("Task")
+                .navigationTitle(Wording.details.title)
                 .onAppear {
                     model.host = host
                     host.left = { dismiss() }

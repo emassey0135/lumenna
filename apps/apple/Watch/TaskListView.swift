@@ -38,7 +38,7 @@ struct TaskListView: View {
                 // empty, in the core's words. A misread filter shows wrong results silently.
                 Text(model.readback).font(.footnote)
                 if !model.trash {
-                    Button("New Task") { adding = true }
+                    Button(Commands.title("new-task")) { adding = true }
                 }
                 ForEach(model.shown) { row in
                     taskRow(row)
@@ -194,10 +194,10 @@ struct BlockListView: View {
                     }
                 }
                 Section {
-                    Button("Add Block") { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
+                    Button(Commands.title("new-block")) { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
                 }
             }
-            .navigationTitle("Blocks")
+            .navigationTitle(LumennaApp.placeTitle(place: .blocks))
             .onAppear { model.appear() }
             .onChange(of: model.landed?.count) { _, _ in
                 guard let key = model.landed?.key else { return }

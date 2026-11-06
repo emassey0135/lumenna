@@ -143,7 +143,7 @@ struct TaskListScreen: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.row.title)
         .accessibilityValue(AppModel.spoken(detail: detail, expanded: row.row.expanded, level: row.item.level))
-        .accessibilityHint(model.trash ? "" : model.blocks ? "Edits every occurrence" : "Shows details")
+        .accessibilityHint(model.trash ? "" : model.blocks ? Wording.editsEveryOccurrence : Wording.showsDetails)
         .accessibilityAddTraits(.isButton)
         .accessibilityFocused($spoken, equals: row.id)
         .swipeActions(edge: .leading) {
@@ -217,7 +217,7 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
         navigationItem.leftBarButtonItems = place == .trash ? [undo] : [undo, redo]
         if place != .trash {
             let add = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.addTask() })
-            add.accessibilityLabel = place == .blocks ? "Add block" : "Add task"
+            add.accessibilityLabel = Commands.title(place == .blocks ? "new-block" : "new-task")
             navigationItem.rightBarButtonItem = add
         }
         observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
@@ -250,7 +250,7 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
         guard place != .trash, place != .blocks else { return }
         let model = model
         let overdue = RowRotor.make(
-            "Overdue", in: self,
+            Wording.overdue, in: self,
             rows: { model.shown.map(\.id) },
             wanted: { index in model.shown.indices.contains(index) && model.shown[index].row.state.contains("overdue") },
             current: { model.focus },

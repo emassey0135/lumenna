@@ -139,7 +139,7 @@ final class LumennaUITests: XCTestCase {
     }
 
     private func add(_ text: String) {
-        app.buttons["Add task"].tap()
+        app.buttons["New Task"].tap()
         let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText(text)
@@ -155,7 +155,7 @@ final class LumennaUITests: XCTestCase {
     private var filterField: XCUIElement { app.textFields["Filter"] }
 
     func testAddingATaskReadsItBackAndListsIt() {
-        app.buttons["Add task"].tap()
+        app.buttons["New Task"].tap()
         let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("write the chapter p1")
@@ -269,7 +269,7 @@ final class LumennaUITests: XCTestCase {
     func testATasksProjectIsChosenFromTheProjects() throws {
         tab("Browse")
         cell(containing: "Projects").tap()
-        app.buttons["Add project"].tap()
+        app.buttons["New Project"].tap()
         answer("Work", with: "Add")
         XCTAssertTrue(cell(containing: "Work").waitForExistence(timeout: 5))
         tab("Tasks")
@@ -396,7 +396,7 @@ final class LumennaUITests: XCTestCase {
     }
 
     func testQuickAddPassesAnAccessibilityAudit() throws {
-        app.buttons["Add task"].tap()
+        app.buttons["New Task"].tap()
         XCTAssertTrue(app.textViews["Task"].waitForExistence(timeout: 5))
         app.textViews["Task"].typeText("call mum friday")
         // The iPad keyboard's suggestion bar is the system's, and the audit finds unnamed text
@@ -445,7 +445,7 @@ final class LumennaUITests: XCTestCase {
     func testANewBlockStartsAtTheNextHour() {
         tab("Today")
         let before = Date.now
-        app.buttons["Add block"].tap()
+        app.buttons["New Block"].tap()
         let picker = app.datePickers["Starts at"].firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
         let shown = (picker.descendants(matching: .any).firstMatch.value as? String)?
@@ -456,7 +456,7 @@ final class LumennaUITests: XCTestCase {
 
     func testAnotherDayAsksTheStartAgainUntilTheStartIsSet() {
         tab("Today")
-        app.buttons["Add block"].tap()
+        app.buttons["New Block"].tap()
         let day = app.datePickers["Day"].firstMatch
         XCTAssertTrue(day.waitForExistence(timeout: 5))
         let start = app.datePickers["Starts at"].firstMatch
@@ -495,7 +495,7 @@ final class LumennaUITests: XCTestCase {
         // whenever the test runs: today's starts at the next hour, which near midnight is the
         // end of the day.
         app.buttons["Next Day"].tap()
-        app.buttons["Add block"].tap()
+        app.buttons["New Block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         try audit(.all, "block form", namedRows: true)
@@ -514,7 +514,7 @@ final class LumennaUITests: XCTestCase {
     func testABreakCanTakeTasksAndATimerPausesResumesAndStops() {
         add("read the paper")
         tab("Today")
-        app.buttons["Add block"].tap()
+        app.buttons["New Block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
@@ -583,7 +583,7 @@ final class LumennaUITests: XCTestCase {
     func testATaskCanBeAssignedToABlockAndTimed() {
         add("write the chapter")
         tab("Today")
-        app.buttons["Add block"].tap()
+        app.buttons["New Block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
@@ -615,13 +615,13 @@ final class LumennaUITests: XCTestCase {
     func testAProjectHoldsTheTasksAddedInIt() throws {
         tab("Browse")
         cell(containing: "Projects").tap()
-        app.buttons["Add project"].tap()
+        app.buttons["New Project"].tap()
         answer("Work", with: "Add")
         XCTAssertTrue(cell(containing: "Work").waitForExistence(timeout: 5))
         try audit()
 
         cell(containing: "Work").tap()
-        app.buttons["Add task"].tap()
+        app.buttons["New Task"].tap()
         let field = app.textViews["Task"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         // Quick add starts with the project, so the task lands in it.
@@ -640,13 +640,13 @@ final class LumennaUITests: XCTestCase {
     func testLabelsAndSavedFiltersCanBeMade() throws {
         tab("Browse")
         cell(containing: "Labels").tap()
-        app.buttons["Add label"].tap()
+        app.buttons["New Label"].tap()
         answer("calls", with: "Add")
         XCTAssertTrue(cell(containing: "calls").waitForExistence(timeout: 5))
         goBack()
 
         cell(containing: "Saved Filters").tap()
-        app.buttons["Add filter"].tap()
+        app.buttons["New Saved Filter"].tap()
         answer("Urgent", with: "Next")
         // The query is in the filter language, so it is asked in a sheet that completes it.
         answerQuery("p1")
@@ -708,7 +708,7 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(status.firstMatch.waitForExistence(timeout: 10))
         try audit(.all, "devices")
 
-        app.buttons["Pair a device"].tap()
+        app.buttons["Pair a Device"].tap()
         XCTAssertTrue(app.buttons["Wait for the Other Device"].waitForExistence(timeout: 5))
         try audit(.all, "pairing")
     }
@@ -832,7 +832,7 @@ final class LumennaUITests: XCTestCase {
         UIPasteboard.general.string = copied
         tab("Settings")
         reveal("Devices and Sync").tap()
-        app.buttons["Pair a device"].tap()
+        app.buttons["Pair a Device"].tap()
         let entry = app.textFields["Code from the other device"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
 
@@ -866,7 +866,7 @@ final class LumennaUITests: XCTestCase {
         }
         tab("Settings")
         cell(containing: "Devices and Sync").tap()
-        app.buttons["Pair a device"].tap()
+        app.buttons["Pair a Device"].tap()
         let entry = app.textFields["Code from the other device"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
         // Pasted with the system's Paste button, as a code sent from the other device arrives.
@@ -898,7 +898,7 @@ final class LumennaUITests: XCTestCase {
         }
         tab("Settings")
         cell(containing: "Devices and Sync").tap()
-        app.buttons["Pair a device"].tap()
+        app.buttons["Pair a Device"].tap()
         app.buttons["Wait for the Other Device"].tap()
 
         let yes = app.alerts.buttons["Yes, They Match"]
@@ -955,7 +955,7 @@ final class LumennaUITests: XCTestCase {
     /// (11, 00, PM) says, for a test that needs the same block whenever it runs.
     private func addBlock(_ title: String, repeating: String? = nil, start: (hour: String, minute: String, period: String)? = nil) {
         tab("Today")
-        app.buttons["Add block"].tap()
+        app.buttons["New Block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
@@ -1078,7 +1078,7 @@ final class LumennaUITests: XCTestCase {
     func testUndoIsOfferedOnBrowseScreensToo() throws {
         tab("Browse")
         cell(containing: "Projects").tap()
-        app.buttons["Add project"].tap()
+        app.buttons["New Project"].tap()
         answer("Work", with: "Add")
         let work = app.row("Work")
         XCTAssertTrue(work.waitForExistence(timeout: 5))
@@ -1122,7 +1122,7 @@ final class LumennaUITests: XCTestCase {
         tab("Today")
         // Tomorrow, so its block is still to come whenever the test runs.
         app.buttons["Next Day"].tap()
-        app.buttons["Add block"].tap()
+        app.buttons["New Block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()

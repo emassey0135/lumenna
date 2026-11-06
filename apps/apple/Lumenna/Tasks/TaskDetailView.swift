@@ -13,7 +13,7 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
         self.model = model
         self.core = core
         super.init(rootView: TaskDetailView(model: model))
-        title = "Task"
+        title = Wording.details.title
         model.host = self
         // A form gets the whole screen. Under the floating tab bar its last rows would be
         // read through glass.
@@ -28,7 +28,7 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
         // A UIKit button, always enabled: a disabled one fails contrast and is easy to miss
         // without sight, and saving with nothing changed says so.
         navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Save", primaryAction: UIAction { [weak self] _ in self?.model.save() }
+            title: Wording.details.save, primaryAction: UIAction { [weak self] _ in self?.model.save() }
         )
         navigationItem.rightBarButtonItem?.style = .done
     }

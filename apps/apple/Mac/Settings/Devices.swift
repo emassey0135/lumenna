@@ -84,7 +84,7 @@ struct DevicesScreen: View {
                     row(shown.device, shown.line).tag(shown.device.nodeId)
                 }
             }
-            .accessibilityLabel("Paired devices")
+            .accessibilityLabel(Wording.settings.devices)
             .frame(height: 200)
             .contextMenu(forSelectionType: String.self) { ids in
                 if let id = ids.first, let device = model.devices.first(where: { $0.device.nodeId == id })?.device {
@@ -96,11 +96,11 @@ struct DevicesScreen: View {
                 }
             }
             HStack {
-                Button("Sync Now") { model.core.app.send(.devices(.syncNow)) }
-                Button("Pair a Device…") { pair() }
+                Button(Pages.button("devices", "sync-now")) { model.core.app.send(.devices(.syncNow)) }
+                Button(Pages.asking("devices", "pair")) { pair() }
                 Spacer()
-                Button("Rename…") { model.key("rename") }
-                Button("Unpair…") { model.key("delete") }
+                Button(Wording.settings.rename + "…") { model.key("rename") }
+                Button(Wording.settings.unpair + "…") { model.key("delete") }
             }
         }
         .padding(16)
@@ -146,7 +146,7 @@ final class DevicesViewController: NSViewController {
         self.core = core
         model = DevicesModel(core: core)
         super.init(nibName: nil, bundle: nil)
-        title = "Devices"
+        title = Pages.title("devices")
         screen = DevicesScreen(
             model: model,
             pair: { [weak self] in

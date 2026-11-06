@@ -26,10 +26,10 @@ final class RootTabs: UITabBarController, CommandActions, PlaceFollowing {
             return navigation
         }
         viewControllers = [
-            tab(day, "Today", "calendar.day.timeline.left"),
-            tab(tasks, "Tasks", "checklist"),
-            tab(browse, LumennaApp.browse(sentence: false), "folder"),
-            tab(settings, "Settings", "gearshape"),
+            tab(day, LumennaApp.placeTitle(place: .today), "calendar.day.timeline.left"),
+            tab(tasks, LumennaApp.placeTitle(place: .tasks), "checklist"),
+            tab(browse, Wording.browse, "folder"),
+            tab(settings, Commands.title("settings"), "gearshape"),
         ]
     }
 

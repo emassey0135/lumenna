@@ -9,7 +9,7 @@ final class PairingSheet: NSViewController {
     private let model: PairingModel
 
     private init(core: Core) {
-        model = PairingModel(core: core, thisDevice: "this Mac", name: Host.current().localizedName ?? "Mac")
+        model = PairingModel(core: core, thisDevice: Wording.thisDevice, name: LumennaApp.deviceNamed(host: Host.current().localizedName ?? "", device: .mac))
         super.init(nibName: nil, bundle: nil)
         title = model.words.title
         model.failed = { [weak self] message in self?.view.window?.showFailure(message) }
@@ -33,12 +33,12 @@ final class PairingSheet: NSViewController {
     }
 
     /// Asks whether the words match. The pairing waits for the answer.
-    private func ask(_ words: [String], answer: @escaping (Bool) -> Void) {
+    private func ask(_ matching: String, answer: @escaping (Bool) -> Void) {
         guard let window = view.window else { return answer(false) }
         let alert = NSAlert()
         let said = model.words
         alert.messageText = said.matchTitle
-        alert.informativeText = "\(said.matchMessage) \(words.joined(separator: ", "))"
+        alert.informativeText = matching
         // No is first, so the default: a stray Return never pairs.
         alert.addButton(withTitle: said.matchNo)
         alert.addButton(withTitle: said.matchYes)

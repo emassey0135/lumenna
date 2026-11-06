@@ -36,7 +36,7 @@ final class SettingsModel: NSObject, ObservableObject {
     /// The pages the settings are on, the core's, in its order, each setting on exactly one.
     @Published private(set) var pages: [LumennaApp.SettingsPage] = LumennaApp.settingsPages(ownClock: true, sentence: false)
     /// What a setting's own control says: a time's hint and example, a number's.
-    @Published private(set) var words = LumennaApp.settingWords()
+    @Published private(set) var words = Wording.settings
     @Published var failure: String?
     private var observer: NSObjectProtocol?
 
@@ -121,7 +121,7 @@ final class SettingsModel: NSObject, ObservableObject {
 
     /// The file name an export of `format` gets, the app's, dated.
     func exportName(_ format: LumennaApp.ExportFormat) -> String {
-        exports.first { $0.format == format }?.name ?? "Lumenna"
+        exports.first { $0.format == format }?.name ?? Wording.metadata.name
     }
 
     /// Asks the app for an export of `format`, handing its file to `saved` once it is made.
@@ -202,7 +202,7 @@ struct SettingControl: View {
             Named(setting.title) {
                 HStack {
                     Text(model.values[setting.key] ?? "").textSelection(.enabled).lineLimit(2)
-                    Button("Choose…") { model.chooseBackupFolder() }
+                    Button(Wording.choose + "…") { model.chooseBackupFolder() }
                 }
             }
             #else
@@ -302,7 +302,7 @@ struct LineSetting: View {
     /// placeholder left the iPad's audit an empty, unnamed text element whose size is fixed.
     @ViewBuilder private var field: some View {
         #if os(macOS)
-        TextField(setting.title, text: $text, prompt: Text("None"))
+        TextField(setting.title, text: $text, prompt: Text(Wording.none))
         #elseif os(iOS)
         // It wraps, so a large text size shows all of it (a one-line field scrolls sideways
         // and is clipped); so Return arrives as a line break, and commits instead.
@@ -311,10 +311,10 @@ struct LineSetting: View {
             text = typed.split(whereSeparator: \.isNewline).joined(separator: " ")
             // Leaving the field commits it.
             focused = false
-        }), prompt: example("None"), axis: .vertical)
+        }), prompt: example(Wording.none), axis: .vertical)
         .multilineTextAlignment(long ? .leading : .trailing)
         #else
-        TextField("", text: $text, prompt: example("None"))
+        TextField("", text: $text, prompt: example(Wording.none))
         #endif
     }
 

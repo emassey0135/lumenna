@@ -29,7 +29,7 @@ struct MacTaskListScreen: View {
                         .font(.subheadline)
                         .foregroundStyle(Color.quietLabel)
                     Spacer()
-                    Button("Add Block…") { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
+                    Button(Commands.asking("new-block")) { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 12)

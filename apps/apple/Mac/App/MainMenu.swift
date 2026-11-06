@@ -3,6 +3,8 @@ import LumennaApp
 
 /// The menu bar. Everything the app does is here, with its shortcut: the menu bar is
 /// how a Mac user — and a VoiceOver user especially, with VO-M — finds what an app can do.
+/// Each command is named as the core's menus name it (`Commands`); what is the Mac's alone
+/// (Hide, Services, the Window menu) takes the core's words for it too (`Wording`).
 enum MainMenu {
     static func build() -> NSMenu {
         let bar = NSMenu()
@@ -15,7 +17,7 @@ enum MainMenu {
         let window = window()
         bar.addItem(submenu(window))
         NSApp.windowsMenu = window
-        let help = NSMenu(title: "Help")
+        let help = NSMenu(title: Commands.menu("help"))
         bar.addItem(submenu(help))
         NSApp.helpMenu = help
         return bar
@@ -34,87 +36,87 @@ enum MainMenu {
     }
 
     private static func app() -> NSMenu {
-        let menu = NSMenu(title: "Lumenna")
-        menu.addItem(item("About Lumenna", #selector(AppDelegate.showAbout(_:))))
+        let menu = NSMenu(title: Wording.metadata.name)
+        menu.addItem(item(Commands.asking("about"), #selector(AppDelegate.showAbout(_:))))
         menu.addItem(.separator())
-        menu.addItem(item("Settings…", #selector(AppDelegate.showSettings(_:)), ","))
+        menu.addItem(item(Commands.asking("settings"), #selector(AppDelegate.showSettings(_:)), ","))
         menu.addItem(.separator())
-        let services = NSMenu(title: "Services")
-        let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
+        let services = NSMenu(title: Wording.services)
+        let servicesItem = NSMenuItem(title: Wording.services, action: nil, keyEquivalent: "")
         servicesItem.submenu = services
         NSApp.servicesMenu = services
         menu.addItem(servicesItem)
         menu.addItem(.separator())
-        menu.addItem(item("Hide Lumenna", #selector(NSApplication.hide(_:)), "h"))
-        menu.addItem(item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]))
-        menu.addItem(item("Show All", #selector(NSApplication.unhideAllApplications(_:))))
+        menu.addItem(item(Wording.hideApp, #selector(NSApplication.hide(_:)), "h"))
+        menu.addItem(item(Wording.hideOthers, #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]))
+        menu.addItem(item(Wording.showAll, #selector(NSApplication.unhideAllApplications(_:))))
         menu.addItem(.separator())
-        menu.addItem(item("Quit Lumenna", #selector(NSApplication.terminate(_:)), "q"))
+        menu.addItem(item(Wording.quitApp, #selector(NSApplication.terminate(_:)), "q"))
         return menu
     }
 
     private static func file() -> NSMenu {
-        let menu = NSMenu(title: "File")
-        menu.addItem(item("New Task…", #selector(AppDelegate.newTask(_:)), "n"))
-        menu.addItem(item("New Block…", #selector(AppDelegate.newBlock(_:)), "n", [.command, .shift]))
-        menu.addItem(item("New Project…", #selector(AppDelegate.newProject(_:))))
-        menu.addItem(item("New Label…", #selector(AppDelegate.newLabel(_:))))
-        menu.addItem(item("New Saved Filter…", #selector(AppDelegate.newFilter(_:))))
+        let menu = NSMenu(title: Commands.menu("file"))
+        menu.addItem(item(Commands.asking("new-task"), #selector(AppDelegate.newTask(_:)), "n"))
+        menu.addItem(item(Commands.asking("new-block"), #selector(AppDelegate.newBlock(_:)), "n", [.command, .shift]))
+        menu.addItem(item(Commands.asking("new-project"), #selector(AppDelegate.newProject(_:))))
+        menu.addItem(item(Commands.asking("new-label"), #selector(AppDelegate.newLabel(_:))))
+        menu.addItem(item(Commands.asking("new-filter"), #selector(AppDelegate.newFilter(_:))))
         menu.addItem(.separator())
-        menu.addItem(item("Sync Now", #selector(AppDelegate.syncNowFromMenu(_:)), "r", [.command, .shift]))
-        menu.addItem(item("Back Up Now", #selector(AppDelegate.backUpNow(_:))))
-        menu.addItem(item("Export and Import…", #selector(AppDelegate.exportOrImport(_:))))
+        menu.addItem(item(Commands.asking("sync-now"), #selector(AppDelegate.syncNowFromMenu(_:)), "r", [.command, .shift]))
+        menu.addItem(item(Commands.asking("back-up"), #selector(AppDelegate.backUpNow(_:))))
+        menu.addItem(item(Commands.asking("export-import"), #selector(AppDelegate.exportOrImport(_:))))
         menu.addItem(.separator())
-        menu.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w"))
+        menu.addItem(item(Commands.asking("close-window"), #selector(NSWindow.performClose(_:)), "w"))
         return menu
     }
 
     private static func edit() -> NSMenu {
-        let menu = NSMenu(title: "Edit")
-        menu.addItem(item("Undo", #selector(AppDelegate.undoChange(_:)), "z"))
-        menu.addItem(item("Redo", #selector(AppDelegate.redoChange(_:)), "z", [.command, .shift]))
+        let menu = NSMenu(title: Commands.menu("edit"))
+        menu.addItem(item(Commands.asking("undo"), #selector(AppDelegate.undoChange(_:)), "z"))
+        menu.addItem(item(Commands.asking("redo"), #selector(AppDelegate.redoChange(_:)), "z", [.command, .shift]))
         menu.addItem(.separator())
-        menu.addItem(item("Cut", #selector(NSText.cut(_:)), "x"))
-        menu.addItem(item("Copy", #selector(NSText.copy(_:)), "c"))
-        menu.addItem(item("Paste", #selector(NSText.paste(_:)), "v"))
-        menu.addItem(item("Select All", #selector(NSText.selectAll(_:)), "a"))
+        menu.addItem(item(Wording.cut, #selector(NSText.cut(_:)), "x"))
+        menu.addItem(item(Wording.copy, #selector(NSText.copy(_:)), "c"))
+        menu.addItem(item(Wording.paste, #selector(NSText.paste(_:)), "v"))
+        menu.addItem(item(Wording.selectAll, #selector(NSText.selectAll(_:)), "a"))
         menu.addItem(.separator())
-        menu.addItem(item("Filter Tasks", #selector(AppDelegate.focusFilter(_:)), "f"))
-        menu.addItem(item("Complete", #selector(NSTextView.complete(_:)), "\u{1b}", .option))
+        menu.addItem(item(Commands.asking("filter"), #selector(AppDelegate.focusFilter(_:)), "f"))
+        menu.addItem(item(Wording.complete, #selector(NSTextView.complete(_:)), "\u{1b}", .option))
         return menu
     }
 
     private static func view() -> NSMenu {
-        let menu = NSMenu(title: "View")
-        menu.addItem(item("Today", #selector(AppDelegate.goToToday(_:)), "1"))
-        menu.addItem(item("Tasks", #selector(AppDelegate.goToTasks(_:)), "2"))
-        menu.addItem(item("Blocks", #selector(AppDelegate.goToBlocks(_:)), "3"))
-        menu.addItem(item("Trash", #selector(AppDelegate.goToTrash(_:)), "4"))
-        menu.addItem(item("History", #selector(AppDelegate.goToHistory(_:)), "5"))
+        let menu = NSMenu(title: Commands.menu("view"))
+        menu.addItem(item(Commands.asking("go-today"), #selector(AppDelegate.goToToday(_:)), "1"))
+        menu.addItem(item(Commands.asking("go-tasks"), #selector(AppDelegate.goToTasks(_:)), "2"))
+        menu.addItem(item(Commands.asking("go-blocks"), #selector(AppDelegate.goToBlocks(_:)), "3"))
+        menu.addItem(item(Commands.asking("go-trash"), #selector(AppDelegate.goToTrash(_:)), "4"))
+        menu.addItem(item(Commands.asking("go-history"), #selector(AppDelegate.goToHistory(_:)), "5"))
         menu.addItem(.separator())
-        menu.addItem(item("Toggle Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]))
+        menu.addItem(item(Wording.toggleSidebar, #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]))
         return menu
     }
 
     private static func task() -> NSMenu {
-        let menu = NSMenu(title: "Task")
-        menu.addItem(item("Mark Done", #selector(AppDelegate.toggleDone(_:)), "k"))
-        menu.addItem(item("Put in a Block…", #selector(AppDelegate.putInBlock(_:)), "b"))
-        menu.addItem(item("Move to Project…", #selector(AppDelegate.moveToProject(_:)), "m", [.command, .shift]))
-        menu.addItem(item("Make Subtask Of…", #selector(AppDelegate.makeSubtask(_:))))
-        menu.addItem(item("Wait For…", #selector(AppDelegate.waitFor(_:))))
-        menu.addItem(item("Save Changes", #selector(TaskDetailViewController.saveTask(_:)), "s"))
+        let menu = NSMenu(title: Commands.menu("task"))
+        menu.addItem(item(Commands.asking("mark-done"), #selector(AppDelegate.toggleDone(_:)), "k"))
+        menu.addItem(item(Commands.asking("put-in-block"), #selector(AppDelegate.putInBlock(_:)), "b"))
+        menu.addItem(item(Commands.asking("move-to-project"), #selector(AppDelegate.moveToProject(_:)), "m", [.command, .shift]))
+        menu.addItem(item(Commands.asking("make-subtask"), #selector(AppDelegate.makeSubtask(_:))))
+        menu.addItem(item(Commands.asking("wait-for"), #selector(AppDelegate.waitFor(_:))))
+        menu.addItem(item(Commands.asking("save-task"), #selector(TaskDetailViewController.saveTask(_:)), "s"))
         menu.addItem(.separator())
-        menu.addItem(item("Move to Trash", #selector(AppDelegate.moveToTrash(_:)), "\u{8}"))
+        menu.addItem(item(Commands.asking("trash-task"), #selector(AppDelegate.moveToTrash(_:)), "\u{8}"))
         return menu
     }
 
     private static func day() -> NSMenu {
-        let menu = NSMenu(title: "Day")
-        menu.addItem(item("Previous Day", #selector(AppDelegate.previousDay(_:)), "["))
-        menu.addItem(item("Next Day", #selector(AppDelegate.nextDay(_:)), "]"))
-        menu.addItem(item("Go to Now", #selector(AppDelegate.goToNow(_:)), "t"))
-        menu.addItem(item("Go to Day…", #selector(AppDelegate.goToDay(_:)), "j"))
+        let menu = NSMenu(title: Commands.menu("day"))
+        menu.addItem(item(Commands.asking("previous-day"), #selector(AppDelegate.previousDay(_:)), "["))
+        menu.addItem(item(Commands.asking("next-day"), #selector(AppDelegate.nextDay(_:)), "]"))
+        menu.addItem(item(Commands.asking("go-to-now"), #selector(AppDelegate.goToNow(_:)), "t"))
+        menu.addItem(item(Commands.asking("go-to-day"), #selector(AppDelegate.goToDay(_:)), "j"))
         // Then the day's own actions, the core's, as the menu opens.
         menu.delegate = DayMenu.shared
         return menu
@@ -184,16 +186,16 @@ enum MainMenu {
     private static let f6 = String(Character(UnicodeScalar(UInt16(NSF6FunctionKey))!))
 
     private static func window() -> NSMenu {
-        let menu = NSMenu(title: "Window")
-        menu.addItem(item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"))
-        menu.addItem(item("Zoom", #selector(NSWindow.performZoom(_:))))
+        let menu = NSMenu(title: Wording.window)
+        menu.addItem(item(Wording.minimize, #selector(NSWindow.performMiniaturize(_:)), "m"))
+        menu.addItem(item(Wording.zoom, #selector(NSWindow.performZoom(_:))))
         menu.addItem(.separator())
-        let next = item("Next Pane", #selector(AppDelegate.nextPane(_:)), f6, [])
+        let next = item(Commands.asking("next-pane"), #selector(AppDelegate.nextPane(_:)), f6, [])
         menu.addItem(next)
-        let previous = item("Previous Pane", #selector(AppDelegate.previousPane(_:)), f6, .shift)
+        let previous = item(Commands.asking("previous-pane"), #selector(AppDelegate.previousPane(_:)), f6, .shift)
         menu.addItem(previous)
         menu.addItem(.separator())
-        menu.addItem(item("Lumenna", #selector(AppDelegate.showMainWindow(_:)), "0"))
+        menu.addItem(item(Wording.metadata.name, #selector(AppDelegate.showMainWindow(_:)), "0"))
         return menu
     }
 }

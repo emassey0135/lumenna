@@ -99,7 +99,7 @@ final class LumennaWatchUITests: XCTestCase {
         XCTAssertTrue((row.value as? String ?? "").contains("due tomorrow"), "\(row.value ?? "")")
         try audit("tasks")
         row.tap()
-        XCTAssertTrue(app.navigationBars["Task"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Task Details"].waitForExistence(timeout: 5))
         try audit("task details")
         reveal(app.buttons["Mark Done"], form: true).tap()
         // The details redraw from the top, where the list holds only what it shows.
@@ -112,7 +112,7 @@ final class LumennaWatchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Today. No blocks"].waitForExistence(timeout: 5) || app.navigationBars["Today"].exists)
         try audit("the day")
         reveal(app.buttons["Next Day"]).tap()
-        XCTAssertTrue(reveal(app.buttons["Today"]).exists, "a way back to today")
+        XCTAssertTrue(reveal(app.buttons["Go to Now"]).exists, "a way back to today")
     }
 
     func testATasksFieldsAreEditedInThePhonesFormAndSaved() throws {
@@ -144,7 +144,7 @@ final class LumennaWatchUITests: XCTestCase {
     func testABlockIsAddedFromTheDayInThePhonesForm() throws {
         XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
         app.buttons["Today"].tap()
-        reveal(app.buttons["Add Block"]).tap()
+        reveal(app.buttons["New Block"]).tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         try audit("the block form")
@@ -168,7 +168,7 @@ final class LumennaWatchUITests: XCTestCase {
         app.buttons["Today"].tap()
         // Tomorrow, so its block is still to come whenever the test runs.
         reveal(app.buttons["Next Day"]).tap()
-        reveal(app.buttons["Add Block"]).tap()
+        reveal(app.buttons["New Block"]).tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         type("Writing", into: name)
@@ -191,7 +191,7 @@ final class LumennaWatchUITests: XCTestCase {
     func testABlocksRemindersTakeAPhraseAndARefusedOneSaysWhy() throws {
         XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 10))
         app.buttons["Today"].tap()
-        reveal(app.buttons["Add Block"]).tap()
+        reveal(app.buttons["New Block"]).tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         type("Deep work", into: name)

@@ -90,8 +90,8 @@ final class LumennaMacUITests: XCTestCase {
         window.outlines["Tasks"].staticTexts["water plants"].click()
         let repeats = window.textFields["Repeats"]
         XCTAssertTrue(repeats.waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertTrue(window.scrollViews["Task details"].waitForExistence(timeout: 5), "the pane is one named scroll area")
-        XCTAssertFalse(window.groups["Task details"].exists, "not a group around one")
+        XCTAssertTrue(window.scrollViews["Task Details"].waitForExistence(timeout: 5), "the pane is one named scroll area")
+        XCTAssertFalse(window.groups["Task Details"].exists, "not a group around one")
         XCTAssertEqual(repeats.value as? String, "every monday")
     }
 
@@ -620,7 +620,7 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertFalse(text(containing: "is not a reminder", in: sheet).exists)
         sheet.buttons["Remove Reminder, when it ends"].click()
         XCTAssertTrue(text(containing: "5 minutes before it starts", in: sheet).waitForExistence(timeout: 5), "the default again")
-        sheetButton("Done")
+        sheetButton("Close")
         XCTAssertTrue(sheet.waitForNonExistence(timeout: 5))
     }
 

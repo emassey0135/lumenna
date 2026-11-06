@@ -15,8 +15,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     let core: Core
     private let split = NSSplitViewController()
     private(set) var sidebar: SidebarViewController!
-    private let content = ContainerViewController(placeholder: "", name: "List")
-    private let detail = ContainerViewController(placeholder: LumennaApp.detailsWords(sentence: false).none, name: "Task details")
+    private let content = ContainerViewController(placeholder: "", name: Wording.list)
+    private let detail = ContainerViewController(placeholder: Wording.details.none, name: Wording.details.title)
     private var questions: AppQuestions?
     /// What asks them, kept here: `AppQuestions` holds it weakly.
     private var asker: FrontAsker?
@@ -33,7 +33,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Lumenna"
+        window.title = Wording.metadata.name
         window.identifier = NSUserInterfaceItemIdentifier("main")
         window.setFrameAutosaveName("Main")
         window.tabbingMode = .disallowed

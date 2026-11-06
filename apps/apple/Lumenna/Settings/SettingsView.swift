@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 /// its glass — which the accessibility audit, rightly, cannot tell from unreadable text.
 final class SettingsViewController: AppListViewController {
     init(core: Core) {
-        super.init(core: core, title: "Settings")
+        super.init(core: core, title: Commands.title("settings"))
     }
 
     // Each page has its own; this list is somewhere to go.

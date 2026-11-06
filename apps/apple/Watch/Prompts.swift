@@ -41,7 +41,7 @@ struct TextPrompt: View {
     let title: String
     var message: String?
     var placeholder = ""
-    var action = "Save"
+    var action = Wording.save
     var syntax: LumennaApp.Syntax?
     /// Whether an empty line is handed on: the core's questions take it, and refuse it
     /// themselves where they must.
@@ -51,7 +51,7 @@ struct TextPrompt: View {
 
     init(
         _ title: String, message: String? = nil, initial: String = "", placeholder: String = "",
-        action: String = "Save", syntax: LumennaApp.Syntax? = nil, allowsEmpty: Bool = false, done: @escaping (String) -> Void
+        action: String = Wording.save, syntax: LumennaApp.Syntax? = nil, allowsEmpty: Bool = false, done: @escaping (String) -> Void
     ) {
         self.allowsEmpty = allowsEmpty
         self.title = title
@@ -100,7 +100,7 @@ struct ChoicePrompt: View {
                 Text(message).font(.footnote)
             }
             if cancel {
-                Button("Cancel", role: .cancel) { dismiss() }
+                Button(Wording.cancel, role: .cancel) { dismiss() }
             }
             ForEach(Array(choices.enumerated()), id: \.offset) { _, choice in
                 Button(choice.0) {

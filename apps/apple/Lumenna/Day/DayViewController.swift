@@ -83,19 +83,19 @@ struct DayScreen: View {
 
     /// The day before, now, and the day after.
     @ViewBuilder private var moves: some View {
-        Button("Previous Day") { model.move(.previous) }
+        Button(Commands.title("previous-day")) { model.move(.previous) }
         Spacer(minLength: 0)
-        Button("Now") { model.move(.now) }
+        Button(Commands.title("go-to-now")) { model.move(.now) }
         Spacer(minLength: 0)
-        Button("Next Day") { model.move(.next) }
+        Button(Commands.title("next-day")) { model.move(.next) }
     }
 
     /// Going to another day, and the day's own actions.
     @ViewBuilder private var others: some View {
-        Button("Go to Day") { chooseDay() }
+        Button(Commands.title("go-to-day")) { chooseDay() }
         if !model.actions.isEmpty {
             Spacer(minLength: 0)
-            Menu(LumennaApp.dayActions(sentence: false)) {
+            Menu(Wording.dayActions) {
                 ForEach(model.actions, id: \.self) { action in
                     Button(action.title, role: action.destructive ? .destructive : nil) { model.perform(action) }
                 }
@@ -209,9 +209,9 @@ final class DayViewController: UIHostingController<DayScreen> {
             chooseDay: { host?.chooseDay() }
         ))
         host = self
-        title = "Today"
+        title = LumennaApp.placeTitle(place: .today)
         let add = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.newBlock() })
-        add.accessibilityLabel = "Add block"
+        add.accessibilityLabel = Commands.title("new-block")
         navigationItem.rightBarButtonItem = add
         // In the navigation bar, as on the task list: a bottom toolbar would sit under the
         // floating tab bar.
@@ -257,8 +257,8 @@ final class DayViewController: UIHostingController<DayScreen> {
             )
         }
         let rotors = [
-            rotor("Blocks") { $0.kind == .block },
-            rotor("Running") { $0.kind == .sitting && $0.sitting?.running == true },
+            rotor(LumennaApp.placeTitle(place: .blocks)) { $0.kind == .block },
+            rotor(Wording.running) { $0.kind == .sitting && $0.sitting?.running == true },
         ]
         view.accessibilityCustomRotors = rotors
         RowRotor.list(in: view)?.accessibilityCustomRotors = rotors

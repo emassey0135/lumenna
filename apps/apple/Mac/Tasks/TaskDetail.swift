@@ -11,7 +11,7 @@ final class TaskDetailViewController: HostedForm<TaskDetailView>, TaskFormHost {
         let model = TaskDetailModel(core: core, id: id)
         self.model = model
         taskID = id
-        super.init("Task details", rootView: TaskDetailView(model: model))
+        super.init(Wording.details.title, rootView: TaskDetailView(model: model))
         model.host = self
     }
 

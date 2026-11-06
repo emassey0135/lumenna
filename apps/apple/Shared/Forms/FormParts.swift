@@ -250,7 +250,7 @@ struct FailureAlert: ViewModifier {
                 isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } }),
                 presenting: failure
             ) { _ in
-                Button("OK") {}
+                Button(Wording.close) {}
             }
     }
 }

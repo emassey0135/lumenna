@@ -89,7 +89,7 @@ struct SidebarScreen: View {
             }
         }
         .listStyle(.sidebar)
-        .accessibilityLabel("Places")
+        .accessibilityLabel(Wording.places)
     }
 
     /// The app's entries as a tree, nested by depth.
@@ -178,7 +178,7 @@ final class SidebarViewController: NSViewController {
     init(core: Core) {
         model = SidebarModel(core: core)
         super.init(nibName: nil, bundle: nil)
-        title = "Places"
+        title = Wording.places
     }
 
     @available(*, unavailable)
