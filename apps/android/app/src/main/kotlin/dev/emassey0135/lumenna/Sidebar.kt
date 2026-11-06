@@ -62,7 +62,7 @@ fun PlaceRows(
     open: (PlaceRow) -> (() -> Unit)?,
     openLabel: (PlaceRow) -> String,
     selected: String? = null,
-    extra: List<Pair<String, () -> Unit>> = emptyList(),
+    extra: List<Triple<String, String, () -> Unit>> = emptyList(),
 ) {
     val shown = rows.filter { !it.hidden }
     val state = rememberLazyListState()
@@ -91,15 +91,15 @@ fun PlaceRows(
                 swatch = row.entry.swatch,
             )
         }
-        itemsIndexed(extra, key = { _, (key, _) -> key }) { index, (key, choose) ->
+        itemsIndexed(extra, key = { _, (key, _, _) -> key }) { index, (key, title, choose) ->
             ListRow(
-                title = key.replaceFirstChar { it.uppercase() },
+                title = title,
                 detail = "",
                 speech = "",
                 index = shown.size + index,
                 actions = emptyList(),
                 open = choose,
-                openLabel = "Show",
+                openLabel = appWords.show,
                 focus = focus.requester(key),
                 key = key,
                 selected = key == selected,
@@ -121,9 +121,9 @@ fun PlaceRows(
 fun Sidebar(core: Core, current: Destination, choose: (Destination) -> Unit, modifier: Modifier = Modifier) {
     val view by core.app.view.collectAsState()
     val entries = view?.sidebar.orEmpty()
-    Column(modifier.semantics { paneTitle = "Places" }) {
+    Column(modifier.semantics { paneTitle = appWords.places }) {
         Text(
-            "Places",
+            appWords.places,
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(16.dp).semantics { heading() },
         )
@@ -137,11 +137,16 @@ fun Sidebar(core: Core, current: Destination, choose: (Destination) -> Unit, mod
                     is SidebarKind.Place -> ({ choose(Destination.At(kind.field0)) })
                 }
             },
+            // A heading's is its fold action's name, as the app offers it.
             openLabel = { row ->
-                if (row.entry.kind is SidebarKind.Group) (if (row.expanded == true) "Collapse" else "Expand") else "Show"
+                if (row.entry.kind is SidebarKind.Group) {
+                    row.entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }?.name ?: appWords.show
+                } else {
+                    appWords.show
+                }
             },
             selected = key(current),
-            extra = listOf("settings" to { choose(Destination.Settings) }),
+            extra = listOf(Triple("settings", Command.SETTINGS.title) { choose(Destination.Settings) }),
         )
     }
 }

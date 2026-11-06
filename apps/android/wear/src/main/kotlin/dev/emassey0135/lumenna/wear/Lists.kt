@@ -1,7 +1,7 @@
 package dev.emassey0135.lumenna.wear
 
 import dev.emassey0135.lumenna.rowKeys
-import dev.emassey0135.lumenna.quickWords
+import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.app.foldState
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.rememberLanding
@@ -89,7 +89,7 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
     val state = rememberScalingLazyListState()
     val focus = rememberSideLanding(core, Side.SIDEBAR, keys) { state.scrollToItem(it) }
     WearList(state) {
-        item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text(quickWords.title) }) }
+        item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text(appWords.quickAdd.title) }) }
         rows.forEachIndexed { index, row ->
             item {
                 val fold = row.entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
@@ -184,9 +184,9 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
     WearList(state) {
         item { Heading(placeTitle(place)) }
         if (!trash) {
-            item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text(quickWords.title) }) }
+            item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text(appWords.quickAdd.title) }) }
             item {
-                TextFieldButton(quickWords.filter, filter, quickWords.filterHint) {
+                TextFieldButton(appWords.quickAdd.filter, filter, appWords.quickAdd.filterHint) {
                     filter = it
                     app.send(ShellEvent.Filter(it))
                 }
@@ -272,7 +272,7 @@ fun ChooseScreen(screen: Screen.Choose) {
     WearList {
         item { Heading(screen.title) }
         screen.message?.let { message -> item { Text(message) } }
-        if (screen.choices.isEmpty()) item { Text(dev.emassey0135.lumenna.app.nothingToChoose()) }
+        if (screen.choices.isEmpty()) item { Text(appWords.nothingToChoose) }
         screen.choices.forEachIndexed { index, choice ->
             item {
                 // In a tree, the level where it changes beside the detail, as a tree's rows say it.

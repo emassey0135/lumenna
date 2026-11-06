@@ -283,6 +283,12 @@ pub struct ShellWords {
     pub opening: String,
     /// A second tab, while another has the store open.
     pub open_elsewhere: String,
+
+    // Android's.
+    /// The key that unfolds a row, where a keyboard help names it apart from a row: "Expand".
+    pub expand: String,
+    /// The key that folds one: "Collapse".
+    pub collapse: String,
 }
 
 /// A pick's words, its buttons in sentence case where `sentence`.
@@ -405,6 +411,9 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         storage_may_be_cleared: core::storage_may_be_cleared(),
         opening: core::opening(),
         open_elsewhere: core::open_elsewhere(),
+
+        expand: c("Expand"),
+        collapse: c("Collapse"),
     }
 }
 

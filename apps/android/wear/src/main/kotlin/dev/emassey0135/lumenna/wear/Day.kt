@@ -10,6 +10,7 @@ import dev.emassey0135.lumenna.rowActions
 import dev.emassey0135.lumenna.LocalPlannerNow
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Place
+import dev.emassey0135.lumenna.app.placeTitle
 import dev.emassey0135.lumenna.app.DayMove
 import dev.emassey0135.lumenna.app.DayKind
 import dev.emassey0135.lumenna.app.BlockEvent
@@ -65,7 +66,7 @@ fun DayScreen(core: Core, navigator: Navigator, block: dev.emassey0135.lumenna.B
         // The day's heading, as every app says it: "<day>. <summary>".
         item {
             Heading(
-                heading ?: "Day",
+                heading ?: placeTitle(Place.Today),
                 dayActions,
             )
         }
@@ -89,7 +90,7 @@ fun DayScreen(core: Core, navigator: Navigator, block: dev.emassey0135.lumenna.B
         dayActions.forEach { action ->
             item { Button(onClick = action.run, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
         }
-        item { Button(onClick = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }, modifier = Modifier.fillMaxWidth(), label = { Text("Add block") }) }
+        item { Button(onClick = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("new-block")) }) }
         // Named as every app's commands for each move are.
         item { Button(onClick = { move(DayMove.PREVIOUS) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("previous-day")) }) }
         if (day?.today == false) item { Button(onClick = { move(DayMove.TODAY) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("go-today")) }) }

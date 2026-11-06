@@ -1,12 +1,10 @@
 package dev.emassey0135.lumenna.wear
 
-import dev.emassey0135.lumenna.quickWords
+import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.app.completeWith
-import dev.emassey0135.lumenna.app.detailsWords
 import androidx.compose.ui.semantics.semantics
 import dev.emassey0135.lumenna.app.durationWords
 import dev.emassey0135.lumenna.leveled
-import dev.emassey0135.lumenna.SHOWN_COMPLETIONS
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.ShowingBlockForm
 import dev.emassey0135.lumenna.text
@@ -54,7 +52,7 @@ fun TextFieldButton(name: String, value: String, example: String = "", ask: (Str
         modifier = Modifier.fillMaxWidth(),
         label = { Text(name) },
         secondaryLabel = {
-            Text(value.ifEmpty { example.takeIf { it.isNotEmpty() }?.let { dev.emassey0135.lumenna.app.forExample(it) } ?: dev.emassey0135.lumenna.app.emptyField() })
+            Text(value.ifEmpty { example.takeIf { it.isNotEmpty() }?.let { dev.emassey0135.lumenna.app.forExample(it) } ?: appWords.emptyField })
         },
     )
 }
@@ -76,17 +74,17 @@ fun AddTaskScreen(core: Core, navigator: Navigator) {
     val text = line?.text.orEmpty()
     val set = { value: String -> app.send(ShellEvent.Typing(Typing.Text(value, TextOffsets.bytes(value.length, value)))) }
     // Straight to the input screen, as the phone's quick add opens with the keyboard up.
-    LaunchedEffect(opened) { if (opened && text.isBlank()) entry?.ask(quickWords.title) { set(it) } }
+    LaunchedEffect(opened) { if (opened && text.isBlank()) entry?.ask(appWords.quickAdd.title) { set(it) } }
     WearList {
-        item { Heading(quickWords.title) }
-        item { TextFieldButton(quickWords.label, text, quickWords.example) { set(it) } }
+        item { Heading(appWords.quickAdd.title) }
+        item { TextFieldButton(appWords.quickAdd.label, text, appWords.quickAdd.example) { set(it) } }
         if (text.isNotBlank()) {
             item {
-                val more = dev.emassey0135.lumenna.app.addToLine(true)
+                val more = appWords.addToLine
                 Button(onClick = { entry?.ask(more) { added -> set("${text.trimEnd()} ${added.trim()}") } }, modifier = Modifier.fillMaxWidth(), label = { Text(more) })
             }
         }
-        line?.offer?.candidates.orEmpty().take(SHOWN_COMPLETIONS).forEachIndexed { index, candidate ->
+        line?.offer?.candidates.orEmpty().take(appWords.completionsShown.toInt()).forEachIndexed { index, candidate ->
             item {
                 Button(
                     onClick = { app.send(ShellEvent.Typing(Typing.Choose(index.toUInt()))) },
@@ -107,7 +105,7 @@ fun AddTaskScreen(core: Core, navigator: Navigator) {
                 onClick = { app.send(ShellEvent.QuickAdd(text)) },
                 enabled = text.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(quickWords.add) },
+                label = { Text(appWords.quickAdd.add) },
             )
         }
     }
@@ -129,7 +127,7 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
     val set = { key: String, value: String -> app.send(ShellEvent.Details(DetailsEvent.Field(key, value))) }
     WearList {
         if (details == null) {
-            if (shown) item { Text(detailsWords.gone) }
+            if (shown) item { Text(appWords.details.gone) }
             return@WearList
         }
         val current = details.task
@@ -171,11 +169,11 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
                 }
             }
         }
-        item { Button(onClick = { app.send(ShellEvent.Details(DetailsEvent.Save)) }, modifier = Modifier.fillMaxWidth(), label = { Text(detailsWords.save) }) }
+        item { Button(onClick = { app.send(ShellEvent.Details(DetailsEvent.Save)) }, modifier = Modifier.fillMaxWidth(), label = { Text(appWords.details.save) }) }
 
         // What it is, the core's lines: its state, the rule it repeats by, what it waits for, and
         // what the records hold of it. On its own screen only, never a list.
-        item { Heading(detailsWords.about) }
+        item { Heading(appWords.details.about) }
         details.lines.forEach { line ->
             item {
                 androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
@@ -186,7 +184,7 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
         }
 
         // The app's, in the core's order: this screen is the task's form, so no Edit Details.
-        item { Heading(detailsWords.actions) }
+        item { Heading(appWords.details.actions) }
         current.offered.forEach { action ->
             item { Button(onClick = { app.send(ShellEvent.ActOn(ActingOn.Details, action)) }, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
         }
@@ -258,4 +256,3 @@ private fun Flag(name: String, on: Boolean, changed: (Boolean) -> Unit) {
 }
 
 /** The task details' words, the core's, in sentence case. */
-private val detailsWords by lazy { detailsWords(true) }

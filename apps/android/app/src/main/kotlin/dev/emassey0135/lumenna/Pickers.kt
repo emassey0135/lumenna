@@ -38,7 +38,7 @@ private val clockTime = Regex("""(\d{1,2}):(\d{2})""")
 @Composable
 fun ChooseDay(line: String, from: String? = null, modifier: Modifier = Modifier, picked: (String) -> Unit) {
     var open by rememberSaveable { mutableStateOf(false) }
-    OutlinedButton(onClick = { open = true }, modifier = modifier.then(Target)) { Text(pickers.day) }
+    OutlinedButton(onClick = { open = true }, modifier = modifier.then(Target)) { Text(appWords.picker.day) }
     if (!open) return
     val start = (line.trim().takeIf { isoDay.matches(it) } ?: from)
         ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
@@ -51,9 +51,9 @@ fun ChooseDay(line: String, from: String? = null, modifier: Modifier = Modifier,
             TextButton(modifier = Target, onClick = {
                 open = false
                 state.selectedDateMillis?.let { picked(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()) }
-            }) { Text(pickers.choose) }
+            }) { Text(appWords.picker.choose) }
         },
-        dismissButton = { TextButton(modifier = Target, onClick = { open = false }) { Text(pickers.cancel) } },
+        dismissButton = { TextButton(modifier = Target, onClick = { open = false }) { Text(appWords.picker.cancel) } },
     ) {
         // No switch to typing a date: the line beside is that, and the switch is a 40dp target.
         DatePicker(state, showModeToggle = false)
@@ -70,7 +70,7 @@ fun ChooseDay(line: String, from: String? = null, modifier: Modifier = Modifier,
 @Composable
 fun ChooseTime(line: String, modifier: Modifier = Modifier, picked: (String) -> Unit) {
     var open by rememberSaveable { mutableStateOf(false) }
-    OutlinedButton(onClick = { open = true }, modifier = modifier.then(Target)) { Text(pickers.time) }
+    OutlinedButton(onClick = { open = true }, modifier = modifier.then(Target)) { Text(appWords.picker.time) }
     if (!open) return
     val shown = clockTime.matchEntire(line.trim())
     val hour = shown?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 0..23 } ?: 9
@@ -79,14 +79,14 @@ fun ChooseTime(line: String, modifier: Modifier = Modifier, picked: (String) -> 
     val state = rememberTimePickerState(hour, minute, is24Hour = DateFormat.is24HourFormat(LocalContext.current))
     AlertDialog(
         onDismissRequest = { open = false },
-        title = { Text(pickers.time) },
+        title = { Text(appWords.picker.time) },
         text = { TimeInput(state) },
         confirmButton = {
             TextButton(modifier = Target, onClick = {
                 open = false
                 picked("%02d:%02d".format(state.hour, state.minute))
-            }) { Text(pickers.choose) }
+            }) { Text(appWords.picker.choose) }
         },
-        dismissButton = { TextButton(modifier = Target, onClick = { open = false }) { Text(pickers.cancel) } },
+        dismissButton = { TextButton(modifier = Target, onClick = { open = false }) { Text(appWords.picker.cancel) } },
     )
 }

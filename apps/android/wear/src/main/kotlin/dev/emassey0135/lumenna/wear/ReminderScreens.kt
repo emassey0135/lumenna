@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna.wear
 
+import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.on
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.rememberSideLanding
@@ -50,7 +51,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
     // In the reminder list's own hand: a reminder added or removed here lands here.
     val focus = rememberSideLanding(core, Side.REMINDERS, keys) { state.scrollToItem(it) }
     WearList(state) {
-        item { Heading(list?.announcement?.replaceFirstChar { it.uppercase() } ?: "Reminders") }
+        item { Heading(view?.remindersTitle.orEmpty()) }
         list?.reminders.orEmpty().forEachIndexed { index, reminder ->
             item {
                 val line = lines?.reminders?.getOrNull(index)
@@ -92,7 +93,7 @@ fun ReminderSettingsScreen(core: Core, changes: Long) {
     val context = LocalContext.current
     val page = dev.emassey0135.lumenna.SettingsPages.of("reminders")
     val all = appSettings(core)
-    val words = remember { dev.emassey0135.lumenna.app.notificationWords("this watch", true) }
+    val words = remember { appWords.notifications }
     val access = dev.emassey0135.lumenna.LocalReminderAccess.current
     val (allowed, exact, grant) = remember(changes) { access(context) }
     val ask = rememberNotificationAsk()

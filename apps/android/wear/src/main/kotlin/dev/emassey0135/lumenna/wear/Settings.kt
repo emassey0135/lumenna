@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna.wear
 
+import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.on
 import dev.emassey0135.lumenna.SettingsPages
 import dev.emassey0135.lumenna.app.ActingOn
@@ -164,7 +165,7 @@ private fun PairingButtons(core: Core) {
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         // What pairing's sentences call this watch, which finds others on its network.
-        app.send(ShellEvent.PairingAs("this watch", true))
+        app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
         app.send(ShellEvent.Devices(DevicesEvent.Show))
         pair(PairEvent.Open(deviceName(context)))
     }
@@ -196,7 +197,7 @@ private fun PairingButtons(core: Core) {
 }
 
 /** A time setting's example, the core's. */
-private val timeExample by lazy { dev.emassey0135.lumenna.app.settingWords().timeExample }
+private val timeExample by lazy { appWords.settings.timeExample }
 
 /** One setting, by the control its kind asks for; applied through the app. */
 internal fun ScalingLazyListScope.setting(core: Core, shown: SettingView) {

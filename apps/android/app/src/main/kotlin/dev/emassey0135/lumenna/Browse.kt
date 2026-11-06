@@ -6,6 +6,7 @@ import dev.emassey0135.lumenna.app.SidebarKind
 import dev.emassey0135.lumenna.app.SidebarGroup
 import dev.emassey0135.lumenna.app.groupCount
 import dev.emassey0135.lumenna.app.groupEmpty
+import dev.emassey0135.lumenna.app.placeTitle
 import dev.emassey0135.lumenna.app.Place
 import dev.emassey0135.lumenna.app.ActionKind
 import androidx.compose.runtime.collectAsState
@@ -56,7 +57,7 @@ fun MenuScreen(title: String, core: Core, navigator: Navigator, items: List<Item
                     index = index,
                     actions = emptyList(),
                     open = { open(item) },
-                    openLabel = "Open",
+                    openLabel = appWords.open,
                     key = item.key,
                     say = core::say,
                 )
@@ -76,13 +77,15 @@ fun BrowseScreen(core: Core, navigator: Navigator) {
     fun under(group: SidebarGroup) = rows.groupUnder(group).count { it.depth == 1 }
     val trash = rows.firstOrNull { (it.entry.kind as? SidebarKind.Place)?.field0 == Place.Trash }
     val history = rows.firstOrNull { (it.entry.kind as? SidebarKind.Place)?.field0 == Place.History }
+    // Each named as the app's places name it: a group by its heading, the rest by the place.
+    fun named(group: SidebarGroup) = rows.heading(group)?.title.orEmpty()
     val items = listOf(
-        Item("projects", "Projects", count(SidebarGroup.PROJECTS, rows.groupUnder(SidebarGroup.PROJECTS).size)),
-        Item("labels", "Labels", count(SidebarGroup.LABELS, under(SidebarGroup.LABELS))),
-        Item("filters", "Saved filters", count(SidebarGroup.FILTERS, under(SidebarGroup.FILTERS))),
-        Item("blocks", "Blocks", ""),
-        Item("history", "History", history?.detail.orEmpty()),
-        Item("trash", "Trash", trash?.detail.orEmpty()),
+        Item("projects", named(SidebarGroup.PROJECTS), count(SidebarGroup.PROJECTS, rows.groupUnder(SidebarGroup.PROJECTS).size)),
+        Item("labels", named(SidebarGroup.LABELS), count(SidebarGroup.LABELS, under(SidebarGroup.LABELS))),
+        Item("filters", named(SidebarGroup.FILTERS), count(SidebarGroup.FILTERS, under(SidebarGroup.FILTERS))),
+        Item("blocks", placeTitle(Place.Blocks), ""),
+        Item("history", placeTitle(Place.History), history?.detail.orEmpty()),
+        Item("trash", placeTitle(Place.Trash), trash?.detail.orEmpty()),
     )
     MenuScreen(
         Tab.BROWSE.title, core, navigator, items,
@@ -101,6 +104,10 @@ fun BrowseScreen(core: Core, navigator: Navigator) {
     )
 }
 
+/** A group's heading among the app's places, which names it: "Saved filters". */
+private fun List<PlaceRow>.heading(group: SidebarGroup): PlaceRow? =
+    firstOrNull { (it.entry.kind as? SidebarKind.Group)?.field0 == group }
+
 /** The rows under a group's heading in the app's places, down to the next heading or place. */
 private fun List<PlaceRow>.groupUnder(group: SidebarGroup): List<PlaceRow> {
     val heading = indexOfFirst { (it.entry.kind as? SidebarKind.Group)?.field0 == group }
@@ -110,21 +117,22 @@ private fun List<PlaceRow>.groupUnder(group: SidebarGroup): List<PlaceRow> {
 
 /**
  * The places under one of the app's headings — the project tree, the labels, the saved
- * filters — with the heading's own action (New Project, …) as the add button, and each one's
- * actions the app's. Folding within it is the app's; the heading's own fold is the sidebar's.
+ * filters — named by the heading, with its own action (New Project, …) as the add button, and
+ * each one's actions the app's. Folding within it is the app's; the heading's own fold is the
+ * sidebar's. [openLabel] is what choosing one does, in the core's words.
  */
 @Composable
-private fun GroupScreen(core: Core, navigator: Navigator, group: SidebarGroup, title: String, addLabel: String, openLabel: String) {
+private fun GroupScreen(core: Core, navigator: Navigator, group: SidebarGroup, openLabel: String) {
     val app = core.app
     val view by app.view.collectAsState()
     val entries = view?.sidebar.orEmpty()
     val all = placeRows(entries)
-    val heading = all.firstOrNull { (it.entry.kind as? SidebarKind.Group)?.field0 == group }
+    val heading = all.heading(group)
     // Folded within the group as the app has it; the heading's own fold left out.
     val rows = placeRowsWithin(all.groupUnder(group).map { it.entry.copy(depth = it.entry.depth - 1u) })
-    ScreenFrame(title, core, navigator, actions = {
+    ScreenFrame(heading?.title.orEmpty(), core, navigator, actions = {
         heading?.entry?.offered?.firstOrNull { it.kind == ActionKind.NEW }?.let { new ->
-            IconButton(onClick = { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, heading.key), new)) }) { Icon(Icons.Filled.Add, contentDescription = addLabel) }
+            IconButton(onClick = { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, heading.key), new)) }) { Icon(Icons.Filled.Add, contentDescription = new.name) }
         }
     }) {
         // Nothing in it yet, said in the core's words: "No labels."
@@ -142,17 +150,17 @@ private fun GroupScreen(core: Core, navigator: Navigator, group: SidebarGroup, t
 /** The project tree. Depth is said where it changes. */
 @Composable
 fun ProjectsScreen(core: Core, navigator: Navigator) =
-    GroupScreen(core, navigator, SidebarGroup.PROJECTS, "Projects", "Add project", "Show its tasks")
+    GroupScreen(core, navigator, SidebarGroup.PROJECTS, appWords.showItsTasks)
 
 /** Labels: a first-class axis, with its own list. */
 @Composable
 fun LabelsScreen(core: Core, navigator: Navigator) =
-    GroupScreen(core, navigator, SidebarGroup.LABELS, "Labels", "Add label", "Show the tasks wearing it")
+    GroupScreen(core, navigator, SidebarGroup.LABELS, appWords.showTasksWearingIt)
 
 /** Saved filters: created, renamed, requeried, reordered and deleted, not only run. */
 @Composable
 fun FiltersScreen(core: Core, navigator: Navigator) =
-    GroupScreen(core, navigator, SidebarGroup.FILTERS, "Saved filters", "Add filter", "Show its tasks")
+    GroupScreen(core, navigator, SidebarGroup.FILTERS, appWords.showItsTasks)
 
 /**
  * Every block series, as the app lists them (its Blocks place): said as a task row is, when in
@@ -169,9 +177,9 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
     val worded by app.lines.collectAsState()
     val lines = worded?.takeIf { here != null }
     FollowBlockForm(core, navigator)
-    ScreenFrame("Blocks", core, navigator, actions = {
+    ScreenFrame(placeTitle(Place.Blocks), core, navigator, actions = {
         IconButton(onClick = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }) {
-            Icon(Icons.Filled.Add, contentDescription = "Add block")
+            Icon(Icons.Filled.Add, contentDescription = Command.NEW_BLOCK.title)
         }
     }) {
         val count = lines?.readback.orEmpty()
@@ -186,6 +194,6 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
         AppTaskRows(core, shownRows(list?.items.orEmpty(), lines?.list.orEmpty()), list, open = { row ->
             // A block's own screen is its form, for every occurrence: its Edit, on the row in hand.
             app.rowKeys(row.id).key("open")
-        }, openLabel = "Edit every occurrence")
+        }, openLabel = appWords.editEveryOccurrence)
     }
 }

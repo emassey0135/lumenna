@@ -321,7 +321,7 @@ class WearTest {
     @Test
     fun aNewBlockStartsWhenTheCoreSaysAndFollowsTheDay() {
         press("Today")
-        press("Add block")
+        press("New block")
         assertEquals(core.device.newBlockStart(null), valueOf("Starts at"))
         answers += "in 3 days"
         press("Day")
@@ -331,7 +331,7 @@ class WearTest {
     @Test
     fun aBlocksDayIsFilledByTheWatchsOwnCalendarBesideItsLine() {
         press("Today")
-        press("Add block")
+        press("New block")
         answers += "2030-01-15"
         press("Day")
         press("Choose a day")

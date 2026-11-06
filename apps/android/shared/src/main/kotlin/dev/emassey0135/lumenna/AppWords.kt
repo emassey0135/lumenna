@@ -17,6 +17,10 @@ import dev.emassey0135.lumenna.app.KeyCommand
 import dev.emassey0135.lumenna.app.keyboardShortcuts
 import dev.emassey0135.lumenna.app.foldState
 import dev.emassey0135.lumenna.app.sidebarKey
+import dev.emassey0135.lumenna.app.Capitals
+import dev.emassey0135.lumenna.app.ShellWords
+import dev.emassey0135.lumenna.app.ThisDevice
+import dev.emassey0135.lumenna.app.shellWords
 
 // What Android adds to the lines the core words (crates/app, through the turn's `lines`):
 // what a tree control would report by itself, which a Compose list does not.
@@ -30,11 +34,18 @@ val sharedCommands: Map<String, KeyCommand> by lazy { keyboardShortcuts().flatMa
  */
 fun commandTitle(id: String): String = sharedCommands[id]?.title ?: id
 
-/** What quick add and a list's filter say, the core's words in sentence case. */
-val quickWords: dev.emassey0135.lumenna.app.QuickAddWords by lazy { dev.emassey0135.lumenna.app.quickAddWords(true) }
+/**
+ * What this device is, as the core's sentences call it ("this phone") and pairing names it: the
+ * watch's Application says so as its process starts, before anything is worded.
+ */
+@Volatile
+var thisDevice: ThisDevice = ThisDevice.PHONE
 
-/** How many completions are offered at once beside a line: the core's. */
-val SHOWN_COMPLETIONS: Int by lazy { dev.emassey0135.lumenna.app.completionsShown().toInt() }
+/**
+ * Every fixed word drawn here, the core's (`shell_words`): in sentence case, as Material and Wear
+ * OS write, and as [thisDevice] calls itself.
+ */
+val appWords: ShellWords by lazy { shellWords(Capitals.SENTENCE, thisDevice) }
 
 /** An action's name in this platform's capitals: sentence case, as Material and Wear OS write. */
 val Action.name: String get() = sentence.ifEmpty { title }

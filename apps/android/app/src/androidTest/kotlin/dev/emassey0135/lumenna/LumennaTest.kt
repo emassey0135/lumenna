@@ -167,7 +167,7 @@ class LumennaTest {
     @Test
     fun addingATaskReadsItBackAndListsIt() {
         tab("Tasks")
-        press("Add task")
+        press("New task")
         type("Task", "call the bank tomorrow p1")
         shows("call the bank, due tomorrow")
         shows("priority 1")
@@ -315,7 +315,7 @@ class LumennaTest {
     @Test
     fun quickAddRefusesAnUnknownProjectAndSaysWhy() {
         tab("Tasks")
-        press("Add task")
+        press("New task")
         type("Task", "water the plants #Nowhere")
         shows("Nowhere")
         press("Add")
@@ -453,7 +453,7 @@ class LumennaTest {
         rule.waitForIdle()
         replace("Project", "Nowhere")
         // Nothing the core would offer, in its words.
-        rule.onNode(hasText(dev.emassey0135.lumenna.app.nothingToChoose())).assertExists()
+        rule.onNode(hasText(appWords.nothingToChoose)).assertExists()
         field("Project").performImeAction()
         press("Save")
         assertEquals(before, core.device.showTask(core.device.listTasks("").rows.single().id).task.project)
@@ -574,7 +574,7 @@ class LumennaTest {
     @Test
     fun aNewBlockStartsWhenTheCoreSaysAndFollowsTheDayUntilItsStartIsChosen() {
         tab("Today")
-        press("Add block")
+        press("New block")
         assertEquals(core.device.newBlockStart(null), valueOf("Starts at"))
         replace("Day", "in 3 days")
         assertEquals(core.device.newBlockStart("in 3 days"), valueOf("Starts at"))
@@ -586,7 +586,7 @@ class LumennaTest {
     @Test
     fun aBlocksDayAndStartAreFilledByAndroidsOwnPickersBesideTheirLines() {
         tab("Today")
-        press("Add block")
+        press("New block")
         // The calendar opens on the day the line names, words or a date, and gives it back ISO.
         replace("Day", "today")
         button("Choose a day")
@@ -622,7 +622,7 @@ class LumennaTest {
     @Test
     fun aBreakSetApartToTakeTasksIsOfferedForThem() {
         tab("Today")
-        press("Add block")
+        press("New block")
         type("Name", "Train")
         // Its own start, so what it says holds at any time of day the test runs.
         replace("Starts at", "00:00")
@@ -685,12 +685,12 @@ class LumennaTest {
         tab("Browse")
         row("Projects").performClick()
         rule.waitForIdle()
-        press("Add project")
+        press("New project")
         type("Name", "Work")
         button("Add")
         row("Work").performClick()
         rule.waitForIdle()
-        press("Add task")
+        press("New task")
         type("Task", "ship it")
         press("Add")
         row("ship it").assertExists()
@@ -702,14 +702,14 @@ class LumennaTest {
         tab("Browse")
         row("Labels").performClick()
         rule.waitForIdle()
-        press("Add label")
+        press("New label")
         type("Name", "calls")
         button("Add")
         row("calls").assertExists()
         press("Back")
         row("Saved filters").performClick()
         rule.waitForIdle()
-        press("Add filter")
+        press("New saved filter")
         type("Name", "Urgent")
         button("Next")
         type("Query", "p1")

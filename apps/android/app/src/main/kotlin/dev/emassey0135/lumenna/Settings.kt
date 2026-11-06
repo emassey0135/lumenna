@@ -1,7 +1,5 @@
 package dev.emassey0135.lumenna
 
-import dev.emassey0135.lumenna.app.settingWords
-import dev.emassey0135.lumenna.app.notificationWords
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.collectionInfo
@@ -167,7 +165,7 @@ private fun ChooseOne(
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(appWords.cancel) } },
     )
 }
 
@@ -189,7 +187,7 @@ private fun SettingControl(core: Core, shown: SettingView, turnedOn: () -> Unit 
     val app = core.app
     val setting = shown.setting
     val set = { value: String -> app.send(ShellEvent.Settings(SettingsEvent.Set(setting.key, value))) }
-    val words = remember { settingWords() }
+    val words = remember { appWords.settings }
     var asking by remember { mutableStateOf(false) }
     var sent by remember { mutableStateOf<String?>(null) }
     // Applied as typed, the dialog closes; refused, it stays with the app's reason.
@@ -276,9 +274,6 @@ private fun Caption(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = quiet(), modifier = Modifier.padding(16.dp))
 }
 
-/** The notifications' words, as this device calls itself in them. */
-val phoneNotificationWords by lazy { notificationWords("this device", true) }
-
 /**
  * Reminders on this device: the core's setting for whether it gives them, then what Android
  * allows — notifications, and alarms at an exact time — each with the system's page that
@@ -289,7 +284,7 @@ fun ReminderSettingsScreen(core: Core, navigator: Navigator, changes: Long) {
     val context = LocalContext.current
     val page = SettingsPages.of("reminders")
     val shown = appSettings(core).on(page)
-    val words = phoneNotificationWords
+    val words = appWords.notifications
     // Read again whenever the app comes back, as from the system's settings (`changes` moves).
     val access = LocalReminderAccess.current
     val (allowed, exact, grant) = remember(changes) { access(context) }
@@ -475,7 +470,7 @@ fun DevicesScreen(core: Core, navigator: Navigator) {
                     actions = app.rowActions(device.nodeId, device.offered, side = Side.DEVICES),
                     keys = app.rowKeys(device.nodeId, Side.DEVICES),
                     open = null,
-                    openLabel = "Open",
+                    openLabel = appWords.open,
                     focus = focus.requester(device.nodeId),
                     key = device.nodeId,
                     say = core::say,
@@ -499,8 +494,8 @@ fun PairingScreen(core: Core, navigator: Navigator) {
     val view by app.view.collectAsState()
     val name = remember { deviceName(context) }
     LaunchedEffect(Unit) {
-        // What pairing's sentences call this phone, which finds others on its network.
-        app.send(ShellEvent.PairingAs(name, true))
+        // What pairing's sentences call this phone ("this phone"), which finds others on its network.
+        app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
         app.send(ShellEvent.Devices(DevicesEvent.Show))
         app.send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Open(name))))
     }

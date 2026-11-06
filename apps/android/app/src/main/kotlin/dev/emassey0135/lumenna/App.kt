@@ -137,7 +137,7 @@ sealed interface Screen {
 enum class Tab(private val named: () -> String, val icon: ImageVector, val root: Screen) {
     TODAY({ placeTitle(Place.Today) }, Icons.Filled.DateRange, Screen.Day()),
     TASKS({ placeTitle(Place.Tasks) }, Icons.Filled.CheckCircle, Screen.Tasks()),
-    BROWSE({ dev.emassey0135.lumenna.app.browse(true) }, Icons.AutoMirrored.Filled.List, Screen.Browse),
+    BROWSE({ appWords.browse }, Icons.AutoMirrored.Filled.List, Screen.Browse),
     SETTINGS({ Command.SETTINGS.title }, Icons.Filled.Settings, Screen.Settings),
     ;
 
@@ -491,7 +491,7 @@ fun ScreenFrame(
                 navigationIcon = {
                     if (navigator.canGoBack) {
                         IconButton(onClick = navigator::back) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = appWords.back)
                         }
                     }
                 },

@@ -68,6 +68,7 @@ import dev.emassey0135.lumenna.app.DayKind
 import dev.emassey0135.lumenna.app.DayMove
 import dev.emassey0135.lumenna.app.FieldKind
 import dev.emassey0135.lumenna.app.Place
+import dev.emassey0135.lumenna.app.placeTitle
 import dev.emassey0135.lumenna.app.ShellEvent
 
 /**
@@ -120,9 +121,9 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     // The day's own actions, the app's, in the core's order.
     val dayActions = day?.let { app.actingOn(ActingOn.Day, it.offered) }.orEmpty()
 
-    ScreenFrame(lines?.dayTitle?.ifEmpty { null } ?: "Today", core, navigator, actions = {
+    ScreenFrame(lines?.dayTitle?.ifEmpty { null } ?: placeTitle(Place.Today), core, navigator, actions = {
         IconButton(onClick = { addBlock() }) {
-            Icon(Icons.Filled.Add, contentDescription = "Add block")
+            Icon(Icons.Filled.Add, contentDescription = Command.NEW_BLOCK.title)
         }
     }) {
         val summary = day?.summary.orEmpty()
@@ -177,7 +178,12 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
                         item.kind == DayKind.SITTING -> item.sitting?.let { sitting -> { navigator.push(Screen.Task(sitting.task)) } }
                         else -> null
                     },
-                    openLabel = if (item.kind == DayKind.SITTING) "Show the task" else "Edit",
+                    // A block's is its Edit, as the app offers it.
+                    openLabel = if (item.kind == DayKind.SITTING) {
+                        appWords.showTheTask
+                    } else {
+                        item.offered.firstOrNull { it.kind == ActionKind.EDIT }?.name ?: appWords.open
+                    },
                     swatch = item.block?.takeIf { item.kind == DayKind.BLOCK }?.swatch,
                 )
                 HorizontalDivider()
@@ -213,8 +219,9 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
     val save = { app.send(ShellEvent.Block(BlockEvent.Save)) }
     Offer(Command.SAVE) { save() }
 
-    ScreenFrame(form?.heading ?: "Block", core, navigator, actions = {
-        IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = form?.yes ?: "Save") }
+    // Named by the app's form, which is open by the time anything here can be used.
+    ScreenFrame(form?.heading.orEmpty(), core, navigator, actions = {
+        if (form != null) IconButton(onClick = { save() }) { Icon(Icons.Filled.Check, contentDescription = form.yes) }
     }) {
         if (form == null) return@ScreenFrame
         val fields = form.values

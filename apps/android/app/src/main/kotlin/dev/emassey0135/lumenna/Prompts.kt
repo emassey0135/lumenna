@@ -101,7 +101,7 @@ fun AskText(
           }
         },
         confirmButton = { TextButton(modifier = Target, onClick = { done(text.text) }) { Text(action) } },
-        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(quickWords.cancel) } },
+        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(appWords.quickAdd.cancel) } },
     )
     LaunchedEffect(Unit) { focus.requestFocus() }
 }
@@ -130,13 +130,13 @@ fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Uni
                     OutlinedTextField(
                         value = narrow,
                         onValueChange = { narrow = it },
-                        label = { Text(quickWords.filter) },
+                        label = { Text(appWords.quickAdd.filter) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 if (shown.isEmpty()) {
-                    Text(dev.emassey0135.lumenna.app.nothingToChoose(), Modifier.padding(vertical = 12.dp))
+                    Text(appWords.nothingToChoose, Modifier.padding(vertical = 12.dp))
                 }
                 LazyColumn(
                     Modifier
@@ -174,7 +174,7 @@ fun Choose(title: String, choices: List<Option>, yes: String, dismiss: () -> Uni
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(quickWords.cancel) } },
+        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(appWords.quickAdd.cancel) } },
     )
 }
 
@@ -197,7 +197,7 @@ fun Confirm(
                 Text(action, color = if (destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
             }
         },
-        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(quickWords.cancel) } },
+        dismissButton = { TextButton(modifier = Target, onClick = dismiss) { Text(appWords.quickAdd.cancel) } },
     )
 }
 
