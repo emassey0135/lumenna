@@ -179,6 +179,8 @@ pub struct ShellWords {
     pub keys: String,
     /// The label over a keyboard help's list: "Shortcuts".
     pub shortcuts: String,
+    /// Between two keys that do the same, in a keyboard help: "Ctrl+Y or Ctrl+Shift+Z".
+    pub or: String,
     /// The keyboard help's group of what works in any dialog: "In a Dialog".
     pub in_a_dialog: String,
     /// What Escape does there: "Close the Dialog".
@@ -350,6 +352,7 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         command: c("Command"),
         keys: c("Keys"),
         shortcuts: c("Shortcuts"),
+        or: "or".to_owned(),
         in_a_dialog: c("In a Dialog"),
         close_the_dialog: c("Close the Dialog"),
         menu_bar: c("Menu Bar"),
