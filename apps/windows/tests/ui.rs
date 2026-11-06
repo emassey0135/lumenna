@@ -156,7 +156,7 @@ fn add(lumenna: &Lumenna, text: &str) {
 fn the_day_opens_with_its_summary_first_and_focus_on_a_row() {
     let app = App::launch(|_| {});
     let lines = app.automation.dump(app.window, 6);
-    let day = lines.iter().position(|l| l.trim_start().starts_with("Tree 'The day'")).expect("the day is a tree");
+    let day = lines.iter().position(|l| l.trim_start().starts_with("Tree 'The Day'")).expect("the day is a tree");
     let first = lines[day + 1..].iter().find(|l| l.contains("TreeItem")).expect("the day has rows");
     assert!(first.contains("TreeItem 'Today."), "the summary comes first: {first}");
     assert!(app.focus().contains("TreeItem"), "focus lands on a row: {}", app.focus());
