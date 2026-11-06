@@ -5,7 +5,7 @@ import UIKit
 /// page (`ViewModel.devices`), held in its own hand, so a rename or an unpairing lands back here.
 final class DevicesViewController: AppListViewController {
     init(core: Core) {
-        super.init(core: core, title: Pages.title("devices"))
+        super.init(core: core, title: Wording.devices)
     }
 
     override var side: LumennaApp.Side? { .devices }

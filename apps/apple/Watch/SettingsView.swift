@@ -75,7 +75,7 @@ struct DevicesView: View {
                 }
             }
         }
-        .navigationTitle(Pages.title("devices"))
+        .navigationTitle(Wording.devices)
         .onAppear { core.app.send(.devices(.show)) }
     }
 }

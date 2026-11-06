@@ -341,6 +341,9 @@ pub struct ShellWords {
     pub taken_by_vocr_scanning: String,
     /// What a watch calls its phone in a sentence: "the iPhone".
     pub the_phone: String,
+    /// The devices page, where a short title is wanted (a bar's one line, which the page's
+    /// "Devices and Sync" overflows at large text sizes): "Devices".
+    pub devices: String,
 }
 
 /// A pick's words, its buttons in sentence case where `sentence`.
@@ -494,6 +497,7 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         taken_by_vocr: "VOCR uses this.".to_owned(),
         taken_by_vocr_scanning: "VOCR uses this while you move through a scan, and not otherwise.".to_owned(),
         the_phone: "the iPhone".to_owned(),
+        devices: c("Devices"),
     }
 }
 

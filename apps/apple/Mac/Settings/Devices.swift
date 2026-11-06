@@ -146,7 +146,7 @@ final class DevicesViewController: NSViewController {
         self.core = core
         model = DevicesModel(core: core)
         super.init(nibName: nil, bundle: nil)
-        title = Pages.title("devices")
+        title = Wording.devices
         screen = DevicesScreen(
             model: model,
             pair: { [weak self] in
