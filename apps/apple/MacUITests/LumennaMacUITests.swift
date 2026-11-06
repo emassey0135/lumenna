@@ -653,7 +653,7 @@ final class LumennaMacUITests: XCTestCase {
         XCTAssertTrue(stepper.waitForExistence(timeout: 5))
         XCTAssertEqual(stepper.value as? String, "1 hour", "the stepper says the length, not a percentage")
         stepper.incrementArrows.firstMatch.click()
-        XCTAssertEqual(stepper.value as? String, "1 hour, 5 minutes", "and follows a change")
+        XCTAssertEqual(stepper.value as? String, "1 hour 5 minutes", "and follows a change")
         sheetButton("Cancel")
     }
 
