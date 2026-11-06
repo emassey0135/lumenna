@@ -58,7 +58,7 @@ final class PhoneSync: NSObject, ObservableObject {
 
     /// How syncing with the phone went, in the core's words.
     static func said(_ status: LumennaApp.PhoneSync) -> String {
-        LumennaApp.phoneSync(phone: "the iPhone", status: status)
+        LumennaApp.phoneSync(phone: Wording.thePhone, status: status)
     }
 
     private func send(_ message: Data, over session: WCSession) {

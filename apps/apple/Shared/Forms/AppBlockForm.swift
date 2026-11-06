@@ -16,7 +16,7 @@ final class AppBlockFormModel: ObservableObject {
     @Published private(set) var shown: [LumennaApp.FormField] = []
     @Published private(set) var heading = ""
     /// The button that saves: "Add" or "Save".
-    @Published private(set) var yes = "Save"
+    @Published private(set) var yes = Wording.save
     @Published var fields: LumennaApp.BlockFields {
         didSet { typed(from: oldValue) }
     }
@@ -218,7 +218,7 @@ struct AppBlockForm: View {
                     colour
                     text("notes", $model.fields.notes, axis: .vertical)
                 } header: {
-                    FormParts.heading("More")
+                    FormParts.heading(Wording.more)
                 } footer: {
                     // What the fields take, seen as well as heard: the core's sentences, in
                     // the fields' order.
@@ -231,7 +231,7 @@ struct AppBlockForm: View {
             #if os(macOS)
             HStack {
                 Spacer()
-                Button("Cancel") { model.cancel() }
+                Button(Wording.cancel) { model.cancel() }
                     .keyboardShortcut(.cancelAction)
                 Button(model.yes) { model.save() }
                     .keyboardShortcut(.defaultAction)
@@ -291,7 +291,7 @@ struct AppBlockForm: View {
         // The stepper says what it stands for, the length in words, rather than the core's
         // name for a field of minutes to type.
         Stepper(value: $model.minutes, in: 5...720, step: 5) {
-            Text("Lasts \(Clock.length(UInt32(model.minutes)))")
+            Text(LumennaApp.lasts(minutes: UInt32(max(model.minutes, 0))))
         }
         #else
         if let field = model.field("minutes") {
@@ -300,7 +300,7 @@ struct AppBlockForm: View {
                     TextField(field.label, value: $model.minutes, format: .number)
                         .frame(width: 70)
                     // Says the length it stands for, as VoiceOver hears it.
-                    SpokenStepper(value: $model.minutes, in: 1...720, step: 5, name: "Length") { Clock.length(UInt32(max($0, 0))) }
+                    SpokenStepper(value: $model.minutes, in: 1...720, step: 5, name: Wording.length) { Clock.length(UInt32(max($0, 0))) }
                     Text(Clock.length(UInt32(max(model.minutes, 0)))).foregroundStyle(Color.quietLabel)
                 }
             }

@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The words of quick add, a list's filter and completing a line, the core's
 /// (`quickAddWords`), for every Apple app, in Title Case.
-let QuickAddText = LumennaApp.quickAddWords(sentence: false)
+let QuickAddText = Wording.quickAdd
 
 /// The words of completing a line, one place for every Apple app.
 enum CompletionWords {
@@ -63,7 +63,7 @@ struct CompletingLine<Field: View>: View {
             listing = false
             guard let window = NSApp.keyWindow, let offered else { return }
             let items = offered.candidates.enumerated().map { PickerItem(key: String($0.offset), title: LumennaApp.candidateLine(candidate: $0.element)) }
-            PickerSheet.present(on: window, title: CompletionWords.title, items: items, yes: "Choose", chosen: { item in
+            PickerSheet.present(on: window, title: CompletionWords.title, items: items, yes: Wording.choose, chosen: { item in
                 if let at = Int(item.key), at < offered.candidates.count { insert(offered.candidates[at], at: offered) }
             })
         }
@@ -103,7 +103,7 @@ struct CompletionList: View {
             .accessibilityLabel(CompletionWords.title)
             .navigationTitle(CompletionWords.title)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { chosen(nil) } }
+                ToolbarItem(placement: .cancellationAction) { Button(Wording.cancel) { chosen(nil) } }
             }
         }
         #if os(macOS)

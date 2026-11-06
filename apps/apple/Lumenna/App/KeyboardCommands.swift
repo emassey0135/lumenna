@@ -44,7 +44,7 @@ import UIKit
 }
 
 /// Every keyboard command, once, with the Mac app's keys — an iPad or iPhone keyboard is a
-/// Mac keyboard — named as the Mac's menus name them. On iPad they are the menu bar
+/// Mac keyboard — named as the core's menus name them (`Commands`), "…" after what asks first. On iPad they are the menu bar
 /// (`build(_:)`); the iPhone has none, so there they are the root's key commands (`all`).
 enum KeyboardCommands {
     private static func command(_ title: String, _ action: Selector, _ input: String, _ modifiers: UIKeyModifierFlags = .command) -> UIKeyCommand {
@@ -57,62 +57,61 @@ enum KeyboardCommands {
 
     static var newItems: [UIMenuElement] {
         [
-            command("New Task", #selector(CommandActions.newTask), "n"),
-            command("New Block", #selector(CommandActions.newBlock), "n", [.command, .shift]),
-            item("New Project", #selector(CommandActions.newProject)),
-            item("New Label", #selector(CommandActions.newLabel)),
-            item("New Saved Filter", #selector(CommandActions.newFilter)),
+            command(Commands.asking("new-task"), #selector(CommandActions.newTask), "n"),
+            command(Commands.asking("new-block"), #selector(CommandActions.newBlock), "n", [.command, .shift]),
+            item(Commands.asking("new-project"), #selector(CommandActions.newProject)),
+            item(Commands.asking("new-label"), #selector(CommandActions.newLabel)),
+            item(Commands.asking("new-filter"), #selector(CommandActions.newFilter)),
         ]
     }
 
     static var syncItems: [UIMenuElement] {
-        [command("Sync Now", #selector(CommandActions.syncNow), "r", [.command, .shift])]
+        [command(Commands.asking("sync-now"), #selector(CommandActions.syncNow), "r", [.command, .shift])]
     }
 
     static var settingsItems: [UIMenuElement] {
-        [command("Settings", #selector(CommandActions.showSettings), ",")]
+        [command(Commands.asking("settings"), #selector(CommandActions.showSettings), ",")]
     }
 
     static var undoItems: [UIMenuElement] {
         [
-            command("Undo", #selector(CommandActions.undoChange), "z"),
-            command("Redo", #selector(CommandActions.redoChange), "z", [.command, .shift]),
+            command(Commands.asking("undo"), #selector(CommandActions.undoChange), "z"),
+            command(Commands.asking("redo"), #selector(CommandActions.redoChange), "z", [.command, .shift]),
         ]
     }
 
     static var filterItems: [UIMenuElement] {
-        [command("Filter Tasks", #selector(CommandActions.filterTasks), "f")]
+        [command(Commands.asking("filter"), #selector(CommandActions.filterTasks), "f")]
     }
 
     static var viewItems: [UIMenuElement] {
         [
-            command("Today", #selector(CommandActions.goToToday), "1"),
-            command("Tasks", #selector(CommandActions.goToTasks), "2"),
-            command("Blocks", #selector(CommandActions.goToBlocks), "3"),
-            command("Trash", #selector(CommandActions.goToTrash), "4"),
-            command("History", #selector(CommandActions.goToHistory), "5"),
+            command(Commands.asking("go-today"), #selector(CommandActions.goToToday), "1"),
+            command(Commands.asking("go-tasks"), #selector(CommandActions.goToTasks), "2"),
+            command(Commands.asking("go-blocks"), #selector(CommandActions.goToBlocks), "3"),
+            command(Commands.asking("go-trash"), #selector(CommandActions.goToTrash), "4"),
+            command(Commands.asking("go-history"), #selector(CommandActions.goToHistory), "5"),
         ]
     }
 
     static var taskItems: [UIMenuElement] {
         [
-            command("Mark Done", #selector(CommandActions.toggleDone), "k"),
-            // The Mac's Task menu, with its keys: each asks first, so its name ends in "…".
-            command("Put in a Block…", #selector(CommandActions.putInBlock), "b"),
-            command("Move to Project…", #selector(CommandActions.moveToProject), "m", [.command, .shift]),
-            item("Make Subtask Of…", #selector(CommandActions.makeSubtask)),
-            item("Wait For…", #selector(CommandActions.waitFor)),
-            command("Save Changes", #selector(CommandActions.saveChanges), "s"),
-            command("Move to Trash", #selector(CommandActions.moveToTrash), "\u{8}"),
+            command(Commands.asking("mark-done"), #selector(CommandActions.toggleDone), "k"),
+            command(Commands.asking("put-in-block"), #selector(CommandActions.putInBlock), "b"),
+            command(Commands.asking("move-to-project"), #selector(CommandActions.moveToProject), "m", [.command, .shift]),
+            item(Commands.asking("make-subtask"), #selector(CommandActions.makeSubtask)),
+            item(Commands.asking("wait-for"), #selector(CommandActions.waitFor)),
+            command(Commands.asking("save-task"), #selector(CommandActions.saveChanges), "s"),
+            command(Commands.asking("trash-task"), #selector(CommandActions.moveToTrash), "\u{8}"),
         ]
     }
 
     static var dayItems: [UIMenuElement] {
         [
-            command("Previous Day", #selector(CommandActions.previousDay), "["),
-            command("Next Day", #selector(CommandActions.nextDay), "]"),
-            command("Go to Now", #selector(CommandActions.goToNow), "t"),
-            command("Go to Day", #selector(CommandActions.goToDay), "j"),
+            command(Commands.asking("previous-day"), #selector(CommandActions.previousDay), "["),
+            command(Commands.asking("next-day"), #selector(CommandActions.nextDay), "]"),
+            command(Commands.asking("go-to-now"), #selector(CommandActions.goToNow), "t"),
+            command(Commands.asking("go-to-day"), #selector(CommandActions.goToDay), "j"),
         ]
     }
 
@@ -121,11 +120,11 @@ enum KeyboardCommands {
     /// is built once, not for each day, so it cannot leave out what a day lacks.
     static var dayActionItems: [UIMenuElement] {
         [
-            command("Plan the Day", #selector(CommandActions.planTheDay), DayKeys.planDay, [.command, .alternate]),
-            command("Replan from Now", #selector(CommandActions.replanFromNow), DayKeys.replan, [.command, .alternate]),
-            item("What Should I Work On?", #selector(CommandActions.whatNow)),
-            item("End the Day", #selector(CommandActions.endTheDay)),
-            item("Clear the Rest of the Day", #selector(CommandActions.clearTheDay)),
+            command(Commands.asking("plan-day"), #selector(CommandActions.planTheDay), DayKeys.planDay, [.command, .alternate]),
+            command(Commands.asking("replan"), #selector(CommandActions.replanFromNow), DayKeys.replan, [.command, .alternate]),
+            item(Commands.asking("what-now"), #selector(CommandActions.whatNow)),
+            item(Commands.asking("end-day"), #selector(CommandActions.endTheDay)),
+            item(Commands.asking("clear-day"), #selector(CommandActions.clearTheDay)),
         ]
     }
 
@@ -163,9 +162,9 @@ enum KeyboardCommands {
             builder.insertChild(inline("settings", settingsItems), atStartOfMenu: .application)
         }
         builder.insertChild(inline("go", viewItems), atStartOfMenu: .view)
-        let task = UIMenu(title: "Task", identifier: UIMenu.Identifier("dev.emassey0135.lumenna.task"), children: taskItems)
+        let task = UIMenu(title: Commands.menu("task"), identifier: UIMenu.Identifier("dev.emassey0135.lumenna.task"), children: taskItems)
         let day = UIMenu(
-            title: "Day", identifier: UIMenu.Identifier("dev.emassey0135.lumenna.day"),
+            title: Commands.menu("day"), identifier: UIMenu.Identifier("dev.emassey0135.lumenna.day"),
             children: dayItems + [inline("day-actions", dayActionItems)]
         )
         builder.insertSibling(task, afterMenu: .view)

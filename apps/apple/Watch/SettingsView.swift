@@ -8,7 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject private var core: Core
 
     var body: some View {
-        Hosted(core: core).navigationTitle("Settings")
+        Hosted(core: core).navigationTitle(Commands.title("settings"))
     }
 
     private struct Hosted: View {
@@ -26,7 +26,7 @@ struct SettingsView: View {
                 ForEach(pages, id: \.id) { page in
                     NavigationLink(page.title) { SettingsPageForm(model: model, id: page.id).navigationTitle(page.title) }
                 }
-                NavigationLink(model.page("devices")?.title ?? "Devices") { DevicesView() }
+                NavigationLink(model.page("devices")?.title ?? Pages.title("devices")) { DevicesView() }
             }
         }
 
@@ -75,7 +75,7 @@ struct DevicesView: View {
                 }
             }
         }
-        .navigationTitle("Devices")
+        .navigationTitle(Wording.devices)
         .onAppear { core.app.send(.devices(.show)) }
     }
 }

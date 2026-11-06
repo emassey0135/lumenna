@@ -30,8 +30,9 @@ final class PairingModel: ObservableObject {
     /// A count that moves when the status is worth moving to: a problem, or a code to give.
     @Published private(set) var newsworthy = 0
 
-    /// Asks whether the three words match, and answers.
-    var ask: ([String], @escaping (Bool) -> Void) -> Void = { _, answer in answer(false) }
+    /// Asks whether the three words match, and answers: the core's question whole, the words in
+    /// it (`PairingView.matching`).
+    var ask: (String, @escaping (Bool) -> Void) -> Void = { _, answer in answer(false) }
     /// Says what cannot be done, in the core's words.
     var failed: (String) -> Void = { _ in }
     /// Closes the screen once a pairing begun here has ended.
@@ -132,7 +133,7 @@ final class PairingModel: ObservableObject {
         if mine != pairing.mine { mine = pairing.mine }
         if let three = pairing.words, three != askedWords {
             askedWords = three
-            ask(three) { [weak self] yes in
+            ask(pairing.matching ?? "") { [weak self] yes in
                 guard let self else { return }
                 // What happens next is said while the devices finish, in the core's words.
                 self.status = yes ? self.words.finishing : self.words.refusing

@@ -8,7 +8,7 @@ final class PairingViewController: UIHostingController<PairingScreen> {
     private let model: PairingModel
 
     init(core: Core) {
-        let model = PairingModel(core: core, thisDevice: "this \(UIDevice.current.model)", name: UIDevice.current.name)
+        let model = PairingModel(core: core, thisDevice: Wording.thisDevice, name: UIDevice.current.name)
         self.model = model
         super.init(rootView: PairingScreen(model: model))
         title = model.words.title
@@ -35,11 +35,11 @@ final class PairingViewController: UIHostingController<PairingScreen> {
     }
 
     /// Asks whether the words match, in the system's alert. The pairing waits for the answer.
-    private func ask(_ words: [String], answer: @escaping (Bool) -> Void) {
+    private func ask(_ matching: String, answer: @escaping (Bool) -> Void) {
         let said = model.words
         let alert = UIAlertController(
             title: said.matchTitle,
-            message: "\(said.matchMessage) \(words.joined(separator: ", "))",
+            message: matching,
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: said.matchNo, style: .cancel) { _ in answer(false) })

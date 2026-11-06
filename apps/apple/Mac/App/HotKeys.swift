@@ -14,10 +14,10 @@ struct Shortcut: Equatable {
     /// VoiceOver reads it, which a symbol such as ⌃⌘ is not.
     var description: String {
         var parts: [String] = []
-        if modifiers & UInt32(controlKey) != 0 { parts.append("Control") }
-        if modifiers & UInt32(optionKey) != 0 { parts.append("Option") }
-        if modifiers & UInt32(shiftKey) != 0 { parts.append("Shift") }
-        if modifiers & UInt32(cmdKey) != 0 { parts.append("Command") }
+        if modifiers & UInt32(controlKey) != 0 { parts.append(Wording.controlKey) }
+        if modifiers & UInt32(optionKey) != 0 { parts.append(Wording.optionKey) }
+        if modifiers & UInt32(shiftKey) != 0 { parts.append(Wording.shiftKey) }
+        if modifiers & UInt32(cmdKey) != 0 { parts.append(Wording.commandKey) }
         return (parts + [key]).joined(separator: "-")
     }
 
@@ -32,7 +32,7 @@ struct Shortcut: Equatable {
         if flags.contains(.control) { modifiers |= UInt32(controlKey) }
         if flags.contains(.option) { modifiers |= UInt32(optionKey) }
         if flags.contains(.shift) { modifiers |= UInt32(shiftKey) }
-        self.init(keyCode: UInt32(event.keyCode), modifiers: modifiers, key: key == " " ? "Space" : key)
+        self.init(keyCode: UInt32(event.keyCode), modifiers: modifiers, key: key == " " ? Wording.spaceKey : key)
     }
 
     init(keyCode: UInt32, modifiers: UInt32, key: String) {
@@ -55,21 +55,21 @@ struct Shortcut: Equatable {
         let shift = modifiers & UInt32(shiftKey) != 0
         let command = modifiers & UInt32(cmdKey) != 0
         if control && option {
-            return "Control-Option is VoiceOver's modifier, so VoiceOver would take this first."
+            return Wording.takenByVoiceover
         }
         if control && command && !shift {
             switch key {
-            case "Q": return "macOS uses this to lock the screen."
-            case "F": return "macOS uses this for full screen."
-            case "D": return "macOS uses this to look up a word."
-            case "Space": return "macOS uses this for emoji and symbols."
-            case "L", "I": return "VOCR uses this while you move through a scan, and not otherwise."
-            case "S", "P": return "VOCR uses this."
+            case "Q": return Wording.takenToLock
+            case "F": return Wording.takenForFullScreen
+            case "D": return Wording.takenToLookUp
+            case Wording.spaceKey: return Wording.takenForEmoji
+            case "L", "I": return Wording.takenByVocrScanning
+            case "S", "P": return Wording.takenByVocr
             default: return nil
             }
         }
         if control && command && shift, ["S", "W", "V", "A", "R", "E", "U", "C", "Q", "3", "4"].contains(key) {
-            return ["3", "4"].contains(key) ? "macOS uses this for screenshots." : "VOCR uses this."
+            return ["3", "4"].contains(key) ? Wording.takenForScreenshots : Wording.takenByVocr
         }
         return nil
     }
@@ -150,7 +150,7 @@ enum HotKeys {
     }
 
     static func description(_ kind: Kind) -> String {
-        shortcut(kind)?.description ?? "Off"
+        shortcut(kind)?.description ?? Wording.shortcutOff
     }
 
     static func start(summon: @escaping () -> Void, quickAdd: @escaping () -> Void) {
@@ -194,9 +194,9 @@ enum HotKeys {
         // Not answering to the old one while a new one is being pressed.
         if let old = references.removeValue(forKey: kind.id) { UnregisterEventHotKey(old) }
         let alert = NSAlert()
-        alert.messageText = "\(LumennaApp.hotkeyWords().dialog): \(kind.name)"
-        alert.informativeText = "Press the keys now, with Command or Control. With VoiceOver on, Control-Command keys reach Lumenna as they are. Escape keeps \(description(kind))."
-        alert.addButton(withTitle: LumennaApp.cancel(sentence: false))
+        alert.messageText = LumennaApp.changeShortcutFor(name: kind.name)
+        alert.informativeText = LumennaApp.pressMacKeys(keeps: description(kind))
+        alert.addButton(withTitle: Wording.cancel)
         var monitor: Any?
         var finished = false
         let finish = { (shortcut: Shortcut?) in
@@ -210,16 +210,16 @@ enum HotKeys {
             }
             guard let conflict = shortcut.conflict else {
                 set(kind, to: shortcut)
-                Announcer.say("\(kind.name) is now \(shortcut.description)")
+                Announcer.say(LumennaApp.shortcutChanged(name: kind.name, described: shortcut.description))
                 done()
                 return
             }
             DispatchQueue.main.async {
                 let warning = NSAlert()
-                warning.messageText = "\(shortcut.description) is taken"
-                warning.informativeText = "\(conflict) Use it for \(kind.name) anyway?"
-                warning.addButton(withTitle: "Keep \(description(kind))")
-                warning.addButton(withTitle: LumennaApp.hotkeyWords().useAnyway)
+                warning.messageText = LumennaApp.keysTaken(keys: shortcut.description)
+                warning.informativeText = LumennaApp.useAnywayFor(whose: conflict, name: kind.name)
+                warning.addButton(withTitle: LumennaApp.keepKeys(keys: description(kind)))
+                warning.addButton(withTitle: Wording.hotkeys.useAnyway)
                 warning.beginSheetModal(for: window) { response in
                     if response == .alertSecondButtonReturn { set(kind, to: shortcut) } else { register(kind) }
                     done()

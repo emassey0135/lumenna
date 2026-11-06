@@ -13,7 +13,7 @@ final class RemindersViewController: AppListViewController {
     private var silenced = false
 
     init(core: Core) {
-        super.init(core: core, title: "Reminders")
+        super.init(core: core, title: core.app.view.remindersTitle ?? "")
         hidesBottomBarWhenPushed = true
     }
 
@@ -29,11 +29,11 @@ final class RemindersViewController: AppListViewController {
                 detail: line.flatMap { $0.detail.isEmpty ? nil : $0.detail }, actions: reminder.offered
             )
         }
-        let off = silenced ? LumennaApp.notificationWords(thisDevice: AppModel.thisDevice, sentence: false).off : nil
+        let off = silenced ? Wording.notifications.off : nil
         return (items, ([list.announcement] + [off].compactMap { $0 }).joined(separator: " "))
     }
 
-    override var addTitle: String? { "Add Reminder" }
+    override var addTitle: String? { core.app.view.reminders?.offered.first?.title }
 
     /// The list's Add Reminder, the app's: a phrase, asked by the window's questions.
     override func add() {

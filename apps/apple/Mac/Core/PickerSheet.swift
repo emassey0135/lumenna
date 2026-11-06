@@ -53,7 +53,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
         chosen: @escaping (PickerItem) -> Void, cancelled: @escaping () -> Void = {}
     ) {
         guard !items.isEmpty else {
-            window.showFailure(LumennaApp.nothingToChoose(), title: title)
+            window.showFailure(Wording.nothingToChoose, title: title)
             cancelled()
             return
         }
@@ -68,8 +68,8 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
         heading.font = .preferredFont(forTextStyle: .headline)
         heading.setAccessibilityRole(.staticText)
 
-        search.placeholderString = "Narrow the list"
-        search.setAccessibilityLabel("Narrow \(titleText)")
+        search.placeholderString = Wording.narrowTheList
+        search.setAccessibilityLabel(LumennaApp.narrow(title: titleText))
         search.delegate = self
         search.sendsSearchStringImmediately = true
 
@@ -90,7 +90,7 @@ final class PickerSheet: NSViewController, NSTableViewDataSource, NSTableViewDel
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
 
-        let cancel = NSButton(title: LumennaApp.cancel(sentence: false), target: self, action: #selector(cancel))
+        let cancel = NSButton(title: Wording.cancel, target: self, action: #selector(cancel))
         cancel.keyEquivalent = "\u{1b}"
         let choose = NSButton(title: yes, target: self, action: #selector(choose))
         choose.keyEquivalent = "\r"

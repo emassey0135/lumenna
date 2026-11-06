@@ -25,12 +25,12 @@ struct DayView: View {
                         .accessibilityFocused($spoken, equals: row.id)
                 }
                 Section {
-                    Button("Add Block") { core.app.send(.block(.new(start: nil, minutes: nil))) }
-                    Button("Previous Day") { model.move(.previous) }
-                    if core.app.view.day?.today == false { Button("Today") { model.move(.now) } }
-                    Button("Next Day") { model.move(.next) }
+                    Button(Commands.title("new-block")) { core.app.send(.block(.new(start: nil, minutes: nil))) }
+                    Button(Commands.title("previous-day")) { model.move(.previous) }
+                    if core.app.view.day?.today == false { Button(Commands.title("go-to-now")) { model.move(.now) } }
+                    Button(Commands.title("next-day")) { model.move(.next) }
                     // The app's own question, asked with the watch's picker (`WatchAsker`).
-                    Button("Go to Day") { model.move(.ask) }
+                    Button(Commands.title("go-to-day")) { model.move(.ask) }
                 }
             }
             .navigationTitle(model.title)

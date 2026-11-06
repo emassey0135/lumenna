@@ -384,3 +384,15 @@ pub fn change_shortcut_for(name: String) -> String {
 pub fn use_keys(described: String) -> String {
     lumenna_app::hotkeys::use_keys(&described)
 }
+
+/// What the Mac asks while it waits for new keys, `keeps` the keys Escape leaves in place.
+#[export]
+pub fn press_mac_keys(keeps: String) -> String {
+    w::press_mac_keys(&keeps)
+}
+
+/// A block's length, as a stepper that changes it says it: "Lasts 1 hour 30 minutes".
+#[export]
+pub fn lasts(minutes: u32) -> String {
+    w::lasts(minutes)
+}

@@ -5,7 +5,7 @@ import UIKit
 /// page (`ViewModel.devices`), held in its own hand, so a rename or an unpairing lands back here.
 final class DevicesViewController: AppListViewController {
     init(core: Core) {
-        super.init(core: core, title: "Devices")
+        super.init(core: core, title: Wording.devices)
     }
 
     override var side: LumennaApp.Side? { .devices }
@@ -25,7 +25,7 @@ final class DevicesViewController: AppListViewController {
         }
         // Sync Now as the first row: in the navigation bar beside Add it crowds the title
         // until it is clipped at large text sizes.
-        let syncNow = AppItem(key: "sync-now", title: "Sync Now")
+        let syncNow = AppItem(key: "sync-now", title: Pages.button("devices", "sync-now"))
         let empty = devices.list.map { $0.devices.isEmpty ? $0.empty : "" } ?? ""
         return ([syncNow] + listed, [devices.status, empty].filter { !$0.isEmpty }.joined(separator: ". "))
     }
@@ -35,7 +35,7 @@ final class DevicesViewController: AppListViewController {
         if item.key == "sync-now" { core.app.send(.devices(.syncNow)) }
     }
 
-    override var addTitle: String? { "Pair a device" }
+    override var addTitle: String? { Pages.button("devices", "pair") }
 
     override func add() {
         navigationController?.pushViewController(PairingViewController(core: core), animated: true)

@@ -101,10 +101,10 @@ struct RemindersForm: View {
                     row(reminder)
                 }
             } header: {
-                FormParts.heading(model.list?.announcement ?? "Reminders")
+                FormParts.heading(model.list?.announcement ?? model.core.app.view.remindersTitle ?? "")
             } footer: {
                 if model.silenced {
-                    FormParts.caption(LumennaApp.notificationWords(thisDevice: AppModel.thisDevice, sentence: false).off)
+                    FormParts.caption(Wording.notifications.off)
                 }
             }
             if let question = model.question, let adding = model.adding {
@@ -128,7 +128,7 @@ struct RemindersForm: View {
             }
             #if os(macOS)
             Section {
-                Button("Done") { model.done() }.keyboardShortcut(.cancelAction)
+                Button(Wording.close) { model.done() }.keyboardShortcut(.cancelAction)
             }
             #endif
         }
@@ -161,7 +161,7 @@ struct RemindersForm: View {
     /// A reminder: its words, and "Default" for one of the defaults. One of its own offers its
     /// actions: on the Mac as buttons beside it, on the watch when tapped.
     @ViewBuilder private func row(_ reminder: LumennaApp.ReminderView) -> some View {
-        let spoken = reminder.own ? reminder.words : "\(reminder.words), Default"
+        let spoken = reminder.own ? reminder.words : "\(reminder.words), \(Wording.defaultReminder)"
         #if os(macOS)
         // A Mac form's row: the words, "Default" beneath for a default, the buttons beside.
         LabeledContent {
@@ -171,7 +171,7 @@ struct RemindersForm: View {
             }
         } label: {
             Text(reminder.words)
-            if !reminder.own { Text("Default").foregroundStyle(Color.quietLabel) }
+            if !reminder.own { Text(Wording.defaultReminder).foregroundStyle(Color.quietLabel) }
         }
         #else
         if reminder.offered.isEmpty {

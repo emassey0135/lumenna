@@ -28,7 +28,7 @@ final class VoiceOverUITests: XCTestCase {
         let tasks = app.tabBars.buttons["Tasks"]
         if tasks.exists { tasks.tap() } else { app.typeKey("2", modifierFlags: .command) }
         for text in texts {
-            app.buttons["Add task"].tap()
+            app.buttons["New Task"].tap()
             let field = app.textViews["Task"]
             XCTAssertTrue(field.waitForExistence(timeout: 5))
             field.typeText(text)
@@ -95,7 +95,7 @@ final class VoiceOverUITests: XCTestCase {
         let devices = app.cells.containing(NSPredicate(format: "label CONTAINS 'Devices and Sync'")).firstMatch
         XCTAssertTrue(devices.waitForExistence(timeout: 5), app.debugDescription)
         devices.tap()
-        let pair = app.buttons["Pair a device"]
+        let pair = app.buttons["Pair a Device"]
         XCTAssertTrue(pair.waitForExistence(timeout: 10))
         pair.tap()
         XCTAssertTrue(app.textFields["Code from the other device"].waitForExistence(timeout: 5))
@@ -110,7 +110,7 @@ final class VoiceOverUITests: XCTestCase {
     func testTheBlockFormsStartIsReadAsStartsAt() throws {
         let today = app.tabBars.buttons["Today"]
         if today.exists { today.tap() } else { app.typeKey("1", modifierFlags: .command) }
-        app.buttons["Add block"].tap()
+        app.buttons["New Block"].tap()
         XCTAssertTrue(app.textFields["Name"].waitForExistence(timeout: 5))
         try voiceOver.enable()
         var heard: [String] = []
@@ -128,7 +128,7 @@ final class VoiceOverUITests: XCTestCase {
     func testTheDayIsReadAsAHeadingThenItsButtons() throws {
         try voiceOver.enable()
         try move(to: "Heading")
-        try move(to: "Add block Button")
+        try move(to: "New Block Button")
         try move(to: "Previous Day Button")
         try move(to: "Go to Day Button")
     }
@@ -174,7 +174,7 @@ final class VoiceOverUITests: XCTestCase {
     }
 
     func testABlockOffersVoiceOverEachOfItsActionsOnceItsMenuOnlyActionsAmongThem() throws {
-        app.buttons["Add block"].tap()
+        app.buttons["New Block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()

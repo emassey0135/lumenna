@@ -334,6 +334,67 @@ pub struct ShellWords {
     pub action_titles: Vec<KindTitle>,
     /// What a shell that draws its own key help, prompts and buffer names says: Emacs.
     pub emacs: EmacsWords,
+
+    // Apple's.
+    /// A form's button that keeps what was typed: "Save".
+    pub save: String,
+    /// The Mac's application menu: "Hide Lumenna".
+    pub hide_app: String,
+    /// "Hide Others".
+    pub hide_others: String,
+    /// "Show All".
+    pub show_all: String,
+    /// The system's menu of other apps' services: "Services".
+    pub services: String,
+    /// "Quit Lumenna".
+    pub quit_app: String,
+    /// The Mac's Window menu: "Window".
+    pub window: String,
+    /// "Minimize".
+    pub minimize: String,
+    /// "Zoom".
+    pub zoom: String,
+    /// The View menu's: "Toggle Sidebar".
+    pub toggle_sidebar: String,
+    /// The Edit menu's completion of a word: "Complete".
+    pub complete: String,
+    /// Undo where it undoes typing in a field: "Undo Typing".
+    pub undo_typing: String,
+    /// "Redo Typing".
+    pub redo_typing: String,
+    /// A shortcut's modifiers, as the Mac writes them out ("Control-Command-Y"): "Control".
+    pub control_key: String,
+    /// "Option".
+    pub option_key: String,
+    /// "Shift".
+    pub shift_key: String,
+    /// "Command".
+    pub command_key: String,
+    /// The space bar, as a shortcut's key: "Space".
+    pub space_key: String,
+    /// The Mac's caption under its shortcuts from anywhere, whose keys are Control-Command.
+    pub mac_hotkeys_caption: String,
+    /// Why keys are taken: Control-Option is VoiceOver's.
+    pub taken_by_voiceover: String,
+    /// macOS locks the screen with them.
+    pub taken_to_lock: String,
+    /// macOS goes full screen with them.
+    pub taken_for_full_screen: String,
+    /// macOS looks up a word with them.
+    pub taken_to_look_up: String,
+    /// macOS opens emoji and symbols with them.
+    pub taken_for_emoji: String,
+    /// macOS takes screenshots with them.
+    pub taken_for_screenshots: String,
+    /// VOCR uses them.
+    pub taken_by_vocr: String,
+    /// VOCR uses them while moving through a scan.
+    pub taken_by_vocr_scanning: String,
+    /// What a watch calls its phone in a sentence: "the iPhone".
+    pub the_phone: String,
+    /// The devices page, where a short title is wanted (a bar's one line, which the page's
+    /// "Devices and Sync" overflows at large text sizes): "Devices".
+    pub devices: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -832,6 +893,37 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         key_groups: grouped(sentence),
         action_titles: ACTION_KINDS.iter().map(|&kind| KindTitle { kind, title: c(&kind_title(kind)) }).collect(),
         emacs: emacs_words(&c),
+        save: c("Save"),
+        hide_app: c(&format!("Hide {}", core::NAME)),
+        hide_others: c("Hide Others"),
+        show_all: c("Show All"),
+        services: c("Services"),
+        quit_app: c(&format!("Quit {}", core::NAME)),
+        window: c("Window"),
+        minimize: c("Minimize"),
+        zoom: c("Zoom"),
+        toggle_sidebar: c("Toggle Sidebar"),
+        complete: c("Complete"),
+        undo_typing: c("Undo Typing"),
+        redo_typing: c("Redo Typing"),
+        control_key: "Control".to_owned(),
+        option_key: "Option".to_owned(),
+        shift_key: "Shift".to_owned(),
+        command_key: "Command".to_owned(),
+        space_key: "Space".to_owned(),
+        mac_hotkeys_caption: "These work in any app, so they take their keys from whatever app is in front. Control-Command, \
+                              because Control-Option is VoiceOver's."
+            .to_owned(),
+        taken_by_voiceover: "Control-Option is VoiceOver's modifier, so VoiceOver would take this first.".to_owned(),
+        taken_to_lock: "macOS uses this to lock the screen.".to_owned(),
+        taken_for_full_screen: "macOS uses this for full screen.".to_owned(),
+        taken_to_look_up: "macOS uses this to look up a word.".to_owned(),
+        taken_for_emoji: "macOS uses this for emoji and symbols.".to_owned(),
+        taken_for_screenshots: "macOS uses this for screenshots.".to_owned(),
+        taken_by_vocr: "VOCR uses this.".to_owned(),
+        taken_by_vocr_scanning: "VOCR uses this while you move through a scan, and not otherwise.".to_owned(),
+        the_phone: "the iPhone".to_owned(),
+        devices: c("Devices"),
     }
 }
 
@@ -946,6 +1038,24 @@ pub fn keep_keys(keys: &str) -> String {
 #[must_use]
 pub fn use_anyway_for(whose: &str, name: &str) -> String {
     format!("{} Use them for {name} anyway?", whose.trim())
+}
+
+// Apple's.
+
+/// What the Mac asks while it waits for new keys, `keeps` the keys Escape leaves in place.
+#[must_use]
+pub fn press_mac_keys(keeps: &str) -> String {
+    format!(
+        "Press the keys now, with Command or Control. With VoiceOver on, Control-Command keys reach {} as they are. \
+         Escape keeps {keeps}.",
+        core::NAME
+    )
+}
+
+/// A block's length, as a stepper that changes it says it: "Lasts 1 hour 30 minutes".
+#[must_use]
+pub fn lasts(minutes: u32) -> String {
+    format!("Lasts {}", lumenna_records::words::duration(minutes))
 }
 
 /// `sentence`, then the error's own sentence after it when there is one.

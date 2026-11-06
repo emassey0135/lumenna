@@ -61,7 +61,7 @@ final class WatchScreens {
                 asker?.close()
             }
             reminders = model
-            asker.show(RemindersForm(model: model).navigationTitle("Reminders"), gone: { app.send(.closeReminders) })
+            asker.show(RemindersForm(model: model).navigationTitle(view.remindersTitle ?? ""), gone: { app.send(.closeReminders) })
         }
     }
 }
@@ -88,22 +88,22 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             List {
-                Button("New Task") { adding = true }
+                Button(Commands.title("new-task")) { adding = true }
                 let shown = entries
                 ForEach(Array(shown.enumerated()), id: \.element.key) { _, item in
                     row(item)
                 }
                 Section {
-                    Button("Undo") { core.app.send(.undo) }
-                    Button("Redo") { core.app.send(.redo) }
-                    NavigationLink("Settings") { SettingsView() }
+                    Button(Commands.title("undo")) { core.app.send(.undo) }
+                    Button(Commands.title("redo")) { core.app.send(.redo) }
+                    NavigationLink(Commands.title("settings")) { SettingsView() }
                 }
                 Section("iPhone") {
-                    Button("Sync with iPhone") { phone.syncNow() }
+                    Button(LumennaApp.syncWith(phone: Wording.thePhone)) { phone.syncNow() }
                     Text(phone.status).font(.footnote)
                 }
             }
-            .navigationTitle("Lumenna")
+            .navigationTitle(Wording.metadata.name)
             .navigationDestination(for: LumennaApp.Place.self) { place in
                 PlaceView(core: core, place: place)
             }
@@ -167,7 +167,7 @@ struct RootView: View {
             }
             // The core's sentence is the whole alert: what could not be done and why.
             .alert(core.failure ?? "", isPresented: failed) {
-                Button("OK") { core.failure = nil }
+                Button(Wording.close) { core.failure = nil }
             }
         }
         // What the app says, shown for sighted wearers; the asker's sheets show it over themselves.

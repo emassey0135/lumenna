@@ -255,15 +255,24 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   platform's own drawn beside: the Mac's login item and shortcuts on General, the exports and the
   store's own actions on Export and Import. A page with nothing this device has is left out
   (General on iOS; on the watch, every page with files).
-- **The words are the core's**: quick add's, the filter's and completion's (`quickAddWords`; the
-  quick-add field is named Task on every Apple app), the details' (`detailsWords`, and
-  `DetailsView.lines` under About), notifications off (`notificationWords`), a failure (the
-  core's sentence as the whole alert; `backupFailed`), the watch's sync (`phoneSync`), the
-  shortcuts' names and buttons (`hotkeyWords`; the Mac keeps its own caption, the core's being a
-  PC's). The sidebar's folding and levels are its entries' (`hidden`, `expanded`, `level`), a
+- **The words are the core's, and Swift writes none** (`Shared/Words.swift`): every fixed word is
+  `Wording`, the core's `ShellWords` asked for once in Title Case as this device calls itself
+  (`.iPhone`, `.iPad`, `.mac`, `.watch`; its `thisDevice` is what `PairingAs` says), quick add's,
+  the details', notifications', the files', the folder's and the shortcuts' among it; a command
+  is named by its id from the core's menus (`Commands.title`, and `Commands.asking`, "…" after one
+  that asks first, as Apple marks it), the iPad's menu bar, the Mac's and its status item all
+  built so; a settings page and its buttons by id (`Pages`); a place by `placeTitle`. What is
+  Apple's alone (Hide, Services, the Window menu, Undo Typing, the Mac recorder's warnings and
+  its caption, "the iPhone") is in `ShellWords` too, under its `// Apple's.` comment, and a word
+  found missing goes there, never in Swift. A failure is the core's sentence as the whole alert
+  (`backupFailed`), the watch's sync `phoneSync`, pairing's question `PairingView.matching`
+  whole. The sidebar's folding and levels are its entries' (`hidden`, `expanded`, `level`), a
   pick's its lines', a count `choiceCount`. A widget's moment now is `glanceCurrent`;
   `glance_redraw_at` and `glance_logged` are for a widget redrawn by hand, which WidgetKit's is
-  not: it takes every moment at once, and a timer counts by itself.
+  not: it takes every moment at once, and a timer counts by itself. What stays a literal is what
+  App Intents and WidgetKit read at build time, held to the core by tests: intents
+  (`AssistantIntentTests`, parameters' titles too), entities and the Open intents
+  (`AssistantEntityTests`, against `assistantEntities()`), controls (`ControlTests`).
 - **Every assistant operation is an App Intent** (`Shared/Intents`, compiled into all three
   apps; the widgets compile Complete a Task alone, "The widgets"): one per operation of
   `assistantOperations()`, its `persistentIdentifier` the operation's `id`, each running

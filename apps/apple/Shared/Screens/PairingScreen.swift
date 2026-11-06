@@ -43,7 +43,7 @@ struct PairingScreen: View {
             Button(model.words.join) { model.join() }
             HStack {
                 Spacer()
-                Button("Cancel") {
+                Button(Wording.cancel) {
                     model.cancel()
                     close()
                 }

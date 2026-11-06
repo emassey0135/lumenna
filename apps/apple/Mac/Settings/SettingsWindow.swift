@@ -28,7 +28,7 @@ final class SettingsWindowController: NSWindowController {
             return item
         }
         let window = NSWindow(contentViewController: tabs)
-        window.title = "Settings"
+        window.title = Commands.title("settings")
         window.identifier = NSUserInterfaceItemIdentifier("settings")
         window.styleMask = [.titled, .closable]
         super.init(window: window)
@@ -73,7 +73,7 @@ extension SettingsModel {
     func toggleShortcut(_ kind: HotKeys.Kind) {
         objectWillChange.send()
         HotKeys.set(kind, to: HotKeys.shortcut(kind) == nil ? kind.standard : nil)
-        Announcer.say("\(kind.name) is \(HotKeys.description(kind))")
+        Announcer.say(LumennaApp.shortcutChanged(name: kind.name, described: HotKeys.shortcut(kind)?.description))
     }
 
     // MARK: - Opening at login
@@ -91,8 +91,8 @@ extension SettingsModel {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "Back Up Here"
-        panel.message = "Backups hold your whole history, including everything you deleted."
+        panel.prompt = Wording.backUpHere
+        panel.message = Wording.folder.intro
         guard let window else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
@@ -108,7 +108,7 @@ extension SettingsModel {
         panel.nameFieldStringValue = exportName(format)
         panel.canCreateDirectories = true
         // What a shell's own file dialogs ask, the core's.
-        panel.message = LumennaApp.fileWords(sentence: false).saveIn
+        panel.message = Wording.files.saveIn
         guard let window else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
@@ -127,8 +127,8 @@ extension SettingsModel {
     func importFile() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json, UTType(filenameExtension: "lumbak") ?? .data]
-        panel.prompt = "Import"
-        panel.message = LumennaApp.fileWords(sentence: false).`import`
+        panel.prompt = Wording.`import`
+        panel.message = Wording.files.`import`
         guard let window else { return }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
@@ -142,7 +142,7 @@ struct GeneralSettings: View {
     @ObservedObject var model: SettingsModel
     /// The shortcuts' words, the core's. Its caption is about a PC's keys, so the Mac keeps its
     /// own, about Control-Command and VoiceOver.
-    private let words = LumennaApp.hotkeyWords()
+    private let words = Wording.hotkeys
 
     var body: some View {
         Form {
@@ -163,7 +163,7 @@ struct GeneralSettings: View {
                         HStack {
                             Text(model.shortcutDescription(kind))
                             Button(words.change + "…") { model.recordShortcut(kind) }
-                                .accessibilityLabel("\(words.change), \(kind.name)")
+                                .accessibilityLabel(LumennaApp.changeShortcutFor(name: kind.name))
                             let toggle = HotKeys.shortcut(kind) == nil ? words.turnOn : words.turnOff
                             Button(toggle) { model.toggleShortcut(kind) }
                                 .accessibilityLabel("\(toggle), \(kind.name)")
@@ -173,7 +173,7 @@ struct GeneralSettings: View {
             } header: {
                 FormParts.heading(words.heading)
             } footer: {
-                Text("These work in any app, so they take their keys from whatever app is in front. Control-Command, because Control-Option is VoiceOver's.")
+                Text(Wording.macHotkeysCaption)
                     .font(.footnote).foregroundStyle(Color.quietLabel)
             }
         }

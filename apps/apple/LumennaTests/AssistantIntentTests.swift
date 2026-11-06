@@ -6,6 +6,7 @@ import XCTest
 /// A parameter of an intent, of whatever type, for what it says about itself.
 private protocol Declared {
     var isOptional: Bool { get }
+    var title: LocalizedStringResource { get }
 }
 
 extension IntentParameter: Declared {}
@@ -21,12 +22,12 @@ final class AssistantIntentTests: XCTestCase {
         assistantIntents.first { $0.persistentIdentifier == id }
     }
 
-    /// An intent's parameters by name, and whether each may be left out.
-    private func parameters(of intent: any OperationIntent.Type) -> [String: Bool] {
-        var found: [String: Bool] = [:]
+    /// An intent's parameters by name: whether each may be left out, and its title.
+    private func parameters(of intent: any OperationIntent.Type) -> [String: (optional: Bool, title: String)] {
+        var found: [String: (optional: Bool, title: String)] = [:]
         for child in Mirror(reflecting: intent.init()).children {
             guard let label = child.label, let parameter = child.value as? Declared else { continue }
-            found[String(label.dropFirst())] = parameter.isOptional
+            found[String(label.dropFirst())] = (parameter.isOptional, parameter.title.key)
         }
         return found
     }
@@ -57,16 +58,17 @@ final class AssistantIntentTests: XCTestCase {
 
     /// Asking first is the intent's own question, and a proposal is the one the core makes as
     /// it applies (`ApplyReplanIntent`, `ApplyDayPlanIntent`), so neither is a parameter.
-    func testEveryParameterIsTakenByNameAndWhatTheTableRequiresTheIntentRequires() throws {
+    func testEveryParameterIsTakenByNameTitledAsTheTableTitlesItAndWhatTheTableRequiresTheIntentRequires() throws {
         for operation in operations {
             let intent = try XCTUnwrap(intent(operation.id), operation.id)
             let taken = parameters(of: intent)
             let given = operation.parameters.filter { $0.name != "confirm" && $0.name != "proposal" }
             for parameter in given {
-                let optional = try XCTUnwrap(taken[parameter.name], "\(operation.id) takes no \(parameter.name)")
+                let declared = try XCTUnwrap(taken[parameter.name], "\(operation.id) takes no \(parameter.name)")
+                XCTAssertEqual(declared.title, parameter.title, "\(operation.id)'s \(parameter.name)")
                 // Accepting a proposal's changes may be left at all of them, said before applying.
                 if !parameter.optional && parameter.name != "accepted" {
-                    XCTAssertFalse(optional, "\(operation.id)'s \(parameter.name) is required")
+                    XCTAssertFalse(declared.optional, "\(operation.id)'s \(parameter.name) is required")
                 }
             }
             // Apply a Day Plan names the day it proposes for, as Propose a Plan for a Day does.
@@ -113,3 +115,84 @@ final class TaskEntityTests: XCTestCase {
         XCTAssertEqual(store.entities([rent]).first?.priority, 2)
     }
 }
+
+/// The records an assistant hands back and takes, named as the core's table names them
+/// (`assistantEntities()`): App Intents reads an entity's name, its properties' titles and an Open
+/// intent's title at build time, so they are literals, and this keeps them the table's.
+@MainActor
+final class AssistantEntityTests: XCTestCase {
+    private let table = assistantEntities()
+    private var core: Core!
+    private var store: AssistantStore!
+
+    override func setUp() async throws {
+        setenv("LUMENNA_TEST_PROFILE", "unit-\(UUID().uuidString)", 1)
+        core = try Core()
+        store = AssistantStore(device: core.app.device)
+    }
+
+    private func entity(_ id: String) throws -> LumennaApp.AssistantEntity {
+        try XCTUnwrap(table.first { $0.id == id }, "the table has no \(id)")
+    }
+
+    /// Each of an entity's properties by its name in code, with its title.
+    private func titles(of entity: Any) -> [String: String] {
+        var found: [String: String] = [:]
+        for child in Mirror(reflecting: entity).children {
+            guard let label = child.label, let property = child.value as? Titled else { continue }
+            found[String(label.dropFirst())] = property.title.key
+        }
+        return found
+    }
+
+    func testEveryEntityIsNamedAndOpenedAsTheTableSays() throws {
+        let declared: [(String, TypeDisplayRepresentation, LocalizedStringResource?)] = [
+            ("task", TaskEntity.typeDisplayRepresentation, OpenTaskIntent.title),
+            ("project", ProjectEntity.typeDisplayRepresentation, OpenProjectIntent.title),
+            ("label", LabelEntity.typeDisplayRepresentation, OpenLabelIntent.title),
+            ("saved_filter", SavedFilterEntity.typeDisplayRepresentation, OpenSavedFilterIntent.title),
+            ("block", BlockSeriesEntity.typeDisplayRepresentation, OpenBlockIntent.title),
+            ("block_on_day", BlockEntity.typeDisplayRepresentation, nil),
+            ("sitting", SittingEntity.typeDisplayRepresentation, nil),
+            ("choice", ChoiceEntity.typeDisplayRepresentation, nil),
+            ("replan_change", ReplanChangeEntity.typeDisplayRepresentation, nil),
+            ("proposed_sitting", ProposedSittingEntity.typeDisplayRepresentation, nil),
+        ]
+        XCTAssertEqual(declared.map(\.0), table.map(\.id), "an entity for every one the table has, in its order")
+        for (id, name, open) in declared {
+            let entity = try entity(id)
+            XCTAssertEqual(name.name.key, entity.name, id)
+            XCTAssertEqual(open?.key, entity.open, id)
+        }
+    }
+
+    func testEveryEntityTheStoreHandsBackTitlesItsPropertiesAsTheTableDoes() throws {
+        _ = try core.app.device.addProject(name: "Work", parent: nil)
+        _ = try core.app.device.addLabel(name: "calls")
+        _ = try store.assist("add_task", ["text": .text("block Deep work 9-11am")])
+        guard case let .rows(projects) = try store.assist("list_projects"), let project = projects.rows.first,
+              case let .rows(labels) = try store.assist("list_labels"), let label = labels.rows.first,
+              case let .plan(day) = try store.assist("day"), let block = day.blocks.first,
+              let series = store.searchDocuments().first(where: { $0.kind == .block })
+        else { return XCTFail("the store handed back no project, label or block") }
+        let made: [(String, Any)] = [
+            ("task", TaskEntity(id: "0190a000-0000-7000-8000-000000000000", title: "Email the landlord")),
+            ("project", ProjectEntity(project)),
+            ("label", LabelEntity(label)),
+            ("block", BlockSeriesEntity(series)),
+            ("block_on_day", BlockEntity(block, on: day.date)),
+        ]
+        for (id, instance) in made {
+            let entity = try entity(id)
+            XCTAssertEqual(titles(of: instance), Dictionary(uniqueKeysWithValues: entity.properties.map { ($0.name, $0.title) }), id)
+        }
+    }
+}
+
+/// An entity's property, of whatever type, for its title.
+private protocol Titled {
+    var title: LocalizedStringResource { get }
+}
+
+extension EntityProperty: Titled {}
+

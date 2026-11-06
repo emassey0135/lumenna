@@ -1,10 +1,10 @@
 import Foundation
 import LumennaApp
 
-/// Times and durations as a person says them, in their own locale.
+/// Times as a person says them, in their own locale, and lengths in the core's words.
 ///
-/// The core sends `HH:MM` and minutes, which are components; how a time is spoken —
-/// "9:00 AM" or "09:00" — is this device's convention, so it is decided here.
+/// The core sends `HH:MM`, a component; how a time is spoken — "9:00 AM" or "09:00" — is this
+/// device's convention, so it is decided here.
 enum Clock {
     private static let parser: DateFormatter = {
         let formatter = DateFormatter()
@@ -16,7 +16,6 @@ enum Clock {
     // Made again when the locale changes: a formatter keeps the clock it was made with, so a
     // person turning on the 24-hour clock went on hearing "2:30 PM".
     private static var speaker = makeSpeaker()
-    private static var lengths = makeLengths()
 
     private static func makeSpeaker() -> DateFormatter {
         let formatter = DateFormatter()
@@ -25,18 +24,10 @@ enum Clock {
         return formatter
     }
 
-    private static func makeLengths() -> DateComponentsFormatter {
-        let formatter = DateComponentsFormatter()
-        formatter.unitsStyle = .full
-        formatter.allowedUnits = [.hour, .minute]
-        return formatter
-    }
-
-    /// The person changed the region, the language or the 12- or 24-hour clock: times and
-    /// lengths are said in it from now on. On the main thread, as every wording here is.
+    /// The person changed the region, the language or the 12- or 24-hour clock: times are said
+    /// in it from now on. On the main thread, as every wording here is.
     static func localeChanged() {
         speaker = makeSpeaker()
-        lengths = makeLengths()
     }
 
     /// `14:30` as this device says it: "2:30 PM", or "14:30".
@@ -51,9 +42,9 @@ enum Clock {
         return format.contains("a") ? .twelveHour : .twentyFourHour
     }
 
-    /// "1 hour, 30 minutes".
+    /// How long, in the core's words: "1 hour 30 minutes".
     static func length(_ minutes: UInt32) -> String {
-        lengths.string(from: TimeInterval(minutes) * 60) ?? "\(minutes) minutes"
+        LumennaApp.durationWords(minutes: minutes)
     }
 
     /// A day as the core reads it back: an ISO date in the phone's own time zone.
@@ -69,15 +60,6 @@ enum Clock {
 
     private static var isoDays: Date.ISO8601FormatStyle {
         Date.ISO8601FormatStyle(timeZone: .current).year().month().day()
-    }
-
-    /// An ISO date as a person would say it: "Monday 5 October".
-    static func spokenDay(_ iso: String) -> String {
-        guard let date = day(iso) else { return iso }
-        if Calendar.current.isDateInToday(date) { return "Today" }
-        if Calendar.current.isDateInTomorrow(date) { return "Tomorrow" }
-        if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
-        return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
     }
 }
 

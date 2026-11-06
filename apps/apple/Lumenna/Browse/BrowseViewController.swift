@@ -6,7 +6,7 @@ import UIKit
 /// it, in the core's words.
 final class BrowseViewController: AppListViewController {
     init(core: Core) {
-        super.init(core: core, title: LumennaApp.browse(sentence: false))
+        super.init(core: core, title: Wording.browse)
     }
 
     // Each place's own list has Undo and Redo; Browse is somewhere to go.
@@ -72,7 +72,7 @@ final class PlacesViewController: AppListViewController {
         self.group = group
         // Short: a bar title is one line between its buttons, and "Saved Filters" overflows a
         // small phone at the largest text sizes. Browse lists it by its full name.
-        super.init(core: core, title: group == .filters ? "Filters" : title)
+        super.init(core: core, title: group == .filters ? Wording.filters : title)
     }
 
     override var side: LumennaApp.Side? { .sidebar }
@@ -91,9 +91,9 @@ final class PlacesViewController: AppListViewController {
 
     override var addTitle: String? {
         switch group {
-        case .projects: "Add project"
-        case .labels: "Add label"
-        case .filters: "Add filter"
+        case .projects: Commands.title("new-project")
+        case .labels: Commands.title("new-label")
+        case .filters: Commands.title("new-filter")
         }
     }
 

@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let alert = NSAlert()
             alert.messageText = LumennaApp.storeUnopened(reason: "")
             alert.informativeText = error.sentence
-            alert.addButton(withTitle: LumennaApp.close(sentence: false))
+            alert.addButton(withTitle: Wording.close)
             alert.runModal()
             NSApp.terminate(nil)
             return
@@ -125,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// source, its version among it; the publisher, licence, home and where problems go beneath
     /// what it is, each address a link.
     @objc func showAbout(_ sender: Any?) {
-        let about = LumennaApp.appMetadata()
+        let about = Wording.metadata
         let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         let credits = NSMutableAttributedString()
         for line in [about.description, about.publisher, about.licence] {
@@ -160,14 +160,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "checklist", accessibilityDescription: "Lumenna")
-        item.button?.setAccessibilityLabel("Lumenna")
+        item.button?.image = NSImage(systemSymbolName: "checklist", accessibilityDescription: Wording.metadata.name)
+        item.button?.setAccessibilityLabel(Wording.metadata.name)
+        // The core's tray menu, in its order; Quit is the Mac's own "Quit Lumenna".
         let menu = NSMenu()
-        menu.addItem(withTitle: "Show Lumenna", action: #selector(showMainWindow(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Quick Add…", action: #selector(showQuickAdd(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "Sync Now", action: #selector(syncNowFromMenu(_:)), keyEquivalent: "")
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Lumenna", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        let actions: [String: Selector] = [
+            "show": #selector(showMainWindow(_:)), "new-task": #selector(showQuickAdd(_:)),
+            "sync-now": #selector(syncNowFromMenu(_:)), "quit": #selector(NSApplication.terminate(_:)),
+        ]
+        for entry in LumennaApp.trayMenu(sentence: false) {
+            guard !entry.id.isEmpty else {
+                menu.addItem(.separator())
+                continue
+            }
+            guard let action = actions[entry.id] else { continue }
+            let title = entry.id == "quit" ? Wording.quitApp : entry.title + (entry.asks ? "…" : "")
+            menu.addItem(withTitle: title, action: action, keyEquivalent: "")
+        }
         item.menu = menu
         statusItem = item
     }
@@ -346,10 +355,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case #selector(previousDay(_:)), #selector(nextDay(_:)):
             return main?.day != nil
         case #selector(undoChange(_:)):
-            item.title = editingUndoManager?.canUndo == true ? "Undo Typing" : "Undo"
+            item.title = editingUndoManager?.canUndo == true ? Wording.undoTyping : Commands.title("undo")
             return true
         case #selector(redoChange(_:)):
-            item.title = editingUndoManager?.canRedo == true ? "Redo Typing" : "Redo"
+            item.title = editingUndoManager?.canRedo == true ? Wording.redoTyping : Commands.title("redo")
             return true
         default:
             return true
