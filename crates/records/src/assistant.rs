@@ -399,6 +399,83 @@ pub fn operation(id: &str) -> Option<AssistantOperation> {
     operations().into_iter().find(|op| op.id == id)
 }
 
+/// A record an assistant hands back and takes: a task, a block, a choice. A platform that
+/// declares its records ahead (App Intents' entities) names each, its fields, and how it opens
+/// one, as this says, and checks itself against it, so no assistant words them its own way.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssistantEntity {
+    /// What it is in code: "task", "saved_filter".
+    pub id: String,
+    /// Its name for a person, in Title Case: "Saved Filter".
+    pub name: String,
+    /// What a person is shown of it, in order.
+    pub properties: Vec<AssistantProperty>,
+    /// What opens one in the app, where one can be opened: "Open Task".
+    pub open: Option<String>,
+}
+
+/// One field of an [`AssistantEntity`].
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssistantProperty {
+    /// Its name in code: "estimate".
+    pub name: String,
+    /// What a person calls it, in Title Case: "Estimate in Minutes".
+    pub title: String,
+}
+
+fn entity(id: &str, name: &str, properties: &[(&str, &str)], open: Option<&str>) -> AssistantEntity {
+    AssistantEntity {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        properties: properties
+            .iter()
+            .map(|&(name, title)| AssistantProperty { name: name.to_owned(), title: title.to_owned() })
+            .collect(),
+        open: open.map(str::to_owned),
+    }
+}
+
+/// Every record an assistant hands back and takes, in the order a platform lists them.
+#[must_use]
+pub fn entities() -> Vec<AssistantEntity> {
+    vec![
+        entity(
+            "task",
+            "Task",
+            &[
+                ("title", "Title"),
+                ("due", "Due"),
+                ("project", "Project"),
+                ("labels", "Labels"),
+                ("priority", "Priority"),
+                ("done", "Done"),
+                ("notes", "Notes"),
+                ("estimate", "Estimate in Minutes"),
+                ("repeats", "Repeats"),
+                ("states", "States"),
+                ("added", "Added"),
+            ],
+            Some("Open Task"),
+        ),
+        entity("project", "Project", &[("name", "Name")], Some("Open Project")),
+        entity("label", "Label", &[("name", "Name")], Some("Open Label")),
+        entity("saved_filter", "Saved Filter", &[("name", "Name"), ("query", "Query")], Some("Open Saved Filter")),
+        entity("block", "Block", &[("title", "Title")], Some("Open Block")),
+        entity("block_on_day", "Block on a Day", &[("title", "Title"), ("start", "Starts"), ("end", "Ends")], None),
+        entity(
+            "sitting",
+            "Sitting",
+            &[("task", "Task"), ("block", "Block"), ("running", "Running"), ("minutes", "Minutes Worked")],
+            None,
+        ),
+        entity("choice", "Choice", &[("title", "Title"), ("reason", "Reason")], None),
+        entity("replan_change", "Replan Change", &[("sentence", "Change")], None),
+        entity("proposed_sitting", "Proposed Sitting", &[("sentence", "Sitting"), ("reason", "Reason")], None),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -415,6 +492,19 @@ mod tests {
             assert!(!op.confirms || op.destructive, "{}", op.id);
             assert!(op.writes || !op.destructive, "{}", op.id);
             assert!(!op.description.is_empty() && !op.keywords.is_empty(), "{}", op.id);
+        }
+    }
+
+    #[test]
+    fn every_entity_is_named_and_titles_each_of_its_properties_once() {
+        let entities = entities();
+        let ids: std::collections::HashSet<_> = entities.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids.len(), entities.len());
+        for entity in &entities {
+            assert!(!entity.name.is_empty() && !entity.properties.is_empty(), "{}", entity.id);
+            let names: std::collections::HashSet<_> = entity.properties.iter().map(|p| p.name.as_str()).collect();
+            assert_eq!(names.len(), entity.properties.len(), "{}", entity.id);
+            assert!(entity.properties.iter().all(|p| !p.title.is_empty()), "{}", entity.id);
         }
     }
 }

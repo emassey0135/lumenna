@@ -36,7 +36,7 @@ use lumenna_bridge::{Stack, Store, stack};
 use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
 use lumenna_app::speech::{self, Clock, Spoken};
-use lumenna_records::assistant::AssistantOperation;
+use lumenna_records::assistant::{AssistantEntity, AssistantOperation};
 use lumenna_records::automation::{AutomationField, AutomationGiven, AutomationOutput, AutomationWords};
 use lumenna_records::controls::{Control, TimerControl};
 use lumenna_records::glance::GlanceWidget;
@@ -276,6 +276,14 @@ pub fn keyboard_shortcuts() -> Vec<KeyGroup> {
 #[export]
 pub fn assistant_operations() -> Vec<AssistantOperation> {
     lumenna_records::assistant::operations()
+}
+
+/// Every record an assistant hands back and takes (`lumenna_records::assistant::entities`): its
+/// name, its fields' titles and what opens one, which App Intents' entities are declared from and
+/// checked against.
+#[export]
+pub fn assistant_entities() -> Vec<AssistantEntity> {
+    lumenna_records::assistant::entities()
 }
 
 /// The operations another app can set up once and run unattended (`lumenna_records::automation`):

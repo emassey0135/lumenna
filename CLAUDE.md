@@ -177,7 +177,8 @@ crosses the FFI.
   operation's names, description, category, keywords, parameters and what it does to the
   store, run through one dispatcher (`Lumenna::assist`, over the FFI `Device::assist`). MCP's
   tools are built from it; App Intents (Siri, Shortcuts, Apple Intelligence) and Android App
-  Functions (Gemini) are declared from it and checked against `assistant_operations()`, so an
+  Functions (Gemini) are declared from it and checked against `assistant_operations()` (and App
+  Intents' entities, their properties and Open intents against `assistant_entities()`), so an
   operation added there reaches every assistant and none is worded twice. What another app sets
   up once and runs unattended (Tasker's actions) is `records::automation` over the same table:
   never an operation that `confirms`, every value as text the core types, and the answer as
