@@ -150,7 +150,7 @@ impl Dialog for Reminders {
         let mut template = Template::new(&self.title, 260, 192)
             .item(Class::Static, "", STATUS, SS_NOPREFIX.0, 7, 148, 246, 18)
             .item(Class::Static, &self.first.announcement, ANNOUNCED, SS_NOPREFIX.0, 7, 7, 246, 9)
-            .item(Class::Static, "&Reminders:", u16::MAX, 0, 7, 20, 246, 9)
+            .item(Class::Static, &format!("&{}:", super::words().notifications.channel), u16::MAX, 0, 7, 20, 246, 9)
             .item(Class::ListBox, "", LIST, list, 7, 30, 246, 90);
         let mut x = 7;
         for (index, action) in self.first.offered.iter().enumerate() {
@@ -159,7 +159,7 @@ impl Dialog for Reminders {
         }
         template
             .item(Class::Button, "", ITS, button, x, 126, 80, 14)
-            .item(Class::Button, &lumenna_records::words::close(false), IDCANCEL.0 as u16, button, 203, 172, 50, 14)
+            .item(Class::Button, &super::words().close, IDCANCEL.0 as u16, button, 203, 172, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {

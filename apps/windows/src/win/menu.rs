@@ -165,7 +165,7 @@ pub fn command(number: u16) -> Option<&'static str> {
 
 /// A command's name as Windows words it: Windows says Exit where others say Quit.
 pub fn windows_title<'a>(id: &str, title: &'a str) -> &'a str {
-    if id == "quit" { "Exit" } else { title }
+    if id == "quit" { &super::words().exit } else { title }
 }
 
 /// A button that runs a command, as its menu item names it: an ellipsis when it asks first, and
@@ -216,8 +216,10 @@ pub fn menus() -> Vec<(String, Vec<(u16, String)>)> {
                 // A text field's own edit commands, after Redo.
                 if item.id == "redo" {
                     items.push((0, String::new()));
-                    for (number, text) in [(CUT, "Cu&t\tCtrl+X"), (COPY, "&Copy\tCtrl+C"), (PASTE, "&Paste\tCtrl+V"), (SELECT_ALL, "Select &All\tCtrl+A")] {
-                        items.push((number, text.to_owned()));
+                    let words = super::words();
+                    let edits = [(CUT, &words.cut, 't', "Ctrl+X"), (COPY, &words.copy, 'C', "Ctrl+C"), (PASTE, &words.paste, 'P', "Ctrl+V"), (SELECT_ALL, &words.select_all, 'A', "Ctrl+A")];
+                    for (number, word, letter, keys) in edits {
+                        items.push((number, format!("{}\t{keys}", devices::marked(word, letter, '&'))));
                     }
                 }
             }

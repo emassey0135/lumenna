@@ -76,8 +76,8 @@ impl Toasts {
         }
         let id = app_id();
         let key = format!("Software\\Classes\\AppUserModelId\\{id}");
-        if system::read_string(&key, "DisplayName").as_deref() != Some("Lumenna") {
-            let _ = system::write_string(&key, "DisplayName", "Lumenna");
+        if system::read_string(&key, "DisplayName").as_deref() != Some(super::words().metadata.name.as_str()) {
+            let _ = system::write_string(&key, "DisplayName", &super::words().metadata.name);
         }
         if let Some(icon) = icon_file() {
             let icon = icon.to_string_lossy();

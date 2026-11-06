@@ -18,11 +18,17 @@ use crate::keys::{self, Group, Shortcut};
 
 const TEXT: u16 = 100;
 
-/// What only Windows has, under the group it belongs to.
-const WINDOWS: &[Shortcut] = &[
-    Shortcut { group: Group::Lists, id: "rename", title: "Rename", keys: &["F2"] },
-    Shortcut { group: Group::Lists, id: "properties", title: "Properties: the Task's Details, or the Block's Form", keys: &["Alt+Enter"] },
-];
+/// What only Windows has, under the group it belongs to, in the core's words.
+fn windows() -> &'static [Shortcut] {
+    static WINDOWS: std::sync::OnceLock<[Shortcut; 2]> = std::sync::OnceLock::new();
+    WINDOWS.get_or_init(|| {
+        let words = super::words();
+        [
+            Shortcut { group: Group::Lists, id: "rename", title: &words.settings.rename, keys: &["F2"] },
+            Shortcut { group: Group::Lists, id: "properties", title: &words.properties, keys: &["Alt+Enter"] },
+        ]
+    })
+}
 
 /// A command's name as Windows words it, as its menu does: Exit where others say Quit.
 fn title(shortcut: &Shortcut) -> &'static str {
@@ -33,7 +39,7 @@ fn title(shortcut: &Shortcut) -> &'static str {
 pub fn text() -> String {
     let mut lines = Vec::new();
     for group in Group::ALL {
-        let mut listed = keys::in_group(group).chain(WINDOWS.iter().filter(|s| s.group == group)).peekable();
+        let mut listed = keys::in_group(group).chain(windows().iter().filter(|s| s.group == group)).peekable();
         if listed.peek().is_none() {
             continue;
         }
@@ -41,7 +47,7 @@ pub fn text() -> String {
             lines.push(String::new());
         }
         lines.push(group.title().to_owned());
-        lines.extend(listed.map(|shortcut| format!("{}: {}", title(shortcut), shortcut.keys.join(" or "))));
+        lines.extend(listed.map(|shortcut| format!("{}: {}", title(shortcut), shortcut.keys.join(&format!(" {} ", super::words().or)))));
     }
     lines.join("\r\n")
 }
@@ -52,9 +58,9 @@ impl Dialog for Help {
     fn template(&self) -> Template {
         let text = (ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0 | WS_BORDER.0 | WS_TABSTOP.0;
         Template::new(&menu::button("keyboard-help"), 300, 230)
-            .item(Class::Static, "&Shortcuts:", u16::MAX, 0, 7, 7, 286, 9)
+            .item(Class::Static, &format!("&{}:", super::words().shortcuts), u16::MAX, 0, 7, 7, 286, 9)
             .item(Class::Edit, "", TEXT, text, 7, 17, 286, 186)
-            .item(Class::Button, &lumenna_records::words::close(false), IDCANCEL.0 as u16, BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 243, 209, 50, 14)
+            .item(Class::Button, &super::words().close, IDCANCEL.0 as u16, BS_DEFPUSHBUTTON as u32 | WS_TABSTOP.0, 243, 209, 50, 14)
     }
 
     fn init(&self, hwnd: HWND) -> bool {
@@ -83,7 +89,7 @@ mod tests {
     #[test]
     fn the_help_lists_every_shared_key_and_windows_own() {
         let text = text();
-        for shortcut in keys::SHARED.iter().chain(WINDOWS) {
+        for shortcut in keys::SHARED.iter().chain(windows()) {
             assert!(text.contains(&format!("{}: {}", title(shortcut), shortcut.keys[0])), "{} is missing", shortcut.id);
         }
         assert!(text.contains("Exit: Ctrl+Q"), "{text}");

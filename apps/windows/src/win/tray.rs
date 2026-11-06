@@ -36,7 +36,7 @@ fn icon_data(main: HWND, icon: HICON) -> NOTIFYICONDATAW {
         hIcon: icon,
         ..Default::default()
     };
-    for (slot, unit) in data.szTip.iter_mut().zip("Lumenna".encode_utf16()) {
+    for (slot, unit) in data.szTip.iter_mut().zip(super::words().metadata.name.encode_utf16()) {
         *slot = unit;
     }
     data

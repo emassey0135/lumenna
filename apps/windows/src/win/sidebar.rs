@@ -41,7 +41,7 @@ pub struct Sidebar {
 impl Sidebar {
     pub fn create(pane: HWND) -> Self {
         Self {
-            tree: Tree::create(pane, TREE, "Places", false),
+            tree: Tree::create(pane, TREE, &super::words().places, false),
             entries: RefCell::new(Vec::new()),
             shown: RefCell::new(String::new()),
             landing: Cell::new(0),

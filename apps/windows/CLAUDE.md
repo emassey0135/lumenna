@@ -30,7 +30,8 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   `keys::menus`, `keys::tray`, `keys::SHARED`). What is Windows' own: each command's number
   (`menu::NUMBERS`, which the UI tests post), its access key, Exit for Quit, the ellipsis where it
   `asks`, Cut, Copy, Paste and Select All, and the keys a control answers written beside its
-  command (Enter, Delete, Alt+Enter). A command is run as its id (`App::run_command`): the
+  command (Enter, Delete, Alt+Enter). Their words are the core's all the same: every fixed word
+  the app draws is `super::words()`, the core's `ShellWords` taken once (`win/mod.rs`). A command is run as its id (`App::run_command`): the
   window's own, else `Key(id)`, a Task-menu row command `Details(Key)` away from a task list's
   row. As a menu opens its items take the app's names and states (`ViewModel::commands`: Mark Not
   Done), grey only where they act on what the app judged, and are enabled again as it closes,
