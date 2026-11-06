@@ -1003,7 +1003,7 @@ final class LumennaUITests: XCTestCase {
     func testABlocksRemindersTakeAPhraseAndARefusedOneIsAskedAgainWithTheReason() throws {
         addBlock("Deep work")
         choose("Reminders", fromMenuOf: cell(containing: "Deep work"))
-        XCTAssertTrue(app.navigationBars["Reminders"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Reminders for Deep work"].waitForExistence(timeout: 5))
         XCTAssertTrue(cell(containing: "5 minutes before it starts").waitForExistence(timeout: 5), app.debugDescription)
         try audit(.all, "reminders")
         app.buttons["Add Reminder"].tap()

@@ -68,7 +68,7 @@ final class LumennaMacUITests: XCTestCase {
 
     func testTheAppOpensOnTheDay() {
         XCTAssertTrue(window.waitForExistence(timeout: 10))
-        XCTAssertTrue(window.outlines["The day"].waitForExistence(timeout: 5))
+        XCTAssertTrue(window.outlines["The Day"].waitForExistence(timeout: 5))
     }
 
     func testAddingATaskListsItAndSpaceCompletesIt() {
@@ -96,7 +96,7 @@ final class LumennaMacUITests: XCTestCase {
     }
 
     func testABlockIsAddedFromTheDay() {
-        XCTAssertTrue(window.outlines["The day"].waitForExistence(timeout: 5))
+        XCTAssertTrue(window.outlines["The Day"].waitForExistence(timeout: 5))
         app.typeKey("n", modifierFlags: [.command, .shift])
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
@@ -107,7 +107,7 @@ final class LumennaMacUITests: XCTestCase {
         enter("Deep work", into: name)
         // A new block's form adds, under the app's Add.
         app.buttons["Add"].click()
-        let day = window.outlines["The day"]
+        let day = window.outlines["The Day"]
         XCTAssertTrue(
             day.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Deep work'")).firstMatch
                 .waitForExistence(timeout: 5),
@@ -229,7 +229,7 @@ final class LumennaMacUITests: XCTestCase {
     }
 
     func testTheBlockFormAndEverySettingsTabPassAnAudit() throws {
-        XCTAssertTrue(window.outlines["The day"].waitForExistence(timeout: 5))
+        XCTAssertTrue(window.outlines["The Day"].waitForExistence(timeout: 5))
         app.typeKey("n", modifierFlags: [.command, .shift])
         XCTAssertTrue(app.textFields["Name"].waitForExistence(timeout: 5))
         try audit("block form")
@@ -440,7 +440,7 @@ final class LumennaMacUITests: XCTestCase {
     }
 
     func testGoToDayTakesATypedDayAndAsksAgainForOneItCannotRead() {
-        XCTAssertTrue(window.outlines["The day"].waitForExistence(timeout: 5))
+        XCTAssertTrue(window.outlines["The Day"].waitForExistence(timeout: 5))
         app.typeKey("j", modifierFlags: .command)
         let field = app.sheets.textFields["Day"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
@@ -603,7 +603,7 @@ final class LumennaMacUITests: XCTestCase {
     func testABlocksRemindersSheetTakesAPhraseAndShowsARefusalWithItsField() throws {
         place("Today")
         addBlock("Deep work")
-        let day = window.outlines["The day"]
+        let day = window.outlines["The Day"]
         menu(text(containing: "Deep work", in: day), "Reminders…")
         let sheet = app.sheets.firstMatch
         XCTAssertTrue(text(containing: "5 minutes before it starts", in: sheet).waitForExistence(timeout: 5), app.debugDescription)
@@ -687,7 +687,7 @@ final class LumennaMacUITests: XCTestCase {
         sheetButton("Add")
         XCTAssertTrue(app.sheets.firstMatch.waitForNonExistence(timeout: 5))
 
-        let day = window.outlines["The day"]
+        let day = window.outlines["The Day"]
         XCTAssertTrue(text(containing: "takes tasks", in: day).waitForExistence(timeout: 5))
         menu(text(containing: "Train", in: day), "Assign a Task…")
         pick("read", with: "Assign")
@@ -729,7 +729,7 @@ final class LumennaMacUITests: XCTestCase {
         addTask("write")
         place("Today")
         addBlock("Run", repeating: "every day")
-        let day = window.outlines["The day"]
+        let day = window.outlines["The Day"]
         menu(text(containing: "Run", in: day), "Assign a Task…")
         pick("write", with: "Assign")
         let minutes = app.sheets.textFields["Planned length"]
@@ -769,7 +769,7 @@ final class LumennaMacUITests: XCTestCase {
         // Tomorrow, so its block is still to come whenever the test runs.
         app.typeKey("]", modifierFlags: .command)
         addBlock("Writing")
-        let day = window.outlines["The day"]
+        let day = window.outlines["The Day"]
         XCTAssertTrue(text(containing: "Writing", in: day).waitForExistence(timeout: 5))
         app.menuBars.menuBarItems["Day"].click()
         let item = app.menuBars.menuItems["Plan the Day…"]
@@ -788,7 +788,7 @@ final class LumennaMacUITests: XCTestCase {
     /// still work beside it: Command-] goes to the next day.
     func testCommandOptionPPlansTheDayAndTheDayMenusOtherKeysStillWork() throws {
         place("Today")
-        let day = window.outlines["The day"]
+        let day = window.outlines["The Day"]
         XCTAssertTrue(day.waitForExistence(timeout: 5))
         app.typeKey("]", modifierFlags: .command)
         // The window is titled with the day shown.

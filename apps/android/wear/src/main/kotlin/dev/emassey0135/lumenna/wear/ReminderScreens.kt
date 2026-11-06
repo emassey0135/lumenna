@@ -51,7 +51,7 @@ fun RemindersScreen(core: Core, navigator: Navigator) {
     // In the reminder list's own hand: a reminder added or removed here lands here.
     val focus = rememberSideLanding(core, Side.REMINDERS, keys) { state.scrollToItem(it) }
     WearList(state) {
-        item { Heading(view?.remindersTitle.orEmpty()) }
+        item { Heading(list?.announcement?.replaceFirstChar { it.uppercase() } ?: view?.remindersTitle.orEmpty()) }
         list?.reminders.orEmpty().forEachIndexed { index, reminder ->
             item {
                 val line = lines?.reminders?.getOrNull(index)
