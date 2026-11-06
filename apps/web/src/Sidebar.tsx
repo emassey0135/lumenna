@@ -108,7 +108,7 @@ export function Sidebar(props: {
       >
         <Tree
           ref={tree}
-          aria-label="Places"
+          aria-label={words().places}
           items={nodes}
           selectionMode="single"
           disallowEmptySelection

@@ -59,15 +59,15 @@ pairing with `lum`.
   `Key("mark-done")` and the rest on the row in hand, `Details(Key(id))` on the details' task, so
   what each runs, or why it runs nothing, is the core's (`keys::what_runs`); only with no task in
   hand does the page say so, in the details' own words.
-- **The core's fixed words are read once as the app starts** (`words.ts`, `loadWords`): quick
-  add's and the filter's (`quick_add_words`), the details' (`details_words`) and each shared
-  command's name (the key table's, which names the header's and the day toolbar's buttons).
-  What comes with the screen (a setting's, Settings' pages, pairing's, a reminder's buttons) is
-  the screen's. What only a browser says is the core's too, in its words for "this browser"
-  (`fixedWords`: the folder backups, reminders on in this browser, storage that may be evicted,
-  a dialog's Cancel and Close; `backingUpToFolder` and the rest, which name the folder); the
-  worker loads the module before the store's lock, so the tab already open and "Opening
-  Lumenna…" are the core's as well. A project offered in the details says the core's level
+- **Every fixed word is the core's, read once as the app starts** (`words.ts`, `loadWords`):
+  its record of what a shell draws (`shell_words`, `ShellWords`, in sentence case as a browser
+  calls itself), the shared keys and their groups among it (`keyGroups`, which name the
+  header's and the day toolbar's buttons and the keyboard help), with the few that take a part
+  (`backingUpToFolder` and the rest, which name the folder). A word found missing goes in
+  `ShellWords` (`crates/app/src/words.rs`), never here. What comes with the screen (a
+  setting's, Settings' pages, pairing's, a reminder's buttons) is the screen's. The words need
+  the module, not the store, so they are read before the store's lock: the tab already open
+  and "Opening Lumenna…" are the core's as well. A project offered in the details says the core's level
   where it changes (`Lines::projects`), never one worded here.
 - **Settings' tabs are the core's pages** (`SettingsView::pages`), in its order, a page's
   settings by its keys, its caption and its buttons by id (`back-up` a download here,

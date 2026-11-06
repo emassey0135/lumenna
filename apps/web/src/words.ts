@@ -1,43 +1,39 @@
-// The core's fixed words — a button, a label, a hint — read once as the app starts, so a
-// component says them as every other app does without waiting on the worker. Words that come
-// with the screen (a setting's, a proposal's, pairing's) are the screen's, never here. Those a
-// browser alone says (backups into a folder, reminders while the tab is open) are the core's too,
-// in its words for "this browser".
+// The core's fixed words — a button, a label, a hint, a pane's name — read once as the app
+// starts, so a component says them as every other app does without waiting on the worker: its
+// record of every word a shell draws (`ShellWords`), in sentence case and as a browser calls
+// itself. Words that come with the screen (a setting's, a proposal's, pairing's) are the
+// screen's, never here.
 
 import { core } from "./core";
-import type { DetailsWords, FixedWords, QuickAddWords } from "./core";
+import type { FixedWords } from "./core";
 
 export interface Words extends FixedWords {
-  quickAdd: QuickAddWords;
-  details: DetailsWords;
   /** Each command of the shared table by its id, its name in sentence case: "Previous day". */
-  commands: Map<string, string>;
-  nothingToChoose: string;
+  commandTitles: Map<string, string>;
 }
 
 let loaded: Words | undefined;
 
-/** Reads the words, once the store is open: the core's free functions need it loaded. */
+/** Reads the words, as the app starts: they need the core's module, not the store. */
 export async function loadWords(): Promise<void> {
-  const [quickAdd, details, groups, nothingToChoose, fixed] = await Promise.all([
-    core.quickAddWords(),
-    core.detailsWords(),
-    core.keyboardShortcuts(),
-    core.nothingToChoose(),
-    core.fixedWords(),
-  ]);
-  const commands = new Map<string, string>();
-  for (const group of groups) for (const command of group.commands) commands.set(command.id, command.title);
-  loaded = { ...fixed, quickAdd, details, commands, nothingToChoose };
+  const fixed = await core.words();
+  const commandTitles = new Map<string, string>();
+  for (const group of fixed.keyGroups) for (const command of group.commands) commandTitles.set(command.id, command.title);
+  loaded = { ...fixed, commandTitles };
 }
 
-/** The core's words; read only once the app has started (`loadWords`). */
+/** The core's words; read only once they have been (`loadWords`). */
 export function words(): Words {
   if (!loaded) throw new Error("The core's words are read once the app has started.");
   return loaded;
 }
 
+/** A group of the shared commands' heading, in sentence case: "Day". */
+export function groupTitle(id: string): string {
+  return words().keyGroups.find((group) => group.id === id)?.title ?? "";
+}
+
 /** A shared command's name, in sentence case. */
 export function commandTitle(id: string): string {
-  return words().commands.get(id) ?? id;
+  return words().commandTitles.get(id) ?? id;
 }

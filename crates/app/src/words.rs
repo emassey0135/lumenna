@@ -14,11 +14,12 @@ use lumenna_records::fields::{
     folder_words, notification_words, picker_words, quick_add_words, read_back_words, setting_words,
 };
 use lumenna_records::words::{self as core, AppMetadata};
-use lumenna_records::{Choice, PickerWords};
+use lumenna_records::{ActionKind, Choice, PickerWords};
 use serde::{Deserialize, Serialize};
 
 use crate::Capitals;
 use crate::hotkeys::{HotKeyWords, hotkey_words};
+use crate::keys::{COMMANDS, KeyGroup, grouped};
 
 /// What a device is, as it calls itself in the core's sentences ("this PC") and as another
 /// device names it when it has no name of its own ("Windows PC").
@@ -300,6 +301,390 @@ pub struct ShellWords {
     pub expand: String,
     /// The key that folds one: "Collapse".
     pub collapse: String,
+    // The web's.
+    /// What Right arrow does in a list, in a keyboard help: "Expand the Row".
+    pub expand_the_row: String,
+    /// What Left arrow does there: "Collapse the Row".
+    pub collapse_the_row: String,
+    /// What Down arrow and Ctrl+Space do in a line that completes.
+    pub offer_completions: String,
+    /// The key that expands, as a keyboard help names it: "Right Arrow".
+    pub right_arrow: String,
+    /// The key that collapses: "Left Arrow".
+    pub left_arrow: String,
+    /// The key that offers completions: "Down Arrow".
+    pub down_arrow: String,
+    /// The key that closes a dialog: "Escape".
+    pub escape: String,
+    /// A pick's description after how many it offers: "Type part of one to narrow them."
+    pub type_to_narrow: String,
+    /// The tabs of the settings' pages: "Settings Pages".
+    pub settings_pages: String,
+    /// Asked of the store before it has opened.
+    pub store_not_open: String,
+
+    // Emacs's.
+    /// Every command a menu lists, by its `id`, named in the shell's capitals: what a help
+    /// names a binding by, where the binding runs one.
+    pub commands: Vec<Titled>,
+    /// The shared keys, grouped as a help lists them, each group's heading with them.
+    pub key_groups: Vec<KeyGroup>,
+    /// Each kind of row action by what it is, whatever it is done to: what a help names a key
+    /// by that runs the row's action of that kind.
+    pub action_titles: Vec<KindTitle>,
+    /// What a shell that draws its own key help, prompts and buffer names says: Emacs.
+    pub emacs: EmacsWords,
+}
+
+/// A command and its name (`ShellWords::commands`).
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Titled {
+    /// What it is: "new-task".
+    pub id: String,
+    /// Its name, in the shell's capitals: "New Task".
+    pub title: String,
+}
+
+/// A kind of row action and its name, whatever row it is on (`ShellWords::action_titles`).
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KindTitle {
+    /// The kind.
+    pub kind: ActionKind,
+    /// Its name, in the shell's capitals: "Move Up".
+    pub title: String,
+}
+
+/// What a shell that lists its own keys, asks in its own prompts and names its own buffers
+/// says (Emacs): the headings and lines of its key help, its prompts and refusals, and the
+/// names its buffers and modes are made from. A word with a part is a template, `%s` where the
+/// part goes, in the order given.
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmacsWords {
+    // A key help's headings.
+    /// What every list has: "Every List".
+    pub every_list: String,
+    /// "The Place at Point".
+    pub place_at_point: String,
+    /// "The Task at Point".
+    pub task_at_point: String,
+    /// "The Block at Point".
+    pub block_at_point: String,
+    /// "The Project at Point".
+    pub project_at_point: String,
+    /// "The Label at Point".
+    pub label_at_point: String,
+    /// "The Filter at Point".
+    pub filter_at_point: String,
+    /// "The Setting at Point".
+    pub setting_at_point: String,
+    /// "The Device at Point".
+    pub device_at_point: String,
+    /// "The Reminder at Point".
+    pub reminder_at_point: String,
+    /// "This List".
+    pub this_list: String,
+    /// "This Task".
+    pub this_task: String,
+    /// A block in the day: "A Block".
+    pub a_block: String,
+    /// A sitting in the day: "A Task in a Block".
+    pub a_task_in_a_block: String,
+    /// The proposal shown: "The Proposal".
+    pub the_proposal: String,
+    /// What is done from anywhere: "Do".
+    pub doing: String,
+    /// Backups, export and import: "Data".
+    pub data: String,
+    /// Syncing and pairing: "Syncing".
+    pub syncing: String,
+
+    // A key help's lines.
+    /// "Next Line".
+    pub next_line: String,
+    /// "Previous Line".
+    pub previous_line: String,
+    /// What RET does in any list: "Do the Main Thing for This Line".
+    pub main_thing: String,
+    /// What `.` does: "This Line's Actions, by Name".
+    pub line_actions: String,
+    /// "Read the List Again".
+    pub read_again: String,
+    /// The help itself: "These Keys".
+    pub these_keys: String,
+    /// The places: "Lumenna's Places".
+    pub all_places: String,
+    /// "Leave This List".
+    pub leave_list: String,
+    /// RET on a place: "Open It, or Fold a Heading".
+    pub open_or_fold: String,
+    /// A filter typed from anywhere: "Search or Filter".
+    pub search: String,
+    /// Quick add, from a list: "Add a Task".
+    pub add_task: String,
+    /// "Filter This List".
+    pub filter_list: String,
+    /// A field of the task's own buffer: "Change the Field at Point, or Choose One".
+    pub change_field: String,
+    /// RET on a sitting: "The Task Itself".
+    pub the_task_itself: String,
+    /// A proposal's change: "Check or Uncheck the Change at Point".
+    pub check_change: String,
+    /// RET in a proposal: "Check or Uncheck a Change, or Press a Button".
+    pub check_or_press: String,
+    /// "Take the Other Option at Point".
+    pub take_other: String,
+    /// "Make the Changes Checked".
+    pub make_checked: String,
+    /// "Cancel, Making Nothing".
+    pub cancel_making_nothing: String,
+    /// RET on a setting: "Change It".
+    pub change_it: String,
+    /// "Import an Export or a Backup".
+    pub import_any: String,
+    /// "Pair a Device".
+    pub pair_a_device: String,
+    /// "Copy Code".
+    pub copy_code: String,
+    /// "Cancel a Pairing".
+    pub cancel_pairing: String,
+    /// RET on a reminder due: "Open What It Is About".
+    pub open_about: String,
+    /// "Dismiss".
+    pub dismiss: String,
+    /// "Snooze".
+    pub snooze: String,
+
+    // Names a buffer or a mode is made from, beside the commands' and the places'.
+    /// "Projects".
+    pub projects: String,
+    /// "Labels".
+    pub labels: String,
+    /// "Notes".
+    pub notes: String,
+    /// "Proposal".
+    pub proposal: String,
+    /// "Reminders".
+    pub reminders: String,
+    /// The key help's own title: "Lumenna, from Anywhere".
+    pub from_anywhere: String,
+
+    // Prompts and what is said.
+    /// Where a file is kept: "Save it as".
+    pub save_as: String,
+    /// The file `%s` is there already.
+    pub already_there: String,
+    /// "Not saved".
+    pub not_saved: String,
+    /// The file `%s` was written.
+    pub saved: String,
+    /// A command on a line with nothing on it.
+    pub no_item: String,
+    /// A command where it does nothing.
+    pub nothing_to_do: String,
+    /// A question let go.
+    pub nothing_done: String,
+    /// A line read back with nothing in it.
+    pub nothing_typed: String,
+    /// Quick add's prompt: "Add a task".
+    pub add_a_task: String,
+    /// Quick add entered empty.
+    pub nothing_to_add: String,
+    /// The key help's line, `%s` the buffer's name, the key that runs one, the key that goes
+    /// back.
+    pub keys_in: String,
+    /// RET on a heading of the key help.
+    pub a_heading: String,
+    /// A task's command where no task is shown.
+    pub no_task: String,
+    /// A field's command where there is none.
+    pub no_field: String,
+    /// Which field to change: "Change".
+    pub change: String,
+    /// Editing a task's notes: `%s` its title, the key that saves, the key that cancels.
+    pub notes_for: String,
+    /// Notes left as they were.
+    pub notes_unchanged: String,
+    /// A yes or no field, `%s` its name and what it holds now: "All Day, now no".
+    pub now_is: String,
+    /// Copying the code where none is shown.
+    pub no_code: String,
+    /// Cancelling a pairing where none is under way.
+    pub no_pairing: String,
+    /// A program that is not there, `%s` its name.
+    pub cannot_find: String,
+    /// Looking for reminders failed, `%s` why.
+    pub reminders_failed: String,
+    /// An action whose form is not drawn here, `%s` its name.
+    pub no_form_here: String,
+    /// A question this shell cannot ask, `%s` the action's name.
+    pub cannot_ask_here: String,
+}
+
+/// What every kind of row action is called, whatever it is done to.
+#[must_use]
+pub fn kind_title(kind: ActionKind) -> String {
+    use ActionKind as K;
+    let title = match kind {
+        K::MarkDone => lumenna_records::actions::MARK_DONE,
+        K::MarkNotDone => "Mark Not Done",
+        K::Edit => "Edit",
+        K::EditTask => "Edit Task Details",
+        K::PutInBlock => "Put in a Block",
+        K::MoveToProject => "Move to Project",
+        K::MakeSubtaskOf => "Make Subtask Of",
+        K::MoveToTopLevel => "Move to Top Level",
+        K::WaitFor => "Wait For",
+        K::StopWaiting => "Stop Waiting",
+        K::Delete => "Delete",
+        K::Restore => "Restore",
+        K::DeleteForGood => "Delete from Trash",
+        K::AssignTask => "Assign a Task",
+        K::CancelDay => "Cancel This Day",
+        K::RestoreDay => "Restore This Day",
+        K::StartTimer => "Start Timer",
+        K::ResumeTimer => "Resume Timer",
+        K::PauseTimer => "Pause Timer",
+        K::StopTimer => "Stop Timer",
+        K::PlannedLength => "Planned Length",
+        K::LogMinutes => "Log Minutes",
+        K::Unassign => "Unassign",
+        K::AddBlock => "Add Block Here",
+        K::Rename => "Rename",
+        K::NewInside => "New Project Inside",
+        K::MoveUnder => "Move Under",
+        K::MoveUp => "Move Up",
+        K::MoveDown => "Move Down",
+        K::Weight => "Weight",
+        K::Archive => "Archive",
+        K::Unarchive => "Unarchive",
+        K::MergeInto => "Merge Into",
+        K::Colour => "Colour",
+        K::ChangeQuery => "Change Query",
+        K::New => "New",
+        K::Unpair => "Unpair",
+        K::Reminders => "Reminders",
+        K::EndNow => "End Now",
+        K::Extend => return format!("Add {} Minutes", lumenna_records::day::EXTEND_MINS),
+        K::EndDay => "End the Day",
+        K::ClearDay => "Clear the Rest of the Day",
+        K::CarryForward => "Carry Forward",
+        K::WhatNow => "What Should I Work On?",
+        K::CarryRest => "Carry the Rest Forward",
+        K::Replan => "Replan from Now",
+        K::PlanDay => "Plan the Day",
+        K::Expand => "Expand",
+        K::Collapse => "Collapse",
+        K::Skip => "Skip",
+        K::Unskip => "Plan Again",
+        K::DeliverOn => "Deliver On",
+        K::TimeZone => "Time Zone",
+        K::ErasePermanently => "Erase Permanently",
+        K::EraseEverythingDeleted => "Erase Everything Deleted",
+    };
+    title.to_owned()
+}
+
+/// Every kind of row action, in the order `ActionKind` declares them.
+pub const ACTION_KINDS: &[ActionKind] = {
+    use ActionKind as K;
+    &[
+        K::MarkDone, K::MarkNotDone, K::Edit, K::EditTask, K::PutInBlock, K::MoveToProject, K::MakeSubtaskOf,
+        K::MoveToTopLevel, K::WaitFor, K::StopWaiting, K::Delete, K::Restore, K::DeleteForGood, K::AssignTask,
+        K::CancelDay, K::RestoreDay, K::StartTimer, K::ResumeTimer, K::PauseTimer, K::StopTimer, K::PlannedLength,
+        K::LogMinutes, K::Unassign, K::AddBlock, K::Rename, K::NewInside, K::MoveUnder, K::MoveUp, K::MoveDown,
+        K::Weight, K::Archive, K::Unarchive, K::MergeInto, K::Colour, K::ChangeQuery, K::New, K::Unpair, K::Reminders,
+        K::EndNow, K::Extend, K::EndDay, K::ClearDay, K::CarryForward, K::WhatNow, K::CarryRest, K::Replan,
+        K::PlanDay, K::Expand, K::Collapse, K::Skip, K::Unskip, K::DeliverOn, K::TimeZone, K::ErasePermanently,
+        K::EraseEverythingDeleted,
+    ]
+};
+
+/// Emacs's words, its names in `c`'s capitals.
+fn emacs_words(c: &dyn Fn(&str) -> String) -> EmacsWords {
+    let name = core::NAME;
+    EmacsWords {
+        every_list: c("Every List"),
+        place_at_point: c("The Place at Point"),
+        task_at_point: c("The Task at Point"),
+        block_at_point: c("The Block at Point"),
+        project_at_point: c("The Project at Point"),
+        label_at_point: c("The Label at Point"),
+        filter_at_point: c("The Filter at Point"),
+        setting_at_point: c("The Setting at Point"),
+        device_at_point: c("The Device at Point"),
+        reminder_at_point: c("The Reminder at Point"),
+        this_list: c("This List"),
+        this_task: c("This Task"),
+        a_block: c("A Block"),
+        a_task_in_a_block: c("A Task in a Block"),
+        the_proposal: c("The Proposal"),
+        doing: c("Do"),
+        data: c("Data"),
+        syncing: c("Syncing"),
+
+        next_line: c("Next Line"),
+        previous_line: c("Previous Line"),
+        main_thing: c("Do the Main Thing for This Line"),
+        line_actions: c("This Line's Actions, by Name"),
+        read_again: c("Read the List Again"),
+        these_keys: c("These Keys"),
+        all_places: c(&format!("{name}'s Places")),
+        leave_list: c("Leave This List"),
+        open_or_fold: c("Open It, or Fold a Heading"),
+        search: c("Search or Filter"),
+        add_task: c("Add a Task"),
+        filter_list: c("Filter This List"),
+        change_field: c("Change the Field at Point, or Choose One"),
+        the_task_itself: c("The Task Itself"),
+        check_change: c("Check or Uncheck the Change at Point"),
+        check_or_press: c("Check or Uncheck a Change, or Press a Button"),
+        take_other: c("Take the Other Option at Point"),
+        make_checked: c("Make the Changes Checked"),
+        cancel_making_nothing: c("Cancel, Making Nothing"),
+        change_it: c("Change It"),
+        import_any: c("Import an Export or a Backup"),
+        pair_a_device: c("Pair a Device"),
+        copy_code: c("Copy Code"),
+        cancel_pairing: c("Cancel a Pairing"),
+        open_about: c("Open What It Is About"),
+        dismiss: c("Dismiss"),
+        snooze: c("Snooze"),
+
+        projects: c("Projects"),
+        labels: c("Labels"),
+        notes: c("Notes"),
+        proposal: c("Proposal"),
+        reminders: c("Reminders"),
+        from_anywhere: c(&format!("{name}, from Anywhere")),
+
+        save_as: "Save it as".to_owned(),
+        already_there: already_there("%s"),
+        not_saved: "Not saved".to_owned(),
+        saved: saved("%s"),
+        no_item: "No item on this line".to_owned(),
+        nothing_to_do: "Nothing to do here".to_owned(),
+        nothing_done: "Nothing done".to_owned(),
+        nothing_typed: "Nothing typed yet".to_owned(),
+        add_a_task: "Add a task".to_owned(),
+        nothing_to_add: "Nothing to add".to_owned(),
+        keys_in: "Keys in %s. %s runs one there, %s goes back".to_owned(),
+        a_heading: "A heading; its keys are under it".to_owned(),
+        no_task: "No task here".to_owned(),
+        no_field: "No field here".to_owned(),
+        change: "Change".to_owned(),
+        notes_for: "Notes for %s. %s saves, %s cancels".to_owned(),
+        notes_unchanged: "Notes unchanged".to_owned(),
+        now_is: "%s, now %s".to_owned(),
+        no_code: "No code is shown; this device is not waiting to be found".to_owned(),
+        no_pairing: "No pairing is under way".to_owned(),
+        cannot_find: "Cannot find %s".to_owned(),
+        reminders_failed: with_reason("Reminders could not be looked for", "%s"),
+        no_form_here: core::no_form_here("%s"),
+        cannot_ask_here: core::cannot_ask_here("%s"),
+    }
 }
 
 /// A pick's words, its buttons in sentence case where `sentence`.
@@ -430,6 +815,23 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
 
         expand: c("Expand"),
         collapse: c("Collapse"),
+        expand_the_row: c("Expand the Row"),
+        collapse_the_row: c("Collapse the Row"),
+        offer_completions: c(
+            "Offer What Could Go at the Cursor, in Quick Add, the List's Filter, a Saved Filter's Query or a Block's Tasks From",
+        ),
+        right_arrow: c("Right Arrow"),
+        left_arrow: c("Left Arrow"),
+        down_arrow: c("Down Arrow"),
+        escape: c("Escape"),
+        type_to_narrow: "Type part of one to narrow them.".to_owned(),
+        settings_pages: c("Settings Pages"),
+        store_not_open: "The store is not open yet.".to_owned(),
+
+        commands: COMMANDS.iter().map(|command| Titled { id: command.id.to_owned(), title: c(command.title) }).collect(),
+        key_groups: grouped(sentence),
+        action_titles: ACTION_KINDS.iter().map(|&kind| KindTitle { kind, title: c(&kind_title(kind)) }).collect(),
+        emacs: emacs_words(&c),
     }
 }
 
@@ -583,6 +985,35 @@ mod tests {
         assert_eq!(could_not_read("Tasks.json", ""), "Lumenna could not read Tasks.json");
         assert_eq!(could_not_read("Tasks.json", "Access is denied."), "Lumenna could not read Tasks.json. Access is denied.");
         assert_eq!(files_of("json"), "JSON files");
+    }
+
+    #[test]
+    fn every_kind_of_action_is_named_once_by_what_it_is() {
+        let words = shell_words(Capitals::Title, ThisDevice::Computer);
+        for (index, kind) in ACTION_KINDS.iter().enumerate() {
+            assert!(!ACTION_KINDS[..index].contains(kind), "{kind:?} twice");
+        }
+        assert_eq!(words.action_titles.len(), ACTION_KINDS.len());
+        let extend = words.action_titles.iter().find(|named| named.kind == ActionKind::Extend).map(|named| named.title.as_str());
+        assert_eq!(extend, Some("Add 15 Minutes"));
+    }
+
+    #[test]
+    fn a_word_with_parts_has_a_place_for_each_part() {
+        let e = shell_words(Capitals::Title, ThisDevice::Computer).emacs;
+        for (template, parts) in [
+            (&e.already_there, 1),
+            (&e.saved, 1),
+            (&e.keys_in, 3),
+            (&e.notes_for, 3),
+            (&e.now_is, 2),
+            (&e.cannot_find, 1),
+            (&e.reminders_failed, 1),
+            (&e.no_form_here, 1),
+            (&e.cannot_ask_here, 1),
+        ] {
+            assert_eq!(template.matches("%s").count(), parts, "{template}");
+        }
     }
 
     #[test]

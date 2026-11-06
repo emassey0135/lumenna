@@ -52,7 +52,7 @@ export function ChooseDialog(props: {
         <p id="prompt-detail">{props.detail}</p>
         <div className="buttons">
           <Button autoFocus onPress={() => props.answer(undefined)}>
-            Cancel
+            {words().cancel}
           </Button>
           {props.options.map((option, index) => (
             <Button key={option} onPress={() => props.answer(index)}>
@@ -219,7 +219,7 @@ function PickQuestion(props: { heading: string; items: ShownChoice[]; count: str
         >
           <Input />
           <Text slot="description" className="quiet">
-            {props.count}. Type part of one to narrow them.
+            {props.count}. {words().typeToNarrow}
           </Text>
           <FieldError>{problem}</FieldError>
           <Popover>

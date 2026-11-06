@@ -6,11 +6,9 @@
 // browser keeps many of the shared keys for itself, and a page cannot have them: Ctrl+N, Ctrl+W,
 // Ctrl+T, Ctrl+1 to 4, Ctrl+Page Up and Down, F5, F6, Ctrl+F, Ctrl+K, Ctrl+B, Ctrl+S. Those
 // commands are on Alt+Shift and a letter here, the same letter where it is free, which no
-// browser and no screen reader takes (`WEB`). What only the web has is `OWN`.
+// browser and no screen reader takes (`WEB`). What only the web has is `own`, its words the core's.
 
-import { useEffect, useState } from "react";
 import { Button, Dialog, Heading, Modal } from "react-aria-components";
-import { core } from "./core";
 import type { KeyGroup } from "./core";
 import { commandTitle, words } from "./words";
 
@@ -57,28 +55,27 @@ export const WEB: Record<string, string[]> = {
 const NOT_ON_THE_WEB = new Set(["quit"]);
 
 /** The web's own keys: a group of the table's, or one of its own, and what goes in it. */
-const OWN: KeyGroup[] = [
-  {
-    id: "lists",
-    title: "",
-    commands: [
-      { id: "expand", title: "Expand the row", keys: ["Right arrow"] },
-      { id: "collapse", title: "Collapse the row", keys: ["Left arrow"] },
-    ],
-  },
-  {
-    id: "dialogs",
-    title: "In a dialog",
-    commands: [
-      {
-        id: "complete",
-        title: "Offer what could go at the cursor, in quick add, the list's filter, a saved filter's query or a block's Tasks from",
-        keys: ["Down arrow", "Ctrl+Space"],
-      },
-      { id: "close-dialog", title: "Close the dialog", keys: ["Escape"] },
-    ],
-  },
-];
+function own(): KeyGroup[] {
+  const said = words();
+  return [
+    {
+      id: "lists",
+      title: "",
+      commands: [
+        { id: "expand", title: said.expandTheRow, keys: [said.rightArrow] },
+        { id: "collapse", title: said.collapseTheRow, keys: [said.leftArrow] },
+      ],
+    },
+    {
+      id: "dialogs",
+      title: said.inADialog,
+      commands: [
+        { id: "complete", title: said.offerCompletions, keys: [said.downArrow, "Ctrl+Space"] },
+        { id: "close-dialog", title: said.closeTheDialog, keys: [said.escape] },
+      ],
+    },
+  ];
+}
 
 /** A Mac's browser takes Command where others take Ctrl, and calls Alt Option. */
 export const mac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -132,6 +129,7 @@ export function commandFor(event: KeyboardEvent): string | undefined {
  * web's own placed before Help.
  */
 export function listed(shared: KeyGroup[]): KeyGroup[] {
+  const OWN = own();
   const groups = shared.map((group) => {
     const own = OWN.find((o) => o.id === group.id)?.commands ?? [];
     return {
@@ -160,11 +158,7 @@ export function asksForKeys(event: KeyboardEvent): boolean {
 }
 
 export function KeyboardShortcuts(props: { isOpen: boolean; onClose: () => void }) {
-  const [groups, setGroups] = useState<KeyGroup[]>([]);
-
-  useEffect(() => {
-    if (props.isOpen && groups.length === 0) void core.keyboardShortcuts().then((shared) => setGroups(listed(shared)));
-  }, [props.isOpen]);
+  const groups = listed(words().keyGroups);
 
   return (
     <Modal isDismissable isOpen={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
@@ -176,14 +170,14 @@ export function KeyboardShortcuts(props: { isOpen: boolean; onClose: () => void 
             <table className="keys" aria-labelledby={`keys-${group.id}`}>
               <thead>
                 <tr>
-                  <th scope="col">Key</th>
-                  <th scope="col">Command</th>
+                  <th scope="col">{words().key}</th>
+                  <th scope="col">{words().command}</th>
                 </tr>
               </thead>
               <tbody>
                 {group.commands.map((shortcut) => (
                   <tr key={shortcut.id}>
-                    <td>{shortcut.keys.map(spoken).join(" or ")}</td>
+                    <td>{shortcut.keys.map(spoken).join(` ${words().or} `)}</td>
                     <td>{shortcut.title}</td>
                   </tr>
                 ))}

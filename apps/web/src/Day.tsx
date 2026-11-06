@@ -25,7 +25,7 @@ import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
-import { commandTitle, words } from "./words";
+import { commandTitle, groupTitle, words } from "./words";
 
 /** Each kind of row's class, for the styles: the kind crosses as a number. */
 const KIND_CLASS: Record<DayKind, string> = {
@@ -112,7 +112,7 @@ export function Day(props: { screen: Screen }) {
       <h2>{day?.title ?? props.screen.title}</h2>
       {/* A toolbar is one Tab stop, its buttons a press of the arrows apart (ARIA's toolbar pattern);
           each named as the shared table names its command. */}
-      <Toolbar className="buttons" aria-label="Day">
+      <Toolbar className="buttons" aria-label={groupTitle("day")}>
         <Button isDisabled={!day} onPress={() => move(DayMove.Previous)}>
           {commandTitle("previous-day")}
         </Button>
@@ -136,7 +136,7 @@ export function Day(props: { screen: Screen }) {
       <div onKeyDownCapture={keysDown} onContextMenu={rightClick}>
         <Tree
           ref={tree}
-          aria-label="The day"
+          aria-label={words().theDay}
           items={nodes}
           selectionMode="single"
           selectionBehavior="replace"

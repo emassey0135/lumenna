@@ -53,9 +53,9 @@ The name always shows too.")
   (setq-local lumenna--draw #'lumenna--group-rows))
 
 (defun lumenna--show-group (group name mode)
-  "Show GROUP of the places in buffer NAME, in MODE."
+  "Show GROUP of the places in a buffer named after NAME, a word, in MODE."
   (lumenna--home-buffer)
-  (let ((buffer (get-buffer-create name)))
+  (let ((buffer (get-buffer-create (lumenna--buffer-name (lumenna-word name)))))
     (with-current-buffer buffer
       (unless (derived-mode-p mode)
         (funcall mode)
@@ -78,7 +78,7 @@ The name always shows too.")
 (defun lumenna--add-task-here ()
   "Add a task to the place at point, its line starting as that place's does."
   (let ((place (plist-get (plist-get (lumenna-row) :place) :Place)))
-    (unless (and place (not (stringp place))) (user-error "Nothing to add a task to here"))
+    (unless (and place (not (stringp place))) (lumenna--refusal :nothing_to_do))
     (with-current-buffer (save-window-excursion (lumenna-open-place place) (current-buffer))
       (lumenna-add))))
 
@@ -88,13 +88,14 @@ The name always shows too.")
   "The project tree, with weights and what is archived.
 RET shows a project's tasks.
 
-\\{lumenna-projects-mode-map}")
+\\{lumenna-projects-mode-map}"
+  (lumenna--mode-name :projects))
 
 ;;;###autoload
 (defun lumenna-projects ()
   "Show the project tree."
   (interactive)
-  (lumenna--show-group "Projects" "*Lumenna: Projects*" #'lumenna-projects-mode))
+  (lumenna--show-group "Projects" :projects #'lumenna-projects-mode))
 
 (defun lumenna-project-add ()
   "Add a project, as the Projects heading offers."
@@ -111,13 +112,14 @@ RET shows a project's tasks.
 (define-derived-mode lumenna-labels-mode lumenna-group-mode "Lumenna Labels"
   "Labels, each with how many open tasks wear it.  RET shows those tasks.
 
-\\{lumenna-labels-mode-map}")
+\\{lumenna-labels-mode-map}"
+  (lumenna--mode-name :labels))
 
 ;;;###autoload
 (defun lumenna-labels ()
   "Show the labels."
   (interactive)
-  (lumenna--show-group "Labels" "*Lumenna: Labels*" #'lumenna-labels-mode))
+  (lumenna--show-group "Labels" :labels #'lumenna-labels-mode))
 
 (defun lumenna-label-add ()
   "Add a label, as the Labels heading offers."
@@ -135,13 +137,14 @@ RET shows a project's tasks.
   "Saved filters.  RET shows a filter's tasks.
 A filter is kept as typed, so \"today\" means today whenever it is opened.
 
-\\{lumenna-filters-mode-map}")
+\\{lumenna-filters-mode-map}"
+  (lumenna--mode-name '(word :filters)))
 
 ;;;###autoload
 (defun lumenna-filters ()
   "Show the saved filters."
   (interactive)
-  (lumenna--show-group "Filters" "*Lumenna: Filters*" #'lumenna-filters-mode))
+  (lumenna--show-group "Filters" '(word :filters) #'lumenna-filters-mode))
 
 (defun lumenna-filter-add ()
   "Save a filter under a name, as the Saved Filters heading offers."
@@ -151,43 +154,43 @@ A filter is kept as typed, so \"today\" means today whenever it is opened.
 ;;;; Menus
 
 (lumenna-define-keys lumenna-projects-mode
-  ("The project at point"
-   ("RET" "Show its tasks" lumenna-activate)
-   ("a" "New Project" lumenna-project-add)
-   ("t" "Add a task to it" lumenna-project-add-task)
-   ("N" "New Project Inside" lumenna-act-new-inside)
-   ("r" "Rename" lumenna-act-rename)
-   ("m" "Move Under" lumenna-act-move-under)
-   ("T" "Move to Top Level" lumenna-act-move-to-top)
-   ("M-p" "Move Up" lumenna-act-move-up)
-   ("M-n" "Move Down" lumenna-act-move-down)
-   ("w" "Weight" lumenna-act-weight)
-   ("A" "Archive or Unarchive" lumenna-act-archive)
-   ("C" "Colour" lumenna-act-colour)
-   ("d" "Delete" lumenna-act-delete)))
+  (:project_at_point
+   ("RET" (word :show_its_tasks) lumenna-activate)
+   ("a" (command "new-project") lumenna-project-add)
+   ("t" (word :add_task_to_it) lumenna-project-add-task)
+   ("N" (kinds "new_inside") lumenna-act-new-inside)
+   ("r" (kinds "rename") lumenna-act-rename)
+   ("m" (kinds "move_under") lumenna-act-move-under)
+   ("T" (kinds "move_to_top_level") lumenna-act-move-to-top)
+   ("M-p" (kinds "move_up") lumenna-act-move-up)
+   ("M-n" (kinds "move_down") lumenna-act-move-down)
+   ("w" (kinds "weight") lumenna-act-weight)
+   ("A" (kinds "archive" "unarchive") lumenna-act-archive)
+   ("C" (kinds "colour") lumenna-act-colour)
+   ("d" (kinds "delete") lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-labels-mode
-  ("The label at point"
-   ("RET" "Show the tasks wearing it" lumenna-activate)
-   ("a" "New Label" lumenna-label-add)
-   ("t" "Add a task wearing it" lumenna-label-add-task)
-   ("r" "Rename" lumenna-act-rename)
-   ("m" "Merge Into" lumenna-act-merge)
-   ("C" "Colour" lumenna-act-colour)
-   ("M-p" "Move Up" lumenna-act-move-up)
-   ("M-n" "Move Down" lumenna-act-move-down)
-   ("d" "Delete" lumenna-act-delete)))
+  (:label_at_point
+   ("RET" (word :show_tasks_wearing_it) lumenna-activate)
+   ("a" (command "new-label") lumenna-label-add)
+   ("t" (word :add_task_wearing_it) lumenna-label-add-task)
+   ("r" (kinds "rename") lumenna-act-rename)
+   ("m" (kinds "merge_into") lumenna-act-merge)
+   ("C" (kinds "colour") lumenna-act-colour)
+   ("M-p" (kinds "move_up") lumenna-act-move-up)
+   ("M-n" (kinds "move_down") lumenna-act-move-down)
+   ("d" (kinds "delete") lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-filters-mode
-  ("The filter at point"
-   ("RET" "Show its tasks" lumenna-activate)
-   ("a" "New Saved Filter" lumenna-filter-add)
-   ("r" "Rename" lumenna-act-rename)
-   ("e" "Change Query" lumenna-act-change-query)
-   ("C" "Colour" lumenna-act-colour)
-   ("M-p" "Move Up" lumenna-act-move-up)
-   ("M-n" "Move Down" lumenna-act-move-down)
-   ("d" "Delete" lumenna-act-delete)))
+  (:filter_at_point
+   ("RET" (word :show_its_tasks) lumenna-activate)
+   ("a" (command "new-filter") lumenna-filter-add)
+   ("r" (kinds "rename") lumenna-act-rename)
+   ("e" (kinds "change_query") lumenna-act-change-query)
+   ("C" (kinds "colour") lumenna-act-colour)
+   ("M-p" (kinds "move_up") lumenna-act-move-up)
+   ("M-n" (kinds "move_down") lumenna-act-move-down)
+   ("d" (kinds "delete") lumenna-act-delete)))
 
 (provide 'lumenna-organise)
 
