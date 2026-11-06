@@ -609,7 +609,7 @@ until the app has taken it in."
     (lumenna-filters)
     (should (equal (buffer-string) "Saved Filters\n"))
     (lumenna-devices)
-    (should (equal (buffer-string) "Devices and sync\nNo devices are paired yet. Pair one to sync with it.\n"))
+    (should (equal (buffer-string) "Devices and Pairing\nNo devices are paired yet. Pair one to sync with it.\n"))
     (lumenna-test--seed "label.add" :name "calls")
     (lumenna-labels)
     (should (equal (lumenna-test--lines) '("Labels" "  calls, no open tasks")))))
@@ -951,11 +951,11 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (lumenna-activate)
     (should (derived-mode-p 'lumenna-tasks-mode))))
 
-(ert-deftest lumenna-devices-and-sync-is-the-first-line-of-settings ()
+(ert-deftest lumenna-devices-and-pairing-is-the-first-line-of-settings ()
   (lumenna-test--with-store
     (lumenna-settings)
     (goto-char (point-min))
-    (lumenna-test--goto "Devices and sync")
+    (lumenna-test--goto "Devices and Pairing")
     (should-not (save-excursion (goto-char (point-min)) (re-search-forward "^clock" nil t)))
     (lumenna-activate)
     (should (derived-mode-p 'lumenna-devices-mode))))
