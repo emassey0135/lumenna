@@ -114,7 +114,9 @@ class HanOutputClient(context: Context) : Output {
         if (BuildConfig.DEBUG) Log.i(TAG, "say: $text")
         whileClaimed("say") {
             it.stopTTS()
-            it.displayAndPlayTTS(2, HanOutput(text, text, null, ""), false, false, false, -1, -1, -1, -1, null)
+            // Mode 1 plays it. Mode 2, what the interop notes first recorded, is taken and never
+            // sounds; and a null braille is refused (-1), where empty leaves the cells to [cells].
+            it.displayAndPlayTTS(1, HanOutput(text, text, "", ""), false, false, false, -1, -1, -1, -1, null)
         }
     }
 
