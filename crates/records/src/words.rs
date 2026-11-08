@@ -821,7 +821,7 @@ mod tests {
         }
         // Android's builds read the version and name from the workspace itself, written nowhere else.
         assert!(repo_file("apps/android/build.gradle.kts").contains("\"workspace.metadata.lumenna\""), "Gradle reads the workspace's metadata");
-        for gradle in ["apps/android/app/build.gradle.kts", "apps/android/wear/build.gradle.kts"] {
+        for gradle in ["apps/android/app/build.gradle.kts", "apps/android/wear/build.gradle.kts", "apps/android/braillesense/build.gradle.kts"] {
             let gradle_file = repo_file(gradle);
             assert!(has_line(&gradle_file, "versionName = rootProject.extra[\"lumennaVersion\"] as String"), "{gradle}'s versionName");
             assert!(has_line(&gradle_file, "resValue(\"string\", \"app_name\", rootProject.extra[\"lumennaName\"] as String)"), "{gradle}'s app_name");
@@ -831,6 +831,10 @@ mod tests {
             let line = "applicationId = rootProject.extra[\"lumennaPackageId\"] as String";
             assert!(has_line(&repo_file(gradle), line), "{gradle}'s applicationId");
         }
+        // The one Android ID that is not the workspace's: the BrailleSense's launcher lists
+        // `com.extra.han.*` in its Programs menu, and its screen reader yields the braille keys
+        // to such a package by its name alone.
+        assert!(has_line(&repo_file("apps/android/braillesense/build.gradle.kts"), "applicationId = \"com.extra.han.lumenna\""), "the BrailleSense's applicationId");
         for strings in ["apps/android/app/src/main/res/values/strings.xml", "apps/android/wear/src/main/res/values/strings.xml"] {
             assert!(!repo_file(strings).contains("name=\"app_name\""), "{strings} names the app itself");
         }

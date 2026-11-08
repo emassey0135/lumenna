@@ -110,6 +110,12 @@ pub struct ShellWords {
     pub read_back: ReadBackWords,
     /// The shortcuts from anywhere.
     pub hotkeys: HotKeyWords,
+    /** What a menu item says after its name and letter on a device whose menus read so: "pull down". */
+    pub pull_down: String,
+    /** A switch that is on, in a shell that says its state itself. */
+    pub on: String,
+    /** A switch that is off, in a shell that says its state itself. */
+    pub off: String,
     /// Yes and No, for a question a shell asks as a choice of the two.
     pub yes_no: Vec<Choice>,
 
@@ -780,6 +786,9 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         folder: folder_words(this_device, sentence),
         read_back: read_back_words(sentence),
         hotkeys: hotkey_words(),
+        pull_down: "pull down".to_owned(),
+        on: c("On"),
+        off: c("Off"),
         yes_no: lumenna_records::fields::yes_no(),
 
         cancel: core::cancel(sentence),
@@ -1130,4 +1139,45 @@ mod tests {
     fn a_device_list_where_a_key_renames_says_both() {
         assert_eq!(delete_unpairs_or_renames("F2"), "Delete unpairs the selected device, and F2 renames it.");
     }
+}
+
+
+/// One line of a braille device's key help: the keys, in the device's own terms, and what they do.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceKey {
+    /** The keys: "Space-M or F2". */
+    pub keys: String,
+    /** What they do: "Open the menus". */
+    pub what: String,
+}
+
+/// The BrailleSense's keys, for its key help: the device's own conventions (its manual's Common
+/// Commands), and how each of this app's screens takes them. Keys are named as its manual names
+/// them, which is why they sit here with their meaning, not as separate words.
+#[must_use]
+pub fn braillesense_keys() -> Vec<DeviceKey> {
+    let row = |keys: &str, what: &str| DeviceKey { keys: keys.to_owned(), what: what.to_owned() };
+    vec![
+        row("Space-1 or the Up scroll key", "Previous row, or back through a long line"),
+        row("Space-4 or the Down scroll key", "Next row, or on through a long line"),
+        row("Space-1-2-3, Space-4-5-6", "First and last row"),
+        row("Space-1-2-6, Space-3-4-5", "Previous and next page of 32 rows"),
+        row("A letter by itself", "The next row beginning with it"),
+        row("Enter", "Open the row, press the button"),
+        row("Space-M or F2", "The program's menus"),
+        row("Enter-I, or the Application key", "The row's own actions"),
+        row("Space-E or F4", "Close, go back"),
+        row("Space-Z", "Exit Lumenna"),
+        row("Space-4-5 or F3, Space-1-2", "Next and previous control in a dialog"),
+        row("Space", "Change a check box, a combo box, or mark a task done"),
+        row("Space with a letter, or Enter with it", "The row's command of that letter"),
+        row("Enter-N", "New task"),
+        row("Enter-Z, Enter-Y", "Undo and redo"),
+        row("Space-F", "Filter the list"),
+        row("Space-D", "Delete the row"),
+        row("Space-H or F1", "These keys"),
+        row("Space-O", "Settings"),
+        row("Space-R", "Say the row again"),
+    ]
 }

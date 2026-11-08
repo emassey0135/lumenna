@@ -664,21 +664,22 @@ jobs:
         # The release builds too, shrunk by R8, which only they run: a rule it refuses or a
         # class it cannot find would otherwise be found at release. The core is the same build.
         # Then the JVM tests, which need no emulator.
-        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :wear:assembleDebug :wear:assembleDebugAndroidTest :app:assembleRelease :wear:assembleRelease :shared:testDebugUnitTest :app:testDebugUnitTest
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :wear:assembleDebug :wear:assembleDebugAndroidTest :braillesense:assembleDebug :app:assembleRelease :wear:assembleRelease :braillesense:assembleRelease :shared:testDebugUnitTest :app:testDebugUnitTest :braillesense:testDebugUnitTest
       - name: Ready for 16 KB pages
         # Every native library must load at 16 KB boundaries, and sit 16 KB aligned in the
         # APK, or a 16 KB-page device refuses it. An x86_64 emulator emulates 16 KB pages,
         # and did not boot in ten minutes, so this is checked here instead.
         working-directory: apps/android
         run: |
-          apk=app/build/outputs/apk/debug/app-debug.apk
-          "$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)zipalign" -c -P 16 4 "$apk"
-          readelf="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
-          dir=$(mktemp -d) && unzip -q "$apk" 'lib/*' -d "$dir"
-          for lib in "$dir"/lib/*/*.so; do
-            align=$("$readelf" -lW "$lib" | awk '/LOAD/ {print $NF}' | sort -u)
-            echo "$lib: $align"
-            [ "$align" = 0x4000 ] || { echo "::error::$lib is not 16 KB aligned"; exit 1; }
+          for apk in app/build/outputs/apk/debug/app-debug.apk braillesense/build/outputs/apk/debug/braillesense-debug.apk; do
+            "$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)zipalign" -c -P 16 4 "$apk"
+            readelf="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+            dir=$(mktemp -d) && unzip -q "$apk" 'lib/*' -d "$dir"
+            for lib in "$dir"/lib/*/*.so; do
+              align=$("$readelf" -lW "$lib" | awk '/LOAD/ {print $NF}' | sort -u)
+              echo "$lib: $align"
+              [ "$align" = 0x4000 ] || { echo "::error::$lib is not 16 KB aligned"; exit 1; }
+            done
           done
       - uses: actions/upload-artifact@v4
         with:
@@ -687,6 +688,7 @@ jobs:
           path: |
             apps/android/app/build/outputs/apk
             apps/android/wear/build/outputs/apk
+            apps/android/braillesense/build/outputs/apk
           retention-days: 1
 
   android:
