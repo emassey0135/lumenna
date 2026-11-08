@@ -148,10 +148,36 @@ A day or less each, for between the larger pieces, except the first.
 - **Toolchain**: unpinned.
 - **A braille device's letters are the core's**, before either device app below: a letter per
   action as a table in `lumenna_app::keys` beside the keyboard's (the BTSpeak app's `KEYS` moved
-  there), so every braille device runs the same letter to the same action. Only how a letter
-  is pressed differs: the BTSpeak app keeps its own convention, a letter as it has it now; the
-  Orbit Speak and the BrailleSense take **Space with the letter** for the command and **the
-  letter alone for first-letter navigation**.
+  there), so every braille device runs the same letter to the same action. The day's, the
+  settings pages' and the settings buttons' letters go too (`DAY_KEYS`, `PAGE_KEYS`,
+  `BUTTON_KEYS`). Only how a letter is pressed differs: the BTSpeak app keeps its own
+  convention, a letter as it has it now; the Orbit Speak and the BrailleSense take **Space with
+  the letter** for the command and **the letter alone for first-letter navigation**. The table
+  is keyed by letter, since the BTSpeak hands its app letters. A device that reports dots (the
+  Orbit Speak by a chord's name, the BrailleSense as a bitmask) turns them into a letter through
+  the core's own dots for a to z, never the person's table, so no contracted table reads Z alone
+  as "as" and neither app needs liblouis to run a command.
+- **What the three braille apps share is the app's** (`lumenna_app`), not a library of theirs,
+  since the BTSpeak's is Python. Beside the letters:
+  - **First-letter search** over a list's lines: from the row in hand on, wrapping round,
+    passing folded rows, in the order shown. Satellite's `ListFinder` and the BTSpeak's dialogs
+    each have their own now.
+  - **The screen, for a shell that speaks for itself.** Where a platform's screen reader
+    decides what to say as something changes, these three decide it themselves, so the app says
+    it once: what is shown (a list with its name, the row in hand and its place, "3 of 12"; a
+    question with its prompt, what is typed and its buttons; a row's actions) and what changed
+    since the last turn (a place entered, a move, only when `landing` rose; a question opened; a
+    refusal). The Orbit app hands it to Orbit's screen reader as its calls, the BrailleSense app
+    speaks it and puts it on the cells, and the BTSpeak app, whose dialogs do much of it already,
+    takes what it lacks.
+  - **Each app's own**: typing (the BTSpeak's input, Orbit's liblouis buffer, the
+    BrailleSense's input method), the output and its service, and panning a line across the
+    cells, until the BrailleSense shows whether its output service pans by itself
+    (`displayBrailleWordWrap`, `setCurrentCellLine`) or a second device with cells needs it.
+  - **Between the two Android apps**, only a little Kotlin: one ordered worker for the service's
+    calls, rebound when it dies; the keys and the display claimed on resume and let go on pause;
+    a decoded key handed to the app. Written for the Orbit app first, and lifted into a small
+    `apps/android/braille/` module once the BrailleSense app repeats it, not designed ahead.
 - **The Orbit Speak and the Orbit Player**, Orbit Research's Android 11 devices, through
   Satellite (`emassey0135/satellite-launcher` and `satellite-hook`) until Orbit's own SDK,
   promised with no date, exists. Neither has a braille display: the Speak has eight braille
@@ -179,8 +205,8 @@ A day or less each, for between the larger pieces, except the first.
     `playSound(1)`. The core's lines go as they are.
   - **Keys** (`IUARTKeypadCallback`, claimed only while the app's window has focus, keyed by
     `keyName`): on the Speak a chord arrives whole (`SPACE_DOT1_DOT5`), so Space with a letter is
-    that letter's command from the core's table, a letter alone a first letter (translated through
-    the uncontracted or computer table, never the contracted one, which reads Z alone as "as"),
+    that letter's command from the core's table, a letter alone a first letter (its letter by the
+    core's dots for a to z, never the person's contracted table, which reads Z alone as "as"),
     dot 7 back and dot 8 open. Orbit keeps some chords even from a self-voicing app (Space alone, dot
     7 alone on some screens, Space with dots 2, 3, 5 or 6 outside an edit box, the review
     chords), which the table must leave free. On the Player, digits open rows by number,
