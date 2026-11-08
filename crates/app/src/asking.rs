@@ -9,7 +9,7 @@ use lumenna_records::{Action, ActionKind, Answer, Change, Choices, LumennaError,
 use crate::host::{Arrival, HostRequest, Writing};
 use crate::model::Screen;
 use crate::network::NetworkRequest;
-use crate::{BlockEvent, Effect, Event, Lumenna, blockform, host, network_request, proposal, say, spoken, write};
+use crate::{BlockEvent, Effect, Event, Lumenna, blockform, host, network_request, proposal, refused, say, spoken, write};
 
 /// What a question open is for.
 #[derive(Debug, Clone, PartialEq)]
@@ -27,6 +27,9 @@ pub enum Purpose {
     EditWhich(lumenna_records::types::PlanBlock, String),
     /// Which day's blocks a pick is to offer, its Another Day chosen: the action picking.
     PickDay(Action),
+    /// Which of a row's actions of one kind a braille letter runs: Stop Waiting, on a task waiting
+    /// on several.
+    Which(Vec<Action>),
 }
 
 /// What a pick's Another Day is picked by: Put in a Block's, offering a further day's blocks.
@@ -67,7 +70,7 @@ impl Open {
     pub(crate) fn action(&self) -> Option<&Action> {
         match &self.purpose {
             Purpose::Action(action) | Purpose::PickDay(action) => Some(action),
-            Purpose::GoToDay | Purpose::EditWhich(..) | Purpose::NewFilter(_) => None,
+            Purpose::GoToDay | Purpose::EditWhich(..) | Purpose::NewFilter(_) | Purpose::Which(_) => None,
         }
     }
 
@@ -82,6 +85,19 @@ impl Open {
                 if name.is_some() { steps.swap_remove(1) } else { steps.swap_remove(0) }
             }
             Purpose::EditWhich(block, day) => lumenna_records::fields::edit_which_question(&block.title, day, sentence),
+            Purpose::Which(actions) => Question::Choose {
+                title: lumenna_records::words::which(),
+                message: String::new(),
+                answers: actions
+                    .iter()
+                    .enumerate()
+                    .map(|(at, action)| lumenna_records::Choice {
+                        id: at.to_string(),
+                        title: if sentence && !action.sentence.is_empty() { action.sentence.clone() } else { action.title.clone() },
+                        ..lumenna_records::Choice::default()
+                    })
+                    .collect(),
+            },
         }
     }
 }
@@ -310,6 +326,12 @@ impl Lumenna {
                     self.series_form(&block.series, model)
                 }
             }
+            Purpose::Which(actions) => {
+                let Answer::Picked { id, .. } = answer else { return Command::done() };
+                let Some(action) = id.parse::<usize>().ok().and_then(|at| actions.get(at)).cloned() else { return Command::done() };
+                model.open = None;
+                self.perform(action, model)
+            }
             // Another day, as a phrase: the pick offers that day's blocks.
             Purpose::PickDay(_) => {
                 let Answer::Text { text } = answer else { return Command::done() };
@@ -485,7 +507,7 @@ impl Lumenna {
     pub(crate) fn run_among(&self, actions: &[Action], kinds: &[ActionKind], subject: Subject, model: &mut Screen) -> Command<Effect, Event> {
         match (kinds.iter().find_map(|kind| actions.iter().find(|a| a.kind == *kind)), kinds.first()) {
             (Some(action), _) => self.perform(action.clone(), model),
-            (None, Some(kind)) => say(not_offered(*kind, subject, false)),
+            (None, Some(kind)) => refused(not_offered(*kind, subject, false)),
             (None, None) => Command::done(),
         }
     }
@@ -507,10 +529,10 @@ impl Lumenna {
             }).map(|list| list.actions),
             ActingOn::Settings => model.settings.as_ref().map(|_| lumenna_records::actions::store_actions()),
         };
-        let Some(actions) = actions else { return say(lumenna_records::no_longer_here()) };
+        let Some(actions) = actions else { return refused(lumenna_records::no_longer_here()) };
         match actions.iter().find(|action| offered.is(action)) {
             Some(action) => self.perform(action.clone(), model),
-            None if actions.is_empty() => say(not_offered(offered.kind, offered.subject, false)),
+            None if actions.is_empty() => refused(not_offered(offered.kind, offered.subject, false)),
             None => refuse(offered.kind, &actions, model),
         }
     }
@@ -533,10 +555,10 @@ impl Lumenna {
 }
 
 /// Why the row in hand, offering `actions`, does not offer `kind`, in the core's words.
-fn refuse(kind: ActionKind, actions: &[Action], model: &Screen) -> Command<Effect, Event> {
+pub(crate) fn refuse(kind: ActionKind, actions: &[Action], model: &Screen) -> Command<Effect, Event> {
     // The day's heading offers the day's own actions, and says the day of one it lacks.
     let heading = model.place() == Place::Today && model.focus.as_deref() == Some("summary");
     let subject = actions.first().map_or(if heading { Subject::Day } else { Subject::Task }, |a| a.subject);
     let this_device = model.acting == Some(crate::Side::Devices) && model.holds_this_device();
-    say(not_offered(kind, subject, this_device))
+    refused(not_offered(kind, subject, this_device))
 }

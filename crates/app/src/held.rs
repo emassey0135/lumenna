@@ -112,6 +112,35 @@ impl Screen {
         }
     }
 
+    /// What every row of a side list offers, in order: what a letter it lacks here is refused
+    /// by, in words for its own rows rather than the main list's.
+    pub(crate) fn side_kinds(&self, side: Side) -> Vec<lumenna_records::ActionKind> {
+        let Some(store) = &self.store else { return Vec::new() };
+        let kinds = |actions: Vec<lumenna_records::Action>| actions.into_iter().map(|action| action.kind).collect::<Vec<_>>();
+        match side {
+            Side::Sidebar => crate::view::folded_sidebar(lumenna_records::places::sidebar(&store.snapshot, &store.now), &self.sidebar_folded)
+                .into_iter()
+                .flat_map(|entry| kinds(entry.actions))
+                .collect(),
+            Side::Reminders => self
+                .reminders
+                .as_ref()
+                .and_then(|target| lumenna_records::reminders::reminders_of(&store.snapshot, target).ok())
+                .into_iter()
+                .flat_map(|list| list.reminders)
+                .flat_map(|reminder| kinds(reminder.actions))
+                .collect(),
+            Side::Devices => self
+                .devices
+                .iter()
+                .flat_map(|devices| devices.list.iter())
+                .flat_map(|list| list.devices.iter())
+                .flat_map(|device| device.actions.iter().map(|action| action.kind))
+                .collect(),
+            Side::Due => Vec::new(),
+        }
+    }
+
     /// Whether the devices' row in hand is this device's own, which cannot unpair itself.
     pub(crate) fn holds_this_device(&self) -> bool {
         let Some(id) = &self.devices_held.key else { return false };

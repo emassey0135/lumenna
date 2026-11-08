@@ -35,6 +35,7 @@ use offline::{Network, NetworkHandle};
 use lumenna_bridge::{Stack, Store, stack};
 use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
+use lumenna_app::screen::ScreenView;
 use lumenna_app::speech::{self, Clock, Spoken};
 use lumenna_records::assistant::{AssistantEntity, AssistantOperation};
 use lumenna_records::automation::{AutomationField, AutomationGiven, AutomationOutput, AutomationWords};
@@ -85,6 +86,9 @@ pub struct Turn {
     pub view: ViewModel,
     /// The view's lines, in this device's clock.
     pub lines: Lines,
+    /// What is on the screen and what changed since the turn before, for a shell that speaks
+    /// for itself (`lumenna_app::screen`). Whole with every turn, so one need not ask.
+    pub described: ScreenView,
     /// What to say, in order.
     pub said: Vec<String>,
     /// Files to save where the person keeps them: a backup, an export.
@@ -183,6 +187,13 @@ impl App {
     /// The lines of what screen `screen` shows now, in this device's clock.
     pub fn lines_on(&self, screen: u32) -> Lines {
         lines(&self.view_on(screen), &*self.clock)
+    }
+
+    /// What is on the screen now, for a shell that speaks for itself: as `Turn::described`, with
+    /// no changes, since nothing is being compared.
+    pub fn screen_view(&self) -> ScreenView {
+        let view = self.view();
+        lumenna_app::screen::screen_view(Some(&view), &view, &lines(&view, &*self.clock), &[])
     }
 
     /// What a widget, complication or tile shows for the next `hours` (at most two days),
@@ -423,7 +434,7 @@ fn spawn(name: &str, run: impl FnOnce() + Send + 'static) -> Result<(), LumennaE
 
 /// What a batch left one screen: what it heard (a heading, or a sentence), files, notices, and
 /// keeping Lumenna running in the background as last asked.
-type Left = (Vec<(bool, String)>, Vec<SaveFile>, Vec<Notice>, Option<bool>);
+type Left = (Vec<(bool, String)>, Vec<SaveFile>, Vec<Notice>, Option<bool>, Vec<String>);
 
 /// Hands the shell a turn for whatever the app has left, until the app is gone: one per screen
 /// that has something new, a view it has not drawn or something to say or save. What arrived
@@ -448,7 +459,11 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
                 Effect::Render(_) => draw = true,
                 Effect::Announce(request) => {
                     let said = request.operation;
-                    left.entry(said.screen).or_default().0.push((said.heading, said.text));
+                    let entry = left.entry(said.screen).or_default();
+                    if said.refusal {
+                        entry.4.push(said.text.clone());
+                    }
+                    entry.0.push((said.heading, said.text));
                 }
                 Effect::Save(request) => left.entry(request.operation.screen).or_default().1.push(request.operation),
                 // The device's, shown once: with the first screen's turn.
@@ -467,7 +482,7 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
                 }
             }
         }
-        for (screen, (heard, files, notices, background)) in left {
+        for (screen, (heard, files, notices, background, refusals)) in left {
             let view = views.remove(&screen).unwrap_or_default();
             // "<day>. <summary>", for a day newly shown.
             let said = heard
@@ -478,8 +493,10 @@ fn deliver(outbox: &mpsc::Receiver<Vec<Effect>>, stack: &Stack<Network>, shell: 
                 })
                 .collect();
             seq += 1;
+            let lines = lines(&view, clock);
+            let described = lumenna_app::screen::screen_view(drawn.get(&screen), &view, &lines, &refusals);
             drawn.insert(screen, view.clone());
-            shell.turn(Turn { screen, lines: lines(&view, clock), view, said, files, notices, background, seq });
+            shell.turn(Turn { screen, lines, described, view, said, files, notices, background, seq });
         }
         // Handed on: the shell counts it from here until it is drawn.
         unsent.fetch_sub(batches, Ordering::SeqCst);

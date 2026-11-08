@@ -28,8 +28,8 @@ from session import Command, Session, choose, command_title, empty_then, heading
 def undo_commands(session: Session) -> list[Command]:
     """Undo and redo, on every screen's main menu, with the same keys everywhere."""
     return [
-        Command(command_title("undo"), lambda _: session.send(L.ShellEventUndo()), key="u"),
-        Command(command_title("redo"), lambda _: session.send(L.ShellEventRedo()), key="y"),
+        Command(command_title("undo"), lambda _: session.send(L.ShellEventUndo()), key=L.command_letter("undo")),
+        Command(command_title("redo"), lambda _: session.send(L.ShellEventRedo()), key=L.command_letter("redo")),
     ]
 
 
@@ -85,12 +85,12 @@ def task_list(
             main=main or (lambda row: show(session, row)),
             context=lambda rows: task_commands(session, rows),
             app=[
-                Command(command_title("new-task"), lambda _: add_task(session, session.view().quick_add), key="a"),
-                Command(command_title("filter"), lambda _: query_tasks(session), key="/"),
+                Command(command_title("new-task"), lambda _: add_task(session, session.view().quick_add), key=L.command_letter("new-task")),
+                Command(command_title("filter"), lambda _: query_tasks(session), key=L.command_letter("filter")),
                 *(more or []),
                 *undo_commands(session),
             ],
-            empty=empty_then(lambda: readback(session), L.press_to_add("a")),
+            empty=empty_then(lambda: readback(session), L.press_to_add(L.command_letter("new-task"))),
             app_title=L.menu_of(title),
             focus=lambda: session.view().focus,
         )

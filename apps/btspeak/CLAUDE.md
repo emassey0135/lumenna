@@ -24,22 +24,26 @@ test with a newer one (`PYTHON=…`).
   action asked for is said as it settles. Seeing another process's writes is `tick`, every five
   seconds (`TICK`).
 - **A row's context menu is its actions in short** (`actions.py`): the rows' actions merged into
-  one list of commands that keeps each row's order, each offered where its row has it, a
-  letter per kind (`KEYS`); a letter the row does not offer runs there and the app says why.
+  one list of commands that keeps each row's order, each offered where its row has it, with
+  the core's letter (`action_letter`); a letter pressed runs through the app
+  (`actions.letter`, `Event::Letter`), which says why if the row does not offer it.
   Running one is `ActOn`, naming the row (`acting_on`), which the app puts in hand; `follow` then
   answers whatever the app opens, one after another, with the device's dialogs: a question (a
   refusal staying in it), the block form, a proposal, a reminder list. The task form registers
   in `actions.FORMS`. Erase Permanently has no letter: only the context menu runs it.
-- **Enter and the letters run the shared table's commands** (`Key`, `actions.press`): Enter on the
-  day and the Blocks list is `open`, on the trash `restore-task`, on a device `rename`; a letter
-  whose kind the table has a command for runs it (`actions.COMMANDS`), the rest the row's action
-  of that kind. **The delete keys send `Key("delete")`** (a command that is only the keys',
-  not `listed`): Control-D, the D chord and low-d. What it runs on the row (Delete, Delete from
-  trash, Unassign, Unpair) or why it runs nothing is the app's (`keys::runs`); never a list of
-  kinds here.
-- **Settings are the core's pages** (`SettingsView.pages`): each page's settings, caption and
-  buttons are the core's, its letter this app's (`preferences.PAGE_KEYS`, `BUTTON_KEYS`); a time or
-  number line says the setting's own hint, else `SettingsView.words`.
+- **Enter runs the shared table's commands** (`Key`, `actions.press`): Enter on the day and the
+  Blocks list is `open`, on the trash `restore-task`, on a device `rename`. **Every letter this
+  app shows is the core's** (`L.action_letter`, `command_letter`, `page_letter`, `button_letter`,
+  `due_letter`), none written here: what a letter runs on the row is the app's
+  (`Event::Letter`), `Command.through` unset only for what this app runs itself (quick add, the
+  filter, a project's New Inside, Settings' buttons). The device's dialogs already move by first
+  letter (a capital, or Dot 7 with the letter), so this app needs `first_letter` nowhere. **The
+  delete keys send `Key("delete")`** (a command that is only the keys', not `listed`): Control-D,
+  the D chord and low-d. What it runs on the row (Delete, Delete from trash, Unassign, Unpair) or
+  why it runs nothing is the app's (`keys::runs`); never a list of kinds here.
+- **Settings are the core's pages** (`SettingsView.pages`): each page's settings, caption,
+  buttons and letter are the core's (`page_letter`, `button_letter`); a time or number line says
+  the setting's own hint, else `SettingsView.words`.
 - **The Export and import page lists the store's own actions** (`SettingsView.offered`, Erase
   everything deleted) as rows after its buttons, with no shortcut, each handed back as `ActOn` with
   `ActingOnSettings` (`preferences.store_items`), the core's `offered_caption` its hint, which

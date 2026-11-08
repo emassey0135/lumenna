@@ -8,8 +8,9 @@ with the device's own dialogs, one after another, until nothing is open: a quest
 one a pick asks after, how long), the block form, a proposal, a reminder list. Which actions a row has, what each asks, what a pick offers and why an answer is refused
 are the app's, the same on every client.
 
-A letter stands for a kind of action (`KEYS`), so `c` is Mark Done on a task that is open
-and Mark Not Done on one that is finished, and does nothing on a row that offers neither.
+A letter stands for a kind of action (the core's table, `action_letter`), so `c` is Mark Done
+on a task that is open and Mark Not Done on one that is finished; a letter is handed to the app
+(`ShellEventLetter`), which runs what it runs there or says why it runs nothing.
 The task form is this app's own (`Question::Form`), registered in `FORMS` by `tasks.py`.
 """
 
@@ -23,68 +24,6 @@ from session import Command, Session, choose, confirm, sentences
 
 L = native()
 K = L.ActionKind
-
-#: The letter for each kind of action: the same letter for the same thing on every screen.
-#: Two kinds share a letter only where no row offers both.
-KEYS = {
-    K.MARK_DONE: "c",
-    K.MARK_NOT_DONE: "c",
-    K.EDIT: "e",
-    K.EDIT_TASK: "e",
-    K.PUT_IN_BLOCK: "b",
-    K.MOVE_TO_PROJECT: "m",
-    K.MAKE_SUBTASK_OF: "s",
-    K.MOVE_TO_TOP_LEVEL: "t",
-    K.WAIT_FOR: "w",
-    K.STOP_WAITING: "n",
-    K.RESTORE: "r",
-    K.ASSIGN_TASK: "i",
-    K.CANCEL_DAY: "x",
-    K.RESTORE_DAY: "o",
-    K.START_TIMER: "s",
-    K.PAUSE_TIMER: "s",
-    K.RESUME_TIMER: "s",
-    K.STOP_TIMER: "t",
-    K.PLANNED_LENGTH: "l",
-    K.LOG_MINUTES: "m",
-    K.ADD_BLOCK: "a",
-    K.RENAME: "r",
-    K.NEW_INSIDE: "n",
-    K.MOVE_UNDER: "m",
-    K.MOVE_UP: ",",
-    K.MOVE_DOWN: ".",
-    K.WEIGHT: "w",
-    K.MERGE_INTO: "m",
-    K.COLOUR: "c",
-    K.CHANGE_QUERY: "q",
-    K.REMINDERS: "r",
-    # A sitting's Carry Forward and a block's Carry the Rest Forward: no row offers both.
-    K.CARRY_FORWARD: "f",
-    K.CARRY_REST: "f",
-}
-
-#: The shared table's command each letter runs where the table has one (`keys::runs`): the
-#: letter is this app's, what it runs on the row, or why it runs nothing there, the app's. A
-#: kind with no command here runs the row's action of that kind.
-COMMANDS = {
-    K.MARK_DONE: "mark-done",
-    K.MARK_NOT_DONE: "mark-done",
-    K.EDIT: "properties",
-    K.EDIT_TASK: "properties",
-    K.PUT_IN_BLOCK: "put-in-block",
-    K.MOVE_TO_PROJECT: "move-to-project",
-    K.MAKE_SUBTASK_OF: "make-subtask",
-    K.MOVE_TO_TOP_LEVEL: "move-to-top",
-    K.WAIT_FOR: "wait-for",
-    K.STOP_WAITING: "stop-waiting",
-    K.RESTORE: "restore-task",
-    K.RENAME: "rename",
-}
-
-#: The letters for the day's own actions, on the Day menu: none a row of the day uses.
-DAY_KEYS = {
-    K.WHAT_NOW: "w",
-}
 
 #: Folding, which is the left and right keys' rather than the context menu's.
 FOLDS = {K.EXPAND, K.COLLAPSE}
@@ -255,13 +194,6 @@ def fold(session: Session, row, open_: bool) -> str:
     return run_kind(session, row, K.EXPAND if open_ else K.COLLAPSE)
 
 
-def not_offered(session: Session, kind, row) -> str:
-    """A key `row` does not offer: the app runs it there and says why, in the core's words."""
-    said = [session.send(held(row))] if row is not None and getattr(row, "key", None) else []
-    said.append(session.send(L.ShellEventRun([kind])))
-    return joined(*said)
-
-
 def press(session: Session, key: str, row) -> str:
     """A command of the shared table run on `row` (`"delete"`, `"open"`, `"mark-done"`): the
     app puts the row in hand and runs what that command runs there, or says why it does nothing;
@@ -274,22 +206,17 @@ def press(session: Session, key: str, row) -> str:
     return joined(*said)
 
 
-def by_letter(session: Session, row, kind) -> str:
-    """A letter on a row that offers its kind: the shared table's command where it has one, else
-    the row's action. A row with several of the kind (Stop waiting for each task it waits for)
-    asks which."""
-    command = COMMANDS.get(kind)
-    if command is None or len(of_kind(row, kind)) > 1:
-        return run_kind(session, row, kind)
-    return press(session, command, row)
+def letter(session: Session, key: str, row) -> str:
+    """A letter pressed on `row`, or on an empty list: the app puts the row in hand and runs what
+    that letter runs there (`Event::Letter`), or says why it runs nothing, then whatever it opens
+    is answered."""
+    import proposals  # here: proposals imports this module
 
-
-def refuse_letter(session: Session, row, kind) -> str:
-    """A letter on a row that does not offer its kind: the app runs it there and says why."""
-    command = COMMANDS.get(kind)
-    if command is None or row is None or not getattr(row, "key", None):
-        return not_offered(session, kind, row)
-    return press(session, command, row)
+    proposals.pin(session)
+    moved = [held(row)] if row is not None and getattr(row, "key", None) else []
+    said = [session.send(*moved, L.ShellEventLetter(key))]
+    said.append(follow(session, row))
+    return joined(*said)
 
 
 def _slots(rows) -> list:
@@ -324,14 +251,12 @@ def commands(session: Session, rows, before=(), after=()) -> list[Command]:
     tasks) and `after`: each offered on the rows that have it, under the row's own title."""
     made = []
     for kind, nth in _slots(rows):
-        key = KEYS.get(kind, "") if nth == 0 else ""
         made.append(Command(
             lambda row, kind=kind, nth=nth: named(_nth(row, kind, nth)),
             lambda row, kind=kind, nth=nth: act(session, _nth(row, kind, nth), row),
-            key=key,
+            key=(L.action_letter(kind) or "") if nth == 0 else "",
             applies=lambda row, kind=kind, nth=nth: _nth(row, kind, nth) is not None,
-            by_key=(lambda row, kind=kind: by_letter(session, row, kind)) if key else None,
-            refuse=(lambda row, kind=kind: refuse_letter(session, row, kind)) if key else None,
+            through=True,
         ))
     # The delete keys, Control-D and the D chord: what they do to the row is the app's, the same
     # key on every platform (Delete, Delete from trash on a trashed task, Unassign, Unpair).
@@ -349,7 +274,7 @@ def heading_action(session: Session, group):
     return None
 
 
-def heading_command(session: Session, group, key: str = "a") -> list[Command]:
+def heading_command(session: Session, group) -> list[Command]:
     """The command adding a project, label or saved filter, under the core's name for it
     ("New project"), as a screen's main menu offers it; none if the heading offers none."""
     found = heading_action(session, group)
@@ -360,4 +285,4 @@ def heading_command(session: Session, group, key: str = "a") -> list[Command]:
         action, on = heading_action(session, group) or found
         return act(session, action, on=on)
 
-    return [Command(named(found[0]), run, key=key)]
+    return [Command(named(found[0]), run, key=L.action_letter(K.NEW) or "")]
