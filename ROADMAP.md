@@ -223,8 +223,6 @@ A day or less each, for between the larger pieces, except the first.
     decoded from their names in the framework and read only from the shell's injection so far;
     Programs menu placement and Quick Launch letters; whether a 32-cell H732B reads the 40-cell
     wrap correctly; Iroh over Wi-Fi and in sleep; reminders through the device's notifications.
-  - **Waiting on the core's braille pieces**: the letters and first-letter search are still
-    `ui/Letters.kt`, to be replaced by `lumenna_app`'s when they land (`ViewModel::screen` too).
 
 ## 6. Integrations
 

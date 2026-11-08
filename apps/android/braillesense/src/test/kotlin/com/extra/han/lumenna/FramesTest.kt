@@ -16,12 +16,15 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private val BY_LETTER = Letters { key ->
-    when (key) {
-        is Key.Cell -> ('a' + key.dots - 1)
+private val BY_LETTER = object : Letters {
+    override fun letter(key: Key): Char? = when (key) {
+        is Key.Cell -> 'a' + key.dots - 1
         is Key.Typed -> key.text.single()
         else -> null
     }
+
+    override fun find(lines: List<String>, from: Int, letter: Char): Int? =
+        (1..lines.size).map { (from + it) % lines.size }.firstOrNull { lines[it].startsWith(letter, ignoreCase = true) }
 }
 
 /** A table where a cell is its code point and a word is its letters back. */
@@ -60,6 +63,42 @@ class FramesTest {
         assertEquals("apple", frame.rendered.speech)
     }
 
+    @Test fun aListTheAppHoldsLeavesFirstLettersToTheApp() {
+        val asked = mutableListOf<Char>()
+        val frame = ListFrame("l", "", listOf(Row("a", "apple"), Row("b", "banana")), null, "", BY_LETTER, findInApp = { asked += it })
+        frame.key(Key.Typed("b"))
+        assertEquals(listOf('b'), asked)
+        assertEquals("apple", frame.rendered.speech)
+    }
+
+    @Test fun aLetterNoRowStartsWithIsSaidSo() {
+        val missing = mutableListOf<Char>()
+        val frame = ListFrame("l", "", listOf(Row("a", "apple")), null, "", BY_LETTER, notFound = { missing += it })
+        frame.key(Key.Typed("z"))
+        assertEquals(listOf('z'), missing)
+    }
+
+    @Test fun aMenuLetterTheCoreGaveIsUsedAndATakenOneFallsToTheName() {
+        var ran = ""
+        val frame = MenuFrame(
+            listOf(MenuEntry("New task", letter = 'a') { ran = "task" }, MenuEntry("New block", letter = 'a') { ran = "block" }),
+            BY_LETTER, "p", closed = {},
+        )
+        assertEquals("New task (a) p", frame.rendered.speech)
+        frame.key(Key.Down)
+        assertEquals("New block (n) p", frame.rendered.speech)
+        frame.key(Key.Typed("a"))
+        assertEquals("task", ran)
+    }
+
+    @Test fun aFormsButtonIsPressedByItsLetter() {
+        var pressed = false
+        val frame = FormFrame("f", listOf(Control.Button("b", "Back up", 'b') { pressed = true }), null, BY_LETTER)
+        assertFalse(frame.press('z'))
+        assertTrue(frame.press('b'))
+        assertTrue(pressed)
+    }
+
     @Test fun movingTellsTheAppWhichRow() {
         val seen = mutableListOf<String>()
         val frame = list("one", "two", moved = { seen += it.key })
@@ -80,7 +119,7 @@ class FramesTest {
 
     @Test fun aMenuReadsAsTheDevicesDoAndRunsByLetter() {
         var ran = false
-        val frame = MenuFrame(listOf(MenuEntry("File", children = listOf(MenuEntry("New", hotkey = "Enter-n") { ran = true }))), BY_LETTER, "pull down") {}
+        val frame = MenuFrame(listOf(MenuEntry("File", children = listOf(MenuEntry("New", hotkey = "Enter-n") { ran = true }))), BY_LETTER, "pull down", closed = {})
         assertEquals("File (f) pull down", frame.rendered.speech)
         frame.key(Key.Enter)
         assertEquals("New (n) pull down Enter-n", frame.rendered.speech)
@@ -90,7 +129,7 @@ class FramesTest {
 
     @Test fun backspaceAtASubmenuGoesBackUpAndEscapeCloses() {
         var closed = false
-        val frame = MenuFrame(listOf(MenuEntry("File", children = listOf(MenuEntry("New")))), BY_LETTER, "pull down") { closed = true }
+        val frame = MenuFrame(listOf(MenuEntry("File", children = listOf(MenuEntry("New")))), BY_LETTER, "pull down", closed = { closed = true })
         frame.key(Key.Enter)
         frame.key(Key.Backspace)
         assertEquals("File (f) pull down", frame.rendered.speech)
@@ -100,7 +139,7 @@ class FramesTest {
     }
 
     @Test fun aMenuWrapsAndGoesToItsEnds() {
-        val frame = MenuFrame(listOf(MenuEntry("One"), MenuEntry("Two"), MenuEntry("Three")), BY_LETTER, "p") {}
+        val frame = MenuFrame(listOf(MenuEntry("One"), MenuEntry("Two"), MenuEntry("Three")), BY_LETTER, "p", closed = {})
         frame.key(Key.Up)
         assertTrue(frame.rendered.speech.startsWith("Three"))
         frame.key(Key.First)
@@ -150,7 +189,7 @@ class FramesTest {
         val edit = LineEditor("", Plain)
         val frame = FormFrame(
             "f",
-            listOf(Control.Edit("e", "Name", edit), Control.Toggle("t", "Flag", on, "off") { on = it }, Control.Button("b", "Save") { pressed = true }),
+            listOf(Control.Edit("e", "Name", edit), Control.Toggle("t", "Flag", on, "off") { on = it }, Control.Button("b", "Save", press = { pressed = true })),
             null, BY_LETTER,
         )
         frame.key(Key.Cell('x'.code))

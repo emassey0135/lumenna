@@ -15,6 +15,10 @@ class BrailleSettings(private val context: Context) {
     @Volatile var eightDot: Boolean = false
         private set
 
+    /** How long a message stays on the cells: the device's Message Display Time. */
+    @Volatile var messageMillis: Long = 3_000L
+        private set
+
     /** Reads the settings again; what cannot be read is left as it was. */
     fun refresh() {
         runCatching {
@@ -22,6 +26,7 @@ class BrailleSettings(private val context: Context) {
             val grade = read("ViewInputGrade")?.toIntOrNull() ?: 2
             val eight = read("EightDotMode") == "1"
             eightDot = eight
+            read("MessageDisplayTime")?.toLongOrNull()?.takeIf { it > 0 }?.let { messageMillis = it * 1_000L }
             tables = BrailleTables.tables(code, grade, eight)
         }
     }

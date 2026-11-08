@@ -29,12 +29,6 @@ abstract class Frame(
     /** A routing key over a character of [Rendered.braille] (-1 past its end). */
     open fun routed(at: Int) {}
 
-    /** What a first letter means here, the cell or character given: the shell's to word. */
-}
-
-/** How a typed cell or QWERTY character reads as a letter. */
-fun interface Letters {
-    fun letter(key: Key): Char?
 }
 
 /** One row of a list. */
@@ -49,7 +43,7 @@ class Row(
     val space: (() -> Unit)? = null,
     /** What its menu of actions offers. */
     val actions: List<MenuEntry> = emptyList(),
-    /** Space or Enter with a letter: its command. True if the row took it. */
+    /** Space or Enter with a letter, on a list the app does not hold: its command. True if taken. */
     val command: ((Char) -> Boolean)? = null,
     /** Delete on the row. */
     val delete: (() -> Unit)? = null,
@@ -69,6 +63,12 @@ class ListFrame(
     private val moved: (Row) -> Unit = {},
     /** Opens the menu of [Row.actions]. */
     private val openActions: (Row) -> Unit = {},
+    /** The app's own first-letter search of its main list; null for a list searched here. */
+    private val findInApp: ((Char) -> Unit)? = null,
+    /** Says that no row starts with the letter. */
+    private val notFound: (Char) -> Unit = {},
+    /** The row's letters and first letters are the app's: what is pressed goes to it. */
+    val appHeld: Boolean = false,
 ) : Frame(id) {
     private var index = rows.indexOfFirst { it.key == selected }.takeIf { it >= 0 } ?: 0
 
@@ -116,20 +116,13 @@ class ListFrame(
         else -> false
     }
 
-    /** First-letter search, from the row after the one in hand on, wrapping round. */
+    /** First-letter search: the app's for its main list, else the core's over these rows. */
     private fun find(letter: Char) {
+        findInApp?.let { return it(letter) }
         if (rows.isEmpty()) return
-        for (step in 1..rows.size) {
-            val at = (index + step) % rows.size
-            if (startsWith(rows[at].finding, letter)) {
-                moveTo(at)
-                return
-            }
-        }
+        val at = letters.find(rows.map { it.finding }, index, letter)
+        if (at != null) moveTo(at) else notFound(letter)
     }
-
-    private fun startsWith(text: String, letter: Char): Boolean =
-        text.firstOrNull { it.isLetterOrDigit() }?.lowercaseChar() == letter.lowercaseChar()
 
     companion object {
         /** How far Space-1-2-6 and Space-3-4-5 go in a list: "32/40-item group" on this device. */
@@ -219,8 +212,8 @@ sealed class Control(val key: String) {
         override val braille: String get() = speech
     }
 
-    /** Enter presses it. */
-    class Button(key: String, val label: String, val press: () -> Unit) : Control(key) {
+    /** Enter presses it, or its [letter] with Space or Enter. */
+    class Button(key: String, val label: String, val letter: Char? = null, val press: () -> Unit) : Control(key) {
         override val speech: String get() = label
         override val braille: String get() = label
     }
@@ -260,6 +253,13 @@ class FormFrame(
         (current as? Control.Edit)?.let { it.changed(it.editor.text) }
         index = (index + step + controls.size) % controls.size
         current?.let(moved)
+        return true
+    }
+
+    /** Presses the button of [letter]; false if none has it. */
+    fun press(letter: Char): Boolean {
+        val button = controls.filterIsInstance<Control.Button>().firstOrNull { it.letter == letter } ?: return false
+        button.press()
         return true
     }
 
@@ -336,8 +336,7 @@ class FormFrame(
             Key.Enter -> run { control.press?.invoke() ?: move(+1); true }
             is Key.Cell, is Key.Typed -> run {
                 val letter = letters.letter(key) ?: return@run true
-                val found = options.indices.map { (control.selected + 1 + it) % options.size }
-                    .firstOrNull { options[it].second.firstOrNull()?.lowercaseChar() == letter.lowercaseChar() }
+                val found = letters.find(options.map { it.second }, control.selected, letter)
                 if (found != null) control.choose(options[found].first)
                 true
             }

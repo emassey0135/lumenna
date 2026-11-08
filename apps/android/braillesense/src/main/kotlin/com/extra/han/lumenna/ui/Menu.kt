@@ -8,6 +8,8 @@ class MenuEntry(
     val children: List<MenuEntry> = emptyList(),
     /** The hotkey shown after the name, as the device's own menus do. */
     val hotkey: String? = null,
+    /** Its letter where the core gives one; else the first of its name not taken. */
+    val letter: Char? = null,
     val run: () -> Unit = {},
 )
 
@@ -21,6 +23,8 @@ class MenuFrame(
     private val top: List<MenuEntry>,
     private val letters: Letters,
     private val pullDown: String,
+    /** Says that nothing here is on the letter. */
+    private val notFound: (Char) -> Unit = {},
     private val closed: () -> Unit,
 ) : Frame("menu") {
     private class Level(val entries: List<MenuEntry>, var index: Int = 0)
@@ -33,7 +37,7 @@ class MenuFrame(
     private fun shortcutsOf(entries: List<MenuEntry>): Map<MenuEntry, Char> = shortcuts.getOrPut(entries) {
         val taken = HashSet<Char>()
         entries.associateWith { entry ->
-            val letter = entry.title.lowercase().firstOrNull { it.isLetterOrDigit() && it !in taken }
+            val letter = entry.letter?.takeIf { it !in taken } ?: entry.title.lowercase().firstOrNull { it.isLetterOrDigit() && it !in taken }
                 ?: entry.title.lowercase().firstOrNull { it.isLetterOrDigit() } ?: ' '
             taken += letter
             letter
@@ -90,6 +94,8 @@ class MenuFrame(
             if (match != null) {
                 here.index = here.entries.indexOf(match)
                 choose(match)
+            } else if (letter != null) {
+                notFound(letter)
             }
             true
         }

@@ -29,6 +29,21 @@ import dev.emassey0135.lumenna.app.PairEvent
 import dev.emassey0135.lumenna.app.Place
 import dev.emassey0135.lumenna.app.ProposalEvent
 import dev.emassey0135.lumenna.app.Question
+import dev.emassey0135.lumenna.app.QuestionShown
+import dev.emassey0135.lumenna.app.ScreenChange
+import dev.emassey0135.lumenna.app.ScreenView
+import dev.emassey0135.lumenna.app.Shown
+import dev.emassey0135.lumenna.app.SidebarGroup
+import dev.emassey0135.lumenna.app.actionLetter
+import dev.emassey0135.lumenna.app.brailleMainMenu
+import dev.emassey0135.lumenna.app.sidebarKey
+import dev.emassey0135.lumenna.app.buttonLetter
+import dev.emassey0135.lumenna.app.commandLetter
+import dev.emassey0135.lumenna.app.dueLetter
+import dev.emassey0135.lumenna.app.nothingOnLetter
+import dev.emassey0135.lumenna.app.noRowStartsWith
+import dev.emassey0135.lumenna.app.pageLetter
+import dev.emassey0135.lumenna.app.placeCommands
 import dev.emassey0135.lumenna.app.SettingKind
 import dev.emassey0135.lumenna.app.SettingView
 import dev.emassey0135.lumenna.app.SettingsEvent
@@ -76,7 +91,9 @@ class Shell(
     private val out: Speaker,
     private val translator: Translator,
     private val host: Host,
-    private val letters: Letters = BrailleLetters.letters,
+    private val letters: Letters = BrailleLetters,
+    /** How long a message stays on the cells: the device's Message Display Time. */
+    private val messageMillis: () -> Long = { 3000L },
 ) {
     private val app: AppModel get() = core.app
     private val pages = ArrayDeque<Page>(listOf(Page.Places))
@@ -99,7 +116,31 @@ class Shell(
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val saying = Runnable { flush() }
 
+    private var screen: ScreenView = app.screen()
+
+    init {
+        app.described = ::described
+    }
+
     private fun send(event: ShellEvent) = app.send(event)
+
+    /** A turn's description, before its view: what the core refused that no sentence said. */
+    private fun described(described: ScreenView) {
+        screen = described
+        described.changes.filterIsInstance<ScreenChange.Refused>().filter { !it.said }.forEach { announcements += it.reason }
+    }
+
+    /** The row in hand's place in words, when the core's row is the one shown: "3 of 12". */
+    private fun place(row: Row?): String? {
+        val list = (screen.shown as? Shown.List)?.field0 ?: return null
+        return list.row?.takeIf { it.key == row?.key }?.place
+    }
+
+    /** What a list's row says when it is arrived at or read again: with its place, the core's. */
+    private fun withPlace(frame: Frame, speech: String): String {
+        if (frame !is ListFrame || !frame.appHeld) return speech
+        return listOfNotNull(speech.ifBlank { null }, place(frame.current)).joinToString(", ")
+    }
 
     private val view: ViewModel? get() = app.view.value
     private val lines: Lines? get() = app.lines.value
@@ -121,10 +162,33 @@ class Shell(
     /** Says what the app said and then the line it left, as one thing. */
     private fun flush() {
         handler.removeCallbacks(saying)
-        val parts = announcements.filter { it.isNotBlank() }.map { if (it.last() in ".?!") it else "$it." } + listOfNotNull(pendingRow?.takeIf { it.isNotBlank() })
+        val said = announcements.filter { it.isNotBlank() }.map { if (it.last() in ".?!") it else "$it." }
+        val parts = said + listOfNotNull(pendingRow?.takeIf { it.isNotBlank() })
         announcements.clear()
         pendingRow = null
         if (parts.isNotEmpty()) out.say(parts.joinToString(" "))
+        // What changes say is for the cells too: someone reading braille alone hears none of it.
+        if (said.isNotEmpty()) showMessage(said.joinToString(" "))
+    }
+
+    private val restoring = Runnable {
+        messageUp = false
+        frame?.rendered?.let(out::show)
+    }
+
+    private var messageUp = false
+
+    /** A message on the cells for the device's own time, then the line under it again. */
+    private fun showMessage(text: String) {
+        out.show(Rendered(text))
+        messageUp = true
+        handler.removeCallbacks(restoring)
+        handler.postDelayed(restoring, messageMillis())
+    }
+
+    private fun clearMessage() {
+        messageUp = false
+        handler.removeCallbacks(restoring)
     }
 
     /** The app left a turn. */
@@ -176,7 +240,8 @@ class Shell(
         val built = build()
         frame = built
         val rendered = built.rendered
-        out.show(rendered)
+        if (fromKey) clearMessage()
+        if (!messageUp) out.show(rendered)
         drawn(rendered.speech)
         announceDue(model)
         val fresh = built.id != lastId
@@ -184,10 +249,11 @@ class Shell(
         val firstContent = lastSpeech.isEmpty() && rendered.speech.isNotEmpty()
         if (moved || fresh || landed || firstContent) {
             val title = if (fresh && built is ListFrame) built.title else ""
+            val row = if (fresh || landed) withPlace(built, rendered.speech) else rendered.speech
             pendingRow = when {
-                title.isBlank() -> rendered.speech
-                title.last() in ".?!" -> "$title ${rendered.speech}"
-                else -> "$title. ${rendered.speech}"
+                title.isBlank() -> row
+                title.last() in ".?!" -> "$title $row"
+                else -> "$title. $row"
             }
         }
         lastSpeech = rendered.speech
@@ -199,17 +265,21 @@ class Shell(
         when (key) {
             Key.Silence -> return out.silence()
             Key.Repeat -> return run {
-                frame?.rendered?.let { out.say(it.speech); out.show(it) }
+                clearMessage()
+                frame?.let { shown -> shown.rendered.let { out.say(withPlace(shown, it.speech)); out.show(it) } }
             }
             Key.ScrollOn -> {
+                clearMessage()
                 if (!out.scrollOn()) step(Key.Down)
                 return
             }
             Key.ScrollBack -> {
+                clearMessage()
                 if (!out.scrollBack()) step(Key.Up)
                 return
             }
             is Key.Route -> {
+                clearMessage()
                 val at = out.routed(key.cell)
                 if (at >= 0) {
                     frame?.routed(at)
@@ -223,6 +293,7 @@ class Shell(
         val current = frame ?: build()
         if (current.key(key)) {
             if (typing(current, key)) {
+                clearMessage()
                 refresh(false)
                 echo(current, key)
             } else {
@@ -239,10 +310,10 @@ class Shell(
             Key.Options -> pushPage(Page.Settings)
             Key.Find -> startFiltering()
             Key.Context -> {}
-            is Key.SpaceDots -> commandLetter(BrailleLetters.of(key.dots), spaced = true)
-            is Key.EnterDots -> commandLetter(BrailleLetters.of(key.dots), spaced = false)
-            is Key.SpaceLetter -> commandLetter(key.letter, spaced = true)
-            is Key.EnterLetter -> commandLetter(key.letter, spaced = false)
+            is Key.SpaceDots -> commandLetter(BrailleLetters.of(key.dots))
+            is Key.EnterDots -> commandLetter(BrailleLetters.of(key.dots))
+            is Key.SpaceLetter -> commandLetter(key.letter)
+            is Key.EnterLetter -> commandLetter(key.letter)
             else -> {}
         }
     }
@@ -296,20 +367,17 @@ class Shell(
         }
     }
 
-    /** Space or Enter with a letter: the row's command, or the app's. */
-    private fun commandLetter(letter: Char?, spaced: Boolean) {
+    /** A letter pressed as a command: the core's on what it holds, else this screen's own. */
+    private fun commandLetter(letter: Char?) {
         if (letter == null) return
-        if (spaced && letter in BrailleLetters.RESERVED) return
-        val row = (frame as? ListFrame)?.current
-        if (row?.command?.invoke(letter) == true) return
-        val kinds = BrailleLetters.COMMANDS[letter]
-        when {
-            !spaced && letter == 'n' -> runCommand("new-task")
-            !spaced && letter == 'z' -> send(ShellEvent.Undo)
-            !spaced && letter == 'y' -> send(ShellEvent.Redo)
-            !spaced && letter == 't' -> goTo(Place.Today)
-            kinds != null -> send(ShellEvent.Run(kinds))
+        val current = frame
+        val took = when {
+            current is FormFrame -> current.press(letter)
+            current is ListFrame && current.current?.command?.invoke(letter) == true -> true
+            current is ListFrame && current.appHeld -> return send(ShellEvent.Letter(letter.toString()))
+            else -> false
         }
+        if (!took) announce(nothingOnLetter(letter.toString()))
     }
 
     private fun startFiltering() {
@@ -346,15 +414,20 @@ class Shell(
         val groups = menus(true).map { group ->
             val children = group.items.filter { it.id.isNotEmpty() && it.id !in NOT_HERE }.map { item ->
                 val title = states[item.id]?.title?.ifEmpty { null } ?: item.title
-                MenuEntry(title) { runCommand(item.id) }
+                val letter = commandLetter(item.id)?.singleOrNull()
+                MenuEntry(title, hotkey = letter?.let(BrailleLetters::press), letter = letter) { runCommand(item.id) }
             }
             MenuEntry(group.title, children = children)
         }
-        menu = MenuFrame(groups, letters, appWords.pullDown, closed = {
+        showMenu(groups)
+    }
+
+    private fun showMenu(entries: List<MenuEntry>) {
+        menu = MenuFrame(entries, letters, appWords.braille.pullDown, notFound = { announce(nothingOnLetter(it.toString())) }, closed = {
             menu = null
             refresh(true)
         })
-        refresh(true)
+        refresh(true, fromKey = true)
     }
 
     private fun runCommand(id: String) {
@@ -377,25 +450,13 @@ class Shell(
         }
     }
 
-    private fun actionsMenu(row: Row) {
-        menu = MenuFrame(row.actions, letters, appWords.pullDown, closed = {
-            menu = null
-            refresh(true)
-        })
-        refresh(true)
-    }
+    private fun actionsMenu(row: Row) = showMenu(row.actions)
 
     private fun entries(on: ActingOn, offered: List<Offered>): List<MenuEntry> =
         offered.sortedByDescending { it.primary }.map { action ->
-            MenuEntry(action.name) { send(ShellEvent.ActOn(on, action)) }
+            val letter = actionLetter(action.kind)?.singleOrNull()
+            MenuEntry(action.name, hotkey = letter?.let(BrailleLetters::press), letter = letter) { send(ShellEvent.ActOn(on, action)) }
         }
-
-    private fun command(on: ActingOn, offered: List<Offered>): (Char) -> Boolean = { letter ->
-        val kinds = BrailleLetters.COMMANDS[letter].orEmpty()
-        val action = offered.firstOrNull { it.kind in kinds }
-        if (action != null) send(ShellEvent.ActOn(on, action))
-        action != null
-    }
 
     private fun held(id: String, side: Side?) {
         send(if (side != null) ShellEvent.Hold(side, id) else ShellEvent.Focus(id))
@@ -409,13 +470,18 @@ class Shell(
         empty: String,
         side: Side? = null,
         hold: Boolean = true,
+        mainList: Boolean = false,
     ): ListFrame {
         val appChoice = fallback
         val chosen = if (landedNow && appChoice != null) appChoice else selected[id] ?: appChoice
         return ListFrame(id, title, rows, chosen, empty, letters, moved = { row ->
             selected[id] = row.key
             if (hold) held(row.key, side)
-        }, openActions = ::actionsMenu).also { frame ->
+        }, openActions = ::actionsMenu,
+            findInApp = if (mainList) ({ send(ShellEvent.FindLetter(it.toString())) }) else null,
+            notFound = { announce(noRowStartsWith(it.toString())) },
+            appHeld = hold,
+        ).also { frame ->
             frame.current?.let { selected[id] = it.key }
         }
     }
@@ -447,7 +513,6 @@ class Shell(
             val fold = entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
             val state = listOfNotNull(entry.expanded?.let(::foldState), entry.level)
             val on = ActingOn.Held(Side.SIDEBAR, entry.key)
-            val other = entry.offered.filter { it.kind != ActionKind.EXPAND && it.kind != ActionKind.COLLAPSE }
             Row(
                 entry.key,
                 (listOf(entry.text) + state).joinToString(", "),
@@ -457,7 +522,10 @@ class Shell(
                     is SidebarKind.Group -> ({ fold?.let { send(ShellEvent.ActOn(on, it)) } })
                 },
                 actions = entries(on, entry.offered),
-                command = command(on, other),
+                // A row's own letter runs first, through the app; else the main menu's.
+                command = { pressed ->
+                    entry.offered.none { actionLetter(it.kind)?.singleOrNull() == pressed } && mainMenu(model, pressed)
+                },
             )
         }.let { sidebar ->
             if (model.due.isEmpty()) sidebar else sidebar + Row(
@@ -467,6 +535,27 @@ class Shell(
             )
         }
         return list("places", appWords.places, rows, model.sidebarHeld.focus, "", side = Side.SIDEBAR)
+    }
+
+    /** The core's main menu, each by its letter, from the list of places. */
+    private fun mainMenu(model: ViewModel, letter: Char): Boolean {
+        val command = brailleMainMenu(true).firstOrNull { it.letter.singleOrNull() == letter } ?: return false
+        when (command.id) {
+            "projects", "labels", "filters" -> {
+                val group = when (command.id) {
+                    "projects" -> SidebarGroup.PROJECTS
+                    "labels" -> SidebarGroup.LABELS
+                    else -> SidebarGroup.FILTERS
+                }
+                val key = sidebarKey(SidebarKind.Group(group))
+                selected["places"] = key
+                held(key, Side.SIDEBAR)
+                refresh(true, fromKey = true)
+            }
+            "reminders-due" -> pushPage(Page.Due)
+            else -> runCommand(command.id)
+        }
+        return true
     }
 
     private fun listing(model: ViewModel): Frame {
@@ -491,12 +580,11 @@ class Shell(
                     { send(ShellEvent.ActOn(on, action)) }
                 },
                 actions = entries(on, offered),
-                command = command(on, offered),
                 delete = { held(task.id, null); send(ShellEvent.Key("delete")) },
             )
         }
         val empty = (list.refusal ?: list.empty)
-        return list("list:${model.title}", model.title, rows, model.focus, empty)
+        return list("list:${model.title}", model.title, rows, model.focus, empty, mainList = true)
     }
 
     private fun Rendering(text: String): Frame = object : Frame(if (text.isEmpty()) "going" else "rendering:$text") {
@@ -528,17 +616,13 @@ class Shell(
                 finding = line?.title.orEmpty(),
                 open = { if (edits && !heading) { held(item.key, null); send(ShellEvent.Key("open")) } else if (actions.isNotEmpty()) openDayActions(item.key, actions) },
                 actions = actions,
-                command = command(on, offered),
                 delete = { held(item.key, null); send(ShellEvent.Key("delete")) },
             )
         }
-        return list("day:${day.date}", lines?.dayTitle.orEmpty(), rows, model.focus, "")
+        return list("day:${day.date}", lines?.dayTitle.orEmpty(), rows, model.focus, "", mainList = true)
     }
 
-    private fun openDayActions(key: String, actions: List<MenuEntry>) {
-        menu = MenuFrame(actions, letters, appWords.pullDown, closed = { menu = null; refresh(true) })
-        refresh(true)
-    }
+    private fun openDayActions(key: String, actions: List<MenuEntry>) = showMenu(actions)
 
     // ── Details ────────────────────────────────────────────────────────────────────────────
 
@@ -606,62 +690,55 @@ class Shell(
         return form("blockform", controls)
     }
 
-    private fun onOff(on: Boolean): String = if (on) appWords.on else appWords.off
+    private fun onOff(on: Boolean): String = if (on) appWords.braille.on else appWords.braille.off
 
     // ── Questions ──────────────────────────────────────────────────────────────────────────
 
     private fun question(model: ViewModel, asked: dev.emassey0135.lumenna.app.Asking): Frame? {
+        val shown = (screen.shown as? Shown.Question)?.field0?.takeIf { it.number == asked.number }
+            ?: return if (asked.question is Question.Immediate) null else Rendering("")
         val id = "question:${asked.number}"
-        val prefix = asked.refusal?.let { "$it " }.orEmpty()
         val cancelled = { send(ShellEvent.Cancel) }
         val answer = { given: Answer -> send(ShellEvent.Answer(given)) }
-        return when (val question = asked.question) {
-            Question.Immediate -> null
-            Question.Form -> {
-                // A task's form is its own screen here; building this frame opens it once.
-                if (handledForm != asked.number) {
-                    handledForm = asked.number
-                    val action = asked.action
-                    if (action != null && action.kind == ActionKind.EDIT_TASK) {
-                        send(ShellEvent.Details(DetailsEvent.Show(action.target)))
-                        pages.addLast(Page.Task(action.target))
-                    }
-                    cancelled()
+        if (shown.form) {
+            // A task's form is its own screen here; building this frame opens it once.
+            if (handledForm != asked.number) {
+                handledForm = asked.number
+                val action = asked.action
+                if (action != null && action.kind == ActionKind.EDIT_TASK) {
+                    send(ShellEvent.Details(DetailsEvent.Show(action.target)))
+                    pages.addLast(Page.Task(action.target))
                 }
-                null
+                cancelled()
             }
-            is Question.Confirm -> {
-                val rows = listOf(
-                    Row("yes", question.yes, open = { answer(Answer.Yes) }),
-                    Row("no", appWords.cancel, open = { cancelled() }),
-                )
-                val title = listOf(prefix + question.title, question.message).filter { it.isNotBlank() }.joinToString(". ")
-                list(id, title, rows, null, "", hold = false)
-            }
-            is Question.Text -> {
-                val prompt = prefix + listOf(question.sentence.ifEmpty { question.title }, question.label).filter { it.isNotBlank() }.joinToString(", ")
-                val line = editor(id, asked.typed ?: question.initial)
-                LineFrame(id, prompt, line, question.hint, done = {
-                    answer(Answer.Text(it))
-                    editors.remove(id)
-                })
-            }
-            is Question.Pick -> {
-                val offered = asked.choices ?: return Rendering(question.title)
-                val worded = lines?.choices.orEmpty()
-                val rows = offered.choices.mapIndexed { index, choice ->
-                    val line = worded.getOrNull(index)
-                    Row(choice.id, listOfNotNull(line?.text ?: choice.title, choice.reason, line?.level).joinToString(", "),
-                        braille = line?.braille?.ifEmpty { null } ?: line?.text ?: choice.title, finding = choice.title,
-                        open = { answer(Answer.Picked(choice.id, null)) })
-                }
-                list(id, prefix + question.title, rows, null, "", hold = false)
-            }
-            is Question.Choose -> {
-                val rows = question.answers.map { choice -> Row(choice.id, choice.title, open = { answer(Answer.Picked(choice.id, null)) }) }
-                list(id, listOf(prefix + question.title, question.message).filter { it.isNotBlank() }.joinToString(". "), rows, null, "", hold = false)
-            }
+            return null
         }
+        if (shown.line) {
+            return LineFrame(id, shown.prompt, editor(id, shown.typed), done = {
+                answer(Answer.Text(it))
+                editors.remove(id)
+            })
+        }
+        if (asked.question is Question.Pick) {
+            val offered = asked.choices ?: return Rendering(shown.prompt)
+            val rows = offered.choices.mapIndexed { index, choice ->
+                val line = shown.choices.getOrNull(index)
+                Row(choice.id, listOfNotNull(line?.text ?: choice.title, choice.reason, line?.level).joinToString(", "),
+                    braille = line?.braille?.ifEmpty { null } ?: line?.text ?: choice.title, finding = choice.title,
+                    open = { answer(Answer.Picked(choice.id, null)) })
+            }
+            return list(id, shown.prompt, rows, null, "", hold = false)
+        }
+        val rows = shown.buttons.map { button ->
+            Row(button.id, button.title, open = {
+                when (button.id) {
+                    "yes" -> answer(Answer.Yes)
+                    "cancel" -> cancelled()
+                    else -> answer(Answer.Picked(button.id, null))
+                }
+            })
+        }
+        return list(id, shown.prompt, rows, null, "", hold = false)
     }
 
     // ── Quick add ──────────────────────────────────────────────────────────────────────────
@@ -727,8 +804,12 @@ class Shell(
 
     private fun due(model: ViewModel): Frame {
         val rows = model.due.map { due ->
-            val buttons = due.buttons.map { button -> MenuEntry(button.title) { pressDue(due.id, button) } }
-            Row(due.id, due.text, open = { if (buttons.isNotEmpty()) openDayActions(due.id, buttons) }, actions = buttons)
+            val buttons = due.buttons.map { button ->
+                val letter = dueLetter(button.id)?.singleOrNull()
+                MenuEntry(button.title, hotkey = letter?.let(BrailleLetters::press), letter = letter) { pressDue(due.id, button) }
+            }
+            Row(due.id, due.text, open = { if (buttons.isNotEmpty()) openDayActions(due.id, buttons) }, actions = buttons,
+                delete = { send(ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Dismiss(due.id))) })
         }
         return list("due", appWords.remindersDue, rows, model.dueHeld.focus, "", side = Side.DUE)
     }
@@ -748,13 +829,18 @@ class Shell(
 
     private fun settings(model: ViewModel): Frame {
         val listed = model.settings?.settings.orEmpty()
-        val rows = SettingsPages.shown(listed).map { page ->
-            Row(page.id, listOf(page.title, page.description).filter { it.isNotEmpty() }.joinToString(": "), finding = page.title, open = {
-                when (page.id) {
-                    "devices" -> pushPage(Page.Devices)
-                    else -> pushPage(Page.SettingsPage(page.id))
-                }
-            })
+        val pages = SettingsPages.shown(listed)
+        val open = { page: dev.emassey0135.lumenna.app.SettingsPage ->
+            pushPage(if (page.id == "devices") Page.Devices else Page.SettingsPage(page.id))
+        }
+        val byLetter = { pressed: Char ->
+            pages.firstOrNull { pageLetter(it.id)?.singleOrNull() == pressed }?.let { open(it); true } ?: false
+        }
+        val rows = pages.map { page ->
+            val letter = pageLetter(page.id)?.singleOrNull()
+            val name = if (letter != null) "${page.title} ($letter)" else page.title
+            Row(page.id, listOf(name, page.description).filter { it.isNotEmpty() }.joinToString(": "), finding = page.title,
+                open = { open(page) }, command = byLetter)
         }
         return list("settings", commandTitle("settings"), rows, null, "", hold = false)
     }
@@ -767,7 +853,9 @@ class Shell(
         all.filter { it.setting.kind != SettingKind.FOLDER }.forEach { addSetting(controls, it) }
         if (id == "reminders") reminderControls(controls)
         page?.buttons.orEmpty().forEach { button ->
-            controls += Control.Button(button.id, button.title) {
+            val letter = buttonLetter(button.id)?.singleOrNull()
+            val label = if (letter != null) "${button.title} ($letter)" else button.title
+            controls += Control.Button(button.id, label, letter) {
                 when (button.id) {
                     "back-up" -> core.backUpNow()
                     "sync-now" -> app.syncNow()
@@ -885,10 +973,15 @@ class Shell(
     // ── Help ─────────────────────────────────────────────────────────────────────────────
 
     private fun help(): Frame {
-        val rows = dev.emassey0135.lumenna.app.braillesenseKeys().map { row ->
+        val device = dev.emassey0135.lumenna.app.braillesenseKeys().map { row ->
             Row(row.keys, "${row.keys}: ${row.what}", finding = row.what)
         }
-        return list("help", appWords.keys, rows, null, "", hold = false)
+        // What the screen under it adds, each by the letter that runs it.
+        val here = view?.place?.let { placeCommands(it, true) }.orEmpty().mapNotNull { command ->
+            val press = command.letter.singleOrNull()?.let(BrailleLetters::press) ?: return@mapNotNull null
+            Row("command:${command.id}", "$press: ${command.title}", finding = command.title)
+        }
+        return list("help", appWords.braille.keyHelp, device + here, null, "", hold = false)
     }
 
     private companion object {
