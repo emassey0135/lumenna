@@ -67,21 +67,21 @@ def opens(entry):
     kind = entry.kind
     if isinstance(kind, L.SidebarKindGroup):
         return {
-            L.SidebarGroup.PROJECTS: ("p", organise.projects),
-            L.SidebarGroup.LABELS: ("l", organise.labels),
-            L.SidebarGroup.FILTERS: ("f", organise.saved_filters),
+            L.SidebarGroup.PROJECTS: (L.command_letter("projects"), organise.projects),
+            L.SidebarGroup.LABELS: (L.command_letter("labels"), organise.labels),
+            L.SidebarGroup.FILTERS: (L.command_letter("filters"), organise.saved_filters),
         }.get(kind.field_0)
     place = kind.field_0
     if isinstance(place, L.PlaceToday):
-        return "t", day.day_plan
+        return L.command_letter("go-today"), day.day_plan
     if isinstance(place, L.PlaceTasks):
-        return "k", tasks.task_list
+        return L.command_letter("go-tasks"), tasks.task_list
     if isinstance(place, L.PlaceBlocks):
-        return "b", day.blocks
+        return L.command_letter("go-blocks"), day.blocks
     if isinstance(place, L.PlaceHistory):
-        return "h", tasks.history
+        return L.command_letter("go-history"), tasks.history
     if isinstance(place, L.PlaceTrash):
-        return "x", tasks.trash
+        return L.command_letter("go-trash"), tasks.trash
     return None
 
 
@@ -99,14 +99,14 @@ def main_menu(session: Session) -> None:
                 key, screen = found
                 places.append(item(title=entry.text, shortcut=key, action=lambda screen=screen: screen(session)))
         # The task list sits beside adding a task, as it always has here.
-        at = next((i + 1 for i, it in enumerate(places) if it.shortcut == "k"), len(places))
-        places.insert(at, item(title=command_title("new-task"), shortcut="a", action=lambda: add_task(session)))
+        at = next((i + 1 for i, it in enumerate(places) if it.shortcut == L.command_letter("go-tasks")), len(places))
+        places.insert(at, item(title=command_title("new-task"), shortcut=L.command_letter("new-task"), action=lambda: add_task(session)))
         return places + [
-            item(title=command_title("undo"), shortcut="u", action=lambda: session.send(L.ShellEventUndo())),
-            item(title=command_title("redo"), shortcut="y", action=lambda: session.send(L.ShellEventRedo())),
-            item(title=words().reminders_due, shortcut="r", action=lambda: reminder_lists.due(session)),
-            item(title=command_title("sync-now"), shortcut="n", action=lambda: preferences.sync_now(session)),
-            item(title=command_title("settings"), shortcut="s", action=lambda: preferences.settings(session)),
+            item(title=command_title("undo"), shortcut=L.command_letter("undo"), action=lambda: session.send(L.ShellEventUndo())),
+            item(title=command_title("redo"), shortcut=L.command_letter("redo"), action=lambda: session.send(L.ShellEventRedo())),
+            item(title=words().reminders_due, shortcut=L.command_letter("reminders-due"), action=lambda: reminder_lists.due(session)),
+            item(title=command_title("sync-now"), shortcut=L.command_letter("sync-now"), action=lambda: preferences.sync_now(session)),
+            item(title=command_title("settings"), shortcut=L.command_letter("settings"), action=lambda: preferences.settings(session)),
         ]
 
     name = words().metadata.name
