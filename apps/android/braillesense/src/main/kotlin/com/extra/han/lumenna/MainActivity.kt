@@ -112,11 +112,9 @@ class MainActivity : ComponentActivity(), Host {
         }
         shell = shown
         front?.created()
+        shown.drawn = { screen.text = it }
         lifecycleScope.launch {
-            combine(opened.app.view, opened.app.lines) { _, _ -> }.collect {
-                shown.turned()
-                screen.text = shown.currentText()
-            }
+            combine(opened.app.view, opened.app.lines) { _, _ -> }.collect { shown.turned() }
         }
         lifecycleScope.launch { opened.announcements.collect { shown.announce(it) } }
         lifecycleScope.launch { opened.app.files.collect { file ->
@@ -150,9 +148,19 @@ class MainActivity : ComponentActivity(), Host {
         Clock.update(this)
         front?.resumed()
         shell?.front()
+        main.post(looking)
+    }
+
+    /** What is due is looked for while in front; a reminder away from it comes as a notification. */
+    private val looking = object : Runnable {
+        override fun run() {
+            shell?.look()
+            main.postDelayed(this, 15_000)
+        }
     }
 
     override fun onPause() {
+        main.removeCallbacks(looking)
         input.release()
         output.release()
         front?.paused() ?: SyncWorker.syncOnLeaving(this)

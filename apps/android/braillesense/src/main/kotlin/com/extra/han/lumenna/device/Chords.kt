@@ -99,7 +99,7 @@ object Chords {
 
     /** F1 to F4, delivered as Android's own codes (131 on), with Space held for Shift-Tab. */
     private fun fromFunctionKey(keyCode: Int, chord: Int): Key? = when (keyCode) {
-        KEYCODE_F1 -> Key.Help // the Quick Search is the system's own, F1 alone
+        // F1 alone is the system's Quick Search, here as everywhere; it is not ours to take.
         KEYCODE_F2 -> Key.Menu
         KEYCODE_F3 -> if (chord and SPACE != 0) Key.ShiftTab else Key.Tab
         KEYCODE_F4 -> Key.Escape
@@ -132,7 +132,6 @@ object Chords {
         }
     }
 
-    private const val KEYCODE_F1 = 131
     private const val KEYCODE_F2 = 132
     private const val KEYCODE_F3 = 133
     private const val KEYCODE_F4 = 134

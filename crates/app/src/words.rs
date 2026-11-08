@@ -1176,7 +1176,7 @@ pub fn braillesense_keys() -> Vec<DeviceKey> {
         row("Enter-Z, Enter-Y", "Undo and redo"),
         row("Space-F", "Filter the list"),
         row("Space-D", "Delete the row"),
-        row("Space-H or F1", "These keys"),
+        row("Space-H, or F1 on the QWERTY keyboard", "These keys"),
         row("Space-O", "Settings"),
         row("Space-R", "Say the row again"),
     ]

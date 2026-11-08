@@ -89,6 +89,7 @@ class Shell(
     /** A line being typed, kept across redraws, by what it is for. */
     private val editors = HashMap<String, LineEditor>()
 
+    private var handledForm = 0u
     private var lastLanding = 0u
     private var landedNow = false
     private var lastId = ""
@@ -176,6 +177,8 @@ class Shell(
         frame = built
         val rendered = built.rendered
         out.show(rendered)
+        drawn(rendered.speech)
+        announceDue(model)
         val fresh = built.id != lastId
         lastId = built.id
         val firstContent = lastSpeech.isEmpty() && rendered.speech.isNotEmpty()
@@ -364,6 +367,8 @@ class Shell(
             "go-trash" -> goTo(Place.Trash)
             "go-history" -> goTo(Place.History)
             "filter" -> startFiltering()
+            "keyboard-help" -> pushPage(Page.Help)
+            "about" -> appWords.metadata.let { announce("${it.name} ${it.version}. ${it.description}") }
             else -> send(ShellEvent.Key(id))
         }
     }
@@ -413,6 +418,26 @@ class Shell(
 
     // ── Places ─────────────────────────────────────────────────────────────────────────────
 
+    /** What is on the display, for a sighted helper's screen. */
+    var drawn: (String) -> Unit = {}
+
+    private val announcedDue = HashSet<String>()
+
+    private fun announceDue(model: ViewModel?) {
+        val due = model?.due.orEmpty()
+        announcedDue.retainAll(due.map { it.id }.toSet())
+        due.filter { announcedDue.add(it.id) }.forEach { announcements += it.text }
+    }
+
+    /** What is due, looked for while in front, as a desktop app looks. */
+    fun look() {
+        val now = java.time.Instant.now().toString()
+        send(ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Look(lastLook, null)))
+        lastLook = now
+    }
+
+    private var lastLook = java.time.Instant.now().toString()
+
     private fun places(model: ViewModel): Frame {
         val rows = model.sidebar.filter { !it.hidden }.map { entry ->
             val fold = entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
@@ -429,6 +454,12 @@ class Shell(
                 },
                 actions = entries(on, entry.offered),
                 command = command(on, other),
+            )
+        }.let { sidebar ->
+            if (model.due.isEmpty()) sidebar else sidebar + Row(
+                "due",
+                "${appWords.remindersDue}: ${model.due.size}",
+                open = { pushPage(Page.Due) },
             )
         }
         return list("places", appWords.places, rows, model.sidebarHeld.focus, "", side = Side.SIDEBAR)
@@ -451,7 +482,7 @@ class Shell(
                 (listOf(line?.title ?: task.title) + state).joinToString(", "),
                 braille = line?.braille?.ifEmpty { null } ?: line?.text ?: task.title,
                 finding = task.title,
-                open = { openDetails(task.id) },
+                open = if (model.place == Place.Blocks) ({ held(task.id, null); send(ShellEvent.Key("open")) }) else ({ openDetails(task.id) }),
                 space = offered.firstOrNull { it.kind == ActionKind.MARK_DONE || it.kind == ActionKind.MARK_NOT_DONE }?.let { action ->
                     { send(ShellEvent.ActOn(on, action)) }
                 },
@@ -583,12 +614,16 @@ class Shell(
         return when (val question = asked.question) {
             Question.Immediate -> null
             Question.Form -> {
-                val action = asked.action
-                if (action != null && action.kind == ActionKind.EDIT_TASK) {
-                    send(ShellEvent.Details(DetailsEvent.Show(action.target)))
-                    pages.addLast(Page.Task(action.target))
+                // A task's form is its own screen here; building this frame opens it once.
+                if (handledForm != asked.number) {
+                    handledForm = asked.number
+                    val action = asked.action
+                    if (action != null && action.kind == ActionKind.EDIT_TASK) {
+                        send(ShellEvent.Details(DetailsEvent.Show(action.target)))
+                        pages.addLast(Page.Task(action.target))
+                    }
+                    cancelled()
                 }
-                cancelled()
                 null
             }
             is Question.Confirm -> {

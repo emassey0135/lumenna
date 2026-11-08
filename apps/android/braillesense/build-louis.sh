@@ -30,7 +30,8 @@ if [ ! -d "$SOURCE" ]; then
   tarball="$WORK/liblouis-$VERSION.tar.gz"
   [ -f "$tarball" ] || curl -fsSL -o "$tarball" \
     "https://github.com/liblouis/liblouis/releases/download/v$VERSION/liblouis-$VERSION.tar.gz"
-  echo "$SHA256  $tarball" | shasum -a 256 -c - >/dev/null
+  # shasum on the Mac, sha256sum on CI's Linux.
+  if command -v sha256sum >/dev/null; then echo "$SHA256  $tarball" | sha256sum -c - >/dev/null; else echo "$SHA256  $tarball" | shasum -a 256 -c - >/dev/null; fi
   tar -xzf "$tarball" -C "$WORK"
 fi
 
