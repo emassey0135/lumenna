@@ -200,13 +200,49 @@ A day or less each, for between the larger pieces, except the first.
     Orbit's Do Not Disturb untried; the default locale is en-IN, so dates read as India writes
     them unless set. All of it rests on unofficial behaviour an Orbit update or its SDK may change;
     CI has no Orbit, so it is tried on the devices over adb.
-- **A BrailleSense 7 app**, HIMS' Android notetaker with a braille display, once the device is in
-  hand. Expected to be more open than Orbit's: an SDK or AIDL for its speech and its braille
-  display and keys, Google Play, and fewer workarounds. The same split as the Orbit app: a
-  module beside the phone app over `shared`, speech and the braille keys through the platform's
-  interfaces, Space with a letter for its command and a letter alone for first letters from the
-  core's letter table, and, unlike the Orbit devices, **lines on the cells**: the core's `braille`
-  form of each line (`Line::braille`), as BTSpeak's display shows it apart from speech.
+- **A BrailleSense 7 app**, HIMS' Android 15 notetaker with a braille display, through the
+  interfaces HIMS' own apps use, rebuilt clean-room in `~/braillesense/han-interop` on the
+  BTBraille (the AIDL, the parcel's wire format and notes; never the vendor's decompiled code).
+  No root, no hook and no launcher of our own: more open than Orbit's.
+  - **A module of its own** (`apps/android/braillesense/`, over `shared` and the Crux app's
+    Kotlin), its package **`com.extra.han.lumenna`**. The screen reader yields the braille keys
+    to an app by its package's name alone (`HanUtils.isNativePackageName`, a list of prefixes, no
+    signature), and the launcher puts `com.extra.han.*` in its Programs menu, where
+    `com.personal.han.*`, yielded the keys too, would land on the Android apps page. No
+    shortcut letter comes with it: the person gives one in the Menu Manager. It is the one
+    Android ID that is not `package_id`, an exception `records`' metadata test states. The home
+    page's clock, calendar and weather are the launcher's own, with no way in for a widget.
+  - **Speech and the cells are the app's own**, as the BTSpeak app's are, not described for a
+    screen reader to voice as on Orbit: `IHanOutputService`
+    (`com.jawon.han.accessibility/com.jawon.han.output.HanOutputService`, action
+    `com.jawon.han.output.ACTION_HAN_OUTPUT`, exported with no permission), its descriptor's
+    package and its transaction order (1 to 38) kept exactly. While the app is in front it
+    `register`s and `setActiveOutputService(true)`, and `false` once it is not, or it fights the
+    screen reader for the cells: the screen reader drives them through this same service. Speech
+    is `displayAndPlayTTS` (the stock client sends `2, output, false, false, false, -1, -1, -1,
+    -1, null`, -1 being the person's own voice settings; what the rest mean is unverified). A
+    line goes on the cells in the core's `braille` form (`Line::braille`), with panning, the
+    cursor (`brailleCursorPos`) and the routing keys, which come back through
+    `IHanOutputServiceCallback`. Whether `displayBraille` takes text and translates it in the
+    person's table, or the app sends dots (`displayRawBraille`, through liblouis) as HIMS' apps
+    translate for themselves, is to be found out.
+  - **Keys**: the braille keys never arrive as `KeyEvent`s. The `han_brailleinput` system
+    service composes each chord into one bitmask (dot 1 `0x1000` to dot 6 `0x10000`, Space
+    `0x2000`, dot 7 `0x200`, dot 8 `0x20000`; Control and Alt are the upper panning keys,
+    `0x04000000` and `0x08000000`; F1 to F4 come as codes from 304) and hands it to
+    `IHanBrailleInputServiceCallback.onResponse`, registered on resume and unregistered on pause,
+    which answers whether it took the chord. Space with a letter is that letter's command from
+    the core's table, a letter alone a first letter. The app reaches the service as HIMS' own
+    `HanActivity` does, which partner apps build on: `getSystemService("han_brailleinput")`.
+    Whether Android 15 lets an app that is not the system's `registerCallback` is the first thing
+    to try on the device: without it there are no chords, only the keys that do arrive as
+    `KeyEvent`s. The snap-on QWERTY keyboard is an ordinary USB keyboard, its keys (Control, Alt
+    and F1 to F4 too) ordinary `KeyEvent`s to any app.
+  - **Typing** is the device's own braille input method, in the person's table, so a text field
+    needs nothing of the app's.
+  - **Open**: as on Orbit, Iroh over Wi-Fi and in sleep, and reminders. All of it rests on
+    unofficial behaviour an update may change; CI has no BrailleSense, so it is tried on the
+    device over adb.
 
 ## 6. Integrations
 
