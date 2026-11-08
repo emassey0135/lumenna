@@ -562,7 +562,7 @@ class DueScreen : ListScreen() {
 class KeyHelpScreen : Screen() {
     override val title: String get() = titleOf("keyboard-help")
 
-    override fun rows(): List<Row> = (if (ui.reader.isPhoneKeypad) appWords.orbit.playerKeys else appWords.orbit.speakKeys).mapIndexed { index, text -> Row(index.toString(), text) }
+    override fun rows(): List<Row> = (if (ui.phoneKeypad) appWords.orbit.playerKeys else appWords.orbit.speakKeys).mapIndexed { index, text -> Row(index.toString(), text) }
 }
 
 /** Replan from Now and Plan the Day: the app proposes, and says so; the person checks what to take. */

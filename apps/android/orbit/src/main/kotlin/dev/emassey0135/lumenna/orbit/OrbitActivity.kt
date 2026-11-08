@@ -84,6 +84,7 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         reader.bind()
         liblouis.bind()
         ui.push(HomeScreen())
+        reminderTapped(intent)
         // Posted, so the turn's lines (set just after its view, on this thread) are there to read.
         lifecycleScope.launch { app.view.collect { main.post { ui.turned() } } }
         lifecycleScope.launch { core.announcements.collect { ui.say(it) } }
@@ -130,6 +131,12 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        reminderTapped(intent)
+    }
+
+    /** Opened from a reminder's notification: its task, its block's day, or a replan. */
+    private fun reminderTapped(intent: android.content.Intent?) {
+        Reminders.opened(this, intent)?.reminded?.let { ui?.reminded(it) }
     }
 
     override fun onDestroy() {

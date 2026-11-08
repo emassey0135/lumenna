@@ -5,6 +5,8 @@ import android.os.Looper
 import android.widget.TextView
 import dev.emassey0135.lumenna.AppModel
 import dev.emassey0135.lumenna.Core
+import dev.emassey0135.lumenna.Reminded
+import dev.emassey0135.lumenna.replan
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.Lines
@@ -106,6 +108,9 @@ class Ui(
     private val main = Handler(Looper.getMainLooper())
     private val decoder = KeyDecoder()
     private val finder = FirstLetters(this)
+    /** Whether the keys are the Player's phone keypad, as the last key said. */
+    var phoneKeypad = false
+        private set
     private var described: Screen? = null
     private var introduced = false
     private var landing = 0u
@@ -136,6 +141,18 @@ class Ui(
 
     fun pop() {
         top?.let { remove(it) }
+    }
+
+    /** A reminder's notification was tapped: where it leads. */
+    fun reminded(reminded: Reminded) {
+        when (reminded) {
+            is Reminded.Task -> push(DetailsScreen(reminded.id))
+            is Reminded.Block -> {
+                reminded.on?.let { send(ShellEvent.ShowBlock(it.series, it.date)) }
+                if (stack.none { it is DayScreen }) push(DayScreen())
+            }
+            is Reminded.Replan -> app.replan(reminded)
+        }
     }
 
     /** Back, from the keys: a screen with the app's state puts it away as it leaves. */
@@ -260,6 +277,7 @@ class Ui(
 
     /** A key from Orbit, on the main thread, in order. */
     fun key(event: KeyEvent, phoneKeypad: Boolean) {
+        this.phoneKeypad = phoneKeypad
         val key = decoder.decode(event)
         if (key == Key.None) return
         val screen = top ?: return
@@ -420,7 +438,7 @@ class Ui(
         completing: (() -> Boolean)? = null,
         complete: () -> Unit = {},
     ): LineEditor = LineEditor(
-        name, initial, reader.isPhoneKeypad, EditOutput(reader), CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
+        name, initial, phoneKeypad, EditOutput(reader), CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
         this,
         timeoutMs = { reader.characterCommitTimeout.toLong() },
         commitFeedback = { reader.characterCommitFeedback },

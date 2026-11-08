@@ -225,8 +225,9 @@ A day or less each, for between the larger pieces, except the first.
   - **Built**: `apps/android/orbit/`, drawn from the Crux app: places, the day with its blocks,
     sittings and free time, details and the forms, assigning, Replan from Now and Plan the Day,
     What Should I Work On?, the timer, undo, reminders and Reminders due, settings by the core's
-    pages, devices and pairing, backups, export and import, and a key help. Tried on the Speak by
-    keys sent over adb, and what Orbit said read from its log.
+    pages, devices and pairing, backups, export and import, and a key help. Tried on both devices
+    with keys sent over adb, what Orbit said read from its log: the lists, typing a task by cells on
+    the Speak and by T9 on the Player, the block form, assigning, a plan, the timer and undo.
   - **Open**: the keys pressed by hand on both devices (so far only injected); first-letter search
     and the letter table to draw from the core's (`braille_letter`, `ShellEvent::Letter`,
     `first_letter`) and the screen description from `ViewModel::screen` once they merge; Iroh over
