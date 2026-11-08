@@ -294,6 +294,11 @@ open class QuestionScreen(private val asking: Asking) : Screen(), AskingScreen, 
 
     override fun stands(view: ViewModel): Boolean = view.asking?.number == number
 
+    override fun resumed() {
+        // Asked once, answered at once: read in `rows`, it would answer on every redraw.
+        if (asking.question is Question.Immediate) ui.send(ShellEvent.Answer(Answer.Yes))
+    }
+
     override fun leaving() {
         if (ui.view.asking?.number == number) ui.send(ShellEvent.Cancel)
     }
@@ -317,10 +322,6 @@ open class QuestionScreen(private val asking: Asking) : Screen(), AskingScreen, 
             }
             is Question.Choose -> question.answers.map { choice ->
                 Row(choice.id, choice.title, { ui.send(ShellEvent.Answer(Answer.Picked(choice.id, null))) })
-            }
-            is Question.Immediate -> {
-                ui.send(ShellEvent.Answer(Answer.Yes))
-                emptyList()
             }
             else -> emptyList()
         }
