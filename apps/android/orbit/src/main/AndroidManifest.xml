@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Syncing with paired devices, as on the phone. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Reminders: alarms set again after the device starts. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- The services this app binds: Android 11 hides other apps' packages from a target of 30. -->
+    <queries>
+        <package android:name="com.orbit.screenreader" />
+        <package android:name="com.orbit.liblouisservice" />
+    </queries>
+
+    <application
+        android:name=".OrbitApplication"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:icon="@android:drawable/ic_menu_agenda"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        <!-- This app speaks for itself through Orbit's screen reader, so Satellite's hook routes
+             the keypad to it and Satellite's launcher lists it beside Orbit's own apps. -->
+        <meta-data android:name="orbit.self_voicing" android:value="true" />
+
+        <activity
+            android:name=".OrbitActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|keyboardHidden|screenSize|keyboard|navigation">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="dev.emassey0135.lumenna.LAUNCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Reminders' alarms and their notifications' Dismiss and Snooze: the app's own intents
+             only, as on the phone. -->
+        <receiver
+            android:name="dev.emassey0135.lumenna.ReminderReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="dev.emassey0135.lumenna.ReminderRearmReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
