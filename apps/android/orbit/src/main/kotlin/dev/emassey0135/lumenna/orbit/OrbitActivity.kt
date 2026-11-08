@@ -85,8 +85,7 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         liblouis.bind()
         ui.push(HomeScreen())
         reminderTapped(intent)
-        // Posted, so the turn's lines (set just after its view, on this thread) are there to read.
-        lifecycleScope.launch { app.view.collect { main.post { ui.turned() } } }
+        app.described = ui::turned
         lifecycleScope.launch { core.announcements.collect { ui.say(it) } }
         lifecycleScope.launch { app.files.collect { saveFile(it) } }
     }
@@ -141,6 +140,7 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
 
     override fun onDestroy() {
         stopDebugKeys()
+        core?.app?.described = null
         reader.unbind()
         liblouis.unbind()
         super.onDestroy()

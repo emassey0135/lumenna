@@ -390,18 +390,30 @@ holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, r
   `onScreenReaderReady`, which Orbit calls at once when it is ready already; speech sent earlier is
   dropped. `speakText` jumps Orbit's event queue, so what follows a description (a hint) waits a
   moment. What is described is `describe` (`Describe.kt`), pure, tested on the JVM: a turn that only
-  redrew says nothing, and a row reworded by what the person just did is read again.
+  redrew says nothing, and a row reworded by what the person just did is read again. What is shown
+  and what changed are the core's (`Turn::described`, handed over by `AppModel.described`, a
+  callback, since a flow keeps only the latest and a refusal must not be lost): the list's name and
+  `readback`, a move only when the core's `Moved` says so, a question's `prompt`, `buttons` and
+  `choices`, and refusals (`Refused`: its sentence said only when `said` is false). This app's own
+  lists (the main menu, settings, the forms' fields, a menu) go through `describe` beside them.
 - **Screens** (`Screens.kt`, `Forms.kt`): a stack the person moves, over the app's view. The screens
   the app itself opens (a question, the block form, a proposal, a reminder list, the quick-add line)
   are pushed and popped from the view each turn (`Ui.follow`), as BTSpeak's `follow`. A screen
-  describes itself only once `loaded`, so nothing says a list is empty on the way to it.
-- **Turns are posted, not collected inline**: `AppModel` sets the view, then the lines, and a
-  collector on `Main.immediate` runs between them with the last turn's lines.
+  describes itself only once `loaded`, so nothing says a list is empty on the way to it. The main
+  menu is the core's (`braille_main_menu`), and a day's heading is a row of it, as the core counts.
+- **A turn is taken from `AppModel.described`**, once its view and lines are in place: a collector
+  of the view on `Main.immediate` runs between the view being set and the lines, with the last
+  turn's lines.
 - **Keys**: `KeyDecoder` turns Orbit's bundle into a `Key`. On the Speak dot 7 is back, dot 8 open,
   Space with M the row's menu (Satellite's convention), Space with another letter its command, a
   letter alone a first letter. On the Player digits open rows, holding star finds by letter (T9),
-  Menu the row's menu, Back goes back. The letters' table and first-letter search are Kotlin here
-  until the core's (`ShellEvent::Letter`, `first_letter`) merge.
+  Menu the row's menu, Back goes back. A letter is the core's: `brailleLetter(dots)` (a to z, none
+  with dot 7 or 8) then `ShellEvent.Letter`, or `FindLetter` on the app's main list, `first_letter`
+  on this app's own (they go by a row's name or its line). Space with M is the row's menu on the
+  Speak, so what M runs elsewhere (Move to Project, Log Time, merging) is in that menu there. D is
+  the delete key's, which the core's table does not have. Letters a row or screen shows on the
+  Speak are `action_letter` and its kin, said after the name; `,`, `.` and `/` have no dots, so
+  Move Up, Move Down and the filter are the menu's.
 - **Typing** (`LineEditor`): the Speak's cell buffer through Orbit's liblouis service, one word at a
   time, mode 388 for each cell's echo and 132 at Space; the Player's multi-tap T9, ported from
   Satellite's `T9Input`. Changes go to Orbit as edit-box changes, so it echoes them by the person's

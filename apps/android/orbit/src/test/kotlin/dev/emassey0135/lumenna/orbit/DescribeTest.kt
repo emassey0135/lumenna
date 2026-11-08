@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class DescribeTest {
-    private val list = Shown("Tasks", 3, 1, "Pay rent", Opened.List, "", "Nothing here")
+    private val list = Drawn("Tasks", 3, 1, "Pay rent", Opened.List, "Nothing here")
 
     @Test fun aListOpeningIsAFocusChangeOfAListBox() {
         assertEquals(listOf(ReaderCall.FocusList("Tasks", 3, 1, "Pay rent")), describe(true, Why.Entered, false, list))
@@ -16,6 +16,11 @@ class DescribeTest {
 
     @Test fun whenTheAppLandsSomewhereItIsAnItemChange() {
         assertEquals(listOf(ReaderCall.ItemChanged("Tasks", 3, 1, "Pay rent")), describe(false, Why.Landed, true, list))
+    }
+
+    @Test fun aListEmptiedByAChangeSaysWhatItSaysEmpty() {
+        val empty = list.copy(count = 0, item = "", empty = "No open tasks.")
+        assertEquals(listOf(ReaderCall.Say("No open tasks.")), describe(false, Why.Turn, true, empty))
     }
 
     @Test fun aTurnThatOnlyRedrewSaysNothing() {
@@ -30,9 +35,9 @@ class DescribeTest {
     }
 
     @Test fun aQuestionOpensAsADialog() {
-        val question = list.copy(title = "Delete?", item = "Yes", opened = Opened.Dialog, message = "This cannot be undone")
+        val question = list.copy(title = "Delete?", item = "Yes", opened = Opened.Dialog)
         assertEquals(
-            listOf(ReaderCall.Dialog("Delete?", "This cannot be undone", "Yes"), ReaderCall.ItemChanged("Delete?", 3, 1, "Yes")),
+            listOf(ReaderCall.Dialog("Delete?", "Yes"), ReaderCall.ItemChanged("Delete?", 3, 1, "Yes")),
             describe(true, Why.Entered, false, question),
         )
     }

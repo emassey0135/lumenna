@@ -17,6 +17,8 @@ import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.app.TaskFields
 import dev.emassey0135.lumenna.app.ViewModel
+import dev.emassey0135.lumenna.app.buttonLetter
+import dev.emassey0135.lumenna.app.pageLetter
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.flag
 import dev.emassey0135.lumenna.name
@@ -196,7 +198,7 @@ class SettingsScreen : ListScreen() {
             .map { page ->
                 Row(page.id, listOf(page.title, page.description).filter { it.isNotEmpty() }.joinToString(". "), {
                     ui.push(if (page.id == "devices") DevicesScreen() else PageScreen(page))
-                })
+                }, letter = pageLetter(page.id))
             }
     }
 }
@@ -234,7 +236,7 @@ class PageScreen(private val page: SettingsPage) : ListScreen() {
                 }
             }
             page.buttons.forEach { button ->
-                add(Row(button.id, button.title, { pressed(button.id) }))
+                add(Row(button.id, button.title, { pressed(button.id) }, letter = buttonLetter(button.id)))
             }
             if (page.id == "export") {
                 view.offered.forEach { action ->
@@ -281,6 +283,8 @@ class PageScreen(private val page: SettingsPage) : ListScreen() {
 
 /** The paired devices, how syncing goes, and pairing another. */
 class DevicesScreen : ListScreen() {
+    override val lands: Lands get() = Lands.SIDE
+
     override val title: String get() = SettingsPages.of("devices")?.title.orEmpty()
 
     override fun loaded(view: ViewModel): Boolean = view.devices != null
@@ -303,8 +307,8 @@ class DevicesScreen : ListScreen() {
             view.list?.devices?.forEachIndexed { index, device ->
                 add(Row(device.nodeId, lines.getOrNull(index)?.text ?: device.name, null, device.offered, ActingOn.Held(Side.DEVICES, device.nodeId)))
             }
-            add(Row("sync", titleOf("sync-now"), { ui.send(ShellEvent.Devices(DevicesEvent.SyncNow)) }))
-            add(Row("wait", view.words.wait, { pair(null) }))
+            add(Row("sync", titleOf("sync-now"), { ui.send(ShellEvent.Devices(DevicesEvent.SyncNow)) }, letter = buttonLetter("sync-now")))
+            add(Row("wait", view.words.wait, { pair(null) }, letter = buttonLetter("pair")))
             add(Row("join", view.words.join, {
                 ui.push(FieldEditScreen(view.words.theirCode, "", view.words.intro) { code ->
                     pair(code.replace(" ", ""))

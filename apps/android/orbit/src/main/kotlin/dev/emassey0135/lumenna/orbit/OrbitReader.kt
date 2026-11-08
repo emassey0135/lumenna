@@ -145,7 +145,7 @@ class OrbitReader(context: Context, private val listener: Listener) {
     fun perform(call: ReaderCall) = when (call) {
         is ReaderCall.FocusList -> focusList(call.name, call.count, call.selected, call.item)
         is ReaderCall.ItemChanged -> itemChanged(call.name, call.count, call.selected, call.item)
-        is ReaderCall.Dialog -> dialog(call.name, call.message, call.focused)
+        is ReaderCall.Dialog -> dialog(call.name, "", call.focused)
         is ReaderCall.ContextMenu -> contextMenu(call.name, "")
         is ReaderCall.Say -> speakQueued(call.text)
     }

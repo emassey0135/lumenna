@@ -214,9 +214,7 @@ A day or less each, for between the larger pieces, except the first.
     pages, devices and pairing, backups, export and import, and a key help. Tried on both devices
     with keys sent over adb, what Orbit said read from its log: the lists, typing a task by cells on
     the Speak and by T9 on the Player, the block form, assigning, a plan, the timer and undo.
-  - **Open**: the keys pressed by hand on both devices (so far only injected); first-letter search
-    and the letter table to draw from the core's (`braille_letter`, `ShellEvent::Letter`,
-    `first_letter`) and the screen description from `ViewModel::screen` once they merge; Iroh over
+  - **Open**: the keys pressed by hand on both devices (so far only injected); Iroh over
     Wi-Fi, and Wi-Fi in sleep, untried there; reminders through Orbit's Do Not Disturb untried; the
     default locale is en-IN, so dates read as India writes them unless set; backups and import
     through Android's file picker, read by Orbit rather than the app. All of it rests on unofficial

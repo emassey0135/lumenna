@@ -12,7 +12,15 @@ import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.Lines
 import dev.emassey0135.lumenna.app.Offered
 import dev.emassey0135.lumenna.app.Question
+import dev.emassey0135.lumenna.app.ListShown
+import dev.emassey0135.lumenna.app.QuestionShown
+import dev.emassey0135.lumenna.app.ScreenChange
+import dev.emassey0135.lumenna.app.ScreenView
 import dev.emassey0135.lumenna.app.ShellEvent
+import dev.emassey0135.lumenna.app.Shown
+import dev.emassey0135.lumenna.app.actionLetter
+import dev.emassey0135.lumenna.app.brailleLetter
+import dev.emassey0135.lumenna.app.nothingOnLetter
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.commandTitle
 import dev.emassey0135.lumenna.appWords
@@ -29,6 +37,8 @@ class Row(
     val offered: List<Offered> = emptyList(),
     /** What its actions run on. */
     val on: ActingOn? = null,
+    /** The letter that opens it: this app's lists' own, the core's (`page_letter`…). */
+    val letter: String? = null,
     /** What Left and Right fold: the row's own Expand or Collapse among [offered]. */
     val expanded: Boolean? = null,
 )
@@ -82,8 +92,17 @@ abstract class Screen {
     /** A key only this screen knows; true if it took it. */
     open fun key(key: Key): Boolean = false
 
+    /** A letter only this screen knows (Space with it); true if it took it. */
+    open fun letter(letter: String): Boolean = false
+
+    /** Which of the app's lists this screen shows, if one: what a letter and a landing are. */
+    open val lands: Lands get() = Lands.NONE
+
     open val isEdit: Boolean get() = false
 }
+
+/** Whose list a screen shows: the app's main one, one beside it, or none of the app's. */
+enum class Lands { MAIN, SIDE, NONE }
 
 /** A row list screen built from the app's rows. */
 abstract class ListScreen : Screen()
@@ -111,13 +130,23 @@ class Ui(
     /** Whether the keys are the Player's phone keypad, as the last key said. */
     var phoneKeypad = false
         private set
-    private var described: Screen? = null
+    private var saidScreen: Screen? = null
     private var introduced = false
     private var landing = 0u
     private var pending: Runnable? = null
 
     val view: ViewModel get() = checkNotNull(app.view.value)
     val lines: Lines? get() = app.lines.value
+
+    /** The core's description of the screen, as of the last turn (`Turn::described`). */
+    var screenView: ScreenView = app.screenView()
+        private set
+
+    /** The question the core says is open, if one is. */
+    val questionShown: QuestionShown? get() = (screenView.shown as? Shown.Question)?.field0
+
+    /** The list the core says is showing, if one is. */
+    val listShown: ListShown? get() = (screenView.shown as? Shown.List)?.field0
 
     val top: Screen? get() = stack.lastOrNull()
 
@@ -185,17 +214,31 @@ class Ui(
     /** Orbit is ready, for the first time or after it came back: the screen is described anew. */
     fun readerReady() {
         introduced = true
-        described = null
+        saidScreen = null
         redraw(Why.Entered)
     }
 
     /** A turn of the app has been taken: screens it opened or closed, then what it shows now. */
-    fun turned() {
-        val landed = view.landing > landing || sideLanded()
+    fun turned(described: ScreenView) {
+        screenView = described
+        val moved = described.changes.any { it is ScreenChange.Moved }
+        val landedMain = view.landing > landing
+        val landedSide = sideLanded()
         follow()
         landing = view.landing
+        // A list behind the screen on top landing says nothing: it isn't what is shown.
+        val landed = when (top?.lands) {
+            Lands.MAIN -> moved
+            Lands.SIDE -> landedSide
+            else -> false
+        }
         redraw(if (landed) Why.Landed else Why.Turn)
-        if (landed) core.release()
+        if (landedMain || landedSide) core.release()
+        // Words already coming through what the turn said are not said twice.
+        described.changes.filterIsInstance<ScreenChange.Refused>().forEach {
+            refuse()
+            if (!it.said) say(it.reason)
+        }
     }
 
     private var sidebarLanding = 0u
@@ -222,7 +265,7 @@ class Ui(
             val screen = top ?: break
             if (screen.stands(v)) break
             stack.removeLast().leaving()
-            described = null
+            saidScreen = null
         }
         v.asking?.let { asking ->
             // Open already, under something it opened (its completions).
@@ -235,9 +278,6 @@ class Ui(
                     if (open != null) stack.removeLast().leaving()
                     pushQuestion(asking)
                 }
-            } else if (top is EditScreen) {
-                // The same question still open: its answer was refused, and the field stays.
-                (top as EditScreen).refused()
             }
             return
         }
@@ -270,7 +310,7 @@ class Ui(
         screen.ui = this
         stack.addLast(screen)
         screen.resumed()
-        described = null
+        saidScreen = null
     }
 
     // ---- keys ----------------------------------------------------------------------------
@@ -288,7 +328,7 @@ class Ui(
         if (screen.key(key)) return
         if (phoneKeypad && finder.phoneKey(key, screen)) return
         if (!phoneKeypad && key is Key.Cell) {
-            finder.letter(brailleLetter(key.dots))
+            finder.letter(brailleLetter(key.dots.toUByte()))
             return
         }
         finder.reset()
@@ -351,7 +391,7 @@ class Ui(
             val on = row.on
             row.offered.filter { it.kind != dev.emassey0135.lumenna.app.ActionKind.EXPAND && it.kind != dev.emassey0135.lumenna.app.ActionKind.COLLAPSE }
                 .forEach { action ->
-                    if (on != null) commands += Command(action.name) { send(ShellEvent.ActOn(on, action)) }
+                    if (on != null) commands += Command(withLetter(action.name, actionLetter(action.kind))) { send(ShellEvent.ActOn(on, action)) }
                 }
         }
         commands += screen.commands()
@@ -359,20 +399,35 @@ class Ui(
             refuse()
             return
         }
-        push(ContextMenuScreen(row?.text ?: screen.title, commands))
+        push(ContextMenuScreen(appWords.braille.actionsMenu, commands))
     }
 
+    /** Space with dots: the row's menu for M (Satellite's), else the letter's command. */
     private fun chord(dots: Int, screen: Screen, rows: List<Row>) {
         if (dots == DOTS_M) {
             menu(screen, rows)
             return
         }
-        val letter = brailleLetter(dots)
+        val letter = brailleLetter(dots.toUByte())
         if (letter == null) {
             refuse()
             return
         }
-        LetterCommands.run(this, letter)
+        // This app's own lists first (the main menu's places, the settings pages), then the screen's.
+        rows.firstOrNull { it.letter == letter }?.let { row ->
+            row.open?.invoke()
+            return
+        }
+        if (screen.letter(letter)) return
+        if (screen.lands == Lands.NONE) {
+            refuse()
+            say(nothingOnLetter(letter))
+            return
+        }
+        // The app acts on the row in hand: a list beside the main one's is held first, so it
+        // answers there. D is the delete key, which no letter of the core's table is.
+        rows.getOrNull(screen.index)?.let(screen::moved)
+        send(if (letter == "d") ShellEvent.Key("delete") else ShellEvent.Letter(letter))
     }
 
     // ---- describing ----------------------------------------------------------------------
@@ -389,8 +444,8 @@ class Ui(
         if (!introduced) return
         if (screen is EditScreen) {
             textView.text = "${screen.title}\n\n${screen.display()}"
-            if (described !== screen) {
-                described = screen
+            if (saidScreen !== screen) {
+                saidScreen = screen
                 screen.describe()
             }
             return
@@ -414,18 +469,15 @@ class Ui(
             append(if (rows.isEmpty()) screen.empty else item)
             if (rows.isNotEmpty()) append("\n\n").append(screen.index + 1).append(" of ").append(rows.size)
         }
-        val newlyShown = described !== screen
+        val newlyShown = saidScreen !== screen
         // The row in hand reworded by what the person just did (a toggle, a field saved).
         val reworded = why == Why.Turn && !newlyShown && expectingChange && item != lastItem
         if (why == Why.Turn) expectingChange = false
-        described = screen
+        saidScreen = screen
         lastItem = item
-        val shown = Shown(screen.title, rows.size, screen.index, item, screen.openedAs(), screen.dialogMessage(), screen.empty)
+        val shown = Drawn(screen.title, rows.size, screen.index, item, screen.openedAs(), screen.empty)
         describe(newlyShown, why, before != screen.index || reworded, shown).forEach(reader::perform)
     }
-
-    /** What a dialog screen says of itself; a screen that is one overrides it. */
-    private fun Screen.dialogMessage(): String = (this as? DialogMessage)?.message.orEmpty()
 
     // ---- what a key opens ---------------------------------------------------------------
 
@@ -470,9 +522,6 @@ class Ui(
     /** Set by the activity: opens Android's file picker, then the file goes to the app. */
     var chooseFile: () -> Unit = {}
 
-    /** Where a key's letter runs: for [LetterCommands]. */
-    fun key(id: String) = send(ShellEvent.Key(id))
-
     companion object {
         private const val DOTS_M = 1 or (1 shl 2) or (1 shl 3)
     }
@@ -482,22 +531,6 @@ class Ui(
 object BuildConfigDebug {
     @Volatile var on = false
 }
-
-/** A question screen's sentence said as it opens. */
-interface DialogMessage {
-    val message: String
-}
-
-/** A letter, from the dots of a cell: the core's, once merged (`braille_letter`). */
-fun brailleLetter(dots: Int): Char? {
-    val index = LETTER_DOTS.indexOf(dots and 0x3f)
-    return if (index < 0) null else 'a' + index
-}
-
-private val LETTER_DOTS = intArrayOf(
-    0x01, 0x03, 0x09, 0x19, 0x11, 0x0b, 0x1b, 0x13, 0x0a, 0x1a, 0x05, 0x07, 0x0d,
-    0x1d, 0x15, 0x0f, 0x1f, 0x17, 0x0e, 0x1e, 0x25, 0x27, 0x3a, 0x2d, 0x3d, 0x35,
-)
 
 /** Tells Orbit's reader what the line editor did, as its own edit fields report. */
 private class EditOutput(private val reader: OrbitReader) : LineEditor.Output {
@@ -518,42 +551,9 @@ private class EditOutput(private val reader: OrbitReader) : LineEditor.Output {
         reader.editChanged(name, content, cursor, "t9_mode_changed:$mode")
 }
 
-/**
- * Commands from Space with a letter: the first kind the row in hand offers of a letter's kinds,
- * refused in the core's words otherwise. Until the core's own table (`ShellEvent::Letter`) is here.
- * Space with M is the row's menu (Satellite's), so it runs nothing here.
- */
-object LetterCommands {
-    private val kinds: Map<Char, List<ActionKind>> by lazy {
-        mapOf(
-            'c' to listOf(ActionKind.MARK_DONE, ActionKind.MARK_NOT_DONE, ActionKind.COLOUR),
-            'e' to listOf(ActionKind.EDIT, ActionKind.EDIT_TASK),
-            'b' to listOf(ActionKind.PUT_IN_BLOCK),
-            's' to listOf(ActionKind.START_TIMER, ActionKind.PAUSE_TIMER, ActionKind.RESUME_TIMER, ActionKind.MAKE_SUBTASK_OF),
-            't' to listOf(ActionKind.STOP_TIMER, ActionKind.MOVE_TO_TOP_LEVEL),
-            'w' to listOf(ActionKind.WAIT_FOR, ActionKind.WEIGHT),
-            'n' to listOf(ActionKind.STOP_WAITING, ActionKind.NEW_INSIDE),
-            'r' to listOf(ActionKind.RESTORE, ActionKind.RENAME, ActionKind.REMINDERS),
-            'i' to listOf(ActionKind.ASSIGN_TASK),
-            'x' to listOf(ActionKind.CANCEL_DAY),
-            'o' to listOf(ActionKind.RESTORE_DAY),
-            'l' to listOf(ActionKind.PLANNED_LENGTH),
-            'a' to listOf(ActionKind.ADD_BLOCK),
-            'f' to listOf(ActionKind.CARRY_FORWARD, ActionKind.CARRY_REST),
-            'q' to listOf(ActionKind.CHANGE_QUERY),
-        )
-    }
-
-    fun run(ui: Ui, letter: Char) {
-        when (letter) {
-            'd' -> ui.key("delete")
-            'u' -> ui.send(ShellEvent.Undo)
-            'y' -> ui.send(ShellEvent.Redo)
-            'h' -> ui.push(KeyHelpScreen())
-            else -> kinds[letter]?.let { ui.send(ShellEvent.Run(it)) } ?: ui.refuse()
-        }
-    }
-}
+/** [text], with the Space chord that also runs it said after it on the Speak. */
+fun Ui.withLetter(text: String, letter: String?): String =
+    if (phoneKeypad || letter == null || letter !in "a".."z" || letter == "m" || letter.length != 1) text else "$text, $letter"
 
 /** A menu command's name in sentence case, by its id in the core's table. */
 fun titleOf(id: String): String = appWords.commands.firstOrNull { it.id == id }?.title ?: commandTitle(id)
