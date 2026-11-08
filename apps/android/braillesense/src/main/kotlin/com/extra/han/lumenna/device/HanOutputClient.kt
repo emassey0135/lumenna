@@ -129,7 +129,7 @@ class HanOutputClient(private val context: Context) : Output {
 
     override fun say(text: String) {
         if (text.isBlank()) return
-        if (BuildConfig.DEBUG) Log.d(TAG, "say: $text")
+        if (BuildConfig.DEBUG) Log.i(TAG, "say: $text")
         worker.execute {
             attempt {
                 val output = HanOutput(text, text, null, "")
@@ -143,7 +143,7 @@ class HanOutputClient(private val context: Context) : Output {
 
     override fun cells(cells: ByteArray, cursor: Int) {
         val copy = cells.copyOf()
-        if (BuildConfig.DEBUG) Log.d(TAG, "cells: ${copy.size} " + copy.joinToString(" ") { (it.toInt() and 0xff).toString(2).reversed().mapIndexed { i, c -> if (c == '1') "${i + 1}" else "" }.joinToString("") } + " cursor $cursor")
+        if (BuildConfig.DEBUG) Log.i(TAG, "cells: ${copy.size} " + copy.joinToString(" ") { (it.toInt() and 0xff).toString(2).reversed().mapIndexed { i, c -> if (c == '1') "${i + 1}" else "" }.joinToString("") } + " cursor $cursor")
         worker.execute {
             lastCells = copy to cursor
             service?.let { attempt { sendCells(it, copy, cursor) } }
