@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::host::HostRequest;
 use crate::model::Screen;
-use crate::{Effect, Event, Lumenna, host, proposal, say, write};
+use crate::{Effect, Event, Lumenna, host, proposal, refused, say, write};
 
 /// What the person, or the shell's clock, does about reminders due.
 #[boltffi::data]
@@ -249,14 +249,14 @@ impl Lumenna {
             }
             DueEvent::Dismiss(id) => self.deal(&id, Deal::Dismiss, model),
             // A summary of what was missed has no Snooze: refused in the core's words.
-            DueEvent::Snooze(id) if !offers(model, &id, |d| d.snooze.is_some()) => say(lumenna_records::words::snooze_not_offered()),
+            DueEvent::Snooze(id) if !offers(model, &id, |d| d.snooze.is_some()) => refused(lumenna_records::words::snooze_not_offered()),
             DueEvent::Snooze(id) => self.deal(&id, Deal::Snooze, model),
             // A reminder without the button refuses it, in the core's words.
-            DueEvent::Carry(id) if !offers(model, &id, |d| d.carry.is_some()) => say(not_offered(ActionKind::CarryRest)),
+            DueEvent::Carry(id) if !offers(model, &id, |d| d.carry.is_some()) => refused(not_offered(ActionKind::CarryRest)),
             // One this screen holds without Replan refuses it. One it never held — the system's
             // notification, on a platform that schedules them and never looks here — opens Replan
             // all the same: its button is what was pressed.
-            DueEvent::Replan(id) if offers(model, &id, |d| d.replan.is_none()) => say(not_offered(ActionKind::Replan)),
+            DueEvent::Replan(id) if offers(model, &id, |d| d.replan.is_none()) => refused(not_offered(ActionKind::Replan)),
             DueEvent::Carry(id) => self.deal(&id, Deal::Carry, model),
             // Today, with Replan from Now open over it. Cancelled, the warning stays; something
             // replanned, it is dismissed.

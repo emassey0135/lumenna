@@ -389,6 +389,34 @@ impl Screen {
         lumenna_records::plan::task_shown(&store.snapshot, &id, &store.now).ok().map(|shown| shown.task)
     }
 
+    /// The shown rows' keys beside each one's name, the one first-letter search looks at: a
+    /// list row's title, which starts its line; a day's row its own name rather than its line,
+    /// which starts with a time.
+    pub(crate) fn names(&self) -> Option<Vec<(String, String)>> {
+        Some(if self.place() == Place::Today {
+            let day = self.day_view()?;
+            day.items
+                .iter()
+                .filter(|item| !item.hidden)
+                .map(|item| {
+                    let name = item
+                        .block
+                        .as_ref()
+                        .filter(|_| item.sitting.is_none())
+                        .map(|block| block.title.clone())
+                        .or_else(|| item.sitting.as_ref().map(|sitting| sitting.title.clone()))
+                        .or_else(|| item.free.as_ref().map(|free| free.title.clone()))
+                        .or_else(|| item.now.as_ref().map(|now| now.title.clone()))
+                        .or_else(|| item.cancelled.as_ref().map(|cancelled| cancelled.title.clone()))
+                        .unwrap_or_default();
+                    (item.key.clone(), name)
+                })
+                .collect()
+        } else {
+            self.items()?.into_iter().filter(|item| !item.hidden).map(|item| (item.row.id, item.row.title)).collect()
+        })
+    }
+
     /// The actions of the row in hand.
     pub(crate) fn actions_in_hand(&self) -> Option<Vec<Action>> {
         let focus = self.focus.as_ref()?;
@@ -408,7 +436,7 @@ impl Screen {
         self.position = 0;
         self.settle();
         let summary = self.day_view().map(|view| view.summary).unwrap_or_default();
-        render().and(Command::notify_shell(Announce { text: summary, heading: true, screen: 0 }).into())
+        render().and(Command::notify_shell(Announce { text: summary, heading: true, screen: 0, refusal: false }).into())
     }
 }
 

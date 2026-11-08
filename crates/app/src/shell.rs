@@ -36,6 +36,12 @@ pub enum ShellEvent {
     /// A shared key pressed on the row in hand, by its `id` in `keys::SHARED`: what it runs
     /// is the core's, the same everywhere.
     Key(String),
+    /// A braille device's letter pressed: runs what that letter runs on the row in hand
+    /// (`lumenna_app::braille`), the same on every braille device.
+    Letter(String),
+    /// Moves the main list's row in hand to the next row, wrapping round, whose name starts with
+    /// this letter, passing what is folded away; `landing` rises, and none found says so.
+    FindLetter(String),
     /// The answer to the question open.
     Answer(Answer),
     /// Leave the question open unanswered.
@@ -107,6 +113,8 @@ impl From<ShellEvent> for Event {
             ShellEvent::ActOn(on, offered) => Event::ActOn(on, offered),
             ShellEvent::Run(kinds) => Event::Run(kinds),
             ShellEvent::Key(id) => Event::Key(id),
+            ShellEvent::Letter(letter) => Event::Letter(letter),
+            ShellEvent::FindLetter(letter) => Event::FindLetter(letter),
             ShellEvent::Answer(answer) => Event::Answer(answer),
             ShellEvent::Cancel => Event::Cancel,
             ShellEvent::Day(step) => Event::Day(step),
@@ -147,6 +155,8 @@ impl TryFrom<Event> for ShellEvent {
             Event::ActOn(on, offered) => ShellEvent::ActOn(on, offered),
             Event::Run(kinds) => ShellEvent::Run(kinds),
             Event::Key(id) => ShellEvent::Key(id),
+            Event::Letter(letter) => ShellEvent::Letter(letter),
+            Event::FindLetter(letter) => ShellEvent::FindLetter(letter),
             Event::Answer(answer) => ShellEvent::Answer(answer),
             Event::Cancel => ShellEvent::Cancel,
             Event::Day(step) => ShellEvent::Day(step),

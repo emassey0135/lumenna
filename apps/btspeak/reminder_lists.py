@@ -34,11 +34,6 @@ def _moment(when: datetime.datetime) -> str:
     return when.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-#: This app's letter for each of a reminder's buttons (`DueButton.id`); Dismiss is the delete
-#: keys'.
-DUE_KEYS = {"carry": "f", "replan": "p", "snooze": "z"}
-
-
 def now() -> datetime.datetime:
     """Now, or the moment a test has fixed."""
     return NOW() if NOW else datetime.datetime.now(datetime.timezone.utc)
@@ -87,7 +82,7 @@ def reminders_of(session: Session, row=None) -> str:
 
     def own():
         action = adding_action()
-        added = [Command(actions.named(action), adding, key="a")] if action is not None else []
+        added = [Command(actions.named(action), adding, key=L.action_letter(K.NEW) or "", through=True)] if action is not None else []
         return [*added, *undo_commands(session)]
 
     session.reminders_open = True
@@ -97,7 +92,7 @@ def reminders_of(session: Session, row=None) -> str:
                 session, build, title,
                 context=lambda rows: actions.commands(session, rows),
                 app=own,
-                empty=L.press_to_add("a"),
+                empty=L.press_to_add(L.action_letter(K.NEW)),
                 app_title=L.menu_of(session.view().reminders_title or core.words().reminders_due),
                 focus=lambda: session.view().reminders_held.focus,
                 until=lambda: session.view().reminders is None,
@@ -133,6 +128,7 @@ def due(session: Session) -> str:
         made = []
         for reminder in given:
             row = Row(reminder.id, reminder.text, (), reminder, title=reminder.title)
+            row.side = L.Side.DUE
             made.append(row)
         return items(made)
 
@@ -157,8 +153,8 @@ def due(session: Session) -> str:
 
     def commands(rows) -> list[Command]:
         """Each row's buttons, the core's, in its order: what a reminder offers of its own
-        (Carry forward, Replan) first, then Dismiss, which the delete keys run, and Snooze. A
-        letter a reminder lacks is sent all the same, and the app says why."""
+        (Carry forward, Replan) first, then Dismiss, which the delete keys run, and Snooze. The
+        letter a reminder lacks is sent all the same, and the app says why (`actions.letter`)."""
         order: list[str] = []
         for row in rows:
             for offered in row.record.buttons:
@@ -170,10 +166,10 @@ def due(session: Session) -> str:
             Command(
                 lambda row, which=which: button(row, which).title,
                 lambda row, which=which: runs[which](row.key),
-                key=DUE_KEYS.get(which, ""),
+                key=L.due_letter(which) or "",
                 applies=lambda row, which=which: button(row, which) is not None,
                 deletes=which == "dismiss",
-                refuse=(lambda row, which=which: runs[which](row.key)) if which in ("carry", "replan") else None,
+                through=True,
             )
             for which in order
         ]

@@ -2318,3 +2318,200 @@ fn levels_are_said_where_they_change_among_the_rows_a_shell_shows() {
         [None, Some("level 2".to_owned()), None, Some("level 1".to_owned()), Some("level 3".to_owned())]
     );
 }
+
+
+/// A device's clock, for lines read back in a test.
+struct PlainClock;
+
+impl lumenna_app::speech::Clock for PlainClock {
+    fn time(&self, clock: &str) -> String {
+        clock.to_owned()
+    }
+
+    fn day(&self, iso: &str) -> String {
+        iso.to_owned()
+    }
+}
+
+/// What the screen is now and what changed since `before`, as a turn carries it.
+fn described(before: Option<&ViewModel>, view: &ViewModel, refusals: &[String]) -> lumenna_app::screen::ScreenView {
+    lumenna_app::screen::screen_view(before, view, &lumenna_app::lines::lines(view, &PlainClock), refusals)
+}
+
+#[test]
+fn a_letter_runs_the_rows_action_of_that_letter_through_the_shared_command() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Letter("c".to_owned()));
+    assert!(app.titles().is_empty(), "c marks the row done, as the shared table's mark-done does");
+}
+
+#[test]
+fn a_letter_the_row_does_not_offer_is_refused_in_the_cores_words() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let shell = app.send(Event::Letter("o".to_owned()));
+    assert_eq!(said(&shell).len(), 1, "a task row offers no Restore This Day, and says so");
+    assert_eq!(app.titles(), ["Buy milk"]);
+}
+
+#[test]
+fn a_capital_letter_runs_the_same_as_a_small_one() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Letter("C".to_owned()));
+    assert!(app.titles().is_empty(), "letters are compared as small letters");
+}
+
+#[test]
+fn a_letter_for_a_place_runs_the_places_own_command_and_says_what_it_does() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let shell = app.send(Event::Letter("a".to_owned()));
+    assert!(app.view().line.is_some(), "a is New Task on a list of tasks");
+    assert!(said(&shell).is_empty());
+    app.send(Event::Cancel);
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Letter("n".to_owned()));
+    assert_ne!(app.view().day.as_ref().unwrap().date, "", "n is the next day");
+}
+
+#[test]
+fn a_letter_that_runs_nothing_here_says_so() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let shell = app.send(Event::Letter("j".to_owned()));
+    assert_eq!(said(&shell), ["Nothing here runs on j."]);
+}
+
+#[test]
+fn a_letter_undoes_from_wherever_the_person_is() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let shell = app.send(Event::Letter("u".to_owned()));
+    assert!(!said(&shell).is_empty(), "u undoes, wherever the person is");
+    assert_eq!(app.titles().len(), 0);
+}
+
+#[test]
+fn first_letter_moves_the_row_in_hand_and_landing_rises() {
+    let mut app = App::new();
+    app.add("Apples");
+    app.add("Bread");
+    app.add("Avocado");
+    let first = app.id_of("Apples");
+    app.send(Event::Focus(first));
+    let before = app.view().landing;
+    app.send(Event::FindLetter("b".to_owned()));
+    assert_eq!(app.view().focus.as_deref(), Some(app.id_of("Bread").as_str()));
+    assert!(app.view().landing > before, "the app moved the row, so the shell lands on it");
+}
+
+#[test]
+fn first_letter_wraps_round_and_says_when_there_is_none() {
+    let mut app = App::new();
+    app.add("Apples");
+    app.add("Avocado");
+    let last = app.id_of("Avocado");
+    app.send(Event::Focus(last));
+    app.send(Event::FindLetter("a".to_owned()));
+    assert_eq!(app.view().focus.as_deref(), Some(app.id_of("Apples").as_str()), "wrapped round to the first");
+    let shell = app.send(Event::FindLetter("z".to_owned()));
+    assert_eq!(said(&shell), ["No row starts with z."]);
+    assert_eq!(app.view().focus.as_deref(), Some(app.id_of("Apples").as_str()), "the row stays where it was");
+}
+
+#[test]
+fn first_letter_passes_what_is_folded_away() {
+    let mut app = App::new();
+    app.add("Parent");
+    app.add("Sibling");
+    let parent = app.id_of("Parent");
+    app.send(Event::Focus(parent.clone()));
+    app.send(Event::Run(vec![ActionKind::MakeSubtaskOf]));
+    let sibling = app.id_of("Sibling");
+    app.send(Event::Answer(Answer::Picked { id: sibling.clone(), length: None }));
+    app.send(Event::Focus(app.id_of("Sibling")));
+    app.send(Event::Run(vec![ActionKind::Collapse]));
+    let shell = app.send(Event::FindLetter("p".to_owned()));
+    assert_eq!(said(&shell), ["No row starts with p."], "Parent is folded away under Sibling");
+}
+
+#[test]
+fn the_screen_says_what_is_shown_where_the_row_is_and_what_can_be_done_to_it() {
+    let mut app = App::new();
+    app.add("Apples");
+    app.add("Bread");
+    let row = app.id_of("Bread");
+    app.send(Event::Focus(row));
+    let view = app.view();
+    let screen = described(Some(&view), &view, &[]);
+    let lumenna_app::screen::Shown::List(list) = screen.shown else { panic!("a list: {:?}", screen.shown) };
+    assert_eq!(list.name, "Tasks");
+    assert_eq!(list.count, 2);
+    let row = list.row.expect("a row in hand");
+    assert_eq!(row.line.title, "Bread");
+    assert_eq!(row.place, "2 of 2");
+    assert!(row.actions.iter().any(|action| action.name == "Mark done" && action.letter == "c"));
+    assert!(row.actions.iter().all(|action| action.offered.kind != ActionKind::ErasePermanently || action.letter.is_empty()));
+    assert!(screen.changes.is_empty(), "nothing moved between these two looks");
+}
+
+#[test]
+fn the_screen_says_a_place_was_entered_and_names_it() {
+    let mut app = App::new();
+    app.add("Apples");
+    let before = app.view();
+    app.send(Event::Open(Place::Trash));
+    let screen = described(Some(&before), &app.view(), &[]);
+    assert!(matches!(screen.changes.first(), Some(lumenna_app::screen::ScreenChange::Entered { name, .. }) if *name == Place::Trash.title()), "{:?}", screen.changes);
+}
+
+#[test]
+fn the_screen_says_a_move_only_when_landing_rose() {
+    let mut app = App::new();
+    app.add("Apples");
+    app.add("Bread");
+    let before = app.view();
+    app.send(Event::Focus(app.id_of("Apples")));
+    let moved_by_person = described(Some(&before), &app.view(), &[]);
+    assert!(!moved_by_person.changes.iter().any(|c| matches!(c, lumenna_app::screen::ScreenChange::Moved(_))), "the person's own move is no move to say");
+    let before = app.view();
+    app.send(Event::FindLetter("b".to_owned()));
+    let found = described(Some(&before), &app.view(), &[]);
+    assert!(matches!(found.changes.first(), Some(lumenna_app::screen::ScreenChange::Moved(row)) if row.line.title == "Bread"), "{:?}", found.changes);
+}
+
+#[test]
+fn the_screen_says_a_question_opened_and_a_refusal_in_it() {
+    let mut app = App::new();
+    app.send(Event::Day(DayMove::Ask));
+    let before = app.view();
+    assert!(before.asking.is_some());
+    let screen = described(None, &before, &[]);
+    assert!(screen.changes.iter().any(|c| matches!(c, lumenna_app::screen::ScreenChange::Asked(_))));
+    let lumenna_app::screen::Shown::Question(asked) = &screen.shown else { panic!("a question: {:?}", screen.shown) };
+    assert!(asked.line, "Go to Day asks for a line of text");
+    assert!(!asked.prompt.is_empty());
+    assert!(asked.buttons.iter().any(|button| button.id == "cancel"));
+    app.send(Event::Answer(Answer::Text { text: "nonsense day".to_owned() }));
+    let refused = described(Some(&before), &app.view(), &[]);
+    assert!(refused.changes.iter().any(|c| matches!(c, lumenna_app::screen::ScreenChange::Refused { said: false, .. })));
+}
+
+#[test]
+fn a_refusal_of_a_letter_is_marked_as_one_for_the_screen() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let mut effects = app.session.stack.update(Event::Letter("o".to_owned()), app.session.later());
+    app.session.store.busy().wait();
+    effects.append(&mut app.session.later.lock().unwrap());
+    let refused: Vec<String> = effects
+        .iter()
+        .filter_map(|effect| match effect {
+            Effect::Announce(request) if request.operation.refusal => Some(request.operation.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(refused.len(), 1, "said, and marked as a refusal");
+}

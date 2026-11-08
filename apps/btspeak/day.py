@@ -98,11 +98,11 @@ def day_plan(session: Session) -> str:
             context=lambda rows: actions.commands(session, rows),
             app=lambda: [
                 *day_commands(session),
-                Command(command_title("new-block"), lambda _: add_block(session), key="a"),
-                Command(command_title("previous-day"), lambda _: move(L.DayMove.PREVIOUS), key="p"),
-                Command(command_title("next-day"), lambda _: move(L.DayMove.NEXT), key="n"),
-                Command(command_title("go-to-day"), lambda _: move(L.DayMove.ASK), key="g"),
-                Command(command_title("go-to-now"), lambda _: move(L.DayMove.TODAY), key="t"),
+                Command(command_title("new-block"), lambda _: add_block(session), key=L.command_letter("new-block"), through=True),
+                Command(command_title("previous-day"), lambda _: move(L.DayMove.PREVIOUS), key=L.command_letter("previous-day"), through=True),
+                Command(command_title("next-day"), lambda _: move(L.DayMove.NEXT), key=L.command_letter("next-day"), through=True),
+                Command(command_title("go-to-day"), lambda _: move(L.DayMove.ASK), key=L.command_letter("go-to-day"), through=True),
+                Command(command_title("go-to-now"), lambda _: move(L.DayMove.NOW), key=L.command_letter("go-to-now"), through=True),
                 *tasks.undo_commands(session),
             ],
             empty=core.words().nothing_planned,
@@ -119,7 +119,7 @@ def day_commands(session: Session) -> list[Command]:
     day = session.view().day
     return [
         Command(actions.named(action), lambda _, action=action: actions.act(session, action, on=L.ActingOnDay()),
-                key=actions.DAY_KEYS.get(action.kind, ""))
+                key=L.action_letter(action.kind) or "", through=True)
         for action in (day.offered if day is not None else [])
     ]
 
@@ -151,8 +151,8 @@ def blocks(session: Session) -> str:
             session, build, lambda: state["heading"],
             main=lambda row: actions.press(session, "open", row),
             context=lambda rows: actions.commands(session, rows),
-            app=[Command(command_title("new-block"), lambda _: add_block(session), key="a"), *tasks.undo_commands(session)],
-            empty=empty_then(lambda: tasks.readback(session), L.press_to_add("a")),
+            app=[Command(command_title("new-block"), lambda _: add_block(session), key=L.command_letter("new-block")), *tasks.undo_commands(session)],
+            empty=empty_then(lambda: tasks.readback(session), L.press_to_add(L.command_letter("new-block"))),
             app_title=L.menu_of(L.place_title(L.PlaceBlocks())),
             focus=lambda: session.view().focus,
         )

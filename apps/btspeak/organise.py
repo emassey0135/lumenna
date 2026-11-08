@@ -77,7 +77,7 @@ def group_screen(session: Session, group, show: str, add: str, empty: str = "") 
         if place is None:
             return ""
         inside = [
-            Command(actions.named(action), lambda _, action=action: actions.act(session, action, row), key="p")
+            Command(actions.named(action), lambda _, action=action: actions.act(session, action, row), key=L.command_letter("new-project-inside"))
             for action in actions.of_kind(row, actions.K.NEW_INSIDE)
         ]
         return tasks.task_list(session, place, row.title, more=inside)
@@ -88,7 +88,7 @@ def group_screen(session: Session, group, show: str, add: str, empty: str = "") 
             main=tasks_of,
             context=lambda rows: actions.commands(session, rows, before=[
                 Command(show, tasks_of),
-                Command(add, lambda row: add_in(session, place_of(row)), key="t"),
+                Command(add, lambda row: add_in(session, place_of(row)), key=L.command_letter("add-task-in")),
             ]),
             app=[*actions.heading_command(session, group), *tasks.undo_commands(session)],
             empty=empty_then(lambda: L.group_empty(group), empty),
@@ -108,7 +108,7 @@ def labels(session: Session) -> str:
     """Labels: a first-class axis, with their own list."""
     named = core.words()
     return group_screen(session, L.SidebarGroup.LABELS, named.show_tasks_wearing_it, named.add_task_wearing_it,
-                        L.press_to_add("a"))
+                        L.press_to_add(L.action_letter(actions.K.NEW)))
 
 
 def saved_filters(session: Session) -> str:
@@ -116,4 +116,4 @@ def saved_filters(session: Session) -> str:
     is used, so one saved as "today" still means today next month."""
     named = core.words()
     return group_screen(session, L.SidebarGroup.FILTERS, named.show_its_tasks, named.add_task_to_it,
-                        L.press_to_add_or_filter("a", key_label("/")))
+                        L.press_to_add_or_filter(L.action_letter(actions.K.NEW), key_label(L.command_letter("filter"))))
