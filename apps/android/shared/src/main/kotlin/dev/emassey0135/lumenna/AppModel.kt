@@ -86,6 +86,16 @@ class AppModel(
     /** What to draw: the view model as the app last left it. */
     val view: StateFlow<ViewModel?> = shown.asStateFlow()
 
+    /**
+     * What a shell that speaks for itself is told of each turn, on the main thread, after its
+     * view and lines are in place (`Turn::described`). A callback rather than a flow: a flow keeps
+     * only the latest, and one turn's refusal must not be lost to the next.
+     */
+    var described: ((dev.emassey0135.lumenna.app.ScreenView) -> Unit)? = null
+
+    /** What is on the screen now, with no changes (`App::screen_view`). */
+    fun screenView(): dev.emassey0135.lumenna.app.ScreenView = app.screenView()
+
     private val quiet = MutableStateFlow(0u)
     private var opening = false
 
@@ -176,6 +186,7 @@ class AppModel(
         }
         turn.files.forEach { saving.tryEmit(it) }
         turn.said.forEach(core::report)
+        described?.invoke(turn.described)
         drawn.value += 1
     }
 }

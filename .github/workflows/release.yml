@@ -384,7 +384,10 @@ jobs:
         # The App Bundles the stores take, and the APKs to install by hand. Unsigned: Play App
         # Signing and the upload key come with publishing.
         working-directory: apps/android
-        run: ./gradlew --no-daemon :app:bundleRelease :wear:bundleRelease :app:assembleRelease :wear:assembleRelease
+        run: |
+          ./gradlew --no-daemon :app:bundleRelease :wear:bundleRelease :app:assembleRelease :wear:assembleRelease :orbit:assembleRelease
+          # Sideloaded: CI has no Orbit device, so this is what Satellite reads of it.
+          orbit/check-apk.sh orbit/build/outputs/apk/release/orbit-release-unsigned.apk
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -393,6 +396,7 @@ jobs:
             apps/android/wear/build/outputs/bundle/release
             apps/android/app/build/outputs/apk/release
             apps/android/wear/build/outputs/apk/release
+            apps/android/orbit/build/outputs/apk/release
           retention-days: 30
 
   flatpak:

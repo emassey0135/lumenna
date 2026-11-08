@@ -336,6 +336,8 @@ pub struct ShellWords {
     pub action_titles: Vec<KindTitle>,
     /// What a shell that draws its own key help, prompts and buffer names says: Emacs.
     pub emacs: EmacsWords,
+    /// What the Orbit Speak's and Player's app says of its own keys.
+    pub orbit: OrbitWords,
 
     // Apple's.
     /// A form's button that keeps what was typed: "Save".
@@ -438,6 +440,21 @@ pub struct KindTitle {
     pub kind: ActionKind,
     /// Its name, in the shell's capitals: "Move Up".
     pub title: String,
+}
+
+/// What the Orbit devices' app says of its own keys: the Speak's braille keys and the Player's
+/// phone keypad, which no other shell has.
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrbitWords {
+    /// Holding star on the Player turned finding a row by letter on.
+    pub letters_on: String,
+    /// Holding star on the Player turned it off.
+    pub letters_off: String,
+    /// The Speak's keys, a sentence each, for its key help.
+    pub speak_keys: Vec<String>,
+    /// The Player's keys, a sentence each, for its key help.
+    pub player_keys: Vec<String>,
 }
 
 /// What a shell that lists its own keys, asks in its own prompts and names its own buffers
@@ -687,6 +704,32 @@ pub const ACTION_KINDS: &[ActionKind] = {
 };
 
 /// Emacs's words, its names in `c`'s capitals.
+fn orbit_words() -> OrbitWords {
+    let lines = |keys: &[&str]| keys.iter().map(|key| (*key).to_owned()).collect();
+    OrbitWords {
+        letters_on: "Finding by letter on".to_owned(),
+        letters_off: "Finding by letter off".to_owned(),
+        speak_keys: lines(&[
+            "Up and Down move through the list. Held, they go to its ends.",
+            "Right, OK or dot 8 opens the row. Right opens a folded row first.",
+            "Left or dot 7 goes back. Left folds an open row first.",
+            "Space with M lists what can be done to the row: its Move to Project, too.",
+            "While typing, Space ends a word, dot 7 deletes, and OK or dot 8 finishes.",
+            "While typing, Space with Z cancels, and Down offers what could come next.",
+        ]),
+        player_keys: lines(&[
+            "Up and Down move through the list. Held, they go to its ends.",
+            "OK opens the row. Right opens a folded row first, and Left folds an open one.",
+            "Menu lists what can be done to the row.",
+            "Back goes back.",
+            "A digit opens that row: 2 the second, 1 then 2 the twelfth, 0 the tenth.",
+            "Holding star finds rows by letter instead, typed as on a phone.",
+            "While typing, tap a digit for its letters, star changes capitals and digits, and OK finishes.",
+            "While typing, Back deletes, and held cancels.",
+        ]),
+    }
+}
+
 fn emacs_words(c: &dyn Fn(&str) -> String) -> EmacsWords {
     let name = core::NAME;
     EmacsWords {
@@ -925,6 +968,7 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         key_groups: grouped(sentence),
         action_titles: ACTION_KINDS.iter().map(|&kind| KindTitle { kind, title: c(&kind_title(kind)) }).collect(),
         emacs: emacs_words(&c),
+        orbit: orbit_words(),
         save: c("Save"),
         hide_app: c(&format!("Hide {}", core::NAME)),
         hide_others: c("Hide Others"),
