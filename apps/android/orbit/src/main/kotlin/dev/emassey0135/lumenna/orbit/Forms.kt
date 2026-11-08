@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna.orbit
 
+import dev.emassey0135.lumenna.SettingsPages
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.BlockEvent
 import dev.emassey0135.lumenna.app.Choice
@@ -59,7 +60,7 @@ class FieldEditScreen(
 
 /** The value of a [FormField] shown: the option's title where it has options. */
 private fun shownValue(field: FormField, value: String): String =
-    field.options.firstOrNull { it.id == value }?.title ?: value
+    (field.options.firstOrNull { it.id == value }?.title ?: value).ifEmpty { appWords.noneValue }
 
 /** The details of a task: its form's fields, its lines, its save button, its actions a menu away. */
 class DetailsScreen(private val id: String) : ListScreen() {
@@ -69,10 +70,24 @@ class DetailsScreen(private val id: String) : ListScreen() {
         ui.send(ShellEvent.Details(DetailsEvent.Show(id)))
     }
 
-    override fun stands(view: ViewModel): Boolean = view.details == null || view.details?.task?.id == id
+    private var saving = false
 
-    override fun leaving() {
-        if (ui.view.details?.dirty == true) ui.send(ShellEvent.Details(DetailsEvent.Save))
+    override fun stands(view: ViewModel): Boolean {
+        val details = view.details ?: return true
+        if (details.task.id != id) return false
+        if (saving) {
+            // A save refused keeps the details open with what was typed, the app's sentence said.
+            if (details.dirty) saving = false else return false
+        }
+        return true
+    }
+
+    /** Back saves what changed first; refused, it stays here to be put right. */
+    override fun beforeBack(): Boolean {
+        if (ui.view.details?.dirty != true) return false
+        saving = true
+        ui.send(ShellEvent.Details(DetailsEvent.Save))
+        return true
     }
 
     override fun rows(): List<Row> {
@@ -164,6 +179,8 @@ class BlockFormScreen : ListScreen() {
 class SettingsScreen : ListScreen() {
     override val title: String get() = titleOf("settings")
 
+    override fun loaded(view: ViewModel): Boolean = view.settings?.settings?.isNotEmpty() == true
+
     override fun resumed() {
         ui.send(ShellEvent.Settings(SettingsEvent.Open))
     }
@@ -186,7 +203,9 @@ class SettingsScreen : ListScreen() {
 
 /** One of the core's settings pages: its settings, its buttons, the store's own actions. */
 class PageScreen(private val page: SettingsPage) : ListScreen() {
-    override val title: String get() = listOf(page.title, page.caption).filter { it.isNotEmpty() }.joinToString(". ")
+    override fun loaded(view: ViewModel): Boolean = view.settings?.settings?.isNotEmpty() == true
+
+    override val title: String get() = page.title
 
     private fun shown(): List<SettingView> =
         page.keys.mapNotNull { key -> ui.view.settings?.settings?.firstOrNull { it.setting.key == key } }
@@ -208,6 +227,7 @@ class PageScreen(private val page: SettingsPage) : ListScreen() {
                 val value = setting.options.firstOrNull { it.id == setting.value }?.title ?: setting.value
                 add(Row(setting.key, listOf(setting.title, value).filter { it.isNotEmpty() }.joinToString(", "), { change(item) }))
             }
+            page.caption.takeIf { it.isNotEmpty() }?.let { add(Row("caption", it)) }
             if (page.id == "export") {
                 view.exports.forEach { export ->
                     add(Row("export-${export.format}", export.label, { ui.send(ShellEvent.Settings(SettingsEvent.Export(export.format))) }))
@@ -261,9 +281,9 @@ class PageScreen(private val page: SettingsPage) : ListScreen() {
 
 /** The paired devices, how syncing goes, and pairing another. */
 class DevicesScreen : ListScreen() {
-    private val words get() = ui.view.devices?.words
+    override val title: String get() = SettingsPages.of("devices")?.title.orEmpty()
 
-    override val title: String get() = words?.title.orEmpty()
+    override fun loaded(view: ViewModel): Boolean = view.devices != null
 
     override fun resumed() {
         ui.send(ShellEvent.Devices(DevicesEvent.Show))
@@ -279,7 +299,7 @@ class DevicesScreen : ListScreen() {
         val view = ui.view.devices ?: return emptyList()
         val lines = ui.lines?.devices.orEmpty()
         return buildList {
-            add(Row("status", view.status.ifEmpty { title }))
+            view.status.takeIf { it.isNotEmpty() }?.let { add(Row("status", it)) }
             view.list?.devices?.forEachIndexed { index, device ->
                 add(Row(device.nodeId, lines.getOrNull(index)?.text ?: device.name, null, device.offered, ActingOn.Held(Side.DEVICES, device.nodeId)))
             }

@@ -104,12 +104,10 @@ class PlaceScreen(private val place: Place, private val name: String) : ListScre
 
     override fun commands(): List<Command> = buildList {
         add(Command(titleOf(if (place is Place.Blocks) "new-block" else "new-task")) {
-            ui.pop()
             if (place is Place.Blocks) ui.send(ShellEvent.Block(BlockEvent.New(null, null))) else ui.push(QuickAddScreen())
         })
         if (place !is Place.Blocks && place !is Place.Trash && place !is Place.History) {
             add(Command(titleOf("filter")) {
-                ui.pop()
                 ui.push(FilterScreen(place))
             })
         }
@@ -179,16 +177,13 @@ class DayScreen : ListScreen() {
     override fun commands(): List<Command> = buildList {
         ui.view.day?.offered?.forEach { action ->
             add(Command(action.name) {
-                ui.pop()
                 ui.send(ShellEvent.ActOn(ActingOn.Day, action))
             })
         }
         fun move(id: String, step: DayMove) = add(Command(titleOf(id)) {
-            ui.pop()
             ui.send(ShellEvent.Day(step))
         })
         add(Command(titleOf("new-block")) {
-            ui.pop()
             ui.send(ShellEvent.Block(BlockEvent.New(null, null)))
         })
         move("previous-day", DayMove.PREVIOUS)
@@ -201,11 +196,9 @@ class DayScreen : ListScreen() {
 
 fun undoCommands(ui: Ui): List<Command> = listOf(
     Command(titleOf("undo")) {
-        ui.pop()
         ui.send(ShellEvent.Undo)
     },
     Command(titleOf("redo")) {
-        ui.pop()
         ui.send(ShellEvent.Redo)
     },
 )
@@ -253,7 +246,6 @@ class GroupScreen(private val group: SidebarGroup) : ListScreen() {
         val heading = ui.view.sidebar.firstOrNull { (it.kind as? SidebarKind.Group)?.field0 == group }
         heading?.offered?.firstOrNull { it.kind == ActionKind.NEW }?.let { action ->
             add(Command(action.name) {
-                ui.pop()
                 ui.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, heading.key), action))
             })
         }
@@ -516,7 +508,6 @@ class RemindersScreen : ListScreen() {
     override fun commands(): List<Command> = buildList {
         ui.view.reminders?.offered?.firstOrNull { it.kind == ActionKind.NEW }?.let { action ->
             add(Command(action.name) {
-                ui.pop()
                 ui.send(ShellEvent.ActOn(ActingOn.Reminders, action))
             })
         }
@@ -571,13 +562,12 @@ class DueScreen : ListScreen() {
 class KeyHelpScreen : Screen() {
     override val title: String get() = titleOf("keyboard-help")
 
-    override fun rows(): List<Row> = keyHelpLines(ui.reader.isPhoneKeypad).mapIndexed { index, text -> Row(index.toString(), text) }
+    override fun rows(): List<Row> = (if (ui.reader.isPhoneKeypad) appWords.orbit.playerKeys else appWords.orbit.speakKeys).mapIndexed { index, text -> Row(index.toString(), text) }
 }
 
-/** Replan from Now and Plan the Day: the app proposes, the person checks what to take. */
-class ProposalScreen : ListScreen(), DialogMessage {
+/** Replan from Now and Plan the Day: the app proposes, and says so; the person checks what to take. */
+class ProposalScreen : ListScreen() {
     override val title: String get() = ui.view.proposal?.words?.title.orEmpty()
-    override val message: String get() = ui.view.proposal?.announcement.orEmpty()
 
     override fun openedAs(): Opened = Opened.Dialog
 

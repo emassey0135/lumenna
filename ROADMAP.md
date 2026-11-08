@@ -222,10 +222,19 @@ A day or less each, for between the larger pieces, except the first.
     settings, read through root (`content query` of `com.orbit.settings.provider`), as Orbit's
     own apps read them: every device has Magisk with root granted to them, and Satellite to its
     own.
-  - **Open**: Iroh over Wi-Fi, and Wi-Fi in sleep, untried there; reminders through
-    Orbit's Do Not Disturb untried; the default locale is en-IN, so dates read as India writes
-    them unless set. All of it rests on unofficial behaviour an Orbit update or its SDK may change;
-    CI has no Orbit, so it is tried on the devices over adb.
+  - **Built**: `apps/android/orbit/`, drawn from the Crux app: places, the day with its blocks,
+    sittings and free time, details and the forms, assigning, Replan from Now and Plan the Day,
+    What Should I Work On?, the timer, undo, reminders and Reminders due, settings by the core's
+    pages, devices and pairing, backups, export and import, and a key help. Tried on the Speak by
+    keys sent over adb, and what Orbit said read from its log.
+  - **Open**: the keys pressed by hand on both devices (so far only injected); first-letter search
+    and the letter table to draw from the core's (`braille_letter`, `ShellEvent::Letter`,
+    `first_letter`) and the screen description from `ViewModel::screen` once they merge; Iroh over
+    Wi-Fi, and Wi-Fi in sleep, untried there; reminders through Orbit's Do Not Disturb untried; the
+    default locale is en-IN, so dates read as India writes them unless set; backups and import
+    through Android's file picker, read by Orbit rather than the app. All of it rests on unofficial
+    behaviour an Orbit update or its SDK may change; CI has no Orbit, so it is tried on the devices
+    over adb.
 - **A BrailleSense 7 app**, HIMS' Android 15 notetaker with a braille display, through the
   interfaces HIMS' own apps use, rebuilt clean-room in `~/braillesense/han-interop` on the
   BTBraille (the AIDL, the parcel's wire format and notes; never the vendor's decompiled code).

@@ -1,6 +1,6 @@
 # The Android apps
 
-Read when working in `apps/android/`: the phone and Wear OS. The root `CLAUDE.md` holds what every part of Lumenna shares; this is what is easy to get wrong here.
+Read when working in `apps/android/`: the phone, Wear OS and the Orbit devices. The root `CLAUDE.md` holds what every part of Lumenna shares; this is what is easy to get wrong here.
 
 ## The Android app
 
@@ -369,9 +369,52 @@ phone does.
   which the script passes (`device_provisioned`, `user_setup_complete`); a watch counted as
   charging brings its charging screen over the tests, so the script unplugs it.
 
+## The Orbit app
+
+`apps/android/orbit/`: the Orbit Speak and the Orbit Player (LAVA LZG403_25I and LZG403_25, Android
+11, arm64), over `shared` and the Crux app's Kotlin. Not Compose: one `TextView` for a sighted
+helper, while Orbit's screen reader voices the screens the app describes. Sideloaded, or from
+GitHub's releases; installing it needs nothing else but Satellite (its hook and launcher) on the
+device. Its identifier is the phone's `package_id` (never on the same device): not `com.orbit.`, and
+holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, run by CI and
+`release.yml`, checks what Satellite reads of an APK.
+
+- **Everything Orbit is reached through is the clean-room AIDL** (`src/main/aidl`), the screen
+  reader's in its order and never #44 (`canSpeakLanguage`), which the Player lacks: it stops before
+  it. `ServiceLink` is one bound service, each call on one ordered worker, bound anew when
+  Android's `onBindingDied` says so; `KeyClaim` takes the keys only while the window has focus (a
+  system dialog over it needs them). Written for the BrailleSense app to repeat.
+- **`OrbitReader` describes, and says only what the app says**: a list is `onFocusChanged` of a list
+  box, a move `onItemChanged`, a question `onDialogOpened` then its first answer, a row's actions
+  `onContextMenuOpened`, a line an edit box with `onEditBoxContentChanged`. Nothing is sent before
+  `onScreenReaderReady`, which Orbit calls at once when it is ready already; speech sent earlier is
+  dropped. `speakText` jumps Orbit's event queue, so what follows a description (a hint) waits a
+  moment. What is described is `describe` (`Describe.kt`), pure, tested on the JVM: a turn that only
+  redrew says nothing, and a row reworded by what the person just did is read again.
+- **Screens** (`Screens.kt`, `Forms.kt`): a stack the person moves, over the app's view. The screens
+  the app itself opens (a question, the block form, a proposal, a reminder list, the quick-add line)
+  are pushed and popped from the view each turn (`Ui.follow`), as BTSpeak's `follow`. A screen
+  describes itself only once `loaded`, so nothing says a list is empty on the way to it.
+- **Turns are posted, not collected inline**: `AppModel` sets the view, then the lines, and a
+  collector on `Main.immediate` runs between them with the last turn's lines.
+- **Keys**: `KeyDecoder` turns Orbit's bundle into a `Key`. On the Speak dot 7 is back, dot 8 open,
+  Space with M the row's menu (Satellite's convention), Space with another letter its command, a
+  letter alone a first letter. On the Player digits open rows, holding star finds by letter (T9),
+  Menu the row's menu, Back goes back. The letters' table and first-letter search are Kotlin here
+  until the core's (`ShellEvent::Letter`, `first_letter`) merge.
+- **Typing** (`LineEditor`): the Speak's cell buffer through Orbit's liblouis service, one word at a
+  time, mode 388 for each cell's echo and 132 at Space; the Player's multi-tap T9, ported from
+  Satellite's `T9Input`. Changes go to Orbit as edit-box changes, so it echoes them by the person's
+  own settings. The table comes from Orbit's settings through root (`Liblouis.readTable`).
+- **Trying it**: nothing can press Orbit's keypad over adb, so a debug build takes keys over a
+  broadcast (`DEBUG_KEY`, `am broadcast --es name DOWN --ei action 0 --ez long false --ez phone
+  false`). What Orbit said is in its log (`setprop log.tag D`, then `olympus_SpeechManager`'s
+  `sequence items`). Wake a sleeping device first (`input keyevent KEYCODE_WAKEUP`), or the window
+  has no focus and nothing is claimed. The real keys, by hand, are still to be tried.
+
 ## CI
 
-`android-build` builds once, checks 16 KB alignment and builds the core optimized
+`android-build` builds every app once, runs the JVM tests, the Orbit APK's `check-apk.sh`, checks 16 KB alignment and builds the core optimized
 (`LUMENNA_CORE_PROFILE`), then a phone, a desktop-sized emulator and a Wear OS watch run
 `run-instrumented-tests.sh` from that build, on Android 36: every Android 37 image crashes its
 display server on the runners' software renderer. The test jobs need no Rust.

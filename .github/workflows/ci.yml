@@ -664,7 +664,11 @@ jobs:
         # The release builds too, shrunk by R8, which only they run: a rule it refuses or a
         # class it cannot find would otherwise be found at release. The core is the same build.
         # Then the JVM tests, which need no emulator.
-        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :wear:assembleDebug :wear:assembleDebugAndroidTest :app:assembleRelease :wear:assembleRelease :shared:testDebugUnitTest :app:testDebugUnitTest
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :wear:assembleDebug :wear:assembleDebugAndroidTest :orbit:assembleDebug :app:assembleRelease :wear:assembleRelease :orbit:assembleRelease :shared:testDebugUnitTest :app:testDebugUnitTest :orbit:testDebugUnitTest
+      - name: The Orbit app as Satellite reads it
+        # CI has no Orbit device: what it can check is what Satellite's hook and launcher read.
+        working-directory: apps/android
+        run: orbit/check-apk.sh orbit/build/outputs/apk/release/orbit-release-unsigned.apk
       - name: Ready for 16 KB pages
         # Every native library must load at 16 KB boundaries, and sit 16 KB aligned in the
         # APK, or a 16 KB-page device refuses it. An x86_64 emulator emulates 16 KB pages,

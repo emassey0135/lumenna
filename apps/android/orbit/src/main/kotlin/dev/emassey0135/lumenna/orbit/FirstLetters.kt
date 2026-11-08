@@ -3,6 +3,7 @@ package dev.emassey0135.lumenna.orbit
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import dev.emassey0135.lumenna.appWords
 import java.util.Locale
 
 /**
@@ -78,7 +79,7 @@ class FirstLetters(private val ui: Ui) {
             Key.StarHeld -> {
                 reset()
                 letters = !letters
-                ui.say(if (letters) appLettersOn() else appLettersOff())
+                ui.say(if (letters) appWords.orbit.lettersOn else appWords.orbit.lettersOff)
             }
             is Key.DigitHeld -> if (letters) {
                 t9.commitNow()
@@ -91,10 +92,6 @@ class FirstLetters(private val ui: Ui) {
         }
         return true
     }
-
-    private fun appLettersOn(): String = "letter navigation on"
-
-    private fun appLettersOff(): String = "letter navigation off"
 
     private fun digit(digit: Int, screen: Screen) {
         main.removeCallbacks(openNumber)

@@ -38,7 +38,8 @@ android {
 
     lint {
         // Android 11 is what these devices run; this app is sideloaded or from GitHub's releases.
-        disable += setOf("ExpiredTargetSdkVersion", "OldTargetApi")
+        // The activity is a ComponentActivity: there is no Fragment to be too old.
+        disable += setOf("ExpiredTargetSdkVersion", "OldTargetApi", "InvalidFragmentVersionForActivityResult")
     }
 
     testOptions {

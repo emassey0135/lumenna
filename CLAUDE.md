@@ -52,7 +52,8 @@ apps/btspeak/   the BTSpeak app, in Python, over the app in-process (crates/ffi)
 apps/emacs/     the Emacs client, in Elisp, drawing the Crux app over `lum rpc` or the profile's
                 socket, a screen per buffer.
 apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (app/), Wear OS
-                (wear/), and what they share (shared/).
+                (wear/), what they share (shared/), and the Orbit Speak and Player (orbit/),
+                which draw no Compose: they describe their screens to Orbit's screen reader.
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
                 between them.
 apps/windows/   the Win32 app, over the Crux app (crates/ffi, linked as Rust).

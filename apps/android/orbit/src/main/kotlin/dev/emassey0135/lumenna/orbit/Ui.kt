@@ -6,6 +6,7 @@ import android.widget.TextView
 import dev.emassey0135.lumenna.AppModel
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.app.ActingOn
+import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.Lines
 import dev.emassey0135.lumenna.app.Offered
 import dev.emassey0135.lumenna.app.Question
@@ -51,6 +52,9 @@ abstract class Screen {
 
     /** The row the app has in hand here, by [Row.key]; null keeps the place by key or position. */
     open fun inHand(): String? = null
+
+    /** Back was pressed: true if the screen keeps it for now (a save that may be refused). */
+    open fun beforeBack(): Boolean = false
 
     /** The person moved to [row]: the app is told, so its details and commands follow. */
     open fun moved(row: Row) {}
@@ -137,10 +141,19 @@ class Ui(
     /** Back, from the keys: a screen with the app's state puts it away as it leaves. */
     fun back() {
         finder.reset()
+        val screen = top ?: return
+        if (screen.beforeBack()) return
         if (stack.size > 1) pop() else finish()
     }
 
-    fun send(event: ShellEvent) = app.send(event)
+    fun send(event: ShellEvent) {
+        expectingChange = true
+        app.send(event)
+    }
+
+    /** What the person just did may reword the row they are on: the next turn says it if it did. */
+    private var expectingChange = false
+    private var lastItem = ""
 
     fun say(text: String) {
         if (text.isNotBlank()) reader.speakQueued(text)
@@ -195,6 +208,8 @@ class Ui(
             described = null
         }
         v.asking?.let { asking ->
+            // Open already, under something it opened (its completions).
+            if (stack.any { (it as? AskingScreen)?.number == asking.number } && top !is AskingScreen) return
             val open = top as? AskingScreen
             if (open == null || open.number != asking.number) {
                 if (asking.question is Question.Form) {
@@ -209,8 +224,10 @@ class Ui(
             }
             return
         }
-        if (v.blockForm != null && top !is BlockFormScreen) pushApp(BlockFormScreen())
-        if (v.proposal != null && top !is ProposalScreen) pushApp(ProposalScreen())
+        // Only when none is open: a field being typed sits above the form.
+        if (v.line != null && stack.none { it is QuickAddScreen }) pushApp(QuickAddScreen())
+        if (v.blockForm != null && stack.none { it is BlockFormScreen }) pushApp(BlockFormScreen())
+        if (v.proposal != null && stack.none { it is ProposalScreen }) pushApp(ProposalScreen())
         if (v.reminders != null && stack.none { it is RemindersScreen }) pushApp(RemindersScreen())
     }
 
@@ -380,9 +397,13 @@ class Ui(
             if (rows.isNotEmpty()) append("\n\n").append(screen.index + 1).append(" of ").append(rows.size)
         }
         val newlyShown = described !== screen
+        // The row in hand reworded by what the person just did (a toggle, a field saved).
+        val reworded = why == Why.Turn && !newlyShown && expectingChange && item != lastItem
+        if (why == Why.Turn) expectingChange = false
         described = screen
+        lastItem = item
         val shown = Shown(screen.title, rows.size, screen.index, item, screen.openedAs(), screen.dialogMessage(), screen.empty)
-        describe(newlyShown, why, before != screen.index, shown).forEach(reader::perform)
+        describe(newlyShown, why, before != screen.index || reworded, shown).forEach(reader::perform)
     }
 
     /** What a dialog screen says of itself; a screen that is one overrides it. */
@@ -479,18 +500,39 @@ private class EditOutput(private val reader: OrbitReader) : LineEditor.Output {
         reader.editChanged(name, content, cursor, "t9_mode_changed:$mode")
 }
 
-/** Commands from Space with a letter; the core's table, once merged (`ShellEvent::Letter`). */
+/**
+ * Commands from Space with a letter: the first kind the row in hand offers of a letter's kinds,
+ * refused in the core's words otherwise. Until the core's own table (`ShellEvent::Letter`) is here.
+ * Space with M is the row's menu (Satellite's), so it runs nothing here.
+ */
 object LetterCommands {
+    private val kinds: Map<Char, List<ActionKind>> by lazy {
+        mapOf(
+            'c' to listOf(ActionKind.MARK_DONE, ActionKind.MARK_NOT_DONE, ActionKind.COLOUR),
+            'e' to listOf(ActionKind.EDIT, ActionKind.EDIT_TASK),
+            'b' to listOf(ActionKind.PUT_IN_BLOCK),
+            's' to listOf(ActionKind.START_TIMER, ActionKind.PAUSE_TIMER, ActionKind.RESUME_TIMER, ActionKind.MAKE_SUBTASK_OF),
+            't' to listOf(ActionKind.STOP_TIMER, ActionKind.MOVE_TO_TOP_LEVEL),
+            'w' to listOf(ActionKind.WAIT_FOR, ActionKind.WEIGHT),
+            'n' to listOf(ActionKind.STOP_WAITING, ActionKind.NEW_INSIDE),
+            'r' to listOf(ActionKind.RESTORE, ActionKind.RENAME, ActionKind.REMINDERS),
+            'i' to listOf(ActionKind.ASSIGN_TASK),
+            'x' to listOf(ActionKind.CANCEL_DAY),
+            'o' to listOf(ActionKind.RESTORE_DAY),
+            'l' to listOf(ActionKind.PLANNED_LENGTH),
+            'a' to listOf(ActionKind.ADD_BLOCK),
+            'f' to listOf(ActionKind.CARRY_FORWARD, ActionKind.CARRY_REST),
+            'q' to listOf(ActionKind.CHANGE_QUERY),
+        )
+    }
+
     fun run(ui: Ui, letter: Char) {
         when (letter) {
-            'c' -> ui.key("mark-done")
-            'e' -> ui.key("properties")
-            'b' -> ui.key("put-in-block")
             'd' -> ui.key("delete")
             'u' -> ui.send(ShellEvent.Undo)
             'y' -> ui.send(ShellEvent.Redo)
-            'n' -> ui.key("new-task")
-            else -> ui.refuse()
+            'h' -> ui.push(KeyHelpScreen())
+            else -> kinds[letter]?.let { ui.send(ShellEvent.Run(it)) } ?: ui.refuse()
         }
     }
 }

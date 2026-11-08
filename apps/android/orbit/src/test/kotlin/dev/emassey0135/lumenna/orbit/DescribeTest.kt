@@ -31,13 +31,16 @@ class DescribeTest {
 
     @Test fun aQuestionOpensAsADialog() {
         val question = list.copy(title = "Delete?", item = "Yes", opened = Opened.Dialog, message = "This cannot be undone")
-        assertEquals(listOf(ReaderCall.Dialog("Delete?", "This cannot be undone", "Yes")), describe(true, Why.Entered, false, question))
+        assertEquals(
+            listOf(ReaderCall.Dialog("Delete?", "This cannot be undone", "Yes"), ReaderCall.ItemChanged("Delete?", 3, 1, "Yes")),
+            describe(true, Why.Entered, false, question),
+        )
     }
 
     @Test fun aRowsActionsOpenAsAContextMenuThenTheirList() {
         val menu = list.copy(title = "Pay rent", item = "Mark done", opened = Opened.ContextMenu)
         assertEquals(
-            listOf(ReaderCall.ContextMenu("Pay rent"), ReaderCall.FocusList("Pay rent", 3, 1, "Mark done")),
+            listOf(ReaderCall.ContextMenu("Pay rent"), ReaderCall.ItemChanged("Pay rent", 3, 1, "Mark done")),
             describe(true, Why.Entered, false, menu),
         )
     }

@@ -42,8 +42,10 @@ fun describe(newlyShown: Boolean, why: Why, moved: Boolean, shown: Shown): List<
                 // Said once: a heading that already says the list is empty needs no repeat.
                 if (shown.count == 0 && shown.empty !in shown.title) add(ReaderCall.Say(shown.empty))
             }
-            Opened.Dialog -> listOf(ReaderCall.Dialog(shown.title, shown.message, shown.item))
-            Opened.ContextMenu -> listOf(ReaderCall.ContextMenu(shown.title), focus)
+            // Orbit says the dialog; the answer in hand is then an item of its list.
+            Opened.Dialog -> listOf(ReaderCall.Dialog(shown.title, shown.message, shown.item), change)
+            // Orbit has said the menu is open; the first choice is then an item, not a named list.
+            Opened.ContextMenu -> listOf(ReaderCall.ContextMenu(shown.title), change)
             Opened.Silent -> emptyList()
         }
         why == Why.Moved || why == Why.Landed -> listOf(change)
