@@ -62,6 +62,16 @@ contract with every shell; this is how the app keeps it.
   pairing waits, and an overrun's Replan dismissing it once something is replanned. A place
   gone back to opens as `Screen::left` keeps it. Applying a proposal is a `HostRequest`, since
   the host checks the day has not moved.
+- **A letter is the core's** (`braille.rs`): `Event::Letter` runs the row's action of that
+  letter, the shared table's command where `ACTION_COMMANDS` names one, a row with several of
+  the kind asking which (`Purpose::Which`), else the reminder list's own, the day's and the
+  place's own (`place_commands`); only the screen in front's, so a side list does not fall back
+  to the place behind it. Refusals go through `refuse`, so `Announce::refusal` is set
+  (`screen::ScreenChange::Refused`). `Event::FindLetter` searches row *names* (`Screen::names`):
+  a day's line starts with a time, so a block is found by what it is called.
+- **The screen is built beside the lines** (`screen.rs`, `Turn::described`), not on the view: a
+  row's line is the device's clock's, and what changed needs the view before (`deliver`'s
+  `drawn`).
 - **Every turn carries its screen's lines** (the ffi's `deliver`, the web's core), and a day
   newly shown (`Shell::Heading`) is said as "<day>. <summary>" (`speech::summary`) before it
   reaches the shell.

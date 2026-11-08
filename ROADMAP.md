@@ -146,34 +146,18 @@ A day or less each, for between the larger pieces, except the first.
     watch polls over plain HTTPS, the one networking watchOS allows.
 - **Wear OS**, on a real watch: rotary scrolling with TalkBack, and pairing over the network.
 - **Toolchain**: unpinned.
-- **A braille device's letters are the core's**, before either device app below: a letter per
-  action as a table in `lumenna_app::keys` beside the keyboard's (the BTSpeak app's `KEYS` moved
-  there), so every braille device runs the same letter to the same action. The day's, the
-  settings pages' and the settings buttons' letters go too (`DAY_KEYS`, `PAGE_KEYS`,
-  `BUTTON_KEYS`). Only how a letter is pressed differs: the BTSpeak app keeps its own
-  convention, a letter as it has it now; the Orbit Speak and the BrailleSense take **Space with
-  the letter** for the command and **the letter alone for first-letter navigation**. The table
-  is keyed by letter, since the BTSpeak hands its app letters. A device that reports dots (the
-  Orbit Speak by a chord's name, the BrailleSense as a bitmask) turns them into a letter through
-  the core's own dots for a to z, never the person's table, so no contracted table reads Z alone
-  as "as" and neither app needs liblouis to run a command.
-- **What the three braille apps share is the app's** (`lumenna_app`), not a library of theirs,
-  since the BTSpeak's is Python. Beside the letters:
-  - **First-letter search** over a list's lines: from the row in hand on, wrapping round,
-    passing folded rows, in the order shown. Satellite's `ListFinder` and the BTSpeak's dialogs
-    each have their own now.
-  - **The screen, for a shell that speaks for itself.** Where a platform's screen reader
-    decides what to say as something changes, these three decide it themselves, so the app says
-    it once: what is shown (a list with its name, the row in hand and its place, "3 of 12"; a
-    question with its prompt, what is typed and its buttons; a row's actions) and what changed
-    since the last turn (a place entered, a move, only when `landing` rose; a question opened; a
-    refusal). The Orbit app hands it to Orbit's screen reader as its calls, the BrailleSense app
-    speaks it and puts it on the cells, and the BTSpeak app, whose dialogs do much of it already,
-    takes what it lacks.
-  - **Each app's own**: typing (the BTSpeak's input, Orbit's liblouis buffer, the
-    BrailleSense's input method), the output and its service, and panning a line across the
-    cells, until the BrailleSense shows whether its output service pans by itself
-    (`displayBrailleWordWrap`, `setCurrentCellLine`) or a second device with cells needs it.
+- **Done, in the core** (`lumenna_app::braille` and `screen`; the root `CLAUDE.md`): the letters
+  (`Event::Letter`, `action_letter` and friends), dots to a letter (`braille_letter`), first-letter
+  search (`Event::FindLetter`, `first_letter`) and the screen for a shell that speaks for itself
+  (`Turn::described`). Only how a letter is pressed differs: the Orbit Speak and the BrailleSense
+  take **Space with the letter** for the command and **the letter alone for first-letter
+  navigation**. Their dots give a to z alone (no `,`, `.`, `/`), so Move Up, Move Down and the
+  filter are their own keys or their row's actions there.
+- **What the three braille apps still each have to themselves**:
+  - Typing (the BTSpeak's input, Orbit's liblouis buffer, the BrailleSense's input method), the
+    output and its service, and panning a line across the cells, until the BrailleSense shows
+    whether its output service pans by itself (`displayBrailleWordWrap`, `setCurrentCellLine`)
+    or a second device with cells needs it.
   - **Between the two Android apps**, only a little Kotlin: one ordered worker for the service's
     calls, rebound when it dies; the keys and the display claimed on resume and let go on pause;
     a decoded key handed to the app. Written for the Orbit app first, and lifted into a small

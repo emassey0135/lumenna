@@ -1,7 +1,7 @@
 """Settings, devices and sync, and getting data in and out.
 
 Laid out in the core's pages, as every app lays them out (`SettingsView.pages`): what each holds,
-its caption and its buttons are the core's, its letter this app's. Each setting is offered the way its value is
+its caption, its buttons and its letter are the core's. Each setting is offered the way its value is
 shaped — a choice where there are only a few, a line of text where the core reads a phrase —
 and the core checks every one of them, so nothing here does. The settings, the devices and
 pairing are the app's (`ViewModel::settings`, `devices`), opened as their pages open and put
@@ -25,13 +25,6 @@ from rows import Row, items
 from session import REFRESH, Command, Session, choose, command_title, confirm, live_menu, screen, sentences
 from tasks import undo_commands
 
-
-#: This app's letter for each of the core's settings pages (`SettingsPage.id`), as it has
-#: always had them.
-PAGE_KEYS = {"general": "g", "planning": "p", "reminders": "m", "devices": "d", "backups": "b", "export": "e"}
-
-#: This app's letter for each of a page's buttons (`SettingsButton.id`), on the page's main menu.
-BUTTON_KEYS = {"sync-now": "s", "pair": "p", "back-up": "b", "restore-backup": "r", "import": "i"}
 
 #: How long a sync round may take before it is given up on: a device that cannot be reached
 #: takes a while to give up on.
@@ -91,13 +84,13 @@ def settings(session: Session) -> str:
         shown = {setting.setting.key for setting in shown_settings(session)}
         menu = [
             dialogs.DynamicMenuItem(
-                title=page.title, shortcut=PAGE_KEYS.get(page.id, ""), hint=page.description or None,
+                title=page.title, shortcut=L.page_letter(page.id) or "", hint=page.description or None,
                 action=lambda page_id=page.id: open_page(session, page_id),
             )
             for page in pages(session)
             if page.buttons or page.id == "export" or any(key in shown for key in page.keys)
         ]
-        menu.append(dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut="r", action=toggle_read_back))
+        menu.append(dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut=L.command_letter("read-back"), action=toggle_read_back))
         dialogs.dynamic_menu(menu, title=command_title("settings"))
     return ""
 
@@ -113,10 +106,10 @@ def open_page(session: Session, page_id: str) -> str:
 
 
 def button_commands(session: Session, page) -> list[Command]:
-    """A page's buttons, the core's, as its main menu's commands, each with this app's letter."""
+    """A page's buttons, the core's, as its main menu's commands, each with the core's letter."""
     runs = {"sync-now": sync_now, "pair": pair, "back-up": back_up, "restore-backup": restore, "import": import_file}
     return [
-        Command(button.title, lambda _, run=runs[button.id]: run(session), key=BUTTON_KEYS.get(button.id, ""))
+        Command(button.title, lambda _, run=runs[button.id]: run(session), key=L.button_letter(button.id) or "")
         for button in (page.buttons if page is not None else [])
         if button.id in runs
     ]
@@ -269,7 +262,7 @@ def devices(session: Session) -> str:
             context=lambda rows: actions.commands(session, rows),
             app=button_commands(session, page),
             # The status heading already says nothing is paired; the empty list adds only the key.
-            empty=L.press_to_pair("p"),
+            empty=L.press_to_pair(L.button_letter("pair")),
             app_title=L.menu_of(page.title),
             focus=lambda: session.view().devices_held.focus,
         )

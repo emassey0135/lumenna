@@ -277,6 +277,24 @@ directly (8805659 is the last commit before the move). How the app works inside 
   An overrun never sends `ProposalEvent::Replan`. A reminder dealt with elsewhere leaves the list
   once the store says so, at the next look for reminders as at the next tick; a summary of what was
   missed refuses Snooze in the core's words.
+- **A braille device's letters are the core's** (`lumenna_app::braille`): a letter per kind of
+  action (`action_letter`), per settings page and button (`page_letter`, `button_letter`), per
+  reminder's button (`due_letter`), per screen's own command (`command_letter`, `place_commands`,
+  `braille_main_menu`), each asked for over the FFI by what a shell already holds: a shell shows
+  it beside the thing, and presses it with `Event::Letter`, which runs the row's action of that
+  letter (the shared table's command where it has one, asking which where a row has several),
+  else the reminder list's, the day's or the place's own, else says why. Only how a letter is
+  pressed differs: a BTSpeak hands its app letters, the Orbit Speak and the BrailleSense press
+  Space with one. A device reporting dots turns them into a letter by `braille_letter`, the
+  core's own a to z and never the person's table: dot 7 or 8 in a chord is no letter. A letter
+  alone is `Event::FindLetter` (first-letter moving; `first_letter` for a list a shell draws).
+  Erase Permanently has no letter.
+- **What a shell that speaks for itself needs is the core's** (`lumenna_app::screen`,
+  `Turn::described`, `App::screen_view`): what is shown (a list with its name, the row in hand's
+  line, its place, "3 of 12", and its actions with their letters; a question with its prompt,
+  typed text, buttons; a form's name) and what changed since the turn before (`ScreenChange`:
+  entered, a move only when `landing` rose, a question asked, a refusal). A refusal also marked
+  on `Announce::refusal`, so a shell can mark it apart from what else is said.
 - **Erasing permanently is never what deleting does**: a trashed task's Erase Permanently
   (`ErasePermanently`) is a menu away, after Delete from Trash, and no key runs it. It begins the
   store's history again without what it erased, on every device (`crates/store/CLAUDE.md`).

@@ -761,6 +761,24 @@ pub const ID: &str = env!("LUMENNA_ID");
 /// The identifier Apple's bundles and Android's packages build on.
 pub const PACKAGE_ID: &str = env!("LUMENNA_PACKAGE_ID");
 
+/// What a list says of where its row in hand is: "3 of 12".
+#[must_use]
+pub fn place_in_list(at: usize, of: usize) -> String {
+    format!("{at} of {of}")
+}
+
+/// What is said when no row's line starts with the letter pressed.
+#[must_use]
+pub fn no_row_starts_with(letter: &str) -> String {
+    format!("No row starts with {letter}.")
+}
+
+/// What is said of a letter that runs nothing on this screen.
+#[must_use]
+pub fn nothing_on_letter(letter: &str) -> String {
+    format!("Nothing here runs on {letter}.")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

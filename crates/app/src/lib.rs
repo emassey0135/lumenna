@@ -24,6 +24,7 @@
 
 mod asking;
 pub mod blockform;
+pub mod braille;
 pub mod capitals;
 pub mod held;
 pub mod keys;
@@ -40,6 +41,7 @@ mod model;
 pub mod network;
 pub mod outline;
 pub mod proposal;
+pub mod screen;
 pub mod settings;
 pub mod shell;
 pub mod speech;
@@ -82,6 +84,10 @@ pub struct Announce {
     pub heading: bool,
     /// The screen that says it: where focus is about to land.
     pub screen: ScreenId,
+    /// Whether it says why something was refused: a letter or a key a row does not offer. A
+    /// shell that speaks for itself marks it (`screen::ScreenChange::Refused`).
+    #[serde(default)]
+    pub refusal: bool,
 }
 
 impl crux_core::capability::Operation for Announce {
@@ -195,6 +201,15 @@ pub enum Event {
     /// ("delete"): it runs what the table says that key runs (`keys::runs`), so the key does
     /// the same on every platform, as [`Run`](Self::Run) would with those kinds.
     Key(String),
+    /// A braille device's letter pressed (Space with the letter, or the letter itself on a
+    /// BTSpeak): runs what that letter runs on the row in hand (`braille`), the shared table's
+    /// command where the table names one, else the row's action of that kind, else the screen's
+    /// own; one that runs nothing here says why. The same letter does the same on every device.
+    Letter(String),
+    /// Move the main list's row in hand to the next row, in the order shown and wrapping round,
+    /// whose name starts with this letter (`braille::first_letter`); folded rows are passed. The
+    /// row moves as the app moving it (`landing` rises); with none found, the core says so.
+    FindLetter(String),
     /// The answer to the question open.
     Answer(Answer),
     /// Leave the question open unanswered.
@@ -293,7 +308,16 @@ pub(crate) fn say(text: impl Into<String>) -> Command<Effect, Event> {
     if text.is_empty() {
         return Command::done();
     }
-    Command::notify_shell(Announce { text, heading: false, screen: 0 }).into()
+    Command::notify_shell(Announce { text, heading: false, screen: 0, refusal: false }).into()
+}
+
+/// [`say`], saying why something was refused: a shell that speaks for itself marks it.
+pub(crate) fn refused(text: impl Into<String>) -> Command<Effect, Event> {
+    let text = text.into();
+    if text.is_empty() {
+        return Command::done();
+    }
+    Command::notify_shell(Announce { text, heading: false, screen: 0, refusal: true }).into()
 }
 
 pub(crate) fn host(request: HostRequest) -> Command<Effect, Event> {
@@ -574,7 +598,7 @@ impl Lumenna {
                 model.due_held.hold(id, &keys);
             }
             Event::ActOn(ActingOn::Row(_), _) => {}
-            Event::Perform(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) | Event::Key(_) => {}
+            Event::Perform(_) | Event::Answer(_) | Event::Cancel | Event::Run(_) | Event::Key(_) | Event::Letter(_) => {}
             other if other.is_the_persons() => model.acting = None,
             _ => {}
         }
@@ -642,6 +666,8 @@ impl Lumenna {
             Event::Perform(action) => self.perform(action, model),
             Event::Run(kinds) => self.run(kinds, model),
             Event::Key(id) => self.command(&id, model),
+            Event::Letter(letter) => self.letter(&letter, model),
+            Event::FindLetter(letter) => self.find_letter(&letter, model),
             Event::ActOn(on, offered) => self.act_on(on, &offered, model),
             Event::Answer(answer) => self.answer(answer, model),
             Event::Cancel => {

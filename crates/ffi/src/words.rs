@@ -8,9 +8,10 @@ use lumenna_app::Capitals;
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
+use lumenna_app::braille::LetterCommand;
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
-use lumenna_records::Candidate;
+use lumenna_records::{ActionKind, Candidate};
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
 #[export]
@@ -395,4 +396,75 @@ pub fn press_mac_keys(keeps: String) -> String {
 #[export]
 pub fn lasts(minutes: u32) -> String {
     w::lasts(minutes)
+}
+
+/// The core's own letter for a chord of dots (dot 1 = bit 0 … dot 8 = bit 7), a to z. A chord with
+/// dot 7 or dot 8 is no letter: those dots are a device's own keys. Never the person's table.
+#[export]
+pub fn braille_letter(dots: u8) -> Option<String> {
+    lumenna_app::braille::braille_letter(dots).map(|letter| letter.to_string())
+}
+
+/// Where the next line starting with `letter` is, from the line after `from` on, wrapping round
+/// and ending back at `from`; a line `hidden` says is folded away is passed. For a list a shell
+/// draws itself.
+#[export]
+pub fn first_letter(lines: Vec<String>, hidden: Vec<bool>, from: u32, letter: String) -> Option<u32> {
+    lumenna_app::braille::first_letter(&lines, &hidden, from as usize, &letter).map(|at| u32::try_from(at).unwrap_or(u32::MAX))
+}
+
+/// A kind of action's letter on a braille device, none for one no letter runs.
+#[export]
+pub fn action_letter(kind: ActionKind) -> Option<String> {
+    lumenna_app::braille::action_letter(kind).map(str::to_owned)
+}
+
+/// A settings page's letter on a braille device, by `SettingsPage::id`.
+#[export]
+pub fn page_letter(id: String) -> Option<String> {
+    lumenna_app::braille::page_letter(&id).map(str::to_owned)
+}
+
+/// A settings page's button's letter on a braille device, by `SettingsButton::id`.
+#[export]
+pub fn button_letter(id: String) -> Option<String> {
+    lumenna_app::braille::button_letter(&id).map(str::to_owned)
+}
+
+/// A reminder's button's letter on a braille device, by `DueButton::id`.
+#[export]
+pub fn due_letter(id: String) -> Option<String> {
+    lumenna_app::braille::due_letter(&id).map(str::to_owned)
+}
+
+/// A screen's own command's letter, by the shared table's `id` or `projects`, `labels`,
+/// `filters`, `reminders-due`, `add-task-in`, `new-project-inside`, `read-back`.
+#[export]
+pub fn command_letter(id: String) -> Option<String> {
+    lumenna_app::braille::command_letter(&id).map(str::to_owned)
+}
+
+/// What `place` itself offers on a braille device besides its rows, each with its letter.
+#[export]
+pub fn place_commands(place: Place, sentence: bool) -> Vec<LetterCommand> {
+    lumenna_app::braille::place_commands(&place, sentence)
+}
+
+/// A braille device's main menu: the places, then adding, undo and redo, reminders, syncing and
+/// settings, each with its letter.
+#[export]
+pub fn braille_main_menu(sentence: bool) -> Vec<LetterCommand> {
+    lumenna_app::braille::main_menu(sentence)
+}
+
+/// What is said when no row's line starts with the letter pressed.
+#[export]
+pub fn no_row_starts_with(letter: String) -> String {
+    lumenna_records::words::no_row_starts_with(&letter)
+}
+
+/// What is said of a letter that runs nothing on this screen.
+#[export]
+pub fn nothing_on_letter(letter: String) -> String {
+    lumenna_records::words::nothing_on_letter(&letter)
 }

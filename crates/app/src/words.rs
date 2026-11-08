@@ -110,6 +110,8 @@ pub struct ShellWords {
     pub read_back: ReadBackWords,
     /// The shortcuts from anywhere.
     pub hotkeys: HotKeyWords,
+    /// A braille device's own screens and key help.
+    pub braille: BrailleWords,
     /// Yes and No, for a question a shell asks as a choice of the two.
     pub yes_no: Vec<Choice>,
 
@@ -395,6 +397,27 @@ pub struct ShellWords {
     /// The devices page, where a short title is wanted (a bar's one line, which the page's
     /// "Devices and Sync" overflows at large text sizes): "Devices".
     pub devices: String,
+}
+
+/// A braille device's own screens' names and its key help's headings: what Orbit's and the
+/// BrailleSense's apps would otherwise each write.
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrailleWords {
+    /// The main menu's name: "Main menu".
+    pub main_menu: String,
+    /// A row's menu of its actions: "Actions".
+    pub actions_menu: String,
+    /// A key help's name: "Key help".
+    pub key_help: String,
+    /// Its heading over the commands pressed with Space: "Space with a letter".
+    pub with_space: String,
+    /// Its heading over first-letter moving: "A letter by itself".
+    pub letter_alone: String,
+    /// What first-letter moving does, said under that heading.
+    pub finds_a_row: String,
+    /// Its heading over the keys that move and open: "Moving and opening".
+    pub moving: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -780,6 +803,15 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         folder: folder_words(this_device, sentence),
         read_back: read_back_words(sentence),
         hotkeys: hotkey_words(),
+        braille: BrailleWords {
+            main_menu: c("Main Menu"),
+            actions_menu: c("Actions"),
+            key_help: c("Key Help"),
+            with_space: c("Space with a Letter"),
+            letter_alone: c("A Letter by Itself"),
+            finds_a_row: "Moves to the next row starting with that letter.".to_owned(),
+            moving: c("Moving and Opening"),
+        },
         yes_no: lumenna_records::fields::yes_no(),
 
         cancel: core::cancel(sentence),

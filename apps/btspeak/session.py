@@ -229,21 +229,21 @@ class Command:
     `key` is a lowercase letter that does the same from the list, as the device's own apps
     have them; the menus say it after the label. A capital letter, Dot 7 with the letter, still
     moves to the next row starting with it. `applies` says which rows a context command is for;
-    `deletes` makes it what the delete keys do — Control-D and the D chord. `by_key`, when
-    given, is what the letter does instead of `run`: asking which, where a row has several.
-    `refuse(row)`, when given, says why the letter does nothing on a row it does not apply to.
-    A command that is not `listed` is only what its keys do, never an entry of the menu.
+    `deletes` makes it what the delete keys do — Control-D and the D chord. A command `through`
+    the app is pressed as the core's letter (`actions.letter`, the app deciding what it runs on
+    the row and why it runs nothing there); one that is not runs `run` itself: this app's own,
+    or a dialog of its own. A command that is not `listed` is only what its keys do, never an
+    entry of the menu.
     """
 
-    def __init__(self, label, run, key: str = "", applies=None, deletes: bool = False, by_key=None,
-                 refuse=None, listed: bool = True) -> None:
+    def __init__(self, label, run, key: str = "", applies=None, deletes: bool = False, through: bool = False,
+                 listed: bool = True) -> None:
         self.label = label
         self.run = run
         self.key = key
         self.applies = applies or (lambda row: True)
         self.deletes = deletes
-        self.by_key = by_key or run
-        self.refuse = refuse
+        self.through = through
         self.listed = listed
 
     def label_for(self, row) -> str:
@@ -328,7 +328,7 @@ def live_menu(
             # A heading says more than a name (a list's readback after it), so the screen names
             # its menu; a title cut at its first comma broke a name like "Work, home".
             app_menu_title=app_title or native().menu_of(heading),
-            global_keys=keys(here, offered),
+            global_keys=keys(session, here, offered),
             empty_message=empty() if callable(empty) else (words().nothing_here if empty is None else empty),
         )
         nudged = bool(moved and moved(clear=True))
@@ -403,23 +403,25 @@ def selected_row(dialog):
     return None
 
 
-def keys(context, app):
-    """The letters, each running the first command it names that applies here: one for the
-    row under the cursor first, then one for the screen. A letter that does neither says why,
-    rather than leave the person guessing."""
+def keys(session, context, app):
+    """The letters this screen's commands use, each pressed as the core's letter (`actions.letter`):
+    the app says what it runs on the row, or why it runs nothing there, the same on every braille
+    device. What this app runs itself (`Command.through` unset: a menu of its own) runs here, a
+    row's first, then the screen's."""
     letters = {command.key for command in [*context, *app] if command.key}
 
     def run(key, item):
+        import actions  # here: actions imports this module
+
         row = row_of(item)
         for command in context:
-            if command.key == key and row is not None and command.applies(row):
-                return command.by_key(row)
+            if command.key == key and not command.through and row is not None and command.applies(row):
+                return command.run(row)
+        if any(command.key == key and command.through for command in [*context, *app]):
+            return actions.letter(session, key, row)
         for command in app:
-            if command.key == key:
+            if command.key == key and not command.through:
                 return command.run(None)
-        for command in context:
-            if command.key == key and command.refuse is not None:
-                return command.refuse(row)
         return ""
 
     return {key: (lambda item, key=key: run(key, item)) for key in letters}
