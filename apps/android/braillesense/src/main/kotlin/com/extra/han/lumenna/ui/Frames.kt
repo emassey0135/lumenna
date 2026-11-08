@@ -263,6 +263,14 @@ class FormFrame(
         return true
     }
 
+    private fun jump(to: Int): Boolean {
+        if (controls.isNotEmpty()) {
+            index = to
+            current?.let(moved)
+        }
+        return true
+    }
+
     override fun routed(at: Int) {
         val control = current
         if (control is Control.Edit) control.editor.route(at)
@@ -273,6 +281,8 @@ class FormFrame(
         when (key) {
             Key.Tab -> return move(+1)
             Key.ShiftTab -> return move(-1)
+            Key.First -> if (current !is Control.Edit) return jump(0)
+            Key.Last -> if (current !is Control.Edit) return jump(controls.lastIndex)
             else -> {}
         }
         return when (val control = current) {

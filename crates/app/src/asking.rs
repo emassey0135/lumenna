@@ -257,6 +257,7 @@ impl Lumenna {
                     open.purpose = Purpose::Action(action.clone());
                 }
                 open.number = 0;
+                open.typed = None;
                 render().and(say(said))
             }
             // A day that does not read stays a question, with why.
@@ -341,6 +342,7 @@ impl Lumenna {
                 open.purpose = Purpose::PickDay(open.action().cloned().expect("an action's pick"));
                 open.refusal = None;
                 open.number = 0;
+                open.typed = None;
                 render()
             }
             Purpose::Action(action) => {
@@ -353,6 +355,7 @@ impl Lumenna {
                     open.refusal = None;
                     // How long is a question of its own.
                     open.number = 0;
+                    open.typed = None;
                     return render();
                 }
                 open.answered = match &answer {

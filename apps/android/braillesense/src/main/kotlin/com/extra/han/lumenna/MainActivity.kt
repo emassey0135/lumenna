@@ -40,7 +40,6 @@ import dev.emassey0135.lumenna.Reminded
 import dev.emassey0135.lumenna.replan
 import dev.emassey0135.lumenna.deviceName
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -133,9 +132,6 @@ class MainActivity : ComponentActivity(), Host {
         shell = shown
         syncing?.created()
         shown.drawn = { screen.text = it }
-        lifecycleScope.launch {
-            combine(opened.app.view, opened.app.lines) { _, _ -> }.collect { shown.turned() }
-        }
         lifecycleScope.launch { opened.announcements.collect { shown.announce(it) } }
         lifecycleScope.launch { opened.app.files.collect { file ->
             saving = file

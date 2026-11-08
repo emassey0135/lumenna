@@ -203,6 +203,14 @@ class FramesTest {
         assertTrue(pressed)
     }
 
+    @Test fun aFormGoesToItsFirstAndLastControls() {
+        val frame = FormFrame("f", listOf(Control.Static("a", "One"), Control.Static("b", "Two"), Control.Static("c", "Three")), null, BY_LETTER)
+        frame.key(Key.Last)
+        assertEquals("Three", frame.rendered.speech)
+        frame.key(Key.First)
+        assertEquals("One", frame.rendered.speech)
+    }
+
     @Test fun aChoiceSteppedThroughAndFoundByLetter() {
         var chosen = "a"
         fun frame() = FormFrame(

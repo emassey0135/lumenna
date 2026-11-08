@@ -50,7 +50,6 @@ import dev.emassey0135.lumenna.app.SettingsEvent
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.app.SidebarKind
-import dev.emassey0135.lumenna.app.ThisDevice
 import dev.emassey0135.lumenna.app.Typing
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.app.foldState
@@ -127,9 +126,14 @@ class Shell(
     /** A turn's description, before its view: what the core refused that no sentence said. */
     private fun described(described: ScreenView) {
         screen = described
-        described.changes.filterIsInstance<ScreenChange.Refused>().filter { !it.said }.forEach { announcements += it.reason }
-        // The last of a turn to arrive, with the view and lines in place.
+        val refused = described.changes.filterIsInstance<ScreenChange.Refused>().filter { !it.said }
+        refused.forEach { announcements += it.reason }
+        // The last of a turn to arrive, with the view and lines in place: a list drawn sooner
+        // would pair this view with the last turn's lines.
         refresh(false)
+        if (refused.isNotEmpty()) schedule()
+        // What the app said waits for the row in hand to land, which it has.
+        core.release()
     }
 
     /** The row in hand's place in words, when the core's row is the one shown: "3 of 12". */
@@ -165,7 +169,9 @@ class Shell(
     private fun flush() {
         handler.removeCallbacks(saying)
         val said = announcements.filter { it.isNotBlank() }.map { if (it.last() in ".?!") it else "$it." }
-        val parts = said + listOfNotNull(pendingRow?.takeIf { it.isNotBlank() })
+        // A list that is only what was just said is not said twice.
+        val row = said.fold(pendingRow.orEmpty()) { left, sentence -> left.removeSuffix(sentence.trimEnd('.', ' ')).trimEnd() }
+        val parts = said + listOfNotNull(row.takeIf { it.isNotBlank() })
         announcements.clear()
         pendingRow = null
         if (parts.isNotEmpty()) out.say(parts.joinToString(" "))
@@ -192,9 +198,6 @@ class Shell(
         messageUp = false
         handler.removeCallbacks(restoring)
     }
-
-    /** The app left a turn. */
-    fun turned() = refresh(false)
 
     /** What is on the screen for a sighted helper: the line in front. */
     fun currentText(): String = frame?.rendered?.speech.orEmpty()
@@ -229,6 +232,17 @@ class Shell(
         }
     }
 
+    /** What a form held goes with it: the next one opened starts from its own values. */
+    private fun forgetClosed(model: ViewModel?) {
+        if (model?.blockForm == null) forget("block:", "blockform")
+        if (model?.line == null) forget("quickadd", "quickadd")
+    }
+
+    private fun forget(editorPrefix: String, frameId: String) {
+        editors.keys.removeAll { it.startsWith(editorPrefix) }
+        selected.remove(frameId)
+    }
+
     private object Blank : Frame("blank") {
         override fun key(key: Key) = false
         override val rendered = Rendered("")
@@ -239,17 +253,21 @@ class Shell(
         val landed = model != null && model.landing != lastLanding
         landedNow = landed
         if (model != null) lastLanding = model.landing
+        forgetClosed(model)
+        // The last reminder dealt with leaves nothing on its page.
+        if (pages.last() == Page.Due && model?.due.isNullOrEmpty()) pages.removeLast()
         val built = build()
         frame = built
         val rendered = built.rendered
         if (fromKey) clearMessage()
         if (!messageUp) out.show(rendered)
         drawn(rendered.speech)
-        announceDue(model)
         val fresh = built.id != lastId
         lastId = built.id
         val firstContent = lastSpeech.isEmpty() && rendered.speech.isNotEmpty()
-        if (moved || fresh || landed || firstContent) {
+        val reworded = awaitingChange && rendered.speech != lastSpeech
+        if (reworded) awaitingChange = false
+        if (moved || fresh || landed || firstContent || reworded) {
             val title = if (fresh && built is ListFrame) built.title else ""
             val row = if (fresh || landed) withPlace(built, rendered.speech) else rendered.speech
             pendingRow = when {
@@ -298,6 +316,10 @@ class Shell(
                 clearMessage()
                 refresh(false)
                 echo(current, key)
+            } else if (changes(current, key)) {
+                clearMessage()
+                awaitingChange = true
+                refresh(false)
             } else {
                 refresh(true, fromKey = true)
             }
@@ -326,6 +348,19 @@ class Shell(
         refresh(true, fromKey = true)
     }
 
+    /** A key that asks the app to change what the row says: said once the app has answered. */
+    private fun changes(frame: Frame, key: Key): Boolean {
+        val control = (frame as? FormFrame)?.current
+        return when {
+            control is Control.Choice -> key == Key.Up || key == Key.Down || key == Key.Space
+            control is Control.Toggle -> key == Key.Space || key == Key.Enter
+            frame is ListFrame -> key == Key.Space && frame.current?.space != null
+            else -> false
+        }
+    }
+
+    private var awaitingChange = false
+
     private fun typing(frame: Frame, key: Key): Boolean {
         val editing = frame is LineFrame || (frame as? FormFrame)?.current is Control.Edit
         return editing && (key is Key.Cell || key is Key.Typed || key == Key.Backspace || key == Key.Space)
@@ -345,7 +380,12 @@ class Shell(
         pages.addLast(page)
         when (page) {
             Page.Settings, is Page.SettingsPage -> send(ShellEvent.Settings(SettingsEvent.Open))
-            Page.Devices -> send(ShellEvent.Devices(DevicesEvent.Show))
+            Page.Devices -> {
+                // What pairing's sentences call this device, which finds others on its network.
+                send(ShellEvent.PairingAs(appWords.thisDevice, true))
+                send(ShellEvent.Devices(DevicesEvent.Show))
+                send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Open(host.deviceName()))))
+            }
             else -> {}
         }
         refresh(true)
@@ -361,6 +401,15 @@ class Shell(
             model?.reminders != null -> send(ShellEvent.CloseReminders)
             pages.size > 1 -> {
                 val left = pages.removeLast()
+                when (left) {
+                    is Page.Task -> forget("task:${left.id}", "task:${left.id}")
+                    is Page.SettingsPage -> forget("setting:", "settings:${left.id}")
+                    Page.Devices -> {
+                        send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Cancel)))
+                        forget("pairing-code", "devices")
+                    }
+                    else -> {}
+                }
                 if (left is Page.Settings || left is Page.SettingsPage) {
                     if (pages.last() !is Page.Settings && pages.last() !is Page.SettingsPage) send(ShellEvent.Settings(SettingsEvent.Close))
                 }
@@ -492,14 +541,6 @@ class Shell(
 
     /** What is on the display, for a sighted helper's screen. */
     var drawn: (String) -> Unit = {}
-
-    private val announcedDue = HashSet<String>()
-
-    private fun announceDue(model: ViewModel?) {
-        val due = model?.due.orEmpty()
-        announcedDue.retainAll(due.map { it.id }.toSet())
-        due.filter { announcedDue.add(it.id) }.forEach { announcements += it.text }
-    }
 
     /** What is due, looked for while in front, as a desktop app looks. */
     fun look() {
@@ -745,9 +786,16 @@ class Shell(
 
     // ── Quick add ──────────────────────────────────────────────────────────────────────────
 
+    /** The line as it stood when a completion was chosen, until the app's new one arrives. */
+    private var completingFrom: String? = null
+
     private fun quickAdd(model: ViewModel): Frame {
         val line = model.line!!
         val key = "quickadd"
+        if (completingFrom != null && line.text != completingFrom) {
+            completingFrom = null
+            editors.remove(key)
+        }
         val edit = editor(key, line.text)
         val words = appWords.quickAdd
         val controls = mutableListOf<Control>()
@@ -756,8 +804,8 @@ class Shell(
         val candidates = line.offer.candidates
         candidates.take(appWords.completionsShown.toInt()).forEachIndexed { index, candidate ->
             controls += Control.Button("complete$index", dev.emassey0135.lumenna.app.completeWith(candidate)) {
+                completingFrom = line.text
                 send(ShellEvent.Typing(Typing.Choose(index.toUInt())))
-                editors.remove(key)
             }
         }
         line.readback.takeIf { it.isNotEmpty() }?.let { controls += Control.Static("readback", it.replaceFirstChar { c -> c.uppercase() }) }
