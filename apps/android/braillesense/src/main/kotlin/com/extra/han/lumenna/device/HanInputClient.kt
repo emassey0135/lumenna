@@ -16,19 +16,25 @@ private const val TAG = "LumennaInput"
  * The framework's copy of the interface shadows any we ship in the same package, and is blocked
  * to an app, so the service is reached through its binder alone: `getSystemService` gives a proxy
  * only as `IInterface`, and our own stubs (package `com.extra.han.lumenna.han`, the vendor's
- * descriptors by `@Descriptor`) talk to that binder. [Key]s go to [keys] on the binder thread.
+ * descriptors by `@Descriptor`) talk to that binder. Chords go to [keys] on the binder thread, and
+ * only while claimed. If the process dies its callback binder dies with it, and the service stops
+ * calling it.
  */
 class HanInputClient(private val context: Context, private val keys: (Int, Int, String?) -> Boolean) {
     private var service: IHanBrailleInputService? = null
 
+    /** Whether the keys are ours: only between [claim] and [release]. */
+    @Volatile private var claimed = false
+
     private val callback = object : IHanBrailleInputServiceCallback.Stub() {
-        override fun onResponse(code: Int, value: Int, data: String?): Boolean = keys(code, value, data)
+        // A chord that arrives after the app left is the device's: answering "taken" here is what
+        // would leave the person with a keyboard that does nothing.
+        override fun onResponse(code: Int, value: Int, data: String?): Boolean = claimed && keys(code, value, data)
     }
 
-    /** Whether the service is here at all: not on anything but a BrailleSense. */
-    val available: Boolean get() = service != null
-
+    /** Takes the keys; does nothing if they are held already. */
     fun claim() {
+        if (claimed) return
         val binder = runCatching {
             (context.getSystemService("han_brailleinput") as? IInterface)?.asBinder()
         }.getOrNull()
@@ -36,13 +42,28 @@ class HanInputClient(private val context: Context, private val keys: (Int, Int, 
             Log.w(TAG, "no braille input service here: only key events will arrive")
             return
         }
-        service = IHanBrailleInputService.Stub.asInterface(binder).also {
-            runCatching { it.registerCallback(callback) }.onFailure { error -> Log.w(TAG, "registerCallback refused", error) }
+        val input = IHanBrailleInputService.Stub.asInterface(binder)
+        try {
+            input.registerCallback(callback)
+            service = input
+            claimed = true
+        } catch (error: Exception) {
+            Log.w(TAG, "registerCallback refused", error)
         }
     }
 
+    /**
+     * Gives the keys back, safe to call at any time and any number of times. The flag goes first,
+     * so that even if unregistering fails every chord is answered "not taken".
+     */
     fun release() {
-        runCatching { service?.unregisterCallback(callback) }
+        claimed = false
+        val held = service
         service = null
+        try {
+            held?.unregisterCallback(callback)
+        } catch (error: Exception) {
+            Log.w(TAG, "unregisterCallback failed", error)
+        }
     }
 }

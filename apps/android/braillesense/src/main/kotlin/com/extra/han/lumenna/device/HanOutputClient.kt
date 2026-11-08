@@ -34,14 +34,22 @@ interface Output {
 /**
  * `IHanOutputService`, bound by explicit intent, every call on one ordered worker, so a slow
  * service never holds the key that asked for it and what is said arrives in order. Rebound when
- * the service dies: on an update, or after the screen reader's.
+ * the service dies: on an update, or after the screen reader's. [register]ed with a token of ours
+ * for the service to watch, so a process that dies does not leave it holding a client.
  */
 class HanOutputClient(private val context: Context) : Output {
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "lumenna-han-output") }
     private val token = Binder()
-    private var service: IHanOutputService? = null
-    private var claimed = false
-    private var lastCells: Pair<ByteArray, Int>? = null
+    @Volatile private var service: IHanOutputService? = null
+
+    /** Whether speech and the cells are ours. Nothing is sent while they are not. */
+    @Volatile private var claimed = false
+
+    /** Held across the calls that touch the display, so that nothing lands after [release] returns. */
+    private val claim = Any()
+
+    /** What is on the cells, to put back when the display comes back or is taken again. */
+    @Volatile private var lastCells: Pair<ByteArray, Int>? = null
 
     @Volatile override var width: Int = 0
         private set
@@ -69,11 +77,18 @@ class HanOutputClient(private val context: Context) : Output {
 
     private fun attached(new: IHanOutputService) {
         service = new
+        attempt { new.register(token) }
+        take()
+    }
+
+    /** On the worker: makes the claim good, if it still stands. */
+    private fun take() = synchronized(claim) {
+        val output = service
+        if (!claimed || output == null) return@synchronized
         attempt {
-            new.register(token)
-            if (claimed) new.setActiveOutputService(true)
-            measure(new)
-            lastCells?.let { (cells, cursor) -> sendCells(new, cells, cursor) }
+            output.setActiveOutputService(true)
+            measure(output)
+            lastCells?.let { (cells, cursor) -> sendCells(output, cells, cursor) }
         }
     }
 
@@ -102,6 +117,7 @@ class HanOutputClient(private val context: Context) : Output {
     fun connect() = bind()
 
     fun disconnect() {
+        release()
         worker.execute {
             attempt { service?.unregister(token) }
             service = null
@@ -110,43 +126,52 @@ class HanOutputClient(private val context: Context) : Output {
     }
 
     /** Takes the display and speech while the app is in front; the screen reader yields them. */
-    fun claim() = worker.execute {
+    fun claim() {
         claimed = true
-        attempt {
-            service?.setActiveOutputService(true)
-            lastCells?.let { (cells, cursor) -> service?.let { sendCells(it, cells, cursor) } }
-        }
+        worker.execute { take() }
     }
 
-    /** Gives the display back as the app leaves the front. */
-    fun release() = worker.execute {
+    /**
+     * Gives the display and speech back, now and on the caller's thread, safe to call at any time
+     * and any number of times. Not queued on the worker: the next app claims the display as it
+     * comes to the front, and a release that landed after its claim would take the display from it.
+     */
+    fun release() = synchronized(claim) {
         claimed = false
-        attempt {
-            service?.setActiveOutputService(false)
-            service?.stopTTS()
-        }
+        val output = service
+        attempt { output?.setActiveOutputService(false) }
+        attempt { output?.stopTTS() }
     }
 
     override fun say(text: String) {
-        if (text.isBlank()) return
+        if (text.isBlank() || !claimed) return
         if (BuildConfig.DEBUG) Log.i(TAG, "say: $text")
         worker.execute {
-            attempt {
-                val output = HanOutput(text, text, null, "")
-                service?.stopTTS()
-                service?.displayAndPlayTTS(2, output, false, false, false, -1, -1, -1, -1, null)
+            synchronized(claim) {
+                if (!claimed) return@execute
+                attempt {
+                    service?.stopTTS()
+                    service?.displayAndPlayTTS(2, HanOutput(text, text, null, ""), false, false, false, -1, -1, -1, -1, null)
+                }
             }
         }
     }
 
-    override fun silence() = worker.execute { attempt { service?.stopTTS() } }
+    override fun silence() = worker.execute {
+        synchronized(claim) { if (claimed) attempt { service?.stopTTS() } }
+    }
 
     override fun cells(cells: ByteArray, cursor: Int) {
         val copy = cells.copyOf()
+        // Kept while away, so coming back shows what is true now; sent only while the display is ours.
+        lastCells = copy to cursor
+        if (!claimed) return
         if (BuildConfig.DEBUG) Log.i(TAG, "cells: ${copy.size} " + copy.joinToString(" ") { (it.toInt() and 0xff).toString(2).reversed().mapIndexed { i, c -> if (c == '1') "${i + 1}" else "" }.joinToString("") } + " cursor $cursor")
         worker.execute {
-            lastCells = copy to cursor
-            service?.let { attempt { sendCells(it, copy, cursor) } }
+            synchronized(claim) {
+                if (!claimed) return@execute
+                service?.let { attempt { sendCells(it, copy, cursor) } }
+            }
         }
     }
 
@@ -159,6 +184,7 @@ class HanOutputClient(private val context: Context) : Output {
         try {
             call()
         } catch (error: Exception) {
+            // A dead service throws here too: a release must carry on regardless.
             Log.w(TAG, "output call failed", error)
         }
     }

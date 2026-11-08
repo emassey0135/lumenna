@@ -59,15 +59,33 @@ class MainActivity : ComponentActivity(), Host {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var screen: TextView
 
-    private val input by lazy {
+    private val input: HanInputClient by lazy {
         HanInputClient(applicationContext) { code, value, data ->
             val key = Chords.decode(code, value, data, settings.eightDot)
-            if (key != null) main.post { shell?.press(key) ?: Unit }
+            // Checked again when it runs: the app may have left while this waited.
+            if (key != null) main.post { if (front.holding) shell?.press(key) }
             key != null
         }
     }
 
-    private val front by lazy { core.getOrNull()?.let { Front(this, it, PLATFORM) } }
+    /** Coming to the front and leaving it, as far as syncing and the store are concerned. */
+    private val syncing by lazy { core.getOrNull()?.let { Front(this, it, PLATFORM) } }
+
+    /** Whether the keys and display are ours: resumed and focused, and nothing else. */
+    private val front: com.extra.han.lumenna.device.Claim = com.extra.han.lumenna.device.Claim(
+        take = {
+            settings.refresh()
+            output.claim()
+            input.claim()
+            shell?.front()
+            main.post(looking)
+        },
+        giveBack = {
+            main.removeCallbacks(looking)
+            input.release()
+            output.release()
+        },
+    )
     private var saving: SaveFile? = null
 
     private val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
@@ -93,6 +111,13 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A crash must not leave the device held; a native one is the binders' death to tell.
+        val crashed = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching { input.release() }
+            runCatching { output.release() }
+            crashed?.uncaughtException(thread, error)
+        }
         screen = TextView(this).apply {
             textSize = 28f
             setPadding(32, 32, 32, 32)
@@ -111,7 +136,7 @@ class MainActivity : ComponentActivity(), Host {
             reminderAccess = { Reminders.access(this@MainActivity) }
         }
         shell = shown
-        front?.created()
+        syncing?.created()
         shown.drawn = { screen.text = it }
         lifecycleScope.launch {
             combine(opened.app.view, opened.app.lines) { _, _ -> }.collect { shown.turned() }
@@ -142,13 +167,18 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun onResume() {
         super.onResume()
-        settings.refresh()
-        output.claim()
-        input.claim()
+        front.resumed(true)
         Clock.update(this)
-        front?.resumed()
-        shell?.front()
-        main.post(looking)
+        syncing?.resumed()
+    }
+
+    /**
+     * What is drawn over the app without pausing it (the task list, the global options, an alert)
+     * takes the window's focus and nothing else: the keys have to go with it.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        front.focused(hasFocus)
     }
 
     /** What is due is looked for while in front; a reminder away from it comes as a notification. */
@@ -160,14 +190,14 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun onPause() {
-        main.removeCallbacks(looking)
-        input.release()
-        output.release()
-        front?.paused() ?: SyncWorker.syncOnLeaving(this)
+        // First of all: whatever else leaving does, the device is the next app's.
+        front.resumed(false)
+        syncing?.paused() ?: SyncWorker.syncOnLeaving(this)
         super.onPause()
     }
 
     override fun onDestroy() {
+        input.release()
         output.disconnect()
         super.onDestroy()
     }
@@ -178,6 +208,7 @@ class MainActivity : ComponentActivity(), Host {
      * chord as their scan code: those are not typing, and are swallowed.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!front.holding) return super.dispatchKeyEvent(event)
         if (event.deviceId == -1 && event.scanCode != 0) return true
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
         val key = Qwerty.decode(event.keyCode, event.metaState, event.getUnicodeChar(event.metaState))
