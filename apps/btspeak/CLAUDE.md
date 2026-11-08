@@ -36,8 +36,9 @@ test with a newer one (`PYTHON=…`).
   app shows is the core's** (`L.action_letter`, `command_letter`, `page_letter`, `button_letter`,
   `due_letter`), none written here: what a letter runs on the row is the app's
   (`Event::Letter`), `Command.through` unset only for what this app runs itself (quick add, the
-  filter, a project's New Inside, Settings' buttons). The device's dialogs already move by first
-  letter (a capital, or Dot 7 with the letter), so this app needs `first_letter` nowhere. **The
+  filter, a project's New Inside, Settings' buttons). A plain letter is the command, never Space
+  with one; a capital, Dot 7 with the letter, moves by first letter, which the device's dialogs
+  already do, so this app needs `first_letter` nowhere. **The
   delete keys send `Key("delete")`** (a command that is only the keys', not `listed`): Control-D,
   the D chord and low-d. What it runs on the row (Delete, Delete from trash, Unassign, Unpair) or
   why it runs nothing is the app's (`keys::runs`); never a list of kinds here.
