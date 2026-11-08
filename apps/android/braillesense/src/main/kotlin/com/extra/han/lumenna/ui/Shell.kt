@@ -184,7 +184,11 @@ class Shell(
         val firstContent = lastSpeech.isEmpty() && rendered.speech.isNotEmpty()
         if (moved || fresh || landed || firstContent) {
             val title = if (fresh && built is ListFrame) built.title else ""
-            pendingRow = listOf(title, rendered.speech).filter { it.isNotBlank() }.joinToString(". ")
+            pendingRow = when {
+                title.isBlank() -> rendered.speech
+                title.last() in ".?!" -> "$title ${rendered.speech}"
+                else -> "$title. ${rendered.speech}"
+            }
         }
         lastSpeech = rendered.speech
         if (fromKey) flush() else if (pendingRow != null) schedule()

@@ -65,6 +65,12 @@ android {
         }
     }
 
+    lint {
+        // The activity is a ComponentActivity and uses no fragments; `:shared`'s Play Services
+        // brings an old Fragment library, which this check takes for one that is in use.
+        disable += "InvalidFragmentVersionForActivityResult"
+    }
+
     buildFeatures {
         aidl = true
         buildConfig = true
