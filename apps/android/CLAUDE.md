@@ -1,6 +1,6 @@
 # The Android apps
 
-Read when working in `apps/android/`: the phone and Wear OS. The root `CLAUDE.md` holds what every part of Lumenna shares; this is what is easy to get wrong here.
+Read when working in `apps/android/`: the phone, Wear OS and the Orbit devices. The root `CLAUDE.md` holds what every part of Lumenna shares; this is what is easy to get wrong here.
 
 ## The Android app
 
@@ -369,12 +369,30 @@ phone does.
   which the script passes (`device_provisioned`, `user_setup_complete`); a watch counted as
   charging brings its charging screen over the tests, so the script unplugs it.
 
+## The braille apps' shared Kotlin
+
+`apps/android/braille/`: only what the Orbit app and the BrailleSense app really share; what the
+three braille apps share beyond Kotlin is the core's (`lumenna_app`), and each device's code stays
+in its own module. Line editors and menus were compared and left: Orbit's editor is built around
+its T9 and its cell buffer over its own service, and its menus are described to its screen reader.
+
+- **`ServiceLink`** is one bound vendor service, each call on one ordered worker, bound anew when
+  Android's `onBindingDied` says so; `now` makes a call on the caller's thread, for giving the
+  device up as the app leaves, which cannot wait behind what is queued.
+- **`Claim`** holds the keys and display only while the activity is resumed and its window has
+  focus (and, for Orbit, the service is up). Something drawn over the app takes only the window's
+  focus, and whatever drives it needs the keys. `release` comes first on losing either, on the
+  caller's thread, once per take, and carries on past a failure; `guardCrashes` releases on a crash.
+- **`KeyDelivery`** takes a decoded key from the binder thread to the app's: taken only while
+  held, and looked at again when it runs. A key not taken goes on to the device, since answering
+  "taken" for one that nothing will act on leaves the person with a keyboard that does nothing.
+
 ## The BrailleSense app
 
 `apps/android/braillesense/`: Kotlin over `shared` and the Crux app's Kotlin, drawn on the device's own speech and cells, for the HIMS BrailleSense 7 (Android 15). Package `com.extra.han.lumenna`, the one Android ID that is not `package_id`: the device's launcher lists `com.extra.han.*` in its Programs menu and its screen reader yields the braille keys to such a package by its name alone (a test in `records` says so). Arm64 only. No Compose in its screens: what is shown on the LCD is the line in front, for a sighted helper.
 
-- **The keys and the display are the app's only while it is resumed and its window has focus** (`device/Claim.kt`, tested). Something drawn over it (the F1-F4 task list, the global options, an alert) takes only the window's focus, without a pause, and the keys have to go then too. Giving back comes first in `onPause`, is safe to repeat, and carries on past a failure; a chord that arrives late is answered "not taken", since "taken" leaves the person with a keyboard that does nothing. Nothing is said or put on the cells while away (a turn can still arrive then). The release is made on the caller's thread rather than queued: the next app claims the display as it comes to the front, and a release landing after its claim would take the display from it.
-- **Speech and cells are the app's own**, through `IHanOutputService` (`device/HanOutputClient.kt`): bound by explicit intent, one ordered worker for every call, rebound when the service dies, `register` and `setActiveOutputService(true)` while in front, `false` when not, or it fights the screen reader for the cells. `displayAndPlayTTS` says; `displayRawBraille` shows a window of cells.
+- **The keys and the display are the app's only while it is resumed and its window has focus** (`Claim`, in `:braille`, tested). Something drawn over it (the F1-F4 task list, the global options, an alert) takes only the window's focus, without a pause, and the keys have to go then too. Giving back comes first in `onPause`, is safe to repeat, and carries on past a failure; a chord that arrives late is answered "not taken", since "taken" leaves the person with a keyboard that does nothing. Nothing is said or put on the cells while away (a turn can still arrive then). The release is made on the caller's thread rather than queued: the next app claims the display as it comes to the front, and a release landing after its claim would take the display from it.
+- **Speech and cells are the app's own**, through `IHanOutputService` (`device/HanOutputClient.kt`, on `:braille`'s `ServiceLink`): `register` and `setActiveOutputService(true)` while in front, `false` when not, or it fights the screen reader for the cells. `displayAndPlayTTS` says; `displayRawBraille` shows a window of cells.
 - **The AIDL is in our own package with the vendor's descriptors** (`src/main/aidl/com/extra/han/lumenna/han`, `@Descriptor`): the device's framework holds its own `com.jawon.han.*` classes, which shadow a bundled copy of the same name (the boot class path wins) and are hidden-API blocked for an app, so a copy in the vendor's own package does not link. `HanOutput` is ours likewise: its parcel is written field for field, the class name never travels. The transaction order is the service's and must not change.
 - **The cells take dots**: `displayBraille` and `HanOutput.braille` are Braille ASCII (BANA), letter for letter, so nothing the app sends in text reaches the person's table. Every line goes through liblouis (`device/Louis.kt`, `native/louis.c`, built by `build-louis.sh` with the NDK's clang, the release's tarball checked by hash; the tables in the APK's assets, copied to files once) into dot patterns in the person's table and grade, read from the device's settings provider (`device/BrailleSettings.kt`, `content://com.selvashc.settingsprovider/braille_settings`, in `<queries>`). The table for each `BrailleCode` is `BrailleTables`.
 - **Panning is the app's** (`device/Cells.kt`, tested): windows break at spaces as the device's Word Wrap does. The display's width is measured once from the service: a long word wrapped and its line count read back (40 cells on the unit tried; the model H732B is sold as 32, so a real 32-cell one needs checking).
@@ -388,6 +406,59 @@ phone does.
 - **What is said comes from the core's description** (`Turn.described`, handed to `AppModel.described` on the main thread before the view moves): a question's prompt, buttons, choices and what was typed are its; a row arrived at or read again (Space-R) says its place ("3 of 12"), a person's own move does not, so moving stays quick. A refusal no sentence said is spoken from `changes`.
 - **What changes say goes on the cells as well as in speech**, for the device's Message Display Time, then the line returns: someone reading braille alone hears none of it. Any key clears it.
 - **Tests**: `./gradlew :braillesense:testDebugUnitTest` covers the chords, panning, menus and the line editor without a device. On the device, `adb shell service call han_brailleinput 1 i32 <chord> i32 0 i32 0` injects a chord from the shell, and in a debug build the service's calls are logged (`LumennaOutput`).
+
+## The Orbit app
+
+`apps/android/orbit/`: the Orbit Speak and the Orbit Player (LAVA LZG403_25I and LZG403_25, Android
+11, arm64), over `shared` and the Crux app's Kotlin. Not Compose: one `TextView` for a sighted
+helper, while Orbit's screen reader voices the screens the app describes. Sideloaded, or from
+GitHub's releases; installing it needs nothing else but Satellite (its hook and launcher) on the
+device. Its identifier is the phone's `package_id` (never on the same device): not `com.orbit.`, and
+holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, run by CI and
+`release.yml`, checks what Satellite reads of an APK.
+
+- **Everything Orbit is reached through is the clean-room AIDL** (`src/main/aidl`), the screen
+  reader's in its order and never #44 (`canSpeakLanguage`), which the Player lacks: it stops before
+  it. Each service is a `ServiceLink` and the keys a `Claim`, from `:braille`.
+- **`OrbitReader` describes, and says only what the app says**: a list is `onFocusChanged` of a list
+  box, a move `onItemChanged`, a question `onDialogOpened` then its first answer, a row's actions
+  `onContextMenuOpened`, a line an edit box with `onEditBoxContentChanged`. Nothing is sent before
+  `onScreenReaderReady`, which Orbit calls at once when it is ready already; speech sent earlier is
+  dropped. `speakText` jumps Orbit's event queue, so what follows a description (a hint) waits a
+  moment. What is described is `describe` (`Describe.kt`), pure, tested on the JVM: a turn that only
+  redrew says nothing, and a row reworded by what the person just did is read again. What is shown
+  and what changed are the core's (`Turn::described`, handed over by `AppModel.described`, a
+  callback, since a flow keeps only the latest and a refusal must not be lost): the list's name and
+  `readback`, a move only when the core's `Moved` says so, a question's `prompt`, `buttons` and
+  `choices`, and refusals (`Refused`: its sentence said only when `said` is false). This app's own
+  lists (the main menu, settings, the forms' fields, a menu) go through `describe` beside them.
+- **Screens** (`Screens.kt`, `Forms.kt`): a stack the person moves, over the app's view. The screens
+  the app itself opens (a question, the block form, a proposal, a reminder list, the quick-add line)
+  are pushed and popped from the view each turn (`Ui.follow`), as BTSpeak's `follow`. A screen
+  describes itself only once `loaded`, so nothing says a list is empty on the way to it. The main
+  menu is the core's (`braille_main_menu`), and a day's heading is a row of it, as the core counts.
+- **A turn is taken from `AppModel.described`**, once its view and lines are in place: a collector
+  of the view on `Main.immediate` runs between the view being set and the lines, with the last
+  turn's lines.
+- **Keys**: `KeyDecoder` turns Orbit's bundle into a `Key`. On the Speak dot 7 is back, dot 8 open,
+  Space with M the row's menu (Satellite's convention), Space with another letter its command, a
+  letter alone a first letter. On the Player digits open rows, holding star finds by letter (T9),
+  Menu the row's menu, Back goes back. A letter is the core's: `brailleLetter(dots)` (a to z, none
+  with dot 7 or 8) then `ShellEvent.Letter`, or `FindLetter` on the app's main list, `first_letter`
+  on this app's own (they go by a row's name or its line). Space with M is the row's menu on the
+  Speak, so what M runs elsewhere (Move to Project, Log Time, merging) is in that menu there. D is
+  the delete key's, which the core's table does not have. Letters a row or screen shows on the
+  Speak are `action_letter` and its kin, said after the name; `,`, `.` and `/` have no dots, so
+  Move Up, Move Down and the filter are the menu's.
+- **Typing** (`LineEditor`): the Speak's cell buffer through Orbit's liblouis service, one word at a
+  time, mode 388 for each cell's echo and 132 at Space; the Player's multi-tap T9, ported from
+  Satellite's `T9Input`. Changes go to Orbit as edit-box changes, so it echoes them by the person's
+  own settings. The table comes from Orbit's settings through root (`Liblouis.readTable`).
+- **Trying it**: nothing can press Orbit's keypad over adb, so a debug build takes keys over a
+  broadcast (`DEBUG_KEY`, `am broadcast --es name DOWN --ei action 0 --ez long false --ez phone
+  false`). What Orbit said is in its log (`setprop log.tag D`, then `olympus_SpeechManager`'s
+  `sequence items`). Wake a sleeping device first (`input keyevent KEYCODE_WAKEUP`), or the window
+  has no focus and nothing is claimed. The real keys, by hand, are still to be tried.
 
 ## CI
 

@@ -384,7 +384,7 @@ jobs:
         # The App Bundles the stores take, and the APKs to install by hand. Unsigned: Play App
         # Signing and the upload key come with publishing.
         working-directory: apps/android
-        run: ./gradlew --no-daemon :app:bundleRelease :wear:bundleRelease :app:assembleRelease :wear:assembleRelease :braillesense:assembleRelease
+        run: ./gradlew --no-daemon :app:bundleRelease :wear:bundleRelease :app:assembleRelease :wear:assembleRelease :braillesense:assembleRelease :orbit:assembleRelease
       - name: The BrailleSense's APK as a person gets it
         # Installed only on a BrailleSense, which no runner has: this checks what is inside, its
         # package (what puts it in the device's Programs menu) and that it can load its libraries.
@@ -396,6 +396,10 @@ jobs:
           unzip -l "$apk" | grep -q 'lib/arm64-v8a/liblumenna-ffi.so'
           unzip -l "$apk" | grep -q 'lib/arm64-v8a/liblumenna-louis.so'
           unzip -l "$apk" | grep -q 'assets/louis/liblouis/tables/en-ueb-g2.ctb'
+      - name: The Orbit app as Satellite reads it
+        # Sideloaded: CI has no Orbit device, so this is what Satellite reads of it.
+        working-directory: apps/android
+        run: orbit/check-apk.sh orbit/build/outputs/apk/release/orbit-release-unsigned.apk
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -405,6 +409,7 @@ jobs:
             apps/android/app/build/outputs/apk/release
             apps/android/wear/build/outputs/apk/release
             apps/android/braillesense/build/outputs/apk/release
+            apps/android/orbit/build/outputs/apk/release
           retention-days: 30
 
   flatpak:

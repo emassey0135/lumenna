@@ -160,10 +160,10 @@ A day or less each, for between the larger pieces, except the first.
     output and its service, and panning a line across the cells, until the BrailleSense shows
     whether its output service pans by itself (`displayBrailleWordWrap`, `setCurrentCellLine`)
     or a second device with cells needs it.
-  - **Between the two Android apps**, only a little Kotlin: one ordered worker for the service's
-    calls, rebound when it dies; the keys and the display claimed on resume and let go on pause;
-    a decoded key handed to the app. Written for the Orbit app first, and lifted into a small
-    `apps/android/braille/` module once the BrailleSense app repeats it, not designed ahead.
+  - **Between the two Android apps**, a little Kotlin, lifted once both existed
+    (`apps/android/braille/`): one ordered worker for a service's calls, rebound when it dies; the
+    keys and the display held only while in front and given back first on leaving; a decoded key
+    handed to the app. Line editors and menus were not the same, so stay in each app.
 - **The Orbit Speak and the Orbit Player**, Orbit Research's Android 11 devices, through
   Satellite (`emassey0135/satellite-launcher` and `satellite-hook`) until Orbit's own SDK,
   promised with no date, exists. Neither has a braille display: the Speak has eight braille
@@ -208,10 +208,18 @@ A day or less each, for between the larger pieces, except the first.
     settings, read through root (`content query` of `com.orbit.settings.provider`), as Orbit's
     own apps read them: every device has Magisk with root granted to them, and Satellite to its
     own.
-  - **Open**: Iroh over Wi-Fi, and Wi-Fi in sleep, untried there; reminders through
-    Orbit's Do Not Disturb untried; the default locale is en-IN, so dates read as India writes
-    them unless set. All of it rests on unofficial behaviour an Orbit update or its SDK may change;
-    CI has no Orbit, so it is tried on the devices over adb.
+  - **Built**: `apps/android/orbit/`, drawn from the Crux app: places, the day with its blocks,
+    sittings and free time, details and the forms, assigning, Replan from Now and Plan the Day,
+    What Should I Work On?, the timer, undo, reminders and Reminders due, settings by the core's
+    pages, devices and pairing, backups, export and import, and a key help. Tried on both devices
+    with keys sent over adb, what Orbit said read from its log: the lists, typing a task by cells on
+    the Speak and by T9 on the Player, the block form, assigning, a plan, the timer and undo.
+  - **Open**: the keys pressed by hand on both devices (so far only injected); Iroh over
+    Wi-Fi, and Wi-Fi in sleep, untried there; reminders through Orbit's Do Not Disturb untried; the
+    default locale is en-IN, so dates read as India writes them unless set; backups and import
+    through Android's file picker, read by Orbit rather than the app. All of it rests on unofficial
+    behaviour an Orbit update or its SDK may change; CI has no Orbit, so it is tried on the devices
+    over adb.
 - **A BrailleSense 7 app** (`apps/android/braillesense/`, package `com.extra.han.lumenna`, in its
   Programs menu by name alone): the screens over the Crux app, speech and cells through
   `IHanOutputService` and liblouis, chords through `han_brailleinput`'s callback as a bitmask, the

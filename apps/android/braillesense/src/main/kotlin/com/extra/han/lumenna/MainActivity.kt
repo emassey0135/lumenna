@@ -24,6 +24,8 @@ import com.extra.han.lumenna.device.Qwerty
 import com.extra.han.lumenna.ui.Host
 import com.extra.han.lumenna.ui.Shell
 import com.extra.han.lumenna.ui.Speaker
+import dev.emassey0135.lumenna.braille.Claim
+import dev.emassey0135.lumenna.braille.KeyDelivery
 import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Front
 import dev.emassey0135.lumenna.Launching
@@ -59,12 +61,11 @@ class MainActivity : ComponentActivity(), Host {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var screen: TextView
 
+    private val keys: KeyDelivery<Key> by lazy { KeyDelivery(front, { main.post(it) }) { shell?.press(it) } }
+
     private val input: HanInputClient by lazy {
         HanInputClient(applicationContext) { code, value, data ->
-            val key = Chords.decode(code, value, data, settings.eightDot)
-            // Checked again when it runs: the app may have left while this waited.
-            if (key != null) main.post { if (front.holding) shell?.press(key) }
-            key != null
+            keys.deliver(Chords.decode(code, value, data, settings.eightDot))
         }
     }
 
@@ -72,7 +73,7 @@ class MainActivity : ComponentActivity(), Host {
     private val syncing by lazy { core.getOrNull()?.let { Front(this, it, PLATFORM) } }
 
     /** Whether the keys and display are ours: resumed and focused, and nothing else. */
-    private val front: com.extra.han.lumenna.device.Claim = com.extra.han.lumenna.device.Claim(
+    private val front: Claim = Claim(
         take = {
             settings.refresh()
             output.claim()
@@ -80,7 +81,7 @@ class MainActivity : ComponentActivity(), Host {
             shell?.front()
             main.post(looking)
         },
-        giveBack = {
+        release = {
             main.removeCallbacks(looking)
             input.release()
             output.release()
@@ -111,13 +112,7 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // A crash must not leave the device held; a native one is the binders' death to tell.
-        val crashed = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
-            runCatching { input.release() }
-            runCatching { output.release() }
-            crashed?.uncaughtException(thread, error)
-        }
+        front.guardCrashes()
         screen = TextView(this).apply {
             textSize = 28f
             setPadding(32, 32, 32, 32)
@@ -167,7 +162,7 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun onResume() {
         super.onResume()
-        front.resumed(true)
+        front.resumed()
         Clock.update(this)
         syncing?.resumed()
     }
@@ -178,7 +173,7 @@ class MainActivity : ComponentActivity(), Host {
      */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        front.focused(hasFocus)
+        front.windowFocus(hasFocus)
     }
 
     /** What is due is looked for while in front; a reminder away from it comes as a notification. */
@@ -191,7 +186,7 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun onPause() {
         // First of all: whatever else leaving does, the device is the next app's.
-        front.resumed(false)
+        front.paused()
         syncing?.paused() ?: SyncWorker.syncOnLeaving(this)
         super.onPause()
     }

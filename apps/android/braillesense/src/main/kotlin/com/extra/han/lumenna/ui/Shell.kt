@@ -116,7 +116,7 @@ class Shell(
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val saying = Runnable { flush() }
 
-    private var screen: ScreenView = app.screen()
+    private var screen: ScreenView = app.screenView()
 
     init {
         app.described = ::described
@@ -128,6 +128,8 @@ class Shell(
     private fun described(described: ScreenView) {
         screen = described
         described.changes.filterIsInstance<ScreenChange.Refused>().filter { !it.said }.forEach { announcements += it.reason }
+        // The last of a turn to arrive, with the view and lines in place.
+        refresh(false)
     }
 
     /** The row in hand's place in words, when the core's row is the one shown: "3 of 12". */

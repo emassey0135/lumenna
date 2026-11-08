@@ -1,16 +1,13 @@
 package com.extra.han.lumenna.device
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.os.Binder
-import android.os.IBinder
 import android.util.Log
 import com.extra.han.lumenna.BuildConfig
 import com.extra.han.lumenna.han.HanOutput
 import com.extra.han.lumenna.han.IHanOutputService
-import java.util.concurrent.Executors
+import dev.emassey0135.lumenna.braille.ServiceLink
 
 private const val TAG = "LumennaOutput"
 
@@ -37,10 +34,8 @@ interface Output {
  * the service dies: on an update, or after the screen reader's. [register]ed with a token of ours
  * for the service to watch, so a process that dies does not leave it holding a client.
  */
-class HanOutputClient(private val context: Context) : Output {
-    private val worker = Executors.newSingleThreadExecutor { Thread(it, "lumenna-han-output") }
+class HanOutputClient(context: Context) : Output {
     private val token = Binder()
-    @Volatile private var service: IHanOutputService? = null
 
     /** Whether speech and the cells are ours. Nothing is sent while they are not. */
     @Volatile private var claimed = false
@@ -54,42 +49,23 @@ class HanOutputClient(private val context: Context) : Output {
     @Volatile override var width: Int = 0
         private set
 
-    private val intent = Intent("com.jawon.han.output.ACTION_HAN_OUTPUT")
-        .setClassName("com.jawon.han.accessibility", "com.jawon.han.output.HanOutputService")
-
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder) {
-            worker.execute { attached(IHanOutputService.Stub.asInterface(binder)) }
-        }
-
-        // The service went: another will come through this same connection.
-        override fun onServiceDisconnected(name: ComponentName?) {
-            worker.execute { service = null }
-        }
-
-        // The binding itself is finished: it must be made again.
-        override fun onBindingDied(name: ComponentName?) {
-            worker.execute { service = null }
-            runCatching { context.unbindService(this) }
-            bind()
-        }
-    }
-
-    private fun attached(new: IHanOutputService) {
-        service = new
-        attempt { new.register(token) }
-        take()
-    }
+    private val link = ServiceLink(
+        context,
+        Intent("com.jawon.han.output.ACTION_HAN_OUTPUT")
+            .setClassName("com.jawon.han.accessibility", "com.jawon.han.output.HanOutputService"),
+        { IHanOutputService.Stub.asInterface(it) },
+        connected = { service ->
+            service.register(token)
+            take(service)
+        },
+    )
 
     /** On the worker: makes the claim good, if it still stands. */
-    private fun take() = synchronized(claim) {
-        val output = service
-        if (!claimed || output == null) return@synchronized
-        attempt {
-            output.setActiveOutputService(true)
-            measure(output)
-            lastCells?.let { (cells, cursor) -> sendCells(output, cells, cursor) }
-        }
+    private fun take(output: IHanOutputService) = synchronized(claim) {
+        if (!claimed) return@synchronized
+        output.setActiveOutputService(true)
+        measure(output)
+        lastCells?.let { (cells, cursor) -> sendCells(output, cells, cursor) }
     }
 
     /** Asks the service how wide the line is: it wraps a long word at its own width. */
@@ -108,27 +84,18 @@ class HanOutputClient(private val context: Context) : Output {
         Log.i(TAG, "display is $width cells, $lines lines")
     }
 
-    private fun bind() {
-        if (!context.bindService(intent, connection, Context.BIND_AUTO_CREATE)) {
-            Log.w(TAG, "no output service here")
-        }
-    }
-
-    fun connect() = bind()
+    fun connect() = link.bind()
 
     fun disconnect() {
         release()
-        worker.execute {
-            attempt { service?.unregister(token) }
-            service = null
-        }
-        runCatching { context.unbindService(connection) }
+        link.now("unregister") { it.unregister(token) }
+        link.unbind()
     }
 
     /** Takes the display and speech while the app is in front; the screen reader yields them. */
     fun claim() {
         claimed = true
-        worker.execute { take() }
+        link.call("claim") { take(it) }
     }
 
     /**
@@ -138,28 +105,20 @@ class HanOutputClient(private val context: Context) : Output {
      */
     fun release() = synchronized(claim) {
         claimed = false
-        val output = service
-        attempt { output?.setActiveOutputService(false) }
-        attempt { output?.stopTTS() }
+        link.now("setActiveOutputService") { it.setActiveOutputService(false) }
+        link.now("stopTTS") { it.stopTTS() }
     }
 
     override fun say(text: String) {
         if (text.isBlank() || !claimed) return
         if (BuildConfig.DEBUG) Log.i(TAG, "say: $text")
-        worker.execute {
-            synchronized(claim) {
-                if (!claimed) return@execute
-                attempt {
-                    service?.stopTTS()
-                    service?.displayAndPlayTTS(2, HanOutput(text, text, null, ""), false, false, false, -1, -1, -1, -1, null)
-                }
-            }
+        whileClaimed("say") {
+            it.stopTTS()
+            it.displayAndPlayTTS(2, HanOutput(text, text, null, ""), false, false, false, -1, -1, -1, -1, null)
         }
     }
 
-    override fun silence() = worker.execute {
-        synchronized(claim) { if (claimed) attempt { service?.stopTTS() } }
-    }
+    override fun silence() = whileClaimed("silence") { it.stopTTS() }
 
     override fun cells(cells: ByteArray, cursor: Int) {
         val copy = cells.copyOf()
@@ -167,25 +126,16 @@ class HanOutputClient(private val context: Context) : Output {
         lastCells = copy to cursor
         if (!claimed) return
         if (BuildConfig.DEBUG) Log.i(TAG, "cells: ${copy.size} " + copy.joinToString(" ") { (it.toInt() and 0xff).toString(2).reversed().mapIndexed { i, c -> if (c == '1') "${i + 1}" else "" }.joinToString("") } + " cursor $cursor")
-        worker.execute {
-            synchronized(claim) {
-                if (!claimed) return@execute
-                service?.let { attempt { sendCells(it, copy, cursor) } }
-            }
-        }
+        whileClaimed("cells") { sendCells(it, copy, cursor) }
+    }
+
+    /** On the worker, and only if the display is still ours when its turn comes. */
+    private fun whileClaimed(what: String, block: (IHanOutputService) -> Unit) = link.call(what) { service ->
+        synchronized(claim) { if (claimed) block(service) }
     }
 
     private fun sendCells(output: IHanOutputService, cells: ByteArray, cursor: Int) {
         output.displayRawBraille(cells)
         output.brailleCursorPos(cursor)
-    }
-
-    private inline fun attempt(call: () -> Unit) {
-        try {
-            call()
-        } catch (error: Exception) {
-            // A dead service throws here too: a release must carry on regardless.
-            Log.w(TAG, "output call failed", error)
-        }
     }
 }

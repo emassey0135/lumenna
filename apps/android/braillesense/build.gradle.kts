@@ -95,6 +95,7 @@ androidComponents {
 
 dependencies {
     implementation(project(":shared"))
+    implementation(project(":braille"))
     // `Core`'s Compose state and the activity it runs on.
     val bom = platform(libs.compose.bom)
     implementation(bom)
