@@ -12,6 +12,7 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
+import dev.emassey0135.lumenna.braille.KeyDelivery
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Core
@@ -67,6 +68,7 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         }
         setContentView(view)
         reader = OrbitReader(this, this)
+        reader.claim.guardCrashes()
         liblouis = Liblouis(this)
         val core = (application as CoreHolder).core.getOrNull()
         if (core == null) {
@@ -160,9 +162,11 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         }
     }
 
-    override fun key(event: KeyEvent, phoneKeypad: Boolean) {
-        main.post { ui?.key(event, phoneKeypad) }
+    private val keys: KeyDelivery<Pair<KeyEvent, Boolean>> by lazy {
+        KeyDelivery(reader.claim, { main.post(it) }) { (event, phoneKeypad) -> ui?.key(event, phoneKeypad) }
     }
+
+    override fun key(event: KeyEvent, phoneKeypad: Boolean): Boolean = keys.deliver(event to phoneKeypad)
 
     override fun settingsChanged() {
         liblouis.refresh()

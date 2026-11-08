@@ -120,6 +120,12 @@ pub fn level_words(depth: u32) -> String {
     lumenna_records::words::level(depth)
 }
 
+/// The BrailleSense's keys, for its key help.
+#[export]
+pub fn braillesense_keys() -> Vec<w::DeviceKey> {
+    w::braillesense_keys()
+}
+
 /// How long, in words: "1 hour 30 minutes".
 #[export]
 pub fn duration_words(minutes: u32) -> String {

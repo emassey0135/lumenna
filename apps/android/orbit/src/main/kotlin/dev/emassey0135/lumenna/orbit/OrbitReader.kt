@@ -8,6 +8,8 @@ import com.orbit.olympus_sdk.IOlympusSDKCallback
 import com.orbit.screenreader.IScreenReaderService
 import com.orbit.screenreader.ISettingsCallback
 import com.orbit.screenreader.IUARTKeypadCallback
+import dev.emassey0135.lumenna.braille.Claim
+import dev.emassey0135.lumenna.braille.ServiceLink
 
 /**
  * Orbit's screen reader: bound by explicit intent, every call in order on [ServiceLink]'s worker,
@@ -24,8 +26,8 @@ class OrbitReader(context: Context, private val listener: Listener) {
         /** Orbit said it is ready, on a binder thread: the screen is described now. */
         fun readerReady()
 
-        /** A key, on a binder thread. */
-        fun key(event: KeyEvent, phoneKeypad: Boolean)
+        /** A key, on a binder thread: whether it was taken. */
+        fun key(event: KeyEvent, phoneKeypad: Boolean): Boolean
 
         /** An Orbit setting changed (the braille input table); read what depends on it again. */
         fun settingsChanged()
@@ -58,9 +60,8 @@ class OrbitReader(context: Context, private val listener: Listener) {
         override fun onInternalKeyEvent(event: Bundle): Boolean {
             val code = event.getInt("keyCode", -1)
             if (code in 1000..1022) phoneKeypad = true else if (code >= 3000) phoneKeypad = false
-            val name = event.getString("keyName") ?: return true
-            listener.key(KeyEvent(name, event.getInt("action", -1), event.getBoolean("isLongPress", false)), phoneKeypad)
-            return true
+            val name = event.getString("keyName") ?: return claim.holding
+            return listener.key(KeyEvent(name, event.getInt("action", -1), event.getBoolean("isLongPress", false)), phoneKeypad)
         }
 
         override fun onAdjustVolume(increase: Boolean) {}
@@ -88,10 +89,11 @@ class OrbitReader(context: Context, private val listener: Listener) {
         },
     )
 
-    /** Taken while the window has focus: see [KeyClaim]. */
-    val claim: KeyClaim = KeyClaim(
+    /** Taken while the window has focus: see [Claim]. */
+    val claim: Claim = Claim(
         take = { link.call("notifyAppForeground") { it.notifyAppForeground(packageName) } },
-        release = { link.call("notifyAppBackground") { it.notifyAppBackground(packageName) } },
+        release = { link.now("notifyAppBackground") { it.notifyAppBackground(packageName) } },
+        needsService = true,
     )
 
     @Volatile
@@ -109,8 +111,8 @@ class OrbitReader(context: Context, private val listener: Listener) {
     fun bind() = link.bind()
 
     fun unbind() {
-        link.call("unregisterKeypadCallback") { it.unregisterKeypadCallback(packageName) }
-        link.call("unregisterSettingsCallback") { it.unregisterSettingsCallback(settings) }
+        link.now("unregisterKeypadCallback") { it.unregisterKeypadCallback(packageName) }
+        link.now("unregisterSettingsCallback") { it.unregisterSettingsCallback(settings) }
         link.unbind()
     }
 

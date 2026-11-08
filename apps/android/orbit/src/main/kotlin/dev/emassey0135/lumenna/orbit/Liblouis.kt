@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.orbit.liblouisservice.ILiblouisServiceInterface
+import dev.emassey0135.lumenna.braille.ServiceLink
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets

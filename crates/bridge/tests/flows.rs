@@ -1464,6 +1464,7 @@ fn another_days_question_and_the_pick_it_leads_back_to_are_each_a_new_question()
     let again = app.view().asking.unwrap();
     assert!(again.number > day, "the pick it leads back to is asked anew, not taken for the day's answered");
     assert_eq!(again.refusal, None);
+    assert_eq!(again.typed, None, "the day's line is not the next question's");
 }
 
 #[test]

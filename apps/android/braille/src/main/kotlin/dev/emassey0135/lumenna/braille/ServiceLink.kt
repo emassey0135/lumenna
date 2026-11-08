@@ -1,4 +1,4 @@
-package dev.emassey0135.lumenna.orbit
+package dev.emassey0135.lumenna.braille
 
 import android.content.ComponentName
 import android.content.Context
@@ -18,7 +18,7 @@ import java.util.concurrent.Executors
  * can die under the app whenever the vendor updates it, and Android then never binds it again
  * ([onBindingDied]), so the link does.
  *
- * Nothing here knows Orbit: the BrailleSense app repeats it (`apps/android/braille/`, when lifted).
+ * Nothing here knows a device: the Orbit app and the BrailleSense app each hold their own.
  */
 class ServiceLink<S : IInterface>(
     context: Context,
@@ -39,7 +39,15 @@ class ServiceLink<S : IInterface>(
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             val bound = asInterface(binder)
             service = bound
-            worker.execute { connected(bound) }
+            worker.execute {
+                try {
+                    connected(bound)
+                } catch (error: RemoteException) {
+                    Log.w(TAG, "setting up the service failed", error)
+                } catch (error: RuntimeException) {
+                    Log.w(TAG, "setting up the service failed", error)
+                }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -89,6 +97,21 @@ class ServiceLink<S : IInterface>(
         }
     }
 
+    /**
+     * Runs [block] now, on the caller's thread: for giving up the device as the app leaves, which
+     * cannot wait behind what is queued. A failure is logged and goes no further.
+     */
+    fun now(what: String, block: (S) -> Unit) {
+        val s = service ?: return
+        try {
+            block(s)
+        } catch (error: RemoteException) {
+            Log.w(TAG, "$what failed", error)
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "$what failed", error)
+        }
+    }
+
     /** What [block] answers, asked on the worker and waited for; [fallback] if it cannot say. */
     fun <T> ask(fallback: T, block: (S) -> T): T {
         val answer = java.util.concurrent.FutureTask {
@@ -106,6 +129,6 @@ class ServiceLink<S : IInterface>(
     }
 
     private companion object {
-        const val TAG = "LumennaOrbit"
+        const val TAG = "LumennaService"
     }
 }
