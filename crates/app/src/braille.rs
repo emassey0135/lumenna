@@ -1,6 +1,8 @@
 //! A braille device's letters: every braille device's keys run the same thing for the same
-//! letter, whichever way it is pressed (a BTSpeak hands its app a letter; the Orbit Speak and the
-//! BrailleSense press Space with it), and what a shell shows beside a row's action, a settings
+//! letter, and how a letter is pressed is each app's own: it maps its presses onto `Event::Letter`
+//! and `Event::FindLetter`, and nothing here assumes which. (A BTSpeak's plain letter is the
+//! command and a capital, Dot 7 with the letter, moves by first letter; on the Orbit Speak and the
+//! BrailleSense, Space with the letter is the command and the letter alone moves.) What a shell shows beside a row's action, a settings
 //! page or a reminder's button is asked for here. Nothing a shell keeps.
 //!
 //! A letter is the core's own: a device reporting dots turns them into a letter by

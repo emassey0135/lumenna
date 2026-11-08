@@ -201,8 +201,8 @@ pub enum Event {
     /// ("delete"): it runs what the table says that key runs (`keys::runs`), so the key does
     /// the same on every platform, as [`Run`](Self::Run) would with those kinds.
     Key(String),
-    /// A braille device's letter pressed (Space with the letter, or the letter itself on a
-    /// BTSpeak): runs what that letter runs on the row in hand (`braille`), the shared table's
+    /// A braille device's letter, however that device presses one: each app maps its own presses
+    /// onto this and [`FindLetter`](Self::FindLetter). Runs what that letter runs on the row in hand (`braille`), the shared table's
     /// command where the table names one, else the row's action of that kind, else the screen's
     /// own; one that runs nothing here says why. The same letter does the same on every device.
     Letter(String),

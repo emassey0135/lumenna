@@ -149,9 +149,11 @@ A day or less each, for between the larger pieces, except the first.
 - **Done, in the core** (`lumenna_app::braille` and `screen`; the root `CLAUDE.md`): the letters
   (`Event::Letter`, `action_letter` and friends), dots to a letter (`braille_letter`), first-letter
   search (`Event::FindLetter`, `first_letter`) and the screen for a shell that speaks for itself
-  (`Turn::described`). Only how a letter is pressed differs: the Orbit Speak and the BrailleSense
-  take **Space with the letter** for the command and **the letter alone for first-letter
-  navigation**. Their dots give a to z alone (no `,`, `.`, `/`), so Move Up, Move Down and the
+  (`Turn::described`). How a letter is pressed is each app's own, mapped onto `Letter` and
+  `FindLetter`, and the core assumes neither: the BTSpeak takes **the plain letter for the
+  command and a capital (Dot 7 with the letter) for first-letter navigation**, which its dialogs
+  do themselves, and never Space with a letter; the Orbit Speak and the BrailleSense take **Space
+  with the letter** for the command and **the letter alone for first-letter navigation**. Their dots give a to z alone (no `,`, `.`, `/`), so Move Up, Move Down and the
   filter are their own keys or their row's actions there.
 - **What the three braille apps still each have to themselves**:
   - Typing (the BTSpeak's input, Orbit's liblouis buffer, the BrailleSense's input method), the
