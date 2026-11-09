@@ -92,6 +92,7 @@ private fun lineSettings(braille: Int, voice: Int, shortcut: Int, hotKey: Int, i
     voiceLetter = shortcut == 1,
     brailleLetter = shortcut != 0,
     voiceHotKey = hotKey == 1 || hotKey == 2,
+    voiceHotKeyDots = hotKey == 2,
     brailleHotKey = hotKey != 0,
     index = index == 1,
 )

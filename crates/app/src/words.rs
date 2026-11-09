@@ -420,6 +420,12 @@ pub struct BrailleWords {
     pub finds_a_row: String,
     /// Its heading over the keys that move and open: "Moving and opening".
     pub moving: String,
+    /// Enter on what opens nothing: said, so that a press is never left unanswered.
+    pub opens_nothing: String,
+    /// The actions menu asked for on a row with none.
+    pub no_actions: String,
+    /// The screen of reminders due asked for with none due.
+    pub nothing_due: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -854,6 +860,9 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
             letter_alone: c("A Letter by Itself"),
             finds_a_row: "Moves to the next row starting with that letter.".to_owned(),
             moving: c("Moving and Opening"),
+            opens_nothing: "Nothing to open here.".to_owned(),
+            no_actions: "No actions on this row.".to_owned(),
+            nothing_due: "No reminders are due.".to_owned(),
         },
         yes_no: lumenna_records::fields::yes_no(),
 
@@ -1232,7 +1241,7 @@ pub fn braillesense_keys() -> Vec<DeviceKey> {
         row("Space-1-2-6, Space-3-4-5", "Previous and next page of 32 rows"),
         row("A letter by itself", "The next row beginning with it"),
         row("Enter", "Open the row, press the button"),
-        row("Space-M or F2", "The program's menus"),
+        row("Space-M or F2", "The menu bar"),
         row("Enter-I, or the Application key", "The row's own actions"),
         row("Space-3, Space-6", "Collapse and expand the row"),
         row("Space-E or F4", "Close, go back, or up one level of a menu"),

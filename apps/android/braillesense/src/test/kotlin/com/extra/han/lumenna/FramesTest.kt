@@ -28,6 +28,15 @@ private val BY_LETTER = object : Letters {
 
     override fun find(lines: List<String>, from: Int, letter: Char): Int? =
         (1..lines.size).map { (from + it) % lines.size }.firstOrNull { lines[it].startsWith(letter, ignoreCase = true) }
+
+    /** The core's own rule is the core's to test: first-come letters, then a name's first free one. */
+    override fun shortcuts(items: List<Pair<String, Char?>>): List<Char?> {
+        val taken = HashSet<Char>()
+        val given = items.map { (_, letter) -> letter?.takeIf(taken::add) }
+        return items.zip(given).map { (item, letter) ->
+            letter ?: item.first.lowercase().firstOrNull { it !in taken }?.also { taken += it }
+        }
+    }
 }
 
 /** A table where a cell is its code point and a word is its letters back. */
@@ -208,6 +217,16 @@ class FramesTest {
         ListFrame("l", "", listOf(Row("a", "a"), Row("b", "b")), "b", "", BY_LETTER, readings = readings).rendered
         ListFrame("l", "", listOf(Row("y", "Yes")), null, "", BY_LETTER, readings = readings, prompt = true).rendered
         assertEquals(listOf(2u to 2u, 0u to 0u), seen)
+    }
+
+    @Test fun enterWithNothingToOpenSaysSoAndAnActionlessRowToo() {
+        var said = ""
+        val frame = ListFrame("l", "", listOf(Row("a", "apple")), null, "", BY_LETTER, readings = READ,
+            opensNothing = { said = "nothing" }, noActions = { said = "no actions" })
+        frame.key(Key.Enter)
+        assertEquals("nothing", said)
+        frame.key(Key.Context)
+        assertEquals("no actions", said)
     }
 
     @Test fun tabAloneMovesBetweenControlsAndSpaceOneAndFourDoNot() {

@@ -89,6 +89,10 @@ class ListFrame(
     private val byLetter: ((Char) -> Boolean)? = null,
     /** A question's answers: Space and Backspace choose among them, as the device's prompts do. */
     private val prompt: Boolean = false,
+    /** Says that Enter has nothing to open here. */
+    private val opensNothing: () -> Unit = {},
+    /** Says that this row has no actions to list. */
+    private val noActions: () -> Unit = {},
 ) : Frame(id) {
     private var index = rows.indexOfFirst { it.key == selected }.takeIf { it >= 0 } ?: 0
 
@@ -126,13 +130,13 @@ class ListFrame(
         Key.Last -> moveTo(rows.lastIndex)
         Key.PageUp -> moveTo(index - GROUP)
         Key.PageDown -> moveTo(index + GROUP)
-        Key.Enter -> run { current?.open?.invoke(); current != null }
+        Key.Enter -> run { current?.open?.invoke() ?: opensNothing(); true }
         Key.Space -> if (prompt) wrap(+1) else run { current?.space?.invoke(); current?.space != null }
         Key.Backspace -> prompt && wrap(-1)
         Key.CharLeft -> run { current?.collapse?.invoke(); current?.collapse != null }
         Key.CharRight -> run { current?.expand?.invoke(); current?.expand != null }
         Key.Context -> run {
-            current?.takeIf { it.actions.isNotEmpty() }?.let(openActions)
+            current?.takeIf { it.actions.isNotEmpty() }?.let(openActions) ?: noActions()
             true
         }
         Key.Delete -> run { current?.delete?.invoke(); current?.delete != null }

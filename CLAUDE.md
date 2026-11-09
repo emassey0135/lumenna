@@ -295,6 +295,8 @@ directly (8805659 is the last commit before the move). How the app works inside 
   speech and on the cells, where its settings put it, a shortcut letter, a sign for a dialog or a
   submenu, a control's label and place) is `braille::device_reading`, the words and the order
   being the core's; the device's settings and its braille code's signs are the shell's to hand in.
+  A braille device's menu bar is the shared one with its letters (`braille::menu_bar`, over
+  `keys::MENUS`), and what a letter gives where none is set is `braille::menu_shortcuts`.
 - **What a shell that speaks for itself needs is the core's** (`lumenna_app::screen`,
   `Turn::described`, `App::screen_view`): what is shown (a list with its name, the row in hand's
   line, its place, "3 of 12", and its actions with their letters; a question with its prompt,

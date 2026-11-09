@@ -38,6 +38,10 @@ import dev.emassey0135.lumenna.app.Shown
 import dev.emassey0135.lumenna.app.SidebarGroup
 import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.brailleMainMenu
+import dev.emassey0135.lumenna.app.brailleMenuBar
+import dev.emassey0135.lumenna.app.groupEmpty
+import dev.emassey0135.lumenna.app.levels
+import dev.emassey0135.lumenna.app.pressToAdd
 import dev.emassey0135.lumenna.app.sidebarKey
 import dev.emassey0135.lumenna.app.buttonLetter
 import dev.emassey0135.lumenna.app.commandLetter
@@ -56,7 +60,6 @@ import dev.emassey0135.lumenna.app.SidebarKind
 import dev.emassey0135.lumenna.app.Typing
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.app.foldState
-import dev.emassey0135.lumenna.app.menus
 
 /** What only the activity can do. */
 interface Host {
@@ -70,6 +73,8 @@ interface Host {
 /** A screen the person went to, on the way back from which Escape walks. */
 private sealed interface Page {
     data object Places : Page
+    /** One heading's places: the projects, labels or saved filters. */
+    data class Group(val group: SidebarGroup) : Page
     data object Listing : Page
     data class Task(val id: String) : Page
     data object Settings : Page
@@ -218,6 +223,7 @@ class Shell(
         model.reminders?.let { return reminders(model) }
         return when (val page = pages.last()) {
             Page.Places -> places(model)
+            is Page.Group -> groupPage(model, page.group)
             Page.Listing -> listing(model)
             is Page.Task -> task(model, page.id)
             Page.Settings -> settings(model)
@@ -272,7 +278,10 @@ class Shell(
                 else -> ""
             }
             val row = rendered.speech
+            // A menu's command opens its screen inside the key that chose it, and that key then
+            // redraws the same screen: the screen's name, already due to be said, stays.
             pendingRow = when {
+                title.isBlank() && pendingRow?.endsWith(row) == true -> pendingRow
                 title.isBlank() -> row
                 title.last() in ".?!" -> "$title $row"
                 else -> "$title. $row"
@@ -454,38 +463,37 @@ class Shell(
     /** Where a place chosen is going, until the app shows it: its view is the last place's till then. */
     private var goingTo: Place? = null
 
-    private fun goTo(place: Place) {
+    private fun goTo(place: Place, fromGroup: Boolean = false) {
         goingTo = place
         send(ShellEvent.Open(place))
-        while (pages.size > 1) pages.removeLast()
+        // From a heading's list, Escape comes back to that list.
+        if (!fromGroup) while (pages.size > 1) pages.removeLast()
         pages.addLast(Page.Listing)
         refresh(true)
     }
 
     /**
-     * Space-M: what this screen itself offers and the core's main menu, each by its letter as a
-     * BTSpeak's are, then the rest of the menu bar as submenus. A letter on the screen's own
-     * command is the one that runs here, so the main menu's gives way to it.
+     * Space-M or F2: the shared menu bar, as every other platform's, each command's name and
+     * whether it applies now being `ViewModel::commands` and its letter the core's. What does not
+     * apply is left out, as the device's own menus hide theirs. A row's own actions are Enter-I.
      */
     private fun openMenu() {
         val model = view ?: return
         val states = model.commands.associateBy { it.id }
-        val bar = menus(true)
-        val asks = bar.flatMap { it.items }.associate { it.id to it.asks }
         val place = model.place.takeIf { pages.last() == Page.Listing }
-        val seen = HashSet<String>()
-        val lettered = (place?.let { placeCommands(it, true) }.orEmpty() + brailleMainMenu(true)).filter { seen.add(it.id) }.map { command ->
-            MenuEntry(command.title, letter = command.letter.singleOrNull(), asks = asks[command.id] == true) { runMenuCommand(command.id) }
-        }
-        val groups = bar.mapNotNull { group ->
-            val children = group.items.filter { it.id.isNotEmpty() && it.id !in NOT_HERE && it.id !in seen }.map { item ->
-                val title = states[item.id]?.title?.ifEmpty { null } ?: item.title
-                val letter = commandLetter(item.id)?.singleOrNull()
-                MenuEntry(title, hotkey = letter?.let(BrailleLetters::press), letter = letter, asks = item.asks) { runCommand(item.id) }
+        val groups = brailleMenuBar(place, pages.last() == Page.Places, true).mapNotNull { group ->
+            val children = group.items.filter { states[it.id]?.enabled != false }.map { item ->
+                val letter = item.letter.singleOrNull()
+                MenuEntry(
+                    states[item.id]?.title?.ifEmpty { null } ?: item.title,
+                    hotkey = letter?.takeIf { item.hotKey }?.let(BrailleLetters::press),
+                    letter = letter,
+                    asks = item.asks,
+                ) { runMenuCommand(item.id) }
             }
-            if (children.isEmpty()) null else MenuEntry(group.title, children = children)
+            if (children.isEmpty()) null else MenuEntry(group.title, children = children, letter = group.letter.singleOrNull())
         }
-        showMenu(lettered + groups)
+        showMenu(groups)
     }
 
     private fun showMenu(entries: List<MenuEntry>) {
@@ -497,28 +505,28 @@ class Shell(
         refresh(true, fromKey = true)
     }
 
-    /** Runs what the main menu or a screen's own commands name. */
+    /** Runs what the menu bar, the main menu or a screen's own commands name. */
     private fun runMenuCommand(id: String) {
         when (id) {
-            "projects", "labels", "filters" -> {
-                while (pages.size > 1) pages.removeLast()
-                goToGroup(id)
-            }
-            "reminders-due" -> pushPage(Page.Due)
+            "projects" -> openGroupFromAnywhere(SidebarGroup.PROJECTS)
+            "labels" -> openGroupFromAnywhere(SidebarGroup.LABELS)
+            "filters" -> openGroupFromAnywhere(SidebarGroup.FILTERS)
+            "reminders-due" -> if (view?.due.isNullOrEmpty()) announce(appWords.braille.nothingDue) else pushPage(Page.Due)
+            "new-project-inside" -> commandLetter(id)?.let { send(ShellEvent.Letter(it)) }
             else -> runCommand(id)
         }
     }
 
-    private fun goToGroup(id: String) {
-        val group = when (id) {
-            "projects" -> SidebarGroup.PROJECTS
-            "labels" -> SidebarGroup.LABELS
-            else -> SidebarGroup.FILTERS
-        }
-        val key = sidebarKey(SidebarKind.Group(group))
-        selected["places"] = key
-        held(key, Side.SIDEBAR)
-        refresh(true, fromKey = true)
+    private fun openGroupFromAnywhere(group: SidebarGroup) {
+        while (pages.size > 1) pages.removeLast()
+        openGroup(group)
+    }
+
+    /** One heading's places as their own list; a letter there runs what that row, or the heading, offers. */
+    private fun openGroup(group: SidebarGroup) {
+        val first = view?.let { under(it, group).firstOrNull() }
+        held(first?.key ?: sidebarKey(SidebarKind.Group(group)), Side.SIDEBAR)
+        pushPage(Page.Group(group))
     }
 
     private fun runCommand(id: String) {
@@ -573,6 +581,8 @@ class Shell(
         }, openActions = ::actionsMenu,
             findInApp = if (mainList) ({ send(ShellEvent.FindLetter(it.toString())) }) else null,
             notFound = { announce(noRowStartsWith(it.toString())) },
+            opensNothing = { announce(appWords.braille.opensNothing) },
+            noActions = { announce(appWords.braille.noActions) },
             appHeld = hold,
             readings = readings,
             byLetter = byLetter,
@@ -596,30 +606,58 @@ class Shell(
 
     private var lastLook = java.time.Instant.now().toString()
 
+    /** A row of the sidebar, in the list of places or one heading's own. */
+    private fun placeRow(
+        entry: dev.emassey0135.lumenna.app.SidebarEntry,
+        level: String?,
+        fromGroup: Boolean,
+    ): Row {
+        val on = ActingOn.Held(Side.SIDEBAR, entry.key)
+        val folding = { kind: ActionKind -> entry.offered.firstOrNull { it.kind == kind }?.let { action -> { send(ShellEvent.ActOn(on, action)) } } }
+        return Row(
+            entry.key,
+            entry.title,
+            finding = entry.title,
+            detail = listOfNotNull(entry.detail.ifEmpty { null }, entry.expanded?.let(::foldState), level).joinToString(", "),
+            letter = if (fromGroup) null else mainCommandOf(entry.kind)?.let(::commandLetter)?.singleOrNull(),
+            open = when (val kind = entry.kind) {
+                is SidebarKind.Place -> ({ goTo(kind.field0, fromGroup) })
+                is SidebarKind.Group -> ({ openGroup(kind.field0) })
+            },
+            actions = entries(on, entry.offered),
+            // A row's own letter runs first, through the app; else the main menu's.
+            command = if (fromGroup) null else ({ pressed ->
+                entry.offered.none { actionLetter(it.kind)?.singleOrNull() == pressed } && runMain(pressed)
+            }),
+            collapse = folding(ActionKind.COLLAPSE),
+            expand = folding(ActionKind.EXPAND),
+        )
+    }
+
+    private fun under(model: ViewModel, group: SidebarGroup): List<dev.emassey0135.lumenna.app.SidebarEntry> {
+        var inside = false
+        return model.sidebar.filter { entry ->
+            if (entry.depth == 0u) {
+                inside = (entry.kind as? SidebarKind.Group)?.field0 == group
+                false
+            } else {
+                inside && !entry.hidden
+            }
+        }
+    }
+
+    private fun groupPage(model: ViewModel, group: SidebarGroup): Frame {
+        val entries = under(model, group)
+        val shownLevels = levels(entries.map { it.depth }.toUIntArray())
+        val rows = entries.mapIndexed { index, entry -> placeRow(entry, shownLevels.getOrNull(index)?.ifEmpty { null }, fromGroup = true) }
+        val title = model.sidebar.firstOrNull { (it.kind as? SidebarKind.Group)?.field0 == group }?.title.orEmpty()
+        val add = actionLetter(ActionKind.NEW)?.singleOrNull()?.let(BrailleLetters::press)
+        val empty = listOfNotNull(groupEmpty(group), add?.let(::pressToAdd)).joinToString(" ")
+        return list("group:$group", title, rows, null, empty, side = Side.SIDEBAR)
+    }
+
     private fun places(model: ViewModel): Frame {
-        val rows = model.sidebar.filter { !it.hidden }.map { entry ->
-            val fold = entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
-            val state = listOfNotNull(entry.detail.ifEmpty { null }, entry.expanded?.let(::foldState), entry.level)
-            val on = ActingOn.Held(Side.SIDEBAR, entry.key)
-            val folding = { kind: ActionKind -> entry.offered.firstOrNull { it.kind == kind }?.let { action -> { send(ShellEvent.ActOn(on, action)) } } }
-            Row(
-                entry.key,
-                entry.title,
-                finding = entry.title,
-                detail = state.joinToString(", "),
-                letter = mainCommandOf(entry.kind)?.let(::commandLetter)?.singleOrNull(),
-                open = when (val kind = entry.kind) {
-                    is SidebarKind.Place -> ({ goTo(kind.field0) })
-                    is SidebarKind.Group -> ({ fold?.let { send(ShellEvent.ActOn(on, it)) } })
-                },
-                actions = entries(on, entry.offered),
-                // A row's own letter runs first, through the app; else the main menu's.
-                command = { pressed ->
-                    entry.offered.none { actionLetter(it.kind)?.singleOrNull() == pressed } && runMain(pressed)
-                },
-                collapse = folding(ActionKind.COLLAPSE),
-                expand = folding(ActionKind.EXPAND),
-            )
+        val rows = model.sidebar.filter { !it.hidden }.map { entry -> placeRow(entry, entry.level, fromGroup = false)
         }.let { sidebar ->
             if (model.due.isEmpty()) sidebar else sidebar + Row(
                 "due",
@@ -730,7 +768,11 @@ class Shell(
                 (listOf(line?.text.orEmpty()) + state).joinToString(", "),
                 braille = line?.braille?.ifEmpty { null } ?: line?.text.orEmpty(),
                 finding = line?.title.orEmpty(),
-                open = { if (edits && !heading) { held(item.key, null); send(ShellEvent.Key("open")) } else if (actions.isNotEmpty()) openDayActions(item.key, actions) },
+                open = when {
+                    edits && !heading -> ({ held(item.key, null); send(ShellEvent.Key("open")) })
+                    actions.isNotEmpty() -> ({ openDayActions(item.key, actions) })
+                    else -> null
+                },
                 actions = actions,
                 delete = { held(item.key, null); send(ShellEvent.Key("delete")) },
                 collapse = { held(item.key, null); send(ShellEvent.Key("collapse")) },
@@ -917,7 +959,7 @@ class Shell(
             val words = line?.text ?: reminder.words
             val on = ActingOn.Held(Side.REMINDERS, reminder.id)
             val actions = if (reminder.own) entries(on, reminder.offered) else emptyList()
-            Row(reminder.id, words, open = { if (actions.isNotEmpty()) openDayActions(reminder.id, actions) }, actions = actions)
+            Row(reminder.id, words, open = if (actions.isNotEmpty()) ({ openDayActions(reminder.id, actions) }) else null, actions = actions)
         } + list.offered.map { action -> Row("add:${action.kind}", action.name, open = { send(ShellEvent.ActOn(ActingOn.Reminders, action)) }) }
         val title = list.announcement.replaceFirstChar { it.uppercase() }
         return list("reminders", title, rows, model.remindersHeld.focus, "", side = Side.REMINDERS)
@@ -929,7 +971,7 @@ class Shell(
                 val letter = dueLetter(button.id)?.singleOrNull()
                 MenuEntry(button.title, hotkey = letter?.let(BrailleLetters::press), letter = letter) { pressDue(due.id, button) }
             }
-            Row(due.id, due.text, open = { if (buttons.isNotEmpty()) openDayActions(due.id, buttons) }, actions = buttons,
+            Row(due.id, due.text, open = if (buttons.isNotEmpty()) ({ openDayActions(due.id, buttons) }) else null, actions = buttons,
                 delete = { send(ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Dismiss(due.id))) })
         }
         return list("due", appWords.remindersDue, rows, model.dueHeld.focus, "", side = Side.DUE)
@@ -1103,7 +1145,5 @@ class Shell(
         /** How long after a turn its speech waits, for what the app said to arrive with it. */
         const val SPEECH_DELAY = 60L
 
-        /** A command of the shared table that means nothing on a device with one screen. */
-        val NOT_HERE = setOf("show", "next-pane", "previous-pane", "new-window")
     }
 }

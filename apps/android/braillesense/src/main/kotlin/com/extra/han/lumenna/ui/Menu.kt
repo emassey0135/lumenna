@@ -43,18 +43,9 @@ class MenuFrame(
     private val here get() = levels.last()
 
     private fun shortcutsOf(entries: List<MenuEntry>): Map<MenuEntry, Char> = shortcuts.getOrPut(entries) {
-        // The core's letters first, so a name's own first letter never takes one from them.
-        val taken = HashSet<Char>()
-        val given = HashMap<MenuEntry, Char>()
-        entries.forEach { entry -> entry.letter?.takeIf(taken::add)?.let { given[entry] = it } }
-        entries.filter { it !in given }.forEach { entry ->
-            // One with no letter of its own left shows none: a letter that ran another would mislead.
-            entry.title.lowercase().firstOrNull { it.isLetterOrDigit() && it !in taken }?.let {
-                taken += it
-                given[entry] = it
-            }
-        }
-        given
+        entries.zip(letters.shortcuts(entries.map { it.title to it.letter }))
+            .mapNotNull { (entry, letter) -> letter?.let { entry to it } }
+            .toMap()
     }
 
     override val rendered: Rendered

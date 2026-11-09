@@ -161,6 +161,161 @@ pub fn command_letter(id: &str) -> Option<&'static str> {
     found(COMMAND_LETTERS, id)
 }
 
+/// The letter of each menu of a menu bar, by `keys::Group`'s `id`.
+const GROUP_LETTERS: &[(&str, &str)] = &[("file", "f"), ("edit", "e"), ("view", "v"), ("task", "t"), ("day", "d"), ("help", "h")];
+
+/// A command's letter in a menu: its own, or the letter of the row's action it runs.
+fn menu_letter(id: &str) -> Option<&'static str> {
+    command_letter(id).or_else(|| {
+        ACTION_COMMANDS.iter().find(|(_, command)| *command == id).and_then(|(kind, _)| action_letter(*kind))
+    })
+}
+
+/// An item of a menu and the letter it would have.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuShortcut {
+    /// Its name.
+    pub title: String,
+    /// The letter the core gives it, if any.
+    pub letter: Option<String>,
+}
+
+/// The letter each of a menu's items shows, empty for one left with none: what the core gives
+/// them first, so a name's own first letter never takes one of those, then for the rest the
+/// first letter of its name still free. One that has none left shows none: a letter that ran
+/// another item would mislead.
+#[must_use]
+pub fn menu_shortcuts(items: &[MenuShortcut]) -> Vec<String> {
+    let mut taken = std::collections::BTreeSet::new();
+    let mut letters: Vec<String> = items
+        .iter()
+        .map(|item| item.letter.clone().filter(|letter| taken.insert(letter.clone())).unwrap_or_default())
+        .collect();
+    for (item, letter) in items.iter().zip(&mut letters) {
+        if letter.is_empty()
+            && let Some(free) = item.title.to_lowercase().chars().find(|c| c.is_alphanumeric() && !taken.contains(&c.to_string()))
+        {
+            *letter = free.to_string();
+            taken.insert(letter.clone());
+        }
+    }
+    letters
+}
+
+/// One item of a braille device's menu bar.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LetteredItem {
+    /// The command: "new-task".
+    pub id: String,
+    /// Its name; a shell takes `ViewModel::commands`' over it where that has one.
+    pub title: String,
+    /// Its letter in its menu, empty for none.
+    pub letter: String,
+    /// Whether it asks something first.
+    pub asks: bool,
+    /// Whether its letter also runs it from the screen under the menu, so is a hot key there.
+    pub hot_key: bool,
+}
+
+/// One menu of a braille device's menu bar.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LetteredMenu {
+    /// Which menu: "file", "edit", ….
+    pub id: String,
+    /// Its title.
+    pub title: String,
+    /// Its letter in the bar.
+    pub letter: String,
+    /// Its items, in order.
+    pub items: Vec<LetteredItem>,
+}
+
+/// What a device with no windows or panes has no use for from the shared menu bar. Saving a
+/// task is its form's own button.
+const NOT_ON_A_BRAILLE_DEVICE: &[&str] = &["show", "next-pane", "previous-pane", "new-window", "save-task"];
+
+/// What only a day shown can do, and what only a list being shown can.
+const DAY_MOVES: &[&str] = &["previous-day", "next-day", "go-to-now", "go-to-day"];
+
+/// The groups of places a device without a sidebar reaches from the menu bar, after the places.
+const BRAILLE_VIEW_EXTRAS: &[&str] = &["projects", "labels", "filters", "reminders-due"];
+
+/// The shared menu bar (`keys::MENUS`) on a braille device: the same menus, commands and order
+/// as every other platform's, each with its letter. `place` is the place shown under the menu
+/// (`None` over anything else, or on `main`, the list of places), whose own commands
+/// ([`place_commands`]) keep the letters they share with another and whose hot keys are real;
+/// on `main` the main menu's are. What the table lacks that a device with no sidebar needs is
+/// added here, and the Day menu is there while a day is.
+#[must_use]
+pub fn menu_bar(place: Option<&Place>, main: bool, sentence: bool) -> Vec<LetteredMenu> {
+    let own: Vec<&str> = place.map(|place| place_command_ids(place).to_vec()).unwrap_or_default();
+    let on_list = own.contains(&"filter");
+    let is_day = place == Some(&Place::Today);
+    let main_ids: Vec<String> = if main { main_menu(sentence).into_iter().map(|command| command.id).collect() } else { Vec::new() };
+    let on_rows = place.is_some() || main;
+
+    let groups = crate::keys::menus(sentence).into_iter().filter(|group| group.id != "day" || is_day).map(|mut group| {
+        let mut ids: Vec<(String, String, bool)> = group
+            .items
+            .drain(..)
+            .filter(|item| !item.id.is_empty() && !NOT_ON_A_BRAILLE_DEVICE.contains(&item.id.as_str()))
+            .filter(|item| (item.id != "filter" || on_list) && (is_day || !DAY_MOVES.contains(&item.id.as_str())))
+            .map(|item| (item.id, item.title, item.asks))
+            .collect();
+        if group.id == "view" {
+            ids.extend(BRAILLE_VIEW_EXTRAS.iter().map(|id| ((*id).to_owned(), command_title(id, sentence), false)));
+        }
+        if group.id == "file" && own.contains(&"new-project-inside") {
+            ids.insert(1, ("new-project-inside".to_owned(), command_title("new-project-inside", sentence), true));
+        }
+        (group, ids)
+    });
+
+    let groups: Vec<_> = groups.collect();
+    let bar = menu_shortcuts(
+        &groups
+            .iter()
+            .map(|(group, _)| MenuShortcut {
+                title: group.title.clone(),
+                letter: found(GROUP_LETTERS, &group.id).map(str::to_owned),
+            })
+            .collect::<Vec<_>>(),
+    );
+    groups
+        .into_iter()
+        .zip(bar)
+        .map(|((group, ids), letter)| {
+            // A letter this screen's own command has is that command's, in this menu as on the row.
+            let theirs: Vec<&str> = ids.iter().filter(|(id, ..)| own.contains(&id.as_str())).filter_map(|(id, ..)| command_letter(id)).collect();
+            let shortcuts = menu_shortcuts(
+                &ids.iter()
+                    .map(|(id, title, _)| MenuShortcut {
+                        title: title.clone(),
+                        letter: menu_letter(id)
+                            .filter(|letter| own.contains(&id.as_str()) || !theirs.contains(letter))
+                            .map(str::to_owned),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            let items = ids
+                .into_iter()
+                .zip(shortcuts)
+                .map(|((id, title, asks), letter)| {
+                    let row = on_rows && ACTION_COMMANDS.iter().any(|(_, command)| *command == id);
+                    let hot_key = !letter.is_empty()
+                        && menu_letter(&id) == Some(letter.as_str())
+                        && (own.contains(&id.as_str()) || main_ids.contains(&id) || row);
+                    LetteredItem { id, title, letter, asks, hot_key }
+                })
+                .collect();
+            LetteredMenu { id: group.id, title: group.title, letter, items }
+        })
+        .collect()
+}
+
 fn command_for(kind: ActionKind) -> Option<&'static str> {
     ACTION_COMMANDS.iter().find(|(lettered, _)| *lettered == kind).map(|(_, id)| *id)
 }
@@ -298,6 +453,8 @@ pub struct LineSettings {
     pub braille_letter: bool,
     /// Whether the voice says a hot key.
     pub voice_hot_key: bool,
+    /// Whether it says it as dots rather than a letter.
+    pub voice_hot_key_dots: bool,
     /// Whether the cells show it.
     pub braille_hot_key: bool,
     /// Whether a place among several is given: "2/5".
@@ -400,7 +557,7 @@ pub fn device_reading(line: &DeviceLine, settings: LineSettings, signs: &Braille
     }
     if settings.voice_hot_key && let Some(key) = &line.hot_key {
         speech.push(' ');
-        speech.push_str(key);
+        if settings.voice_hot_key_dots { speech.push_str(&hot_key_dots(key)) } else { speech.push_str(key) }
     }
     if line.role == ControlRole::Menu {
         speech.push_str(" pulldown");
@@ -443,6 +600,19 @@ pub fn device_reading(line: &DeviceLine, settings: LineSettings, signs: &Braille
         after.push(computer(format!(" {show}")));
     }
     DeviceReading { speech, before, body: line.text.clone(), after }
+}
+
+/// A hot key named by its letter, as dots: "Enter-n" is "Enter-dots 1-3-4-5", "Space-a" "Space-dot 1".
+fn hot_key_dots(key: &str) -> String {
+    let Some((held, letter)) = key.rsplit_once('-') else { return key.to_owned() };
+    let dots = letter
+        .chars()
+        .next()
+        .filter(|c| letter.len() == 1 && c.is_ascii_lowercase())
+        .map(|c| DOTS[(c as u8 - b'a') as usize]);
+    let Some(dots) = dots else { return key.to_owned() };
+    let named: Vec<String> = dots.iter().map(u8::to_string).collect();
+    format!("{held}-{} {}", if named.len() == 1 { "dot" } else { "dots" }, named.join("-"))
 }
 
 /// What opens a dialog says: its title and that it is one.
@@ -708,7 +878,16 @@ mod tests {
     }
 
     fn settings(voice_role: RolePlace, braille_role: RolePlace) -> LineSettings {
-        LineSettings { voice_role, braille_role, voice_letter: true, braille_letter: true, voice_hot_key: false, braille_hot_key: false, index: true }
+        LineSettings {
+            voice_role,
+            braille_role,
+            voice_letter: true,
+            braille_letter: true,
+            voice_hot_key: false,
+            voice_hot_key_dots: false,
+            braille_hot_key: false,
+            index: true,
+        }
     }
 
     fn signs() -> BrailleSigns {
@@ -806,6 +985,91 @@ mod tests {
         assert_eq!(shown(&reading), "mi New ent-n \"\"\"");
         let braille_only = device_reading(&item, LineSettings { voice_hot_key: false, ..shows }, &signs());
         assert_eq!(braille_only.speech, "New dialog menu item");
+    }
+
+    #[test]
+    fn the_dot_patterns_setting_says_a_hot_key_as_dots_and_leaves_the_cells_its_letter() {
+        let shows = LineSettings { voice_hot_key: true, voice_hot_key_dots: true, braille_hot_key: true, ..settings(RolePlace::After, RolePlace::Before) };
+        let item = DeviceLine { hot_key: Some("Enter-n".to_owned()), ..line(ControlRole::MenuItem, "New") };
+        let reading = device_reading(&item, shows, &signs());
+        assert_eq!(reading.speech, "New Enter-dots 1-3-4-5 menu item");
+        assert_eq!(shown(&reading), "mi New ent-n");
+        assert_eq!(hot_key_dots("Space-a"), "Space-dot 1");
+    }
+
+    fn shortcut(title: &str, letter: Option<&str>) -> MenuShortcut {
+        MenuShortcut { title: title.to_owned(), letter: letter.map(str::to_owned) }
+    }
+
+    #[test]
+    fn a_menus_letters_are_the_cores_first_then_a_name_and_none_when_none_is_left() {
+        let items = [shortcut("Today", None), shortcut("Tasks", Some("t")), shortcut("New", Some("t")), shortcut("o", None)];
+        assert_eq!(menu_shortcuts(&items), ["o", "t", "n", ""]);
+    }
+
+    fn bar(place: Option<&Place>, main: bool) -> Vec<LetteredMenu> {
+        menu_bar(place, main, true)
+    }
+
+    #[test]
+    fn the_menu_bar_is_the_shared_table_in_its_order() {
+        let shared: Vec<String> = crate::keys::menus(true).into_iter().map(|menu| menu.id).collect();
+        let ids: Vec<String> = bar(Some(&Place::Today), false).into_iter().map(|menu| menu.id).collect();
+        assert_eq!(ids, shared);
+        let view = bar(Some(&Place::Today), false).into_iter().find(|menu| menu.id == "view").unwrap();
+        let shared_view: Vec<String> = crate::keys::menus(true).into_iter().find(|menu| menu.id == "view").unwrap().items.into_iter()
+            .filter(|item| !item.id.is_empty() && !NOT_ON_A_BRAILLE_DEVICE.contains(&item.id.as_str())).map(|item| item.id).collect();
+        let mine: Vec<String> = view.items.iter().map(|item| item.id.clone()).take(shared_view.len()).collect();
+        assert_eq!(mine, shared_view);
+    }
+
+    #[test]
+    fn no_two_items_of_a_menu_and_no_two_menus_share_a_letter() {
+        for place in [Some(Place::Today), Some(Place::Blocks), Some(Place::Tasks), Some(Place::Project("x".to_owned())), None] {
+            let menus = bar(place.as_ref(), place.is_none());
+            let mut tops = std::collections::BTreeSet::new();
+            for menu in menus {
+                assert!(tops.insert(menu.letter.clone()), "{} twice in the bar", menu.letter);
+                let mut seen = std::collections::BTreeSet::new();
+                for item in menu.items {
+                    assert!(item.letter.is_empty() || seen.insert(item.letter.clone()), "{} twice in {}", item.letter, menu.id);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_screens_own_command_keeps_its_letter_in_the_menu() {
+        let today = bar(Some(&Place::Today), false);
+        let file = today.iter().find(|menu| menu.id == "file").unwrap();
+        assert_eq!(file.items.iter().find(|item| item.id == "new-block").unwrap().letter, "a");
+        let tasks = bar(Some(&Place::Tasks), false);
+        let file = tasks.iter().find(|menu| menu.id == "file").unwrap();
+        assert_eq!(file.items.iter().find(|item| item.id == "new-task").unwrap().letter, "a");
+    }
+
+    #[test]
+    fn the_day_menu_is_there_only_on_a_day_and_the_filter_only_on_a_list() {
+        assert!(bar(Some(&Place::Today), false).iter().any(|menu| menu.id == "day"));
+        assert!(!bar(Some(&Place::Tasks), false).iter().any(|menu| menu.id == "day"));
+        let has_filter = |menus: Vec<LetteredMenu>| menus.iter().any(|menu| menu.items.iter().any(|item| item.id == "filter"));
+        assert!(has_filter(bar(Some(&Place::Tasks), false)));
+        assert!(!has_filter(bar(Some(&Place::Today), false)));
+        assert!(!has_filter(bar(None, true)));
+    }
+
+    #[test]
+    fn a_hot_key_is_shown_only_where_the_letter_runs_it() {
+        let item = |menus: &[LetteredMenu], id: &str| menus.iter().flat_map(|menu| &menu.items).find(|item| item.id == id).cloned().unwrap();
+        let tasks = bar(Some(&Place::Tasks), false);
+        assert!(item(&tasks, "undo").hot_key);
+        assert!(!item(&tasks, "go-today").hot_key);
+        assert!(item(&tasks, "mark-done").hot_key);
+        let main = bar(None, true);
+        assert!(item(&main, "go-today").hot_key);
+        let elsewhere = bar(None, false);
+        assert!(!item(&elsewhere, "go-today").hot_key);
+        assert!(!item(&elsewhere, "mark-done").hot_key);
     }
 
     #[test]

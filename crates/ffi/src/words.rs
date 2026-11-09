@@ -8,7 +8,7 @@ use lumenna_app::Capitals;
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LineSettings};
+use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LetteredMenu, LineSettings, MenuShortcut};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
 use lumenna_records::{ActionKind, Candidate};
@@ -130,6 +130,19 @@ pub fn braillesense_keys() -> Vec<w::DeviceKey> {
 #[export]
 pub fn device_reading(line: DeviceLine, settings: LineSettings, signs: BrailleSigns) -> DeviceReading {
     lumenna_app::braille::device_reading(&line, settings, &signs)
+}
+
+/// The letter each of a menu's items shows, empty for one with none.
+#[export]
+pub fn menu_shortcuts(items: Vec<MenuShortcut>) -> Vec<String> {
+    lumenna_app::braille::menu_shortcuts(&items)
+}
+
+/// The shared menu bar on a braille device, each with its letter, under the place shown or (with
+/// no place) over `main`, the list of places.
+#[export]
+pub fn braille_menu_bar(place: Option<Place>, main: bool, sentence: bool) -> Vec<LetteredMenu> {
+    lumenna_app::braille::menu_bar(place.as_ref(), main, sentence)
 }
 
 /// What opens a dialog says.
