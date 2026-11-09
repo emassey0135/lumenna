@@ -24,8 +24,22 @@ class BrailleSettings(private val context: Context) {
         private set
 
     /** What the person's settings say a line carries. */
-    @Volatile var lines: LineSettings = lineSettings(2, 2, 1, 1, 1)
+    @Volatile var lines: LineSettings = lineSettings(2, 2, 1, 1, 1, false)
         private set
+
+    /** Automatically Open Menus with Shortcut: whether a letter opens an item or only goes to it. */
+    @Volatile var opensOnLetter: Boolean = true
+        private set
+
+    /**
+     * Whether the cells can carry a role after the text. Only models sold for France, Italy,
+     * Denmark and Japan offer it; on the rest the setting is Off or Before, and the value it
+     * starts at, 2, is Before: the device's own controls read it so.
+     */
+    private val brailleAfterOffered: Boolean by lazy {
+        val lang = runCatching { java.io.File("/mnt/selvas").list()?.firstOrNull { it.endsWith(".lang") } }.getOrNull().orEmpty()
+        listOf("fr", "it", "da", "ja").any { lang.startsWith(it) }
+    }
 
     /** The device's signs in the person's braille code. */
     @Volatile var signs: BrailleSigns = BrailleTables.signs(BrailleTables.UEB, 2)
@@ -47,18 +61,24 @@ class BrailleSettings(private val context: Context) {
                 read("AnnounceShortcutKeys")?.toIntOrNull() ?: 1,
                 read("HotKeyInformation")?.toIntOrNull() ?: 1,
                 read("IndexReporting")?.toIntOrNull() ?: 1,
+                brailleAfterOffered,
             )
+            opensOnLetter = (read("SupportShortCut")?.toIntOrNull() ?: 1) != 0
         }
     }
 
+    companion object {
+        val URI: Uri = Uri.parse("content://com.selvashc.settingsprovider/braille_settings")
+    }
+
     private fun read(name: String): String? = context.contentResolver.query(
-        Uri.parse("content://com.selvashc.settingsprovider/braille_settings"), null, "name=?", arrayOf(name), null,
+        URI, null, "name=?", arrayOf(name), null,
     )?.use { row -> if (row.moveToFirst()) row.getString(row.getColumnIndexOrThrow("value")) else null }
 }
 
-private fun place(setting: Int) = when (setting) {
-    0 -> RolePlace.OFF
-    1 -> RolePlace.BEFORE
+private fun place(setting: Int, afterOffered: Boolean = true) = when {
+    setting == 0 -> RolePlace.OFF
+    setting == 1 || !afterOffered -> RolePlace.BEFORE
     else -> RolePlace.AFTER
 }
 
@@ -66,9 +86,9 @@ private fun place(setting: Int) = when (setting) {
  * Control Information: 0 off, 1 before, 2 after. Announce Shortcut Keys: 0 off, 1 on, 2 the cells
  * alone. Hot Key Information: 0 off, 1 letters, 2 dot patterns, 3 the cells alone.
  */
-private fun lineSettings(braille: Int, voice: Int, shortcut: Int, hotKey: Int, index: Int) = LineSettings(
+private fun lineSettings(braille: Int, voice: Int, shortcut: Int, hotKey: Int, index: Int, brailleAfter: Boolean) = LineSettings(
     voiceRole = place(voice),
-    brailleRole = place(braille),
+    brailleRole = place(braille, brailleAfter),
     voiceLetter = shortcut == 1,
     brailleLetter = shortcut != 0,
     voiceHotKey = hotKey == 1 || hotKey == 2,

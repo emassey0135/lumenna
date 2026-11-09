@@ -21,13 +21,15 @@ class MenuEntry(
  * `mn File (f) 3o` and is said "File (f) pulldown Menu", an item `mi New (n)`, said "New (n) menu
  * item", and an item that opens a dialog adds its sign and the word. Space-1 and Space-4 move and
  * wrap, Space-1-2-3 and Space-4-5-6 go to the ends, Enter opens or runs, an item's letter jumps to
- * it and runs it, Backspace or Escape goes up a level or, at the top, closes the menu, and the
+ * it and runs it (or only jumps, as the person's setting has it), Backspace or Escape goes up a level or, at the top, closes the menu, and the
  * menu key or Exit closes it all.
  */
 class MenuFrame(
     private val top: List<MenuEntry>,
     private val letters: Letters,
     private val readings: Readings,
+    /** Automatically Open Menus with Shortcut: whether a letter opens its item or only goes to it. */
+    private val opensOnLetter: () -> Boolean = { true },
     /** Says that nothing here is on the letter. */
     private val notFound: (Char) -> Unit = {},
     /** The menu has closed: [cancelled] when it was left without choosing. */
@@ -96,7 +98,7 @@ class MenuFrame(
             val match = shortcutsOf(here.entries).entries.firstOrNull { it.value == letter }?.key
             if (match != null) {
                 here.index = here.entries.indexOf(match)
-                choose(match)
+                if (opensOnLetter()) choose(match)
             } else if (letter != null) {
                 notFound(letter)
             }

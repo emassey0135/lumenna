@@ -99,7 +99,9 @@ class ListFrame(
 
     override val rendered: Rendered
         get() = current?.let { row ->
-            readings.read(line(row.role, row.speech, row.braille, detail = row.detail, letter = row.letter)).rendered()
+            // A prompt's answers are a choice in place, numbered no more than the device numbers them.
+            val (place, count) = if (prompt) 0 to 0 else position
+            readings.read(line(row.role, row.speech, row.braille, detail = row.detail, letter = row.letter, position = place, count = count)).rendered()
         } ?: Rendered(empty)
 
     private fun moveTo(target: Int): Boolean {

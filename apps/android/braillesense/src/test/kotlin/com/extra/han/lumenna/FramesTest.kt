@@ -194,6 +194,22 @@ class FramesTest {
         assertEquals("A", frame.rendered.speech)
     }
 
+    @Test fun aLetterOnlyGoesToItsItemWhenTheDeviceSaysNotToOpen() {
+        var ran = false
+        val frame = MenuFrame(listOf(MenuEntry("One"), MenuEntry("Two", letter = 'w') { ran = true }), BY_LETTER, READ, opensOnLetter = { false }, closed = {})
+        frame.key(Key.Typed("w"))
+        assertEquals("Two (w)", frame.rendered.speech)
+        assertFalse(ran)
+    }
+
+    @Test fun aRowCarriesItsNumberAndAPromptsAnswersDoNot() {
+        val seen = mutableListOf<Pair<UInt, UInt>>()
+        val readings = Readings { line -> seen += line.position to line.count; READ.read(line) }
+        ListFrame("l", "", listOf(Row("a", "a"), Row("b", "b")), "b", "", BY_LETTER, readings = readings).rendered
+        ListFrame("l", "", listOf(Row("y", "Yes")), null, "", BY_LETTER, readings = readings, prompt = true).rendered
+        assertEquals(listOf(2u to 2u, 0u to 0u), seen)
+    }
+
     @Test fun tabAloneMovesBetweenControlsAndSpaceOneAndFourDoNot() {
         var chosen = ""
         val controls = listOf(

@@ -338,7 +338,7 @@ pub struct DeviceLine {
     pub hot_key: Option<String>,
     /// Whether it opens a dialog.
     pub asks: bool,
-    /// Which of [`Self::count`] it is, from 1, for a control that shows one of several.
+    /// Which of [`Self::count`] it is, from 1, for a row or a control that is one of several.
     pub position: u32,
     /// How many there are; 0 for a line that is not one of several.
     pub count: u32,
@@ -383,10 +383,6 @@ pub fn device_reading(line: &DeviceLine, settings: LineSettings, signs: &Braille
         }
     }
     speech.push_str(&line.speech);
-    if let Some(index) = &index {
-        speech.push(' ');
-        speech.push_str(index);
-    }
     if settings.voice_letter && let Some(letter) = &line.letter {
         speech.push_str(&format!(" ({letter})"));
     }
@@ -394,14 +390,20 @@ pub fn device_reading(line: &DeviceLine, settings: LineSettings, signs: &Braille
         speech.push_str(", ");
         speech.push_str(&line.detail);
     }
+    if let Some(index) = &index {
+        speech.push(' ');
+        speech.push_str(index);
+    }
+    // The device says "dialog" ahead of an item's hot key, and "pulldown" after a submenu's.
+    if line.role != ControlRole::Menu && line.asks {
+        speech.push_str(" dialog");
+    }
     if settings.voice_hot_key && let Some(key) = &line.hot_key {
         speech.push(' ');
         speech.push_str(key);
     }
     if line.role == ControlRole::Menu {
         speech.push_str(" pulldown");
-    } else if line.asks {
-        speech.push_str(" dialog");
     }
     let speech = match settings.voice_role {
         RolePlace::Off => speech,
@@ -419,17 +421,18 @@ pub fn device_reading(line: &DeviceLine, settings: LineSettings, signs: &Braille
         before.push(table(format!("{}: ", line.label)));
     }
     let mut after = Vec::new();
-    if let Some(index) = index {
-        after.push(table(format!(" {index}")));
-    }
     if settings.braille_letter && let Some(letter) = &line.letter {
         after.push(computer(format!(" {}{letter}{}", signs.open, signs.close)));
     }
     if !line.detail.is_empty() {
         after.push(table(format!(" {}", line.detail)));
     }
+    if let Some(index) = index {
+        after.push(table(format!(" {index}")));
+    }
     if settings.braille_hot_key && let Some(key) = &line.hot_key {
-        after.push(computer(format!(" {}", key.to_lowercase())));
+        // Its name on the cells is the device's short one: "ent-n".
+        after.push(computer(format!(" {}", key.replace("Enter", "ent").replace("Space", "sp").to_lowercase())));
     }
     if line.role == ControlRole::Menu {
         after.push(computer(signs.pull_down.clone()));
@@ -784,6 +787,25 @@ mod tests {
         assert_eq!(shown(&device_reading(&row, settings(RolePlace::Off, RolePlace::Off), &signs())), "Today");
         assert_eq!(device_reading(&row, settings(RolePlace::Before, RolePlace::After), &signs()).speech, "list item Today");
         assert_eq!(shown(&device_reading(&row, settings(RolePlace::Before, RolePlace::After), &signs())), "Today li");
+    }
+
+    #[test]
+    fn a_rows_number_comes_last_when_the_device_reports_indexes() {
+        let row = DeviceLine { letter: Some("t".to_owned()), detail: "3 tasks".to_owned(), position: 3, count: 12, ..line(ControlRole::ListItem, "Today") };
+        let reading = device_reading(&row, settings(RolePlace::After, RolePlace::Before), &signs());
+        assert_eq!(reading.speech, "Today (t), 3 tasks 3/12 list item");
+        assert_eq!(shown(&reading), "li Today \"<t\"> 3 tasks 3/12");
+    }
+
+    #[test]
+    fn a_hot_key_is_said_and_shown_as_the_device_does() {
+        let shows = LineSettings { voice_hot_key: true, braille_hot_key: true, ..settings(RolePlace::After, RolePlace::Before) };
+        let item = DeviceLine { asks: true, hot_key: Some("Enter-n".to_owned()), ..line(ControlRole::MenuItem, "New") };
+        let reading = device_reading(&item, shows, &signs());
+        assert_eq!(reading.speech, "New dialog Enter-n menu item");
+        assert_eq!(shown(&reading), "mi New ent-n \"\"\"");
+        let braille_only = device_reading(&item, LineSettings { voice_hot_key: false, ..shows }, &signs());
+        assert_eq!(braille_only.speech, "New dialog menu item");
     }
 
     #[test]

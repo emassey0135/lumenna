@@ -2,6 +2,7 @@ package com.extra.han.lumenna
 
 import android.Manifest
 import android.content.Intent
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -89,6 +90,17 @@ class MainActivity : ComponentActivity(), Host {
     )
     private var saving: SaveFile? = null
 
+    /**
+     * A global option changed, perhaps by its own hot key with the app in front (F2 with the Down
+     * scroll key is Control Information), which no focus change tells the app about.
+     */
+    private val settingsChanged = object : ContentObserver(main) {
+        override fun onChange(selfChange: Boolean) {
+            settings.refresh()
+            if (front.holding) shell?.redraw()
+        }
+    }
+
     private val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
         val file = saving ?: return@registerForActivityResult
         saving = null
@@ -119,6 +131,7 @@ class MainActivity : ComponentActivity(), Host {
         }
         setContentView(screen)
         settings.refresh()
+        contentResolver.registerContentObserver(BrailleSettings.URI, true, settingsChanged)
         output.connect()
         lifecycleScope.launch(Dispatchers.IO) { Louis.install(applicationContext, BuildConfig.VERSION_NAME) }
         val opened = core.getOrElse { error ->
@@ -127,7 +140,7 @@ class MainActivity : ComponentActivity(), Host {
             return
         }
         Clock.update(this)
-        val shown = Shell(opened, speaker, translator, this, CoreReadings(settings), messageMillis = { settings.messageMillis }).apply {
+        val shown = Shell(opened, speaker, translator, this, CoreReadings(settings), messageMillis = { settings.messageMillis }, opensOnLetter = { settings.opensOnLetter }).apply {
             reminderAccess = { Reminders.access(this@MainActivity) }
         }
         shell = shown
@@ -189,6 +202,7 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun onDestroy() {
+        contentResolver.unregisterContentObserver(settingsChanged)
         input.release()
         output.disconnect()
         super.onDestroy()

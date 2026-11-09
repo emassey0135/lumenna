@@ -97,6 +97,8 @@ class Shell(
     private val letters: Letters = BrailleLetters,
     /** How long a message stays on the cells: the device's Message Display Time. */
     private val messageMillis: () -> Long = { 3000L },
+    /** Automatically Open Menus with Shortcut: whether a letter opens what it names or only goes to it. */
+    private val opensOnLetter: () -> Boolean = { true },
 ) {
     private val app: AppModel get() = core.app
     private val pages = ArrayDeque<Page>(listOf(Page.Places))
@@ -138,18 +140,6 @@ class Shell(
         if (refused.isNotEmpty()) schedule()
         // What the app said waits for the row in hand to land, which it has.
         core.release()
-    }
-
-    /** The row in hand's place in words, when the core's row is the one shown: "3 of 12". */
-    private fun place(row: Row?): String? {
-        val list = (screen.shown as? Shown.List)?.field0 ?: return null
-        return list.row?.takeIf { it.key == row?.key }?.place
-    }
-
-    /** What a list's row says when it is arrived at or read again: with its place, the core's. */
-    private fun withPlace(frame: Frame, speech: String): String {
-        if (frame !is ListFrame || !frame.appHeld) return speech
-        return listOfNotNull(speech.ifBlank { null }, place(frame.current)).joinToString(", ")
     }
 
     private val view: ViewModel? get() = app.view.value
@@ -215,6 +205,9 @@ class Shell(
         refresh(true)
     }
 
+    /** The device's settings changed while in front: the line reads as they now say, unsaid. */
+    fun redraw() = refresh(false)
+
     private fun build(): Frame {
         menu?.let { return it }
         val model = view ?: return Blank
@@ -278,7 +271,7 @@ class Shell(
                 built is FormFrame -> built.title?.let(::dialogTitle).orEmpty()
                 else -> ""
             }
-            val row = if (fresh || landed) withPlace(built, rendered.speech) else rendered.speech
+            val row = rendered.speech
             pendingRow = when {
                 title.isBlank() -> row
                 title.last() in ".?!" -> "$title $row"
@@ -295,7 +288,7 @@ class Shell(
             Key.Silence -> return out.silence()
             Key.Repeat -> return run {
                 clearMessage()
-                frame?.let { shown -> shown.rendered.let { out.say(withPlace(shown, it.speech)); out.show(it) } }
+                frame?.rendered?.let { out.say(it.speech); out.show(it) }
             }
             Key.ScrollOn -> {
                 clearMessage()
@@ -496,7 +489,7 @@ class Shell(
     }
 
     private fun showMenu(entries: List<MenuEntry>) {
-        menu = MenuFrame(entries, letters, readings, notFound = { announce(nothingOnLetter(it.toString())) }, closed = { cancelled ->
+        menu = MenuFrame(entries, letters, readings, opensOnLetter, notFound = { announce(nothingOnLetter(it.toString())) }, closed = { cancelled ->
             menu = null
             if (cancelled) announce(appWords.cancel)
             refresh(true)
@@ -622,7 +615,7 @@ class Shell(
                 actions = entries(on, entry.offered),
                 // A row's own letter runs first, through the app; else the main menu's.
                 command = { pressed ->
-                    entry.offered.none { actionLetter(it.kind)?.singleOrNull() == pressed } && mainMenu(pressed)
+                    entry.offered.none { actionLetter(it.kind)?.singleOrNull() == pressed } && runMain(pressed)
                 },
                 collapse = folding(ActionKind.COLLAPSE),
                 expand = folding(ActionKind.EXPAND),
@@ -636,7 +629,7 @@ class Shell(
                 open = { pushPage(Page.Due) },
             )
         }
-        return list("places", appWords.places, rows, model.sidebarHeld.focus, "", side = Side.SIDEBAR, byLetter = ::mainMenu)
+        return list("places", appWords.places, rows, model.sidebarHeld.focus, "", side = Side.SIDEBAR, byLetter = { letter -> onPlacesLetter(model, letter) })
     }
 
     /** The main menu's command that is this sidebar row, if one is. */
@@ -657,10 +650,26 @@ class Shell(
     }
 
     /** The core's main menu, each by its letter, from the list of places. */
-    private fun mainMenu(letter: Char): Boolean {
+    private fun runMain(letter: Char): Boolean {
         val command = brailleMainMenu(true).firstOrNull { it.letter.singleOrNull() == letter } ?: return false
         runMenuCommand(command.id)
         return true
+    }
+
+    /** A letter alone on the list of places: goes to its row, and opens it as the person's setting has it. */
+    private fun onPlacesLetter(model: ViewModel, letter: Char): Boolean {
+        if (!opensOnLetter()) {
+            val row = model.sidebar.firstOrNull { entry ->
+                !entry.hidden && mainCommandOf(entry.kind)?.let(::commandLetter)?.singleOrNull() == letter
+            }
+            if (row != null) {
+                selected["places"] = row.key
+                held(row.key, Side.SIDEBAR)
+                refresh(true, fromKey = true)
+                return true
+            }
+        }
+        return runMain(letter)
     }
 
     private fun listing(model: ViewModel): Frame {
