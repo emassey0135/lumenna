@@ -57,12 +57,14 @@ pub fn propose(snapshot: &Snapshot, date: Option<&str>, style: TimeStyle, pins: 
         let series = planned.block.series_id();
         let block = snapshot.series.get(&series).map(|s| s.title.clone()).unwrap_or_default();
         let start = occurrences.iter().find(|o| o.series_id == series).map(|o| minutes_of(o.start_time));
+        let estimated = snapshot.tasks.get(&planned.task).is_some_and(|t| t.estimate_mins.is_some());
         let task = snapshot.tasks.get(&planned.task).map(|t| t.title.clone()).unwrap_or_default();
         let at = start.map_or_else(String::new, |start| format!(" at {}", clock(start, style)));
-        let length = if planned.assumed {
-            format!("for {}, since it has no estimate", duration(planned.minutes))
-        } else {
-            format!("for {}", duration(planned.minutes))
+        let length = match (planned.assumed, estimated, planned.spent > 0) {
+            (true, true, _) => format!("for {}, since its estimate is used up", duration(planned.minutes)),
+            (true, false, _) => format!("for {}, since it has no estimate", duration(planned.minutes)),
+            (false, _, true) => format!("for {}, what is left of its estimate", duration(planned.minutes)),
+            (false, _, false) => format!("for {}", duration(planned.minutes)),
         };
         sittings.push(ProposedSitting {
             sentence: format!("{task} goes in {block}{at}, {length}"),

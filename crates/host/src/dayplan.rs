@@ -3,7 +3,7 @@
 
 
 use lumenna_core::edit::{self, Edit};
-use lumenna_core::model::BlockRef;
+use lumenna_core::model::{AssignmentStatus, BlockRef};
 
 use crate::error::{LumennaError, Result};
 use crate::replan::{TimeStyle, now_or};
@@ -87,7 +87,12 @@ impl Lumenna {
                 } else {
                     (BlockRef::OneOff(series_id), block.start_date.year())
                 };
-                if snapshot.assignments.values().any(|a| a.block_ref == target && a.task_id == task_id) {
+                // A sitting already worked there is no obstacle: a task takes as many as it needs.
+                if snapshot
+                    .assignments
+                    .values()
+                    .any(|a| a.block_ref == target && a.task_id == task_id && a.status != AssignmentStatus::Worked)
+                {
                     return Err(stale(&format!("{} was put in {}", task.title, block.title)));
                 }
                 let mut assign = edit::assign_task(&snapshot, task_id, target, year)?;

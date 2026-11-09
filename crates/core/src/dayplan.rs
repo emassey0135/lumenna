@@ -9,7 +9,7 @@ use jiff::Zoned;
 
 use crate::filter::Expr;
 use crate::id::{SeriesId, TaskId};
-use crate::model::BlockRef;
+use crate::model::{AssignmentStatus, BlockRef};
 use crate::recur::{Occurrence, RecurError};
 use crate::snapshot::Snapshot;
 use crate::suggestions::{Reason, remaining, suggest};
@@ -28,10 +28,12 @@ pub struct PlannedSitting {
     pub block: BlockRef,
     /// The task.
     pub task: TaskId,
-    /// Its planned length: the task's estimate, or [`UNESTIMATED_MINS`].
+    /// Its planned length: what is left of the task's estimate, or [`UNESTIMATED_MINS`].
     pub minutes: u32,
-    /// Whether the task had no estimate, so `minutes` is assumed.
+    /// Whether the task had no estimate, or has used it up, so `minutes` is assumed.
     pub assumed: bool,
+    /// The minutes already worked on the task, from its earlier sittings.
+    pub spent: u32,
     /// Why it was chosen, as suggestions say it.
     pub reasons: Vec<Reason>,
 }
@@ -70,12 +72,16 @@ pub fn propose_day(
     let today = now.date();
     let now_mins = minutes(now.time());
     let mut taken: BTreeSet<TaskId> = excluded.clone();
-    // A task already in a block today is planned already.
+    // A task with a sitting still to come that day is planned already. One worked earlier and
+    // still open is not: a task takes as many sittings as it needs.
     for assignment in snapshot.assignments.values() {
-        if snapshot.assignment_date(assignment) == Some(day) {
+        if matches!(assignment.status, AssignmentStatus::Planned | AssignmentStatus::InProgress)
+            && snapshot.assignment_date(assignment) == Some(day)
+        {
             taken.insert(assignment.task_id);
         }
     }
+    let facts = snapshot.facts();
     let mut proposal = DayProposal::default();
     for occurrence in &occurrences {
         if !occurrence.flags.accepts_tasks {
@@ -113,7 +119,13 @@ pub fn propose_day(
                 continue;
             }
             let Some(task) = snapshot.tasks.get(&suggestion.task) else { continue };
-            let (length, assumed) = task.estimate_mins.map_or((UNESTIMATED_MINS, true), |e| (e.max(1), false));
+            let spent = spent_mins(snapshot, &facts, task, now);
+            let (length, assumed) = match task.estimate_mins {
+                // What is left of the estimate, once some of it has been worked.
+                Some(estimate) if spent < estimate => ((estimate - spent).max(1), false),
+                // No estimate, or one already used up: a sitting of the assumed length.
+                _ => (UNESTIMATED_MINS, true),
+            };
             if length > left {
                 continue;
             }
@@ -128,10 +140,9 @@ pub fn propose_day(
                     other => other,
                 })
                 .collect();
-            proposal.sittings.push(PlannedSitting { block, task: task.id, minutes: length, assumed, reasons });
+            proposal.sittings.push(PlannedSitting { block, task: task.id, minutes: length, assumed, spent, reasons });
         }
     }
-    let facts = snapshot.facts();
     proposal.unfit = snapshot
         .tasks
         .values()
@@ -140,4 +151,24 @@ pub fn propose_day(
         .map(|t| t.id)
         .collect();
     Ok(proposal)
+}
+
+/// The minutes already worked on `task`'s current occurrence: every sitting of a one-off
+/// task, and of a repeating one, those after the day it was last done, since an earlier
+/// occurrence's time says nothing about this one's.
+#[must_use]
+pub fn spent_mins(snapshot: &Snapshot, facts: &crate::state::Facts<'_>, task: &crate::model::Task, now: &Zoned) -> u32 {
+    let last_done = facts
+        .completions_of(task.id)
+        .iter()
+        .map(|c| c.completed_at.to_zoned(now.time_zone().clone()).date())
+        .max();
+    facts
+        .assignments_of(task.id)
+        .iter()
+        .filter(|a| {
+            last_done.is_none_or(|done| snapshot.assignment_date(a).is_none_or(|date| date > done))
+        })
+        .map(|a| a.accumulated_mins)
+        .sum()
 }

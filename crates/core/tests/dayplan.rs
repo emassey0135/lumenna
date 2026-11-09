@@ -6,7 +6,7 @@ use jiff::civil::{date, time};
 use lumenna_core::SeriesId;
 use lumenna_core::dayplan::{UNESTIMATED_MINS, propose_day};
 use lumenna_core::id::{ProjectId, TaskId};
-use lumenna_core::model::{BlockKind, BlockRef, BlockSeries, Priority, Project, Task};
+use lumenna_core::model::{AssignmentStatus, BlockAssignment, BlockKind, BlockRef, BlockSeries, Priority, Project, Task};
 use lumenna_core::order::OrderKey;
 use lumenna_core::snapshot::Snapshot;
 
@@ -100,4 +100,50 @@ fn what_is_due_and_does_not_fit_is_named() {
     world.snapshot.tasks.get_mut(&due).unwrap().due = Some(lumenna_core::model::Due::on(date(2026, 5, 6)));
     let proposal = world.plan("2026-05-06T08:00");
     assert_eq!(proposal.unfit, [due]);
+}
+
+impl World {
+    /// A sitting of `task` in the one-off `block`, as it stands: `status`, `worked` minutes in.
+    fn sitting(&mut self, task: TaskId, block: SeriesId, status: AssignmentStatus, worked: u32) {
+        let mut sitting = BlockAssignment::new(BlockRef::OneOff(block), task, OrderKey::middle());
+        sitting.status = status;
+        sitting.accumulated_mins = worked;
+        self.snapshot.assignments.insert(sitting.id, sitting);
+    }
+}
+
+#[test]
+fn a_task_worked_earlier_today_and_still_open_is_planned_again_for_what_is_left_of_its_estimate() {
+    let mut world = World::new();
+    let morning = world.block("Morning", BlockKind::Work, 9, 60);
+    let afternoon = world.block("Afternoon", BlockKind::Work, 14, 60);
+    let essay = world.task("Essay", 1, Some(90));
+    world.sitting(essay, morning, AssignmentStatus::Worked, 50);
+    let proposal = world.plan("2026-05-06T12:00");
+    assert_eq!(world.titles(&proposal, afternoon), ["Essay"]);
+    let sitting = &proposal.sittings[0];
+    assert_eq!((sitting.minutes, sitting.spent, sitting.assumed), (40, 50, false));
+}
+
+#[test]
+fn a_task_with_a_sitting_still_to_come_that_day_is_not_planned_twice() {
+    let mut world = World::new();
+    world.block("Morning", BlockKind::Work, 9, 60);
+    let afternoon = world.block("Afternoon", BlockKind::Work, 14, 60);
+    let essay = world.task("Essay", 1, Some(30));
+    world.sitting(essay, afternoon, AssignmentStatus::Planned, 0);
+    assert!(world.plan("2026-05-06T08:00").sittings.is_empty());
+}
+
+#[test]
+fn a_task_past_its_estimate_is_planned_at_the_assumed_length_and_says_so() {
+    let mut world = World::new();
+    let morning = world.block("Morning", BlockKind::Work, 9, 60);
+    world.block("Afternoon", BlockKind::Work, 14, 60);
+    let essay = world.task("Essay", 1, Some(30));
+    world.sitting(essay, morning, AssignmentStatus::Worked, 45);
+    let proposal = world.plan("2026-05-06T12:00");
+    assert_eq!(proposal.sittings.len(), 1);
+    assert!(proposal.sittings[0].assumed);
+    assert_eq!(proposal.sittings[0].minutes, UNESTIMATED_MINS);
 }

@@ -165,9 +165,12 @@ move made by the change that completed a repeating task is not counted).
   running, work and time shrink together, so it outruns from the timer's start or never.
 - **The whole-day plan is greedy** (`core::dayplan`, the surface's `dayplan.rs`): each work
   block still to come takes the tasks its suggestions rank first until the estimates fill it;
-  a task once a day, none already in a block that day, none blocked, one without an estimate
-  counted as 30 minutes and said so; what is due by then and fits nowhere is named. Applying
-  is one undo, refused where a task was done or put in that block since, and plans again
+  a task once a day, none with a sitting still to come that day, none blocked. A task worked
+  earlier and still open is planned again, for what is left of its estimate (`spent_mins`: a
+  repeating task's since it was last done); one without an estimate, or past it, counted as 30
+  minutes and said so; what is due by then and fits nowhere is named. Applying
+  is one undo, refused where a task was done or put in that block since (a sitting already
+  worked there is no obstacle), and plans again
   (`DayPlanned::next`), each sitting turned down kept out of its block alone.
 - **A task's history is said only when asked about that task** (`task_history`,
   `TaskDetail::history`), never in a list or a live region.

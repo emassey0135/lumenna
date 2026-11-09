@@ -88,3 +88,19 @@ fn a_sitting_turned_down_frees_its_time_for_another_task_and_its_task_for_anothe
     let done = lumenna.apply_day_plan(proposal, vec![email], Some(NOW.to_owned())).unwrap();
     assert_eq!(done.announcement, "Planned 1 task. Now: Plans 1 task: Filing in Morning.");
 }
+
+#[test]
+fn a_task_worked_and_still_open_is_planned_again_for_the_rest_of_its_estimate_and_says_so() {
+    let (_directory, lumenna) = open();
+    block(&lumenna, "Morning", "work", "09:00", 60, None);
+    let essay = lumenna.add_task("Essay 90m").unwrap().task.unwrap().id;
+    let morning = lumenna.plan(Some("2026-05-06".to_owned())).unwrap().blocks[0].id.clone();
+    lumenna.assign(&essay, &morning, Some("2026-05-06".to_owned()), None).unwrap();
+    let sitting = lumenna.plan(Some("2026-05-06".to_owned())).unwrap().blocks[0].assignments[0].id.clone();
+    lumenna.stop_timer(&sitting, Some(50)).unwrap();
+    let proposal = plan(&lumenna, TimeStyle::TwentyFourHour);
+    assert_eq!(proposal.sittings.len(), 1, "worked, the task is planned again: {:?}", proposal.announcement);
+    assert_eq!(proposal.sittings[0].sentence, "Essay goes in Morning at 09:00, for 40 minutes, what is left of its estimate");
+    // The block it was worked in takes it again: a worked sitting is no obstacle.
+    lumenna.apply_day_plan(proposal.clone(), proposal.sittings, Some(NOW.to_owned())).unwrap();
+}
