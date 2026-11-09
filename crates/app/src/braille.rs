@@ -229,6 +229,225 @@ pub fn main_menu(sentence: bool) -> Vec<LetterCommand> {
     )
 }
 
+/// What a line on a device with its own controls is, as the HIMS BrailleSense names them.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlRole {
+    /// Opens a submenu.
+    Menu,
+    /// Runs when pressed.
+    MenuItem,
+    /// A row of a list.
+    ListItem,
+    /// A line to type in.
+    EditBox,
+    /// One of several, changed in place.
+    ComboBox,
+    /// A check box that is checked.
+    CheckBoxChecked,
+    /// A check box that is not.
+    CheckBoxUnchecked,
+    /// Runs when pressed.
+    Button,
+    /// An answer to a question, chosen in place.
+    PromptButton,
+    /// A line of information.
+    StaticBox,
+}
+
+/// The device's name for a role: spoken, and its symbol on the cells.
+fn role_words(role: ControlRole) -> (&'static str, &'static str) {
+    match role {
+        ControlRole::Menu => ("Menu", "mn"),
+        ControlRole::MenuItem => ("menu item", "mi"),
+        ControlRole::ListItem => ("list item", "li"),
+        ControlRole::EditBox => ("edit box", "eb"),
+        ControlRole::ComboBox => ("combo box", "cb"),
+        ControlRole::CheckBoxChecked => ("check box checked", "schb"),
+        ControlRole::CheckBoxUnchecked => ("check box unchecked", "uchb"),
+        ControlRole::Button => ("button", "bt"),
+        ControlRole::PromptButton => ("prompt button", "pb"),
+        ControlRole::StaticBox => ("static box", "st"),
+    }
+}
+
+/// Where a role goes on its line: the device's Control Information settings, one for the cells and
+/// one for the voice.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RolePlace {
+    /// Left out.
+    Off,
+    /// Ahead of the text.
+    Before,
+    /// After it.
+    After,
+}
+
+/// What the person's device settings say a line carries.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LineSettings {
+    /// Where the voice says the role.
+    pub voice_role: RolePlace,
+    /// Where the cells show it.
+    pub braille_role: RolePlace,
+    /// Whether the voice says a shortcut letter.
+    pub voice_letter: bool,
+    /// Whether the cells show it.
+    pub braille_letter: bool,
+    /// Whether the voice says a hot key.
+    pub voice_hot_key: bool,
+    /// Whether the cells show it.
+    pub braille_hot_key: bool,
+    /// Whether a place among several is given: "2/5".
+    pub index: bool,
+}
+
+/// The cells of the device's own signs in its braille code, as Braille ASCII.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrailleSigns {
+    /// What opens a shortcut letter.
+    pub open: String,
+    /// What closes it.
+    pub close: String,
+    /// What ends an item that opens a dialog.
+    pub dialog: String,
+    /// What ends an item that opens a submenu.
+    pub pull_down: String,
+}
+
+/// One line to word.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceLine {
+    /// What it is.
+    pub role: ControlRole,
+    /// What it is for, ahead of its value; empty for none.
+    pub label: String,
+    /// Its text as said.
+    pub speech: String,
+    /// Its text as shown.
+    pub text: String,
+    /// What follows the letter, said and shown; empty for none.
+    pub detail: String,
+    /// Its shortcut letter.
+    pub letter: Option<String>,
+    /// What runs it from anywhere: "Enter-n".
+    pub hot_key: Option<String>,
+    /// Whether it opens a dialog.
+    pub asks: bool,
+    /// Which of [`Self::count`] it is, from 1, for a control that shows one of several.
+    pub position: u32,
+    /// How many there are; 0 for a line that is not one of several.
+    pub count: u32,
+}
+
+/// A stretch of the cells beside a line's text.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BraillePart {
+    /// What is shown.
+    pub text: String,
+    /// Whether it is Braille ASCII, shown cell for cell, rather than text in the person's table.
+    pub computer: bool,
+}
+
+/// A line as the device reads it.
+#[boltffi::data]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceReading {
+    /// What is said.
+    pub speech: String,
+    /// What the cells show ahead of [`Self::body`].
+    pub before: Vec<BraillePart>,
+    /// The text, in the person's table; an edit box puts its own cells here.
+    pub body: String,
+    /// What the cells show after it.
+    pub after: Vec<BraillePart>,
+}
+
+/// A line in the device's own order: the role where the settings put it, the name, the shortcut
+/// letter in brackets, a hot key, and the sign of what pressing it opens.
+#[must_use]
+pub fn device_reading(line: &DeviceLine, settings: LineSettings, signs: &BrailleSigns) -> DeviceReading {
+    let (say, show) = role_words(line.role);
+    let index = (settings.index && line.count > 0).then(|| format!("{}/{}", line.position, line.count));
+
+    let mut speech = String::new();
+    if !line.label.is_empty() {
+        speech.push_str(&line.label);
+        if !line.speech.is_empty() {
+            speech.push_str(": ");
+        }
+    }
+    speech.push_str(&line.speech);
+    if let Some(index) = &index {
+        speech.push(' ');
+        speech.push_str(index);
+    }
+    if settings.voice_letter && let Some(letter) = &line.letter {
+        speech.push_str(&format!(" ({letter})"));
+    }
+    if !line.detail.is_empty() {
+        speech.push_str(", ");
+        speech.push_str(&line.detail);
+    }
+    if settings.voice_hot_key && let Some(key) = &line.hot_key {
+        speech.push(' ');
+        speech.push_str(key);
+    }
+    if line.role == ControlRole::Menu {
+        speech.push_str(" pulldown");
+    } else if line.asks {
+        speech.push_str(" dialog");
+    }
+    let speech = match settings.voice_role {
+        RolePlace::Off => speech,
+        RolePlace::Before => format!("{say} {speech}"),
+        RolePlace::After => format!("{speech} {say}"),
+    };
+
+    let computer = |text: String| BraillePart { text, computer: true };
+    let table = |text: String| BraillePart { text, computer: false };
+    let mut before = Vec::new();
+    if settings.braille_role == RolePlace::Before {
+        before.push(computer(format!("{show} ")));
+    }
+    if !line.label.is_empty() {
+        before.push(table(format!("{}: ", line.label)));
+    }
+    let mut after = Vec::new();
+    if let Some(index) = index {
+        after.push(table(format!(" {index}")));
+    }
+    if settings.braille_letter && let Some(letter) = &line.letter {
+        after.push(computer(format!(" {}{letter}{}", signs.open, signs.close)));
+    }
+    if !line.detail.is_empty() {
+        after.push(table(format!(" {}", line.detail)));
+    }
+    if settings.braille_hot_key && let Some(key) = &line.hot_key {
+        after.push(computer(format!(" {}", key.to_lowercase())));
+    }
+    if line.role == ControlRole::Menu {
+        after.push(computer(signs.pull_down.clone()));
+    } else if line.asks {
+        after.push(computer(format!(" {}", signs.dialog)));
+    }
+    if settings.braille_role == RolePlace::After {
+        after.push(computer(format!(" {show}")));
+    }
+    DeviceReading { speech, before, body: line.text.clone(), after }
+}
+
+/// What opens a dialog says: its title and that it is one.
+#[must_use]
+pub fn dialog_title(title: &str) -> String {
+    format!("{title} dialog")
+}
+
 /// The dots of each letter from a to z, Grade 1 braille's: dots 1 to 6 only.
 const DOTS: [&[u8]; 26] = [
     &[1],
@@ -483,5 +702,95 @@ mod tests {
         for command in main_menu(true) {
             assert!(seen.insert(command.letter.clone()), "{} is used twice on the main menu", command.letter);
         }
+    }
+
+    fn settings(voice_role: RolePlace, braille_role: RolePlace) -> LineSettings {
+        LineSettings { voice_role, braille_role, voice_letter: true, braille_letter: true, voice_hot_key: false, braille_hot_key: false, index: true }
+    }
+
+    fn signs() -> BrailleSigns {
+        BrailleSigns { open: "\"<".to_owned(), close: "\">".to_owned(), dialog: "\"\"\"".to_owned(), pull_down: " 3o".to_owned() }
+    }
+
+    fn line(role: ControlRole, text: &str) -> DeviceLine {
+        DeviceLine {
+            role,
+            label: String::new(),
+            speech: text.to_owned(),
+            text: text.to_owned(),
+            detail: String::new(),
+            letter: None,
+            hot_key: None,
+            asks: false,
+            position: 0,
+            count: 0,
+        }
+    }
+
+    fn shown(reading: &DeviceReading) -> String {
+        reading.before.iter().map(|p| p.text.as_str()).chain([reading.body.as_str()]).chain(reading.after.iter().map(|p| p.text.as_str())).collect()
+    }
+
+    #[test]
+    fn a_menu_item_names_its_role_where_each_setting_puts_it() {
+        let item = DeviceLine { letter: Some("n".to_owned()), ..line(ControlRole::MenuItem, "New") };
+        let reading = device_reading(&item, settings(RolePlace::After, RolePlace::Before), &signs());
+        assert_eq!(reading.speech, "New (n) menu item");
+        assert_eq!(shown(&reading), "mi New \"<n\">");
+        assert!(reading.before[0].computer);
+    }
+
+    #[test]
+    fn an_item_that_opens_a_dialog_says_so_before_its_role_and_ends_in_the_devices_sign() {
+        let item = DeviceLine { letter: Some("r".to_owned()), asks: true, ..line(ControlRole::MenuItem, "Rename") };
+        let reading = device_reading(&item, settings(RolePlace::After, RolePlace::Before), &signs());
+        assert_eq!(reading.speech, "Rename (r) dialog menu item");
+        assert_eq!(shown(&reading), "mi Rename \"<r\"> \"\"\"");
+    }
+
+    #[test]
+    fn a_submenu_is_a_pulldown_and_only_a_submenu_is() {
+        let item = DeviceLine { letter: Some("f".to_owned()), ..line(ControlRole::Menu, "File") };
+        let reading = device_reading(&item, settings(RolePlace::After, RolePlace::Before), &signs());
+        assert_eq!(reading.speech, "File (f) pulldown Menu");
+        assert_eq!(shown(&reading), "mn File \"<f\"> 3o");
+        let plain = device_reading(&line(ControlRole::MenuItem, "New"), settings(RolePlace::After, RolePlace::Before), &signs());
+        assert!(!plain.speech.contains("pulldown"));
+    }
+
+    #[test]
+    fn an_edit_box_shows_its_label_ahead_of_its_text() {
+        let field = DeviceLine { label: "Title".to_owned(), ..line(ControlRole::EditBox, "Buy milk") };
+        let reading = device_reading(&field, settings(RolePlace::After, RolePlace::Before), &signs());
+        assert_eq!(reading.speech, "Title: Buy milk edit box");
+        assert_eq!(reading.body, "Buy milk");
+        assert_eq!(shown(&reading), "eb Title: Buy milk");
+    }
+
+    #[test]
+    fn a_combo_box_gives_its_place_only_when_the_device_reports_indexes() {
+        let combo = DeviceLine { label: "Priority".to_owned(), position: 2, count: 5, ..line(ControlRole::ComboBox, "High") };
+        let reading = device_reading(&combo, settings(RolePlace::After, RolePlace::Before), &signs());
+        assert_eq!(reading.speech, "Priority: High 2/5 combo box");
+        assert_eq!(shown(&reading), "cb Priority: High 2/5");
+        let quiet = device_reading(&combo, LineSettings { index: false, ..settings(RolePlace::After, RolePlace::Before) }, &signs());
+        assert_eq!(quiet.speech, "Priority: High combo box");
+    }
+
+    #[test]
+    fn roles_set_off_leave_the_line_alone_and_after_puts_them_last() {
+        let row = line(ControlRole::ListItem, "Today");
+        assert_eq!(device_reading(&row, settings(RolePlace::Off, RolePlace::Off), &signs()).speech, "Today");
+        assert_eq!(shown(&device_reading(&row, settings(RolePlace::Off, RolePlace::Off), &signs())), "Today");
+        assert_eq!(device_reading(&row, settings(RolePlace::Before, RolePlace::After), &signs()).speech, "list item Today");
+        assert_eq!(shown(&device_reading(&row, settings(RolePlace::Before, RolePlace::After), &signs())), "Today li");
+    }
+
+    #[test]
+    fn a_letter_comes_after_the_name_and_before_the_detail() {
+        let row = DeviceLine { letter: Some("t".to_owned()), detail: "3 tasks".to_owned(), ..line(ControlRole::ListItem, "Today") };
+        let reading = device_reading(&row, settings(RolePlace::Off, RolePlace::Off), &signs());
+        assert_eq!(reading.speech, "Today (t), 3 tasks");
+        assert_eq!(shown(&reading), "Today \"<t\"> 3 tasks");
     }
 }

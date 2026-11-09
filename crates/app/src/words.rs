@@ -420,12 +420,6 @@ pub struct BrailleWords {
     pub finds_a_row: String,
     /// Its heading over the keys that move and open: "Moving and opening".
     pub moving: String,
-    /// What a menu item says after its name and letter, on a device whose menus read so.
-    pub pull_down: String,
-    /// A switch that is on, in a shell that says its state itself.
-    pub on: String,
-    /// A switch that is off, in a shell that says its state itself.
-    pub off: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -860,9 +854,6 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
             letter_alone: c("A Letter by Itself"),
             finds_a_row: "Moves to the next row starting with that letter.".to_owned(),
             moving: c("Moving and Opening"),
-            pull_down: "pull down".to_owned(),
-            on: c("On"),
-            off: c("Off"),
         },
         yes_no: lumenna_records::fields::yes_no(),
 
@@ -1235,18 +1226,19 @@ pub struct DeviceKey {
 pub fn braillesense_keys() -> Vec<DeviceKey> {
     let row = |keys: &str, what: &str| DeviceKey { keys: keys.to_owned(), what: what.to_owned() };
     vec![
-        row("Space-1 or the Up scroll key", "Previous row, or back through a long line"),
-        row("Space-4 or the Down scroll key", "Next row, or on through a long line"),
+        row("Space-1 or the Up scroll key", "Previous row or option, or back through a long line"),
+        row("Space-4 or the Down scroll key", "Next row or option, or on through a long line"),
         row("Space-1-2-3, Space-4-5-6", "First and last row"),
         row("Space-1-2-6, Space-3-4-5", "Previous and next page of 32 rows"),
         row("A letter by itself", "The next row beginning with it"),
         row("Enter", "Open the row, press the button"),
         row("Space-M or F2", "The program's menus"),
         row("Enter-I, or the Application key", "The row's own actions"),
-        row("Space-E or F4", "Close, go back"),
+        row("Space-3, Space-6", "Collapse and expand the row"),
+        row("Space-E or F4", "Close, go back, or up one level of a menu"),
         row("Space-Z", "Exit Lumenna"),
-        row("Space-4-5 or F3, Space-1-2", "Next and previous control in a dialog"),
-        row("Space", "Change a check box, a combo box, or mark a task done"),
+        row("Space-4-5 or F3, Space-1-2 or Space-F3", "Next and previous control in a dialog"),
+        row("Space", "Change a check box, a combo box, a prompt button, or mark a task done"),
         row("Space with a letter", "The row's command of that letter, or the screen's"),
         row("Enter with a letter", "The same, for A, B, D, E, F, H, K, L, M, O, R and Z, which Space keeps for moving and the device"),
         row("Enter-A", "New task"),

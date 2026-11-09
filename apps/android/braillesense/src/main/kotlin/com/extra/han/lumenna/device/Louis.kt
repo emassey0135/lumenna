@@ -17,6 +17,9 @@ class Translated(
 interface Translator {
     fun translate(text: String, cursor: Int = -1): Translated
 
+    /** [text] cell for cell, as Braille ASCII: the device's role symbols, signs and hot keys. */
+    fun computer(text: String): ByteArray
+
     /** The text [cells] (a byte per cell) read back in the person's table, or null if refused. */
     fun back(cells: ByteArray): String?
 }
@@ -35,6 +38,7 @@ object Louis {
     @JvmStatic external fun backTranslate(tables: String, cells: ByteArray): String?
 
     private val installed = java.util.concurrent.CountDownLatch(1)
+    private const val COMPUTER_TABLE = "en-us-comp8.ctb"
 
     /** Copies the tables out of the assets, once per version: liblouis reads them as files. */
     fun install(context: Context, version: String) {
@@ -74,6 +78,11 @@ object Louis {
             } else {
                 Translated(ByteArray(text.length), IntArray(text.length) { it }, IntArray(text.length) { it })
             }
+        }
+
+        override fun computer(text: String): ByteArray = synchronized(Louis) {
+            installed.await()
+            translate(COMPUTER_TABLE, text, -1)?.get(0) as ByteArray? ?: ByteArray(text.length)
         }
 
         override fun back(cells: ByteArray): String? = synchronized(Louis) {

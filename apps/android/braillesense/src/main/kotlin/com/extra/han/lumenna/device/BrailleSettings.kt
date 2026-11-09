@@ -2,11 +2,15 @@ package com.extra.han.lumenna.device
 
 import android.content.Context
 import android.net.Uri
+import dev.emassey0135.lumenna.app.BrailleSigns
+import dev.emassey0135.lumenna.app.LineSettings
+import dev.emassey0135.lumenna.app.RolePlace
 
 /**
  * The person's braille table, as the device has it in its settings provider (`BrailleCode`,
  * `ViewInputGrade`, `EightDotMode`), read when the app comes to the front: typing and the cells
- * follow the table they set in Global Options.
+ * follow the table they set in Global Options, and how a line reads follows the device's
+ * Control Information, Hot Key Information, Announce Shortcut Keys and Index Reporting.
  */
 class BrailleSettings(private val context: Context) {
     @Volatile var tables: String = BrailleTables.tables(BrailleTables.UEB, 2, false)
@@ -19,6 +23,14 @@ class BrailleSettings(private val context: Context) {
     @Volatile var messageMillis: Long = 3_000L
         private set
 
+    /** What the person's settings say a line carries. */
+    @Volatile var lines: LineSettings = lineSettings(2, 2, 1, 1, 1)
+        private set
+
+    /** The device's signs in the person's braille code. */
+    @Volatile var signs: BrailleSigns = BrailleTables.signs(BrailleTables.UEB, 2)
+        private set
+
     /** Reads the settings again; what cannot be read is left as it was. */
     fun refresh() {
         runCatching {
@@ -28,6 +40,14 @@ class BrailleSettings(private val context: Context) {
             eightDot = eight
             read("MessageDisplayTime")?.toLongOrNull()?.takeIf { it > 0 }?.let { messageMillis = it * 1_000L }
             tables = BrailleTables.tables(code, grade, eight)
+            signs = BrailleTables.signs(code, grade)
+            lines = lineSettings(
+                read("ControlInformation")?.toIntOrNull() ?: 2,
+                read("VoiceControlInformation")?.toIntOrNull() ?: 2,
+                read("AnnounceShortcutKeys")?.toIntOrNull() ?: 1,
+                read("HotKeyInformation")?.toIntOrNull() ?: 1,
+                read("IndexReporting")?.toIntOrNull() ?: 1,
+            )
         }
     }
 
@@ -35,6 +55,26 @@ class BrailleSettings(private val context: Context) {
         Uri.parse("content://com.selvashc.settingsprovider/braille_settings"), null, "name=?", arrayOf(name), null,
     )?.use { row -> if (row.moveToFirst()) row.getString(row.getColumnIndexOrThrow("value")) else null }
 }
+
+private fun place(setting: Int) = when (setting) {
+    0 -> RolePlace.OFF
+    1 -> RolePlace.BEFORE
+    else -> RolePlace.AFTER
+}
+
+/**
+ * Control Information: 0 off, 1 before, 2 after. Announce Shortcut Keys: 0 off, 1 on, 2 the cells
+ * alone. Hot Key Information: 0 off, 1 letters, 2 dot patterns, 3 the cells alone.
+ */
+private fun lineSettings(braille: Int, voice: Int, shortcut: Int, hotKey: Int, index: Int) = LineSettings(
+    voiceRole = place(voice),
+    brailleRole = place(braille),
+    voiceLetter = shortcut == 1,
+    brailleLetter = shortcut != 0,
+    voiceHotKey = hotKey == 1 || hotKey == 2,
+    brailleHotKey = hotKey != 0,
+    index = index == 1,
+)
 
 /** The device's braille codes, as liblouis tables. */
 object BrailleTables {
@@ -75,6 +115,17 @@ object BrailleTables {
         38 to listOf("sk-sk.utb", "sk-sk-g1.utb", "sk-sk-g1.utb"), // Slovak
         39 to listOf("ro-g0.utb", "ro.ctb", "ro.ctb"), // Romanian
     )
+
+    /** The brackets of a shortcut letter and the signs of a dialog and a submenu, as Braille ASCII. */
+    fun signs(code: Int, grade: Int): BrailleSigns {
+        val (open, close) = when {
+            grade == 0 -> "(" to ")"
+            code == UEB -> "\"<" to "\">"
+            code == US -> "7" to "7"
+            else -> "(" to ")"
+        }
+        return BrailleSigns(open, close, dialog = "\"\"\"", pullDown = " 3o")
+    }
 
     /** The table list for braille code [code] at [grade] (0 computer, 1, 2); computer braille in eight-dot mode. */
     fun tables(code: Int, grade: Int, eightDot: Boolean): String {

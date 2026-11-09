@@ -61,8 +61,37 @@ class ChordsTest {
         assertEquals(Key.Silence, Chords.fromChord(SPACE or DOT7 or DOT8))
 
     @Test fun theScrollKeysPan() {
-        assertEquals(Key.ScrollBack, Chords.fromChord(Chords.SCROLL_LEFT_UP))
-        assertEquals(Key.ScrollOn, Chords.fromChord(Chords.SCROLL_RIGHT_DOWN))
+        assertEquals(Key.ScrollBack, Chords.fromChord(Chords.SCROLL_UP))
+        assertEquals(Key.ScrollOn, Chords.fromChord(Chords.SCROLL_DOWN))
+        assertEquals(Key.ScrollBack, Chords.fromChord(Chords.SCROLL_UP_LONG))
+        assertEquals(Key.ScrollOn, Chords.fromChord(Chords.SCROLL_DOWN_LONG))
+    }
+
+    @Test fun theFunctionKeysAreMenuTabAndEscape() {
+        assertEquals(Key.Menu, Chords.fromChord(Chords.F2))
+        assertEquals(Key.Tab, Chords.fromChord(Chords.F3))
+        assertEquals(Key.ShiftTab, Chords.fromChord(Chords.F3 or SPACE))
+        assertEquals(Key.Escape, Chords.fromChord(Chords.F4))
+    }
+
+    @Test fun twoFunctionKeysPageAndTheRestAreTheSystems() {
+        assertEquals(Key.PageUp, Chords.fromChord(Chords.F1 or Chords.F2))
+        assertEquals(Key.PageDown, Chords.fromChord(Chords.F3 or Chords.F4))
+        assertNull(Chords.fromChord(Chords.F1))
+        assertNull(Chords.fromChord(Chords.F1 or Chords.F4))
+        assertNull(Chords.fromChord(Chords.F2 or Chords.F3))
+        assertNull(Chords.fromChord(Chords.F3 or DOT1))
+    }
+
+    @Test fun aRealPressOfAFunctionKeyIsReadFromItsChordWhateverKeyCodeItCameAs() {
+        assertEquals(Key.Tab, Chords.decode(-1, 61, "61 0 ${Chords.F3}", false))
+        assertEquals(Key.ShiftTab, Chords.decode(-1, 61, "61 0 ${Chords.F3 or SPACE}", false))
+        assertEquals(Key.Escape, Chords.decode(-1, 111, "111 0 ${Chords.F4}", false))
+    }
+
+    @Test fun spaceThreeAndSixMoveInTextAndFoldInAList() {
+        assertEquals(Key.CharLeft, Chords.fromChord(SPACE or Chords.DOT3))
+        assertEquals(Key.CharRight, Chords.fromChord(SPACE or Chords.DOT6))
     }
 
     @Test fun routingKeysNameTheirCell() =

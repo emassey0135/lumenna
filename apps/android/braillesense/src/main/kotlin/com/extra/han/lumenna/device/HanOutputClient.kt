@@ -63,6 +63,7 @@ class HanOutputClient(context: Context) : Output {
     /** On the worker: makes the claim good, if it still stands. */
     private fun take(output: IHanOutputService) = synchronized(claim) {
         if (!claimed) return@synchronized
+        // One switch for the whole device, never left off: see [release].
         output.setActiveOutputService(true)
         measure(output)
         lastCells?.let { (cells, cursor) -> sendCells(output, cells, cursor) }
@@ -100,12 +101,15 @@ class HanOutputClient(context: Context) : Output {
 
     /**
      * Gives the display and speech back, now and on the caller's thread, safe to call at any time
-     * and any number of times. Not queued on the worker: the next app claims the display as it
-     * comes to the front, and a release that landed after its claim would take the display from it.
+     * and any number of times. Not queued on the worker, so that nothing of ours lands after the
+     * next app has started to write.
+     *
+     * `setActiveOutputService` is not touched: it is one switch for every client of the service,
+     * and every HIMS app checks it before it speaks or writes a cell, so turning it off here would
+     * silence the launcher and leave our last line on the display. The next app simply writes.
      */
     fun release() = synchronized(claim) {
         claimed = false
-        link.now("setActiveOutputService") { it.setActiveOutputService(false) }
         link.now("stopTTS") { it.stopTTS() }
     }
 

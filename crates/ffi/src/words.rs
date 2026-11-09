@@ -8,7 +8,7 @@ use lumenna_app::Capitals;
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::LetterCommand;
+use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LineSettings};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
 use lumenna_records::{ActionKind, Candidate};
@@ -124,6 +124,18 @@ pub fn level_words(depth: u32) -> String {
 #[export]
 pub fn braillesense_keys() -> Vec<w::DeviceKey> {
     w::braillesense_keys()
+}
+
+/// A line as a device with its own controls reads it.
+#[export]
+pub fn device_reading(line: DeviceLine, settings: LineSettings, signs: BrailleSigns) -> DeviceReading {
+    lumenna_app::braille::device_reading(&line, settings, &signs)
+}
+
+/// What opens a dialog says.
+#[export]
+pub fn dialog_title(title: String) -> String {
+    lumenna_app::braille::dialog_title(&title)
 }
 
 /// How long, in words: "1 hour 30 minutes".

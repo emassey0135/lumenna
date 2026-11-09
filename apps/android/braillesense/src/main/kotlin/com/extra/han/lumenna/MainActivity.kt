@@ -21,6 +21,7 @@ import com.extra.han.lumenna.device.HanOutputClient
 import com.extra.han.lumenna.device.Key
 import com.extra.han.lumenna.device.Louis
 import com.extra.han.lumenna.device.Qwerty
+import com.extra.han.lumenna.ui.CoreReadings
 import com.extra.han.lumenna.ui.Host
 import com.extra.han.lumenna.ui.Shell
 import com.extra.han.lumenna.ui.Speaker
@@ -126,7 +127,7 @@ class MainActivity : ComponentActivity(), Host {
             return
         }
         Clock.update(this)
-        val shown = Shell(opened, speaker, translator, this, messageMillis = { settings.messageMillis }).apply {
+        val shown = Shell(opened, speaker, translator, this, CoreReadings(settings), messageMillis = { settings.messageMillis }).apply {
             reminderAccess = { Reminders.access(this@MainActivity) }
         }
         shell = shown

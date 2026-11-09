@@ -17,6 +17,8 @@ import dev.emassey0135.lumenna.TextOffsets
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.Answer
+import dev.emassey0135.lumenna.app.Asks
+import dev.emassey0135.lumenna.app.ControlRole
 import dev.emassey0135.lumenna.app.BlockEvent
 import dev.emassey0135.lumenna.app.DayKind
 import dev.emassey0135.lumenna.app.DayMove
@@ -39,6 +41,7 @@ import dev.emassey0135.lumenna.app.brailleMainMenu
 import dev.emassey0135.lumenna.app.sidebarKey
 import dev.emassey0135.lumenna.app.buttonLetter
 import dev.emassey0135.lumenna.app.commandLetter
+import dev.emassey0135.lumenna.app.dialogTitle
 import dev.emassey0135.lumenna.app.dueLetter
 import dev.emassey0135.lumenna.app.nothingOnLetter
 import dev.emassey0135.lumenna.app.noRowStartsWith
@@ -90,6 +93,7 @@ class Shell(
     private val out: Speaker,
     private val translator: Translator,
     private val host: Host,
+    private val readings: Readings,
     private val letters: Letters = BrailleLetters,
     /** How long a message stays on the cells: the device's Message Display Time. */
     private val messageMillis: () -> Long = { 3000L },
@@ -268,7 +272,12 @@ class Shell(
         val reworded = awaitingChange && rendered.speech != lastSpeech
         if (reworded) awaitingChange = false
         if (moved || fresh || landed || firstContent || reworded) {
-            val title = if (fresh && built is ListFrame) built.title else ""
+            val title = when {
+                !fresh -> ""
+                built is ListFrame -> built.title
+                built is FormFrame -> built.title?.let(::dialogTitle).orEmpty()
+                else -> ""
+            }
             val row = if (fresh || landed) withPlace(built, rendered.speech) else rendered.speech
             pendingRow = when {
                 title.isBlank() -> row
@@ -290,12 +299,12 @@ class Shell(
             }
             Key.ScrollOn -> {
                 clearMessage()
-                if (!out.scrollOn()) step(Key.Down)
+                if (!out.scrollOn() && frame !is FormFrame) step(Key.Down)
                 return
             }
             Key.ScrollBack -> {
                 clearMessage()
-                if (!out.scrollBack()) step(Key.Up)
+                if (!out.scrollBack() && frame !is FormFrame) step(Key.Up)
                 return
             }
             is Key.Route -> {
@@ -352,9 +361,10 @@ class Shell(
     private fun changes(frame: Frame, key: Key): Boolean {
         val control = (frame as? FormFrame)?.current
         return when {
-            control is Control.Choice -> key == Key.Up || key == Key.Down || key == Key.Space
-            control is Control.Toggle -> key == Key.Space || key == Key.Enter
-            frame is ListFrame -> key == Key.Space && frame.current?.space != null
+            control is Control.Choice -> key == Key.Up || key == Key.Down || key == Key.Space || key == Key.Backspace || key == Key.First || key == Key.Last
+            control is Control.Toggle -> key == Key.Space || key == Key.Backspace || key == Key.Enter
+            frame is ListFrame -> (key == Key.Space && frame.current?.space != null) ||
+                (key == Key.CharLeft && frame.current?.collapse != null) || (key == Key.CharRight && frame.current?.expand != null)
             else -> false
         }
     }
@@ -436,7 +446,7 @@ class Shell(
         if (model.list == null) return
         val key = "filter"
         val line = editor(key, model.query)
-        frame = LineFrame("filter", appWords.quickAdd.filter, line, appWords.quickAdd.filterHint, done = {
+        frame = LineFrame("filter", appWords.quickAdd.filter, line, appWords.quickAdd.filterHint, readings, done = {
             editors.remove(key)
             filtering = false
             refresh(true)
@@ -459,25 +469,62 @@ class Shell(
         refresh(true)
     }
 
+    /**
+     * Space-M: what this screen itself offers and the core's main menu, each by its letter as a
+     * BTSpeak's are, then the rest of the menu bar as submenus. A letter on the screen's own
+     * command is the one that runs here, so the main menu's gives way to it.
+     */
     private fun openMenu() {
         val model = view ?: return
         val states = model.commands.associateBy { it.id }
-        val groups = menus(true).map { group ->
-            val children = group.items.filter { it.id.isNotEmpty() && it.id !in NOT_HERE }.map { item ->
+        val bar = menus(true)
+        val asks = bar.flatMap { it.items }.associate { it.id to it.asks }
+        val place = model.place.takeIf { pages.last() == Page.Listing }
+        val seen = HashSet<String>()
+        val lettered = (place?.let { placeCommands(it, true) }.orEmpty() + brailleMainMenu(true)).filter { seen.add(it.id) }.map { command ->
+            MenuEntry(command.title, letter = command.letter.singleOrNull(), asks = asks[command.id] == true) { runMenuCommand(command.id) }
+        }
+        val groups = bar.mapNotNull { group ->
+            val children = group.items.filter { it.id.isNotEmpty() && it.id !in NOT_HERE && it.id !in seen }.map { item ->
                 val title = states[item.id]?.title?.ifEmpty { null } ?: item.title
                 val letter = commandLetter(item.id)?.singleOrNull()
-                MenuEntry(title, hotkey = letter?.let(BrailleLetters::press), letter = letter) { runCommand(item.id) }
+                MenuEntry(title, hotkey = letter?.let(BrailleLetters::press), letter = letter, asks = item.asks) { runCommand(item.id) }
             }
-            MenuEntry(group.title, children = children)
+            if (children.isEmpty()) null else MenuEntry(group.title, children = children)
         }
-        showMenu(groups)
+        showMenu(lettered + groups)
     }
 
     private fun showMenu(entries: List<MenuEntry>) {
-        menu = MenuFrame(entries, letters, appWords.braille.pullDown, notFound = { announce(nothingOnLetter(it.toString())) }, closed = {
+        menu = MenuFrame(entries, letters, readings, notFound = { announce(nothingOnLetter(it.toString())) }, closed = { cancelled ->
             menu = null
+            if (cancelled) announce(appWords.cancel)
             refresh(true)
         })
+        refresh(true, fromKey = true)
+    }
+
+    /** Runs what the main menu or a screen's own commands name. */
+    private fun runMenuCommand(id: String) {
+        when (id) {
+            "projects", "labels", "filters" -> {
+                while (pages.size > 1) pages.removeLast()
+                goToGroup(id)
+            }
+            "reminders-due" -> pushPage(Page.Due)
+            else -> runCommand(id)
+        }
+    }
+
+    private fun goToGroup(id: String) {
+        val group = when (id) {
+            "projects" -> SidebarGroup.PROJECTS
+            "labels" -> SidebarGroup.LABELS
+            else -> SidebarGroup.FILTERS
+        }
+        val key = sidebarKey(SidebarKind.Group(group))
+        selected["places"] = key
+        held(key, Side.SIDEBAR)
         refresh(true, fromKey = true)
     }
 
@@ -506,7 +553,7 @@ class Shell(
     private fun entries(on: ActingOn, offered: List<Offered>): List<MenuEntry> =
         offered.sortedByDescending { it.primary }.map { action ->
             val letter = actionLetter(action.kind)?.singleOrNull()
-            MenuEntry(action.name, hotkey = letter?.let(BrailleLetters::press), letter = letter) { send(ShellEvent.ActOn(on, action)) }
+            MenuEntry(action.name, hotkey = letter?.let(BrailleLetters::press), letter = letter, asks = action.asks != Asks.NOTHING) { send(ShellEvent.ActOn(on, action)) }
         }
 
     private fun held(id: String, side: Side?) {
@@ -522,6 +569,8 @@ class Shell(
         side: Side? = null,
         hold: Boolean = true,
         mainList: Boolean = false,
+        byLetter: ((Char) -> Boolean)? = null,
+        prompt: Boolean = false,
     ): ListFrame {
         val appChoice = fallback
         val chosen = if (landedNow && appChoice != null) appChoice else selected[id] ?: appChoice
@@ -532,6 +581,9 @@ class Shell(
             findInApp = if (mainList) ({ send(ShellEvent.FindLetter(it.toString())) }) else null,
             notFound = { announce(noRowStartsWith(it.toString())) },
             appHeld = hold,
+            readings = readings,
+            byLetter = byLetter,
+            prompt = prompt,
         ).also { frame ->
             frame.current?.let { selected[id] = it.key }
         }
@@ -554,12 +606,15 @@ class Shell(
     private fun places(model: ViewModel): Frame {
         val rows = model.sidebar.filter { !it.hidden }.map { entry ->
             val fold = entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
-            val state = listOfNotNull(entry.expanded?.let(::foldState), entry.level)
+            val state = listOfNotNull(entry.detail.ifEmpty { null }, entry.expanded?.let(::foldState), entry.level)
             val on = ActingOn.Held(Side.SIDEBAR, entry.key)
+            val folding = { kind: ActionKind -> entry.offered.firstOrNull { it.kind == kind }?.let { action -> { send(ShellEvent.ActOn(on, action)) } } }
             Row(
                 entry.key,
-                (listOf(entry.text) + state).joinToString(", "),
+                entry.title,
                 finding = entry.title,
+                detail = state.joinToString(", "),
+                letter = mainCommandOf(entry.kind)?.let(::commandLetter)?.singleOrNull(),
                 open = when (val kind = entry.kind) {
                     is SidebarKind.Place -> ({ goTo(kind.field0) })
                     is SidebarKind.Group -> ({ fold?.let { send(ShellEvent.ActOn(on, it)) } })
@@ -567,37 +622,44 @@ class Shell(
                 actions = entries(on, entry.offered),
                 // A row's own letter runs first, through the app; else the main menu's.
                 command = { pressed ->
-                    entry.offered.none { actionLetter(it.kind)?.singleOrNull() == pressed } && mainMenu(model, pressed)
+                    entry.offered.none { actionLetter(it.kind)?.singleOrNull() == pressed } && mainMenu(pressed)
                 },
+                collapse = folding(ActionKind.COLLAPSE),
+                expand = folding(ActionKind.EXPAND),
             )
         }.let { sidebar ->
             if (model.due.isEmpty()) sidebar else sidebar + Row(
                 "due",
-                "${appWords.remindersDue}: ${model.due.size}",
+                appWords.remindersDue,
+                detail = model.due.size.toString(),
+                letter = commandLetter("reminders-due")?.singleOrNull(),
                 open = { pushPage(Page.Due) },
             )
         }
-        return list("places", appWords.places, rows, model.sidebarHeld.focus, "", side = Side.SIDEBAR)
+        return list("places", appWords.places, rows, model.sidebarHeld.focus, "", side = Side.SIDEBAR, byLetter = ::mainMenu)
+    }
+
+    /** The main menu's command that is this sidebar row, if one is. */
+    private fun mainCommandOf(kind: SidebarKind): String? = when (kind) {
+        is SidebarKind.Place -> when (kind.field0) {
+            Place.Today -> "go-today"
+            Place.Tasks -> "go-tasks"
+            Place.Blocks -> "go-blocks"
+            Place.History -> "go-history"
+            Place.Trash -> "go-trash"
+            else -> null
+        }
+        is SidebarKind.Group -> when (kind.field0) {
+            SidebarGroup.PROJECTS -> "projects"
+            SidebarGroup.LABELS -> "labels"
+            SidebarGroup.FILTERS -> "filters"
+        }
     }
 
     /** The core's main menu, each by its letter, from the list of places. */
-    private fun mainMenu(model: ViewModel, letter: Char): Boolean {
+    private fun mainMenu(letter: Char): Boolean {
         val command = brailleMainMenu(true).firstOrNull { it.letter.singleOrNull() == letter } ?: return false
-        when (command.id) {
-            "projects", "labels", "filters" -> {
-                val group = when (command.id) {
-                    "projects" -> SidebarGroup.PROJECTS
-                    "labels" -> SidebarGroup.LABELS
-                    else -> SidebarGroup.FILTERS
-                }
-                val key = sidebarKey(SidebarKind.Group(group))
-                selected["places"] = key
-                held(key, Side.SIDEBAR)
-                refresh(true, fromKey = true)
-            }
-            "reminders-due" -> pushPage(Page.Due)
-            else -> runCommand(command.id)
-        }
+        runMenuCommand(command.id)
         return true
     }
 
@@ -624,6 +686,8 @@ class Shell(
                 },
                 actions = entries(on, offered),
                 delete = { held(task.id, null); send(ShellEvent.Key("delete")) },
+                collapse = { held(task.id, null); send(ShellEvent.Key("collapse")) },
+                expand = { held(task.id, null); send(ShellEvent.Key("expand")) },
             )
         }
         val empty = (list.refusal ?: list.empty)
@@ -660,6 +724,8 @@ class Shell(
                 open = { if (edits && !heading) { held(item.key, null); send(ShellEvent.Key("open")) } else if (actions.isNotEmpty()) openDayActions(item.key, actions) },
                 actions = actions,
                 delete = { held(item.key, null); send(ShellEvent.Key("delete")) },
+                collapse = { held(item.key, null); send(ShellEvent.Key("collapse")) },
+                expand = { held(item.key, null); send(ShellEvent.Key("expand")) },
             )
         }
         return list("day:${day.date}", lines?.dayTitle.orEmpty(), rows, model.focus, "", mainList = true)
@@ -674,7 +740,6 @@ class Shell(
         val form = details.fields
         val set = { key: String, value: String -> send(ShellEvent.Details(DetailsEvent.Field(key, value))) }
         val controls = mutableListOf<Control>()
-        controls += Control.Static("title-heading", details.task.title)
         details.form.forEach { field ->
             when {
                 field.key == "project" -> {
@@ -696,20 +761,19 @@ class Shell(
         controls += Control.Button("save", appWords.details.save) { send(ShellEvent.Details(DetailsEvent.Save)) }
         details.lines.forEachIndexed { index, line -> controls += Control.Static("line$index", "${line.label}: ${line.value}") }
         details.task.offered.forEach { action ->
-            controls += Control.Button("act:${action.kind}", action.name) { send(ShellEvent.ActOn(ActingOn.Details, action)) }
+            controls += Control.Button("act:${action.kind}", action.name, asks = action.asks != Asks.NOTHING) { send(ShellEvent.ActOn(ActingOn.Details, action)) }
         }
-        return form("task:$id", controls)
+        return form("task:$id", details.task.title, controls)
     }
 
-    private fun form(id: String, controls: List<Control>): Frame =
-        FormFrame(id, controls, selected[id], letters, moved = { selected[id] = it.key })
+    private fun form(id: String, title: String?, controls: List<Control>): Frame =
+        FormFrame(id, title, controls, selected[id], letters, readings, moved = { selected[id] = it.key })
 
     private fun blockForm(model: ViewModel): Frame {
         val form = model.blockForm!!
         val fields = form.values
         val set = { key: String, value: String -> send(ShellEvent.Block(BlockEvent.Field(key, value))) }
         val controls = mutableListOf<Control>()
-        controls += Control.Static("heading", form.heading)
         form.refusal?.let { controls += Control.Static("refusal", it) }
         form.fields.forEach { field ->
             when (field.kind) {
@@ -720,7 +784,7 @@ class Shell(
                 }
                 FieldKind.TOGGLE -> {
                     val on = fields.flag(field.key)
-                    controls += Control.Toggle(field.key, field.label, on, onOff(on)) { set(field.key, it.toString()) }
+                    controls += Control.Toggle(field.key, field.label, on) { set(field.key, it.toString()) }
                 }
                 else -> {
                     val initial = if (field.key == "date") form.date else fields.text(field.key)
@@ -730,10 +794,8 @@ class Shell(
             }
         }
         controls += Control.Button("save", form.yes) { send(ShellEvent.Block(BlockEvent.Save)) }
-        return form("blockform", controls)
+        return form("blockform", form.heading, controls)
     }
-
-    private fun onOff(on: Boolean): String = if (on) appWords.braille.on else appWords.braille.off
 
     // ── Questions ──────────────────────────────────────────────────────────────────────────
 
@@ -757,7 +819,7 @@ class Shell(
             return null
         }
         if (shown.line) {
-            return LineFrame(id, shown.prompt, editor(id, shown.typed), done = {
+            return LineFrame(id, shown.prompt, editor(id, shown.typed), readings = readings, done = {
                 answer(Answer.Text(it))
                 editors.remove(id)
             })
@@ -773,7 +835,7 @@ class Shell(
             return list(id, shown.prompt, rows, null, "", hold = false)
         }
         val rows = shown.buttons.map { button ->
-            Row(button.id, button.title, open = {
+            Row(button.id, button.title, role = ControlRole.PROMPT_BUTTON, open = {
                 when (button.id) {
                     "yes" -> answer(Answer.Yes)
                     "cancel" -> cancelled()
@@ -781,7 +843,7 @@ class Shell(
                 }
             })
         }
-        return list(id, shown.prompt, rows, null, "", hold = false)
+        return list(id, shown.prompt, rows, null, "", hold = false, prompt = true)
     }
 
     // ── Quick add ──────────────────────────────────────────────────────────────────────────
@@ -811,7 +873,7 @@ class Shell(
         line.readback.takeIf { it.isNotEmpty() }?.let { controls += Control.Static("readback", it.replaceFirstChar { c -> c.uppercase() }) }
         model.addRefused?.let { controls += Control.Static("refused", it) }
         controls += Control.Button("add", words.add) { send(ShellEvent.QuickAdd(edit.text)) }
-        return form("quickadd", controls)
+        return form("quickadd", commandTitle("new-task"), controls)
     }
 
     // ── Proposals ──────────────────────────────────────────────────────────────────────────
@@ -831,8 +893,8 @@ class Shell(
         proposal.others.forEachIndexed { index, other ->
             rows += Row("other$index", other, open = { send(ShellEvent.Proposal(ProposalEvent.Take(index.toUInt()))) })
         }
-        if (proposal.changes.isNotEmpty()) rows += Row("apply", words.apply, open = { send(ShellEvent.Proposal(ProposalEvent.Apply)) })
-        rows += Row("close", words.cancel, open = { send(ShellEvent.Proposal(ProposalEvent.Close)) })
+        if (proposal.changes.isNotEmpty()) rows += Row("apply", words.apply, role = ControlRole.BUTTON, open = { send(ShellEvent.Proposal(ProposalEvent.Apply)) })
+        rows += Row("close", words.cancel, role = ControlRole.BUTTON, open = { send(ShellEvent.Proposal(ProposalEvent.Close)) })
         return list("proposal", words.title, rows, null, "", hold = false)
     }
 
@@ -887,9 +949,7 @@ class Shell(
             pages.firstOrNull { pageLetter(it.id)?.singleOrNull() == pressed }?.let { open(it); true } ?: false
         }
         val rows = pages.map { page ->
-            val letter = pageLetter(page.id)?.singleOrNull()
-            val name = if (letter != null) "${page.title} ($letter)" else page.title
-            Row(page.id, listOf(name, page.description).filter { it.isNotEmpty() }.joinToString(": "), finding = page.title,
+            Row(page.id, page.title, finding = page.title, detail = page.description, letter = pageLetter(page.id)?.singleOrNull(),
                 open = { open(page) }, command = byLetter)
         }
         return list("settings", commandTitle("settings"), rows, null, "", hold = false)
@@ -898,14 +958,11 @@ class Shell(
     private fun settingsPage(model: ViewModel, id: String): Frame {
         val page = SettingsPages.of(id)
         val controls = mutableListOf<Control>()
-        controls += Control.Static("heading", page?.title.orEmpty())
         val all = model.settings?.settings.orEmpty().on(page)
         all.filter { it.setting.kind != SettingKind.FOLDER }.forEach { addSetting(controls, it) }
         if (id == "reminders") reminderControls(controls)
         page?.buttons.orEmpty().forEach { button ->
-            val letter = buttonLetter(button.id)?.singleOrNull()
-            val label = if (letter != null) "${button.title} ($letter)" else button.title
-            controls += Control.Button(button.id, label, letter) {
+            controls += Control.Button(button.id, button.title, buttonLetter(button.id)?.singleOrNull()) {
                 when (button.id) {
                     "back-up" -> core.backUpNow()
                     "sync-now" -> app.syncNow()
@@ -919,11 +976,11 @@ class Shell(
         page?.caption?.takeIf { it.isNotEmpty() }?.let { controls += Control.Static("caption", it) }
         if (id == "backups" || id == "export") {
             model.settings?.offered.orEmpty().forEach { action ->
-                controls += Control.Button("act:${action.kind}", action.name) { send(ShellEvent.ActOn(ActingOn.Settings, action)) }
+                controls += Control.Button("act:${action.kind}", action.name, asks = action.asks != Asks.NOTHING) { send(ShellEvent.ActOn(ActingOn.Settings, action)) }
             }
             model.settings?.offeredCaption?.takeIf { it.isNotEmpty() }?.let { controls += Control.Static("offeredCaption", it) }
         }
-        return form("settings:$id", controls)
+        return form("settings:$id", page?.title, controls)
     }
 
     private fun addSetting(controls: MutableList<Control>, shown: SettingView) {
@@ -932,7 +989,7 @@ class Shell(
         when (setting.kind) {
             SettingKind.TOGGLE -> {
                 val on = setting.value == "true"
-                controls += Control.Toggle(setting.key, setting.title, on, onOff(on)) { set(if (it) "true" else "false") }
+                controls += Control.Toggle(setting.key, setting.title, on) { set(if (it) "true" else "false") }
             }
             SettingKind.CHOICE -> {
                 val options = setting.options.map { it.id to it.title }
@@ -972,7 +1029,6 @@ class Shell(
         val page = SettingsPages.of("devices")
         val worded = lines?.devices.orEmpty()
         val controls = mutableListOf<Control>()
-        controls += Control.Static("heading", page?.title.orEmpty())
         devices.status.takeIf { it.isNotEmpty() }?.let { controls += Control.Static("status", it) }
         val syncing = page?.buttons?.firstOrNull { it.id == "sync-now" }?.title ?: commandTitle("sync-now")
         controls += Control.Button("sync", syncing) { app.syncNow() }
@@ -986,7 +1042,7 @@ class Shell(
             if (device.offered.isEmpty()) controls += Control.Static(device.nodeId, text)
         }
         addPairing(controls, devices)
-        return form("devices", controls)
+        return form("devices", page?.title, controls)
     }
 
     private fun addPairing(controls: MutableList<Control>, devices: dev.emassey0135.lumenna.app.DevicesView) {
