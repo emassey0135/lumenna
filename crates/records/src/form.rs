@@ -35,6 +35,8 @@ pub struct TaskFields {
     pub labels: String,
     /// The notes, exactly as typed.
     pub notes: String,
+    /// How long one sitting of it is, `45m`, for work planned in pieces. Empty to plan it whole.
+    pub sittings: String,
 }
 
 /// A task's fields as a form starts from them.
@@ -49,6 +51,7 @@ pub fn task_fields(task: TaskDetail) -> TaskFields {
         project: task.project.unwrap_or_default(),
         labels: task.labels.join(", "),
         notes: task.notes,
+        sittings: task.sitting_mins.map(|m| format!("{m}m")).unwrap_or_default(),
     }
 }
 
@@ -71,6 +74,7 @@ pub fn task_edit(task: TaskDetail, fields: TaskFields) -> Option<TaskEdit> {
         repeat: changed(&fields.repeat, &before.repeat).then(|| or_none(&fields.repeat)),
         priority: (fields.priority != before.priority).then_some(fields.priority),
         estimate: changed(&fields.estimate, &before.estimate).then(|| or_none(&fields.estimate)),
+        sittings: changed(&fields.sittings, &before.sittings).then(|| or_none(&fields.sittings)),
         notes: (fields.notes != before.notes).then(|| fields.notes.clone()),
         project: (changed(&fields.project, &before.project) && !fields.project.trim().is_empty())
             .then(|| fields.project.trim().to_owned()),
@@ -341,6 +345,7 @@ mod tests {
             recurrence: None,
             repetition: None,
             estimate_mins: Some(45),
+            sitting_mins: None,
             state: vec!["ready".to_owned()],
             created_at: "2026-10-01T09:00:00Z".to_owned(),
             actions: Vec::new(),
@@ -392,6 +397,18 @@ mod tests {
         let edit = task_edit(task(), fields).unwrap();
         assert_eq!(edit.due.as_deref(), Some("none"));
         assert_eq!(edit.estimate.as_deref(), Some("none"));
+    }
+
+    #[test]
+    fn a_sitting_length_is_its_own_field_and_sent_alone() {
+        let fields = TaskFields { sittings: "45m".to_owned(), ..task_fields(task()) };
+        let edit = task_edit(task(), fields).unwrap();
+        assert_eq!((edit.sittings.as_deref(), edit.estimate.as_deref()), (Some("45m"), None));
+        let mut sat = task();
+        sat.sitting_mins = Some(45);
+        assert_eq!(task_fields(sat.clone()).sittings, "45m");
+        let cleared = TaskFields { sittings: String::new(), ..task_fields(sat.clone()) };
+        assert_eq!(task_edit(sat, cleared).unwrap().sittings.as_deref(), Some("none"));
     }
 
     #[test]

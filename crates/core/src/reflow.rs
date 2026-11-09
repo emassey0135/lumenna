@@ -13,6 +13,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::dayplan::SHORTEST_SITTING;
 use crate::id::{AssignmentId, SeriesId, TaskId};
 use crate::model::{AssignmentStatus, BlockRef};
 use crate::recur::Occurrence;
@@ -61,6 +62,20 @@ pub enum Proposed {
         task: TaskId,
         /// The block it leaves.
         from: SeriesId,
+    },
+    /// A sitting keeps the part its block still has room for, and the rest leaves it; where
+    /// the rest goes is the caller's to find.
+    SplitSitting {
+        /// The sitting.
+        assignment: AssignmentId,
+        /// Its task.
+        task: TaskId,
+        /// The block it is in.
+        from: SeriesId,
+        /// The minutes it keeps there.
+        keep: u32,
+        /// The minutes that leave.
+        moved: u32,
     },
 }
 
@@ -148,7 +163,23 @@ pub fn propose_reflow(
         while planned > available {
             let Some(at) = sittings.iter().rposition(|a| !staying.contains(&a.id)) else { break };
             let last = sittings.remove(at);
-            planned -= length(&last);
+            let whole = length(&last);
+            // Where the block still has a sitting's worth of room for it, it keeps that part and
+            // only the rest goes: a task takes as many sittings as it needs.
+            let room = available - (planned - whole);
+            if room > 0 && room < whole && room >= i64::from(SHORTEST_SITTING) {
+                let keep = u32::try_from(room).unwrap_or(u32::MAX);
+                let moved = u32::try_from(whole - room).unwrap_or(u32::MAX);
+                proposal.changes.push(Proposed::SplitSitting {
+                    assignment: last.id,
+                    task: last.task_id,
+                    from: occurrence.series_id,
+                    keep,
+                    moved,
+                });
+                break;
+            }
+            planned -= whole;
             proposal.changes.push(Proposed::MoveSitting { assignment: last.id, task: last.task_id, from: occurrence.series_id });
         }
     }

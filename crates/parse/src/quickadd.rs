@@ -97,6 +97,8 @@ pub struct QuickAdd {
     pub due: Option<Spanned<DueSpec>>,
     /// `45m`, `2h`, `1h30m`.
     pub estimate_mins: Option<Spanned<u32>>,
+    /// `in 45m sittings`: how long one sitting of it should be.
+    pub sitting_mins: Option<Spanned<u32>>,
     /// Phrases that looked like they were going somewhere and were not understood.
     pub unparsed: Vec<Spanned<String>>,
     /// A `#` or `@` with no name after it, left in the title.
@@ -170,6 +172,21 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
             out.priority =
                 Some(Spanned { value: priority, start: word.start, end: word.end });
             index += 1;
+            continue;
+        }
+        // `in 45m sittings`, before a date can take "in" as its start.
+        if word.is("in")
+            && let (Some(length), Some(last)) = (tokens.get(index + 1), tokens.get(index + 2))
+            && let Some(minutes) = minutes_of(&length.lower)
+            && last.any_of(&["sittings", "sitting"])
+        {
+            if out.sitting_mins.is_some() {
+                out.duplicates.push(spanned_text(input, word.start, last.end));
+            } else {
+                consumed.push((word.start, last.end));
+                out.sitting_mins = Some(Spanned { value: minutes, start: word.start, end: last.end });
+            }
+            index += 3;
             continue;
         }
         if let Some(when) = parse_when(&tokens, index)
@@ -342,6 +359,8 @@ pub struct Preview {
     pub priority: Priority,
     /// The estimate in minutes, if one was given.
     pub estimate_mins: Option<u32>,
+    /// How long one sitting of it should be, if given.
+    pub sitting_mins: Option<u32>,
     /// Everything worth saying before confirming.
     pub diagnostics: Vec<Diagnostic>,
     /// Whether the readback is terse (the `verbosity` setting): the date said once, as itself.
@@ -406,6 +425,9 @@ impl Preview {
         }
         if let Some(minutes) = self.estimate_mins {
             parts.push(format!("estimated {}", minutes_words(minutes)));
+        }
+        if let Some(minutes) = self.sitting_mins {
+            parts.push(format!("in sittings of {}", minutes_words(minutes)));
         }
         for name in &self.new_labels {
             parts.push(format!("new label {name}"));
@@ -561,6 +583,7 @@ impl QuickAdd {
             new_labels,
             priority: self.priority.as_ref().map_or(Priority::P4, |p| p.value),
             estimate_mins: self.estimate_mins.as_ref().map(|e| e.value),
+            sitting_mins: self.sitting_mins.as_ref().map(|e| e.value),
             diagnostics,
             terse: snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse,
             today: now.date(),

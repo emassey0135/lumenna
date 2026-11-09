@@ -326,6 +326,7 @@ impl Record for Task {
             depends: r.id_set("depends"),
             due: r.map("due").and_then(|due| read_due(&due)),
             estimate_mins: r.u32("estimate_mins"),
+            sitting_mins: r.u32("sitting_mins"),
             // Position is not something this device may invent: a locally generated order
             // key would differ on every replica and reorder the list on each sync.
             order: r.parsed("order")?,
@@ -349,6 +350,7 @@ impl Record for Task {
         w.set_members("depends", was.map(|b| &b.depends), &self.depends)?;
         w.set_nested("due", was.map(|b| b.due.as_ref()), self.due.as_ref())?;
         w.set_opt_u32("estimate_mins", was.map(|b| b.estimate_mins), self.estimate_mins)?;
+        w.set_opt_u32("sitting_mins", was.map(|b| b.sitting_mins), self.sitting_mins)?;
         w.set_str("order", was.map(|b| &b.order), &self.order)?;
         w.set_nested(
             "external",

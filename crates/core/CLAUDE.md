@@ -144,7 +144,10 @@ move made by the change that completed a repeating task is not counted).
   timer running, in the block under way or a block of its own in free time: one change.
 - **Re-flow moves the work first** (`core::reflow`, `records::replan`, the surface's
   `replan.rs`): a block's last sittings beyond its time left go to the next block of the week
-  that takes them, else back to the list; then the walk from now, anchored and kept blocks
+  that takes them, else back to the list; where the block still has a sitting's worth of room
+  (`SHORTEST_SITTING`) for the last one, it keeps that part and only the rest goes
+  (`Proposed::SplitSitting`, the surface's `split`; a rest too short to be a sitting goes back
+  to the list); then the walk from now, anchored and kept blocks
   fixed, a pushed block shrinking to its minimum keeping its end, then moving later. A block
   pushed against an anchored one shrinks to the gap before it when its floor allows. No block
   starts past midnight; a day planned past its window runs to midnight. Every change is a
@@ -165,10 +168,17 @@ move made by the change that completed a repeating task is not counted).
   running, work and time shrink together, so it outruns from the timer's start or never.
 - **The whole-day plan is greedy** (`core::dayplan`, the surface's `dayplan.rs`): each work
   block still to come takes the tasks its suggestions rank first until the estimates fill it;
-  a task once a day, none with a sitting still to come that day, none blocked. A task worked
-  earlier and still open is planned again, for what is left of its estimate (`spent_mins`: a
-  repeating task's since it was last done); one without an estimate, or past it, counted as 30
-  minutes and said so; what is due by then and fits nowhere is named. Applying
+  none with a sitting still to come that day, none blocked. A task worked earlier and still
+  open is planned again, for what is left of its estimate (`spent_mins`: a repeating task's
+  since it was last done); one without an estimate, or past it, counted as 30 minutes and said
+  so. **A task is never given up for being big**: one bigger than every block's free time takes
+  all the room there is where no later block has more, the rest left for another sitting.
+  **A task with a sitting length** (`Task::sitting_mins`, quick add's `in 45m sittings`, the
+  form's own field) is planned a sitting of that length at a time, even where more would fit.
+  Either way one sitting a day, unless its due date leaves too few days for one a day
+  (`sittings_today`); due that day, all of it. Each sitting says what part it is (`rest`,
+  `sitting`). What is due by then and fits nowhere is named; what fits only in part, how much
+  is short (`DayProposal::short`). Applying
   is one undo, refused where a task was done or put in that block since (a sitting already
   worked there is no obstacle), and plans again
   (`DayPlanned::next`), each sitting turned down kept out of its block alone.

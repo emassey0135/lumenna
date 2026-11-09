@@ -105,6 +105,7 @@ pub fn set(mut fields: TaskFields, key: &str, value: String) -> TaskFields {
         "project" => fields.project = value,
         "labels" => fields.labels = value,
         "notes" => fields.notes = value,
+        "sittings" => fields.sittings = value,
         _ => {}
     }
     fields

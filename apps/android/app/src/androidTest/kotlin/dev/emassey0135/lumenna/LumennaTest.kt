@@ -378,7 +378,7 @@ class LumennaTest {
         rule.waitForIdle()
         replace("Title", "draft the report")
         // Another device moves the date while the title is being typed.
-        seed { it.editTask(id, TaskEdit(null, "friday", null, null, null, null, null, null)) }
+        seed { it.editTask(id, TaskEdit(null, "friday", null, null, null, null, null, null, null)) }
         press("Save")
         val task = core.device.showTask(id).task
         assertEquals("draft the report", task.title)

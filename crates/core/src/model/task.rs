@@ -43,6 +43,10 @@ pub struct Task {
     /// What makes multi-sitting work legible: remaining effort is this minus the time
     /// logged across assignments.
     pub estimate_mins: Option<u32>,
+    /// How long one sitting of it should be, for work better done in pieces (drafting an
+    /// essay): the planner plans it a sitting of this at a time, one a day unless its due
+    /// date needs more. Absent, it is planned whole where it fits.
+    pub sitting_mins: Option<u32>,
     /// Position among siblings.
     pub order: OrderKey,
     /// Set when imported from a team system.
@@ -69,6 +73,7 @@ impl Task {
             depends: BTreeSet::new(),
             due: None,
             estimate_mins: None,
+            sitting_mins: None,
             order,
             external: None,
             created_at: crate::time::now(),

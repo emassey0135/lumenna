@@ -80,7 +80,7 @@ impl Lumenna {
             match declined.kind.as_str() {
                 "block" => pins.keep.push(declined.target.clone()),
                 "skip" => pins.skip.retain(|s| !declined.target.starts_with(s.as_str())),
-                "sitting" => pins.sittings.push(declined.target.clone()),
+                "sitting" | "split" => pins.sittings.push(declined.target.clone()),
                 _ => {}
             }
         }
@@ -172,6 +172,38 @@ impl Lumenna {
                                 && let Some(new) = transition.after.as_mut()
                             {
                                 new.planned_mins = sitting.planned_mins;
+                            }
+                            edits.push(assign);
+                        }
+                    }
+                    "split" => {
+                        let id = resolve::assignment_id(&snapshot, &change.target)?;
+                        let sitting = snapshot.assignments.get(&id).ok_or_else(stale)?.clone();
+                        let length = sitting
+                            .planned_mins
+                            .or_else(|| snapshot.tasks.get(&sitting.task_id).and_then(|t| t.estimate_mins))
+                            .unwrap_or(0);
+                        if length != change.from_mins || change.to_mins == 0 || change.to_mins >= change.from_mins {
+                            return Err(stale());
+                        }
+                        let year = lumenna_store::doc::assignment_year(&sitting, snapshot.series.get(&sitting.block_ref.series_id()))
+                            .ok_or_else(stale)?;
+                        edits.push(edit::plan_minutes(&snapshot, id, year, Some(change.to_mins))?);
+                        if !change.destination.is_empty() {
+                            let (series, date) = change.destination.split_once('@').ok_or_else(stale)?;
+                            let series_id = resolve::series_id(&snapshot, series)?;
+                            let block = snapshot.series.get(&series_id).ok_or_else(stale)?;
+                            let date: jiff::civil::Date = date.parse().map_err(|_| stale())?;
+                            let (target, target_year) = if block.is_recurring() {
+                                (BlockRef::Occurrence(series_id, date), date.year())
+                            } else {
+                                (BlockRef::OneOff(series_id), block.start_date.year())
+                            };
+                            let mut assign = edit::assign_task(&snapshot, sitting.task_id, target, target_year)?;
+                            if let Some(edit::Change::Assignment { transition, .. }) = assign.changes.first_mut()
+                                && let Some(new) = transition.after.as_mut()
+                            {
+                                new.planned_mins = Some(change.from_mins - change.to_mins);
                             }
                             edits.push(assign);
                         }

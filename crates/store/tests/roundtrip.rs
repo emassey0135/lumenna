@@ -40,6 +40,7 @@ fn full_task(project: ProjectId) -> Task {
         }),
     });
     task.estimate_mins = Some(90);
+    task.sitting_mins = Some(45);
     task.external = Some(ExternalRef {
         provider: ExternalProvider::CalDav,
         external_id: "abc-123".to_owned(),

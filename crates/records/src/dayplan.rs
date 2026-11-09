@@ -14,6 +14,18 @@ use crate::replan::clock;
 use crate::resolve;
 use crate::words::{count_line, duration, listed, suggested_because};
 
+/// "second", "third": which sitting of a day.
+fn ordinal(n: u32) -> String {
+    match n {
+        1 => "first".to_owned(),
+        2 => "second".to_owned(),
+        3 => "third".to_owned(),
+        4 => "fourth".to_owned(),
+        5 => "fifth".to_owned(),
+        n => format!("{n}th"),
+    }
+}
+
 /// What planning `date` (a date phrase; today when absent) proposes: each work block still to
 /// come given the tasks it is suggested, until their estimates fill it, keeping to `pins`.
 ///
@@ -57,14 +69,33 @@ pub fn propose(snapshot: &Snapshot, date: Option<&str>, style: TimeStyle, pins: 
         let series = planned.block.series_id();
         let block = snapshot.series.get(&series).map(|s| s.title.clone()).unwrap_or_default();
         let start = occurrences.iter().find(|o| o.series_id == series).map(|o| minutes_of(o.start_time));
-        let estimated = snapshot.tasks.get(&planned.task).is_some_and(|t| t.estimate_mins.is_some());
-        let task = snapshot.tasks.get(&planned.task).map(|t| t.title.clone()).unwrap_or_default();
+        let found = snapshot.tasks.get(&planned.task);
+        let estimated = found.is_some_and(|t| t.estimate_mins.is_some());
+        let in_sittings = found.and_then(|t| t.sitting_mins).filter(|s| *s > 0);
+        let task = found.map(|t| t.title.clone()).unwrap_or_default();
         let at = start.map_or_else(String::new, |start| format!(" at {}", clock(start, style)));
-        let length = match (planned.assumed, estimated, planned.spent > 0) {
-            (true, true, _) => format!("for {}, since its estimate is used up", duration(planned.minutes)),
-            (true, false, _) => format!("for {}, since it has no estimate", duration(planned.minutes)),
-            (false, _, true) => format!("for {}, what is left of its estimate", duration(planned.minutes)),
-            (false, _, false) => format!("for {}", duration(planned.minutes)),
+        let length = if planned.minutes < planned.rest {
+            // A part: a sitting of the length the task chose, or all the room a block has for a
+            // task bigger than any.
+            let of = format!("for {} of the {} it still needs", duration(planned.minutes), duration(planned.rest));
+            let why = match (in_sittings, planned.sitting) {
+                (_, 1) if in_sittings.is_some() => "in sittings of that length".to_owned(),
+                (_, 1) => "all the room there is; the rest is left for another sitting".to_owned(),
+                (_, n) => format!("its {} sitting today, since it is due too soon for one a day", ordinal(n)),
+            };
+            format!("{of}, {why}")
+        } else {
+            let whole = match (planned.assumed, estimated, planned.spent > 0) {
+                (true, true, _) => format!("for {}, since its estimate is used up", duration(planned.minutes)),
+                (true, false, _) => format!("for {}, since it has no estimate", duration(planned.minutes)),
+                (false, _, true) => format!("for {}, what is left of its estimate", duration(planned.minutes)),
+                (false, _, false) => format!("for {}", duration(planned.minutes)),
+            };
+            if planned.sitting > 1 {
+                format!("{whole}, its last sitting today, since it is due too soon for one a day")
+            } else {
+                whole
+            }
         };
         sittings.push(ProposedSitting {
             sentence: format!("{task} goes in {block}{at}, {length}"),
@@ -92,12 +123,17 @@ pub fn propose(snapshot: &Snapshot, date: Option<&str>, style: TimeStyle, pins: 
         }
         let groups: Vec<String> =
             by_block.iter().map(|(block, tasks)| format!("{} in {block}", listed(tasks))).collect();
-        said.push(format!("Plans {}: {}.", count_line(sittings.len(), "task"), listed(&groups)));
+        said.push(format!("Plans {}: {}.", count_line(proposal.sittings.iter().map(|s| s.task).collect::<BTreeSet<_>>().len(), "task"), listed(&groups)));
     }
     match unfit.as_slice() {
         [] => {}
         [one] => said.push(format!("{one} is due and fits in no block.")),
         many => said.push(format!("{} are due and fit in no block.", listed(many))),
+    }
+    for (task, minutes) in &proposal.short {
+        if let Some(task) = snapshot.tasks.get(task) {
+            said.push(format!("{} is due, and {} of it fits in no block.", task.title, duration(*minutes)));
+        }
     }
     Ok(DayPlan {
         announcement: said.join(" "),

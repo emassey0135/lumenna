@@ -362,6 +362,9 @@ fn detail(task: &TaskDetail, clock: Clock) {
     if let Some(minutes) = task.estimate_mins {
         fields.push(("estimate", format!("{minutes} minutes")));
     }
+    if let Some(minutes) = task.sitting_mins {
+        fields.push(("sittings", format!("{minutes} minutes each")));
+    }
     if !task.labels.is_empty() {
         fields.push(("labels", task.labels.join(", ")));
     }

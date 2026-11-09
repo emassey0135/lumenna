@@ -120,6 +120,7 @@ impl Lumenna {
             task.due = preview.due.clone();
             task.priority = preview.priority;
             task.estimate_mins = preview.estimate_mins;
+            task.sitting_mins = preview.sitting_mins;
             task.labels = labels;
             let task_id = task.id;
             changes.extend(edit::create_task(task).changes);
@@ -326,6 +327,16 @@ impl Lumenna {
                     None
                 } else {
                     Some(resolve::minutes(estimate)?)
+                };
+            }
+            if let Some(sittings) = &edit.sittings {
+                after.sitting_mins = if sittings.trim().eq_ignore_ascii_case("none") {
+                    None
+                } else {
+                    match resolve::minutes(sittings)? {
+                        0 => return Err(LumennaError::new("a sitting has to be at least a minute long")),
+                        minutes => Some(minutes),
+                    }
                 };
             }
             if let Some(notes) = edit.notes {

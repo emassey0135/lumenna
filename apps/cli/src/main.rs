@@ -521,6 +521,10 @@ pub(crate) enum TaskCommand {
         /// takes them all off. New names become labels.
         #[arg(long)]
         labels: Option<String>,
+        /// How long one sitting of it is, such as `45m`, for work planned in pieces, or `none`
+        /// to plan it whole.
+        #[arg(long)]
+        sittings: Option<String>,
     },
 
     /// Mark a task done.
@@ -1483,7 +1487,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         }
         TaskCommand::List { query } => Response::new(profile.list_tasks(&query.join(" "))?),
         TaskCommand::Show { id: input } => Response::new(profile.show_task(&id(input)?)?),
-        TaskCommand::Edit { id: input, title, due, repeat, priority, estimate, notes, project, labels } => {
+        TaskCommand::Edit { id: input, title, due, repeat, priority, estimate, notes, project, labels, sittings } => {
             Response::new(profile.edit_task(&id(input)?, TaskEdit {
                 title: title.clone(),
                 due: due.clone(),
@@ -1495,6 +1499,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
                 labels: labels.as_ref().map(|l| {
                     l.split(',').map(str::trim).filter(|n| !n.is_empty()).map(ToOwned::to_owned).collect()
                 }),
+                sittings: sittings.clone(),
             })?)
         }
         TaskCommand::Done { id: input } => Response::new(profile.complete_task(&id(input)?)?),

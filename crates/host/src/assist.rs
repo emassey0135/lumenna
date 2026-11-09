@@ -130,6 +130,8 @@ impl Lumenna {
                     notes: given.text("notes")?,
                     project: given.text("project")?,
                     labels: given.texts("labels")?,
+                    // Not an assistant's parameter yet: every assistant declares the table's.
+                    sittings: None,
                 };
                 Assisted::Change(self.edit_task(&task, edit)?)
             }

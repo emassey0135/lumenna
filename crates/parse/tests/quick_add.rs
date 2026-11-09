@@ -559,3 +559,16 @@ fn a_name_matches_whatever_its_case_beyond_ascii() {
     assert!(p.project.is_some(), "{:?}", p.diagnostics);
     assert!(!p.has_errors());
 }
+
+#[test]
+fn a_sitting_length_is_read_after_the_estimate_and_read_back() {
+    let p = preview("draft the essay 3h in 45m sittings");
+    assert_eq!((p.title.as_str(), p.estimate_mins, p.sitting_mins), ("draft the essay", Some(180), Some(45)));
+    assert!(p.announcement().ends_with("estimated 180 minutes, in sittings of 45 minutes"), "{}", p.announcement());
+}
+
+#[test]
+fn in_before_anything_but_a_sitting_length_is_left_alone() {
+    let p = preview("read in the garden");
+    assert_eq!((p.title.as_str(), p.sitting_mins), ("read in the garden", None));
+}

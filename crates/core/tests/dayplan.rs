@@ -67,7 +67,11 @@ fn each_block_takes_the_most_urgent_tasks_that_fit_and_a_task_goes_in_one_block(
     world.task("Big project", 1, Some(120));
     let proposal = world.plan("2026-05-06T08:00");
     assert_eq!(world.titles(&proposal, morning), ["Report", "Email"]);
-    assert_eq!(world.titles(&proposal, afternoon), ["Filing"], "too long for any block, Big project is left out");
+    // Too long for any block, Big project takes the whole of the afternoon, not the quarter
+    // hour the morning has left after Report.
+    assert_eq!(world.titles(&proposal, afternoon), ["Big project"]);
+    let part = proposal.sittings.iter().find(|s| s.block == BlockRef::OneOff(afternoon)).unwrap();
+    assert_eq!((part.minutes, part.rest), (60, 120));
 }
 
 #[test]
@@ -87,19 +91,62 @@ fn only_the_time_still_to_come_is_planned() {
     let morning = world.block("Morning", BlockKind::Work, 9, 60);
     world.task("Report", 1, Some(45));
     world.task("Email", 2, Some(15));
-    // At 9:40, twenty minutes are left of Morning.
+    // At 9:40, twenty minutes are left of Morning: Report gets them, as the part that fits.
     let proposal = world.plan("2026-05-06T09:40");
-    assert_eq!(world.titles(&proposal, morning), ["Email"]);
+    assert_eq!(world.titles(&proposal, morning), ["Report"]);
+    assert_eq!((proposal.sittings[0].minutes, proposal.sittings[0].rest), (20, 45));
 }
 
 #[test]
-fn what_is_due_and_does_not_fit_is_named() {
+fn what_is_due_and_fits_in_part_is_named_with_what_is_short() {
     let mut world = World::new();
     world.block("Morning", BlockKind::Work, 9, 30);
     let due = world.task("Tax return", 1, Some(90));
     world.snapshot.tasks.get_mut(&due).unwrap().due = Some(lumenna_core::model::Due::on(date(2026, 5, 6)));
     let proposal = world.plan("2026-05-06T08:00");
+    assert_eq!(proposal.sittings[0].minutes, 30);
+    assert!(proposal.unfit.is_empty());
+    assert_eq!(proposal.short, [(due, 60)]);
+}
+
+#[test]
+fn what_is_due_and_fits_nowhere_is_named() {
+    let mut world = World::new();
+    world.block("Morning", BlockKind::Work, 9, 30);
+    let first = world.task("Report", 1, Some(30));
+    world.snapshot.tasks.get_mut(&first).unwrap().due = Some(lumenna_core::model::Due::on(date(2026, 5, 6)));
+    let due = world.task("Tax return", 2, Some(90));
+    world.snapshot.tasks.get_mut(&due).unwrap().due = Some(lumenna_core::model::Due::on(date(2026, 5, 6)));
+    let proposal = world.plan("2026-05-06T08:00");
     assert_eq!(proposal.unfit, [due]);
+}
+
+#[test]
+fn a_task_in_sittings_gets_one_sitting_a_day_of_its_length_even_where_more_would_fit() {
+    let mut world = World::new();
+    let morning = world.block("Morning", BlockKind::Work, 9, 120);
+    let afternoon = world.block("Afternoon", BlockKind::Work, 14, 120);
+    let essay = world.task("Essay", 1, Some(180));
+    world.snapshot.tasks.get_mut(&essay).unwrap().sitting_mins = Some(45);
+    let proposal = world.plan("2026-05-06T08:00");
+    assert_eq!(world.titles(&proposal, morning), ["Essay"]);
+    assert!(world.titles(&proposal, afternoon).is_empty());
+    assert_eq!((proposal.sittings[0].minutes, proposal.sittings[0].rest), (45, 180));
+}
+
+#[test]
+fn a_task_in_sittings_due_too_soon_for_one_a_day_gets_more_today() {
+    let mut world = World::new();
+    world.block("Morning", BlockKind::Work, 9, 60);
+    world.block("Afternoon", BlockKind::Work, 14, 60);
+    world.block("Evening", BlockKind::Work, 19, 60);
+    let essay = world.task("Essay", 1, Some(180));
+    world.snapshot.tasks.get_mut(&essay).unwrap().sitting_mins = Some(45);
+    // Four sittings to go and due tomorrow: three today, one tomorrow.
+    world.snapshot.tasks.get_mut(&essay).unwrap().due = Some(lumenna_core::model::Due::on(date(2026, 5, 7)));
+    let proposal = world.plan("2026-05-06T08:00");
+    let lengths: Vec<(u32, u32)> = proposal.sittings.iter().map(|s| (s.minutes, s.sitting)).collect();
+    assert_eq!(lengths, [(45, 1), (45, 2), (45, 3)]);
 }
 
 impl World {
