@@ -45,6 +45,7 @@ struct TaskEntity: AppEntity {
     @Property(title: "Done") var done: Bool
     @Property(title: "Notes") var notes: String
     @Property(title: "Estimate in Minutes") var estimate: Int?
+    @Property(title: "Sitting Length in Minutes") var sittings: Int?
     /// How it repeats, in the core's words ("every weekday").
     @Property(title: "Repeats") var repeats: String?
     /// Its states, as the filter language names them: overdue, blocked, recurring, …
@@ -73,6 +74,7 @@ struct TaskEntity: AppEntity {
         done = task.done
         notes = task.notes
         estimate = task.estimateMins.map(Int.init)
+        sittings = task.sittingMins.map(Int.init)
         repeats = task.repetition
         states = task.states
         added = Instant.parse(task.createdAt)
@@ -98,6 +100,7 @@ struct TaskEntity: AppEntity {
         done = false
         notes = ""
         estimate = nil
+        sittings = nil
         repeats = nil
         states = []
         added = nil

@@ -161,9 +161,12 @@ pub fn propose_day(
             }
             left -= length;
             given.insert(task.id, (sittings + 1, planned + length));
+            let part = length < need;
             let reasons = suggestion
                 .reasons
                 .into_iter()
+                // Too long for the block is no reason against a part planned to fit it.
+                .filter(|reason| !(part && matches!(reason, Reason::Longer { .. })))
                 .map(|reason| match reason {
                     // Said against the time left when it was chosen, not the block's whole.
                     Reason::Fits { estimate, .. } => Reason::Fits { estimate, remaining: left + length },

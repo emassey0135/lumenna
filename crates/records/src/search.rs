@@ -53,6 +53,8 @@ pub struct SearchTask {
     pub due_time: Option<String>,
     /// How long it should take.
     pub estimate_mins: Option<u32>,
+    /// How long one sitting of it is, when it is planned in sittings.
+    pub sitting_mins: Option<u32>,
     /// How it repeats, in the words quick add takes ("every weekday").
     pub repetition: Option<String>,
     /// Its states, as the filter language names them: `overdue`, `blocked`, `recurring`, …
@@ -201,6 +203,7 @@ fn task_document(snapshot: &Snapshot, facts: &lumenna_core::state::Facts<'_>, ta
             priority: task.priority.as_u8(),
             due_time: due.and_then(|d| d.time).map(lumenna_core::time::time_text),
             estimate_mins: task.estimate_mins,
+            sitting_mins: task.sitting_mins,
             repetition,
             states: facts.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
             notes: task.notes.clone(),

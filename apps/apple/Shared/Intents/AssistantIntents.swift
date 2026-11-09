@@ -158,7 +158,7 @@ struct AddTaskIntent: OperationIntent {
         searchKeywords: ["new", "create", "remember", "capture", "remind"]
     )
 
-    @Parameter(title: "Line", description: "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
+    @Parameter(title: "Line", description: "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
     var text: String
 
     @AppDependency private var store: AssistantStore
@@ -190,6 +190,8 @@ struct EditTaskIntent: OperationIntent {
     var priority: Int?
     @Parameter(title: "Estimate", description: "How long it should take (\"45m\", \"1h30m\"), or `none`.")
     var estimate: String?
+    @Parameter(title: "Sitting Length", description: "How long one sitting of it is (\"45m\"), for work better done in pieces: planning gives it a sitting at a time. `none` to plan it whole.")
+    var sittings: String?
     @Parameter(title: "Notes", description: "Its notes, whole.")
     var notes: String?
     @Parameter(title: "Project", description: "The project to move it to, by name.")
@@ -207,6 +209,7 @@ struct EditTaskIntent: OperationIntent {
             "repeat": `repeat`.map(ArgumentValue.text),
             "priority": priority.map { .number(Int64($0)) },
             "estimate": estimate.map(ArgumentValue.text),
+            "sittings": sittings.map(ArgumentValue.text),
             "notes": notes.map(ArgumentValue.text),
             "project": project.map { .text($0.name) },
             "labels": labels.map { .texts($0.map(\.name)) },
