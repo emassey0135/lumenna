@@ -134,17 +134,28 @@ final class VoiceOverUITests: XCTestCase {
     }
 
 
-    /// Every action VoiceOver offers on the row it is on, in its order, read by stepping its
-    /// actions rotor (VO-Command-Down Arrow) until it comes round to the first again.
+    /// Every action VoiceOver offers on the row it is on, in its order and as often as it lists
+    /// each: one whole round of its actions rotor (VO-Command-Down Arrow). Stopping at the first
+    /// name heard again cannot see a repeat, since a doubled action ends the walk with every
+    /// count at 1, so this steps far enough to come round more than twice and takes the shortest
+    /// run that the walk repeats.
     private func actionsOffered() -> [String] {
-        var offered: [String] = []
-        for _ in 0..<30 {
+        var heard: [String] = []
+        for _ in 0..<50 {
             app.typeKey(.downArrow, modifierFlags: [.control, .option, .command])
-            let said = waitForSpeech(after: offered.last)
-            if offered.contains(said) { break }
-            offered.append(said)
+            heard.append(waitForSpeech(after: heard.last))
         }
-        return offered
+        // The first presses can go unheard as VoiceOver takes up the rotor, one lost so that the
+        // name before it is read again, so the round is looked for in what came later.
+        let later = Array(heard.suffix(36))
+        let round = (1...(later.count / 2)).first { length in
+            later.indices.allSatisfy { later[$0] == later[$0 % length] }
+        }
+        guard let round else {
+            XCTFail("the actions rotor never came round: \(heard)")
+            return []
+        }
+        return Array(later.prefix(round))
     }
 
     /// What VoiceOver says once it says something other than `previous`.
@@ -174,6 +185,9 @@ final class VoiceOverUITests: XCTestCase {
     }
 
     func testABlockOffersVoiceOverEachOfItsActionsOnceItsMenuOnlyActionsAmongThem() throws {
+        add("call the bank")
+        let today = app.tabBars.buttons["Today"]
+        if today.exists { today.tap() } else { app.typeKey("1", modifierFlags: .command) }
         app.buttons["New Block"].tap()
         let name = app.textFields["Name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
@@ -184,11 +198,20 @@ final class VoiceOverUITests: XCTestCase {
         repeats.typeText("every day")
         // A new block's form adds, under the app's Add.
         app.buttons["Add"].tap()
+        // A sitting under it, through the long-press menu, so that it offers Collapse too.
+        let block = app.cells.containing(NSPredicate(format: "label CONTAINS 'Deep work'")).firstMatch
+        XCTAssertTrue(block.waitForExistence(timeout: 5))
+        block.press(forDuration: 1.2)
+        app.buttons["Assign a Task"].firstMatch.tap()
+        app.row("call the bank").tap()
+        XCTAssertTrue(app.alerts["Planned Length"].waitForExistence(timeout: 5))
+        app.alerts.buttons["Save"].tap()
+        XCTAssertTrue(app.row("call the bank").waitForExistence(timeout: 5))
         try voiceOver.enable()
         try move(to: "Deep work", within: 30)
         let offered = actionsOffered()
         print("VoiceOver offers a block: \(offered)")
-        for action in ["Assign a Task", "Edit Block", "Cancel This Day", "Reminders", "Delete Block"] {
+        for action in ["Assign a Task", "Edit Block", "Cancel This Day", "Reminders", "Delete Block", "Collapse"] {
             XCTAssertEqual(offered.filter { $0 == action }.count, 1, "\(action) once among \(offered)")
         }
     }

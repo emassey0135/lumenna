@@ -148,17 +148,18 @@ struct TaskListScreen: View {
         .accessibilityFocused($spoken, equals: row.id)
         .swipeActions(edge: .leading) {
             ForEach(leading, id: \.self) { action in
-                Button(action.title) { model.run(action, on: row.row) }.tint(.green)
+                Button(action.title) { model.run(action, on: row.row) }.tint(.green).listedOnce()
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             ForEach(trailing, id: \.self) { action in
                 Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: row.row) }
                     .tint(folds.contains(action) ? Color.lumennaTint : nil)
+                    .listedOnce()
             }
         }
         .accessibilityActions {
-            // Only what is not swiped: SwiftUI offers the swipe actions to VoiceOver already.
+            // Only what is not swiped: the row's cell offers the swipe actions to VoiceOver.
             ForEach(others, id: \.self) { action in
                 Button(action.title) { model.run(action, on: row.row) }
             }

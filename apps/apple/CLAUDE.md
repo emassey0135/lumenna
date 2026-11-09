@@ -117,10 +117,15 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   hidden until something is said: empty, the audit finds a nameless text.
 - **A row's primary actions are its swipe actions; the rest are its custom actions**, and
   all of them are in its long-press menu. A trailing swipe never runs its first action by
-  itself (`allowsFullSwipe: false`): the first can be Delete. UIKit offers swipe actions to
-  VoiceOver, Switch Control and Full Keyboard Access and *adds* custom actions to them, so an
-  action in both would be listed twice: each is in exactly one. A swipe action's title is its
-  spoken name ("Mark Done", not "Done").
+  itself (`allowsFullSwipe: false`): the first can be Delete. Each is in exactly one, or the
+  actions rotor lists it twice, and on iOS 27 a swipe action comes from two places: SwiftUI's
+  row element lists it among its accessibility actions, and UIKit's list cell (private
+  `_accessibilityCustomActions`, from the same swipe) adds its own, which VoiceOver joins to the
+  row's. So each swipe's button is `.listedOnce()` (`accessibilityHidden` on iOS 27): SwiftUI's
+  copy goes, the cell's stays and runs the swipe, and the swipe by touch is unchanged. VO-Command-
+  Down Arrow reads the row's own actions, then the cell's, then Activate Default; a row's
+  accessibility actions must hold only what is not swiped. A swipe action's title is its spoken
+  name ("Mark Done", not "Done").
 - **No bottom toolbars**: inside a tab bar the floating bar sits over a toolbar's buttons,
   so a tap on Undo lands on the Today tab. Rows scrolled under the glass tab bar fail
   contrast, so pushed forms set `hidesBottomBarWhenPushed`.

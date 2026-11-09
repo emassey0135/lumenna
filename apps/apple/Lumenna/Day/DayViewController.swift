@@ -140,10 +140,11 @@ struct DayScreen: View {
             ForEach(split.trailing, id: \.self) { action in
                 Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: item) }
                     .tint(folds.contains(action) ? Color.lumennaTint : nil)
+                    .listedOnce()
             }
         }
         .accessibilityActions {
-            // Only what is not swiped: SwiftUI offers the swipe actions to VoiceOver already.
+            // Only what is not swiped: the row's cell offers the swipe actions to VoiceOver.
             ForEach(split.others, id: \.self) { action in
                 Button(action.title) { model.run(action, on: item) }
             }
