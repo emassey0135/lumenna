@@ -1645,7 +1645,13 @@ fn replan_from_now_says_its_proposal_and_makes_only_the_changes_left_checked() {
     app.post(&["space"]);
     assert!(tree_items(&app)[0].contains(" unchecked"), "{:#?}", tree_items(&app));
     app.post(&["enter"]);
-    assert!(app.says(|s| s.starts_with("Replanned")), "{}", app.status());
+    // Said where the app speaks: the proposal's own status line while it stays open with the
+    // next proposal (the kept sitting still overfills the day), else the window's.
+    let said = automation::wait(Duration::from_secs(5), || {
+        let front = app.automation.front(app.window);
+        [front, app.window].into_iter().filter_map(|w| app.automation.status(w)).find(|s| s.starts_with("Replanned"))
+    });
+    assert!(said.is_some(), "{}", app.status());
     // The one left unchecked is untouched; the other moved away, or kept only the part of the
     // day it fits (a sitting with room for some of it is split, not moved whole).
     let plan = app.store().plan(None).unwrap();
