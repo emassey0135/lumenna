@@ -1646,9 +1646,13 @@ fn replan_from_now_says_its_proposal_and_makes_only_the_changes_left_checked() {
     assert!(tree_items(&app)[0].contains(" unchecked"), "{:#?}", tree_items(&app));
     app.post(&["enter"]);
     assert!(app.says(|s| s.starts_with("Replanned")), "{}", app.status());
+    // The one left unchecked is untouched; the other moved away, or kept only the part of the
+    // day it fits (a sitting with room for some of it is split, not moved whole).
     let plan = app.store().plan(None).unwrap();
-    let left: Vec<&str> = plan.blocks[0].assignments.iter().map(|a| a.title.as_str()).collect();
-    assert_eq!(left, [kept]);
+    let whole: Vec<(&str, Option<u32>)> =
+        plan.blocks[0].assignments.iter().map(|a| (a.title.as_str(), a.planned_mins)).collect();
+    assert!(whole.contains(&(kept, Some(1440))), "{whole:?}");
+    assert!(!whole.iter().any(|(title, minutes)| *title != kept && *minutes == Some(1440)), "{whole:?}");
 }
 
 #[test]
