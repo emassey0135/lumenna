@@ -119,4 +119,14 @@ class ChordsTest {
         assertEquals(Key.SayCharacter, Chords.fromChord(SPACE or Chords.DOT3 or Chords.DOT6))
         assertEquals(Key.SayWord, Chords.fromChord(SPACE or Chords.DOT2 or Chords.DOT5))
     }
+
+    @Test fun backspaceWithDotsIsTheEditBoxsDeletions() {
+        val backspace = Chords.BACKSPACE
+        assertEquals(Key.DeleteWord, Chords.fromChord(backspace or Chords.DOT2 or Chords.DOT5))
+        assertEquals(Key.DeleteLine, Chords.fromChord(backspace or Chords.DOT1 or Chords.DOT4))
+        assertEquals(Key.DeleteParagraph, Chords.fromChord(backspace or Chords.DOT1 or Chords.DOT3 or Chords.DOT4 or Chords.DOT6))
+        assertEquals(Key.DeleteParagraph, Chords.fromChord(backspace or Chords.DOT2 or Chords.DOT3 or Chords.DOT5 or Chords.DOT6))
+        assertEquals("Space-D is the character, as everywhere", Key.Delete, Chords.fromChord(Chords.SPACE or Chords.DOT1 or Chords.DOT4 or Chords.DOT5))
+        assertEquals(Key.BackspaceDots(0x03), Chords.fromChord(backspace or Chords.DOT1 or Chords.DOT2))
+    }
 }

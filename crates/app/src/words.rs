@@ -465,6 +465,11 @@ pub struct EditBoxWords {
     pub nothing_selected: String,
     /// Paste with nothing on the clipboard.
     pub clipboard_empty: String,
+    /// Backspace-2-5 at the end of a line of a multi-line box, joining the next one on: "new
+    /// paragraph".
+    pub new_paragraph: String,
+    /// Asked before Backspace or Space-D takes a selection: "Delete selected text?"
+    pub delete_selected: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -918,6 +923,8 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
                 deleted: "Delete complete.".to_owned(),
                 nothing_selected: "Block is not set.".to_owned(),
                 clipboard_empty: "The clipboard is empty.".to_owned(),
+                new_paragraph: "new paragraph".to_owned(),
+                delete_selected: "Delete selected text?".to_owned(),
             },
         },
         yes_no: lumenna_records::fields::yes_no(),
@@ -1317,7 +1324,9 @@ pub fn braillesense_keys() -> Vec<DeviceKey> {
         row("Enter-B, Enter-A", "In a line of text, start a selection at the cursor, or select everything"),
         row("Enter-C, Enter-X, Enter-V", "Copy, cut and paste"),
         row("Enter-P, Enter-D", "Add the selection to the clipboard, clear the clipboard"),
-        row("Backspace-1-2", "Read the selection"),
+        row("Backspace-1-2, Enter-U", "Read the selection, and the first line of it"),
+        row("Space-D, Backspace-2-5", "In a line of text, delete the character or the word at the cursor"),
+        row("Backspace-1-4, Backspace-1-3-4-6", "Delete the line shown at the cursor, or the whole paragraph"),
         row("Enter in a multi-line box", "A new line; Tab leaves the box"),
         row("Space-1, Space-4 in a multi-line box", "The line above and below"),
         row("A cell touched and a front Cursor button", "Move the cursor in a line of text to that cell"),

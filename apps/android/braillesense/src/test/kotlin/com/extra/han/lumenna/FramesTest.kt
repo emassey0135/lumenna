@@ -597,4 +597,92 @@ class FramesTest {
         assertEquals("then", box.text)
         assertArrayEquals("then".toByteArray(), box.line.shown().cells)
     }
+
+    @Test fun backspaceTwoFiveTakesTheWordAtTheCursorAndTheSpacesAfterIt() {
+        val box = TextBox("buy  milk now", Plain)
+        box.line.start()
+        box.line.wordRight()
+        box.line.right()
+        assertEquals(TextBox.WordRemoved.Word("milk"), box.deleteWord())
+        assertEquals("buy  now", box.text)
+        assertEquals("the cursor where the word began", 5, box.line.caret)
+    }
+
+    @Test fun backspaceTwoFiveAtTheEndTakesTheLastWordAndLeavesTheSpaceBeforeIt() {
+        val box = TextBox("buy milk", Plain)
+        assertEquals(TextBox.WordRemoved.Word("milk"), box.deleteWord())
+        assertEquals("buy ", box.text)
+        assertEquals("a space at the end goes by itself", TextBox.WordRemoved.Space, box.deleteWord())
+        assertEquals("buy", box.text)
+        assertEquals(TextBox.WordRemoved.Word("buy"), box.deleteWord())
+        assertEquals("", box.text)
+        assertNull("an empty line has nothing to take", box.deleteWord())
+    }
+
+    @Test fun backspaceTwoFiveAtTheEndOfALineJoinsTheNextOnAsANewParagraph() {
+        val box = TextBox("one\ntwo", Plain, multiLine = true)
+        box.up()
+        box.line.end()
+        assertEquals(TextBox.WordRemoved.LineBreak, box.deleteWord())
+        assertEquals("onetwo", box.text)
+    }
+
+    @Test fun backspaceOneFourTakesThePartOfTheLineShownAndAnEmptiedLineGoes() {
+        val box = TextBox("one two\nthree", Plain, multiLine = true)
+        box.up()
+        assertTrue(box.deleteLine(4, 7))
+        assertEquals("one \nthree", box.text)
+        assertEquals(4, box.line.caret)
+        box.down()
+        assertTrue(box.deleteLine(0, 5))
+        assertEquals("the emptied last line goes, the cursor at the end of the one before", "one ", box.text)
+        assertEquals(0, box.row)
+        assertEquals(4, box.line.caret)
+        assertTrue(box.deleteLine(0, 4))
+        assertEquals("", box.text)
+        assertFalse("nothing left to take", box.deleteLine(0, 0))
+    }
+
+    @Test fun deletingTheParagraphTakesTheWholeLine() {
+        val box = TextBox("one\ntwo\nthree", Plain, multiLine = true)
+        box.up()
+        assertTrue(box.deleteParagraph())
+        assertEquals("one\nthree", box.text)
+        assertEquals("three", box.line.text)
+        assertEquals(0, box.line.caret)
+        val single = TextBox("milk", Plain)
+        assertTrue(single.deleteParagraph())
+        assertEquals("", single.text)
+        assertFalse(single.deleteParagraph())
+    }
+
+    @Test fun enterUReadsASelectionInOneLineWholeAndOneAcrossLinesToTheEndOfItsFirst() {
+        val box = TextBox("milk eggs", Plain)
+        assertNull(box.selectionStart(40))
+        box.line.start()
+        box.startSelection()
+        box.line.wordRight()
+        assertEquals("milk ", box.selectionStart(40))
+        val notes = TextBox("buy milk and eggs\nbread", Plain, multiLine = true)
+        notes.top()
+        notes.line.wordRight()
+        notes.startSelection()
+        notes.down()
+        assertEquals("milk and eggs", notes.selectionStart(40))
+        assertEquals("as a display of 10 cells breaks it", "milk ", notes.selectionStart(10))
+    }
+
+    @Test fun spaceDInAMultiLineBoxTakesTheCharacterAtTheCursorOrJoinsTheNextLine() {
+        val box = TextBox("ab\nc", Plain, multiLine = true)
+        val frame = FormFrame("f", null, listOf(Control.Edit("n", "Notes", box)), null, BY_LETTER, READ)
+        frame.key(Key.Up)
+        frame.key(Key.LineStart)
+        frame.key(Key.Delete)
+        assertEquals("b\nc", box.text)
+        assertEquals('a'.code.toByte(), box.line.takeRemoved()?.cell)
+        frame.key(Key.LineEnd)
+        frame.key(Key.Delete)
+        assertEquals("bc", box.text)
+        assertNull("a line break taken is no character", box.line.takeRemoved())
+    }
 }

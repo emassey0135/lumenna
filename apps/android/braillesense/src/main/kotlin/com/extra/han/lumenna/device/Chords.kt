@@ -91,6 +91,17 @@ object Chords {
     )
 
     /**
+     * Backspace with these dots, the device's edit boxes' deletions (`BrailleEdit.onBrailleKey`, and
+     * the manual's "Delete current paragraph" as both it and the command summary give it).
+     */
+    private val BACKSPACED: Map<Int, Key> = mapOf(
+        pattern(2, 5) to Key.DeleteWord,
+        pattern(1, 4) to Key.DeleteLine, // C
+        pattern(1, 3, 4, 6) to Key.DeleteParagraph, // X
+        pattern(2, 3, 5, 6) to Key.DeleteParagraph,
+    )
+
+    /**
      * What arrives on `onResponse`, or null for what is not a key of ours.
      *
      * A real press comes as the key code the system mapped it to, with the chord in the third
@@ -157,7 +168,7 @@ object Chords {
             enter && bits == pattern(2, 4) -> Key.Context // I: the device's actions menu
             enter -> Key.EnterDots(bits)
             backspace && bits == 0 -> Key.Backspace
-            backspace -> Key.BackspaceDots(bits)
+            backspace -> BACKSPACED[bits] ?: Key.BackspaceDots(bits)
             bits != 0 -> Key.Cell(bits)
             else -> null
         }

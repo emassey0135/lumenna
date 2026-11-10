@@ -154,6 +154,48 @@ class LineEditor(initial: String, private val translator: Translator) {
         removeAt(caret)
     }
 
+    /** Takes the cells from [from] up to [to], the caret where they were. */
+    fun removeRange(from: Int, to: Int) {
+        val start = from.coerceIn(0, length)
+        repeat((to.coerceAtMost(length) - start).coerceAtLeast(0)) { removeAt(start) }
+        removed = null
+        caret = start
+    }
+
+    /** What Backspace-2-5 took: a word, by its text, or a space by itself. */
+    sealed interface WordRemoved {
+        data class Word(val text: String) : WordRemoved
+        data object Space : WordRemoved
+    }
+
+    /**
+     * Backspace-2-5, as the device's edit box takes a word: the word at the caret (or that it has
+     * just left, at the end of the line) and the spaces after it, the caret where it began; a space
+     * the caret is on, between words, by itself. Null on an empty line.
+     */
+    fun deleteWord(): WordRemoved? {
+        if (length == 0) return null
+        val line = flat
+        var at = caret
+        if (at == line.size && line[at - 1] == BLANK) at--
+        if (at < line.size && line[at] == BLANK) {
+            removeRange(at, at + 1)
+            return WordRemoved.Space
+        }
+        val (index, _) = place(at)
+        val text = textOf(words[index])
+        if (index == words.lastIndex) {
+            // The last word: the space before it stays, as the device leaves it.
+            words[index] = Word(ByteArray(0), "")
+        } else {
+            words.removeAt(index)
+            // The spaces after it, but not past the end: the line's last space stays a space.
+            while (index < words.lastIndex && words[index].cells.isEmpty()) words.removeAt(index)
+        }
+        caret = startOf(index).coerceAtMost(length)
+        return WordRemoved.Word(text)
+    }
+
     fun left() {
         if (caret > 0) caret--
     }

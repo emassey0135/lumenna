@@ -38,6 +38,12 @@ sealed interface Key {
     data object Find : Key
     data object Options : Key
     data object Delete : Key
+    /** Deletes the word at the cursor in a line: Backspace-2-5, Alt-Backspace. */
+    data object DeleteWord : Key
+    /** Deletes the line shown at the cursor: Backspace-1-4 (C), Control-Backspace. */
+    data object DeleteLine : Key
+    /** Deletes the paragraph at the cursor: Backspace-1-3-4-6 or Backspace-2-3-5-6, Alt-Delete. */
+    data object DeleteParagraph : Key
     /** Stops speech: Space-7-8. */
     data object Silence : Key
     /** Space by itself: a check box or combo box's change, a space when typing. */

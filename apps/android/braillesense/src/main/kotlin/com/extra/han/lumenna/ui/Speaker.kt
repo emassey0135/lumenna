@@ -16,6 +16,9 @@ class Speaker(private val out: Output, private val translator: Translator) {
     /** Where an edit box's own text begins on the line shown: 0 for a line that has none. */
     private var textStart = 0
 
+    /** Where it ends: what follows (the role after it) is not its. */
+    private var textEnd = 0
+
     private fun display(): Cells {
         val known = out.width
         if (cells == null || (known > 0 && known != width)) {
@@ -23,6 +26,12 @@ class Speaker(private val out: Output, private val translator: Translator) {
             cells = Cells(width)
         }
         return cells!!
+    }
+
+    /** How many cells the display has: 40 until the service says. */
+    fun cellsWide(): Int {
+        display()
+        return width
     }
 
     fun say(text: String) {
@@ -54,6 +63,7 @@ class Speaker(private val out: Output, private val translator: Translator) {
         if (ready != null) {
             display.set(before + ready + after, rendered.cellCursor.takeIf { it >= 0 }?.plus(before.size) ?: -1)
             textStart = before.size
+            textEnd = before.size + ready.size
         } else {
             val translated = translator.translate(rendered.braille)
             val cursor = rendered.cursor
@@ -62,6 +72,7 @@ class Speaker(private val out: Output, private val translator: Translator) {
                 ?: -1
             display.set(before + translated.cells + after, cursor.takeIf { it >= 0 }?.plus(before.size) ?: -1)
             textStart = 0
+            textEnd = 0
         }
         push(display)
     }
@@ -75,6 +86,19 @@ class Speaker(private val out: Output, private val translator: Translator) {
 
     /** Pans back; false at the start of the line. */
     fun scrollBack(): Boolean = display().let { d -> d.back().also { if (it) push(d) } }
+
+    /**
+     * The cells of an edit box's text on the display line that holds its cursor, as the device's
+     * Backspace-1-4 takes them: the label and role beside it are not the text's. Null where the line
+     * shown is no edit box's.
+     */
+    fun cursorLine(): IntRange? {
+        val window = display().cursorWindow() ?: return null
+        val length = textEnd - textStart
+        val from = (window.first - textStart).coerceIn(0, length)
+        val to = (window.last + 1 - textStart).coerceIn(0, length)
+        return from until to
+    }
 
     /** Which cell of the line's text a routing key over [cell] is: -1 past its end or over a label. */
     fun routed(cell: Int): Int = display().routed(cell).let { if (it < textStart) -1 else it - textStart }

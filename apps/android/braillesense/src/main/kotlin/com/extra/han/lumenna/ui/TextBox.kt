@@ -1,5 +1,6 @@
 package com.extra.han.lumenna.ui
 
+import com.extra.han.lumenna.device.Cells
 import com.extra.han.lumenna.device.Translator
 
 /** Where in a box: which line, and which cell of it. */
@@ -89,6 +90,66 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
         return false
     }
 
+    /** What Backspace-2-5 took: a word or a space, or at a line's end the break to the next. */
+    sealed interface WordRemoved {
+        data class Word(val text: String) : WordRemoved
+        data object Space : WordRemoved
+        data object LineBreak : WordRemoved
+    }
+
+    /**
+     * Backspace-2-5: the word at the cursor and the spaces after it, as the device's edit box takes
+     * it. At the end of a line with another after it, the break, joining the next line on, which the
+     * device calls "new paragraph". Null where there is nothing to take.
+     */
+    fun deleteWord(): WordRemoved? {
+        cancelSelection()
+        if (line.caret == line.size && row < lines.lastIndex) {
+            line.append(lines.removeAt(row + 1))
+            return WordRemoved.LineBreak
+        }
+        return when (val gone = line.deleteWord()) {
+            is LineEditor.WordRemoved.Word -> WordRemoved.Word(gone.text)
+            LineEditor.WordRemoved.Space -> WordRemoved.Space
+            null -> null
+        }
+    }
+
+    /**
+     * Backspace-1-4: the cells [from] up to [to] of the cursor's line, the part of it shown at the
+     * cursor. A line left empty in a multi-line box goes too, the next taking its place, or at the
+     * end the cursor going back to the end of the line before. False where there is nothing to take.
+     */
+    fun deleteLine(from: Int, to: Int): Boolean {
+        cancelSelection()
+        if (line.size == 0 && lines.size == 1) return false
+        if (line.size > 0) line.removeRange(from, to)
+        if (line.size == 0 && lines.size > 1) {
+            lines.removeAt(row)
+            if (row > lines.lastIndex) {
+                row = lines.lastIndex
+                line.end()
+            } else {
+                line.start()
+            }
+        }
+        return true
+    }
+
+    /** Backspace-1-3-4-6: the cursor's whole line, the cursor at the start of the one after. False where there is nothing. */
+    fun deleteParagraph(): Boolean {
+        cancelSelection()
+        if (lines.size == 1) {
+            if (line.size == 0) return false
+            lines[0] = LineEditor("", translator)
+            return true
+        }
+        lines.removeAt(row)
+        row = row.coerceAtMost(lines.lastIndex)
+        line.start()
+        return true
+    }
+
     /** To another line, the cursor as far along as it can be; false where there is none. */
     private fun toRow(to: Int): Boolean {
         if (to !in lines.indices || to == row) return false
@@ -150,6 +211,19 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
                 else -> each.text
             }
         }
+    }
+
+    /**
+     * Enter-U, the device's "read beginning of selected text": a selection within one line is read
+     * whole, one across lines from where it begins to the end of that line as a display of [width]
+     * cells breaks it. Null with nothing selected.
+     */
+    fun selectionStart(width: Int): String? {
+        val (from, to) = range() ?: return null
+        val first = lines[from.row]
+        if (from.row == to.row) return first.textBetween(from.cell, to.cell)
+        val end = Cells.lineEnd(first.shown().cells, from.cell, width)
+        return first.textBetween(from.cell, end)
     }
 
     /** Takes away what is selected, the cursor where it began; false with nothing selected. */

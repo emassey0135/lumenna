@@ -238,6 +238,7 @@ class Shell(
 
     private fun build(): Frame {
         menu?.let { return it }
+        confirming?.let { return confirmation(it) }
         val model = view ?: return Blank
         model.asking?.let { asked -> question(model, asked)?.let { return it } }
         model.line?.let { return quickAdd(model) }
@@ -320,6 +321,10 @@ class Shell(
 
     /** A key, from the braille keys or the QWERTY keyboard. */
     fun press(key: Key) {
+        if (confirming != null && key == Key.Escape) {
+            out.silence()
+            return answerConfirmation(false)
+        }
         when (key) {
             Key.Silence -> return out.silence()
             Key.SayCharacter, Key.SayWord -> {
@@ -431,7 +436,7 @@ class Shell(
 
     private fun typing(frame: Frame, key: Key): Boolean {
         val box = boxOf(frame) ?: return false
-        return key is Key.Cell || key is Key.Typed || key == Key.Backspace || key == Key.Space || (key == Key.Enter && box.multiLine)
+        return key is Key.Cell || key is Key.Typed || key == Key.Backspace || key == Key.Delete || key == Key.Space || (key == Key.Enter && box.multiLine)
     }
 
     private fun caretMoves(frame: Frame, key: Key): Boolean {
@@ -443,9 +448,12 @@ class Shell(
     /**
      * The device's edit-box commands, before the box's own keys: a selection begun with Enter-B or
      * made of everything with Enter-A, copied with Enter-C, cut with Enter-X, added to the clipboard
-     * with Enter-P and read with Backspace-1-2; Enter-V pastes and Enter-D clears the clipboard, all
-     * through the system's clipboard. With a selection, Backspace takes it and Escape leaves it, and
-     * typing ends it. Control with the letter on the QWERTY keyboard is Enter with it.
+     * with Enter-P and read with Backspace-1-2 (its first line with Enter-U); Enter-V pastes and
+     * Enter-D clears the clipboard, all through the system's clipboard. With a selection, Backspace
+     * and Space-D ask "Delete selected text?" first, Escape leaves it, and typing ends it. Control
+     * with the letter on the QWERTY keyboard is Enter with it. Backspace-2-5 deletes the word at the
+     * cursor and says it, Backspace-1-4 the line shown at the cursor and Backspace-1-3-4-6 the
+     * paragraph, each "Delete complete."
      */
     private fun editCommand(frame: Frame, box: TextBox, key: Key): Boolean {
         val words = appWords.braille.editBox
@@ -485,12 +493,50 @@ class Shell(
             }
             letter == 'd' -> host.setClipboard(null).also { done(words.clipboardCleared) }
             key is Key.BackspaceDots && key.dots == SELECTION_READ -> box.selected()?.let { out.say(it) } ?: done(words.nothingSelected)
-            !box.selecting -> return false
-            key == Key.Backspace -> {
-                box.deleteSelected()
+            letter == 'u' -> {
+                val start = box.selectionStart(out.cellsWide()) ?: return true.also { done(words.nothingSelected) }
+                out.say(start)
+            }
+            key == Key.DeleteWord -> {
+                val gone = box.deleteWord() ?: return true
+                changed()
+                clearMessage()
+                out.say(
+                    when (gone) {
+                        is TextBox.WordRemoved.Word -> gone.text
+                        TextBox.WordRemoved.Space -> appWords.braille.space
+                        TextBox.WordRemoved.LineBreak -> words.newParagraph
+                    },
+                )
+            }
+            key == Key.DeleteLine -> {
+                // The line as the display shows it at the cursor, not a message over it.
+                clearMessage()
+                out.show(frame.rendered)
+                val shown = out.cursorLine() ?: (0 until box.line.size)
+                if (box.deleteLine(shown.first, shown.last + 1)) {
+                    changed()
+                    done(words.deleted)
+                }
+            }
+            key == Key.DeleteParagraph -> if (box.deleteParagraph()) {
                 changed()
                 done(words.deleted)
             }
+            !box.selecting -> return false
+            key == Key.Backspace || key == Key.Delete -> confirm(
+                words.deleteSelected,
+                yes = {
+                    box.deleteSelected()
+                    changed()
+                    done(words.deleted)
+                },
+                no = {
+                    clearMessage()
+                    refresh(false)
+                    sayLine(box)
+                },
+            )
             key == Key.Escape -> box.cancelSelection().also { done(words.selectionCanceled) }
             key is Key.Cell || key is Key.Typed || key == Key.Space || key == Key.Enter -> {
                 // Typing ends a selection, and goes on to be typed.
@@ -520,6 +566,9 @@ class Shell(
                 val box = boxOf(frame)
                 if (box?.takeJoined() == true) out.say(appWords.braille.editBox.previousLine) else editor.takeRemoved()?.let(::sayCell)
             }
+            // Space-D: the character it took, as Backspace's; a line break taken says nothing, as
+            // the device's own says nothing for it.
+            Key.Delete -> editor.takeRemoved()?.let(::sayCell)
             // A new line, as the device's multi-line box says it: the word it finished where the
             // echo says words, else "Enter".
             Key.Enter -> {
@@ -531,6 +580,34 @@ class Shell(
             }
             else -> {}
         }
+    }
+
+    /** A yes-or-no question of the shell's own over an edit box, as the device's prompt asks it. */
+    private class Confirming(val prompt: String, val returnTo: String, val yes: () -> Unit, val no: () -> Unit)
+
+    private var confirming: Confirming? = null
+
+    /** Asks [prompt], Yes first, and runs [yes] or [no] with the box it was asked over back in front. */
+    private fun confirm(prompt: String, yes: () -> Unit, no: () -> Unit) {
+        confirming = Confirming(prompt, lastId, yes, no)
+        clearMessage()
+        refresh(true, fromKey = true)
+    }
+
+    private fun confirmation(asked: Confirming): Frame {
+        val rows = appWords.yesNo.map { choice ->
+            Row(choice.id, choice.title, role = ControlRole.PROMPT_BUTTON, open = { answerConfirmation(choice.id == "yes") })
+        }
+        return list(CONFIRMING, asked.prompt, rows, null, "", hold = false, prompt = true)
+    }
+
+    private fun answerConfirmation(yes: Boolean) {
+        val asked = confirming ?: return
+        confirming = null
+        selected.remove(CONFIRMING)
+        // Back to the box as it was, not a new screen to announce.
+        lastId = asked.returnTo
+        if (yes) asked.yes() else asked.no()
     }
 
     /** The line the cursor is on, or "blank". */
@@ -1326,6 +1403,9 @@ class Shell(
         /** Space-2-5 and Space-3-6, the device's read word and read character, as dots. */
         private const val SAY_WORD_DOTS = 0x12
         private const val SAY_CHARACTER_DOTS = 0x24
+
+        /** The shell's own yes-or-no question. */
+        private const val CONFIRMING = "confirming"
 
         /** Backspace-1-2, the device's "read the selection". */
         private const val SELECTION_READ = 0x03

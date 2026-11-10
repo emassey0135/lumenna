@@ -25,19 +25,27 @@ class Cells(private val width: Int) {
     /** The window at [from], ending where the next begins or the line does. */
     private fun end(index: Int): Int = offsets.getOrElse(index + 1) { line.size }
 
-    /** The offsets each window starts at: broken at the last space before the width. */
-    private fun wrap(cells: ByteArray): List<Int> {
-        val starts = mutableListOf(0)
-        var start = 0
-        while (cells.size - start > width) {
-            var breakAt = start + width
-            var scan = breakAt - 1
-            while (scan > start && cells[scan].toInt() != 0) scan--
-            if (scan > start) breakAt = scan + 1
-            starts += breakAt
-            start = breakAt
+    private fun wrap(cells: ByteArray): List<Int> = starts(cells, width)
+
+    companion object {
+        /** The offsets each window of [width] starts at: broken at the last space before the width. */
+        fun starts(cells: ByteArray, width: Int): List<Int> {
+            val starts = mutableListOf(0)
+            var start = 0
+            while (cells.size - start > width) {
+                var breakAt = start + width
+                var scan = breakAt - 1
+                while (scan > start && cells[scan].toInt() != 0) scan--
+                if (scan > start) breakAt = scan + 1
+                starts += breakAt
+                start = breakAt
+            }
+            return starts
         }
-        return starts
+
+        /** Where the window of [width] that holds cell [at] of [cells] ends. */
+        fun lineEnd(cells: ByteArray, at: Int, width: Int): Int =
+            starts(cells, width).firstOrNull { it > at } ?: cells.size
     }
 
     /** Moves on a window; false at the end. */
@@ -70,6 +78,16 @@ class Cells(private val width: Int) {
         if (cursor < 0) return -1
         val start = offsets[window]
         return if (cursor in start until start + width) cursor - start else -1
+    }
+
+    /**
+     * The cells of the window that holds the cursor, from its first to past its last (a space it
+     * broke at included): the line the device's edit box calls the cursor's. Null with no cursor.
+     */
+    fun cursorWindow(): IntRange? {
+        if (cursor < 0) return null
+        val index = windowOf(cursor)
+        return offsets[index] until end(index)
     }
 
     /** Which cell of the whole line a routing key over [cell] of the window is: -1 past the end. */
