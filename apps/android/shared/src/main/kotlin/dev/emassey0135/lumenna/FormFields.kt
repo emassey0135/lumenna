@@ -13,6 +13,7 @@ fun TaskFields.text(key: String): String? = when (key) {
     "due" -> due
     "repeat" -> repeat
     "estimate" -> estimate
+    "sittings" -> sittings
     "project" -> project
     "labels" -> labels
     "notes" -> notes
@@ -25,6 +26,7 @@ fun TaskFields.with(key: String, value: String): TaskFields = when (key) {
     "due" -> copy(due = value)
     "repeat" -> copy(repeat = value)
     "estimate" -> copy(estimate = value)
+    "sittings" -> copy(sittings = value)
     "project" -> copy(project = value)
     "labels" -> copy(labels = value)
     "notes" -> copy(notes = value)

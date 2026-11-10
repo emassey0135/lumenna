@@ -182,6 +182,9 @@ pub fn markdown(snapshot: &Snapshot, now: &Zoned) -> String {
             if let Some(minutes) = task.estimate_mins {
                 details.push(format!("estimate {minutes} minutes"));
             }
+            if let Some(minutes) = task.sitting_mins {
+                details.push(format!("in sittings of {minutes} minutes"));
+            }
             out.push_str(&format!("{indent}- [{mark}] {}", task.title));
             if !details.is_empty() {
                 out.push_str(&format!(" — {}", details.join("; ")));

@@ -101,6 +101,14 @@ pub fn task_form() -> Vec<FormField> {
         ),
         FormField { options: crate::form::priorities(), ..field("priority", "Priority", K::Choice, "", "") },
         field("estimate", "Estimate", K::Line, "How long it should take, such as 45m or 1h30m. Empty for none.", "45m"),
+        // Beside the estimate it divides.
+        field(
+            "sittings",
+            "Sitting length",
+            K::Line,
+            "For work better done in pieces, how long one sitting is, such as 45m: planning gives it a sitting at a time. Empty to plan it whole.",
+            "45m",
+        ),
         // A list, filled from `Lumenna::project_options`: a task only ever moves to a project
         // that exists, so a list cannot hold a typo, and typing still finds one.
         field("project", "Project", K::Choice, "", ""),

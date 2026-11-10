@@ -130,6 +130,7 @@ impl Lumenna {
                     notes: given.text("notes")?,
                     project: given.text("project")?,
                     labels: given.texts("labels")?,
+                    sittings: given.text("sittings")?,
                 };
                 Assisted::Change(self.edit_task(&task, edit)?)
             }

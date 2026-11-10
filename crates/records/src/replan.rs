@@ -161,6 +161,40 @@ pub fn propose(snapshot: &Snapshot, style: TimeStyle, pins: ReplanPins, now: &Zo
                     destination: destination.map(|d| d.id).unwrap_or_default(),
                 });
             }
+            Proposed::SplitSitting { assignment, task, from, keep, moved } => {
+                let name = snapshot.tasks.get(task).map(|t| t.title.clone()).unwrap_or_default();
+                // The rest is a sitting of its own only if it is worth having; else it goes back
+                // to the list, for the planner to give another day.
+                let destination = if *moved >= lumenna_core::dayplan::SHORTEST_SITTING {
+                    destination_for(snapshot, &task.to_string(), *from, now.date(), &now)?
+                } else {
+                    None
+                };
+                let rest = match &destination {
+                    Some(to) => {
+                        let day = to
+                            .date
+                            .as_deref()
+                            .and_then(|d| d.parse().ok())
+                            .map(|d| crate::words::on_day(d, now.date()))
+                            .unwrap_or_default();
+                        let at = to.start.as_deref().and_then(|t| t.parse::<jiff::civil::Time>().ok()).map(minutes_of);
+                        let at = at.map_or_else(String::new, |at| format!(" at {}", clock(at, style)));
+                        format!("the other {} move to {} {day}{at}", duration(*moved), to.title)
+                    }
+                    None => format!("the other {} go back to the list", duration(*moved)),
+                };
+                changes.push(ReplanChange {
+                    sentence: format!("{name} keeps {} in {}, and {rest}", duration(*keep), title(snapshot, *from)),
+                    kind: "split".to_owned(),
+                    target: assignment.to_string(),
+                    from_start: 0,
+                    to_start: 0,
+                    from_mins: keep + moved,
+                    to_mins: *keep,
+                    destination: destination.map(|d| d.id).unwrap_or_default(),
+                });
+            }
         }
     }
     let unplaceable: Vec<String> = proposal

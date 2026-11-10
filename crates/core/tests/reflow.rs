@@ -183,3 +183,23 @@ fn a_pushed_block_shrinks_to_the_gap_before_an_anchored_one_when_its_floor_allow
     let proposal = world.reflow(at(10, 40), &[]);
     assert_eq!(proposal.changes.iter().filter_map(block_change).collect::<Vec<_>>(), [(review, at(11, 5), 25)]);
 }
+
+#[test]
+fn a_sitting_keeps_the_part_its_block_still_has_room_for_and_only_the_rest_moves() {
+    let mut world = World::new();
+    let deep = world.block("Deep work", BlockKind::Work, 9, 0, 60, false);
+    world.sitting(deep, "Essay", 20);
+    world.sitting(deep, "Draft", 40);
+    // At 9:20 there are 40 minutes left and 60 planned: Draft keeps 20 and 20 move.
+    let proposal = world.reflow(at(9, 20), &[]);
+    let split: Vec<_> = proposal
+        .changes
+        .iter()
+        .filter_map(|c| match c {
+            Proposed::SplitSitting { task, keep, moved, .. } => Some((world.snapshot.tasks[task].title.clone(), *keep, *moved)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(split, [("Draft".to_owned(), 20, 20)]);
+    assert!(!proposal.changes.iter().any(|c| matches!(c, Proposed::MoveSitting { .. })), "nothing moves whole");
+}

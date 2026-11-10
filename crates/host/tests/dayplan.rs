@@ -60,7 +60,7 @@ fn an_accepted_plan_is_one_change_and_planning_again_offers_nothing_twice() {
 }
 
 #[test]
-fn what_is_due_and_fits_nowhere_is_named() {
+fn a_task_due_and_too_big_for_any_block_is_given_the_room_there_is_and_what_is_short_is_said() {
     let (_directory, lumenna) = open();
     block(&lumenna, "Morning", "work", "09:00", 30, None);
     lumenna.add_task("Tax return p1").unwrap();
@@ -69,7 +69,11 @@ fn what_is_due_and_fits_nowhere_is_named() {
         .edit_task(&id, lumenna_host::TaskEdit { due: Some("2026-05-06".to_owned()), estimate: Some("2h".to_owned()), ..Default::default() })
         .unwrap();
     let proposal = plan(&lumenna, TimeStyle::TwentyFourHour);
-    assert!(proposal.announcement.ends_with("Tax return is due and fits in no block."), "{}", proposal.announcement);
+    assert_eq!(
+        proposal.sittings[0].sentence,
+        "Tax return goes in Morning at 09:00, for 30 minutes of the 2 hours it still needs, all the room there is; the rest is left for another sitting"
+    );
+    assert!(proposal.announcement.ends_with("Tax return is due, and 1 hour 30 minutes of it fits in no block."), "{}", proposal.announcement);
 }
 
 #[test]

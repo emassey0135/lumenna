@@ -115,7 +115,7 @@ abstract class LumennaFunctions : AppFunctionService() {
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it.")
     suspend fun addTask(
-        @AppFunctionInstruction("A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
+        @AppFunctionInstruction("A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
         text: String,
     ): ChangeMade =
         Assistant.changeMade(assist("add_task", Assistant.text("text", text)))
@@ -135,6 +135,8 @@ abstract class LumennaFunctions : AppFunctionService() {
         priority: Int? = null,
         @AppFunctionInstruction("How long it should take (\"45m\", \"1h30m\"), or `none`.")
         estimate: String? = null,
+        @AppFunctionInstruction("How long one sitting of it is (\"45m\"), for work better done in pieces: planning gives it a sitting at a time. `none` to plan it whole.")
+        sittings: String? = null,
         @AppFunctionInstruction("Its notes, whole.")
         notes: String? = null,
         @AppFunctionInstruction("The project to move it to, by name.")
@@ -142,7 +144,7 @@ abstract class LumennaFunctions : AppFunctionService() {
         @AppFunctionInstruction("Its labels, all of them, by name.")
         labels: List<String>? = null,
     ): ChangeMade =
-        Assistant.changeMade(assist("edit_task", Assistant.text("id", id), Assistant.text("title", title), Assistant.text("due", due), Assistant.text("repeat", repeat), Assistant.number("priority", priority), Assistant.text("estimate", estimate), Assistant.text("notes", notes), Assistant.text("project", project), Assistant.texts("labels", labels)))
+        Assistant.changeMade(assist("edit_task", Assistant.text("id", id), Assistant.text("title", title), Assistant.text("due", due), Assistant.text("repeat", repeat), Assistant.number("priority", priority), Assistant.text("estimate", estimate), Assistant.text("sittings", sittings), Assistant.text("notes", notes), Assistant.text("project", project), Assistant.texts("labels", labels)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Marks a task done. A repeating one moves on to its next date.")

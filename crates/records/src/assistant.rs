@@ -297,7 +297,7 @@ const OPERATIONS: &[Op] = &[
     read("propose_day_plan", "Propose a Plan for a Day", C::Planning, &["plan the day", "fill", "schedule"], &[DAY],
         "Proposes which tasks to put in each of a day's work blocks still to come, each with why. Nothing changes until `apply_day_plan` is given the sittings the person accepted."),
     write("add_task", "Add a Task", C::Tasks, &["new", "create", "remember", "capture", "remind"], &[
-        Param("text", "Line", K::Line, false, "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read."),
+        Param("text", "Line", K::Line, false, "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read."),
     ], "Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it."),
     write("edit_task", "Edit a Task", C::Tasks, &["change", "rename", "reschedule", "due date"], &[
         ID,
@@ -306,6 +306,7 @@ const OPERATIONS: &[Op] = &[
         Param("repeat", "Repeats", K::Text, true, "A repetition (\"every monday\", \"every! 2 weeks\"), or `none` to stop it repeating."),
         Param("priority", "Priority", K::Priority, true, "1 to 4, where 1 is highest."),
         Param("estimate", "Estimate", K::Text, true, "How long it should take (\"45m\", \"1h30m\"), or `none`."),
+        Param("sittings", "Sitting Length", K::Text, true, "How long one sitting of it is (\"45m\"), for work better done in pieces: planning gives it a sitting at a time. `none` to plan it whole."),
         Param("notes", "Notes", K::Text, true, "Its notes, whole."),
         Param("project", "Project", K::Project, true, "The project to move it to, by name."),
         Param("labels", "Labels", K::Labels, true, "Its labels, all of them, by name."),
@@ -453,6 +454,7 @@ pub fn entities() -> Vec<AssistantEntity> {
                 ("done", "Done"),
                 ("notes", "Notes"),
                 ("estimate", "Estimate in Minutes"),
+                ("sittings", "Sitting Length in Minutes"),
                 ("repeats", "Repeats"),
                 ("states", "States"),
                 ("added", "Added"),

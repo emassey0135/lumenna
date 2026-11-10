@@ -18,7 +18,7 @@ $script:Operations = [ordered]@{
     'timer' = @{ Cmdlet = 'Get-LumennaTimer'; Switch = $null; Title = 'Show the Timer'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'propose_day_plan' = @{ Cmdlet = 'Get-LumennaDayPlan'; Switch = $null; Title = 'Propose a Plan for a Day'; Writes = $false; Confirms = $false; Target = $null; Names = @{ 'Date' = 'date' } }
     'add_task' = @{ Cmdlet = 'Add-LumennaTask'; Switch = $null; Title = 'Add a Task'; Writes = $true; Confirms = $false; Target = 'Text'; Names = @{ 'Text' = 'text' } }
-    'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
+    'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Sittings' = 'sittings'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
     'complete_task' = @{ Cmdlet = 'Complete-LumennaTask'; Switch = $null; Title = 'Complete a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'uncomplete_task' = @{ Cmdlet = 'Undo-LumennaTaskCompletion'; Switch = $null; Title = 'Mark a Task Not Done'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'trash_task' = @{ Cmdlet = 'Remove-LumennaTask'; Switch = $null; Title = 'Move a Task to the Trash'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
@@ -442,7 +442,7 @@ function Add-LumennaTask {
     Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it.
 
     .PARAMETER Text
-    A quick-add line, read as a person's would be: the title, then any of a due date or time ("tomorrow at 3pm", "every weekday"), a priority (p1 to p4), labels (@calls), a project (#Work, #"Home Office"), an estimate (~30m). A line starting with `block` makes a time block instead ("block Deep work 9-11am weekdays"). The answer says how it was read.
+    A quick-add line, read as a person's would be: the title, then any of a due date or time ("tomorrow at 3pm", "every weekday"), a priority (p1 to p4), labels (@calls), a project (#Work, #"Home Office"), an estimate (~30m), how long a sitting of it is ("3h in 45m sittings"). A line starting with `block` makes a time block instead ("block Deep work 9-11am weekdays"). The answer says how it was read.
 
     .PARAMETER Profile
     The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
@@ -495,6 +495,9 @@ function Set-LumennaTask {
     .PARAMETER Estimate
     How long it should take ("45m", "1h30m"), or `none`.
 
+    .PARAMETER Sittings
+    How long one sitting of it is ("45m"), for work better done in pieces: planning gives it a sitting at a time. `none` to plan it whole.
+
     .PARAMETER Notes
     Its notes, whole.
 
@@ -538,6 +541,10 @@ function Set-LumennaTask {
         [Parameter()]
         [string]
         $Estimate,
+
+        [Parameter()]
+        [string]
+        $Sittings,
 
         [Parameter()]
         [string]

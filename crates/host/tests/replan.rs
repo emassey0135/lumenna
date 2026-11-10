@@ -155,3 +155,37 @@ fn a_work_block_let_below_its_minimum_says_the_minimum_it_goes_under() {
         "Let Review shorten to 20 minutes, under its minimum of 30 minutes. Then nothing else needs to change."
     );
 }
+
+#[test]
+fn a_sitting_keeps_the_part_its_block_has_room_for_and_the_rest_leaves() {
+    let (_directory, lumenna) = open();
+    block(&lumenna, "Deep work", "work", "09:00", 60);
+    let deep = lumenna.list_blocks().unwrap().rows[0].id.clone();
+    for (title, minutes) in [("Essay", 20), ("Draft", 40)] {
+        let task = lumenna.add_task(title).unwrap().task.unwrap().id;
+        lumenna.assign(&task, &deep, Some("2026-05-06".to_owned()), Some(minutes)).unwrap();
+    }
+    let at = Some("2026-05-06T09:20".to_owned());
+    let proposal = lumenna.replan(TimeStyle::TwentyFourHour, ReplanPins::default(), at.clone()).unwrap();
+    assert_eq!(proposal.announcement, "Draft keeps 20 minutes in Deep work, and the other 20 minutes go back to the list.");
+    let done = lumenna.apply_replan(proposal.clone(), proposal.changes, at).unwrap();
+    assert!(done.next.changes.is_empty(), "the rest of the day fits now: {}", done.next.announcement);
+}
+
+#[test]
+fn a_split_taken_alone_is_made_and_the_sitting_turned_down_stays() {
+    let (_directory, lumenna) = open();
+    block(&lumenna, "Deep work", "work", "00:00", 1440);
+    let deep = lumenna.list_blocks().unwrap().rows[0].id.clone();
+    for title in ["Essay", "Email"] {
+        let task = lumenna.add_task(title).unwrap().task.unwrap().id;
+        lumenna.assign(&task, &deep, Some("2026-05-06".to_owned()), Some(1440)).unwrap();
+    }
+    let proposal = lumenna.replan(TimeStyle::TwentyFourHour, ReplanPins::default(), Some(NOW.to_owned())).unwrap();
+    let second = proposal.changes[1].clone();
+    assert_eq!(second.kind, "split", "{}", proposal.announcement);
+    let done = lumenna.apply_replan(proposal, vec![second], Some(NOW.to_owned())).unwrap();
+    assert!(done.announcement.starts_with("Replanned: Essay keeps"), "{}", done.announcement);
+    // The day-long sitting kept still fills the rest of the day, so the next proposal moves Essay.
+    assert_eq!(done.next.changes.len(), 1, "{}", done.next.announcement);
+}

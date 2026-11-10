@@ -49,6 +49,7 @@ const LABELS: u16 = 306;
 const NOTES: u16 = 307;
 const WAITS: u16 = 308;
 const ABOUT: u16 = 309;
+const SITTINGS: u16 = 310;
 
 /// Where a field sits: across the pane, or in one of its two columns.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -77,6 +78,7 @@ pub struct Detail {
     repeat: HWND,
     priority: HWND,
     estimate: HWND,
+    sittings: HWND,
     project: HWND,
     labels: HWND,
     notes: HWND,
@@ -133,14 +135,17 @@ impl Detail {
         let due = field(&label, WC_EDITW, line, DUE, Column::Left, 1, &hint);
         let (label, hint) = named("repeat", 'p');
         let repeat = field(&label, WC_EDITW, line, REPEAT, Column::Right, 1, &hint);
+        let (label, hint) = named("estimate", 'm');
+        let estimate = field(&label, WC_EDITW, line, ESTIMATE, Column::Left, 1, &hint);
+        // Beside the estimate it divides.
+        let (label, hint) = named("sittings", 'g');
+        let sittings = field(&label, WC_EDITW, line, SITTINGS, Column::Right, 1, &hint);
         let (label, hint) = named("priority", 'o');
         let priority = field(&label, WC_COMBOBOXW, list, PRIORITY, Column::Left, 1, &hint);
-        let (label, hint) = named("estimate", 'm');
-        let estimate = field(&label, WC_EDITW, line, ESTIMATE, Column::Right, 1, &hint);
         let (label, hint) = named("project", 'j');
-        let project = field(&label, WC_COMBOBOXW, list, PROJECT, Column::Left, 1, &hint);
+        let project = field(&label, WC_COMBOBOXW, list, PROJECT, Column::Right, 1, &hint);
         let (label, hint) = named("labels", 'L');
-        let labels = field(&label, WC_EDITW, line, LABELS, Column::Right, 1, &hint);
+        let labels = field(&label, WC_EDITW, line, LABELS, Column::Full, 1, &hint);
         let multiline = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
         let (label, hint) = named("notes", 'N');
         let notes = field(&label, WC_EDITW, multiline, NOTES, Column::Full, 4, &hint);
@@ -157,7 +162,7 @@ impl Detail {
         let more = button(&format!("{}...", devices::marked(&words.actions, 'A', '&')));
 
         // An example of what each line takes, greyed while it is empty.
-        for (key, edit) in [("title", title), ("due", due), ("repeat", repeat), ("estimate", estimate), ("labels", labels)] {
+        for (key, edit) in [("title", title), ("due", due), ("repeat", repeat), ("estimate", estimate), ("sittings", sittings), ("labels", labels)] {
             if let Some(field) = form.iter().find(|f| f.key == key) {
                 controls::cue(edit, &field.example);
             }
@@ -180,6 +185,7 @@ impl Detail {
             repeat,
             priority,
             estimate,
+            sittings,
             project,
             labels,
             notes,
@@ -308,6 +314,7 @@ impl Detail {
             controls::send(self.priority, CB_SETCURSEL, position.unwrap_or(usize::MAX), 0);
         }
         held |= controls::write_typed(self.estimate, &fields.estimate, still);
+        held |= controls::write_typed(self.sittings, &fields.sittings, still);
         if *self.projects.borrow() != details.projects || self.chosen_project() != fields.project {
             self.fill_projects(&details.projects, &fields.project);
         }
@@ -379,6 +386,7 @@ impl Detail {
             (self.due, "due"),
             (self.repeat, "repeat"),
             (self.estimate, "estimate"),
+            (self.sittings, "sittings"),
             (self.labels, "labels"),
             (self.notes, "notes"),
         ];

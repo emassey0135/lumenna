@@ -24,6 +24,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
     @Published var repetition = "" { didSet { typed("repeat", repetition) } }
     @Published var priority: UInt8 = 4 { didSet { typed("priority", String(priority)) } }
     @Published var estimate = "" { didSet { typed("estimate", estimate) } }
+    @Published var sittings = "" { didSet { typed("sittings", sittings) } }
     @Published var project = "" { didSet { typed("project", project) } }
     @Published var notes = "" { didSet { typed("notes", notes) } }
     @Published var labels = "" { didSet { typed("labels", labels) } }
@@ -101,6 +102,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
         if repetition != fields.repeat { repetition = fields.repeat }
         if priority != fields.priority { priority = fields.priority }
         if estimate != fields.estimate { estimate = fields.estimate }
+        if sittings != fields.sittings { sittings = fields.sittings }
         if project != fields.project { project = fields.project }
         if notes != fields.notes { notes = fields.notes }
         if labels != fields.labels { labels = fields.labels }
@@ -163,6 +165,7 @@ struct TaskDetailView: View {
                 namedField(words["due"], text: $model.due).modifier(Lowercase())
                 namedField(words["repeat"], text: $model.repetition).modifier(Lowercase())
                 namedField(words["estimate"], text: $model.estimate).modifier(Lowercase())
+                namedField(words["sittings"], text: $model.sittings).modifier(Lowercase())
                 project
                 namedField(words["labels"], text: $model.labels).modifier(Lowercase())
             }

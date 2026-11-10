@@ -504,6 +504,9 @@ pub struct TaskDetail {
     /// How long it should take.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate_mins: Option<u32>,
+    /// How long one sitting of it should be, when it is planned in sittings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sitting_mins: Option<u32>,
     /// Computed states, the full set — a detail view is where the near-universal ones are
     /// worth having.
     pub state: Vec<String>,
@@ -569,6 +572,7 @@ impl TaskDetail {
                 .and_then(|due| due.recurrence.as_ref())
                 .and_then(|r| repetition_phrase(&r.rrule, r.from_completion)),
             estimate_mins: task.estimate_mins,
+            sitting_mins: task.sitting_mins,
             state: snapshot.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
             created_at: task.created_at.to_string(),
             actions: crate::actions::task(snapshot, task, snapshot.facts().is_completed(task), true),
@@ -1348,6 +1352,10 @@ pub struct TaskEdit {
     /// label yet becomes one, as in quick add.
     #[serde(default)]
     pub labels: Option<Vec<String>>,
+    /// How long one sitting of it is — `45m` — for work planned in pieces, or `none` to plan it
+    /// whole.
+    #[serde(default)]
+    pub sittings: Option<String>,
 }
 
 /// Where to move a task.

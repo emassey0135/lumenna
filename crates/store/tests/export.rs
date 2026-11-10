@@ -67,6 +67,7 @@ fn populated() -> Populated {
         }),
     });
     parent.estimate_mins = Some(90);
+    parent.sitting_mins = Some(45);
     parent.external = Some(ExternalRef {
         provider: ExternalProvider::CalDav,
         external_id: "abc-123".to_owned(),
@@ -445,6 +446,7 @@ prop_compose! {
         priority in 1u8..=4,
         due in arbitrary_due(),
         estimate in prop::option::of(1u32..10_000),
+        sitting in prop::option::of(1u32..600),
         steps in 0usize..20,
         millis in 0i64..4_000_000_000_000,
         labels in 0usize..3,
@@ -458,6 +460,7 @@ prop_compose! {
         task.priority = Priority::from_u8(priority);
         task.due = due;
         task.estimate_mins = estimate;
+        task.sitting_mins = sitting;
         task.created_at = Timestamp::from_millisecond(millis).unwrap();
         task.labels = (0..labels).map(|_| lumenna_core::id::LabelId::new()).collect();
         task

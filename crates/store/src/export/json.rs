@@ -670,6 +670,8 @@ struct TaskOut {
     due: Option<DueOut>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     estimate_mins: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sitting_mins: Option<u32>,
     order: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     external: Option<ExternalOut>,
@@ -689,6 +691,7 @@ impl From<&Task> for TaskOut {
             depends: t.depends.iter().map(ToString::to_string).collect(),
             due: t.due.as_ref().map(DueOut::from),
             estimate_mins: t.estimate_mins,
+            sitting_mins: t.sitting_mins,
             order: t.order.to_string(),
             external: t.external.as_ref().map(ExternalOut::from),
             created_at: t.created_at.to_string(),
@@ -716,6 +719,7 @@ impl TaskOut {
                 .collect::<Result<_>>()?,
             due: self.due.map(|due| due.into_model(&record)).transpose()?,
             estimate_mins: self.estimate_mins,
+            sitting_mins: self.sitting_mins,
             order: field(&record, "order key", &self.order)?,
             external: self.external.map(|e| e.into_model(&record)).transpose()?,
             created_at: field(&record, "timestamp", &self.created_at)?,

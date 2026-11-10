@@ -22,7 +22,8 @@ pub enum TimeStyle {
 pub struct ReplanChange {
     /// The whole change in a sentence: "Lunch moves from 10:30 to 11:00".
     pub sentence: String,
-    /// `block`, `skip` or `sitting`.
+    /// `block`, `skip`, `sitting` (it leaves its block) or `split` (it keeps `to_mins` of its
+    /// `from_mins` there, and the rest leaves).
     pub kind: String,
     /// The block (series) it moves or skips, or the sitting it moves.
     pub target: String,

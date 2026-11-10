@@ -48,6 +48,8 @@ data class TaskWhole(
     val repetition: String?,
     /** How long it should take, in minutes. */
     val estimateMinutes: Int?,
+    /** How long one sitting of it is, in minutes, when it is planned in sittings. */
+    val sittingMinutes: Int?,
     /** What is true of it, in words: done, overdue, blocked. */
     val state: List<String>,
     /** Its history: sittings, time worked, completions, postponements. */
