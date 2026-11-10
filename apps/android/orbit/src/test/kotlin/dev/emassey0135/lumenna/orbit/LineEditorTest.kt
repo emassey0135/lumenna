@@ -35,9 +35,63 @@ class LineEditorTest {
         assertEquals(listOf("say blank"), output.calls)
     }
 
-    @Test fun aSignWithNoCharacterSaysDotAndItsNumbers() {
+    @Test fun aSignOrbitNamesSaysItsName() {
         editor(phone = false).key(Key.Cell(CAPITAL))
-        assertEquals("say dot 6", output.calls.first())
+        assertEquals("say capital sign", output.calls.first())
+    }
+
+    @Test fun aCellThatMakesNothingAndHasNoNameSaysDotAndItsNumbers() {
+        val editor = LineEditor(
+            "Task", "", false, output, false, { _, _ -> "" },
+            object : T9Input.Later {
+                override fun after(milliseconds: Long, run: () -> Unit) {}
+                override fun cancel() {}
+            },
+            timeoutMs = { 500 }, commitFeedback = { 1 }, changed = { _, _ -> }, confirmed = {}, cancelled = {},
+        )
+        editor.key(Key.Cell(0b110000))
+        assertEquals("say dot 5 6", output.calls.first())
+    }
+
+    @Test fun spaceSaysTheWordAsCommittedNotTheCharactersItsCellsEchoed() {
+        val editor = LineEditor(
+            "Task", "", false, output, false,
+            { cells, mode -> if (mode == CellBuffer.MODE_COMMIT) "knowledge " else "k" },
+            object : T9Input.Later {
+                override fun after(milliseconds: Long, run: () -> Unit) {}
+                override fun cancel() {}
+            },
+            timeoutMs = { 500 }, commitFeedback = { 1 }, changed = { _, _ -> }, confirmed = {}, cancelled = {},
+        )
+        editor.key(Key.Cell(0b101))
+        editor.key(Key.Space)
+        assertEquals(listOf("typed k", "word knowledge"), output.calls.filter { it.startsWith("typed") || it.startsWith("word") })
+        assertEquals("knowledge ", editor.text())
+    }
+
+    @Test fun dot8ChordsSelectCopyAndPasteOverTheClipboard() {
+        val editor = editor(phone = false, initial = "hi")
+        editor.key(Key.Enter(0b1001))
+        assertEquals("say nothing", output.calls.last())
+        editor.key(Key.Enter(0b1))
+        editor.key(Key.Enter(0b1001))
+        assertEquals("hi", output.clipboard)
+        assertEquals("say copied", output.calls.last())
+        editor.key(Key.Enter(0b101101))
+        assertEquals("", editor.text())
+        editor.key(Key.Enter(0b100111))
+        editor.key(Key.Enter(0b100111))
+        assertEquals("hihi", editor.text())
+        assertEquals("say pasted", output.calls.filter { it.startsWith("say") }.last())
+    }
+
+    @Test fun inComputerBrailleTheSameCommandsTakeSpaceAndDot8WithACellTypesIt() {
+        output.computer = true
+        val editor = editor(phone = false, initial = "hi")
+        editor.key(Key.Chord(0b10000001))
+        assertEquals("say all", output.calls.last())
+        editor.key(Key.Enter(0b1))
+        assertEquals("hii", editor.text())
     }
 
     @Test fun deletingACellOfAWordNotYetCommittedSaysThatCell() {
@@ -50,7 +104,7 @@ class LineEditorTest {
         editor.key(Key.Cell(CAPITAL))
         output.calls.clear()
         editor.key(Key.Dot7)
-        assertEquals("say dot 6 deleted", output.calls.first())
+        assertEquals("say capital sign deleted", output.calls.first())
     }
 
     @Test fun deletingOnceTheWordIsCommittedSaysTheCharacter() {
@@ -119,9 +173,22 @@ class LineEditorTest {
         val calls = mutableListOf<String>()
         override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) { calls += "focus" }
         override fun syncEdit(name: String, content: String, cursor: Int) { calls += "sync" }
-        override fun typed(character: Char, resolvedWord: String?) { calls += "typed $character" }
+        override fun typed(character: Char) { calls += "typed $character" }
+        override fun word(word: String): Boolean {
+            calls += "word $word"
+            return true
+        }
+        override fun cellName(cells: List<Int>, at: Int): String? = if (cells[at] == CAPITAL) "capital sign" else null
+        override var contracted = true
+        override var computer = false
+        var clipboard: String? = null
+        override fun copy(text: String) { clipboard = text }
+        override fun paste(): String? = clipboard
         override fun say(text: String) { calls += "say $text" }
-        override val words = LineEditor.Words("dot %s", "%s deleted", "space", "new line", "blank")
+        override val words = LineEditor.Words(
+            "dot %s", "%s deleted", "space", "new line", "blank",
+            "started", "finished", "all", "nothing", "none", "copied", "cut", "pasted",
+        )
         override fun candidate(character: Char, field: String) { calls += "candidate" }
         override fun edited(name: String, content: String, cursor: Int, change: String) {
             calls += if (change == "line_navigation") "edited $content $change" else change

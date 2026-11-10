@@ -444,11 +444,25 @@ holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, r
 - **Dialogs on the Speak are Orbit's** (`Dialogs.kt`: `DialogScreen` and its `Control`s): a question, the task and block forms, a settings page, a typed line. Tab and Shift-Tab move between controls, each active as soon as it is reached, as in the Editor's Save As: a line types at once, Up and Down change a combo box or check box, Select presses a button or confirms the dialog. Space with E or Z cancels. Each is told to Orbit by its role. What is typed goes to the form on leaving the control. Editing dialogs end with their Confirm and Cancel, in the core's names: a question's `buttons`, the block form's `yes`, the task form's `details.save`, quick add's `add`, and `cancel`; the task form's Cancel is `DetailsEvent::Discard`. A setting is changed as it is changed, as on every platform, so a settings page has no Confirm. The Player has no Tab: the same `Control`s are its rows, a line or a choice opening its own screen.
 - **Typing** (`LineEditor`): the Speak's cell buffer through Orbit's liblouis service, one word at a
   time, mode 388 for each cell's echo and 132 at Space; the Player's multi-tap T9, ported from
-  Satellite's `T9Input`. The Speak's echo is Satellite's, in `OrbitWords` (never the BrailleSense's
-  `cell_echo`, since the Speak edits contracted braille its own way): a cell says the last character
-  its word now makes, or "dot" and its numbers (a capital sign is "dot 6"); dot 7 says what it took,
-  a cell of the word not yet committed by what that cell alone makes or its dots, a committed
-  character by itself ("space", "new line"), and "blank" at the start. Moves go to Orbit as
+  Satellite's `T9Input`. The Speak's echo is its own fields', in `OrbitWords` and the Orbit's cell
+  names (`braille::orbit_cell_name`: the capital sign, the capital word sign, the number sign, the
+  lower cells; never the BrailleSense's `cell_echo`). In contracted braille a named cell says its
+  name, else the last character its word now makes; otherwise the character, else its name; else
+  "dot" and its numbers. Dot 7 says what it took: a cell of the word not yet committed by its name,
+  what it alone makes, or its dots; a committed character by itself ("space", "new line"); "blank"
+  at the start. At Space the word's cells and a blank cell are translated together, as Orbit's
+  fields commit a word, and the word is said in print. The screen reader takes no word from an app
+  (`onCharacterTyped`'s `resolvedWord` is ignored): it echoes a word made of the characters it was
+  told, which for a contracted word are its cells' echoes. So a cell's character goes as its
+  `characterName` with the character empty, which the reader says by the person's character echo
+  but keeps out of its word, and the word is said by this app when the reader's typing echo
+  (`typing_echo` in its own settings, read through root at `/proc/1/root`, since `su` in an app
+  sees only the app's own /data) says words. The space after a word said is not echoed, since the
+  reader stops speech for every echo. The Editor's selection and clipboard are every line's:
+  dots 1 2 8 start and end a selection (to the character at the caret), dots 1 8 select all,
+  dots 1 4 8 copy, 1 3 4 6 8 cut, 1 2 3 6 8 paste, over the system clipboard, each with Space too
+  in computer braille, where dot 8 with a cell types it; Space with dots 1 2 7 reads the
+  selection. Its words are the Editor's, in `OrbitWords`. Moves go to Orbit as
   edit-box changes, so it says them by the person's own settings. A field of several lines (a
   form's `FieldKind::Lines`, the task's notes) is an edit box Orbit calls multiline: dot 8 starts a
   line, Up and Down move by line (`line_navigation`, Orbit saying the line), Space with dots 1 3

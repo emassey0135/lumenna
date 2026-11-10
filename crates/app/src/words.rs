@@ -472,6 +472,23 @@ pub struct OrbitWords {
     pub new_line: String,
     /// Deleting with nothing before the caret.
     pub blank: String,
+    /// The Speak's selection in a line, as its Editor says it: selection mode turned on, the caret
+    /// the selection's start.
+    pub selection_started: String,
+    /// Selection mode turned off, the selection running to the character at the caret.
+    pub selection_finished: String,
+    /// All of the line selected.
+    pub all_selected: String,
+    /// Copy or cut with nothing selected.
+    pub nothing_selected: String,
+    /// Reading the selection with nothing selected.
+    pub no_text_selected: String,
+    /// The selection copied.
+    pub copied: String,
+    /// The selection cut.
+    pub cut: String,
+    /// What was copied, pasted.
+    pub pasted: String,
     /// The Player's keys, a sentence each, for its key help.
     pub player_keys: Vec<String>,
 }
@@ -739,6 +756,9 @@ fn orbit_words() -> OrbitWords {
             "Up and Down change a combo box or a check box. OK or dot 8 presses a button or confirms the dialog.",
             "While typing, Space ends a word, dot 7 deletes, and OK or dot 8 finishes.",
             "While typing, Space with Z cancels, and Down offers what could come next.",
+            "While typing, dots 1 2 8 start a selection where the cursor is and, pressed again, end it at the cursor. Dots 1 8 select everything.",
+            "While typing, dots 1 4 8 copy what is selected, dots 1 3 4 6 8 cut it, and dots 1 2 3 6 8 paste. In computer braille, press Space with each of these too.",
+            "While typing, Space with dots 1 2 7 reads what is selected.",
         ]),
         with_dot_8: "Dot 8 with a letter".to_owned(),
         dots: "dot %s".to_owned(),
@@ -746,6 +766,14 @@ fn orbit_words() -> OrbitWords {
         space: "space".to_owned(),
         new_line: "new line".to_owned(),
         blank: "blank".to_owned(),
+        selection_started: "Selection started. Please move to desired position and press the same key again.".to_owned(),
+        selection_finished: "Selection finished".to_owned(),
+        all_selected: "All text selected".to_owned(),
+        nothing_selected: "Nothing selected".to_owned(),
+        no_text_selected: "No text selected".to_owned(),
+        copied: "Text copied".to_owned(),
+        cut: "Text cut".to_owned(),
+        pasted: "Text pasted".to_owned(),
         player_keys: lines(&[
             "Up and Down move through the list. Held, they go to its ends.",
             "OK opens the row. Right opens a folded row first, and Left folds an open one or goes back out of a list, never a dialog.",

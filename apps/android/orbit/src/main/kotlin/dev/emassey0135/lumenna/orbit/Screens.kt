@@ -555,6 +555,7 @@ class QuickAddScreen : EditScreen() {
 
     override fun leaving() {
         super.leaving()
+        ui.lineClosed = true
         ui.send(ShellEvent.Typing(Typing.Close))
     }
 }

@@ -9,6 +9,11 @@ package dev.emassey0135.lumenna.orbit
  * the mode, Left and Right move, Up and Down go to the ends, Back deletes, held cancels, and OK
  * confirms. Changes are reported to Orbit as edit-field changes ([Output]), so it speaks them by
  * the person's own typing echo. Down offers completions where the line has them ([completing]).
+ *
+ * On the Speak the selection and clipboard are its Editor's: dots 1 2 8 start and end a selection,
+ * dots 1 8 select all, dots 1 4 8 copy, 1 3 4 6 8 cut, 1 2 3 6 8 paste (each with Space too in
+ * computer braille, where dot 8 with a cell types it), and Space with dots 1 2 7 reads it, over
+ * the system clipboard.
  */
 class LineEditor(
     val name: String,
@@ -32,8 +37,23 @@ class LineEditor(
     interface Output {
         fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean)
         fun syncEdit(name: String, content: String, cursor: Int)
-        /** The Speak's cell echo: the character it made. */
-        fun typed(character: Char, resolvedWord: String?)
+        /** The Speak's cell echo: the character it made, said by the person's character echo. */
+        fun typed(character: Char)
+        /**
+         * A word committed, as it reads in print: said if the person's echo says words, and whether
+         * it was. The space after a word said is not echoed too, since the reader would stop the word for it.
+         */
+        fun word(word: String): Boolean
+        /** What Orbit's own fields call cell [at] of [cells] by itself, if they name it. */
+        fun cellName(cells: List<Int>, at: Int): String?
+        /** Whether the person types contracted braille now. */
+        val contracted: Boolean
+        /** Whether the person types computer braille now, where dot 8 with a cell types it. */
+        val computer: Boolean
+        /** Puts [text] on the system clipboard. */
+        fun copy(text: String)
+        /** The system clipboard's text, or null for none. */
+        fun paste(): String?
         /** Said as it is, cutting off what was being said: Satellite's echo of dots and deletions. */
         fun say(text: String)
         /** A T9 candidate offered. */
@@ -48,7 +68,21 @@ class LineEditor(
     }
 
     /** The Speak's echo words, each `%s` filled in. */
-    class Words(val dots: String, val deleted: String, val space: String, val newLine: String, val blank: String)
+    class Words(
+        val dots: String,
+        val deleted: String,
+        val space: String,
+        val newLine: String,
+        val blank: String,
+        val selectionStarted: String = "",
+        val selectionFinished: String = "",
+        val allSelected: String = "",
+        val nothingSelected: String = "",
+        val noTextSelected: String = "",
+        val copied: String = "",
+        val cut: String = "",
+        val pasted: String = "",
+    )
 
     private val buffer = CellBuffer(translate).apply { set(initial) }
     private val t9 = T9Input(T9Host(), later)
@@ -108,7 +142,7 @@ class LineEditor(
             Key.First -> moveEdge(true)
             Key.Last -> moveEdge(false)
             Key.Escape -> cancel()
-            is Key.Enter -> inputCell(key.dots or DOT8)
+            is Key.Enter -> if (output.computer || !selection(key.dots)) inputCell(key.dots or DOT8)
             is Key.Chord -> when (key.dots) {
                 DOT3 -> moveCharacter(-1)
                 DOT6 -> moveCharacter(1)
@@ -117,7 +151,8 @@ class LineEditor(
                 DOTS13 -> if (multiline) moveLineEdge(true) else moveEdge(true)
                 DOTS46 -> if (multiline) moveLineEdge(false) else moveEdge(false)
                 DOTS_ALL -> cancel()
-                else -> return false
+                DOTS127 -> readSelection()
+                else -> if (!output.computer || (key.dots and DOT8) == 0 || !selection(key.dots and DOT8.inv())) return false
             }
             else -> return false
         }
@@ -166,22 +201,29 @@ class LineEditor(
         return true
     }
 
+    /**
+     * As Orbit's own fields echo a cell: in contracted braille a cell they name (the capital sign)
+     * by its name, else the last character its word makes so far; otherwise the character, else its
+     * name; else its dots.
+     */
     private fun inputCell(cell: Int) {
-        when (val echo = buffer.type(cell)) {
-            is CellBuffer.Echo.Character -> output.typed(echo.character, null)
-            is CellBuffer.Echo.Dots -> output.say(output.words.dots.replace("%s", CellBuffer.dotNumbers(echo.cell)))
+        val typed = buffer.type(cell)
+        val called = output.cellName(typed.cells, typed.at)
+        when {
+            called != null && (output.contracted || typed.live.isEmpty()) -> output.say(called)
+            typed.live.isNotEmpty() -> output.typed(typed.live.last())
+            else -> output.say(output.words.dots.replace("%s", CellBuffer.dotNumbers(cell)))
         }
         // Orbit's copy of the field follows silently, so its review commands read what is typed.
         output.syncEdit(name, buffer.display(), buffer.caret)
         changed(buffer.display(), buffer.caret)
     }
 
+    /** The word committed in print, then said whole: never the characters its cells echoed. */
     private fun space() {
-        val before = buffer.display()
-        buffer.space()
+        val word = buffer.space()
         val after = buffer.display()
-        val word = before.substringAfterLast(' ').takeIf { it.isNotEmpty() }
-        output.typed(' ', word)
+        if (word.isEmpty() || !output.word(word)) output.typed(' ')
         output.syncEdit(name, after, buffer.caret)
         changed(after, buffer.caret)
     }
@@ -194,7 +236,8 @@ class LineEditor(
                 output.say(words.blank)
                 return
             }
-            is CellBuffer.Deleted.Cell -> deleted.translated.ifEmpty { words.dots.replace("%s", CellBuffer.dotNumbers(deleted.cell)) }
+            is CellBuffer.Deleted.Cell -> output.cellName(listOf(deleted.cell), 0)
+                ?: deleted.translated.ifEmpty { words.dots.replace("%s", CellBuffer.dotNumbers(deleted.cell)) }
             is CellBuffer.Deleted.Character -> when (deleted.character) {
                 ' ' -> words.space
                 '\n' -> words.newLine
@@ -259,6 +302,50 @@ class LineEditor(
         output.edited(name, buffer.display(), buffer.caret, if (start) "boundary_start" else "boundary_end")
     }
 
+    /** The Editor's selection and clipboard commands, by the dots pressed with dot 8; false for none. */
+    private fun selection(dots: Int): Boolean {
+        val words = output.words
+        when (dots) {
+            DOT1 -> {
+                buffer.selectAll()
+                output.say(words.allSelected)
+            }
+            DOTS12 -> output.say(if (buffer.toggleSelection()) words.selectionStarted else words.selectionFinished)
+            DOTS14 -> {
+                val selected = buffer.selected() ?: return true.also { output.say(words.nothingSelected) }
+                output.copy(selected)
+                output.say(words.copied)
+            }
+            DOTS1346 -> {
+                val selected = buffer.selected() ?: return true.also { output.say(words.nothingSelected) }
+                output.copy(selected)
+                buffer.deleteSelection()
+                output.say(words.cut)
+                edited()
+            }
+            DOTS1236 -> {
+                val pasted = output.paste()?.let { if (multiline) it else it.replace(Regex("\\s*\\R\\s*"), " ") }
+                if (pasted.isNullOrEmpty()) {
+                    output.playError()
+                    return true
+                }
+                buffer.paste(pasted)
+                output.say(words.pasted)
+                edited()
+            }
+            else -> return false
+        }
+        return true
+    }
+
+    private fun readSelection() = output.say(buffer.selected() ?: output.words.noTextSelected)
+
+    /** Orbit's copy and the app follow a change the keys made. */
+    private fun edited() {
+        output.syncEdit(name, buffer.display(), buffer.caret)
+        changed(buffer.display(), buffer.caret)
+    }
+
     private fun insertChar(character: Char, position: Int, feedback: Boolean) {
         buffer.insert(character, position)
         output.edited(name, buffer.display(), buffer.caret, "character_inserted")
@@ -293,6 +380,12 @@ class LineEditor(
     }
 
     private companion object {
+        const val DOT1 = 1
+        const val DOTS12 = 0b11
+        const val DOTS14 = 0b1001
+        const val DOTS1346 = 0b101101
+        const val DOTS1236 = 0b100111
+        const val DOTS127 = 0b1000011
         const val DOT2 = 1 shl 1
         const val DOT3 = 1 shl 2
         const val DOT5 = 1 shl 4

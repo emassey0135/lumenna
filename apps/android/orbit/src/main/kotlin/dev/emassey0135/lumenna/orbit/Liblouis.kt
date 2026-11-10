@@ -26,6 +26,10 @@ import java.nio.charset.StandardCharsets
  * service, though, so [follow] asks the service which table it holds now (as a line is reached and
  * the app comes back), and a change there reads the table again through root. A table read that
  * differs calls [changed] on the main thread.
+ *
+ * The screen reader's typing echo is read with it ([typingEcho], from the reader's own settings,
+ * through root), since the reader takes no word an app gives it: it echoes a word from the
+ * characters it was told, which for contracted braille are not the word's.
  */
 class Liblouis(context: Context) {
     private val context = context.applicationContext
@@ -37,6 +41,24 @@ class Liblouis(context: Context) {
     var changed: () -> Unit = {}
 
     private val main = Handler(Looper.getMainLooper())
+
+    /** Whether the person types contracted braille, by Orbit's selection mode. */
+    @Volatile
+    var contracted = true
+        private set
+
+    /** Whether the person types computer braille, where dot 8 with a cell is typed. */
+    @Volatile
+    var computer = false
+        private set
+
+    /** The screen reader's typing echo: [ECHO_OFF], [ECHO_CHARACTERS], [ECHO_WORDS] or [ECHO_BOTH]. */
+    @Volatile
+    var typingEcho = ECHO_CHARACTERS
+        private set
+
+    /** Whether the person's echo says a word as it is finished. */
+    val echoesWords: Boolean get() = typingEcho == ECHO_WORDS || typingEcho == ECHO_BOTH
 
     /** What the liblouis service last said it holds. */
     @Volatile
@@ -67,6 +89,7 @@ class Liblouis(context: Context) {
     fun follow() {
         if (!available) return
         Thread({
+            readEcho()
             val now = serviceTable() ?: return@Thread
             val before = held
             held = now
@@ -96,7 +119,10 @@ class Liblouis(context: Context) {
     /** Reads the person's table again, as Orbit said a setting changed. Off the main thread. */
     fun refresh() {
         if (!available) return
-        Thread({ readTable() }, "lumenna-braille-table").start()
+        Thread({
+            readEcho()
+            readTable()
+        }, "lumenna-braille-table").start()
     }
 
     val isReady: Boolean get() = link.isBound
@@ -106,6 +132,8 @@ class Liblouis(context: Context) {
         val output = RootQuery.run(commands) ?: return
         val values = parseMarked(output)
         val mode = values["key_selection_mode"]?.lowercase()
+        contracted = mode == null || ("uncontract" !in mode && "computer" !in mode)
+        computer = mode != null && "computer" in mode
         val key = when {
             mode == null -> "key_contracted_braille_input_table"
             "uncontract" in mode -> "key_uncontracted_braille_input_table"
@@ -118,6 +146,13 @@ class Liblouis(context: Context) {
         if (table != before) main.post { changed() }
     }
 
+    /** Reads the screen reader's typing echo from its own settings. Off the main thread. */
+    private fun readEcho() {
+        val output = RootQuery.run("cat $READER_SETTINGS") ?: return
+        Regex("name=\"typing_echo\" value=\"(\\d+)\"").find(output)?.groupValues?.get(1)?.toIntOrNull()?.let { typingEcho = it }
+        Log.d(TAG, "typing echo = $typingEcho")
+    }
+
     /** Translates [cells] in the person's table at liblouis [mode]; null when it cannot say. */
     fun translate(cells: List<Int>, mode: Int): String? =
         link.ask(null) { service ->
@@ -125,20 +160,27 @@ class Liblouis(context: Context) {
             service.translateBrailleToText(input, mode, table)?.toString()
         }
 
-    private companion object {
-        const val TAG = "LumennaOrbit"
-        const val SETTINGS = "content://com.orbit.settings.provider/preferences/"
-        const val DEFAULT_TABLE = "en-ueb-g2.ctb"
-        const val DESCRIPTOR = "com.orbit.liblouisservice.ILiblouisServiceInterface"
-        const val GET_CURRENT_INPUT_TABLE = 5
-        val KEYS = listOf(
+    companion object {
+        const val ECHO_OFF = 0
+        const val ECHO_CHARACTERS = 1
+        const val ECHO_WORDS = 2
+        const val ECHO_BOTH = 3
+        /** Through init's root: `su` in an app keeps the app's own view of /data, without other apps' data. */
+        private const val READER_SETTINGS =
+            "/proc/1/root/data/data/com.orbit.screenreader/shared_prefs/screenreader_general_settings.xml"
+        private const val TAG = "LumennaOrbit"
+        private const val SETTINGS = "content://com.orbit.settings.provider/preferences/"
+        private const val DEFAULT_TABLE = "en-ueb-g2.ctb"
+        private const val DESCRIPTOR = "com.orbit.liblouisservice.ILiblouisServiceInterface"
+        private const val GET_CURRENT_INPUT_TABLE = 5
+        private val KEYS = listOf(
             "key_selection_mode",
             "key_contracted_braille_input_table",
             "key_uncontracted_braille_input_table",
             "key_computer_braille_input_table",
         )
 
-        fun parseMarked(output: String): Map<String, String> {
+        private fun parseMarked(output: String): Map<String, String> {
             val values = mutableMapOf<String, String>()
             for (part in output.split("@@")) {
                 val newline = part.indexOf('\n')

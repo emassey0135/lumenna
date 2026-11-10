@@ -1,5 +1,7 @@
 package dev.emassey0135.lumenna.orbit
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Handler
 import android.os.Looper
 import android.widget.TextView
@@ -22,6 +24,7 @@ import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.brailleLetter
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.nothingOnLetter
+import dev.emassey0135.lumenna.app.orbitCellName
 import dev.emassey0135.lumenna.app.SpeakLetter
 import dev.emassey0135.lumenna.app.speakLetter
 import dev.emassey0135.lumenna.app.speakPress
@@ -131,6 +134,7 @@ class Ui(
     private val stack = ArrayDeque<Screen>()
     private val main = Handler(Looper.getMainLooper())
     private val decoder = KeyDecoder()
+    private val clipboard = textView.context.getSystemService(ClipboardManager::class.java)
     private val finder = FirstLetters(this)
     /** Whether the keys are the Player's phone keypad, as the last key said. */
     var phoneKeypad = false
@@ -286,12 +290,17 @@ class Ui(
             }
             return
         }
-        // Only when none is open: a field being typed sits above the form.
-        if (v.line != null && stack.none { it is QuickAddScreen }) pushApp(QuickAddScreen())
+        // Only when none is open: a field being typed sits above the form. One just closed here is
+        // still open in the view until the app has the close, and is not opened again meanwhile.
+        if (v.line == null) lineClosed = false
+        if (v.line != null && !lineClosed && stack.none { it is QuickAddScreen }) pushApp(QuickAddScreen())
         if (v.blockForm != null && stack.none { it is BlockFormScreen }) pushApp(BlockFormScreen())
         if (v.proposal != null && stack.none { it is ProposalScreen }) pushApp(ProposalScreen())
         if (v.reminders != null && stack.none { it is RemindersScreen }) pushApp(RemindersScreen())
     }
+
+    /** Quick add was left here, and the app has not yet said its line is closed. */
+    var lineClosed = false
 
     private var formAskedFor = 0u
 
@@ -510,7 +519,7 @@ class Ui(
         complete: () -> Unit = {},
         multiline: Boolean = false,
     ): LineEditor = LineEditor(
-        name, initial, phoneKeypad, EditOutput(reader), multiline, CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
+        name, initial, phoneKeypad, EditOutput(reader, liblouis, clipboard), multiline, CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
         this,
         timeoutMs = { reader.characterCommitTimeout.toLong() },
         commitFeedback = { reader.characterCommitFeedback },
@@ -555,15 +564,55 @@ object BuildConfigDebug {
 }
 
 /** Tells Orbit's reader what the line editor did, as its own edit fields report. */
-private class EditOutput(private val reader: OrbitReader) : LineEditor.Output {
+private class EditOutput(
+    private val reader: OrbitReader,
+    private val liblouis: Liblouis,
+    private val clipboard: ClipboardManager?,
+) : LineEditor.Output {
     override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) =
         reader.focusEdit(name, content, cursor, line, multiline)
     override fun syncEdit(name: String, content: String, cursor: Int) = reader.editChanged(name, content, cursor, "field_opened")
-    override fun typed(character: Char, resolvedWord: String?) =
-        reader.characterTyped(character.toString(), "", character.isUpperCase(), resolvedWord ?: "")
+
+    /**
+     * Sent as its name, the character itself left empty: the reader then says it by the person's
+     * character echo but keeps it out of the word it echoes, which would otherwise be made of the
+     * characters a contracted word's cells echoed. A space goes as itself, which ends no word now.
+     */
+    override fun typed(character: Char) = if (character == ' ') {
+        reader.characterTyped(" ", " ", false, null)
+    } else {
+        reader.characterTyped("", character.toString(), character.isUpperCase(), null)
+    }
+
+    /** Said as the reader says an echo, stopping what was being said. */
+    override fun word(word: String): Boolean {
+        if (!liblouis.echoesWords) return false
+        reader.speak(word)
+        return true
+    }
+
+    override fun cellName(cells: List<Int>, at: Int): String? =
+        orbitCellName(ByteArray(cells.size) { cells[it].toByte() }, at.toUInt())
+    override val contracted: Boolean get() = liblouis.contracted
+    override val computer: Boolean get() = liblouis.computer
+
+    override fun copy(text: String) {
+        clipboard?.setPrimaryClip(ClipData.newPlainText("Lumenna", text))
+    }
+
+    override fun paste(): String? = runCatching {
+        clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+    }.getOrNull()
+
     override fun say(text: String) = reader.speak(text)
     override val words: LineEditor.Words by lazy {
-        appWords.orbit.let { LineEditor.Words(it.dots, it.deleted, it.space, it.newLine, it.blank) }
+        appWords.orbit.let {
+            LineEditor.Words(
+                it.dots, it.deleted, it.space, it.newLine, it.blank,
+                it.selectionStarted, it.selectionFinished, it.allSelected, it.nothingSelected, it.noTextSelected,
+                it.copied, it.cut, it.pasted,
+            )
+        }
     }
     override fun candidate(character: Char, field: String) = reader.characterTyped(character.toString(), field, false, null)
     override fun edited(name: String, content: String, cursor: Int, change: String) = reader.editChanged(name, content, cursor, change)

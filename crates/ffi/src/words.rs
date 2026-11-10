@@ -429,6 +429,13 @@ pub fn speak_press_instead(letter: String) -> String {
     lumenna_app::braille::speak_press_instead(&letter)
 }
 
+/// What the Orbit Speak's edit fields call cell `at` of `word` (dot 1 bit 0) by itself, if they
+/// name it: the capital sign, the number sign, a lower cell.
+#[export]
+pub fn orbit_cell_name(word: Vec<u8>, at: u32) -> Option<String> {
+    lumenna_app::braille::orbit_cell_name(&word, at as usize)
+}
+
 /// Where the next line starting with `letter` is, from the line after `from` on, wrapping round
 /// and ending back at `from`; a line `hidden` says is folded away is passed. For a list a shell
 /// draws itself.
