@@ -33,6 +33,8 @@ pub enum DetailsEvent {
     },
     /// Save what changed.
     Save,
+    /// Forget what was typed and not saved, for a form closed by its Cancel.
+    Discard,
     /// Run the first of these kinds the task shown offers, or say why it has none: a key or a
     /// menu while the details show a sitting's task, whose row in hand is the sitting.
     Run(Vec<ActionKind>),
@@ -155,6 +157,11 @@ impl Lumenna {
                 });
                 let fields = set(draft.fields, &key, value);
                 model.details.drafts.insert(draft.task.clone(), Draft { fields, ..draft });
+                render()
+            }
+            DetailsEvent::Discard => {
+                let Some(task) = model.details_shown() else { return Command::done() };
+                model.details.drafts.remove(&task.id);
                 render()
             }
             DetailsEvent::Save => {

@@ -27,7 +27,27 @@ class KeysTest {
     }
 
     @Test fun aChordOfSpaceAndDotsIsACommand() {
-        assertEquals(Key.Chord(0b10001), key("SPACE_DOT1_DOT5", chord))
+        assertEquals(Key.Chord(0b1111), key("SPACE_DOT1_DOT2_DOT3_DOT4", chord))
+    }
+
+    @Test fun spaceWithTheGuidesDotsAreTheArrowsTabAndBack() {
+        assertEquals(Key.Up, key("SPACE_DOT1", chord))
+        assertEquals(Key.Down, key("SPACE_DOT4", chord))
+        assertEquals(Key.Left, key("SPACE_DOT3", chord))
+        assertEquals(Key.Right, key("SPACE_DOT6", chord))
+        assertEquals(Key.Tab, key("SPACE_DOT4_DOT5", chord))
+        assertEquals(Key.BackTab, key("SPACE_DOT1_DOT2", chord))
+        assertEquals(Key.First, key("SPACE_DOT1_DOT2_DOT3", chord))
+        assertEquals(Key.Last, key("SPACE_DOT4_DOT5_DOT6", chord))
+        assertEquals(Key.Escape, key("SPACE_DOT1_DOT5", chord))
+        assertEquals(Key.Escape, key("SPACE_DOT1_DOT3_DOT5_DOT6", chord))
+        assertEquals(Key.Menu, key("SPACE_DOT1_DOT3_DOT4", chord))
+    }
+
+    @Test fun dotEightWithALetterIsEnterAndNotACell() {
+        assertEquals(Key.Enter(0b1001), key("DOT1_DOT4_DOT8", chord))
+        assertEquals(Key.Cell(0b1000001), key("DOT1_DOT7", chord))
+        assertEquals(Key.Cell(0b11000001), key("DOT1_DOT7_DOT8", chord))
     }
 
     @Test fun dotsWithoutSpaceAreACell() {

@@ -159,10 +159,10 @@ class OrbitReader(context: Context, private val listener: Listener) {
     fun itemChanged(name: String, count: Int, selected: Int, item: String) =
         tell("onItemChanged") { it.onItemChanged(listBundle(name, count, selected, item)) }
 
-    private fun listBundle(name: String, count: Int, selected: Int, item: String): Bundle =
+    private fun listBundle(name: String, count: Int, selected: Int, item: String, role: Int = ROLE_LIST_BOX): Bundle =
         Bundle().apply {
             putString("name", name)
-            putInt("roleId", ROLE_LIST_BOX)
+            putInt("roleId", role)
             putInt("itemCount", count)
             putInt("selectedIndex", if (count == 0) -1 else selected)
             if (count > 0) putString("selectedItem", item)
@@ -200,6 +200,28 @@ class OrbitReader(context: Context, private val listener: Listener) {
         })
     }
 
+    /** A button (role 1), a read-only line (role 7): Orbit says its name and what it is. */
+    fun focusControl(name: String, role: Int) = tell("onFocusChanged") {
+        it.onFocusChanged(Bundle().apply {
+            putString("name", name)
+            putInt("roleId", role)
+        })
+    }
+
+    /** A check box (role 2) and whether it is checked. */
+    fun focusCheck(name: String, checked: Boolean) = tell("onFocusChanged") {
+        it.onFocusChanged(Bundle().apply {
+            putString("name", name)
+            putInt("roleId", ROLE_CHECK_BOX)
+            putBoolean("checked", checked)
+            putInt("stateId", if (checked) 1 else 0)
+        })
+    }
+
+    /** A combo box (role 4) or a list inside a dialog, by [role], and what is chosen. */
+    fun focusChoice(name: String, role: Int, count: Int, selected: Int, item: String) =
+        tell("onFocusChanged") { it.onFocusChanged(listBundle(name, count, selected, item, role)) }
+
     /** A character typed, echoed as Orbit's edit fields do. */
     fun characterTyped(character: String, fieldName: String, capital: Boolean, resolvedWord: String?) = tell("onCharacterTyped") {
         it.onCharacterTyped(Bundle().apply {
@@ -221,8 +243,12 @@ class OrbitReader(context: Context, private val listener: Listener) {
     }
 
     companion object {
+        const val ROLE_BUTTON = 1
+        const val ROLE_CHECK_BOX = 2
+        const val ROLE_COMBO_BOX = 4
         const val ROLE_LIST_BOX = 5
         const val ROLE_EDIT_BOX = 6
+        const val ROLE_TEXT_BOX = 7
         const val SOUND_ERROR = 1
         const val SOUND_COMMIT = 9
     }

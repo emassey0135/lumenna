@@ -20,7 +20,12 @@ import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Shown
 import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.brailleLetter
+import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.nothingOnLetter
+import dev.emassey0135.lumenna.app.SpeakLetter
+import dev.emassey0135.lumenna.app.speakLetter
+import dev.emassey0135.lumenna.app.speakPress
+import dev.emassey0135.lumenna.app.speakPressInstead
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.commandTitle
 import dev.emassey0135.lumenna.appWords
@@ -321,10 +326,6 @@ class Ui(
         val key = decoder.decode(event)
         if (key == Key.None) return
         val screen = top ?: return
-        if (screen is EditScreen) {
-            screen.key(key)
-            return
-        }
         if (screen.key(key)) return
         if (phoneKeypad && finder.phoneKey(key, screen)) return
         if (!phoneKeypad && key is Key.Cell) {
@@ -346,9 +347,12 @@ class Ui(
             Key.Left -> if (!foldRow(screen, rows, false)) back()
             Key.Right -> if (!foldRow(screen, rows, true)) open(screen, rows)
             Key.Select, Key.Dot8 -> open(screen, rows)
-            Key.Dot7, Key.Back -> back()
+            Key.Dot7, Key.Back, Key.Escape -> back()
+            Key.Tab -> moveRound(screen, rows, 1)
+            Key.BackTab -> moveRound(screen, rows, -1)
             Key.Menu -> menu(screen, rows)
-            is Key.Chord -> chord(key.dots, screen, rows)
+            is Key.Chord -> spaceLetter(key.dots, screen, rows)
+            is Key.Enter -> brailleLetter(key.dots.toUByte())?.let { runLetter(it, screen, rows) } ?: refuse()
             else -> {}
         }
     }
@@ -356,6 +360,12 @@ class Ui(
     private fun moveBy(screen: Screen, rows: List<Row>, delta: Int) {
         if (rows.isEmpty()) return
         moveTo(screen, rows, (screen.index + delta).coerceIn(0, rows.size - 1))
+    }
+
+    /** Tab in a list: on to the next row, round from the last to the first. */
+    private fun moveRound(screen: Screen, rows: List<Row>, delta: Int) {
+        if (rows.isEmpty()) return
+        moveTo(screen, rows, (screen.index + delta + rows.size) % rows.size)
     }
 
     private fun moveTo(screen: Screen, rows: List<Row>, to: Int) {
@@ -402,17 +412,20 @@ class Ui(
         push(ContextMenuScreen(appWords.braille.actionsMenu, commands))
     }
 
-    /** Space with dots: the row's menu for M (Satellite's), else the letter's command. */
-    private fun chord(dots: Int, screen: Screen, rows: List<Row>) {
-        if (dots == DOTS_M) {
-            menu(screen, rows)
-            return
-        }
+    /** Space with a letter: its command, or which key the Speak presses it with instead. */
+    private fun spaceLetter(dots: Int, screen: Screen, rows: List<Row>) {
         val letter = brailleLetter(dots.toUByte())
-        if (letter == null) {
-            refuse()
-            return
+        when {
+            letter == null -> refuse()
+            speakLetter(letter) == SpeakLetter.SPACE -> runLetter(letter, screen, rows)
+            else -> {
+                refuse()
+                say(speakPressInstead(letter))
+            }
         }
+    }
+
+    private fun runLetter(letter: String, screen: Screen, rows: List<Row>) {
         // This app's own lists first (the main menu's places, the settings pages), then the screen's.
         rows.firstOrNull { it.letter == letter }?.let { row ->
             row.open?.invoke()
@@ -442,7 +455,7 @@ class Ui(
             return
         }
         if (!introduced) return
-        if (screen is EditScreen) {
+        if (screen is EditScreen && phoneKeypad) {
             textView.text = "${screen.title}\n\n${screen.display()}"
             if (saidScreen !== screen) {
                 saidScreen = screen
@@ -475,6 +488,11 @@ class Ui(
         if (why == Why.Turn) expectingChange = false
         saidScreen = screen
         lastItem = item
+        if (screen is DialogScreen && screen.inPlace) {
+            // A value it changes is said as it changes: nothing to repeat when the app has it.
+            screen.describeControl(newlyShown, why, before != screen.index)
+            return
+        }
         val shown = Drawn(screen.title, rows.size, screen.index, item, screen.openedAs(), screen.empty)
         describe(newlyShown, why, before != screen.index || reworded, shown).forEach(reader::perform)
     }
@@ -496,7 +514,7 @@ class Ui(
         commitFeedback = { reader.characterCommitFeedback },
         changed = { text, caret ->
             changed(text, caret)
-            top?.let { if (it is EditScreen) textView.text = "${it.title}\n\n${it.display()}" }
+            top?.let { if (it is EditScreen) textView.text = "${it.title}\n\n${it.display()}" else if (it is DialogScreen) textView.text = "${it.title}\n\n$text" }
         },
         confirmed, cancelled, completing, complete,
     )
@@ -522,8 +540,10 @@ class Ui(
     /** Set by the activity: opens Android's file picker, then the file goes to the app. */
     var chooseFile: () -> Unit = {}
 
-    companion object {
-        private const val DOTS_M = 1 or (1 shl 2) or (1 shl 3)
+    /** Where the next of [lines] starting with the cell's letter is, after [from]; a letter alone in a combo box. */
+    fun findIn(lines: List<String>, from: Int, dots: Int): Int? {
+        val letter = brailleLetter(dots.toUByte()) ?: return null
+        return firstLetter(lines, BooleanArray(lines.size), from.coerceAtLeast(0).toUInt(), letter)?.toInt()
     }
 }
 
@@ -551,9 +571,11 @@ private class EditOutput(private val reader: OrbitReader) : LineEditor.Output {
         reader.editChanged(name, content, cursor, "t9_mode_changed:$mode")
 }
 
-/** [text], with the Space chord that also runs it said after it on the Speak. */
-fun Ui.withLetter(text: String, letter: String?): String =
-    if (phoneKeypad || letter == null || letter !in "a".."z" || letter == "m" || letter.length != 1) text else "$text, $letter"
+/** [text], with the chord that also runs it said after it on the Speak. */
+fun Ui.withLetter(text: String, letter: String?): String {
+    val press = letter?.takeUnless { phoneKeypad }?.let(::speakPress) ?: return text
+    return "$text, $press"
+}
 
 /** A menu command's name in sentence case, by its id in the core's table. */
 fun titleOf(id: String): String = appWords.commands.firstOrNull { it.id == id }?.title ?: commandTitle(id)

@@ -459,6 +459,8 @@ pub struct OrbitWords {
     pub letters_off: String,
     /// The Speak's keys, a sentence each, for its key help.
     pub speak_keys: Vec<String>,
+    /// Its key help's heading over the commands pressed with Dot 8: "Dot 8 with a letter".
+    pub with_dot_8: String,
     /// The Player's keys, a sentence each, for its key help.
     pub player_keys: Vec<String>,
 }
@@ -716,13 +718,18 @@ fn orbit_words() -> OrbitWords {
         letters_on: "Finding by letter on".to_owned(),
         letters_off: "Finding by letter off".to_owned(),
         speak_keys: lines(&[
-            "Up and Down move through the list. Held, they go to its ends.",
-            "Right, OK or dot 8 opens the row. Right opens a folded row first.",
-            "Left or dot 7 goes back. Left folds an open row first.",
-            "Space with M lists what can be done to the row: its Move to Project, too.",
+            "Up and Down, or Space with dot 1 and Space with dot 4, move through a list. Held, they go to its ends.",
+            "Space with L goes to the top of a list, and Space with dots 4 5 6 to its bottom.",
+            "Right, Space with dot 6, OK or dot 8 opens the row. Right opens a folded row first.",
+            "Left, Space with dot 3 or dot 7 goes back. Left folds an open row first.",
+            "Space with E or Space with Z always goes back.",
+            "Space with M opens the menu.",
+            "In a dialog, Space with dots 4 5 moves to the next control, and Space with dots 1 2 to the one before.",
+            "Up and Down change a combo box or a check box. OK or dot 8 presses a button or confirms the dialog.",
             "While typing, Space ends a word, dot 7 deletes, and OK or dot 8 finishes.",
             "While typing, Space with Z cancels, and Down offers what could come next.",
         ]),
+        with_dot_8: "Dot 8 with a letter".to_owned(),
         player_keys: lines(&[
             "Up and Down move through the list. Held, they go to its ends.",
             "OK opens the row. Right opens a folded row first, and Left folds an open one.",

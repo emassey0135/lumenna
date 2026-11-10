@@ -8,7 +8,7 @@ use lumenna_app::Capitals;
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::LetterCommand;
+use lumenna_app::braille::{LetterCommand, SpeakLetter};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
 use lumenna_records::{ActionKind, Candidate};
@@ -409,6 +409,24 @@ pub fn lasts(minutes: u32) -> String {
 #[export]
 pub fn braille_letter(dots: u8) -> Option<String> {
     lumenna_app::braille::braille_letter(dots).map(|letter| letter.to_string())
+}
+
+/// How `letter` is pressed on the Orbit Speak: Space with it, Dot 8 with it, or neither.
+#[export]
+pub fn speak_letter(letter: String) -> SpeakLetter {
+    lumenna_app::braille::speak_letter(&letter)
+}
+
+/// How a letter's press is said after what it runs on the Orbit Speak, none for one with no press.
+#[export]
+pub fn speak_press(letter: String) -> Option<String> {
+    lumenna_app::braille::speak_press(&letter)
+}
+
+/// Space with a letter that takes Dot 8 on the Orbit Speak, refused: which to press.
+#[export]
+pub fn speak_press_instead(letter: String) -> String {
+    lumenna_app::braille::speak_press_instead(&letter)
 }
 
 /// Where the next line starting with `letter` is, from the line after `from` on, wrapping round

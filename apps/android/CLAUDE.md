@@ -432,7 +432,7 @@ holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, r
   `readback`, a move only when the core's `Moved` says so, a question's `prompt`, `buttons` and
   `choices`, and refusals (`Refused`: its sentence said only when `said` is false). This app's own
   lists (the main menu, settings, the forms' fields, a menu) go through `describe` beside them.
-- **Screens** (`Screens.kt`, `Forms.kt`): a stack the person moves, over the app's view. The screens
+- **Screens** (`Screens.kt`, `Forms.kt`, `Dialogs.kt`): a stack the person moves, over the app's view. The screens
   the app itself opens (a question, the block form, a proposal, a reminder list, the quick-add line)
   are pushed and popped from the view each turn (`Ui.follow`), as BTSpeak's `follow`. A screen
   describes itself only once `loaded`, so nothing says a list is empty on the way to it. The main
@@ -440,16 +440,8 @@ holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, r
 - **A turn is taken from `AppModel.described`**, once its view and lines are in place: a collector
   of the view on `Main.immediate` runs between the view being set and the lines, with the last
   turn's lines.
-- **Keys**: `KeyDecoder` turns Orbit's bundle into a `Key`. On the Speak dot 7 is back, dot 8 open,
-  Space with M the row's menu (Satellite's convention), Space with another letter its command, a
-  letter alone a first letter. On the Player digits open rows, holding star finds by letter (T9),
-  Menu the row's menu, Back goes back. A letter is the core's: `brailleLetter(dots)` (a to z, none
-  with dot 7 or 8) then `ShellEvent.Letter`, or `FindLetter` on the app's main list, `first_letter`
-  on this app's own (they go by a row's name or its line). Space with M is the row's menu on the
-  Speak, so what M runs elsewhere (Move to Project, Log Time, merging) is in that menu there. D is
-  the delete key's, which the core's table does not have. Letters a row or screen shows on the
-  Speak are `action_letter` and its kin, said after the name; `,`, `.` and `/` have no dots, so
-  Move Up, Move Down and the filter are the menu's.
+- **Keys**: `KeyDecoder` turns Orbit's bundle into a `Key`. On the Speak, as its user guide has them: Space with dots 1, 4, 3 and 6 are the arrows, Space with dots 4 5 and dots 1 2 Tab and Shift-Tab, Space with L and dots 4 5 6 the top and bottom, Space with E or Z back whatever the row, Space with M only the menu, dot 7 back and dot 8 open. Which key presses a letter is the core's (`speak_letter`): Space with it, or Dot 8 (Enter) with it where the device keeps Space with those dots: C and T the screen reader's; A, B, E, L, M and Z on every screen; D, F, K, N, R and S in the Editor, Voice Recorder and Media Player. G is the screen reader's with both keys, so what it names is a menu away. Space with a letter that takes Dot 8 says so (`speak_press_instead`). A letter alone is a first letter (`FindLetter` on the app's main list, `first_letter` on this app's own). On the Player digits open rows, holding star finds by letter (T9), Menu the row's menu, Back goes back. A letter is the core's: `brailleLetter(dots)` (a to z, none with dot 7 or 8) then `ShellEvent.Letter`. D is the delete key's, which the core's table does not have. Letters a row or screen shows on the Speak are `action_letter` and its kin, with their press (`speak_press`) said after the name; `,`, `.` and `/` have no dots, so Move Up, Move Down and the filter are the menu's.
+- **Dialogs on the Speak are Orbit's** (`Dialogs.kt`: `DialogScreen` and its `Control`s): a question, the task and block forms, a settings page, a typed line. Tab and Shift-Tab move between controls, each active as soon as it is reached, as in the Editor's Save As: a line types at once, Up and Down change a combo box or check box, Select presses a button or confirms the dialog. Space with E or Z cancels. Each is told to Orbit by its role. What is typed goes to the form on leaving the control. Editing dialogs end with their Confirm and Cancel, in the core's names: a question's `buttons`, the block form's `yes`, the task form's `details.save`, quick add's `add`, and `cancel`; the task form's Cancel is `DetailsEvent::Discard`. A setting is changed as it is changed, as on every platform, so a settings page has no Confirm. The Player has no Tab: the same `Control`s are its rows, a line or a choice opening its own screen.
 - **Typing** (`LineEditor`): the Speak's cell buffer through Orbit's liblouis service, one word at a
   time, mode 388 for each cell's echo and 132 at Space; the Player's multi-tap T9, ported from
   Satellite's `T9Input`. Changes go to Orbit as edit-box changes, so it echoes them by the person's

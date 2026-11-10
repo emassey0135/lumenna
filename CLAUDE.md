@@ -289,7 +289,8 @@ directly (8805659 is the last commit before the move). How the app works inside 
   shell draws). How a letter is pressed is each app's own, mapped onto those two: on a BTSpeak a
   plain letter is the command and a capital (Dot 7 with the letter) moves by first letter, never
   Space with one; on the Orbit Speak and the BrailleSense, Space with the letter is the command
-  (the BrailleSense's Enter with it, where the device keeps Space's) and the letter alone moves.
+  (Enter with it where the device keeps Space's: `speak_letter` on the Speak, whose Enter is dot 8)
+  and the letter alone moves.
   A device reporting dots turns them into a letter by `braille_letter`, the core's own a to z and
   never the person's table: dot 7 or 8 in a chord is no letter. Erase Permanently has no letter.
 - **What a shell that speaks for itself needs is the core's** (`lumenna_app::screen`,

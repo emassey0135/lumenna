@@ -4,8 +4,8 @@ package dev.emassey0135.lumenna.orbit
  * A line being typed: the Speak's cell buffer through liblouis, or the Player's T9.
  *
  * The keys are those of Orbit's edit fields: on the Speak Select or dot 8 confirms, dot 7 is
- * backspace, Space with dots 3 and 6 moves by a character, 2 and 5 by a word, Left and Right the
- * same, Space and Z cancels. On the Player digits are multi-tap, a held digit types itself, star
+ * backspace, Left and Right (Space with dots 3 and 6) move by a character, Space with 2 and 5 by a
+ * word, Space with L and dots 4 5 6 to the ends, Space with E or Z cancels. On the Player digits are multi-tap, a held digit types itself, star
  * the mode, Left and Right move, Up and Down go to the ends, Back deletes, held cancels, and OK
  * confirms. Changes are reported to Orbit as edit-field changes ([Output]), so it speaks them by
  * the person's own typing echo. Down offers completions where the line has them ([completing]).
@@ -72,6 +72,15 @@ class LineEditor(
         changed(text, caret)
     }
 
+    /** The line as it stands, what is being typed taken in: for leaving it for another control. */
+    fun text(): String {
+        t9.commitNow()
+        return buffer.confirmed()
+    }
+
+    /** Finishes the line as its own Select does: for a Confirm button beside it. */
+    fun finish() = confirm()
+
     /** Handles a key; false if it is none of this field's. */
     fun key(key: Key): Boolean = if (phoneKeypad) phoneKey(key) else brailleKey(key)
 
@@ -86,14 +95,14 @@ class LineEditor(
             Key.Down -> if (completing?.invoke() == true) complete() else moveEdge(false)
             Key.Up, Key.First -> moveEdge(true)
             Key.Last -> moveEdge(false)
+            Key.Escape -> cancel()
+            is Key.Enter -> inputCell(key.dots or DOT8)
             is Key.Chord -> when (key.dots) {
-                DOT3 -> moveCharacter(-1)
-                DOT6 -> moveCharacter(1)
                 DOT2 -> moveWord(-1)
                 DOT5 -> moveWord(1)
                 DOTS13 -> moveEdge(true)
                 DOTS46 -> moveEdge(false)
-                DOTS_Z, DOTS_ALL -> cancel()
+                DOTS_ALL -> cancel()
                 else -> return false
             }
             else -> return false
@@ -238,12 +247,10 @@ class LineEditor(
 
     private companion object {
         const val DOT2 = 1 shl 1
-        const val DOT3 = 1 shl 2
         const val DOT5 = 1 shl 4
-        const val DOT6 = 1 shl 5
+        const val DOT8 = 1 shl 7
         const val DOTS13 = 1 or (1 shl 2)
         const val DOTS46 = (1 shl 3) or (1 shl 5)
-        const val DOTS_Z = 1 or (1 shl 2) or (1 shl 4) or (1 shl 5)
         const val DOTS_ALL = 0x3f
     }
 }

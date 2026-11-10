@@ -2,8 +2,10 @@
 //! letter, and how a letter is pressed is each app's own: it maps its presses onto `Event::Letter`
 //! and `Event::FindLetter`, and nothing here assumes which. (A BTSpeak's plain letter is the
 //! command and a capital, Dot 7 with the letter, moves by first letter; on the Orbit Speak and the
-//! BrailleSense, Space with the letter is the command and the letter alone moves.) What a shell shows beside a row's action, a settings
-//! page or a reminder's button is asked for here. Nothing a shell keeps.
+//! BrailleSense, Space with the letter is the command and the letter alone moves, Enter (the
+//! Speak's Dot 8) with the letter where the device keeps Space with it: [`speak_letter`].) What a
+//! shell shows beside a row's action, a settings page or a reminder's button is asked for here.
+//! Nothing a shell keeps.
 //!
 //! A letter is the core's own: a device reporting dots turns them into a letter by
 //! [`braille_letter`], its own dots for a to z, never the person's table, which reads Z alone as
@@ -229,6 +231,57 @@ pub fn main_menu(sentence: bool) -> Vec<LetterCommand> {
     )
 }
 
+/// How a letter is pressed on the Orbit Speak.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpeakLetter {
+    /// Space with it.
+    Space,
+    /// Dot 8 (Enter) with it, as the Speak's own apps press their commands.
+    Enter,
+    /// Neither reaches the app: its row of a menu says no key.
+    Neither,
+}
+
+/// Space with these is the Speak's, from Orbit's screen reader, the user guide and Orbit's apps:
+/// the screen reader keeps C (read the line) and T outside any app; on every screen A and B are
+/// Up and Shift-Tab, E and Z go back, L goes to the top and M opens the menu; in the Editor, D
+/// deletes, K goes to the line's start and S saves as; in the Voice Recorder and Media Player, D,
+/// F, N and R are their own.
+const SPEAK_ENTER: &str = "abcdefklmnrstz";
+
+/// Neither Space nor Dot 8 with G reaches an app: the screen reader keeps both (the input mode,
+/// reading on from the caret). What G names is a menu away.
+const SPEAK_NEITHER: &str = "g";
+
+/// How `letter` is pressed on the Orbit Speak.
+#[must_use]
+pub fn speak_letter(letter: &str) -> SpeakLetter {
+    match letter.chars().next().filter(|first| first.is_ascii_lowercase() && letter.len() == 1) {
+        None => SpeakLetter::Neither,
+        Some(first) if SPEAK_NEITHER.contains(first) => SpeakLetter::Neither,
+        Some(first) if SPEAK_ENTER.contains(first) => SpeakLetter::Enter,
+        Some(_) => SpeakLetter::Space,
+    }
+}
+
+/// How a letter's press is said after what it runs on the Speak ("dot 8 c", "space u"), none for
+/// one with no press.
+#[must_use]
+pub fn speak_press(letter: &str) -> Option<String> {
+    match speak_letter(letter) {
+        SpeakLetter::Space => Some(format!("space {letter}")),
+        SpeakLetter::Enter => Some(format!("dot 8 {letter}")),
+        SpeakLetter::Neither => None,
+    }
+}
+
+/// Space with a letter that takes Dot 8 here, refused: which to press.
+#[must_use]
+pub fn speak_press_instead(letter: &str) -> String {
+    format!("Press dot 8 with {letter}.")
+}
+
 /// The dots of each letter from a to z, Grade 1 braille's: dots 1 to 6 only.
 const DOTS: [&[u8]; 26] = [
     &[1],
@@ -420,6 +473,18 @@ impl Lumenna {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_speak_presses_a_letter_it_keeps_space_for_with_dot_8() {
+        assert_eq!(speak_letter("u"), SpeakLetter::Space);
+        assert_eq!(speak_letter("c"), SpeakLetter::Enter, "the screen reader keeps Space with C");
+        assert_eq!(speak_letter("m"), SpeakLetter::Enter);
+        assert_eq!(speak_letter("g"), SpeakLetter::Neither);
+        assert_eq!(speak_letter(","), SpeakLetter::Neither);
+        assert_eq!(speak_press("u").as_deref(), Some("space u"));
+        assert_eq!(speak_press("c").as_deref(), Some("dot 8 c"));
+        assert_eq!(speak_press("g"), None);
+    }
 
     #[test]
     fn each_letter_has_its_dots_and_a_chord_with_dot_7_or_8_is_no_letter() {

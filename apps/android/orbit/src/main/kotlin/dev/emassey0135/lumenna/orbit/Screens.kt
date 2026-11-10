@@ -8,6 +8,9 @@ import dev.emassey0135.lumenna.app.brailleMainMenu
 import dev.emassey0135.lumenna.app.commandLetter
 import dev.emassey0135.lumenna.app.dueLetter
 import dev.emassey0135.lumenna.app.placeCommands
+import dev.emassey0135.lumenna.app.SpeakLetter
+import dev.emassey0135.lumenna.app.speakLetter
+import dev.emassey0135.lumenna.app.speakPress
 import dev.emassey0135.lumenna.app.ListShown
 import dev.emassey0135.lumenna.app.QuestionShown
 import dev.emassey0135.lumenna.app.Answer
@@ -147,6 +150,7 @@ class FilterScreen(private val place: Place) : EditScreen() {
     }
     override fun cancelled() = ui.pop()
     override val hint: String get() = words.filterHint
+    override val confirmWord: String get() = words.filter
 }
 
 /** The day: blocks, sittings under them, free time, now; the day's own actions in its menu. */
@@ -315,8 +319,8 @@ class ContextMenuScreen(private val name: String, private val commands: List<Com
     }
 }
 
-/** A confirmation, a pick, or a choice of answers: the core's question, as a list of answers. */
-open class QuestionScreen(private val asking: Asking) : Screen(), AskingScreen {
+/** A confirmation, a pick, or a choice of answers: the core's question, its buttons and choices. */
+open class QuestionScreen(private val asking: Asking) : DialogScreen(), AskingScreen {
     override val number: UInt get() = asking.number
 
     /** What the core says is asked, while this question is the one open. */
@@ -326,8 +330,6 @@ open class QuestionScreen(private val asking: Asking) : Screen(), AskingScreen {
 
     override val title: String
         get() = shown?.prompt?.ifEmpty { null } ?: asking.action?.name.orEmpty()
-
-    override fun openedAs(): Opened = Opened.Dialog
 
     override fun stands(view: ViewModel): Boolean = view.asking?.number == number
 
@@ -340,28 +342,39 @@ open class QuestionScreen(private val asking: Asking) : Screen(), AskingScreen {
         if (ui.view.asking?.number == number) ui.send(ShellEvent.Cancel)
     }
 
-    override fun rows(): List<Row> {
+    override fun cancelDialog() = ui.send(ShellEvent.Cancel)
+
+    /** The pick the list stands on, by id: picked when the dialog is confirmed. */
+    private var picked: String? = null
+
+    private fun pick(id: String) = ui.send(ShellEvent.Answer(Answer.Picked(id, null)))
+
+    override fun controls(): List<Control> {
         val shown = shown ?: return emptyList()
         val current = ui.view.asking ?: asking
         if (current.question is Question.Pick) {
             val choices = current.choices?.choices.orEmpty()
-            return choices.mapIndexed { index, choice ->
+            val options = choices.mapIndexed { index, choice ->
                 val text = shown.choices.getOrNull(index)?.text ?: choice.title
-                Row(choice.id, listOfNotNull(text, choice.reason?.ifEmpty { null }).joinToString(". "), {
-                    ui.send(ShellEvent.Answer(Answer.Picked(choice.id, null)))
-                })
+                Option(choice.id, listOfNotNull(text, choice.reason?.ifEmpty { null }).joinToString(". "))
+            }
+            if (!inPlace) return options.map { option -> Control.Button(option.id, option.title) { pick(option.id) } }
+            val value = picked?.takeIf { id -> options.any { it.id == id } } ?: options.firstOrNull()?.id.orEmpty()
+            return buildList {
+                add(Control.Choosing("choices", shown.prompt, options, value, { picked = it }, list = true))
+                addAll(answers(shown, confirm = { pick(value) }))
             }
         }
-        return shown.buttons.map { button ->
-            Row(button.id, button.title, {
-                ui.send(
-                    when (button.id) {
-                        "yes" -> ShellEvent.Answer(Answer.Yes)
-                        "cancel" -> ShellEvent.Cancel
-                        else -> ShellEvent.Answer(Answer.Picked(button.id, null))
-                    },
-                )
-            })
+        return answers(shown)
+    }
+
+    private fun answers(shown: QuestionShown, confirm: (() -> Unit)? = null): List<Control> = shown.buttons.map { button ->
+        Control.Button(button.id, button.title, default = button.id == "yes") {
+            when (button.id) {
+                "yes" -> if (confirm != null) confirm() else ui.send(ShellEvent.Answer(Answer.Yes))
+                "cancel" -> ui.send(ShellEvent.Cancel)
+                else -> pick(button.id)
+            }
         }
     }
 }
@@ -383,6 +396,8 @@ class TextQuestionScreen(private val asking: Asking) : EditScreen(), AskingScree
     override fun initial(): String = shown?.typed.orEmpty()
     override fun completes(): Boolean = asking.syntax != null
     override fun syntax(): Syntax = asking.syntax ?: Syntax.QUICK_ADD
+    override val confirmWord: String get() = shown?.buttons?.firstOrNull { it.id == "yes" }?.title ?: appWords.save
+    override val cancelWord: String get() = shown?.buttons?.firstOrNull { it.id == "cancel" }?.title ?: appWords.cancel
     override fun confirmed(text: String) {
         ui.send(ShellEvent.Answer(Answer.Text(text)))
     }
@@ -396,9 +411,11 @@ class TextQuestionScreen(private val asking: Asking) : EditScreen(), AskingScree
     }
 }
 
-/** What a line being typed has that a list does not: the editor, and its completions. */
-abstract class EditScreen : Screen() {
-    protected lateinit var editor: LineEditor
+/**
+ * What a line being typed has that a list does not: its completions, and on the Speak the core's
+ * Confirm and Cancel beside it, reached by Tab.
+ */
+abstract class EditScreen : DialogScreen() {
     protected abstract fun initial(): String
     protected abstract fun confirmed(text: String)
     protected abstract fun cancelled()
@@ -407,38 +424,58 @@ abstract class EditScreen : Screen() {
     protected open fun syntax(): Syntax = Syntax.QUICK_ADD
     protected open fun changed(text: String, caret: Int) {}
 
-    override val isEdit: Boolean get() = true
-    override fun rows(): List<Row> = emptyList()
+    /** What the Confirm button is called, on the Speak; null for a line with only its Select. */
+    protected abstract val confirmWord: String?
 
-    /** Made once what it starts from has arrived: quick add's line, a question's prompt. */
-    private fun ensureEditor() {
-        if (::editor.isInitialized) return
-        editor = ui.editor(
-            title, initial(),
-            changed = { text, caret ->
-                current = text
-                cursor = caret
-                changed(text, caret)
-            },
-            confirmed = ::confirmed,
-            cancelled = ::cancelled,
-            completing = { completes() && candidates().isNotEmpty() },
-            complete = { openCompletions() },
-        )
-        current = editor.display()
-        cursor = current.length
+    protected open val cancelWord: String get() = appWords.cancel
+
+    override val isEdit: Boolean get() = true
+
+    /** What it starts from, read once it has arrived: quick add's line, a question's prompt. */
+    private var seed: String? = null
+
+    private fun line(): Control.Line = Control.Line(
+        "line", title, seed ?: initial().also { seed = it }, hint,
+        changed = { text, caret ->
+            current = text
+            cursor = caret
+            changed(text, caret)
+        },
+        completing = { completes() && candidates().isNotEmpty() },
+        complete = { openCompletions() },
+    )
+
+    override fun controls(): List<Control> = buildList {
+        add(line())
+        if (inPlace) {
+            confirmWord?.let { word -> add(Control.Button("confirm", word) { editorFor(line()).finish() }) }
+            add(Control.Button("cancel", cancelWord) { cancelled() })
+        }
     }
+
+    override fun rows(): List<Row> = if (inPlace) super.rows() else emptyList()
+
+    override fun cancelDialog() = cancelled()
+
+    override fun lineFinished(control: Control.Line, text: String) = confirmed(text)
 
     protected var current = ""
     protected var cursor = 0
 
-    fun display(): String {
-        ensureEditor()
-        return editor.display()
-    }
+    private val editor: LineEditor
+        get() {
+            val editor = editorFor(line())
+            if (current.isEmpty()) {
+                current = editor.display()
+                cursor = current.length
+            }
+            return editor
+        }
 
+    fun display(): String = editor.display()
+
+    /** On the Player, where the line is the whole screen. */
     fun describe() {
-        ensureEditor()
         editor.focus()
         // After the field's name: what Orbit is told goes through its event queue, speech does not.
         if (hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { ui.reader.speakQueued(hint) }
@@ -446,7 +483,7 @@ abstract class EditScreen : Screen() {
 
     override fun key(key: Key): Boolean {
         if (ui.top === this && !loaded(ui.view)) return true
-        ensureEditor()
+        if (inPlace) return super.key(key)
         editor.key(key)
         return true
     }
@@ -486,6 +523,8 @@ class QuickAddScreen : EditScreen() {
     private var seen = false
     override val title: String get() = appWords.quickAdd.label
     override val hint: String get() = appWords.quickAdd.hint
+    override val confirmWord: String get() = appWords.quickAdd.add
+    override val cancelWord: String get() = appWords.quickAdd.cancel
     override fun initial(): String = ui.view.line?.text.orEmpty()
     override fun completes(): Boolean = true
 
@@ -619,15 +658,20 @@ class KeyHelpScreen : Screen() {
         val words = appWords.braille
         add(words.moving)
         addAll(appWords.orbit.speakKeys)
-        add(words.withSpace)
-        // M is the row's menu here, its actions among the menu's.
-        appWords.actionTitles
-            .mapNotNull { title -> actionLetter(title.kind)?.takeIf { it in "a".."z" && it != "m" }?.let { it to title.title } }
+        // A letter's actions, under the key that presses it.
+        val actions = appWords.actionTitles
+            .mapNotNull { title -> actionLetter(title.kind)?.let { it to title.title } }
             .groupBy({ it.first }, { it.second })
             .toSortedMap()
-            .forEach { (letter, titles) -> add("$letter, ${titles.distinct().joinToString(", ")}") }
+        fun letters(key: SpeakLetter) = actions.filterKeys { speakLetter(it) == key }.map { (letter, titles) ->
+            "$letter, ${titles.distinct().joinToString(", ")}"
+        }
+        add(words.withSpace)
+        addAll(letters(SpeakLetter.SPACE))
+        add(appWords.orbit.withDot8)
+        addAll(letters(SpeakLetter.ENTER))
         add(words.mainMenu)
-        brailleMainMenu(true).forEach { add("${it.letter}, ${it.title}") }
+        brailleMainMenu(true).forEach { add("${speakPress(it.letter) ?: it.letter}, ${it.title}") }
         add(words.letterAlone)
         add(words.findsARow)
     }

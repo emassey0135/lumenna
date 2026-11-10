@@ -36,7 +36,7 @@ class LineEditorTest {
     }
 
     @Test fun spaceWithZCancelsOnTheSpeak() {
-        editor(phone = false).key(Key.Chord(0b110101))
+        editor(phone = false).key(Key.Escape)
         assertEquals(true, cancelled)
     }
 
