@@ -4,17 +4,24 @@ package dev.emassey0135.lumenna.orbit
  * A line being typed: the Speak's cell buffer through liblouis, or the Player's T9.
  *
  * The keys are those of Orbit's edit fields: on the Speak Select or dot 8 confirms, dot 7 is
- * backspace, Space with dots 3 and 6 moves by a character, 2 and 5 by a word, Left and Right the
- * same, Space and Z cancels. On the Player digits are multi-tap, a held digit types itself, star
+ * backspace, Left and Right and Space with dots 3 and 6 move by a character, Space with 2 and 5 by a
+ * word, Space with L and dots 4 5 6 to the ends, Space with E or Z cancels. On the Player digits are multi-tap, a held digit types itself, star
  * the mode, Left and Right move, Up and Down go to the ends, Back deletes, held cancels, and OK
  * confirms. Changes are reported to Orbit as edit-field changes ([Output]), so it speaks them by
  * the person's own typing echo. Down offers completions where the line has them ([completing]).
+ *
+ * On the Speak the selection and clipboard are its Editor's: dots 1 2 8 start and end a selection,
+ * dots 1 8 select all, dots 1 4 8 copy, 1 3 4 6 8 cut, 1 2 3 6 8 paste (each with Space too in
+ * computer braille, where dot 8 with a cell types it), and Space with dots 1 2 7 reads it, over
+ * the system clipboard.
  */
 class LineEditor(
     val name: String,
     initial: String,
     private val phoneKeypad: Boolean,
     private val output: Output,
+    /** A field of several lines (the task's notes): dot 8 starts a new line, Up and Down move by line. */
+    private val multiline: Boolean,
     translate: CellBuffer.Translator,
     later: T9Input.Later,
     private val timeoutMs: () -> Long,
@@ -28,12 +35,27 @@ class LineEditor(
 ) {
     /** What the reader is told. Calls go in the order they happen. */
     interface Output {
-        fun focusEdit(name: String, content: String, cursor: Int)
+        fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean)
         fun syncEdit(name: String, content: String, cursor: Int)
-        /** The Speak's cell echo: the character it made. */
-        fun typed(character: Char, resolvedWord: String?)
-        /** A cell that made no character yet: its dots, read. */
-        fun typedDots(cell: Int)
+        /** The Speak's cell echo: the character it made, said by the person's character echo. */
+        fun typed(character: Char)
+        /**
+         * A word committed, as it reads in print: said if the person's echo says words, and whether
+         * it was. The space after a word said is not echoed too, since the reader would stop the word for it.
+         */
+        fun word(word: String): Boolean
+        /** What Orbit's own fields call cell [at] of [cells] by itself, if they name it. */
+        fun cellName(cells: List<Int>, at: Int): String?
+        /** Whether the person types contracted braille now. */
+        val contracted: Boolean
+        /** Whether the person types computer braille now, where dot 8 with a cell types it. */
+        val computer: Boolean
+        /** Puts [text] on the system clipboard. */
+        fun copy(text: String)
+        /** The system clipboard's text, or null for none. */
+        fun paste(): String?
+        /** Said as it is, cutting off what was being said: Satellite's echo of dots and deletions. */
+        fun say(text: String)
         /** A T9 candidate offered. */
         fun candidate(character: Char, field: String)
         fun edited(name: String, content: String, cursor: Int, change: String)
@@ -41,7 +63,26 @@ class LineEditor(
         /** Feedback on a commit timeout: sound, speech, vibration by the person's setting. */
         fun commitFeedback(character: Char, mode: Int)
         fun modeChanged(name: String, content: String, cursor: Int, mode: String)
+        /** The words the echo is said in: the core's (`OrbitWords`). */
+        val words: Words
     }
+
+    /** The Speak's echo words, each `%s` filled in. */
+    class Words(
+        val dots: String,
+        val deleted: String,
+        val space: String,
+        val newLine: String,
+        val blank: String,
+        val selectionStarted: String = "",
+        val selectionFinished: String = "",
+        val allSelected: String = "",
+        val nothingSelected: String = "",
+        val noTextSelected: String = "",
+        val copied: String = "",
+        val cut: String = "",
+        val pasted: String = "",
+    )
 
     private val buffer = CellBuffer(translate).apply { set(initial) }
     private val t9 = T9Input(T9Host(), later)
@@ -59,7 +100,7 @@ class LineEditor(
     /** Opens the field: Orbit says it and its text, and takes its copy to diff from. */
     fun focus() {
         val text = buffer.display()
-        output.focusEdit(name, text, buffer.caret)
+        output.focusEdit(name, text, buffer.caret, if (multiline) buffer.line() else text, multiline)
         output.syncEdit(name, text, buffer.caret)
     }
 
@@ -72,6 +113,15 @@ class LineEditor(
         changed(text, caret)
     }
 
+    /** The line as it stands, what is being typed taken in: for leaving it for another control. */
+    fun text(): String {
+        t9.commitNow()
+        return buffer.confirmed()
+    }
+
+    /** Finishes the line as its own Select does: for a Confirm button beside it. */
+    fun finish() = confirm()
+
     /** Handles a key; false if it is none of this field's. */
     fun key(key: Key): Boolean = if (phoneKeypad) phoneKey(key) else brailleKey(key)
 
@@ -80,21 +130,29 @@ class LineEditor(
             is Key.Cell -> inputCell(key.dots)
             Key.Space -> space()
             Key.Dot7 -> backspace()
-            Key.Dot8, Key.Select -> confirm()
+            Key.Dot8, Key.Select -> if (multiline) newLine() else confirm()
             Key.Left -> moveCharacter(-1)
             Key.Right -> moveCharacter(1)
-            Key.Down -> if (completing?.invoke() == true) complete() else moveEdge(false)
-            Key.Up, Key.First -> moveEdge(true)
+            Key.Down -> when {
+                completing?.invoke() == true -> complete()
+                multiline -> moveLine(1)
+                else -> moveEdge(false)
+            }
+            Key.Up -> if (multiline) moveLine(-1) else moveEdge(true)
+            Key.First -> moveEdge(true)
             Key.Last -> moveEdge(false)
+            Key.Escape -> cancel()
+            is Key.Enter -> if (output.computer || !selection(key.dots)) inputCell(key.dots or DOT8)
             is Key.Chord -> when (key.dots) {
                 DOT3 -> moveCharacter(-1)
                 DOT6 -> moveCharacter(1)
                 DOT2 -> moveWord(-1)
                 DOT5 -> moveWord(1)
-                DOTS13 -> moveEdge(true)
-                DOTS46 -> moveEdge(false)
-                DOTS_Z, DOTS_ALL -> cancel()
-                else -> return false
+                DOTS13 -> if (multiline) moveLineEdge(true) else moveEdge(true)
+                DOTS46 -> if (multiline) moveLineEdge(false) else moveEdge(false)
+                DOTS_ALL -> cancel()
+                DOTS127 -> readSelection()
+                else -> if (!output.computer || (key.dots and DOT8) == 0 || !selection(key.dots and DOT8.inv())) return false
             }
             else -> return false
         }
@@ -143,37 +201,85 @@ class LineEditor(
         return true
     }
 
+    /**
+     * As Orbit's own fields echo a cell: in contracted braille a cell they name (the capital sign)
+     * by its name, else the last character its word makes so far; otherwise the character, else its
+     * name; else its dots.
+     */
     private fun inputCell(cell: Int) {
-        when (val echo = buffer.type(cell)) {
-            is CellBuffer.Echo.Character -> output.typed(echo.character, null)
-            is CellBuffer.Echo.Dots -> output.typedDots(echo.cell)
+        val typed = buffer.type(cell)
+        val called = output.cellName(typed.cells, typed.at)
+        when {
+            called != null && (output.contracted || typed.live.isEmpty()) -> output.say(called)
+            typed.live.isNotEmpty() -> output.typed(typed.live.last())
+            else -> output.say(output.words.dots.replace("%s", CellBuffer.dotNumbers(cell)))
         }
         // Orbit's copy of the field follows silently, so its review commands read what is typed.
         output.syncEdit(name, buffer.display(), buffer.caret)
         changed(buffer.display(), buffer.caret)
     }
 
+    /** The word committed in print, then said whole: never the characters its cells echoed. */
     private fun space() {
-        val before = buffer.display()
-        buffer.space()
+        val word = buffer.space()
         val after = buffer.display()
-        val word = before.substringAfterLast(' ').takeIf { it.isNotEmpty() }
-        output.typed(' ', word)
+        if (word.isEmpty() || !output.word(word)) output.typed(' ')
         output.syncEdit(name, after, buffer.caret)
         changed(after, buffer.caret)
     }
 
+    /** As Satellite's field: a cell off the word says what it alone makes, else its dots; a character says itself. */
     private fun backspace() {
-        when (val deleted = buffer.backspace()) {
+        // As the Editor's: the selection goes, unasked, and the reader says so in its own words.
+        if (buffer.hasSelection) {
+            buffer.deleteSelection()
+            output.edited(name, buffer.display(), buffer.caret, "selection_deleted")
+            changed(buffer.display(), buffer.caret)
+            return
+        }
+        val words = output.words
+        val gone = when (val deleted = buffer.backspace()) {
             CellBuffer.Deleted.Nothing -> {
-                output.playError()
+                output.say(words.blank)
                 return
             }
-            else -> {
-                output.edited(name, buffer.display(), buffer.caret, "character_deleted")
-                changed(buffer.display(), buffer.caret)
+            is CellBuffer.Deleted.Cell -> output.cellName(listOf(deleted.cell), 0)
+                ?: deleted.translated.ifEmpty { words.dots.replace("%s", CellBuffer.dotNumbers(deleted.cell)) }
+            is CellBuffer.Deleted.Character -> when (deleted.character) {
+                ' ' -> words.space
+                '\n' -> words.newLine
+                else -> deleted.character.toString()
             }
         }
+        output.say(words.deleted.replace("%s", gone))
+        // Orbit's copy follows silently, so its review commands read what is left.
+        output.syncEdit(name, buffer.display(), buffer.caret)
+        changed(buffer.display(), buffer.caret)
+    }
+
+    private fun newLine() {
+        buffer.newLine()
+        output.say(output.words.newLine)
+        output.syncEdit(name, buffer.display(), buffer.caret)
+        changed(buffer.display(), buffer.caret)
+    }
+
+    /** Up and Down in a field of several lines: Orbit says the line reached, as its Editor's do. */
+    private fun moveLine(delta: Int) {
+        val line = buffer.moveLine(delta)
+        if (line == null) {
+            output.playError()
+            output.edited(name, buffer.display(), buffer.caret, if (delta < 0) "boundary_start" else "boundary_end")
+            return
+        }
+        output.edited(name, line, buffer.caret, "line_navigation")
+        output.syncEdit(name, buffer.display(), buffer.caret)
+    }
+
+    private fun moveLineEdge(start: Boolean) {
+        val line = buffer.moveLineEdge(start)
+        output.edited(name, line, buffer.caret, "line_navigation")
+        output.syncEdit(name, buffer.display(), buffer.caret)
     }
 
     private fun moveCharacter(delta: Int) {
@@ -201,6 +307,50 @@ class LineEditor(
         buffer.moveEdge(start)
         output.playError()
         output.edited(name, buffer.display(), buffer.caret, if (start) "boundary_start" else "boundary_end")
+    }
+
+    /** The Editor's selection and clipboard commands, by the dots pressed with dot 8; false for none. */
+    private fun selection(dots: Int): Boolean {
+        val words = output.words
+        when (dots) {
+            DOT1 -> {
+                buffer.selectAll()
+                output.say(words.allSelected)
+            }
+            DOTS12 -> output.say(if (buffer.toggleSelection()) words.selectionStarted else words.selectionFinished)
+            DOTS14 -> {
+                val selected = buffer.selected() ?: return true.also { output.say(words.nothingSelected) }
+                output.copy(selected)
+                output.say(words.copied)
+            }
+            DOTS1346 -> {
+                val selected = buffer.selected() ?: return true.also { output.say(words.nothingSelected) }
+                output.copy(selected)
+                buffer.deleteSelection()
+                output.say(words.cut)
+                edited()
+            }
+            DOTS1236 -> {
+                val pasted = output.paste()?.let { if (multiline) it else it.replace(Regex("\\s*\\R\\s*"), " ") }
+                if (pasted.isNullOrEmpty()) {
+                    output.playError()
+                    return true
+                }
+                buffer.paste(pasted)
+                output.say(words.pasted)
+                edited()
+            }
+            else -> return false
+        }
+        return true
+    }
+
+    private fun readSelection() = output.say(buffer.selected() ?: output.words.noTextSelected)
+
+    /** Orbit's copy and the app follow a change the keys made. */
+    private fun edited() {
+        output.syncEdit(name, buffer.display(), buffer.caret)
+        changed(buffer.display(), buffer.caret)
     }
 
     private fun insertChar(character: Char, position: Int, feedback: Boolean) {
@@ -237,13 +387,19 @@ class LineEditor(
     }
 
     private companion object {
+        const val DOT1 = 1
+        const val DOTS12 = 0b11
+        const val DOTS14 = 0b1001
+        const val DOTS1346 = 0b101101
+        const val DOTS1236 = 0b100111
+        const val DOTS127 = 0b1000011
         const val DOT2 = 1 shl 1
         const val DOT3 = 1 shl 2
         const val DOT5 = 1 shl 4
         const val DOT6 = 1 shl 5
+        const val DOT8 = 1 shl 7
         const val DOTS13 = 1 or (1 shl 2)
         const val DOTS46 = (1 shl 3) or (1 shl 5)
-        const val DOTS_Z = 1 or (1 shl 2) or (1 shl 4) or (1 shl 5)
         const val DOTS_ALL = 0x3f
     }
 }

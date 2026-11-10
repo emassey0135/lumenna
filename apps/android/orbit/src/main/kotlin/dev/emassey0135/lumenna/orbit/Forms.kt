@@ -27,7 +27,7 @@ import dev.emassey0135.lumenna.text
 /** A choice of a setting's or field's options, the current one first selected. */
 class ChoiceScreen(
     private val name: String,
-    private val options: List<Choice>,
+    private val options: List<Option>,
     private val current: String,
     private val chosen: (String) -> Unit,
 ) : Screen() {
@@ -58,15 +58,30 @@ class FieldEditScreen(
         done(text)
     }
     override fun cancelled() = ui.pop()
+    override val confirmWord: String get() = appWords.save
 }
 
-/** The value of a [FormField] shown: the option's title where it has options. */
-private fun shownValue(field: FormField, value: String): String =
-    (field.options.firstOrNull { it.id == value }?.title ?: value).ifEmpty { appWords.noneValue }
+private fun List<Choice>.options(): List<Option> = map { Option(it.id, it.title) }
 
-/** The details of a task: its form's fields, its lines, its save button, its actions a menu away. */
-class DetailsScreen(private val id: String) : ListScreen() {
+/** A form field as its control: a choice where it has options, else a line. */
+private fun control(
+    field: FormField,
+    value: String,
+    options: List<Choice>,
+    set: (String) -> Unit,
+    offered: List<dev.emassey0135.lumenna.app.Offered> = emptyList(),
+    on: ActingOn? = null,
+): Control = if (options.isNotEmpty()) {
+    Control.Choosing("field-${field.key}", field.label, options.options(), value, set, offered = offered, on = on)
+} else {
+    Control.Line("field-${field.key}", field.label, value, field.hint, set, multiline = field.kind == FieldKind.LINES, offered = offered, on = on)
+}
+
+/** The details of a task: its form's fields, its lines, its Save and Cancel, its actions a menu away. */
+class DetailsScreen(private val id: String) : DialogScreen() {
     override val title: String get() = ui.view.details?.task?.title.orEmpty()
+
+    override fun openedAs(): Opened = Opened.List
 
     override fun resumed() {
         ui.send(ShellEvent.Details(DetailsEvent.Show(id)))
@@ -84,55 +99,58 @@ class DetailsScreen(private val id: String) : ListScreen() {
         return true
     }
 
-    /** Back saves what changed first; refused, it stays here to be put right. */
+    /** Back is Cancel, on both: what was typed is thrown away, never saved. */
     override fun beforeBack(): Boolean {
-        if (ui.view.details?.dirty != true) return false
-        saving = true
-        ui.send(ShellEvent.Details(DetailsEvent.Save))
+        cancelDialog()
         return true
     }
 
-    override fun rows(): List<Row> {
+    override fun confirmDialog() {
+        val typed = commitFocused()
+        if (typed || ui.view.details?.dirty == true) {
+            saving = true
+            ui.send(ShellEvent.Details(DetailsEvent.Save))
+        } else {
+            ui.pop()
+        }
+    }
+
+    override fun cancelDialog() {
+        ui.send(ShellEvent.Details(DetailsEvent.Discard))
+        ui.pop()
+    }
+
+    override fun controls(): List<Control> {
         val details = ui.view.details ?: return emptyList()
         val on = ActingOn.Details
         val offered = details.task.offered
         return buildList {
             for (field in details.form) {
-                val value = value(details.fields, field)
-                add(Row("field-${field.key}", listOf(field.label, shownValue(field, value)).joinToString(", "), {
-                    edit(field, value, details.projects)
+                val options = if (field.key == "project") details.projects else field.options
+                add(control(field, value(details.fields, field), options, { typed ->
+                    ui.send(ShellEvent.Details(DetailsEvent.Field(field.key, typed)))
                 }, offered, on))
             }
             ui.lines?.details.orEmpty().forEachIndexed { index, line ->
-                add(Row("line-$index", line.text, null, offered, on))
+                add(Control.Note("line-$index", line.text, offered, on))
             }
-            if (details.dirty) add(Row("save", titleOf("save-task"), { ui.send(ShellEvent.Details(DetailsEvent.Save)) }))
+            add(Control.Button("save", appWords.details.save, default = true) { confirmDialog() })
+            add(Control.Button("cancel", appWords.cancel) { cancelDialog() })
         }
     }
 
     private fun value(fields: TaskFields, field: FormField): String =
         if (field.key == "priority") fields.priority.toString() else fields.text(field.key).orEmpty()
-
-    private fun edit(field: FormField, value: String, projects: List<Choice>) {
-        val options = if (field.key == "project") projects else field.options
-        if (options.isNotEmpty()) {
-            ui.push(ChoiceScreen(field.label, options, value) { chosen ->
-                ui.send(ShellEvent.Details(DetailsEvent.Field(field.key, chosen)))
-            })
-        } else {
-            ui.push(FieldEditScreen(field.label, value, field.hint) { typed ->
-                ui.send(ShellEvent.Details(DetailsEvent.Field(field.key, typed)))
-            })
-        }
-    }
 }
 
 /** The block form: the app's, its fields by their keys, Save and Cancel at its end. */
-class BlockFormScreen : ListScreen() {
+class BlockFormScreen : DialogScreen() {
     private val form get() = ui.view.blockForm
     private var refusal: String? = null
 
     override val title: String get() = form?.heading.orEmpty()
+
+    override fun openedAs(): Opened = Opened.List
 
     override fun stands(view: ViewModel): Boolean = view.blockForm != null
 
@@ -140,7 +158,14 @@ class BlockFormScreen : ListScreen() {
         if (ui.view.blockForm != null) ui.send(ShellEvent.Block(BlockEvent.Cancel))
     }
 
-    override fun rows(): List<Row> {
+    override fun cancelDialog() = ui.send(ShellEvent.Block(BlockEvent.Cancel))
+
+    override fun confirmDialog() {
+        commitFocused()
+        ui.send(ShellEvent.Block(BlockEvent.Save))
+    }
+
+    override fun controls(): List<Control> {
         val form = form ?: return emptyList()
         form.refusal.takeIf { it != refusal }?.let {
             refusal = it
@@ -149,30 +174,17 @@ class BlockFormScreen : ListScreen() {
         }
         return buildList {
             for (field in form.fields) {
-                val value = if (field.key == "date") form.date else form.values.text(field.key)
+                val set = { value: String -> ui.send(ShellEvent.Block(BlockEvent.Field(field.key, value))) }
                 when (field.kind) {
                     FieldKind.TOGGLE -> {
                         val on = form.values.flag(field.key)
-                        val state = appWords.yesNo.firstOrNull { it.id == if (on) "yes" else "no" }?.title.orEmpty()
-                        add(Row("field-${field.key}", listOf(field.label, state).joinToString(", "), {
-                            ui.send(ShellEvent.Block(BlockEvent.Field(field.key, (!on).toString())))
-                        }))
+                        add(Control.Check("field-${field.key}", field.label, on) { set((!on).toString()) })
                     }
-                    else -> add(Row("field-${field.key}", listOf(field.label, shownValue(field, value)).joinToString(", "), {
-                        if (field.options.isNotEmpty()) {
-                            ui.push(ChoiceScreen(field.label, field.options, value) { chosen ->
-                                ui.send(ShellEvent.Block(BlockEvent.Field(field.key, chosen)))
-                            })
-                        } else {
-                            ui.push(FieldEditScreen(field.label, value, field.hint) { typed ->
-                                ui.send(ShellEvent.Block(BlockEvent.Field(field.key, typed)))
-                            })
-                        }
-                    }))
+                    else -> add(control(field, if (field.key == "date") form.date else form.values.text(field.key), field.options, set))
                 }
             }
-            add(Row("save", form.yes, { ui.send(ShellEvent.Block(BlockEvent.Save)) }))
-            add(Row("cancel", appWords.cancel, { ui.send(ShellEvent.Block(BlockEvent.Cancel)) }))
+            add(Control.Button("save", form.yes, default = true) { confirmDialog() })
+            add(Control.Button("cancel", appWords.cancel) { cancelDialog() })
         }
     }
 }
@@ -204,17 +216,24 @@ class SettingsScreen : ListScreen() {
 }
 
 /** One of the core's settings pages: its settings, its buttons, the store's own actions. */
-class PageScreen(private val page: SettingsPage) : ListScreen() {
+class PageScreen(private val page: SettingsPage) : DialogScreen() {
     override fun loaded(view: ViewModel): Boolean = view.settings?.settings?.isNotEmpty() == true
 
     override val title: String get() = page.title
+
+    override fun openedAs(): Opened = Opened.List
 
     private fun shown(): List<SettingView> =
         page.keys.mapNotNull { key -> ui.view.settings?.settings?.firstOrNull { it.setting.key == key } }
 
     private var problems = mutableMapOf<String, String?>()
 
-    override fun rows(): List<Row> {
+    /** A setting is changed as it is changed, as on every platform: Select only takes the line. */
+    override fun confirmDialog() {
+        commitFocused()
+    }
+
+    override fun controls(): List<Control> {
         val view = ui.view.settings ?: return emptyList()
         return buildList {
             for (item in shown()) {
@@ -226,35 +245,38 @@ class PageScreen(private val page: SettingsPage) : ListScreen() {
                         ui.say(it)
                     }
                 }
-                val value = setting.options.firstOrNull { it.id == setting.value }?.title ?: setting.value
-                add(Row(setting.key, listOf(setting.title, value).filter { it.isNotEmpty() }.joinToString(", "), { change(item) }))
+                add(controlOf(item))
             }
-            page.caption.takeIf { it.isNotEmpty() }?.let { add(Row("caption", it)) }
+            page.caption.takeIf { it.isNotEmpty() }?.let { add(Control.Note("caption", it)) }
             if (page.id == "export") {
                 view.exports.forEach { export ->
-                    add(Row("export-${export.format}", export.label, { ui.send(ShellEvent.Settings(SettingsEvent.Export(export.format))) }))
+                    add(Control.Button("export-${export.format}", export.label) {
+                        ui.send(ShellEvent.Settings(SettingsEvent.Export(export.format)))
+                    })
                 }
             }
             page.buttons.forEach { button ->
-                add(Row(button.id, button.title, { pressed(button.id) }, letter = buttonLetter(button.id)))
+                add(Control.Button(button.id, button.title, letter = buttonLetter(button.id)) { pressed(button.id) })
             }
             if (page.id == "export") {
                 view.offered.forEach { action ->
-                    add(Row("offered-${action.kind}", listOf(action.name, view.offeredCaption).filter { it.isNotEmpty() }.joinToString(". "), {
+                    add(Control.Button("offered-${action.kind}", listOf(action.name, view.offeredCaption).filter { it.isNotEmpty() }.joinToString(". ")) {
                         ui.send(ShellEvent.ActOn(ActingOn.Settings, action))
-                    }))
+                    })
                 }
             }
         }
     }
 
-    private fun change(item: SettingView) {
+    private fun controlOf(item: SettingView): Control {
         val setting = item.setting
-        when {
-            setting.kind == SettingKind.TOGGLE -> set(setting.key, if (setting.value == "true") "false" else "true")
-            setting.options.isNotEmpty() -> ui.push(ChoiceScreen(setting.title, setting.options, setting.value) { set(setting.key, it) })
-            setting.kind == SettingKind.FOLDER -> ui.refuse()
-            else -> ui.push(FieldEditScreen(setting.title, setting.value, hintOf(item)) { set(setting.key, it) })
+        return when {
+            setting.kind == SettingKind.TOGGLE -> Control.Check(setting.key, setting.title, setting.value == "true") {
+                set(setting.key, if (setting.value == "true") "false" else "true")
+            }
+            setting.options.isNotEmpty() -> Control.Choosing(setting.key, setting.title, setting.options.options(), setting.value, { set(setting.key, it) })
+            setting.kind == SettingKind.FOLDER -> Control.Button(setting.key, listOf(setting.title, setting.value).filter { it.isNotEmpty() }.joinToString(", ")) { ui.refuse() }
+            else -> Control.Line(setting.key, setting.title, setting.value, hintOf(item), { set(setting.key, it) })
         }
     }
 

@@ -23,8 +23,16 @@ sealed interface Key {
     data object Space : Key
     /** Dot keys without Space: a braille cell, as a bit per dot (1 is dot 1). */
     data class Cell(val dots: Int) : Key
-    /** Space with dots: a command chord. */
+    /** Space with dots: a command chord, those the decoder has not named. */
     data class Chord(val dots: Int) : Key
+    /** Dot 8 (Enter) with dots, the rest of them: Orbit's apps' commands. */
+    data class Enter(val dots: Int) : Key
+    /** Space with dots 4 and 5: the next control of a dialog. */
+    data object Tab : Key
+    /** Space with dots 1 and 2: the control before. */
+    data object BackTab : Key
+    /** Space with E or Z: back, whatever the row. */
+    data object Escape : Key
 
     /** The Player's digit, tapped: the release of a press that was not held. */
     data class Digit(val digit: Int) : Key
@@ -58,9 +66,11 @@ data class KeyEvent(val name: String, val action: Int, val longPress: Boolean) {
  *
  * Arrows, OK and the Player's keys send a press (action 0, with `isLongPress` true on a held
  * press's repeat), then a release. Dots arrive as releases, chords whole (`SPACE_DOT1_DOT5`).
- * Orbit keeps some chords even from a self-voicing app (Space with dots 2, 3, 5 or 6 outside an
- * edit box, its review chords), which a table of commands must leave free. Keeps a held phone
- * key's release from counting too.
+ * Space with dots names what the Speak's user guide says it is: Up and Down, Tab and Shift-Tab,
+ * back, the top and bottom, the menu. Orbit keeps some chords even from a self-voicing app (the
+ * screen reader's C, G, T, and Space with dots 2, 3, 5 and 6, which review the item's text outside
+ * an edit box), which a table of commands must leave free.
+ * Keeps a held phone key's release from counting too.
  */
 class KeyDecoder {
     /** A Player key that has acted while held, its release ignored. */
@@ -87,15 +97,30 @@ class KeyDecoder {
                 "SPACE" -> Key.Space
                 else -> dots(name)?.takeIf { it and 0x3f != 0 }?.let(Key::Cell) ?: Key.None
             }
-            KeyEvent.CHORD -> {
-                if (name.startsWith("SPACE_")) {
-                    dots(name.removePrefix("SPACE_"))?.let(Key::Chord) ?: Key.None
-                } else {
-                    dots(name)?.let(Key::Cell) ?: Key.None
-                }
-            }
+            KeyEvent.CHORD -> chord(name)
             else -> Key.None
         }
+    }
+
+    private fun chord(name: String): Key {
+        if (name.startsWith("SPACE_")) {
+            val dots = dots(name.removePrefix("SPACE_")) ?: return Key.None
+            return when (dots) {
+                bits(1) -> Key.Up
+                bits(4) -> Key.Down
+                bits(1, 2, 3) -> Key.First
+                bits(4, 5, 6) -> Key.Last
+                bits(1, 5), bits(1, 3, 5, 6) -> Key.Escape
+                bits(4, 5) -> Key.Tab
+                bits(1, 2) -> Key.BackTab
+                bits(1, 3, 4) -> Key.Menu
+                else -> Key.Chord(dots)
+            }
+        }
+        val dots = dots(name) ?: return Key.None
+        val enter = bits(8)
+        // Dot 7 with it too is no command: it is typing, an 8-dot cell.
+        return if (dots and enter != 0 && dots and bits(7) == 0 && dots != enter) Key.Enter(dots and enter.inv()) else Key.Cell(dots)
     }
 
     private fun phoneKey(event: KeyEvent): Key {
@@ -123,6 +148,8 @@ class KeyDecoder {
     }
 
     companion object {
+        private fun bits(vararg dots: Int): Int = dots.fold(0) { all, dot -> all or (1 shl (dot - 1)) }
+
         private fun isPhoneKey(name: String): Boolean =
             name.length == 1 && (name[0].isDigit() || name == "*" || name == "#")
 

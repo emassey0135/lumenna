@@ -2,8 +2,10 @@
 //! letter, and how a letter is pressed is each app's own: it maps its presses onto `Event::Letter`
 //! and `Event::FindLetter`, and nothing here assumes which. (A BTSpeak's plain letter is the
 //! command and a capital, Dot 7 with the letter, moves by first letter; on the Orbit Speak and the
-//! BrailleSense, Space with the letter is the command and the letter alone moves.) What a shell shows beside a row's action, a settings
-//! page or a reminder's button is asked for here. Nothing a shell keeps.
+//! BrailleSense, Space with the letter is the command and the letter alone moves, Enter (the
+//! Speak's Dot 8) with the letter where the device keeps Space with it: [`speak_letter`].) What a
+//! shell shows beside a row's action, a settings page or a reminder's button is asked for here.
+//! Nothing a shell keeps.
 //!
 //! A letter is the core's own: a device reporting dots turns them into a letter by
 //! [`braille_letter`], its own dots for a to z, never the person's table, which reads Z alone as
@@ -626,6 +628,89 @@ pub fn dialog_title(title: &str) -> String {
     format!("{title} dialog")
 }
 
+/// How a letter is pressed on the Orbit Speak.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpeakLetter {
+    /// Space with it.
+    Space,
+    /// Dot 8 (Enter) with it, as the Speak's own apps press their commands.
+    Enter,
+    /// Neither reaches the app: its row of a menu says no key.
+    Neither,
+}
+
+/// Space with these is the Speak's while Lumenna is in front, by Orbit's screen reader and its user
+/// guide: the screen reader keeps C (read the line) and T; on every screen A and B are Up and
+/// Shift-Tab, E and Z go back, L goes to the top and M opens the menu. What Orbit's own apps do
+/// with Space and a letter is theirs alone, in front only when they are.
+const SPEAK_ENTER: &str = "abcelmtz";
+
+/// Neither Space nor Dot 8 with G reaches an app: the screen reader keeps both (the input mode,
+/// reading on from the caret). What G names is a menu away.
+const SPEAK_NEITHER: &str = "g";
+
+/// How `letter` is pressed on the Orbit Speak.
+#[must_use]
+pub fn speak_letter(letter: &str) -> SpeakLetter {
+    match letter.chars().next().filter(|first| first.is_ascii_lowercase() && letter.len() == 1) {
+        None => SpeakLetter::Neither,
+        Some(first) if SPEAK_NEITHER.contains(first) => SpeakLetter::Neither,
+        Some(first) if SPEAK_ENTER.contains(first) => SpeakLetter::Enter,
+        Some(_) => SpeakLetter::Space,
+    }
+}
+
+/// How a letter's press is said after what it runs on the Speak ("dot 8 c", "space u"), none for
+/// one with no press.
+#[must_use]
+pub fn speak_press(letter: &str) -> Option<String> {
+    match speak_letter(letter) {
+        SpeakLetter::Space => Some(format!("space {letter}")),
+        SpeakLetter::Enter => Some(format!("dot 8 {letter}")),
+        SpeakLetter::Neither => None,
+    }
+}
+
+/// Space with a letter that takes Dot 8 here, refused: which to press.
+#[must_use]
+pub fn speak_press_instead(letter: &str) -> String {
+    format!("Press dot 8 with {letter}.")
+}
+
+/// The cells the Orbit Speak's own edit fields name rather than translate, a bit per dot (dot 1
+/// bit 0), with the names they say: the Orbit's table, kept to the Orbit, never another device's.
+/// In contracted braille a cell here is said by its name before anything it would make; otherwise
+/// only when it makes nothing yet, as the capital sign does.
+const ORBIT_CELL_NAMES: [(u8, &str); 11] = [
+    (0b00_0010, "dot 2"),
+    (0b00_0110, "low b"),
+    (0b01_0010, "low c"),
+    (0b11_0010, "low d"),
+    (0b01_0110, "low f"),
+    (0b11_0110, "low g"),
+    (0b10_0110, "low h"),
+    (0b11_0100, "low j"),
+    (0b11_1100, "number sign"),
+    (0b10_0000, "capital sign"),
+    // The Orbit's own table calls dots 3 6 "greek sign", which is dots 4 6 in UEB; dots 3 6 alone is
+    // the hyphen, so it is said as one here, a deliberate departure from the device.
+    (0b10_0100, "hyphen"),
+];
+
+/// What the Orbit Speak's edit fields call cell `at` of `word` (dot 1 bit 0) by itself, if it is
+/// one they name: a second capital sign straight after one is the capital word sign.
+#[must_use]
+pub fn orbit_cell_name(word: &[u8], at: usize) -> Option<String> {
+    let cell = *word.get(at)?;
+    if cell == CAPITAL_SIGN && at > 0 && word.get(at - 1) == Some(&CAPITAL_SIGN) {
+        return Some("capital word sign".to_owned());
+    }
+    ORBIT_CELL_NAMES.iter().find(|(dots, _)| *dots == cell).map(|(_, name)| (*name).to_owned())
+}
+
+const CAPITAL_SIGN: u8 = 0b10_0000;
+
 /// The dots of each letter from a to z, Grade 1 braille's: dots 1 to 6 only.
 const DOTS: [&[u8]; 26] = [
     &[1],
@@ -818,6 +903,30 @@ impl Lumenna {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_orbit_names_its_signs_and_the_lower_cells_as_its_own_fields_do() {
+        assert_eq!(orbit_cell_name(&[0b10_0000], 0).as_deref(), Some("capital sign"));
+        assert_eq!(orbit_cell_name(&[0b10_0000, 0b10_0000], 1).as_deref(), Some("capital word sign"));
+        assert_eq!(orbit_cell_name(&[0b11_1100], 0).as_deref(), Some("number sign"));
+        assert_eq!(orbit_cell_name(&[0b00_0110], 0).as_deref(), Some("low b"));
+        assert_eq!(orbit_cell_name(&[0b10_0100], 0).as_deref(), Some("hyphen"), "not the device's \"greek sign\"");
+        assert_eq!(orbit_cell_name(&[0b00_0001], 0), None, "a letter is translated, not named");
+        assert_eq!(orbit_cell_name(&[], 0), None);
+    }
+
+    #[test]
+    fn the_speak_presses_a_letter_it_keeps_space_for_with_dot_8() {
+        assert_eq!(speak_letter("u"), SpeakLetter::Space);
+        assert_eq!(speak_letter("c"), SpeakLetter::Enter, "the screen reader keeps Space with C");
+        assert_eq!(speak_letter("m"), SpeakLetter::Enter);
+        assert_eq!(speak_letter("d"), SpeakLetter::Space, "the Editor's D is the Editor's alone");
+        assert_eq!(speak_letter("g"), SpeakLetter::Neither);
+        assert_eq!(speak_letter(","), SpeakLetter::Neither);
+        assert_eq!(speak_press("u").as_deref(), Some("space u"));
+        assert_eq!(speak_press("c").as_deref(), Some("dot 8 c"));
+        assert_eq!(speak_press("g"), None);
+    }
 
     #[test]
     fn each_letter_has_its_dots_and_a_chord_with_dot_7_or_8_is_no_letter() {

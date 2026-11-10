@@ -8,7 +8,7 @@ use lumenna_app::Capitals;
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LetteredMenu, LineSettings, MenuShortcut};
+use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LetteredMenu, LineSettings, MenuShortcut, SpeakLetter};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
 use lumenna_records::{ActionKind, Candidate};
@@ -449,6 +449,31 @@ pub fn braillesense_cell_echo(word: Vec<u8>, at: u32, contracted: bool) -> Strin
 #[export]
 pub fn braillesense_character_echo(character: String) -> String {
     lumenna_app::braille::braillesense::character_echo(&character)
+}
+
+/// How `letter` is pressed on the Orbit Speak: Space with it, Dot 8 with it, or neither.
+#[export]
+pub fn speak_letter(letter: String) -> SpeakLetter {
+    lumenna_app::braille::speak_letter(&letter)
+}
+
+/// How a letter's press is said after what it runs on the Orbit Speak, none for one with no press.
+#[export]
+pub fn speak_press(letter: String) -> Option<String> {
+    lumenna_app::braille::speak_press(&letter)
+}
+
+/// Space with a letter that takes Dot 8 on the Orbit Speak, refused: which to press.
+#[export]
+pub fn speak_press_instead(letter: String) -> String {
+    lumenna_app::braille::speak_press_instead(&letter)
+}
+
+/// What the Orbit Speak's edit fields call cell `at` of `word` (dot 1 bit 0) by itself, if they
+/// name it: the capital sign, the number sign, a lower cell.
+#[export]
+pub fn orbit_cell_name(word: Vec<u8>, at: u32) -> Option<String> {
+    lumenna_app::braille::orbit_cell_name(&word, at as usize)
 }
 
 /// Where the next line starting with `letter` is, from the line after `from` on, wrapping round

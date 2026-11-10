@@ -1,5 +1,7 @@
 package dev.emassey0135.lumenna.orbit
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Handler
 import android.os.Looper
 import android.widget.TextView
@@ -20,7 +22,13 @@ import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Shown
 import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.brailleLetter
+import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.nothingOnLetter
+import dev.emassey0135.lumenna.app.orbitCellName
+import dev.emassey0135.lumenna.app.SpeakLetter
+import dev.emassey0135.lumenna.app.speakLetter
+import dev.emassey0135.lumenna.app.speakPress
+import dev.emassey0135.lumenna.app.speakPressInstead
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.commandTitle
 import dev.emassey0135.lumenna.appWords
@@ -126,6 +134,7 @@ class Ui(
     private val stack = ArrayDeque<Screen>()
     private val main = Handler(Looper.getMainLooper())
     private val decoder = KeyDecoder()
+    private val clipboard = textView.context.getSystemService(ClipboardManager::class.java)
     private val finder = FirstLetters(this)
     /** Whether the keys are the Player's phone keypad, as the last key said. */
     var phoneKeypad = false
@@ -281,12 +290,17 @@ class Ui(
             }
             return
         }
-        // Only when none is open: a field being typed sits above the form.
-        if (v.line != null && stack.none { it is QuickAddScreen }) pushApp(QuickAddScreen())
+        // Only when none is open: a field being typed sits above the form. One just closed here is
+        // still open in the view until the app has the close, and is not opened again meanwhile.
+        if (v.line == null) lineClosed = false
+        if (v.line != null && !lineClosed && stack.none { it is QuickAddScreen }) pushApp(QuickAddScreen())
         if (v.blockForm != null && stack.none { it is BlockFormScreen }) pushApp(BlockFormScreen())
         if (v.proposal != null && stack.none { it is ProposalScreen }) pushApp(ProposalScreen())
         if (v.reminders != null && stack.none { it is RemindersScreen }) pushApp(RemindersScreen())
     }
+
+    /** Quick add was left here, and the app has not yet said its line is closed. */
+    var lineClosed = false
 
     private var formAskedFor = 0u
 
@@ -321,10 +335,6 @@ class Ui(
         val key = decoder.decode(event)
         if (key == Key.None) return
         val screen = top ?: return
-        if (screen is EditScreen) {
-            screen.key(key)
-            return
-        }
         if (screen.key(key)) return
         if (phoneKeypad && finder.phoneKey(key, screen)) return
         if (!phoneKeypad && key is Key.Cell) {
@@ -342,13 +352,17 @@ class Ui(
             Key.Down -> moveBy(screen, rows, 1)
             Key.First -> moveTo(screen, rows, 0)
             Key.Last -> moveTo(screen, rows, rows.size - 1)
-            // Left folds a row open, else goes back; Right opens a folded row, else opens it.
-            Key.Left -> if (!foldRow(screen, rows, false)) back()
+            // Left folds a row open, else goes back out of a list, never a dialog; Right opens a
+            // folded row, else opens it.
+            Key.Left -> if (!foldRow(screen, rows, false) && screen !is DialogScreen) back()
             Key.Right -> if (!foldRow(screen, rows, true)) open(screen, rows)
             Key.Select, Key.Dot8 -> open(screen, rows)
-            Key.Dot7, Key.Back -> back()
+            Key.Dot7, Key.Back, Key.Escape -> back()
+            Key.Tab -> moveRound(screen, rows, 1)
+            Key.BackTab -> moveRound(screen, rows, -1)
             Key.Menu -> menu(screen, rows)
-            is Key.Chord -> chord(key.dots, screen, rows)
+            is Key.Chord -> spaceLetter(key.dots, screen, rows)
+            is Key.Enter -> brailleLetter(key.dots.toUByte())?.let { runLetter(it, screen, rows) } ?: refuse()
             else -> {}
         }
     }
@@ -356,6 +370,12 @@ class Ui(
     private fun moveBy(screen: Screen, rows: List<Row>, delta: Int) {
         if (rows.isEmpty()) return
         moveTo(screen, rows, (screen.index + delta).coerceIn(0, rows.size - 1))
+    }
+
+    /** Tab in a list: on to the next row, round from the last to the first. */
+    private fun moveRound(screen: Screen, rows: List<Row>, delta: Int) {
+        if (rows.isEmpty()) return
+        moveTo(screen, rows, (screen.index + delta + rows.size) % rows.size)
     }
 
     private fun moveTo(screen: Screen, rows: List<Row>, to: Int) {
@@ -402,17 +422,20 @@ class Ui(
         push(ContextMenuScreen(appWords.braille.actionsMenu, commands))
     }
 
-    /** Space with dots: the row's menu for M (Satellite's), else the letter's command. */
-    private fun chord(dots: Int, screen: Screen, rows: List<Row>) {
-        if (dots == DOTS_M) {
-            menu(screen, rows)
-            return
-        }
+    /** Space with a letter: its command, or which key the Speak presses it with instead. */
+    private fun spaceLetter(dots: Int, screen: Screen, rows: List<Row>) {
         val letter = brailleLetter(dots.toUByte())
-        if (letter == null) {
-            refuse()
-            return
+        when {
+            letter == null -> refuse()
+            speakLetter(letter) == SpeakLetter.SPACE -> runLetter(letter, screen, rows)
+            else -> {
+                refuse()
+                say(speakPressInstead(letter))
+            }
         }
+    }
+
+    private fun runLetter(letter: String, screen: Screen, rows: List<Row>) {
         // This app's own lists first (the main menu's places, the settings pages), then the screen's.
         rows.firstOrNull { it.letter == letter }?.let { row ->
             row.open?.invoke()
@@ -442,7 +465,7 @@ class Ui(
             return
         }
         if (!introduced) return
-        if (screen is EditScreen) {
+        if (screen is EditScreen && phoneKeypad) {
             textView.text = "${screen.title}\n\n${screen.display()}"
             if (saidScreen !== screen) {
                 saidScreen = screen
@@ -475,6 +498,11 @@ class Ui(
         if (why == Why.Turn) expectingChange = false
         saidScreen = screen
         lastItem = item
+        if (screen is DialogScreen && screen.inPlace) {
+            // A value it changes is said as it changes: nothing to repeat when the app has it.
+            screen.describeControl(newlyShown, why, before != screen.index)
+            return
+        }
         val shown = Drawn(screen.title, rows.size, screen.index, item, screen.openedAs(), screen.empty)
         describe(newlyShown, why, before != screen.index || reworded, shown).forEach(reader::perform)
     }
@@ -489,14 +517,15 @@ class Ui(
         cancelled: () -> Unit,
         completing: (() -> Boolean)? = null,
         complete: () -> Unit = {},
+        multiline: Boolean = false,
     ): LineEditor = LineEditor(
-        name, initial, phoneKeypad, EditOutput(reader), CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
+        name, initial, phoneKeypad, EditOutput(reader, liblouis, clipboard), multiline, CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
         this,
         timeoutMs = { reader.characterCommitTimeout.toLong() },
         commitFeedback = { reader.characterCommitFeedback },
         changed = { text, caret ->
             changed(text, caret)
-            top?.let { if (it is EditScreen) textView.text = "${it.title}\n\n${it.display()}" }
+            top?.let { if (it is EditScreen) textView.text = "${it.title}\n\n${it.display()}" else if (it is DialogScreen) textView.text = "${it.title}\n\n$text" }
         },
         confirmed, cancelled, completing, complete,
     )
@@ -522,8 +551,10 @@ class Ui(
     /** Set by the activity: opens Android's file picker, then the file goes to the app. */
     var chooseFile: () -> Unit = {}
 
-    companion object {
-        private const val DOTS_M = 1 or (1 shl 2) or (1 shl 3)
+    /** Where the next of [lines] starting with the cell's letter is, after [from]; a letter alone in a combo box. */
+    fun findIn(lines: List<String>, from: Int, dots: Int): Int? {
+        val letter = brailleLetter(dots.toUByte()) ?: return null
+        return firstLetter(lines, BooleanArray(lines.size), from.coerceAtLeast(0).toUInt(), letter)?.toInt()
     }
 }
 
@@ -533,12 +564,56 @@ object BuildConfigDebug {
 }
 
 /** Tells Orbit's reader what the line editor did, as its own edit fields report. */
-private class EditOutput(private val reader: OrbitReader) : LineEditor.Output {
-    override fun focusEdit(name: String, content: String, cursor: Int) = reader.focusEdit(name, content, cursor)
+private class EditOutput(
+    private val reader: OrbitReader,
+    private val liblouis: Liblouis,
+    private val clipboard: ClipboardManager?,
+) : LineEditor.Output {
+    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) =
+        reader.focusEdit(name, content, cursor, line, multiline)
     override fun syncEdit(name: String, content: String, cursor: Int) = reader.editChanged(name, content, cursor, "field_opened")
-    override fun typed(character: Char, resolvedWord: String?) =
-        reader.characterTyped(character.toString(), "", character.isUpperCase(), resolvedWord ?: "")
-    override fun typedDots(cell: Int) = reader.speak(CellBuffer.dotNumbers(cell))
+
+    /**
+     * Sent as its name, the character itself left empty: the reader then says it by the person's
+     * character echo but keeps it out of the word it echoes, which would otherwise be made of the
+     * characters a contracted word's cells echoed. A space goes as itself, which ends no word now.
+     */
+    override fun typed(character: Char) = if (character == ' ') {
+        reader.characterTyped(" ", " ", false, null)
+    } else {
+        reader.characterTyped("", character.toString(), character.isUpperCase(), null)
+    }
+
+    /** Said as the reader says an echo, stopping what was being said. */
+    override fun word(word: String): Boolean {
+        if (!liblouis.echoesWords) return false
+        reader.speak(word)
+        return true
+    }
+
+    override fun cellName(cells: List<Int>, at: Int): String? =
+        orbitCellName(ByteArray(cells.size) { cells[it].toByte() }, at.toUInt())
+    override val contracted: Boolean get() = liblouis.contracted
+    override val computer: Boolean get() = liblouis.computer
+
+    override fun copy(text: String) {
+        clipboard?.setPrimaryClip(ClipData.newPlainText("Lumenna", text))
+    }
+
+    override fun paste(): String? = runCatching {
+        clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+    }.getOrNull()
+
+    override fun say(text: String) = reader.speak(text)
+    override val words: LineEditor.Words by lazy {
+        appWords.orbit.let {
+            LineEditor.Words(
+                it.dots, it.deleted, it.space, it.newLine, it.blank,
+                it.selectionStarted, it.selectionFinished, it.allSelected, it.nothingSelected, it.noTextSelected,
+                it.copied, it.cut, it.pasted,
+            )
+        }
+    }
     override fun candidate(character: Char, field: String) = reader.characterTyped(character.toString(), field, false, null)
     override fun edited(name: String, content: String, cursor: Int, change: String) = reader.editChanged(name, content, cursor, change)
     override fun playError() = reader.sound(OrbitReader.SOUND_ERROR)
@@ -551,9 +626,11 @@ private class EditOutput(private val reader: OrbitReader) : LineEditor.Output {
         reader.editChanged(name, content, cursor, "t9_mode_changed:$mode")
 }
 
-/** [text], with the Space chord that also runs it said after it on the Speak. */
-fun Ui.withLetter(text: String, letter: String?): String =
-    if (phoneKeypad || letter == null || letter !in "a".."z" || letter == "m" || letter.length != 1) text else "$text, $letter"
+/** [text], with the chord that also runs it said after it on the Speak. */
+fun Ui.withLetter(text: String, letter: String?): String {
+    val press = letter?.takeUnless { phoneKeypad }?.let(::speakPress) ?: return text
+    return "$text, $press"
+}
 
 /** A menu command's name in sentence case, by its id in the core's table. */
 fun titleOf(id: String): String = appWords.commands.firstOrNull { it.id == id }?.title ?: commandTitle(id)
