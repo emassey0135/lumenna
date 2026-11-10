@@ -29,11 +29,21 @@ sealed interface Key {
     /** Opens the row's own menu of actions: Enter-I, the device's "actions menu", or the Menu key. */
     data object Context : Key
     data object Help : Key
-    /** Says and shows the current item again: Space-R. */
+    /** Says and shows the current item again: Space-R or Space-C. */
     data object Repeat : Key
+    /** Says the character at the cursor in a line: Space-3-6, as the device's edit boxes have it. */
+    data object SayCharacter : Key
+    /** Says the word at the cursor in a line: Space-2-5. */
+    data object SayWord : Key
     data object Find : Key
     data object Options : Key
     data object Delete : Key
+    /** Deletes the word at the cursor in a line: Backspace-2-5, Alt-Backspace. */
+    data object DeleteWord : Key
+    /** Deletes the line shown at the cursor: Backspace-1-4 (C), Control-Backspace. */
+    data object DeleteLine : Key
+    /** Deletes the paragraph at the cursor: Backspace-1-3-4-6 or Backspace-2-3-5-6, Alt-Delete. */
+    data object DeleteParagraph : Key
     /** Stops speech: Space-7-8. */
     data object Silence : Key
     /** Space by itself: a check box or combo box's change, a space when typing. */
@@ -43,7 +53,7 @@ sealed interface Key {
     data object ScrollBack : Key
     /** Pans the display on, or moves to the next item at its end. */
     data object ScrollOn : Key
-    /** A routing key over [cell], from the left of the display. */
+    /** A routing key, or a touched cell and a front Cursor button, over [cell] from the left of the display. */
     data class Route(val cell: Int) : Key
     /** Space with these dots (bit 0 is dot 1): the letter's command, where it is not one above. */
     data class SpaceDots(val dots: Int) : Key

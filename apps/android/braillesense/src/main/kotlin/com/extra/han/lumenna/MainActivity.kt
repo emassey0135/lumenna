@@ -2,6 +2,7 @@ package com.extra.han.lumenna
 
 import android.Manifest
 import android.content.Intent
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -21,6 +22,7 @@ import com.extra.han.lumenna.device.HanOutputClient
 import com.extra.han.lumenna.device.Key
 import com.extra.han.lumenna.device.Louis
 import com.extra.han.lumenna.device.Qwerty
+import com.extra.han.lumenna.ui.CoreReadings
 import com.extra.han.lumenna.ui.Host
 import com.extra.han.lumenna.ui.Shell
 import com.extra.han.lumenna.ui.Speaker
@@ -64,7 +66,7 @@ class MainActivity : ComponentActivity(), Host {
 
     private val input: HanInputClient by lazy {
         HanInputClient(applicationContext) { code, value, data ->
-            keys.deliver(Chords.decode(code, value, data, settings.eightDot))
+            keys.deliver(Chords.decode(code, value, data, settings.eightDot, settings.doubleTapRoutes))
         }
     }
 
@@ -74,7 +76,7 @@ class MainActivity : ComponentActivity(), Host {
     /** Whether the keys and display are ours: resumed and focused, and nothing else. */
     private val front: Claim = Claim(
         take = {
-            settings.refresh()
+            rereadSettings()
             output.claim()
             input.claim()
             shell?.front()
@@ -87,6 +89,29 @@ class MainActivity : ComponentActivity(), Host {
         },
     )
     private var saving: SaveFile? = null
+
+    /**
+     * A global option changed, perhaps by its own hot key with the app in front (F2 with the Down
+     * scroll key is Control Information), which no focus change tells the app about.
+     */
+    private val settingsChanged = object : ContentObserver(main) {
+        override fun onChange(selfChange: Boolean) {
+            rereadSettings()
+            if (front.holding) shell?.redraw()
+        }
+    }
+
+    /**
+     * Reads the person's settings again. A box's text is read in the table it was typed in before
+     * the table can change (the G chord, or Global Options while away), and written again in the
+     * new one after: the device's own boxes follow the table so.
+     */
+    private fun rereadSettings() {
+        val before = settings.tables
+        shell?.settle()
+        settings.refresh()
+        if (settings.tables != before) shell?.retable()
+    }
 
     private val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
         val file = saving ?: return@registerForActivityResult
@@ -118,6 +143,7 @@ class MainActivity : ComponentActivity(), Host {
         }
         setContentView(screen)
         settings.refresh()
+        contentResolver.registerContentObserver(BrailleSettings.URI, true, settingsChanged)
         output.connect()
         lifecycleScope.launch(Dispatchers.IO) { Louis.install(applicationContext, BuildConfig.VERSION_NAME) }
         val opened = core.getOrElse { error ->
@@ -126,7 +152,7 @@ class MainActivity : ComponentActivity(), Host {
             return
         }
         Clock.update(this)
-        val shown = Shell(opened, speaker, translator, this, messageMillis = { settings.messageMillis }).apply {
+        val shown = Shell(opened, speaker, translator, this, CoreReadings(settings), messageMillis = { settings.messageMillis }, opensOnLetter = { settings.opensOnLetter }, echoSetting = { settings.echo }).apply {
             reminderAccess = { Reminders.access(this@MainActivity) }
         }
         shell = shown
@@ -188,6 +214,7 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun onDestroy() {
+        contentResolver.unregisterContentObserver(settingsChanged)
         input.release()
         output.disconnect()
         super.onDestroy()
@@ -225,6 +252,19 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun deviceName(): String = deviceName(this)
+
+    private val clipboards get() = getSystemService(android.content.ClipboardManager::class.java)
+
+    override fun clipboard(): String? = runCatching {
+        clipboards?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+    }.getOrNull()
+
+    override fun setClipboard(text: String?) {
+        val manager = clipboards ?: return
+        runCatching {
+            if (text == null) manager.clearPrimaryClip() else manager.setPrimaryClip(android.content.ClipData.newPlainText(applicationInfo.loadLabel(packageManager), text))
+        }
+    }
 
     companion object {
         const val PLATFORM = "android"

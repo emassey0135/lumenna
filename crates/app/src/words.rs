@@ -420,12 +420,56 @@ pub struct BrailleWords {
     pub finds_a_row: String,
     /// Its heading over the keys that move and open: "Moving and opening".
     pub moving: String,
-    /// What a menu item says after its name and letter, on a device whose menus read so.
-    pub pull_down: String,
-    /// A switch that is on, in a shell that says its state itself.
-    pub on: String,
-    /// A switch that is off, in a shell that says its state itself.
-    pub off: String,
+    /// Enter on what opens nothing: said, so that a press is never left unanswered.
+    pub opens_nothing: String,
+    /// The actions menu asked for on a row with none.
+    pub no_actions: String,
+    /// The screen of reminders due asked for with none due.
+    pub nothing_due: String,
+    /// A space, typed or erased, said by a device that says what is typed.
+    pub space: String,
+    /// What a BrailleSense's edit box says as it edits, in its own words.
+    pub edit_box: EditBoxWords,
+}
+
+/// What a BrailleSense's edit box says as it is edited: a new line, a line gone back over, and its
+/// selection and the clipboard, in the device's own words so that Lumenna's boxes sound like its own.
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EditBoxWords {
+    /// A new line typed with Enter: "Enter".
+    pub enter: String,
+    /// Backspace over a new line, back onto the line before: "previous line".
+    pub previous_line: String,
+    /// A line with nothing on it, moved to or read: "blank".
+    pub blank: String,
+    /// A selection started at the cursor: "Start Selection".
+    pub start_selection: String,
+    /// Everything selected: "Select All".
+    pub select_all: String,
+    /// A selection left with Escape: "Selection canceled."
+    pub selection_canceled: String,
+    /// The selection copied to the clipboard: "Copy complete".
+    pub copied: String,
+    /// The selection cut to the clipboard: "Cut".
+    pub cut: String,
+    /// The clipboard pasted at the cursor: "Paste".
+    pub pasted: String,
+    /// The selection added to what the clipboard holds: "Add To Clipboard".
+    pub appended: String,
+    /// The clipboard emptied: "Clear Clipboard".
+    pub clipboard_cleared: String,
+    /// The selection taken away with Backspace: "Delete complete."
+    pub deleted: String,
+    /// Copy, cut or read with nothing selected: "Block is not set."
+    pub nothing_selected: String,
+    /// Paste with nothing on the clipboard.
+    pub clipboard_empty: String,
+    /// Backspace-2-5 at the end of a line of a multi-line box, joining the next one on: "new
+    /// paragraph".
+    pub new_paragraph: String,
+    /// Asked before Backspace or Space-D takes a selection: "Delete selected text?"
+    pub delete_selected: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -860,9 +904,28 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
             letter_alone: c("A Letter by Itself"),
             finds_a_row: "Moves to the next row starting with that letter.".to_owned(),
             moving: c("Moving and Opening"),
-            pull_down: "pull down".to_owned(),
-            on: c("On"),
-            off: c("Off"),
+            opens_nothing: "Nothing to open here.".to_owned(),
+            no_actions: "No actions on this row.".to_owned(),
+            nothing_due: "No reminders are due.".to_owned(),
+            space: c("Space"),
+            edit_box: EditBoxWords {
+                enter: c("Enter"),
+                previous_line: "previous line".to_owned(),
+                blank: "blank".to_owned(),
+                start_selection: c("Start Selection"),
+                select_all: c("Select All"),
+                selection_canceled: "Selection canceled.".to_owned(),
+                copied: c("Copy Complete"),
+                cut: c("Cut"),
+                pasted: c("Paste"),
+                appended: c("Add to Clipboard"),
+                clipboard_cleared: c("Clear Clipboard"),
+                deleted: "Delete complete.".to_owned(),
+                nothing_selected: "Block is not set.".to_owned(),
+                clipboard_empty: "The clipboard is empty.".to_owned(),
+                new_paragraph: "new paragraph".to_owned(),
+                delete_selected: "Delete selected text?".to_owned(),
+            },
         },
         yes_no: lumenna_records::fields::yes_no(),
 
@@ -1235,26 +1298,37 @@ pub struct DeviceKey {
 pub fn braillesense_keys() -> Vec<DeviceKey> {
     let row = |keys: &str, what: &str| DeviceKey { keys: keys.to_owned(), what: what.to_owned() };
     vec![
-        row("Space-1 or the Up scroll key", "Previous row, or back through a long line"),
-        row("Space-4 or the Down scroll key", "Next row, or on through a long line"),
+        row("Space-1 or the Up scroll key", "Previous row or option, or back through a long line"),
+        row("Space-4 or the Down scroll key", "Next row or option, or on through a long line"),
         row("Space-1-2-3, Space-4-5-6", "First and last row"),
         row("Space-1-2-6, Space-3-4-5", "Previous and next page of 32 rows"),
         row("A letter by itself", "The next row beginning with it"),
         row("Enter", "Open the row, press the button"),
-        row("Space-M or F2", "The program's menus"),
+        row("Space-M or F2", "The menu bar"),
         row("Enter-I, or the Application key", "The row's own actions"),
-        row("Space-E or F4", "Close, go back"),
+        row("Space-3, Space-6", "Collapse and expand the row"),
+        row("Space-E or F4", "Close, go back, or up one level of a menu"),
         row("Space-Z", "Exit Lumenna"),
-        row("Space-4-5 or F3, Space-1-2", "Next and previous control in a dialog"),
-        row("Space", "Change a check box, a combo box, or mark a task done"),
+        row("Space-4-5 or F3, Space-1-2 or Space-F3", "Next and previous control in a dialog"),
+        row("Space", "Change a check box, a combo box, a prompt button, or mark a task done"),
         row("Space with a letter", "The row's command of that letter, or the screen's"),
-        row("Enter with a letter", "The same, for A, B, D, E, F, H, K, L, M, O, R and Z, which Space keeps for moving and the device"),
+        row("Enter with a letter", "The same, for A, B, C, D, E, F, H, K, L, M, O, R and Z, which Space keeps for moving and the device"),
         row("Enter-A", "New task"),
         row("Space-U, Space-Y", "Undo and redo"),
         row("Space-F", "Filter the list"),
         row("Space-D", "Delete the row"),
         row("Space-H, or F1 on the QWERTY keyboard", "These keys"),
         row("Space-O", "Settings"),
-        row("Space-R", "Say the row again"),
+        row("Space-R or Space-C", "Say the row again"),
+        row("Space-3-6, Space-2-5", "In a line of text, say the character and the word at the cursor"),
+        row("Enter-B, Enter-A", "In a line of text, start a selection at the cursor, or select everything"),
+        row("Enter-C, Enter-X, Enter-V", "Copy, cut and paste"),
+        row("Enter-P, Enter-D", "Add the selection to the clipboard, clear the clipboard"),
+        row("Backspace-1-2, Enter-U", "Read the selection, and the first line of it"),
+        row("Space-D, Backspace-2-5", "In a line of text, delete the character or the word at the cursor"),
+        row("Backspace-1-4, Backspace-1-3-4-6", "Delete the line shown at the cursor, or the whole paragraph"),
+        row("Enter in a multi-line box", "A new line; Tab leaves the box"),
+        row("Space-1, Space-4 in a multi-line box", "The line above and below"),
+        row("A cell touched and a front Cursor button", "Move the cursor in a line of text to that cell"),
     ]
 }

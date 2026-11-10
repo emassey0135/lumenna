@@ -291,7 +291,12 @@ directly (8805659 is the last commit before the move). How the app works inside 
   Space with one; on the Orbit Speak and the BrailleSense, Space with the letter is the command
   (the BrailleSense's Enter with it, where the device keeps Space's) and the letter alone moves.
   A device reporting dots turns them into a letter by `braille_letter`, the core's own a to z and
-  never the person's table: dot 7 or 8 in a chord is no letter. Erase Permanently has no letter.
+  never the person's table: dot 7 or 8 in a chord is no letter. Erase Permanently has no letter. How a device with its own controls reads a line (its role in
+  speech and on the cells, where its settings put it, a shortcut letter, a sign for a dialog or a
+  submenu, a control's label and place) is `braille::device_reading`, the words and the order
+  being the core's; the device's settings and its braille code's signs are the shell's to hand in.
+  A braille device's menu bar is the shared one with its letters (`braille::menu_bar`, over
+  `keys::MENUS`), and what a letter gives where none is set is `braille::menu_shortcuts`.
 - **What a shell that speaks for itself needs is the core's** (`lumenna_app::screen`,
   `Turn::described`, `App::screen_view`): what is shown (a list with its name, the row in hand's
   line, its place, "3 of 12", and its actions with their letters; a question with its prompt,

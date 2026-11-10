@@ -26,6 +26,12 @@ interface Output {
 
     /** How many cells the display has, once known: the layout of panning waits on it. */
     val width: Int
+
+    /**
+     * The cursor as the device's edit box shows a selection under way: its selection shape,
+     * blinking, while [selecting], and the plain cursor again after. The extent is not drawn.
+     */
+    fun selecting(selecting: Boolean) {}
 }
 
 /**
@@ -63,9 +69,11 @@ class HanOutputClient(context: Context) : Output {
     /** On the worker: makes the claim good, if it still stands. */
     private fun take(output: IHanOutputService) = synchronized(claim) {
         if (!claimed) return@synchronized
+        // One switch for the whole device, never left off: see [release].
         output.setActiveOutputService(true)
         measure(output)
         lastCells?.let { (cells, cursor) -> sendCells(output, cells, cursor) }
+        sendCursor(output)
     }
 
     /** Asks the service how wide the line is: it wraps a long word at its own width. */
@@ -100,12 +108,15 @@ class HanOutputClient(context: Context) : Output {
 
     /**
      * Gives the display and speech back, now and on the caller's thread, safe to call at any time
-     * and any number of times. Not queued on the worker: the next app claims the display as it
-     * comes to the front, and a release that landed after its claim would take the display from it.
+     * and any number of times. Not queued on the worker, so that nothing of ours lands after the
+     * next app has started to write.
+     *
+     * `setActiveOutputService` is not touched: it is one switch for every client of the service,
+     * and every HIMS app checks it before it speaks or writes a cell, so turning it off here would
+     * silence the launcher and leave our last line on the display. The next app simply writes.
      */
     fun release() = synchronized(claim) {
         claimed = false
-        link.now("setActiveOutputService") { it.setActiveOutputService(false) }
         link.now("stopTTS") { it.stopTTS() }
     }
 
@@ -134,6 +145,19 @@ class HanOutputClient(context: Context) : Output {
     /** On the worker, and only if the display is still ours when its turn comes. */
     private fun whileClaimed(what: String, block: (IHanOutputService) -> Unit) = link.call(what) { service ->
         synchronized(claim) { if (claimed) block(service) }
+    }
+
+    @Volatile private var selection = false
+
+    override fun selecting(selecting: Boolean) {
+        selection = selecting
+        whileClaimed("cursor") { sendCursor(it) }
+    }
+
+    /** The stock edit box's cursor types: 0 the plain one, 2 a selection's, which it blinks. */
+    private fun sendCursor(output: IHanOutputService) {
+        output.brailleCursorType(if (selection) 2 else 0)
+        output.brailleCursorBlinkOn(selection)
     }
 
     private fun sendCells(output: IHanOutputService, cells: ByteArray, cursor: Int) {

@@ -8,7 +8,7 @@ use lumenna_app::Capitals;
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::LetterCommand;
+use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LetteredMenu, LineSettings, MenuShortcut};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
 use lumenna_records::{ActionKind, Candidate};
@@ -124,6 +124,31 @@ pub fn level_words(depth: u32) -> String {
 #[export]
 pub fn braillesense_keys() -> Vec<w::DeviceKey> {
     w::braillesense_keys()
+}
+
+/// A line as a device with its own controls reads it.
+#[export]
+pub fn device_reading(line: DeviceLine, settings: LineSettings, signs: BrailleSigns) -> DeviceReading {
+    lumenna_app::braille::device_reading(&line, settings, &signs)
+}
+
+/// The letter each of a menu's items shows, empty for one with none.
+#[export]
+pub fn menu_shortcuts(items: Vec<MenuShortcut>) -> Vec<String> {
+    lumenna_app::braille::menu_shortcuts(&items)
+}
+
+/// The shared menu bar on a braille device, each with its letter, under the place shown or (with
+/// no place) over `main`, the list of places.
+#[export]
+pub fn braille_menu_bar(place: Option<Place>, main: bool, sentence: bool) -> Vec<LetteredMenu> {
+    lumenna_app::braille::menu_bar(place.as_ref(), main, sentence)
+}
+
+/// What opens a dialog says.
+#[export]
+pub fn dialog_title(title: String) -> String {
+    lumenna_app::braille::dialog_title(&title)
 }
 
 /// How long, in words: "1 hour 30 minutes".
@@ -409,6 +434,21 @@ pub fn lasts(minutes: u32) -> String {
 #[export]
 pub fn braille_letter(dots: u8) -> Option<String> {
     lumenna_app::braille::braille_letter(dots).map(|letter| letter.to_string())
+}
+
+/// What the BrailleSense says for one cell of a line by itself, as its own edit boxes do: `word`
+/// the cells of the word it is in (dot 1 bit 0) and `at` where in it the cell is. The BrailleSense's
+/// convention alone: no other device's app uses it.
+#[export]
+pub fn braillesense_cell_echo(word: Vec<u8>, at: u32, contracted: bool) -> String {
+    lumenna_app::braille::braillesense::cell_echo(&word, at as usize, contracted)
+}
+
+/// What the BrailleSense says for one character by itself, as in computer braille: a punctuation
+/// mark by its name. The BrailleSense's convention alone.
+#[export]
+pub fn braillesense_character_echo(character: String) -> String {
+    lumenna_app::braille::braillesense::character_echo(&character)
 }
 
 /// Where the next line starting with `letter` is, from the line after `from` on, wrapping round

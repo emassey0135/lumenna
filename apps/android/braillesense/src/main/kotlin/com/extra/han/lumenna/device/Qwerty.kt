@@ -6,7 +6,9 @@ import android.view.KeyEvent
  * The snap-on QWERTY keyboard, which is an ordinary keyboard to Android: what its keys mean, by
  * the table in the manual's Common Commands (arrows and Home/End for moving, Escape, Tab, F1 for
  * help, Alt for the menus, the Application key for a row's own menu; Control is Enter's hotkeys
- * and Control-Shift Space's commands).
+ * and Control-Shift Space's commands). In a line of text Delete takes the character at the cursor,
+ * Alt-Backspace the word, Control-Backspace the line and Alt-Delete the paragraph, and Control-Insert
+ * and Control-Delete add to and clear the clipboard, by the command summary's QWERTY table.
  */
 object Qwerty {
     /** A key press as a [Key], or null where it means nothing here. [char] is the key's character. */
@@ -26,8 +28,17 @@ object Qwerty {
             KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> Key.Enter
             KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BACK -> Key.Escape
             KeyEvent.KEYCODE_TAB -> if (shift) Key.ShiftTab else Key.Tab
-            KeyEvent.KEYCODE_DEL -> Key.Backspace
-            KeyEvent.KEYCODE_FORWARD_DEL -> Key.Delete
+            KeyEvent.KEYCODE_DEL -> when {
+                ctrl -> Key.DeleteLine
+                alt -> Key.DeleteWord
+                else -> Key.Backspace
+            }
+            KeyEvent.KEYCODE_FORWARD_DEL -> when {
+                alt -> Key.DeleteParagraph
+                ctrl -> Key.EnterLetter('d')
+                else -> Key.Delete
+            }
+            KeyEvent.KEYCODE_INSERT -> if (ctrl) Key.EnterLetter('p') else null
             KeyEvent.KEYCODE_F1 -> Key.Help
             KeyEvent.KEYCODE_F2 -> Key.Menu
             KeyEvent.KEYCODE_F3 -> if (shift) Key.ShiftTab else Key.Tab
