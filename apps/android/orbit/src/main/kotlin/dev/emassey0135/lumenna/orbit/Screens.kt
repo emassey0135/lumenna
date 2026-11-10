@@ -476,6 +476,7 @@ abstract class EditScreen : DialogScreen() {
 
     /** On the Player, where the line is the whole screen. */
     fun describe() {
+        ui.liblouis.follow()
         editor.focus()
         // After the field's name: what Orbit is told goes through its event queue, speech does not.
         if (hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { ui.reader.speakQueued(hint) }

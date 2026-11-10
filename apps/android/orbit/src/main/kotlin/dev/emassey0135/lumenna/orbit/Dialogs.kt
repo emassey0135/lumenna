@@ -25,6 +25,8 @@ sealed class Control(val key: String, val offered: List<Offered>, val on: Acting
         val changed: (String, Int) -> Unit = { _, _ -> },
         val completing: (() -> Boolean)? = null,
         val complete: () -> Unit = {},
+        /** Several lines: dot 8 starts a new one, Tab leaves it. */
+        val multiline: Boolean = false,
         offered: List<Offered> = emptyList(),
         on: ActingOn? = null,
     ) : Control(key, offered, on) {
@@ -119,6 +121,7 @@ abstract class DialogScreen : ListScreen() {
             cancelled = ::cancelDialog,
             completing = control.completing,
             complete = control.complete,
+            multiline = control.multiline,
         )
         editors[control.key] = Editing(editor, control.value)
         return editor
@@ -249,6 +252,7 @@ abstract class DialogScreen : ListScreen() {
         if (!newlyShown && why != Why.Moved && why != Why.Entered && !moved) return
         when (control) {
             is Control.Line -> {
+                ui.liblouis.follow()
                 editorFor(control).focus()
                 if (control.hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { ui.reader.speakQueued(control.hint) }
             }
@@ -261,7 +265,7 @@ abstract class DialogScreen : ListScreen() {
             }
             is Control.Check -> ui.reader.focusCheck(control.name, control.checked)
             is Control.Button -> ui.reader.focusControl(control.title, OrbitReader.ROLE_BUTTON)
-            is Control.Note -> ui.reader.focusControl(control.text, OrbitReader.ROLE_TEXT_BOX)
+            is Control.Note -> ui.reader.focusText(control.text)
         }
     }
 

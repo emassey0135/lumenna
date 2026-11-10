@@ -76,6 +76,47 @@ class CellBuffer(private val translate: Translator) {
         caret++
     }
 
+    /** A new line in a field of several: the word committed, then the line ended. */
+    fun newLine() {
+        flush()
+        text.insert(caret, '\n')
+        caret++
+    }
+
+    /** The line the caret is on, without its end. */
+    fun line(): String {
+        flush()
+        return text.substring(lineStart(caret), lineEnd(caret))
+    }
+
+    /** The caret to the line before or after, at the same column or the line's end; the line, or null at an end. */
+    fun moveLine(delta: Int): String? {
+        flush()
+        val start = lineStart(caret)
+        val column = caret - start
+        val target = if (delta < 0) {
+            if (start == 0) return null
+            lineStart(start - 1)
+        } else {
+            val end = lineEnd(caret)
+            if (end >= text.length) return null
+            end + 1
+        }
+        caret = (target + column).coerceAtMost(lineEnd(target))
+        return text.substring(target, lineEnd(target))
+    }
+
+    /** The caret to the start or end of its line; the line. */
+    fun moveLineEdge(start: Boolean): String {
+        flush()
+        caret = if (start) lineStart(caret) else lineEnd(caret)
+        return text.substring(lineStart(caret), lineEnd(caret))
+    }
+
+    private fun lineStart(position: Int): Int = text.lastIndexOf("\n", position - 1).let { if (it < 0) 0 else it + 1 }
+
+    private fun lineEnd(position: Int): Int = text.indexOf("\n", position).let { if (it < 0) text.length else it }
+
     /** What deleting took: a cell off the word, a character off the text, or nothing at the start. */
     fun backspace(): Deleted {
         if (word.isNotEmpty()) {
@@ -108,11 +149,11 @@ class CellBuffer(private val translate: Translator) {
         flush()
         var position = caret
         if (delta < 0) {
-            while (position > 0 && text[position - 1] == ' ') position--
-            while (position > 0 && text[position - 1] != ' ') position--
+            while (position > 0 && text[position - 1].isWhitespace()) position--
+            while (position > 0 && !text[position - 1].isWhitespace()) position--
         } else {
-            while (position < text.length && text[position] != ' ') position++
-            while (position < text.length && text[position] == ' ') position++
+            while (position < text.length && !text[position].isWhitespace()) position++
+            while (position < text.length && text[position].isWhitespace()) position++
         }
         if (position == caret) return null
         caret = position
@@ -128,7 +169,7 @@ class CellBuffer(private val translate: Translator) {
 
     private fun wordAt(position: Int): String {
         var end = position
-        while (end < text.length && text[end] != ' ') end++
+        while (end < text.length && !text[end].isWhitespace()) end++
         return text.substring(position, end)
     }
 

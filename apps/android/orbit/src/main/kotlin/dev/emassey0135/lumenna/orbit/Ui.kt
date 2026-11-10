@@ -508,8 +508,9 @@ class Ui(
         cancelled: () -> Unit,
         completing: (() -> Boolean)? = null,
         complete: () -> Unit = {},
+        multiline: Boolean = false,
     ): LineEditor = LineEditor(
-        name, initial, phoneKeypad, EditOutput(reader), CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
+        name, initial, phoneKeypad, EditOutput(reader), multiline, CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
         this,
         timeoutMs = { reader.characterCommitTimeout.toLong() },
         commitFeedback = { reader.characterCommitFeedback },
@@ -555,11 +556,15 @@ object BuildConfigDebug {
 
 /** Tells Orbit's reader what the line editor did, as its own edit fields report. */
 private class EditOutput(private val reader: OrbitReader) : LineEditor.Output {
-    override fun focusEdit(name: String, content: String, cursor: Int) = reader.focusEdit(name, content, cursor)
+    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) =
+        reader.focusEdit(name, content, cursor, line, multiline)
     override fun syncEdit(name: String, content: String, cursor: Int) = reader.editChanged(name, content, cursor, "field_opened")
     override fun typed(character: Char, resolvedWord: String?) =
         reader.characterTyped(character.toString(), "", character.isUpperCase(), resolvedWord ?: "")
-    override fun typedDots(cell: Int) = reader.speak(CellBuffer.dotNumbers(cell))
+    override fun say(text: String) = reader.speak(text)
+    override val words: LineEditor.Words by lazy {
+        appWords.orbit.let { LineEditor.Words(it.dots, it.deleted, it.space, it.newLine, it.blank) }
+    }
     override fun candidate(character: Char, field: String) = reader.characterTyped(character.toString(), field, false, null)
     override fun edited(name: String, content: String, cursor: Int, change: String) = reader.editChanged(name, content, cursor, change)
     override fun playError() = reader.sound(OrbitReader.SOUND_ERROR)

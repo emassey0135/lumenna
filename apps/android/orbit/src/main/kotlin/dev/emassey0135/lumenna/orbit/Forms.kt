@@ -74,7 +74,7 @@ private fun control(
 ): Control = if (options.isNotEmpty()) {
     Control.Choosing("field-${field.key}", field.label, options.options(), value, set, offered = offered, on = on)
 } else {
-    Control.Line("field-${field.key}", field.label, value, field.hint, set, offered = offered, on = on)
+    Control.Line("field-${field.key}", field.label, value, field.hint, set, multiline = field.kind == FieldKind.LINES, offered = offered, on = on)
 }
 
 /** The details of a task: its form's fields, its lines, its Save and Cancel, its actions a menu away. */
@@ -99,11 +99,9 @@ class DetailsScreen(private val id: String) : DialogScreen() {
         return true
     }
 
-    /** Back saves what changed first, on the Player; refused, it stays here to be put right. */
+    /** Back is Cancel, on both: what was typed is thrown away, never saved. */
     override fun beforeBack(): Boolean {
-        if (ui.view.details?.dirty != true) return false
-        saving = true
-        ui.send(ShellEvent.Details(DetailsEvent.Save))
+        cancelDialog()
         return true
     }
 
@@ -136,12 +134,8 @@ class DetailsScreen(private val id: String) : DialogScreen() {
             ui.lines?.details.orEmpty().forEachIndexed { index, line ->
                 add(Control.Note("line-$index", line.text, offered, on))
             }
-            if (inPlace) {
-                add(Control.Button("save", appWords.details.save, default = true) { confirmDialog() })
-                add(Control.Button("cancel", appWords.cancel) { cancelDialog() })
-            } else if (details.dirty) {
-                add(Control.Button("save", titleOf("save-task")) { ui.send(ShellEvent.Details(DetailsEvent.Save)) })
-            }
+            add(Control.Button("save", appWords.details.save, default = true) { confirmDialog() })
+            add(Control.Button("cancel", appWords.cancel) { cancelDialog() })
         }
     }
 

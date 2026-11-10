@@ -461,6 +461,17 @@ pub struct OrbitWords {
     pub speak_keys: Vec<String>,
     /// Its key help's heading over the commands pressed with Dot 8: "Dot 8 with a letter".
     pub with_dot_8: String,
+    /// The Speak's typing echo, as Orbit's own fields and Satellite's say it, never another
+    /// device's cell names: a cell that makes no character yet, `%s` its dots, "dot 1 2 6".
+    pub dots: String,
+    /// What was deleted, `%s` it: "h deleted", "dot 6 deleted".
+    pub deleted: String,
+    /// A space, typed or deleted.
+    pub space: String,
+    /// A new line, typed or deleted.
+    pub new_line: String,
+    /// Deleting with nothing before the caret.
+    pub blank: String,
     /// The Player's keys, a sentence each, for its key help.
     pub player_keys: Vec<String>,
 }
@@ -730,6 +741,11 @@ fn orbit_words() -> OrbitWords {
             "While typing, Space with Z cancels, and Down offers what could come next.",
         ]),
         with_dot_8: "Dot 8 with a letter".to_owned(),
+        dots: "dot %s".to_owned(),
+        deleted: "%s deleted".to_owned(),
+        space: "space".to_owned(),
+        new_line: "new line".to_owned(),
+        blank: "blank".to_owned(),
         player_keys: lines(&[
             "Up and Down move through the list. Held, they go to its ends.",
             "OK opens the row. Right opens a folded row first, and Left folds an open one or goes back out of a list, never a dialog.",

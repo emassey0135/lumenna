@@ -188,23 +188,34 @@ class OrbitReader(context: Context, private val listener: Listener) {
     fun contextMenuClosed() = tell("onContextMenuClosed") { it.onContextMenuClosed(Bundle()) }
 
     /** An edit box (role 6), so Orbit says the field and its review commands read its text. */
-    fun focusEdit(name: String, content: String, cursor: Int) = tell("onFocusChanged") {
+    fun focusEdit(name: String, content: String, cursor: Int, line: String = content, multiline: Boolean = false) = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", name)
             putInt("roleId", ROLE_EDIT_BOX)
             putString("content", content)
-            putString("currentLine", content)
+            putString("currentLine", line)
             putInt("cursorPosition", cursor)
-            putBoolean("isMultiline", false)
+            // Orbit then says "Multiline" itself, as of its own fields.
+            putBoolean("isMultiline", multiline)
             putBoolean("isReadonly", false)
         })
     }
 
-    /** A button (role 1), a read-only line (role 7): Orbit says its name and what it is. */
+    /** A button (role 1): Orbit says its name and what it is. */
     fun focusControl(name: String, role: Int) = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", name)
             putInt("roleId", role)
+        })
+    }
+
+    /** A read-only line (role 7): Orbit reads its content, which is all there is of it. */
+    fun focusText(content: String) = tell("onFocusChanged") {
+        it.onFocusChanged(Bundle().apply {
+            putString("name", "")
+            putInt("roleId", ROLE_TEXT_BOX)
+            putString("content", content)
+            putBoolean("isReadonly", true)
         })
     }
 

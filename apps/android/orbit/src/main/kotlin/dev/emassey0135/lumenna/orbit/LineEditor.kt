@@ -15,6 +15,8 @@ class LineEditor(
     initial: String,
     private val phoneKeypad: Boolean,
     private val output: Output,
+    /** A field of several lines (the task's notes): dot 8 starts a new line, Up and Down move by line. */
+    private val multiline: Boolean,
     translate: CellBuffer.Translator,
     later: T9Input.Later,
     private val timeoutMs: () -> Long,
@@ -28,12 +30,12 @@ class LineEditor(
 ) {
     /** What the reader is told. Calls go in the order they happen. */
     interface Output {
-        fun focusEdit(name: String, content: String, cursor: Int)
+        fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean)
         fun syncEdit(name: String, content: String, cursor: Int)
         /** The Speak's cell echo: the character it made. */
         fun typed(character: Char, resolvedWord: String?)
-        /** A cell that made no character yet: its dots, read. */
-        fun typedDots(cell: Int)
+        /** Said as it is, cutting off what was being said: Satellite's echo of dots and deletions. */
+        fun say(text: String)
         /** A T9 candidate offered. */
         fun candidate(character: Char, field: String)
         fun edited(name: String, content: String, cursor: Int, change: String)
@@ -41,7 +43,12 @@ class LineEditor(
         /** Feedback on a commit timeout: sound, speech, vibration by the person's setting. */
         fun commitFeedback(character: Char, mode: Int)
         fun modeChanged(name: String, content: String, cursor: Int, mode: String)
+        /** The words the echo is said in: the core's (`OrbitWords`). */
+        val words: Words
     }
+
+    /** The Speak's echo words, each `%s` filled in. */
+    class Words(val dots: String, val deleted: String, val space: String, val newLine: String, val blank: String)
 
     private val buffer = CellBuffer(translate).apply { set(initial) }
     private val t9 = T9Input(T9Host(), later)
@@ -59,7 +66,7 @@ class LineEditor(
     /** Opens the field: Orbit says it and its text, and takes its copy to diff from. */
     fun focus() {
         val text = buffer.display()
-        output.focusEdit(name, text, buffer.caret)
+        output.focusEdit(name, text, buffer.caret, if (multiline) buffer.line() else text, multiline)
         output.syncEdit(name, text, buffer.caret)
     }
 
@@ -89,11 +96,16 @@ class LineEditor(
             is Key.Cell -> inputCell(key.dots)
             Key.Space -> space()
             Key.Dot7 -> backspace()
-            Key.Dot8, Key.Select -> confirm()
+            Key.Dot8, Key.Select -> if (multiline) newLine() else confirm()
             Key.Left -> moveCharacter(-1)
             Key.Right -> moveCharacter(1)
-            Key.Down -> if (completing?.invoke() == true) complete() else moveEdge(false)
-            Key.Up, Key.First -> moveEdge(true)
+            Key.Down -> when {
+                completing?.invoke() == true -> complete()
+                multiline -> moveLine(1)
+                else -> moveEdge(false)
+            }
+            Key.Up -> if (multiline) moveLine(-1) else moveEdge(true)
+            Key.First -> moveEdge(true)
             Key.Last -> moveEdge(false)
             Key.Escape -> cancel()
             is Key.Enter -> inputCell(key.dots or DOT8)
@@ -102,8 +114,8 @@ class LineEditor(
                 DOT6 -> moveCharacter(1)
                 DOT2 -> moveWord(-1)
                 DOT5 -> moveWord(1)
-                DOTS13 -> moveEdge(true)
-                DOTS46 -> moveEdge(false)
+                DOTS13 -> if (multiline) moveLineEdge(true) else moveEdge(true)
+                DOTS46 -> if (multiline) moveLineEdge(false) else moveEdge(false)
                 DOTS_ALL -> cancel()
                 else -> return false
             }
@@ -157,7 +169,7 @@ class LineEditor(
     private fun inputCell(cell: Int) {
         when (val echo = buffer.type(cell)) {
             is CellBuffer.Echo.Character -> output.typed(echo.character, null)
-            is CellBuffer.Echo.Dots -> output.typedDots(echo.cell)
+            is CellBuffer.Echo.Dots -> output.say(output.words.dots.replace("%s", CellBuffer.dotNumbers(echo.cell)))
         }
         // Orbit's copy of the field follows silently, so its review commands read what is typed.
         output.syncEdit(name, buffer.display(), buffer.caret)
@@ -174,17 +186,50 @@ class LineEditor(
         changed(after, buffer.caret)
     }
 
+    /** As Satellite's field: a cell off the word says what it alone makes, else its dots; a character says itself. */
     private fun backspace() {
-        when (val deleted = buffer.backspace()) {
+        val words = output.words
+        val gone = when (val deleted = buffer.backspace()) {
             CellBuffer.Deleted.Nothing -> {
-                output.playError()
+                output.say(words.blank)
                 return
             }
-            else -> {
-                output.edited(name, buffer.display(), buffer.caret, "character_deleted")
-                changed(buffer.display(), buffer.caret)
+            is CellBuffer.Deleted.Cell -> deleted.translated.ifEmpty { words.dots.replace("%s", CellBuffer.dotNumbers(deleted.cell)) }
+            is CellBuffer.Deleted.Character -> when (deleted.character) {
+                ' ' -> words.space
+                '\n' -> words.newLine
+                else -> deleted.character.toString()
             }
         }
+        output.say(words.deleted.replace("%s", gone))
+        // Orbit's copy follows silently, so its review commands read what is left.
+        output.syncEdit(name, buffer.display(), buffer.caret)
+        changed(buffer.display(), buffer.caret)
+    }
+
+    private fun newLine() {
+        buffer.newLine()
+        output.say(output.words.newLine)
+        output.syncEdit(name, buffer.display(), buffer.caret)
+        changed(buffer.display(), buffer.caret)
+    }
+
+    /** Up and Down in a field of several lines: Orbit says the line reached, as its Editor's do. */
+    private fun moveLine(delta: Int) {
+        val line = buffer.moveLine(delta)
+        if (line == null) {
+            output.playError()
+            output.edited(name, buffer.display(), buffer.caret, if (delta < 0) "boundary_start" else "boundary_end")
+            return
+        }
+        output.edited(name, line, buffer.caret, "line_navigation")
+        output.syncEdit(name, buffer.display(), buffer.caret)
+    }
+
+    private fun moveLineEdge(start: Boolean) {
+        val line = buffer.moveLineEdge(start)
+        output.edited(name, line, buffer.caret, "line_navigation")
+        output.syncEdit(name, buffer.display(), buffer.caret)
     }
 
     private fun moveCharacter(delta: Int) {

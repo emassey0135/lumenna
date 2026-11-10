@@ -3,6 +3,8 @@ package dev.emassey0135.lumenna.orbit
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.orbit.liblouisservice.ILiblouisServiceInterface
 import dev.emassey0135.lumenna.braille.ServiceLink
@@ -17,12 +19,28 @@ import java.nio.charset.StandardCharsets
  * Orbit's own apps read them. Each cell goes to the service as `0x8000 | dots`. The Player has
  * no braille keys and no translator: [translate] says nothing there. Ported from the Satellite
  * launcher (`LiblouisClient`, Apache-2.0, the same author's).
+ *
+ * The screen reader's G chord changes the selection mode in Orbit's settings, which tell no app but
+ * Orbit's own (their provider needs Orbit's signature to watch, and the screen reader's settings
+ * callback is only for its own settings). The settings app hands the new table to the liblouis
+ * service, though, so [follow] asks the service which table it holds now (as a line is reached and
+ * the app comes back), and a change there reads the table again through root. A table read that
+ * differs calls [changed] on the main thread.
  */
 class Liblouis(context: Context) {
     private val context = context.applicationContext
 
     @Volatile
     private var table = DEFAULT_TABLE
+
+    /** The table read is another one now: what is shown is drawn again. On the main thread. */
+    var changed: () -> Unit = {}
+
+    private val main = Handler(Looper.getMainLooper())
+
+    /** What the liblouis service last said it holds. */
+    @Volatile
+    private var held: String? = null
 
     private val link = ServiceLink(
         context,
@@ -45,6 +63,36 @@ class Liblouis(context: Context) {
 
     fun unbind() = link.unbind()
 
+    /** Reads the table again if the liblouis service holds another than it last did. Off the main thread. */
+    fun follow() {
+        if (!available) return
+        Thread({
+            val now = serviceTable() ?: return@Thread
+            val before = held
+            held = now
+            if (before != null && before != now) readTable()
+        }, "lumenna-braille-follow").start()
+    }
+
+    /**
+     * The table the liblouis service holds: its transaction 5 (`getCurrentInputTable`), answered with
+     * a table whose first field is its file name. Called by number, the AIDL here declaring only the
+     * calls before it.
+     */
+    private fun serviceTable(): String? = link.ask(null) { service ->
+        val data = android.os.Parcel.obtain()
+        val reply = android.os.Parcel.obtain()
+        try {
+            data.writeInterfaceToken(DESCRIPTOR)
+            service.asBinder().transact(GET_CURRENT_INPUT_TABLE, data, reply, 0)
+            reply.readException()
+            if (reply.readInt() != 0) reply.readString() else null
+        } finally {
+            data.recycle()
+            reply.recycle()
+        }
+    }
+
     /** Reads the person's table again, as Orbit said a setting changed. Off the main thread. */
     fun refresh() {
         if (!available) return
@@ -64,8 +112,10 @@ class Liblouis(context: Context) {
             "computer" in mode -> "key_computer_braille_input_table"
             else -> "key_contracted_braille_input_table"
         }
+        val before = table
         values[key]?.takeIf { it.isNotEmpty() }?.let { table = it }
-        Log.d(TAG, "braille input table = $table")
+        Log.d(TAG, "braille input table = $table, the service holding ${held ?: serviceTable()}")
+        if (table != before) main.post { changed() }
     }
 
     /** Translates [cells] in the person's table at liblouis [mode]; null when it cannot say. */
@@ -79,6 +129,8 @@ class Liblouis(context: Context) {
         const val TAG = "LumennaOrbit"
         const val SETTINGS = "content://com.orbit.settings.provider/preferences/"
         const val DEFAULT_TABLE = "en-ueb-g2.ctb"
+        const val DESCRIPTOR = "com.orbit.liblouisservice.ILiblouisServiceInterface"
+        const val GET_CURRENT_INPUT_TABLE = 5
         val KEYS = listOf(
             "key_selection_mode",
             "key_contracted_braille_input_table",

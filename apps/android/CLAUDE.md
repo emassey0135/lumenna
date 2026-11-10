@@ -444,8 +444,23 @@ holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, r
 - **Dialogs on the Speak are Orbit's** (`Dialogs.kt`: `DialogScreen` and its `Control`s): a question, the task and block forms, a settings page, a typed line. Tab and Shift-Tab move between controls, each active as soon as it is reached, as in the Editor's Save As: a line types at once, Up and Down change a combo box or check box, Select presses a button or confirms the dialog. Space with E or Z cancels. Each is told to Orbit by its role. What is typed goes to the form on leaving the control. Editing dialogs end with their Confirm and Cancel, in the core's names: a question's `buttons`, the block form's `yes`, the task form's `details.save`, quick add's `add`, and `cancel`; the task form's Cancel is `DetailsEvent::Discard`. A setting is changed as it is changed, as on every platform, so a settings page has no Confirm. The Player has no Tab: the same `Control`s are its rows, a line or a choice opening its own screen.
 - **Typing** (`LineEditor`): the Speak's cell buffer through Orbit's liblouis service, one word at a
   time, mode 388 for each cell's echo and 132 at Space; the Player's multi-tap T9, ported from
-  Satellite's `T9Input`. Changes go to Orbit as edit-box changes, so it echoes them by the person's
-  own settings. The table comes from Orbit's settings through root (`Liblouis.readTable`).
+  Satellite's `T9Input`. The Speak's echo is Satellite's, in `OrbitWords` (never the BrailleSense's
+  `cell_echo`, since the Speak edits contracted braille its own way): a cell says the last character
+  its word now makes, or "dot" and its numbers (a capital sign is "dot 6"); dot 7 says what it took,
+  a cell of the word not yet committed by what that cell alone makes or its dots, a committed
+  character by itself ("space", "new line"), and "blank" at the start. Moves go to Orbit as
+  edit-box changes, so it says them by the person's own settings. A field of several lines (a
+  form's `FieldKind::Lines`, the task's notes) is an edit box Orbit calls multiline: dot 8 starts a
+  line, Up and Down move by line (`line_navigation`, Orbit saying the line), Space with dots 1 3
+  and 4 6 go to the line's ends, Tab leaves it, as in Orbit's Editor. The table comes from Orbit's
+  settings through root (`Liblouis.readTable`). The screen reader's G chord changes it there and
+  tells no app but Orbit's own: watching the settings provider needs Orbit's signature, and the
+  screen reader's settings callback is only for its own settings. The settings app hands the new
+  table to the liblouis service, though, so `Liblouis.follow` asks the service which table it
+  holds (its transaction 5, called by number) as a line is reached and as the app comes back, and
+  a change there reads the table again; a new table redraws what is shown.
+- **Back throws a form away, never saves it**, on both devices: the task form's Back is its Cancel
+  (`DetailsEvent::Discard`), and it saves only by its Save.
 - **Trying it**: nothing can press Orbit's keypad over adb, so a debug build takes keys over a
   broadcast (`DEBUG_KEY`, `am broadcast --es name DOWN --ei action 0 --ez long false --ez phone
   false`). What Orbit said is in its log (`setprop log.tag D`, then `olympus_SpeechManager`'s

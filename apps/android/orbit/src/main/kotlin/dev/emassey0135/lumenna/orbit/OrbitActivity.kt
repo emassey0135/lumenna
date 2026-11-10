@@ -84,6 +84,8 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         front = Front(this, core, "android").also { it.created() }
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
         reader.bind()
+        // A word half typed is shown again in the new table.
+        liblouis.changed = { ui.redraw(Why.Turn) }
         liblouis.bind()
         ui.push(HomeScreen())
         reminderTapped(intent)
@@ -94,6 +96,7 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
 
     override fun onResume() {
         super.onResume()
+        liblouis.follow()
         Clock.update(this)
         front?.resumed()
         reader.claim.resumed()
