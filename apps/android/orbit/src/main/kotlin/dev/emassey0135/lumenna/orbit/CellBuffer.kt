@@ -231,6 +231,9 @@ class CellBuffer(private val translate: Translator) {
         return extended
     }
 
+    /** Whether something is selected, without committing the word being typed. */
+    val hasSelection: Boolean get() = selectionStart >= 0 && selectionEnd >= 0 && selectionStart != selectionEnd
+
     /** What is selected, or null for nothing. */
     fun selected(): String? {
         flush()

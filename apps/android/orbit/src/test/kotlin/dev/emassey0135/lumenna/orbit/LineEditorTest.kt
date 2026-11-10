@@ -85,6 +85,18 @@ class LineEditorTest {
         assertEquals("say pasted", output.calls.filter { it.startsWith("say") }.last())
     }
 
+    @Test fun dot7WithASelectionDeletesItAndTheReaderSaysSo() {
+        val editor = editor(phone = false, initial = "hi there")
+        editor.key(Key.Enter(0b1))
+        output.calls.clear()
+        editor.key(Key.Dot7)
+        assertEquals("", editor.text())
+        assertEquals("selection_deleted", output.calls.first())
+        output.calls.clear()
+        editor.key(Key.Dot7)
+        assertEquals("say blank", output.calls.first())
+    }
+
     @Test fun inComputerBrailleTheSameCommandsTakeSpaceAndDot8WithACellTypesIt() {
         output.computer = true
         val editor = editor(phone = false, initial = "hi")

@@ -446,9 +446,11 @@ holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, r
   time, mode 388 for each cell's echo and 132 at Space; the Player's multi-tap T9, ported from
   Satellite's `T9Input`. The Speak's echo is its own fields', in `OrbitWords` and the Orbit's cell
   names (`braille::orbit_cell_name`: the capital sign, the capital word sign, the number sign, the
-  lower cells; never the BrailleSense's `cell_echo`). In contracted braille a named cell says its
+  lower cells; never the BrailleSense's `cell_echo`), except that dots 3 6 are "hyphen", where the
+  device's table says "greek sign". In contracted braille a named cell says its
   name, else the last character its word now makes; otherwise the character, else its name; else
-  "dot" and its numbers. Dot 7 says what it took: a cell of the word not yet committed by its name,
+  "dot" and its numbers. Dot 7 with a selection deletes it unasked, as the Editor's does, and
+  tells the reader `selection_deleted`, which says so in its own words. Otherwise Dot 7 says what it took: a cell of the word not yet committed by its name,
   what it alone makes, or its dots; a committed character by itself ("space", "new line"); "blank"
   at the start. At Space the word's cells and a blank cell are translated together, as Orbit's
   fields commit a word, and the word is said in print. The screen reader takes no word from an app

@@ -230,6 +230,13 @@ class LineEditor(
 
     /** As Satellite's field: a cell off the word says what it alone makes, else its dots; a character says itself. */
     private fun backspace() {
+        // As the Editor's: the selection goes, unasked, and the reader says so in its own words.
+        if (buffer.hasSelection) {
+            buffer.deleteSelection()
+            output.edited(name, buffer.display(), buffer.caret, "selection_deleted")
+            changed(buffer.display(), buffer.caret)
+            return
+        }
         val words = output.words
         val gone = when (val deleted = buffer.backspace()) {
             CellBuffer.Deleted.Nothing -> {

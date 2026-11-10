@@ -296,7 +296,9 @@ const ORBIT_CELL_NAMES: [(u8, &str); 11] = [
     (0b11_0100, "low j"),
     (0b11_1100, "number sign"),
     (0b10_0000, "capital sign"),
-    (0b10_0100, "greek sign"),
+    // The Orbit's own table calls dots 3 6 "greek sign", which is dots 4 6 in UEB; dots 3 6 alone is
+    // the hyphen, so it is said as one here, a deliberate departure from the device.
+    (0b10_0100, "hyphen"),
 ];
 
 /// What the Orbit Speak's edit fields call cell `at` of `word` (dot 1 bit 0) by itself, if it is
@@ -510,6 +512,7 @@ mod tests {
         assert_eq!(orbit_cell_name(&[0b10_0000, 0b10_0000], 1).as_deref(), Some("capital word sign"));
         assert_eq!(orbit_cell_name(&[0b11_1100], 0).as_deref(), Some("number sign"));
         assert_eq!(orbit_cell_name(&[0b00_0110], 0).as_deref(), Some("low b"));
+        assert_eq!(orbit_cell_name(&[0b10_0100], 0).as_deref(), Some("hyphen"), "not the device's \"greek sign\"");
         assert_eq!(orbit_cell_name(&[0b00_0001], 0), None, "a letter is translated, not named");
         assert_eq!(orbit_cell_name(&[], 0), None);
     }
