@@ -1,10 +1,13 @@
 import LumennaApp
+#if os(iOS)
+import SwiftUI
+#endif
 
 /// A row's actions as the iPhone, the iPad and the watch offer them, from the app's list, each
 /// once — the same rules as `RowActions`, over the app's actions:
 ///
-/// - the `primary` ones, and Expand or Collapse, as swipe actions, which SwiftUI also offers to
-///   VoiceOver, Switch Control and Full Keyboard Access as the row's actions;
+/// - the `primary` ones, and Expand or Collapse, as swipe actions, which the list also offers to
+///   VoiceOver, Switch Control and Full Keyboard Access as the row's actions (`listedOnce`);
 /// - the rest as the row's accessibility actions, which are added to the swipe actions rather
 ///   than replacing them, so between the two every action is listed once;
 /// - all of them, in the app's order, in the menu a long press (or a secondary click) opens.
@@ -48,3 +51,19 @@ struct AppRowActions<A: RowAction> {
         actions.first { kinds.contains($0.kind) }
     }
 }
+
+#if os(iOS)
+extension View {
+    /// A swipe action's button, which on iOS 27 reaches VoiceOver from two places: SwiftUI's row
+    /// lists it among its accessibility actions, and UIKit's list cell, built from the same
+    /// swipe, adds its own to them. Hidden here, SwiftUI's copy goes and the cell's stays, and
+    /// the swipe by touch is unchanged. Earlier systems are left as they were: this was seen on
+    /// iOS 27, the first the VoiceOver tests can run on.
+    func listedOnce() -> some View {
+        if #available(iOS 27, *) {
+            return accessibilityHidden(true)
+        }
+        return accessibilityHidden(false)
+    }
+}
+#endif
