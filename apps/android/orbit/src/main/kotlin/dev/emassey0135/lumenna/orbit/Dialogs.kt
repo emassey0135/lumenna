@@ -66,7 +66,7 @@ sealed class Control(val key: String, val offered: List<Offered>, val on: Acting
 /**
  * A dialog: controls in order, moved between with Tab and Shift-Tab on the Speak, each active as
  * soon as it is reached, as in Orbit's own dialogs (the Editor's Save As). Space with E or Z cancels
- * and Select presses the focused button. On the Player the same controls are rows, a line or a
+ * and Select presses the focused button; Left never leaves it, on either device. On the Player the same controls are rows, a line or a
  * choice opening its own screen.
  */
 abstract class DialogScreen : ListScreen() {
@@ -83,7 +83,7 @@ abstract class DialogScreen : ListScreen() {
         }
     }
 
-    /** Space with E or Z, Left, or dot 7 off a line. */
+    /** Space with E or Z, or dot 7 off a line. */
     protected open fun cancelDialog() = ui.pop()
 
     override fun openedAs(): Opened = Opened.Dialog
@@ -171,11 +171,11 @@ abstract class DialogScreen : ListScreen() {
             press()
             true
         }
-        Key.Left, Key.Dot7 -> {
+        Key.Dot7 -> {
             cancelDialog()
             true
         }
-        Key.Right -> true
+        Key.Left, Key.Right -> true
         else -> false
     }
 
@@ -207,11 +207,11 @@ abstract class DialogScreen : ListScreen() {
                 confirmDialog()
                 return true
             }
-            Key.Left, Key.Dot7 -> {
+            Key.Dot7 -> {
                 cancelDialog()
                 return true
             }
-            Key.Right -> return true
+            Key.Left, Key.Right -> return true
             else -> return false
         }.coerceIn(0, (options.size - 1).coerceAtLeast(0))
         val option = options.getOrNull(to) ?: return true
@@ -227,11 +227,11 @@ abstract class DialogScreen : ListScreen() {
             ui.reader.focusCheck(control.name, !control.checked)
             true
         }
-        Key.Left, Key.Dot7 -> {
+        Key.Dot7 -> {
             cancelDialog()
             true
         }
-        Key.Right -> true
+        Key.Left, Key.Right -> true
         else -> false
     }
 

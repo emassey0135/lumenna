@@ -4,7 +4,7 @@ package dev.emassey0135.lumenna.orbit
  * A line being typed: the Speak's cell buffer through liblouis, or the Player's T9.
  *
  * The keys are those of Orbit's edit fields: on the Speak Select or dot 8 confirms, dot 7 is
- * backspace, Left and Right (Space with dots 3 and 6) move by a character, Space with 2 and 5 by a
+ * backspace, Left and Right and Space with dots 3 and 6 move by a character, Space with 2 and 5 by a
  * word, Space with L and dots 4 5 6 to the ends, Space with E or Z cancels. On the Player digits are multi-tap, a held digit types itself, star
  * the mode, Left and Right move, Up and Down go to the ends, Back deletes, held cancels, and OK
  * confirms. Changes are reported to Orbit as edit-field changes ([Output]), so it speaks them by
@@ -98,6 +98,8 @@ class LineEditor(
             Key.Escape -> cancel()
             is Key.Enter -> inputCell(key.dots or DOT8)
             is Key.Chord -> when (key.dots) {
+                DOT3 -> moveCharacter(-1)
+                DOT6 -> moveCharacter(1)
                 DOT2 -> moveWord(-1)
                 DOT5 -> moveWord(1)
                 DOTS13 -> moveEdge(true)
@@ -247,7 +249,9 @@ class LineEditor(
 
     private companion object {
         const val DOT2 = 1 shl 1
+        const val DOT3 = 1 shl 2
         const val DOT5 = 1 shl 4
+        const val DOT6 = 1 shl 5
         const val DOT8 = 1 shl 7
         const val DOTS13 = 1 or (1 shl 2)
         const val DOTS46 = (1 shl 3) or (1 shl 5)

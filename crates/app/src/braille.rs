@@ -243,12 +243,11 @@ pub enum SpeakLetter {
     Neither,
 }
 
-/// Space with these is the Speak's, from Orbit's screen reader, the user guide and Orbit's apps:
-/// the screen reader keeps C (read the line) and T outside any app; on every screen A and B are
-/// Up and Shift-Tab, E and Z go back, L goes to the top and M opens the menu; in the Editor, D
-/// deletes, K goes to the line's start and S saves as; in the Voice Recorder and Media Player, D,
-/// F, N and R are their own.
-const SPEAK_ENTER: &str = "abcdefklmnrstz";
+/// Space with these is the Speak's while Lumenna is in front, by Orbit's screen reader and its user
+/// guide: the screen reader keeps C (read the line) and T; on every screen A and B are Up and
+/// Shift-Tab, E and Z go back, L goes to the top and M opens the menu. What Orbit's own apps do
+/// with Space and a letter is theirs alone, in front only when they are.
+const SPEAK_ENTER: &str = "abcelmtz";
 
 /// Neither Space nor Dot 8 with G reaches an app: the screen reader keeps both (the input mode,
 /// reading on from the caret). What G names is a menu away.
@@ -479,6 +478,7 @@ mod tests {
         assert_eq!(speak_letter("u"), SpeakLetter::Space);
         assert_eq!(speak_letter("c"), SpeakLetter::Enter, "the screen reader keeps Space with C");
         assert_eq!(speak_letter("m"), SpeakLetter::Enter);
+        assert_eq!(speak_letter("d"), SpeakLetter::Space, "the Editor's D is the Editor's alone");
         assert_eq!(speak_letter("g"), SpeakLetter::Neither);
         assert_eq!(speak_letter(","), SpeakLetter::Neither);
         assert_eq!(speak_press("u").as_deref(), Some("space u"));

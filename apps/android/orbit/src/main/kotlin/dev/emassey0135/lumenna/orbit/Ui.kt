@@ -343,8 +343,9 @@ class Ui(
             Key.Down -> moveBy(screen, rows, 1)
             Key.First -> moveTo(screen, rows, 0)
             Key.Last -> moveTo(screen, rows, rows.size - 1)
-            // Left folds a row open, else goes back; Right opens a folded row, else opens it.
-            Key.Left -> if (!foldRow(screen, rows, false)) back()
+            // Left folds a row open, else goes back out of a list, never a dialog; Right opens a
+            // folded row, else opens it.
+            Key.Left -> if (!foldRow(screen, rows, false) && screen !is DialogScreen) back()
             Key.Right -> if (!foldRow(screen, rows, true)) open(screen, rows)
             Key.Select, Key.Dot8 -> open(screen, rows)
             Key.Dot7, Key.Back, Key.Escape -> back()

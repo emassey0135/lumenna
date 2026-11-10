@@ -720,8 +720,8 @@ fn orbit_words() -> OrbitWords {
         speak_keys: lines(&[
             "Up and Down, or Space with dot 1 and Space with dot 4, move through a list. Held, they go to its ends.",
             "Space with L goes to the top of a list, and Space with dots 4 5 6 to its bottom.",
-            "Right, Space with dot 6, OK or dot 8 opens the row. Right opens a folded row first.",
-            "Left, Space with dot 3 or dot 7 goes back. Left folds an open row first.",
+            "Right, OK or dot 8 opens the row. Right opens a folded row first.",
+            "Left or dot 7 goes back out of a list. Left folds an open row first, and never leaves a dialog.",
             "Space with E or Space with Z always goes back.",
             "Space with M opens the menu.",
             "In a dialog, Space with dots 4 5 moves to the next control, and Space with dots 1 2 to the one before.",
@@ -732,7 +732,7 @@ fn orbit_words() -> OrbitWords {
         with_dot_8: "Dot 8 with a letter".to_owned(),
         player_keys: lines(&[
             "Up and Down move through the list. Held, they go to its ends.",
-            "OK opens the row. Right opens a folded row first, and Left folds an open one.",
+            "OK opens the row. Right opens a folded row first, and Left folds an open one or goes back out of a list, never a dialog.",
             "Menu lists what can be done to the row.",
             "Back goes back.",
             "A digit opens that row: 2 the second, 1 then 2 the twelfth, 0 the tenth.",

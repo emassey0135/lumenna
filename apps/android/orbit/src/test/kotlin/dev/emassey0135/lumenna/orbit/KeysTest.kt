@@ -30,11 +30,11 @@ class KeysTest {
         assertEquals(Key.Chord(0b1111), key("SPACE_DOT1_DOT2_DOT3_DOT4", chord))
     }
 
-    @Test fun spaceWithTheGuidesDotsAreTheArrowsTabAndBack() {
+    @Test fun spaceWithTheGuidesDotsAreUpDownTabAndBack() {
         assertEquals(Key.Up, key("SPACE_DOT1", chord))
         assertEquals(Key.Down, key("SPACE_DOT4", chord))
-        assertEquals(Key.Left, key("SPACE_DOT3", chord))
-        assertEquals(Key.Right, key("SPACE_DOT6", chord))
+        assertEquals("the screen reader's, reviewing the item", Key.Chord(0b100), key("SPACE_DOT3", chord))
+        assertEquals(Key.Chord(0b100000), key("SPACE_DOT6", chord))
         assertEquals(Key.Tab, key("SPACE_DOT4_DOT5", chord))
         assertEquals(Key.BackTab, key("SPACE_DOT1_DOT2", chord))
         assertEquals(Key.First, key("SPACE_DOT1_DOT2_DOT3", chord))

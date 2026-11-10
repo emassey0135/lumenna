@@ -66,9 +66,10 @@ data class KeyEvent(val name: String, val action: Int, val longPress: Boolean) {
  *
  * Arrows, OK and the Player's keys send a press (action 0, with `isLongPress` true on a held
  * press's repeat), then a release. Dots arrive as releases, chords whole (`SPACE_DOT1_DOT5`).
- * Space with dots names what the Speak's user guide says it is: the arrows, Tab and Shift-Tab,
+ * Space with dots names what the Speak's user guide says it is: Up and Down, Tab and Shift-Tab,
  * back, the top and bottom, the menu. Orbit keeps some chords even from a self-voicing app (the
- * screen reader's C, G, T and its review chords), which a table of commands must leave free.
+ * screen reader's C, G, T, and Space with dots 2, 3, 5 and 6, which review the item's text outside
+ * an edit box), which a table of commands must leave free.
  * Keeps a held phone key's release from counting too.
  */
 class KeyDecoder {
@@ -107,8 +108,6 @@ class KeyDecoder {
             return when (dots) {
                 bits(1) -> Key.Up
                 bits(4) -> Key.Down
-                bits(3) -> Key.Left
-                bits(6) -> Key.Right
                 bits(1, 2, 3) -> Key.First
                 bits(4, 5, 6) -> Key.Last
                 bits(1, 5), bits(1, 3, 5, 6) -> Key.Escape
