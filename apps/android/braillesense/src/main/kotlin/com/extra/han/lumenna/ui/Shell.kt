@@ -377,6 +377,7 @@ class Shell(
         out.silence()
         val current = frame ?: build()
         boxOf(current)?.let { box -> if (editCommand(current, box, key)) return }
+        val from = boxOf(current)?.let { it.row to it.line.caret }
         if (current.key(key)) {
             if (typing(current, key)) {
                 clearMessage()
@@ -385,7 +386,7 @@ class Shell(
             } else if (caretMoves(current, key)) {
                 clearMessage()
                 refresh(false)
-                sayCaret(current, key)
+                sayCaret(current, key, moved = from != boxOf(current)?.let { it.row to it.line.caret })
             } else if (changes(current, key)) {
                 clearMessage()
                 awaitingChange = true
@@ -444,7 +445,8 @@ class Shell(
     private fun caretMoves(frame: Frame, key: Key): Boolean {
         val box = boxOf(frame) ?: return false
         return key == Key.CharLeft || key == Key.CharRight || key == Key.WordLeft || key == Key.WordRight ||
-            (box.multiLine && (key == Key.Up || key == Key.Down || key == Key.First || key == Key.Last))
+            key == Key.LineStart || key == Key.LineEnd || key == Key.First || key == Key.Last ||
+            (box.multiLine && (key == Key.Up || key == Key.Down))
     }
 
     /**
@@ -633,10 +635,16 @@ class Shell(
         said?.takeIf { it.isNotBlank() }?.let(out::say)
     }
 
-    /** The caret moved in a line: what is at it, not the whole line. */
-    private fun sayCaret(frame: Frame, key: Key) {
+    /**
+     * The caret moved in a line: what is at it, not the whole line. Home and End (Space-1-3,
+     * Space-4-6) say the word they land in, as the device's edit box does, and say nothing where
+     * the cursor was there already; Top and Bottom (Space-1-2-3, Space-4-5-6) say the same, where
+     * the device's box reads the whole first or last line, so that the four say one thing.
+     */
+    private fun sayCaret(frame: Frame, key: Key, moved: Boolean) {
         val editor = editorOf(frame) ?: return
-        if (key == Key.Up || key == Key.Down || key == Key.First || key == Key.Last) return boxOf(frame)?.let(::sayLine) ?: Unit
+        if (key == Key.LineStart || key == Key.LineEnd || key == Key.First || key == Key.Last) return if (moved) sayWord(editor) else Unit
+        if (key == Key.Up || key == Key.Down) return boxOf(frame)?.let(::sayLine) ?: Unit
         if (key == Key.WordLeft || key == Key.WordRight) return sayWord(editor)
         editor.cellAtCaret()?.let(::sayCell)
     }
