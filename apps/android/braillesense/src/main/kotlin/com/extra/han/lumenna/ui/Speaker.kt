@@ -31,6 +31,15 @@ class Speaker(private val out: Output, private val translator: Translator) {
 
     fun silence() = out.silence()
 
+    private var selecting = false
+
+    /** Shows a selection under way, as the device's edit box does, by its cursor. */
+    fun selecting(on: Boolean) {
+        if (on == selecting) return
+        selecting = on
+        out.selecting(on)
+    }
+
     private fun cellsOf(parts: List<BraillePart>): ByteArray =
         parts.fold(ByteArray(0)) { all, part ->
             all + if (part.computer) translator.computer(part.text) else translator.translate(part.text).cells

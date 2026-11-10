@@ -436,11 +436,19 @@ pub fn braille_letter(dots: u8) -> Option<String> {
     lumenna_app::braille::braille_letter(dots).map(|letter| letter.to_string())
 }
 
-/// What a braille device says for one cell of a line by itself, as its own edit boxes do: `word`
-/// the cells of the word it is in (dot 1 bit 0) and `at` where in it the cell is.
+/// What the BrailleSense says for one cell of a line by itself, as its own edit boxes do: `word`
+/// the cells of the word it is in (dot 1 bit 0) and `at` where in it the cell is. The BrailleSense's
+/// convention alone: no other device's app uses it.
 #[export]
-pub fn cell_echo(word: Vec<u8>, at: u32, contracted: bool) -> String {
-    lumenna_app::braille::cell_echo(&word, at as usize, contracted)
+pub fn braillesense_cell_echo(word: Vec<u8>, at: u32, contracted: bool) -> String {
+    lumenna_app::braille::braillesense::cell_echo(&word, at as usize, contracted)
+}
+
+/// What the BrailleSense says for one character by itself, as in computer braille: a punctuation
+/// mark by its name. The BrailleSense's convention alone.
+#[export]
+pub fn braillesense_character_echo(character: String) -> String {
+    lumenna_app::braille::braillesense::character_echo(&character)
 }
 
 /// Where the next line starting with `letter` is, from the line after `from` on, wrapping round

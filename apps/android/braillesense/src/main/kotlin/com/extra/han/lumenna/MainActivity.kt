@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity(), Host {
     /** Whether the keys and display are ours: resumed and focused, and nothing else. */
     private val front: Claim = Claim(
         take = {
-            settings.refresh()
+            rereadSettings()
             output.claim()
             input.claim()
             shell?.front()
@@ -96,9 +96,21 @@ class MainActivity : ComponentActivity(), Host {
      */
     private val settingsChanged = object : ContentObserver(main) {
         override fun onChange(selfChange: Boolean) {
-            settings.refresh()
+            rereadSettings()
             if (front.holding) shell?.redraw()
         }
+    }
+
+    /**
+     * Reads the person's settings again. A box's text is read in the table it was typed in before
+     * the table can change (the G chord, or Global Options while away), and written again in the
+     * new one after: the device's own boxes follow the table so.
+     */
+    private fun rereadSettings() {
+        val before = settings.tables
+        shell?.settle()
+        settings.refresh()
+        if (settings.tables != before) shell?.retable()
     }
 
     private val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
@@ -240,6 +252,19 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun deviceName(): String = deviceName(this)
+
+    private val clipboards get() = getSystemService(android.content.ClipboardManager::class.java)
+
+    override fun clipboard(): String? = runCatching {
+        clipboards?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+    }.getOrNull()
+
+    override fun setClipboard(text: String?) {
+        val manager = clipboards ?: return
+        runCatching {
+            if (text == null) manager.clearPrimaryClip() else manager.setPrimaryClip(android.content.ClipData.newPlainText(applicationInfo.loadLabel(packageManager), text))
+        }
+    }
 
     companion object {
         const val PLATFORM = "android"

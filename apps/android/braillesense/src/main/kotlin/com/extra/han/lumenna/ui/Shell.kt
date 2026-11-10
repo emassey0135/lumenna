@@ -45,7 +45,8 @@ import dev.emassey0135.lumenna.app.levels
 import dev.emassey0135.lumenna.app.pressToAdd
 import dev.emassey0135.lumenna.app.sidebarKey
 import dev.emassey0135.lumenna.app.buttonLetter
-import dev.emassey0135.lumenna.app.cellEcho
+import dev.emassey0135.lumenna.app.braillesenseCellEcho
+import dev.emassey0135.lumenna.app.braillesenseCharacterEcho
 import dev.emassey0135.lumenna.app.commandLetter
 import dev.emassey0135.lumenna.app.dialogTitle
 import dev.emassey0135.lumenna.app.dueLetter
@@ -66,6 +67,13 @@ import dev.emassey0135.lumenna.app.foldState
 /** What only the activity can do. */
 interface Host {
     fun exit()
+
+    /** What the system clipboard holds as text, null for nothing. */
+    fun clipboard(): String?
+
+    /** Puts [text] on the system clipboard, or empties it with null. */
+    fun setClipboard(text: String?)
+
     fun importFile()
     fun requestNotifications()
     fun openNotificationSettings()
@@ -119,8 +127,8 @@ class Shell(
     /** The row in hand in each list, by the frame it is in. */
     private val selected = HashMap<String, String>()
 
-    /** A line being typed, kept across redraws, by what it is for. */
-    private val editors = HashMap<String, LineEditor>()
+    /** Text being typed, kept across redraws, by what it is for. */
+    private val editors = HashMap<String, TextBox>()
 
     private var handledForm = 0u
     private var lastLanding = 0u
@@ -156,8 +164,17 @@ class Shell(
     private val view: ViewModel? get() = app.view.value
     private val lines: Lines? get() = app.lines.value
 
-    private fun editor(key: String, initial: String): LineEditor =
-        editors.getOrPut(key) { LineEditor(initial, translator) }
+    private fun editor(key: String, initial: String, multiLine: Boolean = false): TextBox =
+        editors.getOrPut(key) { TextBox(initial, translator, multiLine) }
+
+    /** Before the person's settings are read again: every box's text, read in the table in force. */
+    fun settle() = editors.values.forEach { it.settle() }
+
+    /** The braille table changed: every box is written again in the new one, its text kept, as the device's own are. */
+    fun retable() {
+        editors.values.forEach { it.recell() }
+        frame?.let { out.show(it.rendered) }
+    }
 
     /** Something the app said: said with the next change, or at once if nothing moves. */
     fun announce(text: String) {
@@ -270,6 +287,7 @@ class Shell(
         val rendered = built.rendered
         if (fromKey) clearMessage()
         if (!messageUp) out.show(rendered)
+        out.selecting(boxOf(built)?.selecting == true)
         drawn(rendered.speech)
         val fresh = built.id != lastId
         lastId = built.id
@@ -318,6 +336,12 @@ class Shell(
             }
             Key.Repeat -> return run {
                 clearMessage()
+                // In a multi-line box, the line the cursor is on, as the device's own reads it.
+                frame?.let(::boxOf)?.takeIf { it.multiLine }?.let { box ->
+                    out.silence()
+                    sayLine(box)
+                    return
+                }
                 frame?.rendered?.let { out.say(it.speech); out.show(it) }
             }
             Key.ScrollOn -> {
@@ -334,8 +358,10 @@ class Shell(
                 clearMessage()
                 val at = out.routed(key.cell)
                 if (at >= 0) {
-                    frame?.routed(at)
-                    refresh(true)
+                    val routed = frame
+                    routed?.routed(at)
+                    // In an edit box the cursor only moves, as in the device's own: nothing is said.
+                    refresh(routed == null || editorOf(routed) == null)
                 }
                 return
             }
@@ -343,6 +369,7 @@ class Shell(
         }
         out.silence()
         val current = frame ?: build()
+        boxOf(current)?.let { box -> if (editCommand(current, box, key)) return }
         if (current.key(key)) {
             if (typing(current, key)) {
                 clearMessage()
@@ -398,13 +425,82 @@ class Shell(
 
     private var awaitingChange = false
 
-    private fun editorOf(frame: Frame): LineEditor? = (frame as? LineFrame)?.editor ?: ((frame as? FormFrame)?.current as? Control.Edit)?.editor
+    private fun boxOf(frame: Frame): TextBox? = (frame as? LineFrame)?.box ?: ((frame as? FormFrame)?.current as? Control.Edit)?.box
 
-    private fun typing(frame: Frame, key: Key): Boolean =
-        editorOf(frame) != null && (key is Key.Cell || key is Key.Typed || key == Key.Backspace || key == Key.Space)
+    private fun editorOf(frame: Frame): LineEditor? = boxOf(frame)?.line
 
-    private fun caretMoves(frame: Frame, key: Key): Boolean =
-        editorOf(frame) != null && (key == Key.CharLeft || key == Key.CharRight || key == Key.WordLeft || key == Key.WordRight)
+    private fun typing(frame: Frame, key: Key): Boolean {
+        val box = boxOf(frame) ?: return false
+        return key is Key.Cell || key is Key.Typed || key == Key.Backspace || key == Key.Space || (key == Key.Enter && box.multiLine)
+    }
+
+    private fun caretMoves(frame: Frame, key: Key): Boolean {
+        val box = boxOf(frame) ?: return false
+        return key == Key.CharLeft || key == Key.CharRight || key == Key.WordLeft || key == Key.WordRight ||
+            (box.multiLine && (key == Key.Up || key == Key.Down || key == Key.First || key == Key.Last))
+    }
+
+    /**
+     * The device's edit-box commands, before the box's own keys: a selection begun with Enter-B or
+     * made of everything with Enter-A, copied with Enter-C, cut with Enter-X, added to the clipboard
+     * with Enter-P and read with Backspace-1-2; Enter-V pastes and Enter-D clears the clipboard, all
+     * through the system's clipboard. With a selection, Backspace takes it and Escape leaves it, and
+     * typing ends it. Control with the letter on the QWERTY keyboard is Enter with it.
+     */
+    private fun editCommand(frame: Frame, box: TextBox, key: Key): Boolean {
+        val words = appWords.braille.editBox
+        val letter = when (key) {
+            is Key.EnterDots -> BrailleLetters.of(key.dots)
+            is Key.EnterLetter -> key.letter.lowercaseChar()
+            else -> null
+        }
+        val changed = {
+            (frame as? FormFrame)?.current?.let { (it as? Control.Edit)?.changed?.invoke(box.text) }
+            (frame as? LineFrame)?.touched()
+            refresh(false)
+        }
+        fun done(said: String) {
+            clearMessage()
+            refresh(false)
+            out.say(said)
+        }
+        when {
+            letter == 'b' -> box.startSelection().also { done(words.startSelection) }
+            letter == 'a' -> box.selectAll().also { done(words.selectAll) }
+            letter == 'c' || letter == 'x' || letter == 'p' -> {
+                val selected = box.selected() ?: return true.also { done(words.nothingSelected) }
+                when (letter) {
+                    'p' -> host.setClipboard(listOfNotNull(host.clipboard()?.takeIf { it.isNotEmpty() }, selected).joinToString("\n"))
+                    else -> host.setClipboard(selected)
+                }
+                if (letter == 'x') box.deleteSelected() else box.cancelSelection()
+                if (letter == 'x') changed()
+                done(when (letter) { 'c' -> words.copied; 'x' -> words.cut; else -> words.appended })
+            }
+            letter == 'v' -> {
+                val pasted = host.clipboard()?.takeIf { it.isNotEmpty() } ?: return true.also { done(words.clipboardEmpty) }
+                box.insert(pasted)
+                changed()
+                done(words.pasted)
+            }
+            letter == 'd' -> host.setClipboard(null).also { done(words.clipboardCleared) }
+            key is Key.BackspaceDots && key.dots == SELECTION_READ -> box.selected()?.let { out.say(it) } ?: done(words.nothingSelected)
+            !box.selecting -> return false
+            key == Key.Backspace -> {
+                box.deleteSelected()
+                changed()
+                done(words.deleted)
+            }
+            key == Key.Escape -> box.cancelSelection().also { done(words.selectionCanceled) }
+            key is Key.Cell || key is Key.Typed || key == Key.Space || key == Key.Enter -> {
+                // Typing ends a selection, and goes on to be typed.
+                box.cancelSelection()
+                return false
+            }
+            else -> return false
+        }
+        return true
+    }
 
     /** What typing says, as the device's Keyboard Echo has it; what Backspace takes is always said. */
     private fun echo(frame: Frame, key: Key) {
@@ -420,9 +516,26 @@ class Shell(
                     setting.space -> out.say(appWords.braille.space)
                 }
             }
-            Key.Backspace -> editor.takeRemoved()?.let(::sayCell)
+            Key.Backspace -> {
+                val box = boxOf(frame)
+                if (box?.takeJoined() == true) out.say(appWords.braille.editBox.previousLine) else editor.takeRemoved()?.let(::sayCell)
+            }
+            // A new line, as the device's multi-line box says it: the word it finished where the
+            // echo says words, else "Enter".
+            Key.Enter -> {
+                val word = boxOf(frame)?.takeFinished()
+                when {
+                    word != null && setting.words -> out.say(word)
+                    setting.space -> out.say(appWords.braille.editBox.enter)
+                }
+            }
             else -> {}
         }
+    }
+
+    /** The line the cursor is on, or "blank". */
+    private fun sayLine(box: TextBox) {
+        out.say(box.line.text.ifBlank { appWords.braille.editBox.blank })
     }
 
     /**
@@ -434,9 +547,9 @@ class Shell(
         if (cell.cell == LineEditor.BLANK) return out.say(appWords.braille.space)
         val grade = echoSetting().grade
         val said = if (grade == 0) {
-            translator.back(byteArrayOf(cell.cell))
+            translator.back(byteArrayOf(cell.cell))?.let(::braillesenseCharacterEcho)
         } else {
-            cellEcho(cell.word, cell.at.toUInt(), grade == 2)
+            braillesenseCellEcho(cell.word, cell.at.toUInt(), grade == 2)
         }
         said?.takeIf { it.isNotBlank() }?.let(out::say)
     }
@@ -444,6 +557,7 @@ class Shell(
     /** The caret moved in a line: what is at it, not the whole line. */
     private fun sayCaret(frame: Frame, key: Key) {
         val editor = editorOf(frame) ?: return
+        if (key == Key.Up || key == Key.Down || key == Key.First || key == Key.Last) return boxOf(frame)?.let(::sayLine) ?: Unit
         if (key == Key.WordLeft || key == Key.WordRight) return sayWord(editor)
         editor.cellAtCaret()?.let(::sayCell)
     }
@@ -865,7 +979,7 @@ class Shell(
                     controls += Control.Choice(field.key, field.label, options, at, { set("project", it) })
                 }
                 form.text(field.key) != null -> {
-                    val edit = editor("task:$id:${field.key}", form.text(field.key).orEmpty())
+                    val edit = editor("task:$id:${field.key}", form.text(field.key).orEmpty(), multiLine = field.kind == FieldKind.LINES)
                     controls += Control.Edit(field.key, field.label, edit, field.hint, changed = { set(field.key, it) })
                 }
                 else -> {
@@ -905,7 +1019,7 @@ class Shell(
                 }
                 else -> {
                     val initial = if (field.key == "date") form.date else fields.text(field.key)
-                    val edit = editor("block:${form.heading}:${field.key}", initial)
+                    val edit = editor("block:${form.heading}:${field.key}", initial, multiLine = field.kind == FieldKind.LINES)
                     controls += Control.Edit(field.key, field.label, edit, field.hint, changed = { set(field.key, it.trim()) })
                 }
             }
@@ -1212,6 +1326,9 @@ class Shell(
         /** Space-2-5 and Space-3-6, the device's read word and read character, as dots. */
         private const val SAY_WORD_DOTS = 0x12
         private const val SAY_CHARACTER_DOTS = 0x24
+
+        /** Backspace-1-2, the device's "read the selection". */
+        private const val SELECTION_READ = 0x03
 
         /** How long after a turn its speech waits, for what the app said to arrive with it. */
         const val SPEECH_DELAY = 60L

@@ -26,6 +26,12 @@ interface Output {
 
     /** How many cells the display has, once known: the layout of panning waits on it. */
     val width: Int
+
+    /**
+     * The cursor as the device's edit box shows a selection under way: its selection shape,
+     * blinking, while [selecting], and the plain cursor again after. The extent is not drawn.
+     */
+    fun selecting(selecting: Boolean) {}
 }
 
 /**
@@ -67,6 +73,7 @@ class HanOutputClient(context: Context) : Output {
         output.setActiveOutputService(true)
         measure(output)
         lastCells?.let { (cells, cursor) -> sendCells(output, cells, cursor) }
+        sendCursor(output)
     }
 
     /** Asks the service how wide the line is: it wraps a long word at its own width. */
@@ -138,6 +145,19 @@ class HanOutputClient(context: Context) : Output {
     /** On the worker, and only if the display is still ours when its turn comes. */
     private fun whileClaimed(what: String, block: (IHanOutputService) -> Unit) = link.call(what) { service ->
         synchronized(claim) { if (claimed) block(service) }
+    }
+
+    @Volatile private var selection = false
+
+    override fun selecting(selecting: Boolean) {
+        selection = selecting
+        whileClaimed("cursor") { sendCursor(it) }
+    }
+
+    /** The stock edit box's cursor types: 0 the plain one, 2 a selection's, which it blinks. */
+    private fun sendCursor(output: IHanOutputService) {
+        output.brailleCursorType(if (selection) 2 else 0)
+        output.brailleCursorBlinkOn(selection)
     }
 
     private fun sendCells(output: IHanOutputService, cells: ByteArray, cursor: Int) {

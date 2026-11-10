@@ -211,6 +211,72 @@ class LineEditor(initial: String, private val translator: Translator) {
     /** The line as cells, exactly as typed. */
     fun shown(): ShownLine = ShownLine(flat, caret)
 
+    /** How many cells the line has. */
+    val size: Int get() = length
+
+    /** Cuts the line at the caret: what follows becomes a line of its own, returned with its caret at its start. */
+    fun split(): LineEditor {
+        val (index, offset) = place()
+        val word = words[index]
+        val left = Word(word.cells.copyOfRange(0, offset), if (offset == word.cells.size) word.text else if (offset == 0) "" else null)
+        val right = Word(word.cells.copyOfRange(offset, word.cells.size), if (offset == 0) word.text else if (offset == word.cells.size) "" else null)
+        val rest = ArrayList(words.subList(index + 1, words.size))
+        while (words.size > index + 1) words.removeAt(words.lastIndex)
+        words[index] = left
+        caret = length
+        val next = LineEditor("", translator)
+        next.words.clear()
+        next.words += right
+        next.words += rest
+        next.caret = 0
+        return next
+    }
+
+    /** Joins [next] onto the end of this line, as one word where they meet, the caret at the join. */
+    fun append(next: LineEditor) {
+        val at = length
+        val last = words.last()
+        val first = next.words.first()
+        last.text = when {
+            last.cells.isEmpty() -> first.text
+            first.cells.isEmpty() -> last.text
+            else -> null
+        }
+        last.cells += first.cells
+        words += next.words.drop(1)
+        caret = at
+    }
+
+    /** The text of the cells from [from] up to [to]: a whole word as its text, part of one read back alone. */
+    fun textBetween(from: Int, to: Int): String {
+        val text = StringBuilder()
+        var at = 0
+        words.forEachIndexed { index, word ->
+            val start = at
+            val end = at + word.cells.size
+            val a = maxOf(from, start)
+            val b = minOf(to, end)
+            if (b > a) {
+                text.append(if (a == start && b == end) textOf(word) else translator.back(word.cells.copyOfRange(a - start, b - start)).orEmpty())
+            }
+            if (index < words.lastIndex && end in from until to) text.append(' ')
+            at = end + 1
+        }
+        return text.toString()
+    }
+
+    /** Reads every word as text in the table in force now: before the table changes under it. */
+    fun settle() {
+        words.forEach { textOf(it) }
+    }
+
+    /** Writes every word again in the table now in force, from its text, the caret kept in its word. */
+    fun recell() {
+        val (index, offset) = place()
+        words.forEach { it.cells = cellsOf(it.text.orEmpty()) }
+        caret = startOf(index) + minOf(offset, words[index].cells.size)
+    }
+
     companion object {
         /** A space. */
         const val BLANK: Byte = 0

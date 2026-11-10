@@ -6,6 +6,7 @@ import com.extra.han.lumenna.device.Translator
 import com.extra.han.lumenna.ui.Control
 import com.extra.han.lumenna.ui.FormFrame
 import com.extra.han.lumenna.ui.LineEditor
+import com.extra.han.lumenna.ui.TextBox
 import com.extra.han.lumenna.ui.Letters
 import com.extra.han.lumenna.ui.ListFrame
 import com.extra.han.lumenna.ui.MenuEntry
@@ -298,7 +299,7 @@ class FramesTest {
     }
 
     @Test fun anEditBoxGivesItsLabelAndLeavesSpaceOneToNothing() {
-        val editor = LineEditor("milk", Plain)
+        val editor = TextBox("milk", Plain)
         val frame = FormFrame("f", null, listOf(Control.Edit("e", "Title", editor)), null, BY_LETTER, READ)
         assertEquals("Title: milk", frame.rendered.speech)
         assertFalse(frame.key(Key.Down))
@@ -384,7 +385,7 @@ class FramesTest {
     @Test fun aFormTabsAndEachControlTakesItsKeys() {
         var on = false
         var pressed = false
-        val edit = LineEditor("", Plain)
+        val edit = TextBox("", Plain)
         val frame = FormFrame(
             "f",
             "Form",
@@ -506,5 +507,94 @@ class FramesTest {
         val editor = LineEditor("", Plain)
         editor.type("a b")
         assertEquals("a b", editor.text)
+    }
+
+    @Test fun aMultiLineBoxTakesEnterAsANewLineAndBackspaceJoinsItAgain() {
+        val box = TextBox("ab", Plain, multiLine = true)
+        val frame = FormFrame("f", null, listOf(Control.Edit("n", "Notes", box), Control.Button("b", "Save") {}), null, BY_LETTER, READ)
+        frame.key(Key.Enter)
+        assertEquals("Enter is a new line, not the next control", "n", frame.current?.key)
+        assertEquals("ab", box.takeFinished())
+        frame.key(Key.Cell('c'.code))
+        assertEquals("ab\nc", box.text)
+        assertEquals(1, box.row)
+        frame.key(Key.Backspace)
+        frame.key(Key.Backspace)
+        assertTrue("backspace at a line's start joins it to the line before", box.takeJoined())
+        assertEquals("ab", box.text)
+        frame.key(Key.Tab)
+        assertEquals("Tab still leaves it", "b", frame.current?.key)
+    }
+
+    @Test fun aMultiLineBoxMovesByLineAndToItsTopAndBottom() {
+        val box = TextBox("one\ntwo\nthree", Plain, multiLine = true)
+        val frame = FormFrame("f", null, listOf(Control.Edit("n", "Notes", box)), null, BY_LETTER, READ)
+        assertEquals("three", box.line.text)
+        frame.key(Key.Up)
+        assertEquals("two", box.line.text)
+        assertEquals("the cursor keeps as far along as the line allows", 3, box.line.caret)
+        frame.key(Key.First)
+        assertEquals(0, box.row)
+        assertEquals(0, box.line.caret)
+        frame.key(Key.Last)
+        assertEquals(2, box.row)
+        assertEquals(5, box.line.caret)
+        assertEquals("Notes: three", frame.rendered.speech)
+    }
+
+    @Test fun aSingleLineBoxTakesANewLinePastedAsASpace() {
+        val box = TextBox("", Plain)
+        box.insert("a\nb")
+        assertEquals("a b", box.text)
+        assertEquals(1, box.count)
+    }
+
+    @Test fun aSelectionRunsFromWhereItStartedToTheCursor() {
+        val box = TextBox("milk eggs", Plain)
+        box.line.start()
+        box.startSelection()
+        box.line.wordRight()
+        assertEquals("milk ", box.selected())
+        assertTrue(box.deleteSelected())
+        assertEquals("eggs", box.text)
+        assertFalse(box.selecting)
+        assertNull("with nothing selected there is nothing to copy", box.selected())
+    }
+
+    @Test fun aSelectionAcrossLinesKeepsItsNewLines() {
+        val box = TextBox("one\ntwo", Plain, multiLine = true)
+        box.top()
+        box.line.right()
+        box.startSelection()
+        box.down()
+        assertEquals("ne\nt", box.selected())
+        box.deleteSelected()
+        assertEquals("owo", box.text)
+        box.selectAll()
+        assertEquals("owo", box.selected())
+    }
+
+    @Test fun pastingAtTheCursorTypesTheTextIn() {
+        val box = TextBox("ac", Plain, multiLine = true)
+        box.line.left()
+        box.insert("b\nx")
+        assertEquals("ab\nxc", box.text)
+    }
+
+    @Test fun aNewTableWritesTheCellsAgainAndKeepsTheText() {
+        var table: Translator = Contracted
+        val switching = object : Translator {
+            override fun computer(text: String) = table.computer(text)
+            override fun translate(text: String, cursor: Int) = table.translate(text, cursor)
+            override fun back(cells: ByteArray) = table.back(cells)
+        }
+        val box = TextBox("", switching)
+        box.line.cell(THE)
+        box.line.cell('n'.code)
+        box.settle()
+        table = Plain
+        box.recell()
+        assertEquals("then", box.text)
+        assertArrayEquals("then".toByteArray(), box.line.shown().cells)
     }
 }

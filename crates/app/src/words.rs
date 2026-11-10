@@ -428,6 +428,43 @@ pub struct BrailleWords {
     pub nothing_due: String,
     /// A space, typed or erased, said by a device that says what is typed.
     pub space: String,
+    /// What a BrailleSense's edit box says as it edits, in its own words.
+    pub edit_box: EditBoxWords,
+}
+
+/// What a BrailleSense's edit box says as it is edited: a new line, a line gone back over, and its
+/// selection and the clipboard, in the device's own words so that Lumenna's boxes sound like its own.
+#[data]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EditBoxWords {
+    /// A new line typed with Enter: "Enter".
+    pub enter: String,
+    /// Backspace over a new line, back onto the line before: "previous line".
+    pub previous_line: String,
+    /// A line with nothing on it, moved to or read: "blank".
+    pub blank: String,
+    /// A selection started at the cursor: "Start Selection".
+    pub start_selection: String,
+    /// Everything selected: "Select All".
+    pub select_all: String,
+    /// A selection left with Escape: "Selection canceled."
+    pub selection_canceled: String,
+    /// The selection copied to the clipboard: "Copy complete".
+    pub copied: String,
+    /// The selection cut to the clipboard: "Cut".
+    pub cut: String,
+    /// The clipboard pasted at the cursor: "Paste".
+    pub pasted: String,
+    /// The selection added to what the clipboard holds: "Add To Clipboard".
+    pub appended: String,
+    /// The clipboard emptied: "Clear Clipboard".
+    pub clipboard_cleared: String,
+    /// The selection taken away with Backspace: "Delete complete."
+    pub deleted: String,
+    /// Copy, cut or read with nothing selected: "Block is not set."
+    pub nothing_selected: String,
+    /// Paste with nothing on the clipboard.
+    pub clipboard_empty: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -866,6 +903,22 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
             no_actions: "No actions on this row.".to_owned(),
             nothing_due: "No reminders are due.".to_owned(),
             space: c("Space"),
+            edit_box: EditBoxWords {
+                enter: c("Enter"),
+                previous_line: "previous line".to_owned(),
+                blank: "blank".to_owned(),
+                start_selection: c("Start Selection"),
+                select_all: c("Select All"),
+                selection_canceled: "Selection canceled.".to_owned(),
+                copied: c("Copy Complete"),
+                cut: c("Cut"),
+                pasted: c("Paste"),
+                appended: c("Add to Clipboard"),
+                clipboard_cleared: c("Clear Clipboard"),
+                deleted: "Delete complete.".to_owned(),
+                nothing_selected: "Block is not set.".to_owned(),
+                clipboard_empty: "The clipboard is empty.".to_owned(),
+            },
         },
         yes_no: lumenna_records::fields::yes_no(),
 
@@ -1261,6 +1314,12 @@ pub fn braillesense_keys() -> Vec<DeviceKey> {
         row("Space-O", "Settings"),
         row("Space-R or Space-C", "Say the row again"),
         row("Space-3-6, Space-2-5", "In a line of text, say the character and the word at the cursor"),
+        row("Enter-B, Enter-A", "In a line of text, start a selection at the cursor, or select everything"),
+        row("Enter-C, Enter-X, Enter-V", "Copy, cut and paste"),
+        row("Enter-P, Enter-D", "Add the selection to the clipboard, clear the clipboard"),
+        row("Backspace-1-2", "Read the selection"),
+        row("Enter in a multi-line box", "A new line; Tab leaves the box"),
+        row("Space-1, Space-4 in a multi-line box", "The line above and below"),
         row("A cell touched and a front Cursor button", "Move the cursor in a line of text to that cell"),
     ]
 }

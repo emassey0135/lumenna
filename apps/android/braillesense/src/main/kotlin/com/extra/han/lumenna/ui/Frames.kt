@@ -167,21 +167,28 @@ class ListFrame(
 class LineFrame(
     id: String,
     private val prompt: String,
-    val editor: LineEditor,
+    val box: TextBox,
     private val hint: String = "",
     private val readings: Readings,
     private val done: (String) -> Unit,
     private val changed: (String) -> Unit = {},
 ) : Frame(id) {
+    val editor: LineEditor get() = box.line
+
+    /** The text changed from outside the keys (a paste, a cut): told as a key's change is. */
+    fun touched() {
+        changed(box.text)
+    }
+
     private fun push(): Boolean {
-        changed(editor.text)
+        changed(box.text)
         return true
     }
 
     override val rendered: Rendered
         get() {
             val shown = editor.shown()
-            return readings.read(line(ControlRole.EDIT_BOX, editor.text.ifEmpty { hint }, editor.text, label = prompt)).rendered(shown.cells, shown.cursor)
+            return readings.read(line(ControlRole.EDIT_BOX, box.text.ifEmpty { hint }, box.text, label = prompt)).rendered(shown.cells, shown.cursor)
         }
 
     override fun routed(at: Int) {
@@ -189,15 +196,15 @@ class LineFrame(
     }
 
     override fun key(key: Key): Boolean = when (key) {
-        Key.Enter -> run { done(editor.text); true }
+        Key.Enter -> run { done(box.text); true }
         Key.CharLeft -> run { editor.left(); push() }
         Key.CharRight -> run { editor.right(); push() }
         Key.WordLeft -> run { editor.wordLeft(); push() }
         Key.WordRight -> run { editor.wordRight(); push() }
         Key.LineStart, Key.First -> run { editor.start(); push() }
         Key.LineEnd, Key.Last -> run { editor.end(); push() }
-        Key.Backspace -> run { editor.backspace(); push() }
-        Key.Delete -> run { editor.delete(); push() }
+        Key.Backspace -> run { box.backspace(); push() }
+        Key.Delete -> run { box.delete(); push() }
         Key.Space -> run { editor.space(); push() }
         is Key.Cell -> run { editor.cell(key.dots); true }
         is Key.Typed -> run { editor.type(key.text); push() }
@@ -210,16 +217,24 @@ sealed class Control(val key: String) {
     /** The line it reads as. */
     abstract val line: dev.emassey0135.lumenna.app.DeviceLine
 
-    /** Text to type; [editor] holds it while the dialog is open. */
+    /** Text to type; [box] holds it while the dialog is open, a line or, [TextBox.multiLine], several. */
     class Edit(
         key: String,
         val label: String,
-        val editor: LineEditor,
+        val box: TextBox,
         val hint: String = "",
         val changed: (String) -> Unit = {},
         val submit: (() -> Unit)? = null,
     ) : Control(key) {
-        override val line get() = line(ControlRole.EDIT_BOX, editor.text.ifEmpty { hint }, editor.text, label = label)
+        /** The line the cursor is on. */
+        val editor: LineEditor get() = box.line
+
+        override val line: dev.emassey0135.lumenna.app.DeviceLine
+            get() = if (box.multiLine) {
+                line(ControlRole.MULTI_LINE_EDIT_BOX, editor.text.ifEmpty { if (box.text.isEmpty()) hint else "" }, editor.text, label = label)
+            } else {
+                line(ControlRole.EDIT_BOX, box.text.ifEmpty { hint }, box.text, label = label)
+            }
     }
 
     /** One of several options, changed with Space, Backspace, Space-1 and Space-4 or by first letter. */
@@ -283,7 +298,7 @@ class FormFrame(
 
     private fun move(step: Int): Boolean {
         if (controls.isEmpty()) return true
-        (current as? Control.Edit)?.let { it.changed(it.editor.text) }
+        (current as? Control.Edit)?.let { it.changed(it.box.text) }
         index = (index + step + controls.size) % controls.size
         current?.let(moved)
         return true
@@ -323,25 +338,42 @@ class FormFrame(
         }
     }
 
+    /**
+     * An edit box's keys, as the device's own: Enter in a single line goes on (or submits), in a
+     * multi-line box starts a new line; there Space-1 and Space-4 move between lines and
+     * Space-1-2-3 and Space-4-5-6 go to the top and bottom. Tab leaves either.
+     */
     private fun edit(control: Control.Edit, key: Key): Boolean {
-        val editor = control.editor
+        val box = control.box
+        val editor = box.line
+        val changed = {
+            control.changed(box.text)
+            true
+        }
         return when (key) {
-            Key.Enter -> run {
-                control.changed(editor.text)
+            Key.Enter -> if (box.multiLine) {
+                box.newLine()
+                changed()
+            } else {
+                control.changed(box.text)
                 control.submit?.invoke() ?: move(+1)
                 true
             }
+            Key.Up -> box.multiLine && run { box.up(); true }
+            Key.Down -> box.multiLine && run { box.down(); true }
+            Key.First -> run { if (box.multiLine) box.top() else editor.start(); true }
+            Key.Last -> run { if (box.multiLine) box.bottom() else editor.end(); true }
             Key.CharLeft -> run { editor.left(); true }
             Key.CharRight -> run { editor.right(); true }
             Key.WordLeft -> run { editor.wordLeft(); true }
             Key.WordRight -> run { editor.wordRight(); true }
-            Key.LineStart, Key.First -> run { editor.start(); true }
-            Key.LineEnd, Key.Last -> run { editor.end(); true }
-            Key.Backspace -> run { editor.backspace(); control.changed(editor.text); true }
-            Key.Delete -> run { editor.delete(); control.changed(editor.text); true }
-            Key.Space -> run { editor.space(); control.changed(editor.text); true }
+            Key.LineStart -> run { editor.start(); true }
+            Key.LineEnd -> run { editor.end(); true }
+            Key.Backspace -> run { box.backspace(); changed() }
+            Key.Delete -> run { box.delete(); changed() }
+            Key.Space -> run { editor.space(); changed() }
             is Key.Cell -> run { editor.cell(key.dots); true }
-            is Key.Typed -> run { editor.type(key.text); control.changed(editor.text); true }
+            is Key.Typed -> run { editor.type(key.text); changed() }
             else -> false
         }
     }
