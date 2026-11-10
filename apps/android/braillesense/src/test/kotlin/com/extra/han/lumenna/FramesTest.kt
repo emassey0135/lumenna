@@ -14,6 +14,7 @@ import com.extra.han.lumenna.ui.Readings
 import com.extra.han.lumenna.ui.Row
 import dev.emassey0135.lumenna.app.ControlRole
 import dev.emassey0135.lumenna.app.DeviceReading
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -58,6 +59,35 @@ private val READ = Readings { line ->
     val key = line.hotKey?.let { " $it" }.orEmpty()
     val role = if (line.role == ControlRole.MENU) " pulldown" else if (line.asks) " dialog" else ""
     DeviceReading("$name$letter$key$role", emptyList(), line.text, emptyList())
+}
+
+/** One contraction: "the" is one cell. */
+private const val THE = 0x2e
+
+private object Contracted : Translator {
+    override fun computer(text: String): ByteArray = Plain.computer(text)
+
+    override fun translate(text: String, cursor: Int): Translated {
+        val cells = ArrayList<Byte>()
+        val textAt = ArrayList<Int>()
+        var at = 0
+        while (at < text.length) {
+            textAt += at
+            if (text.startsWith("the", at)) { cells += THE.toByte(); at += 3 } else { cells += text[at].code.toByte(); at++ }
+        }
+        return Translated(cells.toByteArray(), IntArray(text.length), textAt.toIntArray())
+    }
+
+    override fun back(cells: ByteArray): String = cells.joinToString("") { if (it.toInt() == THE) "the" else it.toInt().toChar().toString() }
+}
+
+/** Shows anything and reads back only lower case: what a round trip through a table can lose. */
+private object Lossy : Translator {
+    override fun computer(text: String): ByteArray = Plain.computer(text)
+
+    override fun translate(text: String, cursor: Int): Translated = Plain.translate(text, cursor)
+
+    override fun back(cells: ByteArray): String = Plain.back(cells).lowercase()
 }
 
 class FramesTest {
@@ -319,7 +349,7 @@ class FramesTest {
     @Test fun aLineTakesAWordOfCellsAndReadsItBackAtSpace() {
         val editor = LineEditor("", Plain)
         "hi".forEach { editor.cell(it.code) }
-        assertEquals("", editor.text)
+        assertEquals("hi", editor.text)
         editor.space()
         assertEquals("hi ", editor.text)
         assertEquals("hi", editor.takeFinished())
@@ -341,7 +371,6 @@ class FramesTest {
         editor.right()
         editor.start()
         editor.cell('c'.code)
-        editor.commit()
         assertEquals("cabd", editor.text)
     }
 
@@ -400,5 +429,67 @@ class FramesTest {
         assertEquals("b", chosen)
         frame().key(Key.Typed("c"))
         assertEquals("c", chosen)
+    }
+
+    @Test fun backspaceTakesOneCellOfAContraction() {
+        val editor = LineEditor("", Contracted)
+        editor.cell(THE)
+        editor.cell('n'.code)
+        assertEquals("then", editor.text)
+        editor.backspace()
+        assertEquals("the", editor.text)
+        assertEquals('n'.code.toByte(), editor.takeRemoved())
+    }
+
+    @Test fun theLineShowsWhatWasTyped() {
+        val editor = LineEditor("", Contracted)
+        editor.cell(THE)
+        assertArrayEquals(byteArrayOf(THE.toByte()), editor.shown().cells)
+        assertEquals(1, editor.shown().cursor)
+    }
+
+    @Test fun aWordNobodyTouchedKeepsItsTextWhenAnotherIsEdited() {
+        // This translator could not read "Road" back from its cells; the edit never asks it to.
+        val editor = LineEditor("Road milk", Lossy)
+        editor.backspace()
+        assertEquals("Road mil", editor.text)
+    }
+
+    @Test fun aRoutingKeyLandsOnTheCellUnderIt() {
+        val editor = LineEditor("", Contracted)
+        editor.cell(THE)
+        editor.cell('n'.code)
+        editor.route(1)
+        assertEquals(1, editor.caret)
+        editor.cell('x'.code)
+        assertEquals("thexn", editor.text)
+    }
+
+    @Test fun spaceEndsAWordAndBackspaceJoinsItAgain() {
+        val editor = LineEditor("", Plain)
+        "ab".forEach { editor.cell(it.code) }
+        editor.space()
+        assertEquals("ab", editor.takeFinished())
+        editor.cell('c'.code)
+        assertEquals("ab c", editor.text)
+        editor.backspace()
+        editor.backspace()
+        assertEquals(LineEditor.BLANK, editor.takeRemoved())
+        assertEquals("ab", editor.text)
+    }
+
+    @Test fun typingOnTheKeyboardKeepsItsText() {
+        val editor = LineEditor("", Contracted)
+        editor.type("t")
+        editor.type("h")
+        editor.type("e")
+        assertEquals("the", editor.text)
+        assertArrayEquals(byteArrayOf(THE.toByte()), editor.shown().cells)
+    }
+
+    @Test fun aSpaceTypedOnTheKeyboardSplitsTheWord() {
+        val editor = LineEditor("", Plain)
+        editor.type("a b")
+        assertEquals("a b", editor.text)
     }
 }

@@ -189,7 +189,7 @@ class LineFrame(
     }
 
     override fun key(key: Key): Boolean = when (key) {
-        Key.Enter -> run { editor.commit(); done(editor.text); true }
+        Key.Enter -> run { done(editor.text); true }
         Key.CharLeft -> run { editor.left(); push() }
         Key.CharRight -> run { editor.right(); push() }
         Key.WordLeft -> run { editor.wordLeft(); push() }
@@ -283,7 +283,6 @@ class FormFrame(
 
     private fun move(step: Int): Boolean {
         if (controls.isEmpty()) return true
-        (current as? Control.Edit)?.editor?.commit()
         (current as? Control.Edit)?.let { it.changed(it.editor.text) }
         index = (index + step + controls.size) % controls.size
         current?.let(moved)
@@ -328,7 +327,6 @@ class FormFrame(
         val editor = control.editor
         return when (key) {
             Key.Enter -> run {
-                editor.commit()
                 control.changed(editor.text)
                 control.submit?.invoke() ?: move(+1)
                 true

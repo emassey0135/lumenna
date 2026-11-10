@@ -89,6 +89,11 @@ class ChordsTest {
         assertEquals(Key.Escape, Chords.decode(-1, 111, "111 0 ${Chords.F4}", false))
     }
 
+    @Test fun spaceWithCRepeatsAsSpaceWithRDoes() {
+        assertEquals(Key.Repeat, Chords.fromChord(SPACE or DOT1 or DOT4))
+        assertEquals(Key.Repeat, Chords.fromChord(SPACE or DOT1 or DOT2 or DOT3 or DOT5))
+    }
+
     @Test fun spaceThreeAndSixMoveInTextAndFoldInAList() {
         assertEquals(Key.CharLeft, Chords.fromChord(SPACE or Chords.DOT3))
         assertEquals(Key.CharRight, Chords.fromChord(SPACE or Chords.DOT6))

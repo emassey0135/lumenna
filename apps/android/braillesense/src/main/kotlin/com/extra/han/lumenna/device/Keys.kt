@@ -29,7 +29,7 @@ sealed interface Key {
     /** Opens the row's own menu of actions: Enter-I, the device's "actions menu", or the Menu key. */
     data object Context : Key
     data object Help : Key
-    /** Says and shows the current item again: Space-R. */
+    /** Says and shows the current item again: Space-R or Space-C. */
     data object Repeat : Key
     data object Find : Key
     data object Options : Key

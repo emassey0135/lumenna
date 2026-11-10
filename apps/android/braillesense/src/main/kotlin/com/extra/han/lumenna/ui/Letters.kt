@@ -36,10 +36,10 @@ object BrailleLetters : Letters {
     /**
      * Space with these letters is already a command on every screen of the device (Space-1 is
      * A, Up; Space-1-2 is B, Shift-Tab; Space-1-3 is K, the line's start; Space-1-2-3 is L, the
-     * first row; and D, E, F, H, M, O, R and Z the manual's own), so the core's letter is
+     * first row; and C, D, E, F, H, M, O, R and Z the manual's own), so the core's letter is
      * pressed with Enter there.
      */
-    private val SPACE_TAKEN = setOf('a', 'b', 'd', 'e', 'f', 'h', 'k', 'l', 'm', 'o', 'r', 'z')
+    private val SPACE_TAKEN = setOf('a', 'b', 'c', 'd', 'e', 'f', 'h', 'k', 'l', 'm', 'o', 'r', 'z')
 
     /** How a letter is pressed here, for a menu to show: a key's name is the device's. */
     fun press(letter: Char): String? = when {

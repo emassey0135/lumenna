@@ -27,6 +27,10 @@ class BrailleSettings(private val context: Context) {
     @Volatile var lines: LineSettings = lineSettings(2, 2, 1, 1, 1, false)
         private set
 
+    /** Keyboard Echo: what is said as a line is typed. */
+    @Volatile var echo: Echo = Echo.of(1)
+        private set
+
     /** Automatically Open Menus with Shortcut: whether a letter opens an item or only goes to it. */
     @Volatile var opensOnLetter: Boolean = true
         private set
@@ -64,6 +68,7 @@ class BrailleSettings(private val context: Context) {
                 brailleAfterOffered,
             )
             opensOnLetter = (read("SupportShortCut")?.toIntOrNull() ?: 1) != 0
+            echo = Echo.of(read("KeyboardEcho")?.toIntOrNull() ?: 1)
         }
     }
 
@@ -74,6 +79,13 @@ class BrailleSettings(private val context: Context) {
     private fun read(name: String): String? = context.contentResolver.query(
         URI, null, "name=?", arrayOf(name), null,
     )?.use { row -> if (row.moveToFirst()) row.getString(row.getColumnIndexOrThrow("value")) else null }
+}
+
+/** Keyboard Echo: 0 off, 1 characters and words, 2 characters, 3 words. */
+data class Echo(val characters: Boolean, val words: Boolean, val space: Boolean) {
+    companion object {
+        fun of(setting: Int) = Echo(characters = setting == 1 || setting == 2, words = setting == 1 || setting == 3, space = setting != 0)
+    }
 }
 
 private fun place(setting: Int, afterOffered: Boolean = true) = when {

@@ -426,6 +426,8 @@ pub struct BrailleWords {
     pub no_actions: String,
     /// The screen of reminders due asked for with none due.
     pub nothing_due: String,
+    /// A space, typed or erased, said by a device that says what is typed.
+    pub space: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -863,6 +865,7 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
             opens_nothing: "Nothing to open here.".to_owned(),
             no_actions: "No actions on this row.".to_owned(),
             nothing_due: "No reminders are due.".to_owned(),
+            space: c("Space"),
         },
         yes_no: lumenna_records::fields::yes_no(),
 
@@ -1249,13 +1252,13 @@ pub fn braillesense_keys() -> Vec<DeviceKey> {
         row("Space-4-5 or F3, Space-1-2 or Space-F3", "Next and previous control in a dialog"),
         row("Space", "Change a check box, a combo box, a prompt button, or mark a task done"),
         row("Space with a letter", "The row's command of that letter, or the screen's"),
-        row("Enter with a letter", "The same, for A, B, D, E, F, H, K, L, M, O, R and Z, which Space keeps for moving and the device"),
+        row("Enter with a letter", "The same, for A, B, C, D, E, F, H, K, L, M, O, R and Z, which Space keeps for moving and the device"),
         row("Enter-A", "New task"),
         row("Space-U, Space-Y", "Undo and redo"),
         row("Space-F", "Filter the list"),
         row("Space-D", "Delete the row"),
         row("Space-H, or F1 on the QWERTY keyboard", "These keys"),
         row("Space-O", "Settings"),
-        row("Space-R", "Say the row again"),
+        row("Space-R or Space-C", "Say the row again"),
     ]
 }

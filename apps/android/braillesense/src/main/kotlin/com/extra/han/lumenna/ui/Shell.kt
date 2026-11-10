@@ -1,5 +1,6 @@
 package com.extra.han.lumenna.ui
 
+import com.extra.han.lumenna.device.Echo
 import com.extra.han.lumenna.device.Key
 import com.extra.han.lumenna.device.Translator
 import dev.emassey0135.lumenna.AppModel
@@ -104,11 +105,15 @@ class Shell(
     private val messageMillis: () -> Long = { 3000L },
     /** Automatically Open Menus with Shortcut: whether a letter opens what it names or only goes to it. */
     private val opensOnLetter: () -> Boolean = { true },
+    private val echoSetting: () -> Echo = { Echo.of(1) },
 ) {
     private val app: AppModel get() = core.app
     private val pages = ArrayDeque<Page>(listOf(Page.Places))
     private var menu: MenuFrame? = null
     private var frame: Frame? = null
+
+    /** Which side list each frame is, for those that are one. */
+    private val sides = HashMap<String, Side>()
 
     /** The row in hand in each list, by the frame it is in. */
     private val selected = HashMap<String, String>()
@@ -267,6 +272,9 @@ class Shell(
         drawn(rendered.speech)
         val fresh = built.id != lastId
         lastId = built.id
+        // A side list shown is what the app acts on from now: until it is told, a letter pressed
+        // here would run on the row in hand in the main list, which the person cannot see.
+        if (fresh && built is ListFrame) sides[built.id]?.let { side -> built.current?.let { held(it.key, side) } }
         val firstContent = lastSpeech.isEmpty() && rendered.speech.isNotEmpty()
         val reworded = awaitingChange && rendered.speech != lastSpeech
         if (reworded) awaitingChange = false
@@ -327,6 +335,10 @@ class Shell(
                 clearMessage()
                 refresh(false)
                 echo(current, key)
+            } else if (caretMoves(current, key)) {
+                clearMessage()
+                refresh(false)
+                sayCaret(current, key)
             } else if (changes(current, key)) {
                 clearMessage()
                 awaitingChange = true
@@ -373,18 +385,60 @@ class Shell(
 
     private var awaitingChange = false
 
-    private fun typing(frame: Frame, key: Key): Boolean {
-        val editing = frame is LineFrame || (frame as? FormFrame)?.current is Control.Edit
-        return editing && (key is Key.Cell || key is Key.Typed || key == Key.Backspace || key == Key.Space)
+    private fun editorOf(frame: Frame): LineEditor? = (frame as? LineFrame)?.editor ?: ((frame as? FormFrame)?.current as? Control.Edit)?.editor
+
+    private fun typing(frame: Frame, key: Key): Boolean =
+        editorOf(frame) != null && (key is Key.Cell || key is Key.Typed || key == Key.Backspace || key == Key.Space)
+
+    private fun caretMoves(frame: Frame, key: Key): Boolean =
+        editorOf(frame) != null && (key == Key.CharLeft || key == Key.CharRight || key == Key.WordLeft || key == Key.WordRight)
+
+    /** What typing says, as the device's Keyboard Echo has it; what Backspace takes is always said. */
+    private fun echo(frame: Frame, key: Key) {
+        val editor = editorOf(frame) ?: return
+        val setting = echoSetting()
+        when (key) {
+            is Key.Cell -> if (setting.characters) sayCell(editor, key.dots.toByte())
+            is Key.Typed -> if (setting.characters) out.say(key.text)
+            Key.Space -> {
+                val word = editor.takeFinished()
+                when {
+                    word != null && setting.words -> out.say(word)
+                    setting.space -> out.say(appWords.braille.space)
+                }
+            }
+            Key.Backspace -> editor.takeRemoved()?.let { removed ->
+                if (removed == LineEditor.BLANK) out.say(appWords.braille.space) else sayCell(editor, removed)
+            }
+            else -> {}
+        }
     }
 
-    /** What typing says: the word just finished, or the character typed. */
-    private fun echo(frame: Frame, key: Key) {
-        val editor = (frame as? LineFrame)?.editor ?: ((frame as? FormFrame)?.current as? Control.Edit)?.editor ?: return
-        val word = editor.takeFinished()
-        when {
-            word != null -> out.say(word)
-            key is Key.Typed -> out.say(key.text)
+    /** A cell by itself, as the device says one: its letter, a digit after a number sign, or what the table reads it as. */
+    private fun sayCell(editor: LineEditor, cell: Byte) {
+        val dots = cell.toInt() and 0xff
+        val typed = editor.wordBeforeCaret()
+        val inNumber = typed.dropLastWhile { it == cell }.any { it.toInt() and 0x3f == NUMBER_SIGN }
+        val letter = letters.letter(Key.Cell(dots))?.takeIf { dots and 0xc0 == 0 && it.isLetter() }
+        val said = when {
+            inNumber -> translator.back(byteArrayOf(NUMBER_SIGN.toByte(), cell))
+            letter != null -> letter.toString()
+            else -> translator.back(byteArrayOf(cell))
+        }
+        said?.takeIf { it.isNotBlank() }?.let(out::say)
+    }
+
+    /** The caret moved in a line: what is at it, not the whole line. */
+    private fun sayCaret(frame: Frame, key: Key) {
+        val editor = editorOf(frame) ?: return
+        if (key == Key.WordLeft || key == Key.WordRight) {
+            editor.wordAtCaret().takeIf { it.isNotBlank() }?.let(out::say)
+            return
+        }
+        when (val cell = editor.cellAtCaret()) {
+            null -> {}
+            LineEditor.BLANK -> out.say(appWords.braille.space)
+            else -> sayCell(editor, cell)
         }
     }
 
@@ -573,6 +627,7 @@ class Shell(
         byLetter: ((Char) -> Boolean)? = null,
         prompt: Boolean = false,
     ): ListFrame {
+        if (side != null) sides[id] = side
         val appChoice = fallback
         val chosen = if (landedNow && appChoice != null) appChoice else selected[id] ?: appChoice
         return ListFrame(id, title, rows, chosen, empty, letters, moved = { row ->
@@ -1142,6 +1197,9 @@ class Shell(
     }
 
     private companion object {
+        /** Dots 3-4-5-6, which begin a number. */
+        const val NUMBER_SIGN = 0x3c
+
         /** How long after a turn its speech waits, for what the app said to arrive with it. */
         const val SPEECH_DELAY = 60L
 

@@ -82,6 +82,7 @@ object Chords {
         pattern(1, 3, 5, 6) to Key.Exit, // Z
         pattern(1, 2, 5) to Key.Help, // H
         pattern(1, 2, 3, 5) to Key.Repeat, // R
+        pattern(1, 4) to Key.Repeat, // C: the device's lists and edit boxes take both alike
         pattern(1, 2, 4) to Key.Find, // F
         pattern(1, 3, 5) to Key.Options, // O
         pattern(1, 4, 5) to Key.Delete, // D

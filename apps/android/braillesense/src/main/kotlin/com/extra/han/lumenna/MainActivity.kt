@@ -140,7 +140,7 @@ class MainActivity : ComponentActivity(), Host {
             return
         }
         Clock.update(this)
-        val shown = Shell(opened, speaker, translator, this, CoreReadings(settings), messageMillis = { settings.messageMillis }, opensOnLetter = { settings.opensOnLetter }).apply {
+        val shown = Shell(opened, speaker, translator, this, CoreReadings(settings), messageMillis = { settings.messageMillis }, opensOnLetter = { settings.opensOnLetter }, echoSetting = { settings.echo }).apply {
             reminderAccess = { Reminders.access(this@MainActivity) }
         }
         shell = shown
