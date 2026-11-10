@@ -436,6 +436,13 @@ pub fn braille_letter(dots: u8) -> Option<String> {
     lumenna_app::braille::braille_letter(dots).map(|letter| letter.to_string())
 }
 
+/// What a braille device says for one cell of a line by itself, as its own edit boxes do: `word`
+/// the cells of the word it is in (dot 1 bit 0) and `at` where in it the cell is.
+#[export]
+pub fn cell_echo(word: Vec<u8>, at: u32, contracted: bool) -> String {
+    lumenna_app::braille::cell_echo(&word, at as usize, contracted)
+}
+
 /// Where the next line starting with `letter` is, from the line after `from` on, wrapping round
 /// and ending back at `from`; a line `hidden` says is folded away is passed. For a list a shell
 /// draws itself.

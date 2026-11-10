@@ -101,4 +101,22 @@ class ChordsTest {
 
     @Test fun routingKeysNameTheirCell() =
         assertEquals(Key.Route(3), Chords.fromChord(Chords.ROUTE_FIRST + 3))
+
+    @Test fun aTouchedCellAndACursorButtonRouteToThatCell() {
+        // The touch display counts cells from 1; a routing key from 0.
+        assertEquals(Key.Route(4), Chords.decode(-7, 5, null, false))
+        assertNull(Chords.decode(-7, 0, null, false))
+    }
+
+    @Test fun aDoubleTapRoutesOnlyWhereThePersonAskedForIt() {
+        assertEquals(Key.Route(9), Chords.decode(-5, 2, "10", false, doubleTapRoutes = true))
+        assertEquals(Key.Route(9), Chords.decode(-5, 17, "10", false, doubleTapRoutes = true))
+        assertNull(Chords.decode(-5, 2, "10", false, doubleTapRoutes = false))
+        assertNull("a single tap is no routing", Chords.decode(-5, 1, "10", false, doubleTapRoutes = true))
+    }
+
+    @Test fun spaceThreeSixAndTwoFiveSayTheCharacterAndTheWord() {
+        assertEquals(Key.SayCharacter, Chords.fromChord(SPACE or Chords.DOT3 or Chords.DOT6))
+        assertEquals(Key.SayWord, Chords.fromChord(SPACE or Chords.DOT2 or Chords.DOT5))
+    }
 }

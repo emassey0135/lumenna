@@ -31,6 +31,10 @@ class BrailleSettings(private val context: Context) {
     @Volatile var echo: Echo = Echo.of(1)
         private set
 
+    /** Double-Tap to Route Cursor, in Gesture Options: whether a double tap on a cell routes to it. */
+    @Volatile var doubleTapRoutes: Boolean = false
+        private set
+
     /** Automatically Open Menus with Shortcut: whether a letter opens an item or only goes to it. */
     @Volatile var opensOnLetter: Boolean = true
         private set
@@ -68,7 +72,8 @@ class BrailleSettings(private val context: Context) {
                 brailleAfterOffered,
             )
             opensOnLetter = (read("SupportShortCut")?.toIntOrNull() ?: 1) != 0
-            echo = Echo.of(read("KeyboardEcho")?.toIntOrNull() ?: 1)
+            echo = Echo.of(read("KeyboardEcho")?.toIntOrNull() ?: 1, if (eight) 0 else grade)
+            doubleTapRoutes = (read("GestureDoubleTapCursor")?.toIntOrNull() ?: 0) != 0
         }
     }
 
@@ -81,10 +86,19 @@ class BrailleSettings(private val context: Context) {
     )?.use { row -> if (row.moveToFirst()) row.getString(row.getColumnIndexOrThrow("value")) else null }
 }
 
-/** Keyboard Echo: 0 off, 1 characters and words, 2 characters, 3 words. */
-data class Echo(val characters: Boolean, val words: Boolean, val space: Boolean) {
+/**
+ * Keyboard Echo: 0 off, 1 characters and words, 2 characters, 3 words; the device's own edit box
+ * also takes 4 as 1 and 5 as 2. [grade] is the braille typed: 0 computer, 1 uncontracted, 2
+ * contracted, which is how a cell by itself is said.
+ */
+data class Echo(val characters: Boolean, val words: Boolean, val space: Boolean, val grade: Int = 2) {
     companion object {
-        fun of(setting: Int) = Echo(characters = setting == 1 || setting == 2, words = setting == 1 || setting == 3, space = setting != 0)
+        fun of(setting: Int, grade: Int = 2) = Echo(
+            characters = setting in setOf(1, 2, 4, 5),
+            words = setting in setOf(1, 3, 4),
+            space = setting != 0,
+            grade = grade,
+        )
     }
 }
 

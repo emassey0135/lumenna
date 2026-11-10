@@ -17,6 +17,7 @@ import dev.emassey0135.lumenna.app.DeviceReading
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -438,7 +439,21 @@ class FramesTest {
         assertEquals("then", editor.text)
         editor.backspace()
         assertEquals("the", editor.text)
-        assertEquals('n'.code.toByte(), editor.takeRemoved())
+        val removed = editor.takeRemoved()!!
+        assertEquals('n'.code.toByte(), removed.cell)
+        assertArrayEquals("the word it was in, to say it as it was", byteArrayOf(THE.toByte(), 'n'.code.toByte()), removed.word)
+        assertEquals(1, removed.at)
+    }
+
+    @Test fun theCellJustTypedIsSaidWithItsWord() {
+        val editor = LineEditor("", Plain)
+        "ab".forEach { editor.cell(it.code) }
+        val typed = editor.cellBeforeCaret()!!
+        assertEquals('b'.code.toByte(), typed.cell)
+        assertEquals(1, typed.at)
+        assertNull("past the end of the line there is no cell", editor.cellAtCaret())
+        editor.start()
+        assertEquals('a'.code.toByte(), editor.cellAtCaret()!!.cell)
     }
 
     @Test fun theLineShowsWhatWasTyped() {
@@ -474,7 +489,7 @@ class FramesTest {
         assertEquals("ab c", editor.text)
         editor.backspace()
         editor.backspace()
-        assertEquals(LineEditor.BLANK, editor.takeRemoved())
+        assertEquals(LineEditor.BLANK, editor.takeRemoved()!!.cell)
         assertEquals("ab", editor.text)
     }
 

@@ -45,6 +45,7 @@ import dev.emassey0135.lumenna.app.levels
 import dev.emassey0135.lumenna.app.pressToAdd
 import dev.emassey0135.lumenna.app.sidebarKey
 import dev.emassey0135.lumenna.app.buttonLetter
+import dev.emassey0135.lumenna.app.cellEcho
 import dev.emassey0135.lumenna.app.commandLetter
 import dev.emassey0135.lumenna.app.dialogTitle
 import dev.emassey0135.lumenna.app.dueLetter
@@ -303,6 +304,18 @@ class Shell(
     fun press(key: Key) {
         when (key) {
             Key.Silence -> return out.silence()
+            Key.SayCharacter, Key.SayWord -> {
+                val editor = frame?.let { editorOf(it) }
+                if (editor != null) {
+                    clearMessage()
+                    out.silence()
+                    // At the end of the line the cursor is past the last character: that one is said.
+                    if (key == Key.SayWord) sayWord(editor) else (editor.cellAtCaret() ?: editor.cellBeforeCaret())?.let(::sayCell)
+                    return
+                }
+                // Outside a line the dots are what they were: Space with them.
+                return press(Key.SpaceDots(if (key == Key.SayWord) SAY_WORD_DOTS else SAY_CHARACTER_DOTS))
+            }
             Key.Repeat -> return run {
                 clearMessage()
                 frame?.rendered?.let { out.say(it.speech); out.show(it) }
@@ -398,7 +411,7 @@ class Shell(
         val editor = editorOf(frame) ?: return
         val setting = echoSetting()
         when (key) {
-            is Key.Cell -> if (setting.characters) sayCell(editor, key.dots.toByte())
+            is Key.Cell -> if (setting.characters) editor.cellBeforeCaret()?.let(::sayCell)
             is Key.Typed -> if (setting.characters) out.say(key.text)
             Key.Space -> {
                 val word = editor.takeFinished()
@@ -407,23 +420,23 @@ class Shell(
                     setting.space -> out.say(appWords.braille.space)
                 }
             }
-            Key.Backspace -> editor.takeRemoved()?.let { removed ->
-                if (removed == LineEditor.BLANK) out.say(appWords.braille.space) else sayCell(editor, removed)
-            }
+            Key.Backspace -> editor.takeRemoved()?.let(::sayCell)
             else -> {}
         }
     }
 
-    /** A cell by itself, as the device says one: its letter, a digit after a number sign, or what the table reads it as. */
-    private fun sayCell(editor: LineEditor, cell: Byte) {
-        val dots = cell.toInt() and 0xff
-        val typed = editor.wordBeforeCaret()
-        val inNumber = typed.dropLastWhile { it == cell }.any { it.toInt() and 0x3f == NUMBER_SIGN }
-        val letter = letters.letter(Key.Cell(dots))?.takeIf { dots and 0xc0 == 0 && it.isLetter() }
-        val said = when {
-            inNumber -> translator.back(byteArrayOf(NUMBER_SIGN.toByte(), cell))
-            letter != null -> letter.toString()
-            else -> translator.back(byteArrayOf(cell))
+    /**
+     * A cell by itself, as the device's own edit boxes say it: in computer braille the character
+     * it is, else the core's name for it (its letters, never the whole word it can stand for, and
+     * a cell with no letters by its dots).
+     */
+    private fun sayCell(cell: CellInWord) {
+        if (cell.cell == LineEditor.BLANK) return out.say(appWords.braille.space)
+        val grade = echoSetting().grade
+        val said = if (grade == 0) {
+            translator.back(byteArrayOf(cell.cell))
+        } else {
+            cellEcho(cell.word, cell.at.toUInt(), grade == 2)
         }
         said?.takeIf { it.isNotBlank() }?.let(out::say)
     }
@@ -431,15 +444,13 @@ class Shell(
     /** The caret moved in a line: what is at it, not the whole line. */
     private fun sayCaret(frame: Frame, key: Key) {
         val editor = editorOf(frame) ?: return
-        if (key == Key.WordLeft || key == Key.WordRight) {
-            editor.wordAtCaret().takeIf { it.isNotBlank() }?.let(out::say)
-            return
-        }
-        when (val cell = editor.cellAtCaret()) {
-            null -> {}
-            LineEditor.BLANK -> out.say(appWords.braille.space)
-            else -> sayCell(editor, cell)
-        }
+        if (key == Key.WordLeft || key == Key.WordRight) return sayWord(editor)
+        editor.cellAtCaret()?.let(::sayCell)
+    }
+
+    /** The word at the caret, as Space-2-5 says it. */
+    private fun sayWord(editor: LineEditor) {
+        editor.wordAtCaret().takeIf { it.isNotBlank() }?.let(out::say)
     }
 
     private fun pushPage(page: Page) {
@@ -1198,7 +1209,9 @@ class Shell(
 
     private companion object {
         /** Dots 3-4-5-6, which begin a number. */
-        const val NUMBER_SIGN = 0x3c
+        /** Space-2-5 and Space-3-6, the device's read word and read character, as dots. */
+        private const val SAY_WORD_DOTS = 0x12
+        private const val SAY_CHARACTER_DOTS = 0x24
 
         /** How long after a turn its speech waits, for what the app said to arrive with it. */
         const val SPEECH_DELAY = 60L

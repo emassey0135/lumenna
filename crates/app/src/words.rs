@@ -1260,5 +1260,7 @@ pub fn braillesense_keys() -> Vec<DeviceKey> {
         row("Space-H, or F1 on the QWERTY keyboard", "These keys"),
         row("Space-O", "Settings"),
         row("Space-R or Space-C", "Say the row again"),
+        row("Space-3-6, Space-2-5", "In a line of text, say the character and the word at the cursor"),
+        row("A cell touched and a front Cursor button", "Move the cursor in a line of text to that cell"),
     ]
 }

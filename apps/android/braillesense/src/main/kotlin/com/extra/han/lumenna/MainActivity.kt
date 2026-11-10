@@ -66,7 +66,7 @@ class MainActivity : ComponentActivity(), Host {
 
     private val input: HanInputClient by lazy {
         HanInputClient(applicationContext) { code, value, data ->
-            keys.deliver(Chords.decode(code, value, data, settings.eightDot))
+            keys.deliver(Chords.decode(code, value, data, settings.eightDot, settings.doubleTapRoutes))
         }
     }
 

@@ -5,6 +5,11 @@ import com.extra.han.lumenna.device.Translator
 /** A line as it reads on the cells. */
 class ShownLine(val cells: ByteArray, val cursor: Int)
 
+/** One cell of a line, [at] in the cells of its [word]: how it is said depends on its neighbours. */
+class CellInWord(val word: ByteArray, val at: Int) {
+    val cell: Byte get() = word[at]
+}
+
 /**
  * A single line being typed, held as the device's own edit boxes hold it: in cells, as typed, the
  * caret a cell, so Backspace takes one cell, a routing key lands on the cell under it, and the line
@@ -113,23 +118,23 @@ class LineEditor(initial: String, private val translator: Translator) {
         caret++
     }
 
-    /** What Backspace or Delete just removed, once: [BLANK] for a space, null for nothing. */
-    private var removed: Byte? = null
+    /** What Backspace or Delete just removed, once, in the word it was in: a [BLANK] for a space, null for nothing. */
+    private var removed: CellInWord? = null
 
-    fun takeRemoved(): Byte? = removed.also { removed = null }
+    fun takeRemoved(): CellInWord? = removed.also { removed = null }
 
     private fun removeAt(at: Int): Boolean {
         val (index, offset) = place(at)
         val word = words[index]
         if (offset < word.cells.size) {
-            removed = word.cells[offset]
+            removed = CellInWord(word.cells, offset)
             word.cells = word.cells.copyOfRange(0, offset) + word.cells.copyOfRange(offset + 1, word.cells.size)
             word.text = null
             return true
         }
         if (index == words.lastIndex) return false
         val next = words.removeAt(index + 1)
-        removed = BLANK
+        removed = CellInWord(byteArrayOf(BLANK), 0)
         word.text = when {
             word.cells.isEmpty() -> next.text
             next.cells.isEmpty() -> word.text
@@ -186,16 +191,21 @@ class LineEditor(initial: String, private val translator: Translator) {
         caret = cell.coerceIn(0, length)
     }
 
-    /** The cell at the caret, and what comes before it in its word: for saying it. Null at the end. */
-    fun cellAtCaret(): Byte? = flat.getOrNull(caret)
-
-    /** The cells of the word the caret is in, ahead of the caret. */
-    fun wordBeforeCaret(): ByteArray {
-        val (index, offset) = place()
-        return words[index].cells.copyOfRange(0, offset)
+    /** The cell at [at] in the line with the word it is in, for saying it: a [BLANK] for a space, null past the end. */
+    fun cellAt(at: Int): CellInWord? {
+        if (at < 0 || at >= length) return null
+        val (index, offset) = place(at)
+        val word = words[index]
+        return if (offset < word.cells.size) CellInWord(word.cells, offset) else CellInWord(byteArrayOf(BLANK), 0)
     }
 
-    /** The text of the word the caret is in. */
+    /** The cell at the caret: null at the end of the line. */
+    fun cellAtCaret(): CellInWord? = cellAt(caret)
+
+    /** The cell just typed, before the caret. */
+    fun cellBeforeCaret(): CellInWord? = cellAt(caret - 1)
+
+    /** The text of the word the caret is in, or that it has just left at its end. */
     fun wordAtCaret(): String = textOf(words[place().first])
 
     /** The line as cells, exactly as typed. */

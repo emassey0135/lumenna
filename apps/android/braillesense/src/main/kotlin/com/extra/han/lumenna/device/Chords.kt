@@ -83,6 +83,8 @@ object Chords {
         pattern(1, 2, 5) to Key.Help, // H
         pattern(1, 2, 3, 5) to Key.Repeat, // R
         pattern(1, 4) to Key.Repeat, // C: the device's lists and edit boxes take both alike
+        pattern(3, 6) to Key.SayCharacter, // the device's edit boxes: the character at the cursor
+        pattern(2, 5) to Key.SayWord, // and the word
         pattern(1, 2, 4) to Key.Find, // F
         pattern(1, 3, 5) to Key.Options, // O
         pattern(1, 4, 5) to Key.Delete, // D
@@ -95,7 +97,8 @@ object Chords {
      * field of [data] ("67 0 512"); injected for testing, the chord is the first field and
      * [value] ("7424 0 0"). A code of -1 is a key; others are the service's own news.
      */
-    fun decode(code: Int, value: Int, data: String?, eightDot: Boolean): Key? {
+    fun decode(code: Int, value: Int, data: String?, eightDot: Boolean, doubleTapRoutes: Boolean = false): Key? {
+        touched(code, value, data, doubleTapRoutes)?.let { return it }
         if (code != -1) return null
         val parts = data.orEmpty().trim().split(' ').filter { it.isNotEmpty() }
         val chord = parts.getOrNull(2)?.toIntOrNull()?.takeIf { it != 0 } ?: value
@@ -103,6 +106,25 @@ object Chords {
         if (chord and FUNCTION_KEYS == 0) fromFunctionKey(keyCode, chord)?.let { return it }
         return fromChord(chord, eightDot)
     }
+
+    /**
+     * The touch display's cursor routing, which comes on the same callback as the keys but as a
+     * gesture: code -7 when a cell is touched and a front Cursor button pressed (again for each
+     * cell as the finger slides with the button held), the cell in [value]; and code -5 for a tap,
+     * the kind in [value] (2 a one-finger double tap, 17 one held) and the cell in [data], which
+     * routes only where the person turned on Double-Tap to Route Cursor. Cells count from 1.
+     */
+    private fun touched(code: Int, value: Int, data: String?, doubleTapRoutes: Boolean): Key? = when {
+        code == SMART_CURSOR && value >= 1 -> Key.Route(value - 1)
+        code == TAP && doubleTapRoutes && (value == DOUBLE_TAP || value == DOUBLE_TAP_HOLD) ->
+            data?.trim()?.toIntOrNull()?.takeIf { it >= 1 }?.let { Key.Route(it - 1) }
+        else -> null
+    }
+
+    private const val SMART_CURSOR = -7
+    private const val TAP = -5
+    private const val DOUBLE_TAP = 2
+    private const val DOUBLE_TAP_HOLD = 17
 
     /** F1 to F4 as Android's own codes (131 on), from a keyboard that sends those. */
     private fun fromFunctionKey(keyCode: Int, chord: Int): Key? = when (keyCode) {
