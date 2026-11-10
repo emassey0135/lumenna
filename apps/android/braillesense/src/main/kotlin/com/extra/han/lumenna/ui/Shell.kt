@@ -321,9 +321,11 @@ class Shell(
 
     /** A key, from the braille keys or the QWERTY keyboard. */
     fun press(key: Key) {
-        if (confirming != null && key == Key.Escape) {
+        // The answer says what it did and nothing more: the box it returns to is not read again.
+        if (confirming != null && (key == Key.Escape || key == Key.Enter)) {
             out.silence()
-            return answerConfirmation(false)
+            clearMessage()
+            return answerConfirmation(key == Key.Enter && (frame as? ListFrame)?.current?.key == "yes")
         }
         when (key) {
             Key.Silence -> return out.silence()
