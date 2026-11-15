@@ -5,13 +5,15 @@ use boltffi::export;
 use lumenna_records::places::{Place, SidebarGroup, SidebarKind};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_app::Capitals;
+use lumenna_app::ShellEvent;
+use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
 use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LetteredMenu, LineSettings, MenuShortcut, SenseLetter, SpeakLetter};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
-use lumenna_records::{ActionKind, Candidate};
+use lumenna_records::{ActionKind, Candidate, Offered};
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
 #[export]
@@ -554,4 +556,18 @@ pub fn braillesense_letter(letter: String) -> Option<SenseLetter> {
 #[export]
 pub fn braillesense_press(letter: String) -> Option<String> {
     lumenna_app::braille::braillesense_press(&letter)
+}
+
+/// What doing `how` to a dialog's control that sends `sends`, holding `value`, sends, in order
+/// (`dialog::control_event`): a shell sends each, building none itself.
+#[export]
+pub fn control_event(sends: ControlSends, value: String, how: ControlMove) -> Vec<ShellEvent> {
+    lumenna_app::dialog::control_event(&sends, &value, how)
+}
+
+/// What a key of the shared table (`id`) runs on a row offering `offered`, in short: the action
+/// a screen reader names as the row's default (Enter's is `key_runs_on("open", …)`).
+#[export]
+pub fn key_runs_on(id: String, offered: Vec<Offered>) -> Option<Offered> {
+    lumenna_app::keys::runs_on(&id, &offered)
 }

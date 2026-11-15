@@ -10,6 +10,7 @@
 
 use lumenna_records::{Offered, Question};
 
+use crate::dialog::DialogShown;
 use crate::lines::Lines;
 use crate::speech::Line;
 use crate::{Asking, Side, ViewModel, braille};
@@ -23,6 +24,10 @@ pub struct ScreenView {
     /// What changed, in the order to say it: a place entered, then a move, a question opened, a
     /// refusal.
     pub changes: Vec<ScreenChange>,
+    /// The dialog the app has open on top, as its controls in tab order (`dialog::open`): a
+    /// question, the block form, quick add. The task form and a settings page, which the shell
+    /// opens, are `dialog::task_form` and `dialog::settings_page`.
+    pub dialog: Option<DialogShown>,
 }
 
 /// What is on the screen, the topmost of it.
@@ -400,7 +405,7 @@ pub fn screen_view(before: Option<&ViewModel>, view: &ViewModel, lines: &Lines, 
     {
         changes.push(ScreenChange::Refused { reason, said: false });
     }
-    ScreenView { shown: shown(view, lines), changes }
+    ScreenView { shown: shown(view, lines), changes, dialog: view.ready.then(|| crate::dialog::open(view, lines)).flatten() }
 }
 
 #[cfg(test)]

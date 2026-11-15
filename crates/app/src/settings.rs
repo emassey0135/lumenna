@@ -87,6 +87,28 @@ impl crux_core::capability::Operation for Background {
     type Output = ();
 }
 
+/// What a shell can do that settings depend on, said once as it starts (`Event::Abilities`), so
+/// the core lists only what applies there. A shell that never says can do both.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Abilities {
+    /// Whether it saves a file the person keeps (an export, a backup taken now) and picks one to
+    /// read (an import, a backup restored): a watch does neither.
+    pub files: bool,
+    /// Whether it keeps backups in a folder on a schedule (`backup-every`, `backup-keep`,
+    /// `backup-dir`), and takes one there when asked: a browser does not.
+    pub backup_folder: bool,
+}
+
+impl Default for Abilities {
+    fn default() -> Self {
+        Self { files: true, backup_folder: true }
+    }
+}
+
+/// The settings a shell keeping no backup folder has no use for.
+const BACKUP_FOLDER_SETTINGS: &[&str] = &["backup-every", "backup-keep", "backup-dir"];
+
 /// Settings, open.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Settings {
@@ -172,14 +194,25 @@ impl crux_core::capability::Operation for SaveFile {
 /// has (keeping Lumenna running in the background only where the shell offers it, once the store
 /// has listed them only those it lists), and a page left with no setting and no button not
 /// listed at all, so no shell filters the pages itself.
-fn pages(settings: &Settings, background: bool, own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
+fn pages(settings: &Settings, background: bool, abilities: Abilities, own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
     let listed: Option<std::collections::BTreeSet<&str>> = settings.list.as_ref().map(|list| {
         list.iter().map(|setting| setting.key.as_str()).chain(background.then_some(BACKGROUND)).collect()
     });
     lumenna_records::fields::settings_pages(own_clock, sentence)
         .into_iter()
         .filter_map(|mut page| {
-            page.keys.retain(|key| (key != BACKGROUND || background) && listed.as_ref().is_none_or(|listed| listed.contains(key.as_str())));
+            page.keys.retain(|key| {
+                (key != BACKGROUND || background)
+                    && (abilities.backup_folder || !BACKUP_FOLDER_SETTINGS.contains(&key.as_str()))
+                    && listed.as_ref().is_none_or(|listed| listed.contains(key.as_str()))
+            });
+            // A button that saves or picks a file is offered where the shell can; Back Up Now where
+            // it saves one or keeps a folder of them.
+            page.buttons.retain(|button| match button.id.as_str() {
+                "back-up" => abilities.files || abilities.backup_folder,
+                "restore-backup" | "import" => abilities.files,
+                _ => true,
+            });
             (!page.keys.is_empty() || !page.buttons.is_empty()).then_some(page)
         })
         .collect()
@@ -188,13 +221,22 @@ fn pages(settings: &Settings, background: bool, own_clock: bool, sentence: bool)
 /// Settings as shown, the exports named for `today`, with keeping Lumenna running in the
 /// background where the shell offers it (`background`, as the shell last said).
 #[must_use]
-pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, today: jiff::civil::Date, own_clock: bool, sentence: bool) -> SettingsView {
+pub fn view(
+    settings: &Settings,
+    background: Option<(BackgroundKind, bool)>,
+    abilities: Abilities,
+    today: jiff::civil::Date,
+    own_clock: bool,
+    sentence: bool,
+) -> SettingsView {
     let offered = background.map(|(kind, on)| lumenna_records::background::background_setting(kind, on));
     let rows = settings
         .list
         .iter()
         .flatten()
         .chain(settings.list.is_some().then_some(offered.as_ref()).flatten())
+        // What the shell cannot use is not listed: a backup folder where it keeps none.
+        .filter(|setting| abilities.backup_folder || !BACKUP_FOLDER_SETTINGS.contains(&setting.key.as_str()))
         .map(|setting| SettingView {
             typed: settings.typed.get(&setting.key).cloned().unwrap_or_else(|| setting.value.clone()),
             problem: settings.problems.get(&setting.key).cloned(),
@@ -203,6 +245,7 @@ pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, tod
         .collect();
     let exports = lumenna_records::exports::EXPORTS
         .iter()
+        .filter(|_| abilities.files)
         .map(|export| ExportChoice {
             format: export.format,
             label: export.label.trim_end_matches("...").to_owned(),
@@ -215,7 +258,7 @@ pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, tod
         exports,
         offered,
         offered_caption: lumenna_records::actions::STORE_ACTIONS.to_owned(),
-        pages: pages(settings, background.is_some(), own_clock, sentence),
+        pages: pages(settings, background.is_some(), abilities, own_clock, sentence),
         words: lumenna_records::fields::setting_words(),
     }
 }

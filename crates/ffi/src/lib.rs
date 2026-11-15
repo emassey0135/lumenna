@@ -35,6 +35,7 @@ use offline::{Network, NetworkHandle};
 use lumenna_bridge::{Stack, Store, stack};
 use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
+use lumenna_app::dialog::DialogShown;
 use lumenna_app::screen::ScreenView;
 use lumenna_app::speech::{self, Clock, Spoken};
 use lumenna_records::assistant::{AssistantEntity, AssistantOperation};
@@ -194,6 +195,19 @@ impl App {
     pub fn screen_view(&self) -> ScreenView {
         let view = self.view();
         lumenna_app::screen::screen_view(Some(&view), &view, &lines(&view, &*self.clock), &[])
+    }
+
+    /// The task form for the task the details of screen `screen` show, as its controls in tab
+    /// order, for a shell that opens it itself; none while no task is shown.
+    pub fn task_form_on(&self, screen: u32) -> Option<DialogShown> {
+        let view = self.view_on(screen);
+        lumenna_app::dialog::task_form(&view, &lines(&view, &*self.clock))
+    }
+
+    /// Settings page `page` (`SettingsPage::id`) of screen `screen`, as its controls in tab order,
+    /// while settings are open there; none otherwise, or for a page this device does not list.
+    pub fn settings_page_on(&self, screen: u32, page: String) -> Option<DialogShown> {
+        lumenna_app::dialog::settings_page(&self.view_on(screen), &page)
     }
 
     /// What a widget, complication or tile shows for the next `hours` (at most two days),
