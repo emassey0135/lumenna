@@ -2,10 +2,11 @@
 //! completion's line, and Go to Day's question for a date picker of its own.
 
 use boltffi::export;
-use lumenna_records::places::{Place, SidebarGroup, SidebarKind};
+use lumenna_records::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_app::Capitals;
 use lumenna_app::ShellEvent;
+use lumenna_app::arrangement::Arrangement;
 use lumenna_app::speech::Line;
 use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
@@ -539,4 +540,11 @@ pub fn prompt_of(parts: Vec<String>) -> String {
 #[export]
 pub fn line_with_level(line: Line) -> String {
     lumenna_app::lines::with_level(&line)
+}
+
+/// Where a phone and a watch put the places, from the sidebar as the view gives it: a phone's
+/// tabs, its Browse tab's rows and each group's screen, and a watch's root list.
+#[export]
+pub fn place_arrangement(sidebar: Vec<SidebarEntry>, capitals: Capitals) -> Arrangement {
+    lumenna_app::arrangement::arrangement(&sidebar, capitals == Capitals::Sentence)
 }

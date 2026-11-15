@@ -2916,3 +2916,19 @@ fn the_lines_a_shell_reads_come_composed() {
     let about = lumenna_app::words::shell_words(lumenna_app::Capitals::Sentence, lumenna_app::words::ThisDevice::Computer).about_lines;
     assert!(about[1].starts_with("Version "), "{about:?}");
 }
+
+#[test]
+fn a_phones_browse_and_a_watchs_root_come_from_the_sidebar() {
+    let app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    let arranged = lumenna_app::arrangement::arrangement(&app.view().sidebar, true);
+    let browse: Vec<&str> = arranged.browse.iter().map(|row| row.title.as_str()).collect();
+    assert_eq!(browse, ["Projects", "Labels", "Saved Filters", "Blocks", "History", "Trash"], "in the view's own capitals");
+    let projects = arranged.groups.iter().find(|group| group.group == lumenna_records::places::SidebarGroup::Projects).unwrap();
+    assert_eq!(arranged.browse[0].detail, lumenna_records::places::SidebarGroup::Projects.count(projects.entries.len()), "counts what it holds");
+    assert!(projects.entries.iter().any(|place| place.title == "Work"));
+    assert!(projects.heading.offered.iter().any(|action| action.kind == ActionKind::New), "its New is the heading's");
+    assert!(arranged.watch.iter().any(|row| matches!(row, lumenna_app::arrangement::RootRow::Place(place) if place.title == "Work")));
+}
