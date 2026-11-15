@@ -151,8 +151,18 @@ pub enum ScreenChange {
     },
 }
 
+/// A question's parts as one prompt, each a sentence ended once: a part that ends in its own
+/// question or exclamation mark ("Erase lose me permanently?") keeps it, with no period after.
 fn prompt(parts: &[&str]) -> String {
-    parts.iter().map(|part| part.trim().trim_end_matches('.')).filter(|part| !part.is_empty()).collect::<Vec<_>>().join(". ")
+    let parts: Vec<&str> = parts.iter().map(|part| part.trim().trim_end_matches('.')).filter(|part| !part.is_empty()).collect();
+    let mut joined = String::new();
+    for (index, part) in parts.iter().enumerate() {
+        if let Some(before) = index.checked_sub(1).and_then(|before| parts.get(before)) {
+            joined.push_str(if before.ends_with(['?', '!']) { " " } else { ". " });
+        }
+        joined.push_str(part);
+    }
+    joined
 }
 
 fn action_name(offered: &Offered) -> String {
@@ -396,4 +406,15 @@ pub fn screen_view(before: Option<&ViewModel>, view: &ViewModel, lines: &Lines, 
         changes.push(ScreenChange::Refused { reason, said: false });
     }
     ScreenView { shown: shown(view, lines), changes, dialog: view.ready.then(|| crate::dialog::open(view, lines)).flatten() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prompt;
+
+    #[test]
+    fn a_prompts_parts_are_each_a_sentence_ended_once() {
+        assert_eq!(prompt(&["Erase lose me permanently?", "It cannot be undone."]), "Erase lose me permanently? It cannot be undone");
+        assert_eq!(prompt(&["Go to day.", "A date, such as Friday", "", "Day"]), "Go to day. A date, such as Friday. Day");
+    }
 }
