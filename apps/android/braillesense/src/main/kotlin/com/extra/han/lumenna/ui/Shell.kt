@@ -573,8 +573,12 @@ class Shell(
             refresh(true)
         }, changed = { send(ShellEvent.Filter(it)) })
         filtering = true
-        out.show(frame!!.rendered)
-        out.say(frame!!.rendered.speech)
+        val rendered = frame!!.rendered
+        // Said here, so the turns that follow it are not a new screen to say again.
+        lastId = "filter"
+        lastSpeech = rendered.speech
+        out.show(rendered)
+        out.say(rendered.speech)
     }
 
     private var filtering = false
@@ -951,7 +955,8 @@ class Shell(
             if (handledForm != asked.number) {
                 handledForm = asked.number
                 val action = asked.action
-                if (action != null && action.kind == ActionKind.EDIT_TASK) {
+                // A task's form, by Enter (Edit) or its own Edit Task Details.
+                if (action != null && action.subject == dev.emassey0135.lumenna.app.Subject.TASK && (action.kind == ActionKind.EDIT || action.kind == ActionKind.EDIT_TASK)) {
                     send(ShellEvent.Details(DetailsEvent.Show(action.target)))
                     pages.addLast(Page.Task(action.target))
                 }
