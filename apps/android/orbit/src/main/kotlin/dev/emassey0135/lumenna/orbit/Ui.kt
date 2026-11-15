@@ -15,6 +15,7 @@ import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.ListShown
 import dev.emassey0135.lumenna.app.QuestionShown
 import dev.emassey0135.lumenna.app.ScreenChange
+import dev.emassey0135.lumenna.app.DueEvent
 import dev.emassey0135.lumenna.app.ScreenAction
 import dev.emassey0135.lumenna.app.ScreenView
 import dev.emassey0135.lumenna.app.ShellEvent
@@ -116,8 +117,6 @@ abstract class Screen {
 
     /** Which of the app's lists this screen shows, if one: what a letter and a landing are. */
     open val lands: Lands get() = Lands.NONE
-
-    open val isEdit: Boolean get() = false
 }
 
 /** Whose list a screen shows: the app's main one, one beside it, or none of the app's. */
@@ -204,6 +203,8 @@ class Ui(
         stack.removeLast().leaving()
         val under = top
         saidScreen = under
+        // What it showed before the menu: a change the choice makes to it is said, nothing else.
+        lastItem = under?.let { screen -> screen.rows().getOrNull(screen.index)?.text }.orEmpty()
         run()
         if (top === under) {
             follow()
@@ -380,6 +381,9 @@ class Ui(
     /** Quick add was left here, and the app has not yet said its line is closed. */
     var lineClosed = false
 
+    /** Looks back over the last day for reminders due, so Home offers them: as Home opens, and as the app comes to the front. */
+    fun lookBack() = send(ShellEvent.Due(DueEvent.LookBack))
+
     /** Settings were left here, and the app has not yet said they are closed. */
     var settingsClosed = false
 
@@ -398,7 +402,7 @@ class Ui(
     }
 
     private fun pushQuestion(asking: dev.emassey0135.lumenna.app.Asking) {
-        pushApp(if (asking.question is Question.Text) TextQuestionScreen(asking) else QuestionScreen(asking))
+        pushApp(QuestionScreen(asking))
     }
 
     private fun pushApp(screen: Screen) {
@@ -575,7 +579,7 @@ class Ui(
             return
         }
         if (!introduced) return
-        if (screen is EditScreen && phoneKeypad) {
+        if (screen is DialogScreen && screen.lineFills && phoneKeypad && screen.rows().isEmpty()) {
             textView.text = "${screen.title}\n\n${screen.display()}"
             if (saidScreen !== screen) {
                 saidScreen = screen
@@ -638,7 +642,7 @@ class Ui(
         commitFeedback = { reader.characterCommitFeedback },
         changed = { text, caret ->
             changed(text, caret)
-            top?.let { if (it is EditScreen) textView.text = "${it.title}\n\n${it.display()}" else if (it is DialogScreen) textView.text = "${it.title}\n\n$text" }
+            top?.let { if (it is DialogScreen) textView.text = "${it.title}\n\n${if (it.lineFills && phoneKeypad) it.display() else text}" }
         },
         confirmed, cancelled, completing, complete,
     )

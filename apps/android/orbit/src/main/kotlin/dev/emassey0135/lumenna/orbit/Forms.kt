@@ -3,90 +3,39 @@ package dev.emassey0135.lumenna.orbit
 import dev.emassey0135.lumenna.SettingsPages
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.BlockEvent
-import dev.emassey0135.lumenna.app.Choice
+import dev.emassey0135.lumenna.app.ControlShown
+import dev.emassey0135.lumenna.app.DialogShown
+import dev.emassey0135.lumenna.app.Offered
 import dev.emassey0135.lumenna.app.DetailsEvent
 import dev.emassey0135.lumenna.app.DevicesEvent
-import dev.emassey0135.lumenna.app.FieldKind
-import dev.emassey0135.lumenna.app.FormField
 import dev.emassey0135.lumenna.app.PairEvent
-import dev.emassey0135.lumenna.app.SettingKind
-import dev.emassey0135.lumenna.app.SettingView
 import dev.emassey0135.lumenna.app.SettingsEvent
 import dev.emassey0135.lumenna.app.SettingsPage
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Side
-import dev.emassey0135.lumenna.app.TaskFields
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.app.buttonLetter
 import dev.emassey0135.lumenna.app.pageLetter
 import dev.emassey0135.lumenna.appWords
-import dev.emassey0135.lumenna.flag
 import dev.emassey0135.lumenna.name
 import dev.emassey0135.lumenna.text
 import dev.emassey0135.orbit.Key
 
-/** A choice of a setting's or field's options, the current one first selected. */
-class ChoiceScreen(
-    private val name: String,
-    private val options: List<Option>,
-    private val current: String,
-    private val chosen: (String) -> Unit,
-) : Screen() {
-    override val title: String get() = name
-    override fun resumed() {
-        index = options.indexOfFirst { it.id == current }.coerceAtLeast(0)
-    }
-    override fun rows(): List<Row> = options.map { option ->
-        Row(option.id, option.title, {
-            ui.pop()
-            chosen(option.id)
-        })
-    }
-}
-
-/** A field typed in a form: the task's or block's, or a setting's. */
-class FieldEditScreen(
-    private val fieldName: String,
-    private val value: String,
-    private val fieldHint: String,
-    private val done: (String) -> Unit,
-) : EditScreen() {
-    override val title: String get() = fieldName
-    override val hint: String get() = fieldHint
-    override fun initial(): String = value
-    override fun confirmed(text: String) {
-        ui.pop()
-        done(text)
-    }
-    override fun cancelled() = ui.pop()
-    override val confirmWord: String get() = appWords.save
-}
-
-private fun List<Choice>.options(): List<Option> = map { Option(it.id, it.title) }
-
-/** A form field as its control: a choice where it has options, else a line. */
-private fun control(
-    field: FormField,
-    value: String,
-    options: List<Choice>,
-    set: (String) -> Unit,
-    offered: List<dev.emassey0135.lumenna.app.Offered> = emptyList(),
-    on: ActingOn? = null,
-): Control = if (options.isNotEmpty()) {
-    Control.Choosing("field-${field.key}", field.label, options.options(), value, set, offered = offered, on = on)
-} else {
-    Control.Line("field-${field.key}", field.label, value, field.hint, set, multiline = field.kind == FieldKind.LINES, offered = offered, on = on)
-}
-
-/** The details of a task: its form's fields, its lines, its Save and Cancel, its actions a menu away. */
+/**
+ * The details of a task, as the core's task form (`App::task_form_on`): its fields, the lines of
+ * its details, its own actions, Save and Cancel; the task's other actions a menu away.
+ */
 class DetailsScreen(private val id: String) : DialogScreen() {
-    override val title: String get() = ui.view.details?.task?.title.orEmpty()
+    override fun shown(): DialogShown? = ui.app.taskForm()?.takeIf { ui.view.details?.task?.id == id }
 
     override fun openedAs(): Opened = Opened.List
 
     override fun resumed() {
         ui.send(ShellEvent.Details(DetailsEvent.Show(id)))
     }
+
+    override val offered: List<Offered> get() = ui.view.details?.task?.offered.orEmpty()
+    override val on: ActingOn get() = ActingOn.Details
 
     private var saving = false
 
@@ -106,50 +55,22 @@ class DetailsScreen(private val id: String) : DialogScreen() {
         return true
     }
 
-    override fun confirmDialog() {
-        val typed = commitFocused()
-        if (typed || ui.view.details?.dirty == true) {
-            saving = true
-            ui.send(ShellEvent.Details(DetailsEvent.Save))
-        } else {
-            ui.pop()
-        }
+    /** Saving closes the form once the app has it; Cancel (Discard) closes it at once. */
+    override fun sending(event: ShellEvent) {
+        val details = (event as? ShellEvent.Details)?.field0 ?: return
+        if (details is DetailsEvent.Save) saving = true
+        if (details is DetailsEvent.Discard) ui.later(0) { ui.remove(this) }
     }
 
     override fun cancelDialog() {
-        ui.send(ShellEvent.Details(DetailsEvent.Discard))
-        ui.pop()
+        dialog?.cancel()
+        ui.remove(this)
     }
-
-    override fun controls(): List<Control> {
-        val details = ui.view.details ?: return emptyList()
-        val on = ActingOn.Details
-        val offered = details.task.offered
-        return buildList {
-            for (field in details.form) {
-                val options = if (field.key == "project") details.projects else field.options
-                add(control(field, value(details.fields, field), options, { typed ->
-                    ui.send(ShellEvent.Details(DetailsEvent.Field(field.key, typed)))
-                }, offered, on))
-            }
-            ui.lines?.details.orEmpty().forEachIndexed { index, line ->
-                add(Control.Note("line-$index", line.text, offered, on))
-            }
-            add(Control.Button("save", appWords.details.save, default = true) { confirmDialog() })
-            add(Control.Button("cancel", appWords.cancel) { cancelDialog() })
-        }
-    }
-
-    private fun value(fields: TaskFields, field: FormField): String =
-        if (field.key == "priority") fields.priority.toString() else fields.text(field.key).orEmpty()
 }
 
-/** The block form: the app's, its fields by their keys, Save and Cancel at its end. */
+/** The block form, the core's while it is open: its fields, Save (or Add) and Cancel. */
 class BlockFormScreen : DialogScreen() {
-    private val form get() = ui.view.blockForm
-    private var refusal: String? = null
-
-    override val title: String get() = form?.heading.orEmpty()
+    override fun shown(): DialogShown? = ui.screenView.dialog?.takeIf { it.id == "block" }
 
     override fun openedAs(): Opened = Opened.List
 
@@ -159,34 +80,8 @@ class BlockFormScreen : DialogScreen() {
         if (ui.view.blockForm != null) ui.send(ShellEvent.Block(BlockEvent.Cancel))
     }
 
-    override fun cancelDialog() = ui.send(ShellEvent.Block(BlockEvent.Cancel))
-
-    override fun confirmDialog() {
-        commitFocused()
-        ui.send(ShellEvent.Block(BlockEvent.Save))
-    }
-
-    override fun controls(): List<Control> {
-        val form = form ?: return emptyList()
-        form.refusal.takeIf { it != refusal }?.let {
-            refusal = it
-            ui.refuse()
-            ui.say(it)
-        }
-        return buildList {
-            for (field in form.fields) {
-                val set = { value: String -> ui.send(ShellEvent.Block(BlockEvent.Field(field.key, value))) }
-                when (field.kind) {
-                    FieldKind.TOGGLE -> {
-                        val on = form.values.flag(field.key)
-                        add(Control.Check("field-${field.key}", field.label, on) { set((!on).toString()) })
-                    }
-                    else -> add(control(field, if (field.key == "date") form.date else form.values.text(field.key), field.options, set))
-                }
-            }
-            add(Control.Button("save", form.yes, default = true) { confirmDialog() })
-            add(Control.Button("cancel", appWords.cancel) { cancelDialog() })
-        }
+    override fun cancelDialog() {
+        dialog?.cancel()
     }
 }
 
@@ -217,90 +112,36 @@ class SettingsScreen : ListScreen() {
     }
 }
 
-/** One of the core's settings pages: its settings, its buttons, the store's own actions. */
+/**
+ * One of the core's settings pages (`App::settings_page_on`): each setting as its control, applied
+ * as it changes, the page's caption, its buttons and the store's own actions. A page has nothing to
+ * cancel: Escape leaves it.
+ */
 class PageScreen(private val page: SettingsPage) : DialogScreen() {
-    override fun loaded(view: ViewModel): Boolean = view.settings?.settings?.isNotEmpty() == true
+    override fun shown(): DialogShown? = ui.app.settingsPage(page.id)
 
-    override val title: String get() = page.title
+    override val title: String get() = shown()?.title?.ifEmpty { null } ?: page.title
 
     override fun openedAs(): Opened = Opened.List
 
-    private fun shown(): List<SettingView> =
-        page.keys.mapNotNull { key -> ui.view.settings?.settings?.firstOrNull { it.setting.key == key } }
-
-    private var problems = mutableMapOf<String, String?>()
-
-    /** A setting is changed as it is changed, as on every platform: Select only takes the line. */
-    override fun confirmDialog() {
-        commitFocused()
+    override fun cancelDialog() {
+        dialog?.commit()
+        ui.remove(this)
     }
 
-    override fun controls(): List<Control> {
-        val view = ui.view.settings ?: return emptyList()
-        return buildList {
-            for (item in shown()) {
-                val setting = item.setting
-                if (item.problem != problems[setting.key]) {
-                    problems[setting.key] = item.problem
-                    item.problem?.let {
-                        ui.refuse()
-                        ui.say(it)
-                    }
-                }
-                add(controlOf(item))
-            }
-            page.caption.takeIf { it.isNotEmpty() }?.let { add(Control.Note("caption", it)) }
-            if (page.id == "export") {
-                view.exports.forEach { export ->
-                    add(Control.Button("export-${export.format}", export.label) {
-                        ui.send(ShellEvent.Settings(SettingsEvent.Export(export.format)))
-                    })
-                }
-            }
-            page.buttons.forEach { button ->
-                add(Control.Button(button.id, button.title, letter = buttonLetter(button.id)) { pressed(button.id) })
-            }
-            if (page.id == "export") {
-                view.offered.forEach { action ->
-                    add(Control.Button("offered-${action.kind}", listOf(action.name, view.offeredCaption).filter { it.isNotEmpty() }.joinToString(". ")) {
-                        ui.send(ShellEvent.ActOn(ActingOn.Settings, action))
-                    })
-                }
-            }
-        }
+    override fun beforeBack(): Boolean {
+        dialog?.commit()
+        return false
     }
 
-    private fun controlOf(item: SettingView): Control {
-        val setting = item.setting
-        return when {
-            setting.kind == SettingKind.TOGGLE -> Control.Check(setting.key, setting.title, setting.value == "true") {
-                set(setting.key, if (setting.value == "true") "false" else "true")
-            }
-            setting.options.isNotEmpty() -> Control.Choosing(setting.key, setting.title, setting.options.options(), setting.value, { set(setting.key, it) })
-            setting.kind == SettingKind.FOLDER -> Control.Button(setting.key, listOf(setting.title, setting.value).filter { it.isNotEmpty() }.joinToString(", ")) { ui.refuse() }
-            else -> Control.Line(setting.key, setting.title, setting.value, hintOf(item), { set(setting.key, it) })
-        }
-    }
-
-    private fun hintOf(item: SettingView): String {
-        val words = ui.view.settings?.words
-        return item.setting.hint.ifEmpty {
-            when (item.setting.kind) {
-                SettingKind.TIME -> words?.timeHint.orEmpty()
-                SettingKind.NUMBER -> words?.numberHint.orEmpty()
-                else -> ""
-            }
-        }
-    }
-
-    private fun set(key: String, value: String) = ui.send(ShellEvent.Settings(SettingsEvent.Set(key, value)))
-
-    private fun pressed(id: String) {
-        when (id) {
-            "sync-now" -> ui.send(ShellEvent.Key("sync-now"))
+    /** What the core leaves to this app: a file to pick, a backup into the folder, pairing. */
+    override fun shell(control: ControlShown) {
+        when (control.key) {
             "back-up" -> ui.core.backUpNow()
             "restore-backup", "import" -> ui.pickImport()
             "pair" -> ui.push(DevicesScreen())
+            // A folder is chosen with a file picker Orbit's keys cannot work.
+            else -> ui.refuse()
         }
     }
 }

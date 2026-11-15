@@ -99,8 +99,13 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         lifecycleScope.launch { app.files.collect { saveFile(it) } }
     }
 
+    private var resumedOnce = false
+
     override fun onResume() {
         super.onResume()
+        // Back in front: what came due meanwhile is offered on Home. The first time, Home looks itself.
+        if (resumedOnce) ui?.lookBack()
+        resumedOnce = true
         braille.follow()
         Clock.update(this)
         front?.resumed()

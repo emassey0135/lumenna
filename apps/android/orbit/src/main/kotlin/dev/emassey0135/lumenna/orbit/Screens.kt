@@ -1,6 +1,5 @@
 package dev.emassey0135.lumenna.orbit
 
-import dev.emassey0135.lumenna.TextOffsets
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.actionLetter
@@ -10,16 +9,12 @@ import dev.emassey0135.lumenna.app.SpeakLetter
 import dev.emassey0135.lumenna.app.speakLetter
 import dev.emassey0135.lumenna.app.speakPress
 import dev.emassey0135.lumenna.app.ListShown
-import dev.emassey0135.lumenna.app.QuestionShown
-import dev.emassey0135.lumenna.app.Answer
 import dev.emassey0135.lumenna.app.Asking
-import dev.emassey0135.lumenna.app.BlockEvent
-import dev.emassey0135.lumenna.app.Candidate
-import dev.emassey0135.lumenna.app.DayMove
 import dev.emassey0135.lumenna.app.DueEvent
+import dev.emassey0135.lumenna.app.DialogShown
+import dev.emassey0135.lumenna.app.ControlShown
 import dev.emassey0135.lumenna.app.Place
 import dev.emassey0135.lumenna.app.ProposalEvent
-import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.app.Syntax
@@ -30,7 +25,6 @@ import dev.emassey0135.lumenna.app.foldState
 import dev.emassey0135.lumenna.levelsOf
 import dev.emassey0135.lumenna.name
 import dev.emassey0135.lumenna.offeredOf
-import dev.emassey0135.orbit.EditBox
 import dev.emassey0135.orbit.Key
 
 /** The row a list shows: the core's line, then whether its children are folded, and its level. */
@@ -51,13 +45,19 @@ class HomeScreen : Screen() {
 
     override fun loaded(view: ViewModel): Boolean = view.home != null
 
-    // Coming back from a place: Home again. Already shown, it is left as it is. Each time it is
-    // shown it looks back for reminders due, which Android's alarms show but the app's list does
-    // not hold until something looks, so Home offers them while any are due.
+    // Coming back from a place: Home again. Already shown, it is left as it is. As it first opens
+    // it looks back for reminders due, as the app does each time it comes to the front
+    // ([Ui.lookBack]): Android's alarms show them, but the app's list holds none until something
+    // looks, and Home offers them only while any are due.
     override fun resumed() {
         if (ui.view.home == null) ui.send(ShellEvent.Home)
-        ui.send(ShellEvent.Due(DueEvent.LookBack))
+        if (!looked) {
+            looked = true
+            ui.lookBack()
+        }
     }
+
+    private var looked = false
 
     /** The sidebar's row in hand, unless the person stands on one of Home's actions. */
     override fun inHand(): String? = if (selectedKey?.startsWith(ACTION) == true) null else ui.view.sidebarHeld.focus
@@ -143,20 +143,28 @@ class PlaceScreen(override val place: Place, private val name: String) : ListScr
     override fun commands(): List<Command> = ui.screenActionCommands()
 }
 
-/** Typing a filter over the list, which the app narrows as typed. */
-class FilterScreen(private val place: Place) : EditScreen() {
-    private val words get() = appWords.quickAdd
-    override val title: String get() = words.filter
-    override fun initial(): String = ui.view.query
-    override fun completes(): Boolean = true
-    override fun syntax(): Syntax = Syntax.FILTER
-    override fun confirmed(text: String) {
-        ui.send(ShellEvent.Filter(text))
-        ui.pop()
+/** Typing a filter over the list, which the app narrows as it is confirmed: a line of this app's own. */
+class FilterScreen(@Suppress("unused") private val place: Place) : DialogScreen() {
+    private val own by lazy {
+        val words = appWords.quickAdd
+        ownLine("filter", words.filter, words.filter, ui.view.query, words.filterHint, words.filter)
+            .let { it.copy(controls = it.controls.map { control -> if (control.key == "line") control.copy(syntax = Syntax.FILTER) else control }) }
     }
-    override fun cancelled() = ui.pop()
-    override val hint: String get() = words.filterHint
-    override val confirmWord: String get() = words.filter
+
+    override fun shown(): DialogShown = own
+
+    override val lineFills: Boolean get() = true
+
+    override fun shell(control: ControlShown) {
+        when (control.key) {
+            "confirm" -> {
+                val text = line()?.let { dialog?.text(it) }.orEmpty()
+                ui.remove(this)
+                ui.send(ShellEvent.Filter(text))
+            }
+            "cancel" -> ui.remove(this)
+        }
+    }
 }
 
 /** The day: blocks, sittings under them, free time, now; the day's own actions in its menu. */
@@ -249,17 +257,16 @@ class ContextMenuScreen(private val name: String, private val commands: List<Com
     }
 }
 
-/** A confirmation, a pick, or a choice of answers: the core's question, its buttons and choices. */
-open class QuestionScreen(private val asking: Asking) : DialogScreen(), AskingScreen {
+/**
+ * The core's question, as its dialog (`ScreenView::dialog`): a confirmation, a line, a pick or a
+ * choice of answers, with its buttons in the core's words. On the Player a line is the whole screen.
+ */
+class QuestionScreen(private val asking: Asking) : DialogScreen(), AskingScreen {
     override val number: UInt get() = asking.number
 
-    /** What the core says is asked, while this question is the one open. */
-    private val shown: QuestionShown? get() = ui.questionShown?.takeIf { it.number == number }
+    override fun shown(): DialogShown? = ui.screenView.dialog?.takeIf { it.id == "question:$number" }
 
-    override fun loaded(view: ViewModel): Boolean = shown != null
-
-    override val title: String
-        get() = shown?.prompt?.ifEmpty { null } ?: asking.action?.name.orEmpty()
+    override val lineFills: Boolean get() = true
 
     override fun stands(view: ViewModel): Boolean = view.asking?.number == number
 
@@ -267,40 +274,9 @@ open class QuestionScreen(private val asking: Asking) : DialogScreen(), AskingSc
         if (ui.view.asking?.number == number) ui.send(ShellEvent.Cancel)
     }
 
-    override fun cancelDialog() = ui.send(ShellEvent.Cancel)
-
-    /** The pick the list stands on, by id: picked when the dialog is confirmed. */
-    private var picked: String? = null
-
-    private fun pick(id: String) = ui.send(ShellEvent.Answer(Answer.Picked(id, null)))
-
-    override fun controls(): List<Control> {
-        val shown = shown ?: return emptyList()
-        val current = ui.view.asking ?: asking
-        if (current.question is Question.Pick) {
-            val choices = current.choices?.choices.orEmpty()
-            val options = choices.mapIndexed { index, choice ->
-                val text = shown.choices.getOrNull(index)?.text ?: choice.title
-                Option(choice.id, listOfNotNull(text, choice.reason?.ifEmpty { null }).joinToString(". "))
-            }
-            if (!inPlace) return options.map { option -> Control.Button(option.id, option.title) { pick(option.id) } }
-            val value = picked?.takeIf { id -> options.any { it.id == id } } ?: options.firstOrNull()?.id.orEmpty()
-            return buildList {
-                add(Control.Choosing("choices", shown.prompt, options, value, { picked = it }, list = true))
-                addAll(answers(shown, confirm = { pick(value) }))
-            }
-        }
-        return answers(shown)
-    }
-
-    private fun answers(shown: QuestionShown, confirm: (() -> Unit)? = null): List<Control> = shown.buttons.map { button ->
-        Control.Button(button.id, button.title, default = button.id == "yes") {
-            when (button.id) {
-                "yes" -> if (confirm != null) confirm() else ui.send(ShellEvent.Answer(Answer.Yes))
-                "cancel" -> ui.send(ShellEvent.Cancel)
-                else -> pick(button.id)
-            }
-        }
+    /** Escape: the question's Cancel; the app closing it takes the screen away. */
+    override fun cancelDialog() {
+        dialog?.cancel()
     }
 }
 
@@ -308,143 +284,6 @@ interface AskingScreen {
     val number: UInt
 }
 
-/** A line typed in answer to the app's question; a refusal is said from the core's changes. */
-class TextQuestionScreen(private val asking: Asking) : EditScreen(), AskingScreen {
-    override val number: UInt get() = asking.number
-    private val shown: QuestionShown? get() = ui.questionShown?.takeIf { it.number == number }
-
-    /** Kept from its first reading: the field's name is how Orbit knows it. */
-    private val prompt by lazy { shown?.prompt.orEmpty() }
-
-    override val title: String get() = prompt
-    override fun loaded(view: ViewModel): Boolean = shown != null
-    override fun initial(): String = shown?.typed.orEmpty()
-    override fun completes(): Boolean = asking.syntax != null
-    override fun syntax(): Syntax = asking.syntax ?: Syntax.QUICK_ADD
-    override val confirmWord: String get() = shown?.buttons?.firstOrNull { it.id == "yes" }?.title ?: appWords.save
-    override val cancelWord: String get() = shown?.buttons?.firstOrNull { it.id == "cancel" }?.title ?: appWords.cancel
-    override fun confirmed(text: String) {
-        ui.send(ShellEvent.Answer(Answer.Text(text)))
-    }
-    override fun cancelled() {
-        ui.send(ShellEvent.Cancel)
-    }
-    override fun stands(view: ViewModel): Boolean = view.asking?.number == number
-    override fun leaving() {
-        super.leaving()
-        if (ui.view.asking?.number == number) ui.send(ShellEvent.Cancel)
-    }
-}
-
-/**
- * What a line being typed has that a list does not: its completions, and on the Speak the core's
- * Confirm and Cancel beside it, reached by Tab.
- */
-abstract class EditScreen : DialogScreen() {
-    protected abstract fun initial(): String
-    protected abstract fun confirmed(text: String)
-    protected abstract fun cancelled()
-    protected open val hint: String get() = ""
-    protected open fun completes(): Boolean = false
-    protected open fun syntax(): Syntax = Syntax.QUICK_ADD
-    protected open fun changed(text: String, caret: Int) {}
-
-    /** What the Confirm button is called, on the Speak; null for a line with only its Select. */
-    protected abstract val confirmWord: String?
-
-    protected open val cancelWord: String get() = appWords.cancel
-
-    override val isEdit: Boolean get() = true
-
-    /** What it starts from, read once it has arrived: quick add's line, a question's prompt. */
-    private var seed: String? = null
-
-    private fun line(): Control.Line = Control.Line(
-        "line", title, seed ?: initial().also { seed = it }, hint,
-        changed = { text, caret ->
-            current = text
-            cursor = caret
-            changed(text, caret)
-        },
-        completing = { completes() && candidates().isNotEmpty() },
-        complete = { openCompletions() },
-    )
-
-    override fun controls(): List<Control> = buildList {
-        add(line())
-        if (inPlace) {
-            confirmWord?.let { word -> add(Control.Button("confirm", word) { editorFor(line()).finish() }) }
-            add(Control.Button("cancel", cancelWord) { cancelled() })
-        }
-    }
-
-    override fun rows(): List<Row> = if (inPlace) super.rows() else emptyList()
-
-    override fun cancelDialog() = cancelled()
-
-    override fun lineFinished(control: Control.Line, text: String) = confirmed(text)
-
-    protected var current = ""
-    protected var cursor = 0
-
-    private val editor: EditBox
-        get() {
-            val editor = editorFor(line())
-            if (current.isEmpty()) {
-                current = editor.display()
-                cursor = current.length
-            }
-            return editor
-        }
-
-    fun display(): String = editor.display()
-
-    /** On the Player, where the line is the whole screen. */
-    fun describe() {
-        ui.braille.follow()
-        editor.focus()
-        // After the field's name: what Orbit is told goes through its event queue, speech does not.
-        if (hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { if (ui.top === this) ui.reader.speakQueued(hint) }
-    }
-
-    override fun key(key: Key): Boolean {
-        if (ui.top === this && !loaded(ui.view)) return true
-        if (inPlace) return super.key(key)
-        // The Player's Menu is the line's menu (its Confirm and Cancel); every other key is the line's.
-        if (key == Key.Menu) return false
-        editor.key(key)
-        return true
-    }
-
-    /** On the Player, where Tab does not reach them, the line's Confirm and Cancel are its menu. */
-    override fun commands(): List<Command> = if (inPlace) emptyList() else buildList {
-        confirmWord?.let { word -> add(Command(word) { editorFor(line()).finish() }) }
-        add(Command(cancelWord) { cancelled() })
-    }
-
-    /** What could go at the caret in the field's own syntax. */
-    protected open fun candidates(): List<Candidate> {
-        if (!completes()) return emptyList()
-        return runCatching { ui.app.complete(current, TextOffsets.bytes(cursor, current), syntax()).candidates }.getOrDefault(emptyList())
-    }
-
-    private fun openCompletions() {
-        val completions = runCatching { ui.app.complete(current, TextOffsets.bytes(cursor, current), syntax()) }.getOrNull() ?: return
-        val start = TextOffsets.utf16(completions.start, current)
-        val end = TextOffsets.utf16(completions.end, current)
-        ui.push(CompletionScreen(completions.candidates.map { candidate ->
-            dev.emassey0135.lumenna.app.candidateLine(candidate) to {
-                val text = current.substring(0, start) + candidate.text + current.substring(end)
-                current = text
-                cursor = start + candidate.text.length
-                editor.replace(text, cursor)
-                ui.pop()
-            }
-        }))
-    }
-}
-
-private const val HINT_AFTER_MS = 400L
 
 /** The candidates of a completion. */
 class CompletionScreen(private val options: List<Pair<String, () -> Unit>>) : Screen() {
@@ -452,18 +291,16 @@ class CompletionScreen(private val options: List<Pair<String, () -> Unit>>) : Sc
     override fun rows(): List<Row> = options.mapIndexed { index, (text, run) -> Row(index.toString(), text, { run() }) }
 }
 
-/** Quick add: the app's line, with completion and its refusals. */
-class QuickAddScreen : EditScreen() {
+/** Quick add: the core's dialog while its line is open, with completion and its refusals. */
+class QuickAddScreen : DialogScreen() {
     private var seen = false
-    override val title: String get() = appWords.quickAdd.label
-    override val hint: String get() = appWords.quickAdd.hint
-    override val confirmWord: String get() = appWords.quickAdd.add
-    override val cancelWord: String get() = appWords.quickAdd.cancel
-    override fun initial(): String = ui.view.line?.text.orEmpty()
-    override fun completes(): Boolean = true
+
+    override fun shown(): DialogShown? = ui.screenView.dialog?.takeIf { it.id == "quick-add" }
+
+    override val lineFills: Boolean get() = true
 
     // Starts as the place shown starts it: known only once the app has opened its line.
-    override fun loaded(view: ViewModel): Boolean = view.line != null
+    override fun loaded(view: ViewModel): Boolean = view.line != null && shown() != null
 
     override fun resumed() {
         if (ui.view.line == null) ui.send(ShellEvent.Typing(Typing.Open))
@@ -474,24 +311,14 @@ class QuickAddScreen : EditScreen() {
         return !seen || view.line != null
     }
 
-    override fun changed(text: String, caret: Int) {
-        ui.send(ShellEvent.Typing(Typing.Text(text, TextOffsets.bytes(caret, text))))
-    }
-
-    override fun confirmed(text: String) {
-        ui.send(ShellEvent.QuickAdd(text))
-    }
-
-    override fun cancelled() {
-        ui.pop()
-    }
+    override fun cancelDialog() = ui.remove(this)
 
     override fun leaving() {
-        super.leaving()
         ui.lineClosed = true
         ui.send(ShellEvent.Typing(Typing.Close))
     }
 }
+
 
 /** A task's or block's reminders. */
 class RemindersScreen : ListScreen() {
