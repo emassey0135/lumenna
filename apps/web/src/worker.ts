@@ -112,6 +112,10 @@ async function opened(name: string, waiting?: (why: string) => void): Promise<vo
   // Pairing's sentences call a browser as the core does; with no network of its own to search,
   // it pairs by code.
   void app.send({ tag: "PairingAs", called: said.thisDevice, nearby: false });
+  // What a browser can do that settings depend on: it saves and reads files the person picks,
+  // keeps no scheduled backups through the core's folder settings, and has no About of its own,
+  // so About is a settings page here.
+  void app.send({ tag: "Abilities", value0: { files: true, backupFolder: false, ownAbout: false } });
   // Open once the app has the store.
   await app.settled();
 }

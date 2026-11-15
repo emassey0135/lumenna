@@ -534,3 +534,16 @@ test("on a Mac, Option+Shift types its symbol in a field, but Save changes still
   await page.getByRole("button", { name: "Keyboard shortcuts" }).click();
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" }).getByRole("cell", { name: "Option+Shift+Q" })).toBeVisible();
 });
+
+test("about is a settings page here, its lines to read and its addresses links", async ({ page }) => {
+  await open(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("tab", { name: "About" }).click();
+  await expect(settings.getByText(/^Version /)).toBeVisible();
+  await expect(settings.getByRole("link", { name: /^https:\/\// }).first()).toBeVisible();
+  // A browser keeps no backups of the core's folder settings: those settings are not offered.
+  await settings.getByRole("tab", { name: "Backups" }).click();
+  await expect(settings.getByRole("button", { name: /Back up now/i })).toBeVisible();
+  await axe(page);
+});

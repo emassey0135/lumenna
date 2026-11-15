@@ -108,6 +108,28 @@ function Page(props: { page: SettingsPage; settings: SettingsView | null; device
       {rows.length > 0 && <SettingRows rows={rows} settings={props.settings} />}
       {/* What the page says of its settings, beneath them: the export page's is of its buttons. */}
       {rows.length > 0 && page.caption && <p className="quiet">{page.caption}</p>}
+      {page.lines.map((line, at) => (
+        <p key={at}>
+          <Linked line={line} />
+        </p>
+      ))}
+    </>
+  );
+}
+
+/** A line to read, its address a link where it has one: About's website and where to report a
+ * problem. */
+function Linked(props: { line: string }) {
+  const at = props.line.search(/https?:\/\//);
+  if (at < 0) return <>{props.line}</>;
+  const url = props.line.slice(at).split(/\s/)[0];
+  return (
+    <>
+      {props.line.slice(0, at)}
+      <a href={url} target="_blank" rel="noreferrer">
+        {url}
+      </a>
+      {props.line.slice(at + url.length)}
     </>
   );
 }
