@@ -230,6 +230,20 @@ fn beneath(view: &ViewModel, lines: &Lines) -> Shown {
     if view.settings.is_some() {
         return other(&crate::keys::command_of("settings").map_or_else(String::new, |command| lumenna_records::fields::sentence_case(command.title.to_owned())));
     }
+    // Home's places, its row in hand the sidebar's; its own actions are `ViewModel::screen_actions`.
+    if let Some(home) = &view.home {
+        let shown: Vec<(String, Line, Vec<Offered>)> = home
+            .places
+            .iter()
+            .filter(|place| !place.entry.hidden)
+            .map(|place| {
+                let mut line = Line::of(place.entry.title.clone(), vec![place.entry.detail.clone()]);
+                line.level.clone_from(&place.entry.level);
+                (place.entry.key.clone(), line, place.entry.offered.clone())
+            })
+            .collect();
+        return Shown::List(list(home.title.clone(), Some(Side::Sidebar), String::new(), String::new(), view.sidebar_held.focus.as_deref(), &shown));
+    }
     let focus = view.focus.as_deref();
     if let Some(day) = &view.day {
         let shown: Vec<(String, Line, Vec<Offered>)> = day
@@ -313,13 +327,20 @@ pub fn shown(view: &ViewModel, lines: &Lines) -> Shown {
 }
 
 /// What tells two views' places apart, a question left aside.
-fn place_of(view: &ViewModel) -> (bool, Option<&lumenna_records::places::Place>, Option<&str>, Option<&str>, [bool; 5]) {
+fn place_of(view: &ViewModel) -> (bool, Option<&lumenna_records::places::Place>, Option<&str>, Option<&str>, [bool; 6]) {
     (
         view.ready,
         view.place.as_ref(),
         view.day.as_ref().map(|day| day.date.as_str()),
         view.reminders_title.as_deref(),
-        [view.block_form.is_some(), view.proposal.is_some(), view.line.is_some(), view.devices.is_some(), view.settings.is_some()],
+        [
+            view.block_form.is_some(),
+            view.proposal.is_some(),
+            view.line.is_some(),
+            view.devices.is_some(),
+            view.settings.is_some(),
+            view.home.is_some(),
+        ],
     )
 }
 
@@ -346,8 +367,12 @@ pub fn screen_view(before: Option<&ViewModel>, view: &ViewModel, lines: &Lines, 
         };
         changes.push(ScreenChange::Entered { name, row: row_in_hand(&under) });
     } else if let Some(before) = before
-        && view.landing > before.landing
-        && view.focus != before.focus
+        && (if view.home.is_some() {
+            // Home's row in hand is the sidebar's, which lands by its own count.
+            view.sidebar_held.landing > before.sidebar_held.landing && view.sidebar_held.focus != before.sidebar_held.focus
+        } else {
+            view.landing > before.landing && view.focus != before.focus
+        })
         && let Some(row) = row_in_hand(&under)
     {
         changes.push(ScreenChange::Moved(row));

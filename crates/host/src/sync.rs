@@ -364,7 +364,8 @@ impl Lumenna {
     ) -> Result<PairedWith> {
         let peer = code
             .map(|code| {
-                code.trim().parse::<iroh::EndpointId>().map_err(|_| {
+                // As typed: spaces between groups of the code are not part of it.
+                code.split_whitespace().collect::<String>().parse::<iroh::EndpointId>().map_err(|_| {
                     LumennaError::new(format!(
                         "'{code}' is not a pairing code; it is the long code the other \
                          device shows while it waits"
