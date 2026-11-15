@@ -22,7 +22,7 @@ use lumenna_records::places::{Place, SidebarKind, sidebar};
 use lumenna_records::{Action, ActionKind};
 
 use crate::asking::{Open, Purpose, refuse};
-use crate::keys::{Runs, command_of, what_runs};
+use crate::keys::{Runs, what_runs};
 use crate::model::Screen;
 use crate::{DueEvent, Effect, Event, Lumenna, Side, refused, say};
 
@@ -100,21 +100,22 @@ const BUTTON_LETTERS: &[(&str, &str)] =
 /// The letter of each of a reminder's buttons, by `DueButton::id`. Dismiss is the delete keys'.
 const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("snooze", "z")];
 
-/// The letter of each of a screen's own commands, by the shared table's `id` where it has one.
-/// An id is on one screen only, so one letter serves it: the screens are [`place_commands`] and
-/// [`main_menu`].
+/// The letter of each of a screen's own actions (`screen_actions`), by the shared table's `id`
+/// where it has one, and of Home's places. No two on one screen share a letter (a test holds
+/// them to it): the screens are each place's and Home.
 const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("undo", "u"),
     ("redo", "y"),
     ("new-task", "a"),
     ("filter", "/"),
     ("new-block", "a"),
+    ("what-now", "w"),
     ("previous-day", "p"),
     ("next-day", "n"),
     ("go-to-day", "g"),
     ("go-to-now", "t"),
     ("new-project-inside", "p"),
-    // The main menu.
+    // Home.
     ("go-today", "t"),
     ("go-tasks", "k"),
     ("go-blocks", "b"),
@@ -126,6 +127,8 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("reminders-due", "r"),
     ("sync-now", "n"),
     ("settings", "s"),
+    ("keyboard-help", "e"),
+    ("about", "o"),
     // A project's, label's or filter's row, and the BTSpeak's own preference.
     ("add-task-in", "t"),
     ("read-back", "r"),
@@ -247,26 +250,35 @@ const DAY_MOVES: &[&str] = &["previous-day", "next-day", "go-to-now", "go-to-day
 /// The groups of places a device without a sidebar reaches from the menu bar, after the places.
 const BRAILLE_VIEW_EXTRAS: &[&str] = &["projects", "labels", "filters", "reminders-due"];
 
+/// What Home's places run, by their letters' ids: they are hot keys on Home.
+const HOME_PLACES: &[&str] = &["go-today", "go-tasks", "go-blocks", "go-history", "go-trash", "projects", "labels", "filters"];
+
 /// The shared menu bar (`keys::MENUS`) on a braille device: the same menus, commands and order
 /// as every other platform's, each with its letter. `place` is the place shown under the menu
-/// (`None` over anything else, or on `main`, the list of places), whose own commands
-/// ([`place_commands`]) keep the letters they share with another and whose hot keys are real;
-/// on `main` the main menu's are. What the table lacks that a device with no sidebar needs is
-/// added here, and the Day menu is there while a day is.
+/// (`None` over anything else), whose own actions (`screen_actions`) are all there, keep the
+/// letters they share with another and are real hot keys; on `home` (Home shown) Home's are,
+/// its places' among them. What the table lacks that a device with no sidebar needs is added
+/// here, and the Day menu is there while a day is, and on Home with What Should I Work On?.
 #[must_use]
-pub fn menu_bar(place: Option<&Place>, main: bool, sentence: bool) -> Vec<LetteredMenu> {
-    let own: Vec<&str> = place.map(|place| place_command_ids(place).to_vec()).unwrap_or_default();
+pub fn menu_bar(place: Option<&Place>, home: bool, sentence: bool) -> Vec<LetteredMenu> {
+    let place = place.filter(|_| !home);
+    let mut own: Vec<&str> = crate::screen_actions::screen_action_ids(place, home, true);
+    if home {
+        own.extend(HOME_PLACES);
+    }
     let on_list = own.contains(&"filter");
     let is_day = place == Some(&Place::Today);
-    let main_ids: Vec<String> = if main { main_menu(sentence).into_iter().map(|command| command.id).collect() } else { Vec::new() };
-    let on_rows = place.is_some() || main;
+    let on_rows = place.is_some();
 
-    let groups = crate::keys::menus(sentence).into_iter().filter(|group| group.id != "day" || is_day).map(|mut group| {
+    let groups = crate::keys::menus(sentence).into_iter().filter(|group| group.id != "day" || is_day || home).map(|mut group| {
+        let day = group.id == "day";
         let mut ids: Vec<(String, String, bool)> = group
             .items
             .drain(..)
             .filter(|item| !item.id.is_empty() && !NOT_ON_A_BRAILLE_DEVICE.contains(&item.id.as_str()))
             .filter(|item| (item.id != "filter" || on_list) && (is_day || !DAY_MOVES.contains(&item.id.as_str())))
+            // Off a day, its menu holds only what this screen offers of its own.
+            .filter(|item| is_day || !day || own.contains(&item.id.as_str()))
             .map(|item| (item.id, item.title, item.asks))
             .collect();
         if group.id == "view" {
@@ -309,9 +321,7 @@ pub fn menu_bar(place: Option<&Place>, main: bool, sentence: bool) -> Vec<Letter
                 .zip(shortcuts)
                 .map(|((id, title, asks), letter)| {
                     let row = on_rows && ACTION_COMMANDS.iter().any(|(_, command)| *command == id);
-                    let hot_key = !letter.is_empty()
-                        && menu_letter(&id) == Some(letter.as_str())
-                        && (own.contains(&id.as_str()) || main_ids.contains(&id) || row);
+                    let hot_key = !letter.is_empty() && menu_letter(&id) == Some(letter.as_str()) && (own.contains(&id.as_str()) || row);
                     LetteredItem { id, title, letter, asks, hot_key }
                 })
                 .collect();
@@ -342,9 +352,7 @@ fn command_title(id: &str, sentence: bool) -> String {
         "projects" => "Projects",
         "labels" => "Labels",
         "filters" => "Saved Filters",
-        "new-project-inside" => "New Project Inside",
-        "reminders-due" => return lumenna_records::words::reminders_due(sentence),
-        other => command_of(other).map_or(other, |command| command.title),
+        other => return crate::screen_actions::action_title(other, sentence),
     };
     if sentence { lumenna_records::fields::sentence_case(title.to_owned()) } else { title.to_owned() }
 }
@@ -357,26 +365,16 @@ fn lettered(ids: &[&str], sentence: bool) -> Vec<LetterCommand> {
         .collect()
 }
 
-/// What `place` itself offers beside its rows, each with its letter: what a shell lists on its
-/// screen's own menu. New Task's and the day's commands run through `Event::Letter`, the filter
-/// is the shell's own field.
+/// What `place` itself offers beside its rows, each with its letter. Superseded by
+/// `ViewModel::screen_actions`, which says too whether each applies and is the shell's own; kept
+/// only until the braille apps take that, then removed.
 #[must_use]
 pub fn place_commands(place: &Place, sentence: bool) -> Vec<LetterCommand> {
-    lettered(place_command_ids(place), sentence)
+    lettered(crate::screen_actions::place_action_ids(place), sentence)
 }
 
-fn place_command_ids(place: &Place) -> &'static [&'static str] {
-    match place {
-        Place::Today => &["new-block", "previous-day", "next-day", "go-to-day", "go-to-now", "undo", "redo"],
-        Place::Blocks => &["new-block", "undo", "redo"],
-        Place::Project(_) => &["new-task", "filter", "new-project-inside", "undo", "redo"],
-        _ => &["new-task", "filter", "undo", "redo"],
-    }
-}
-
-/// The main menu's commands, each with its letter: the places, then adding a task, undo and
-/// redo, reminders, syncing and settings. `projects`, `labels` and `filters` are the sidebar's
-/// three groups' own; `reminders-due` is the reminders due's screen; the rest the shared table's.
+/// The main menu's commands, each with its letter. Superseded by Home (`Event::Home`,
+/// `ViewModel::home`); kept only until the braille apps show Home, then removed.
 #[must_use]
 pub fn main_menu(sentence: bool) -> Vec<LetterCommand> {
     lettered(
@@ -650,6 +648,50 @@ const SPEAK_ENTER: &str = "abcelmtz";
 /// reading on from the caret). What G names is a menu away.
 const SPEAK_NEITHER: &str = "g";
 
+/// How a letter is pressed on the HIMS BrailleSense.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SenseLetter {
+    /// Space with it.
+    Space,
+    /// Enter with it, as the device's own hotkeys are pressed.
+    Enter,
+}
+
+/// Space with these is already a command on every screen of the BrailleSense, so a letter is
+/// pressed with Enter there: Space-1 is A (Up), Space-1-2 B (Shift-Tab), Space-1-3 K (the line's
+/// start), Space-1-2-3 L (the first row), and C, D, E, F, H, M, O, R and Z are the manual's own
+/// (Repeat, Delete, Escape, Find, Help, Menu, Options, Repeat, Exit).
+const SENSE_ENTER: &str = "abcdefhklmorz";
+
+/// How `letter` is pressed on the BrailleSense; none for one that is not a letter, which has no
+/// dots to press (`,`, `.`, `/`).
+#[must_use]
+pub fn braillesense_letter(letter: &str) -> Option<SenseLetter> {
+    let first = letter.chars().next().filter(|first| first.is_ascii_lowercase() && letter.len() == 1)?;
+    Some(if SENSE_ENTER.contains(first) { SenseLetter::Enter } else { SenseLetter::Space })
+}
+
+/// A letter's press on the BrailleSense as the device names a key, for a menu to show beside the
+/// item: "Space-u", "Enter-c"; none for one with no press.
+#[must_use]
+pub fn braillesense_press(letter: &str) -> Option<String> {
+    match braillesense_letter(letter)? {
+        SenseLetter::Space => Some(format!("Space-{letter}")),
+        SenseLetter::Enter => Some(format!("Enter-{letter}")),
+    }
+}
+
+/// The letters the BrailleSense presses with Enter, as its key help names them: "A, B, C … and Z".
+#[must_use]
+pub fn braillesense_enter_letters() -> String {
+    let letters: Vec<String> = SENSE_ENTER.chars().map(|c| c.to_ascii_uppercase().to_string()).collect();
+    match letters.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => letters.concat(),
+    }
+}
+
 /// How `letter` is pressed on the Orbit Speak.
 #[must_use]
 pub fn speak_letter(letter: &str) -> SpeakLetter {
@@ -776,6 +818,13 @@ impl Lumenna {
         if model.acting == Some(Side::Due) {
             return self.due_letter(&letter, model);
         }
+        // On Home a letter is its places' and its own actions' first, as in a device's menu.
+        if model.home
+            && matches!(model.acting, None | Some(Side::Sidebar))
+            && let Some(ran) = self.home_letter(&letter, model)
+        {
+            return ran;
+        }
         let row = match model.acting {
             Some(side) => model.side_actions(side),
             None => model.actions_in_hand(),
@@ -804,16 +853,17 @@ impl Lumenna {
             return self.perform(action, model);
         }
         // Only the screen in front's own: a side list's stay out of the place behind it.
-        if model.acting.is_none() && model.reminders.is_none() {
+        if model.acting.is_none() && model.reminders.is_none() && !model.home {
             if model.place() == Place::Today
                 && let Some(day) = model.day_view()
                 && let Some(action) = day.actions.iter().find(|action| action_letter(action.kind) == Some(letter.as_str())).cloned()
             {
                 return self.perform(action, model);
             }
-            let ids = place_command_ids(&model.place());
-            if let Some(id) = ids.iter().find(|id| command_letter(id) == Some(letter.as_str())) {
-                return self.place_command(id, model);
+            let ids = crate::screen_actions::place_action_ids(&model.place());
+            // The filter is the shell's own field, which its letter has no dots to reach.
+            if let Some(id) = ids.iter().filter(|id| **id != "filter").find(|id| command_letter(id) == Some(letter.as_str())) {
+                return self.command(id, model);
             }
         }
         if let Some(id) = ["undo", "redo"].iter().find(|id| command_letter(id) == Some(letter.as_str())) {
@@ -822,19 +872,37 @@ impl Lumenna {
         self.refuse_letter(&letter, &row, model)
     }
 
-    /// A place's own command: New Project Inside is the project row's, the rest the shared table's.
-    fn place_command(&self, id: &str, model: &mut Screen) -> Command<Effect, Event> {
-        if id == "new-project-inside" {
-            let place = model.place();
-            let action = model.store.as_ref().and_then(|store| {
-                sidebar(&store.snapshot, &store.now)
-                    .into_iter()
-                    .find(|entry| matches!(&entry.kind, SidebarKind::Place(found) if *found == place))
-                    .and_then(|entry| entry.actions.into_iter().find(|action| action.kind == K::NewInside))
+    /// What `letter` runs on Home: a place's (opened; a heading put in hand and unfolded), else
+    /// one of Home's own actions; none for a letter Home does not give, or one of an action that
+    /// is the shell's own, which a shell runs itself.
+    fn home_letter(&self, letter: &str, model: &mut Screen) -> Option<Command<Effect, Event>> {
+        let entry = model.store.as_ref().and_then(|store| {
+            sidebar(&store.snapshot, &store.now)
+                .into_iter()
+                .find(|entry| crate::screen_actions::place_letter(&entry.kind) == Some(letter))
+        });
+        if let Some(entry) = entry {
+            return Some(match entry.kind {
+                SidebarKind::Place(place) => {
+                    model.open = None;
+                    model.acting = None;
+                    model.go(place);
+                    crux_core::render::render()
+                }
+                SidebarKind::Group(_) => {
+                    let keys = model.side_keys(Side::Sidebar);
+                    model.sidebar_held.hold(&entry.key, &keys);
+                    model.sidebar_held.landing += 1;
+                    if model.sidebar_folded.remove(&entry.key) {
+                        crux_core::render::render().and(say(lumenna_records::words::folded_said(true)))
+                    } else {
+                        crux_core::render::render()
+                    }
+                }
             });
-            return action.map_or_else(Command::done, |action| self.perform(action, model));
         }
-        self.command(id, model)
+        let action = model.screen_actions().into_iter().find(|action| action.letter == letter && !action.shell)?;
+        Some(self.command(&action.id, model))
     }
 
     /// Why `letter` runs nothing on the row in hand: in the words for the first of its kinds a
@@ -863,13 +931,7 @@ impl Lumenna {
     fn due_letter(&self, letter: &str, model: &mut Screen) -> Command<Effect, Event> {
         if let Some(id) = model.due_held.key.clone() {
             let which = DUE_LETTERS.iter().find(|(_, lettered)| *lettered == letter).map(|(which, _)| *which);
-            let event = match which {
-                Some("carry") => Some(DueEvent::Carry(id)),
-                Some("replan") => Some(DueEvent::Replan(id)),
-                Some("snooze") => Some(DueEvent::Snooze(id)),
-                _ => None,
-            };
-            if let Some(event) = event {
+            if let Some(event) = which.and_then(|button| DueEvent::pressed(&id, button)) {
                 return self.due(event, model);
             }
         }
@@ -980,17 +1042,46 @@ mod tests {
     }
 
     #[test]
-    fn a_place_command_has_a_letter_and_no_two_commands_on_a_screen_share_one() {
-        for place in [Place::Today, Place::Blocks, Place::Tasks, Place::Project("x".to_owned()), Place::Trash, Place::History] {
+    fn every_screen_action_has_a_letter_and_no_two_on_a_screen_share_one() {
+        use crate::screen_actions::{screen_action_ids, every_kind_of_place, place_letter};
+        for place in every_kind_of_place() {
             let mut seen = std::collections::BTreeSet::new();
-            for command in place_commands(&place, true) {
-                assert!(seen.insert(command.letter.clone()), "{} is used twice on {place:?}", command.letter);
+            for id in screen_action_ids(Some(&place), false, true) {
+                let letter = command_letter(id).unwrap_or_else(|| panic!("{id} has no letter on {place:?}"));
+                assert!(seen.insert(letter), "{letter} is used twice on {place:?}");
             }
         }
+        // Home: its places' letters and its own actions' together.
         let mut seen = std::collections::BTreeSet::new();
-        for command in main_menu(true) {
-            assert!(seen.insert(command.letter.clone()), "{} is used twice on the main menu", command.letter);
+        let places = [
+            SidebarKind::Place(Place::Today),
+            SidebarKind::Place(Place::Tasks),
+            SidebarKind::Place(Place::Blocks),
+            SidebarKind::Place(Place::History),
+            SidebarKind::Place(Place::Trash),
+            SidebarKind::Group(lumenna_records::places::SidebarGroup::Projects),
+            SidebarKind::Group(lumenna_records::places::SidebarGroup::Labels),
+            SidebarKind::Group(lumenna_records::places::SidebarGroup::Filters),
+        ];
+        for kind in &places {
+            let letter = place_letter(kind).unwrap_or_else(|| panic!("{kind:?} has no letter on Home"));
+            assert!(seen.insert(letter), "{letter} is used twice on Home");
         }
+        for id in screen_action_ids(None, true, true) {
+            let letter = command_letter(id).unwrap_or_else(|| panic!("{id} has no letter on Home"));
+            assert!(seen.insert(letter), "{letter} is used twice on Home");
+        }
+    }
+
+    #[test]
+    fn the_braillesense_presses_with_enter_what_space_already_does() {
+        assert_eq!(braillesense_letter("u"), Some(SenseLetter::Space));
+        assert_eq!(braillesense_letter("a"), Some(SenseLetter::Enter), "Space-1 is Up");
+        assert_eq!(braillesense_letter("m"), Some(SenseLetter::Enter), "Space-M is the menu");
+        assert_eq!(braillesense_letter("/"), None);
+        assert_eq!(braillesense_press("y").as_deref(), Some("Space-y"));
+        assert_eq!(braillesense_press("c").as_deref(), Some("Enter-c"));
+        assert_eq!(braillesense_enter_letters(), "A, B, C, D, E, F, H, K, L, M, O, R and Z");
     }
 
     fn settings(voice_role: RolePlace, braille_role: RolePlace) -> LineSettings {

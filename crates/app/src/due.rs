@@ -28,6 +28,18 @@ pub enum DueEvent {
         #[serde(default)]
         now: Option<String>,
     },
+    /// Look for what came due over the last day and was not dealt with, by the app's own clock:
+    /// what a list of reminders due looks at as it opens.
+    LookBack,
+    /// One of a reminder's buttons pressed, by the reminder's `id` and the button's (`DueButton::id`):
+    /// `carry`, `replan`, `dismiss` or `snooze`, as the events of those names. A shell hands a
+    /// button back this way, never choosing the event itself.
+    Press {
+        /// The reminder, `Due::id`.
+        id: String,
+        /// The button, `DueButton::id`.
+        button: String,
+    },
     /// Dismiss one, on every device.
     Dismiss(String),
     /// Snooze one for the core's ten minutes.
@@ -46,6 +58,25 @@ pub enum DueEvent {
         /// Which firing of it, ISO.
         occurrence: String,
     },
+}
+
+/// How far back a list of reminders due looks as it opens (`DueEvent::LookBack`).
+pub const LOOK_BACK_HOURS: i64 = 24;
+
+impl DueEvent {
+    /// The event a reminder's button `button` is, for the reminder `id`; none for a button the
+    /// core has not.
+    #[must_use]
+    pub fn pressed(id: &str, button: &str) -> Option<DueEvent> {
+        let id = id.to_owned();
+        match button {
+            "carry" => Some(DueEvent::Carry(id)),
+            "replan" => Some(DueEvent::Replan(id)),
+            "dismiss" => Some(DueEvent::Dismiss(id)),
+            "snooze" => Some(DueEvent::Snooze(id)),
+            _ => None,
+        }
+    }
 }
 
 /// One reminder due, as listed.
@@ -247,6 +278,17 @@ impl Lumenna {
                 model.looking = true;
                 host(HostRequest::RemindersDue { since, now })
             }
+            DueEvent::LookBack => {
+                // The app's own clock: the store's moment, else the device's.
+                let now = model.store.as_ref().map_or_else(jiff::Timestamp::now, |store| store.now.timestamp());
+                let since = now.checked_sub(jiff::SignedDuration::from_hours(LOOK_BACK_HOURS)).unwrap_or(now);
+                self.due(DueEvent::Look { since: since.to_string(), now: Some(now.to_string()) }, model)
+            }
+            DueEvent::Press { id, button } => match DueEvent::pressed(&id, &button) {
+                Some(event) => self.due(event, model),
+                // No button of the core's: nothing a reminder offered was pressed.
+                None => Command::done(),
+            },
             DueEvent::Dismiss(id) => self.deal(&id, Deal::Dismiss, model),
             // A summary of what was missed has no Snooze: refused in the core's words.
             DueEvent::Snooze(id) if !offers(model, &id, |d| d.snooze.is_some()) => refused(lumenna_records::words::snooze_not_offered()),

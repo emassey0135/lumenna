@@ -8,7 +8,7 @@ use lumenna_app::Capitals;
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LetteredMenu, LineSettings, MenuShortcut, SpeakLetter};
+use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LetteredMenu, LineSettings, MenuShortcut, SenseLetter, SpeakLetter};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
 use lumenna_records::{ActionKind, Candidate};
@@ -138,8 +138,8 @@ pub fn menu_shortcuts(items: Vec<MenuShortcut>) -> Vec<String> {
     lumenna_app::braille::menu_shortcuts(&items)
 }
 
-/// The shared menu bar on a braille device, each with its letter, under the place shown or (with
-/// no place) over `main`, the list of places.
+/// The shared menu bar on a braille device, each with its letter: under the place shown, its own
+/// actions (`ViewModel::screen_actions`) among it, or over Home (`main`, `ViewModel::home` shown), Home's.
 #[export]
 pub fn braille_menu_bar(place: Option<Place>, main: bool, sentence: bool) -> Vec<LetteredMenu> {
     lumenna_app::braille::menu_bar(place.as_ref(), main, sentence)
@@ -516,13 +516,15 @@ pub fn command_letter(id: String) -> Option<String> {
 }
 
 /// What `place` itself offers on a braille device besides its rows, each with its letter.
+/// Superseded by `ViewModel::screen_actions`; kept until the braille apps take that, then removed.
 #[export]
 pub fn place_commands(place: Place, sentence: bool) -> Vec<LetterCommand> {
     lumenna_app::braille::place_commands(&place, sentence)
 }
 
 /// A braille device's main menu: the places, then adding, undo and redo, reminders, syncing and
-/// settings, each with its letter.
+/// settings, each with its letter. Superseded by Home (`ShellEvent::Home`, `ViewModel::home`);
+/// kept until the braille apps show Home, then removed.
 #[export]
 pub fn braille_main_menu(sentence: bool) -> Vec<LetterCommand> {
     lumenna_app::braille::main_menu(sentence)
@@ -538,4 +540,18 @@ pub fn no_row_starts_with(letter: String) -> String {
 #[export]
 pub fn nothing_on_letter(letter: String) -> String {
     lumenna_records::words::nothing_on_letter(&letter)
+}
+
+/// How `letter` is pressed on the HIMS BrailleSense: Space with it, or Enter with it where Space
+/// with those dots is the device's own; none for a character with no dots.
+#[export]
+pub fn braillesense_letter(letter: String) -> Option<SenseLetter> {
+    lumenna_app::braille::braillesense_letter(&letter)
+}
+
+/// A letter's press on the BrailleSense as the device names a key ("Space-u", "Enter-c"), for a
+/// menu to show beside its item; none for a character with no dots.
+#[export]
+pub fn braillesense_press(letter: String) -> Option<String> {
+    lumenna_app::braille::braillesense_press(&letter)
 }
