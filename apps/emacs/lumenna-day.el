@@ -144,6 +144,15 @@ A day that does not offer it says the app's sentence."
   (interactive)
   (lumenna--day-act "what_now"))
 
+;;;###autoload
+(defun lumenna-what-now ()
+  "Choose what to work on now, from anywhere: today's buffer, its question asked.
+The app's What Should I Work On?, as a screen's own action runs it."
+  (interactive)
+  (with-current-buffer (lumenna-today)
+    (lumenna-send (list :Key "what-now"))
+    (lumenna--follow)))
+
 (defun lumenna-day-end ()
   "End the day: the block under way ends now, the blocks after it are cleared."
   (interactive)
@@ -265,7 +274,8 @@ Refused, the core's reason is said and a field asked for again."
 \\{lumenna-blocks-mode-map}"
   (lumenna--mode-name '(command "go-blocks"))
   (setq-local lumenna--draw #'lumenna--list-rows)
-  (setq-local lumenna--activate (lambda (_row) (lumenna-act-edit))))
+  ;; The core's Enter (`open'): a series' form.
+  (setq-local lumenna--activate (lambda (_row) (lumenna-press "open"))))
 
 ;;;###autoload
 (defun lumenna-blocks ()

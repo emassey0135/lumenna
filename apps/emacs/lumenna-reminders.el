@@ -89,7 +89,9 @@ Nil asks the core for now.")
 (defun lumenna-reminders--hand-over (found now)
   "Have the app look at what FOUND, the core's `DueReminders' at NOW, gave.
 It looks from just before the earliest of them until NOW, so it finds the
-same reminders, and lists, says and shows each it does not list already."
+same reminders, and lists, says and shows each it does not list already.
+Not the app's day looked back over (`LookBack'): what it found it would say
+and show again, though another process holding the reminder lock gave it."
   (let ((firings (append (plist-get found :missed) (plist-get found :due) nil)))
     (when firings
       (let ((since (lumenna-reminders--moment
@@ -114,12 +116,9 @@ Its buttons are the core's words, and each is the app's to carry out."
                           ;; What was missed, as one summary, is about nothing to open.
                           (and (plist-get due :snooze) (list "default" (plist-get first :title))))
          :on-action (lambda (_id action)
-                      (pcase action
-                        ("dismiss" (lumenna-reminders--deal id "Dismiss"))
-                        ("snooze" (lumenna-reminders--deal id "Snooze"))
-                        ("carry" (lumenna-reminders--deal id "Carry"))
-                        ("replan" (lumenna-replan (list :Due (list :Replan id))))
-                        ("default" (lumenna-reminders--open first)))))))))
+                      (if (equal action "default")
+                          (lumenna-reminders--open first)
+                        (lumenna-reminders--deal id action))))))))
 
 (defun lumenna-reminders--noticed (turn)
   "Show each notice TURN gives as a desktop notification: a reminder come due."
@@ -207,15 +206,25 @@ Or if a disconnection stopped them."
 
 ;;;; Dealing with one
 
-(defun lumenna-reminders--deal (id event)
-  "Send EVENT, a button of the app's (\"Dismiss\", \"Snooze\", \"Carry\"), for
-the reminder due ID.  The app takes it off the list and says what it did."
-  (with-current-buffer (lumenna--home-buffer)
-    (setq lumenna--acting (pcase event
-                            ("Dismiss" "reminder/dismiss") ("Snooze" "reminder/snooze")
-                            ("Carry" "block/carry_rest")))
-    (lumenna-send (list :Due (list (intern (concat ":" event)) id)) 0)
-    (lumenna--follow)))
+(defun lumenna-reminders--pressed (id button)
+  "The app's event for BUTTON, a `DueButton' id, pressed on the reminder due ID.
+What it does is the app's (`Press'), never chosen here."
+  (list :Due (list :Press (list :id id :button button))))
+
+(defun lumenna-reminders--deal (id button)
+  "Press BUTTON, one of the reminder due ID's buttons by its id, the app's way.
+The app takes it off the list and says what it did.  Replan opens Replan
+from Now over today, which is a buffer of its own here, so it is pressed
+there."
+  (if (equal button "replan")
+      (lumenna-replan (lumenna-reminders--pressed id button))
+    (with-current-buffer (lumenna--home-buffer)
+      ;; Its sound, by what it is.
+      (setq lumenna--acting (pcase button
+                              ("dismiss" "reminder/dismiss") ("snooze" "reminder/snooze")
+                              ("carry" "block/carry_rest")))
+      (lumenna-send (lumenna-reminders--pressed id button) 0)
+      (lumenna--follow))))
 
 (defun lumenna-reminders--open (firing)
   "Open what FIRING, a reminder's, is about: its task, or its block's day."
@@ -268,43 +277,40 @@ the reminder due ID.  The app takes it off the list and says what it did."
   "The reminder due at point, as the app lists it, or a `user-error'."
   (or (plist-get (lumenna-row) :due) (lumenna--refusal :no_item)))
 
-(defun lumenna-reminders--press (event button)
-  "Send EVENT for the reminder at point.
-It offers it if it has BUTTON's words; one it does not offer is refused in
-the app's words."
+(defun lumenna-reminders--press (button)
+  "Press BUTTON, a `DueButton' id, on the reminder at point.
+One it does not offer is pressed all the same, and refused in the app's
+words."
   (let* ((due (lumenna-reminders--at-point))
          (id (plist-get due :id)))
-    (if (plist-get due button)
-        (lumenna-reminders--deal id event)
+    (if (seq-find (lambda (offered) (equal (plist-get offered :id) button)) (plist-get due :buttons))
+        (lumenna-reminders--deal id button)
       (let ((lumenna--heard (list 'heard)))
-        (lumenna-send (list :Due (list (intern (concat ":" event)) id)) 0)
+        (lumenna-send (lumenna-reminders--pressed id button) 0)
         (lumenna--settle)
         (user-error "%s" (string-join (or (cdr lumenna--heard) (list (lumenna-word :nothing_to_do))) " "))))))
 
 (defun lumenna-reminders-dismiss ()
   "Dismiss the reminder at point, on every device."
   (interactive)
-  (lumenna-reminders--press "Dismiss" :dismiss))
+  (lumenna-reminders--press "dismiss"))
 
 (defun lumenna-reminders-snooze ()
   "Snooze the reminder at point, on every device, for as long as the core says."
   (interactive)
   ;; What was missed, as one summary, has no Snooze: the app refuses it in its words.
-  (lumenna-reminders--press "Snooze" :snooze))
+  (lumenna-reminders--press "snooze"))
 
 (defun lumenna-reminders-carry ()
   "Carry what the block of the reminder at point left short forward, as it offers."
   (interactive)
-  (lumenna-reminders--press "Carry" :carry))
+  (lumenna-reminders--press "carry"))
 
 (defun lumenna-reminders-replan ()
   "Open Replan from Now, as the reminder at point offers to.
 Once something is replanned, the app dismisses the warning."
   (interactive)
-  (let ((due (lumenna-reminders--at-point)))
-    (if (plist-get due :replan)
-        (lumenna-replan (list :Due (list :Replan (plist-get due :id))))
-      (lumenna-reminders--press "Replan" :replan))))
+  (lumenna-reminders--press "replan"))
 
 ;;;; A task's or block's own
 

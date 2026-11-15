@@ -16,8 +16,9 @@ announcement is the app's.
 ```
 
 Then `C-c l t` is Today, `C-c l a` adds a task, and `C-c l ?` lists the rest.
-`M-x lumenna` lists the places; `M-x lumenna-today`, `lumenna-tasks` and `lumenna-add` go
-straight there. `lum` is found on `exec-path`, or set `lumenna-lum-program`.
+`M-x lumenna` opens Home: the places, then what can be done from anywhere (New Task, Undo,
+What Should I Work On?, Settings and the rest), a line each, RET on one opening or doing it;
+`M-x lumenna-today`, `lumenna-tasks` and `lumenna-add` go straight there. `lum` is found on `exec-path`, or set `lumenna-lum-program`.
 
 The client connects to the daemon's socket (`<profile>/lumenna.sock`) when one answers, and
 otherwise starts `lum rpc` itself, which stops when Emacs does, and which keeps this device in
@@ -43,11 +44,12 @@ In every list:
 | `n`, `p` | next, previous line |
 | RET | the line's main action: open a task, a project's tasks, change a setting |
 | `.` | every action this line offers, by name, as every Lumenna app offers them |
+| `,` | this list's own actions, by name (New Task, New Block, the day's moves…), as the app offers them; the menu ends in them too |
 | TAB | fold or unfold the subtasks |
 | `g` | refresh |
 | `u`, `y` | undo, redo — and Emacs's own `C-/` and `C-?` do the same here |
 | `?` or `h` | every key this list has, one per line; RET on one runs it, `q` goes back |
-| `L` | the places |
+| `L` | Home |
 | `q` | leave the list |
 
 `M-x imenu` goes to an item by name, with completion.
@@ -91,8 +93,9 @@ more is proposed; `q` cancels. Under Other options, `RET` or `o` on one shows th
 proposal for it in place. A task's own buffer ends with its History.
 
 Projects, labels and saved filters each have their own list (`a` add, `r` rename, `d`
-delete, `M-p`/`M-n` reorder, and the rest in `?`). `M-x lumenna` lists the places as every
-app's sidebar does, each project, label and filter under its heading. Settings, devices and
+delete, `M-p`/`M-n` reorder, and the rest in `?`). Home lists the places as every
+app's sidebar does, each project, label and filter under its heading, TAB or RET on a heading
+folding it. Settings, devices and
 pairing are in `lumenna-settings` and `lumenna-devices`; Settings' last line, Erase Everything
 Deleted, empties the trash and every deleted thing's history on every device, asking first.
 

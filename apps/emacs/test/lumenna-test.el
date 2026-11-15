@@ -555,6 +555,16 @@ until the app has taken it in."
     (let ((id (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :id)))
       (should (equal (plist-get (lumenna-call "block.show" :id id) :notes) "window seat")))))
 
+(ert-deftest lumenna-ret-on-a-series-is-the-cores-enter-its-form ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "tomorrow")
+    (lumenna-blocks)
+    (lumenna-test--goto "Deep work")
+    (lumenna-test--answering ("Notes" "door shut")
+      (lumenna-activate))
+    (let ((id (plist-get (aref (plist-get (lumenna-call "block.list") :rows) 0) :id)))
+      (should (equal (plist-get (lumenna-call "block.show" :id id) :notes) "door shut")))))
+
 (ert-deftest lumenna-a-cancelled-day-is-listed-and-put-back ()
   (lumenna-test--with-store
     (lumenna-test--seed "block.add" :title "Run" :at "7am" :minutes 30 :date "today" :repeat "every day")
@@ -949,7 +959,82 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
       (lumenna-test--act-named "New Project"))
     (lumenna-test--goto "  Garden")
     (lumenna-activate)
-    (should (derived-mode-p 'lumenna-tasks-mode))))
+    (should (derived-mode-p 'lumenna-tasks-mode))
+    ;; The app went to the project it made on screen 0; Home is back there all the same.
+    (with-current-buffer "*Lumenna*"
+      (should (plist-get lumenna--view :home)))))
+
+(ert-deftest lumenna-home-lists-the-places-then-its-own-actions-and-opens-a-place-in-a-buffer-of-its-own ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "project.add" :name "Garden")
+    (lumenna)
+    (should (equal (buffer-name) "*Lumenna*"))
+    ;; Home opens on its row in hand, the first place.
+    (should (= (line-number-at-pos) 2))
+    (should (equal (lumenna-test--line) "Today"))
+    (goto-char (point-min))
+    (should (equal (lumenna-test--line) "Home"))
+    ;; The places, at their levels, then what can be done from anywhere, in the app's order.
+    (should (equal (mapcar (lambda (text) (and (search-forward text nil t) (line-number-at-pos)))
+                           '("  Garden" "New Task" "Undo" "Redo" "What Should I Work On?" "Sync Now"
+                             "Settings" "Keyboard Shortcuts" "About Lumenna"))
+                   (cons 6 (number-sequence 12 19))))
+    (lumenna-test--goto "  Garden")
+    (should (= (funcall outline-level) 3))
+    ;; A heading folds, as the app folds it.
+    (lumenna-test--goto "Projects")
+    (lumenna-activate)
+    (should-not (save-excursion (goto-char (point-min)) (search-forward "Garden" nil t)))
+    (lumenna-test--goto "Projects")
+    (lumenna-activate)
+    ;; A place opens in its own buffer, and Home stays on screen 0, over every task.
+    (lumenna-test--goto "  Garden")
+    (lumenna-activate)
+    (should (derived-mode-p 'lumenna-tasks-mode))
+    (should (equal (buffer-name) "*Lumenna: Garden*"))
+    (with-current-buffer "*Lumenna*"
+      (should (plist-get lumenna--view :home))
+      (should (equal (plist-get lumenna--view :quick_add) ""))
+      ;; Its row in hand the place opened.
+      (should (equal (plist-get (seq-find (lambda (entry) (equal (plist-get entry :key)
+                                                                 (plist-get (plist-get lumenna--view :sidebar_held) :focus)))
+                                          (append (plist-get lumenna--view :sidebar) nil))
+                                :title)
+                     "Garden")))
+    (pop-to-buffer-same-window "*Lumenna*")
+    ;; Its own actions are lines too: what the app runs, and what Emacs runs itself.
+    (lumenna-test--goto "New Task")
+    (lumenna-test--answering ("buy milk")
+      (lumenna-activate))
+    (should (equal (lumenna-test--titles) '("buy milk")))
+    (lumenna-test--goto "Undo")
+    ;; No row of the app's: a row's key refuses rather than run on the place last held.
+    (should-error (lumenna-act-delete) :type 'user-error)
+    (lumenna-activate)
+    (should (equal (lumenna-test--titles) nil))
+    (should (save-excursion (goto-char (point-min)) (search-forward "  Garden" nil t)))
+    (lumenna-test--goto "Settings")
+    (lumenna-activate)
+    (should (derived-mode-p 'lumenna-settings-mode))))
+
+(ert-deftest lumenna-a-screens-own-actions-are-the-apps-chosen-by-name-and-in-its-menu ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "project.add" :name "Garden")
+    (lumenna-open-place '(:Project "Garden"))
+    (should (equal (mapcar (lambda (item) (aref item 0)) (lumenna--screen-action-menu nil))
+                   '("New Task..." "Filter Tasks" "New Project Inside..." "Undo" "Redo")))
+    ;; One the app runs, by its key: what it asks is asked.
+    (lumenna-test--answering ("New Project Inside" "Seeds")
+      (lumenna-screen-action))
+    (should (seq-find (lambda (entry) (and (equal (plist-get entry :title) "Seeds") (= (plist-get entry :depth) 2)))
+                      (plist-get (buffer-local-value 'lumenna--view (lumenna--home-buffer)) :sidebar)))
+    ;; The day's, from its own buffer.
+    (lumenna-today)
+    (should (equal (mapcar (lambda (a) (plist-get a :id)) (lumenna--screen-actions))
+                   '("new-block" "what-now" "previous-day" "next-day" "go-to-day" "go-to-now" "undo" "redo")))
+    (let ((shown (plist-get (plist-get lumenna--view :day) :date)))
+      (lumenna-screen-action "next-day")
+      (should-not (equal (plist-get (plist-get lumenna--view :day) :date) shown)))))
 
 (ert-deftest lumenna-devices-and-pairing-is-the-first-line-of-settings ()
   (lumenna-test--with-store
@@ -1302,6 +1387,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
         (should (search-forward "after" nil t)))
       (with-current-buffer "*Lumenna*"
         (goto-char (point-min))
+        (should (equal (lumenna-test--line) "Home"))
         (should (search-forward "Inbox" nil t))))))
 
 (ert-deftest lumenna-disconnecting-stops-the-reminders-until-lumenna-connects-again ()
