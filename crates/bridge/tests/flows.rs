@@ -2870,3 +2870,49 @@ fn enter_names_what_it_runs_on_each_row() {
     let offered: Vec<lumenna_records::Offered> = list.items[0].actions.iter().map(|at| list.offered[*at as usize].clone()).collect();
     assert_eq!(lumenna_app::keys::runs_on("open", &offered).map(|action| action.kind), Some(ActionKind::Restore));
 }
+
+#[test]
+fn a_headings_letter_on_home_does_what_enter_does_there() {
+    let mut app = App::new();
+    app.send(Event::Home);
+    let shell = app.send(Event::Letter("p".to_owned()));
+    assert_eq!(said(&shell), ["Collapsed"]);
+    assert_eq!(app.view().sidebar_held.focus.as_deref(), Some("group:Projects"));
+    let shell = app.send(Event::Letter("p".to_owned()));
+    assert_eq!(said(&shell), ["Expanded"]);
+    assert!(app.view().home.is_some());
+}
+
+#[test]
+fn new_task_from_home_starts_in_the_inbox_whatever_place_is_beneath() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    app.send(Event::Open(Place::Project("Work".to_owned())));
+    app.send(Event::Home);
+    assert_eq!(app.view().quick_add, "");
+    app.send(Event::Letter("a".to_owned()));
+    assert_eq!(app.view().line.unwrap().text, "", "no project's prefix from Home");
+}
+
+#[test]
+fn the_lines_a_shell_reads_come_composed() {
+    let mut app = App::new();
+    app.add("Buy milk p1");
+    let details = app.view().details.unwrap();
+    assert!(details.field_lines.iter().any(|line| line.starts_with("Priority: ")), "{:?}", details.field_lines);
+    assert!(!details.field_lines.iter().any(|line| line.starts_with("Title")), "the title is the details' own heading");
+    app.send(Event::Capitals(lumenna_app::Capitals::Sentence));
+    app.send(Event::Settings(SettingsEvent::Open));
+    let settings = app.view().settings.unwrap();
+    let day_start = settings.settings.iter().find(|shown| shown.setting.key == "day-start").unwrap();
+    assert_eq!(day_start.line, format!("{}, {}", day_start.setting.title, day_start.typed));
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    let words = app.view().devices.unwrap().words;
+    assert_eq!(words.heading, format!("{}. {}", words.title, words.intro_sentence));
+    assert!(words.heading.starts_with("Pair a device. "), "{}", words.heading);
+    assert_eq!(lumenna_app::screen::prompt(&["Name is taken.", "Rename Work"]), "Name is taken. Rename Work");
+    let about = lumenna_app::words::shell_words(lumenna_app::Capitals::Sentence, lumenna_app::words::ThisDevice::Computer).about_lines;
+    assert!(about[1].starts_with("Version "), "{about:?}");
+}

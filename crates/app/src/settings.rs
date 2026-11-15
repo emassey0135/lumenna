@@ -133,6 +133,10 @@ pub struct SettingView {
     /// What was wrong with the line last applied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
+    /// Its row in a list of settings: its name, then its value as its options name it: "Clock,
+    /// 24-hour".
+    #[serde(default)]
+    pub line: String,
 }
 
 /// An export Settings offers.
@@ -237,10 +241,15 @@ pub fn view(
         .chain(settings.list.is_some().then_some(offered.as_ref()).flatten())
         // What the shell cannot use is not listed: a backup folder where it keeps none.
         .filter(|setting| abilities.backup_folder || !BACKUP_FOLDER_SETTINGS.contains(&setting.key.as_str()))
-        .map(|setting| SettingView {
-            typed: settings.typed.get(&setting.key).cloned().unwrap_or_else(|| setting.value.clone()),
-            problem: settings.problems.get(&setting.key).cloned(),
-            setting: setting.clone(),
+        .map(|setting| {
+            let typed = settings.typed.get(&setting.key).cloned().unwrap_or_else(|| setting.value.clone());
+            let named = setting.options.iter().find(|option| option.id == typed).map_or(typed.as_str(), |option| option.title.as_str());
+            SettingView {
+                line: [setting.title.as_str(), named].iter().filter(|part| !part.is_empty()).copied().collect::<Vec<_>>().join(", "),
+                problem: settings.problems.get(&setting.key).cloned(),
+                setting: setting.clone(),
+                typed,
+            }
         })
         .collect();
     let exports = lumenna_records::exports::EXPORTS

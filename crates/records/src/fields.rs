@@ -225,6 +225,9 @@ pub struct PairingWords {
     pub refusing: String,
     /// The button that copies this device's code.
     pub copy_code: String,
+    /// The screen's title and what it says before anything starts, as one line to read: "Pair a
+    /// device. On the same network, …".
+    pub heading: String,
     /// [`intro`](Self::intro) in sentence case, its buttons named as they read there.
     pub intro_sentence: String,
 }
@@ -269,6 +272,7 @@ pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
         finishing: "The words match. Finishing pairing.".to_owned(),
         refusing: "The words differ, so the devices are not paired.".to_owned(),
         copy_code: "Copy Code".to_owned(),
+        heading: format!("Pair a Device. {intro}"),
         intro_sentence: intro.replace("Wait for the Other Device", "Wait for the other device"),
     }
 }

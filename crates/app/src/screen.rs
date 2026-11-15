@@ -153,7 +153,8 @@ pub enum ScreenChange {
 
 /// A question's parts as one prompt, each a sentence ended once: a part that ends in its own
 /// question or exclamation mark ("Erase lose me permanently?") keeps it, with no period after.
-fn prompt(parts: &[&str]) -> String {
+#[must_use]
+pub fn prompt(parts: &[&str]) -> String {
     let parts: Vec<&str> = parts.iter().map(|part| part.trim().trim_end_matches('.')).filter(|part| !part.is_empty()).collect();
     let mut joined = String::new();
     for (index, part) in parts.iter().enumerate() {

@@ -162,7 +162,16 @@ crosses the FFI.
   the record, never written in the shell. A sidebar entry says its
   own folding (`hidden`, `expanded`, `level`), as a list's rows and a pick's lines (`Line::level`)
   do; a list a shell narrows or cuts out itself takes its levels from `lines::levels(depths)`
-  (`levels()` over the FFI), so no shell counts them.
+  (`levels()` over the FFI), so no shell counts them. **No shell joins two of the core's words
+  into a line either**: a setting's row is `SettingView::line` ("Clock, 24-hour"), pairing's
+  title and intro `PairingWords::heading`, a proposal's title and announcement
+  `ProposalView::heading`, a change's line and what its check box says as it changes
+  `ChangeView::line` and `toggled`, the task's fields read rather than edited
+  `DetailsView::field_lines` ("Priority: High"), parts of a prompt (a refusal before what is
+  asked) `screen::prompt` (`prompt_of`), a line with its level after it `lines::with_level`
+  (`line_with_level`), and About's lines `ShellWords::about_lines`. A shell drawing a dialog's
+  controls (`lumenna_app::dialog`) takes them apart instead: a label and a value, a refusal as a
+  line of its own.
 - **What Lumenna is is said once** (`[workspace.metadata.lumenna]` in the workspace's
   `Cargo.toml`: name, description, version, homepage, issues, publisher, the identifier `id` in
   freedesktop's and Windows' capitals and `package_id` lowercase for Apple's bundles and Android's
@@ -286,11 +295,11 @@ directly (8805659 is the last commit before the move). How the app works inside 
   Home's own actions (`HomeView::actions`, also `screen_actions` while it is shown): Reminders Due
   while any are due, New Task, Undo, Redo, What Should I Work On?, Sync Now, Settings, Key Help
   and About. Its row in hand is the sidebar's (`Hold(Side::Sidebar, key)`); `Key("open")` opens a
-  place and folds a heading; a letter opens its place or runs its action. Opening a place leaves
-  it; acting on one there (renaming it, making one) does not, the place beneath following it. A desktop or a phone never shows Home: its places are its sidebar or tabs, and its
-  app-wide actions the menu bar's or the Browse tab's. `braille::main_menu`/`braille_main_menu`
-  and `place_commands` are superseded by it and by `screen_actions`, kept only until the braille
-  apps take these, then removed.
+  place and folds or unfolds a heading, and a place's letter does the same as Enter on it; an
+  action's letter runs it. New Task from Home starts an empty line (the Inbox), whatever place
+  Home was opened over. Opening a place leaves Home; acting on one there (renaming it, making one)
+  does not, the place beneath following it. A desktop or a phone never shows Home: its places are
+  its sidebar or tabs, and its app-wide actions the menu bar's or the Browse tab's.
 - **Settings offer the store's own actions** (`SettingsView::offered`: Erase Everything
   Deleted), a button each under `offered_caption`, handed back with
   `Event::ActOn(ActingOn::Settings, offered)`; the app asks its question as any row's.

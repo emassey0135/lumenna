@@ -171,6 +171,8 @@ pub struct ShellWords {
     /// A screen's own actions as a group (`ViewModel::screen_actions`), where a toolbar, a row of
     /// buttons or a menu of them is named: "Commands".
     pub screen_actions: String,
+    /// What About lists, a line each, labelled where a value alone says nothing: "Version 0.1.0".
+    pub about_lines: Vec<String>,
     /// What About says, in one line: "Lumenna 0.1.0. A task manager and day planner …".
     pub about: String,
     /// A section of a form beyond its first: "More".
@@ -1016,6 +1018,7 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         more_options: c("More Options"),
         screen_actions: c("Commands"),
         about: core::about_line(),
+        about_lines: core::about_lines(),
         length: c("Length"),
         query: c("Query"),
         narrow_the_list: c("Narrow the List"),

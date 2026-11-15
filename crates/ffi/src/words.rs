@@ -6,11 +6,12 @@ use lumenna_records::places::{Place, SidebarGroup, SidebarKind};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_app::Capitals;
 use lumenna_app::ShellEvent;
+use lumenna_app::speech::Line;
 use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LetteredMenu, LineSettings, MenuShortcut, SenseLetter, SpeakLetter};
+use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetteredMenu, LineSettings, MenuShortcut, SenseLetter, SpeakLetter};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
 use lumenna_records::{ActionKind, Candidate, Offered};
@@ -517,20 +518,7 @@ pub fn command_letter(id: String) -> Option<String> {
     lumenna_app::braille::command_letter(&id).map(str::to_owned)
 }
 
-/// What `place` itself offers on a braille device besides its rows, each with its letter.
-/// Superseded by `ViewModel::screen_actions`; kept until the braille apps take that, then removed.
-#[export]
-pub fn place_commands(place: Place, sentence: bool) -> Vec<LetterCommand> {
-    lumenna_app::braille::place_commands(&place, sentence)
-}
 
-/// A braille device's main menu: the places, then adding, undo and redo, reminders, syncing and
-/// settings, each with its letter. Superseded by Home (`ShellEvent::Home`, `ViewModel::home`);
-/// kept until the braille apps show Home, then removed.
-#[export]
-pub fn braille_main_menu(sentence: bool) -> Vec<LetterCommand> {
-    lumenna_app::braille::main_menu(sentence)
-}
 
 /// What is said when no row's line starts with the letter pressed.
 #[export]
@@ -570,4 +558,18 @@ pub fn control_event(sends: ControlSends, value: String, how: ControlMove) -> Ve
 #[export]
 pub fn key_runs_on(id: String, offered: Vec<Offered>) -> Option<Offered> {
     lumenna_app::keys::runs_on(&id, &offered)
+}
+
+/// Parts of a question or a heading as one line, each a sentence ended once: a refusal before
+/// what is asked, a title before what it says.
+#[export]
+pub fn prompt_of(parts: Vec<String>) -> String {
+    lumenna_app::screen::prompt(&parts.iter().map(String::as_str).collect::<Vec<_>>())
+}
+
+/// A line said with its level after it, where it has one: a project in a pick, read one line a
+/// row.
+#[export]
+pub fn line_with_level(line: Line) -> String {
+    lumenna_app::lines::with_level(&line)
 }

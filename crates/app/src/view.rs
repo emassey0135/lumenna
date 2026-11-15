@@ -227,6 +227,9 @@ pub(crate) fn whole(model: &Screen) -> ViewModel {
     if model.capitals == crate::Capitals::Sentence {
         crate::capitals::in_sentence_case(&mut view);
     }
+    if let Some(proposal) = &mut view.proposal {
+        crate::proposal::compose(proposal);
+    }
     // Worded in the shell's capitals as they are made, over the sidebar as it is now cased.
     if view.ready {
         view.screen_actions = model.screen_actions();
@@ -315,19 +318,23 @@ fn shown(model: &Screen) -> ViewModel {
         sidebar: folded_sidebar(sidebar(&store.snapshot, &store.now), &model.sidebar_folded),
         sidebar_folded: model.sidebar_folded.iter().cloned().collect(),
         title: place.title(),
-        quick_add: place.quick_add_prefix(),
+        quick_add: if model.home { String::new() } else { place.quick_add_prefix() },
         query: model.query(),
         add_refused: model.add_refused.clone(),
         day: (place == Place::Today).then(|| model.day_view()).flatten(),
         details: model.details_shown().map(|task| {
             let draft = model.details.drafts.get(&task.id);
+            let fields = draft.map_or_else(|| lumenna_records::task_fields(task.clone()), |d| d.fields.clone());
+            let projects = projects_for(&task, &store.snapshot);
+            let form = lumenna_records::task_form();
             DetailsView {
-                fields: draft.map_or_else(|| lumenna_records::task_fields(task.clone()), |d| d.fields.clone()),
+                field_lines: crate::details::field_lines(&fields, &form, &projects),
                 dirty: draft.is_some_and(|d| d.fields != lumenna_records::task_fields(d.original.clone())),
-                projects: projects_for(&task, &store.snapshot),
+                fields,
+                projects,
                 lines: lumenna_records::fields::details_lines(&task, model.capitals == crate::Capitals::Sentence),
                 task,
-                form: lumenna_records::task_form(),
+                form,
             }
         }),
         block_form: model.block_form.as_ref().map(|form| form.view(model.capitals == crate::Capitals::Sentence)),

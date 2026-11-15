@@ -354,18 +354,7 @@ pub fn task_form(view: &ViewModel, lines: &Lines) -> Option<DialogShown> {
         .form
         .iter()
         .map(|field| {
-            let value = match field.key.as_str() {
-                "title" => fields.title.clone(),
-                "due" => fields.due.clone(),
-                "repeat" => fields.repeat.clone(),
-                "priority" => fields.priority.to_string(),
-                "estimate" => fields.estimate.clone(),
-                "project" => fields.project.clone(),
-                "labels" => fields.labels.clone(),
-                "notes" => fields.notes.clone(),
-                "sittings" => fields.sittings.clone(),
-                _ => String::new(),
-            };
+            let value = crate::details::get(fields, &field.key);
             let options = if field.key == "project" { &details.projects } else { &field.options };
             field_control(field, value, options, false, ControlSends::TaskField(field.key.clone()))
         })

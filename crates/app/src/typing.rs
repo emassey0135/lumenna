@@ -78,7 +78,8 @@ impl Lumenna {
     pub(crate) fn typing(&self, event: Typing, model: &mut Screen) -> Command<Effect, Event> {
         match event {
             Typing::Open => {
-                let text = model.place().quick_add_prefix();
+                // From Home, the Inbox: Home is no place, whatever it was opened over.
+                let text = if model.home { String::new() } else { model.place().quick_add_prefix() };
                 let cursor = u32::try_from(text.len()).unwrap_or(u32::MAX);
                 model.line = Some(Line { text, cursor });
                 model.add_refused = None;

@@ -95,7 +95,7 @@ const PAGE_LETTERS: &[(&str, &str)] =
 
 /// The letter of each settings page's button, by `SettingsButton::id`.
 const BUTTON_LETTERS: &[(&str, &str)] =
-    &[("sync-now", "s"), ("pair", "p"), ("back-up", "b"), ("restore-backup", "r"), ("import", "i")];
+    &[("sync-now", "n"), ("pair", "p"), ("back-up", "b"), ("restore-backup", "r"), ("import", "i")];
 
 /// The letter of each of a reminder's buttons, by `DueButton::id`. Dismiss is the delete keys'.
 const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("snooze", "z")];
@@ -336,18 +336,6 @@ fn command_for(kind: ActionKind) -> Option<&'static str> {
     ACTION_COMMANDS.iter().find(|(lettered, _)| *lettered == kind).map(|(_, id)| *id)
 }
 
-/// The command a letter is, what a shell shows beside it: its `id`, its `letter`, and its name.
-#[boltffi::data]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LetterCommand {
-    /// What it is: `new-block`, or, on the main menu, `projects`.
-    pub id: String,
-    /// Its letter.
-    pub letter: String,
-    /// Its name, in sentence case where asked for.
-    pub title: String,
-}
-
 /// A command's name by its `id`, the shared table's where it has one.
 fn command_title(id: &str, sentence: bool) -> String {
     let title = match id {
@@ -357,35 +345,6 @@ fn command_title(id: &str, sentence: bool) -> String {
         other => return crate::screen_actions::action_title(other, sentence),
     };
     if sentence { lumenna_records::fields::sentence_case(title.to_owned()) } else { title.to_owned() }
-}
-
-fn lettered(ids: &[&str], sentence: bool) -> Vec<LetterCommand> {
-    ids.iter()
-        .filter_map(|id| {
-            Some(LetterCommand { id: (*id).to_owned(), letter: command_letter(id)?.to_owned(), title: command_title(id, sentence) })
-        })
-        .collect()
-}
-
-/// What `place` itself offers beside its rows, each with its letter. Superseded by
-/// `ViewModel::screen_actions`, which says too whether each applies and is the shell's own; kept
-/// only until the braille apps take that, then removed.
-#[must_use]
-pub fn place_commands(place: &Place, sentence: bool) -> Vec<LetterCommand> {
-    lettered(crate::screen_actions::place_action_ids(place), sentence)
-}
-
-/// The main menu's commands, each with its letter. Superseded by Home (`Event::Home`,
-/// `ViewModel::home`); kept only until the braille apps show Home, then removed.
-#[must_use]
-pub fn main_menu(sentence: bool) -> Vec<LetterCommand> {
-    lettered(
-        &[
-            "go-today", "go-tasks", "new-task", "go-blocks", "go-history", "go-trash", "projects", "labels", "filters", "undo",
-            "redo", "reminders-due", "sync-now", "settings",
-        ],
-        sentence,
-    )
 }
 
 /// What a line on a device with its own controls is, as the HIMS BrailleSense names them.
@@ -874,9 +833,10 @@ impl Lumenna {
         self.refuse_letter(&letter, &row, model)
     }
 
-    /// What `letter` runs on Home: a place's (opened; a heading put in hand and unfolded), else
-    /// one of Home's own actions; none for a letter Home does not give, or one of an action that
-    /// is the shell's own, which a shell runs itself.
+    /// What `letter` runs on Home: what Enter does on the place of that letter (a place opened, a
+    /// heading put in hand and folded or unfolded), else one of Home's own actions; none for a
+    /// letter Home does not give, or one of an action that is the shell's own, which a shell runs
+    /// itself.
     fn home_letter(&self, letter: &str, model: &mut Screen) -> Option<Command<Effect, Event>> {
         let entry = model.store.as_ref().and_then(|store| {
             sidebar(&store.snapshot, &store.now)
@@ -884,24 +844,13 @@ impl Lumenna {
                 .find(|entry| crate::screen_actions::place_letter(&entry.kind) == Some(letter))
         });
         if let Some(entry) = entry {
-            return Some(match entry.kind {
-                SidebarKind::Place(place) => {
-                    model.open = None;
-                    model.acting = None;
-                    model.go(place);
-                    crux_core::render::render()
-                }
-                SidebarKind::Group(_) => {
-                    let keys = model.side_keys(Side::Sidebar);
-                    model.sidebar_held.hold(&entry.key, &keys);
-                    model.sidebar_held.landing += 1;
-                    if model.sidebar_folded.remove(&entry.key) {
-                        crux_core::render::render().and(say(lumenna_records::words::folded_said(true)))
-                    } else {
-                        crux_core::render::render()
-                    }
-                }
-            });
+            let keys = model.side_keys(Side::Sidebar);
+            model.sidebar_held.hold(&entry.key, &keys);
+            model.acting = Some(Side::Sidebar);
+            if matches!(entry.kind, SidebarKind::Group(_)) {
+                model.sidebar_held.landing += 1;
+            }
+            return Some(self.open_held_place(model));
         }
         let action = model.screen_actions().into_iter().find(|action| action.letter == letter && !action.shell)?;
         Some(self.command(&action.id, model))
@@ -1075,6 +1024,7 @@ mod tests {
         }
     }
 
+#[test]    fn a_command_has_one_letter_wherever_it_is_a_button_too() {        for (id, letter) in BUTTON_LETTERS {            if let Some(command) = command_letter(id) {                assert_eq!(command, *letter, "{id} has two letters");            }        }    }
     #[test]
     fn the_braillesense_presses_with_enter_what_space_already_does() {
         assert_eq!(braillesense_letter("u"), Some(SenseLetter::Space));
