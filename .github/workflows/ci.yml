@@ -664,7 +664,7 @@ jobs:
         # The release builds too, shrunk by R8, which only they run: a rule it refuses or a
         # class it cannot find would otherwise be found at release. The core is the same build.
         # Then the JVM tests, which need no emulator.
-        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :wear:assembleDebug :wear:assembleDebugAndroidTest :braillesense:assembleDebug :orbit:assembleDebug :app:assembleRelease :wear:assembleRelease :braillesense:assembleRelease :orbit:assembleRelease :shared:testDebugUnitTest :app:testDebugUnitTest :braillesense:testDebugUnitTest :orbit:testDebugUnitTest :braille:testDebugUnitTest
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :wear:assembleDebug :wear:assembleDebugAndroidTest :braillesense:assembleDebug :orbit:assembleDebug :app:assembleRelease :wear:assembleRelease :braillesense:assembleRelease :orbit:assembleRelease :shared:testDebugUnitTest :app:testDebugUnitTest :braillesense:testDebugUnitTest :orbit:testDebugUnitTest :orbit-sdk:testDebugUnitTest :braille:testDebugUnitTest
       - name: The Orbit app as Satellite reads it
         # CI has no Orbit device: what it can check is what Satellite's hook and launcher read.
         working-directory: apps/android

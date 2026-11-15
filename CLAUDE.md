@@ -53,8 +53,9 @@ apps/emacs/     the Emacs client, in Elisp, drawing the Crux app over `lum rpc` 
                 socket, a screen per buffer.
 apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (app/), Wear OS
                 (wear/), the HIMS BrailleSense 7 (braillesense/), the Orbit Speak and Player (orbit/),
-                which draw no Compose and speak for themselves, what those two share (braille/), and
-                what every app shares (shared/).
+                which draw no Compose and speak for themselves, the unofficial Orbit SDK the Orbit
+                app is over (orbit-sdk/, nothing of Lumenna's in it), what the BrailleSense app keeps
+                apart (braille/), and what every app shares (shared/).
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
                 between them.
 apps/windows/   the Win32 app, over the Crux app (crates/ffi, linked as Rust).
@@ -159,7 +160,11 @@ crosses the FFI.
   comes with the view. That includes what only one shell needs today (BTSpeak's menus and file
   prompts, the web's folder backups and tab notices, a watch's placeholders): a shell writes no
   sentence of its own, a key it names being a part. A word a shell finds missing is added to
-  the record, never written in the shell. A sidebar entry says its
+  the record, never written in the shell. **The one exception is a device SDK's own words**:
+  what the device itself says, as its own apps say it, belongs to the SDK that speaks for the
+  device and not to Lumenna (the Orbit SDK's `OrbitWords`: its fields' echo and cell names, its
+  Editor's selection, T9's modes), so another app on the device says the same. What Lumenna says
+  there (its key help, its menus) stays the core's. A sidebar entry says its
   own folding (`hidden`, `expanded`, `level`), as a list's rows and a pick's lines (`Line::level`)
   do; a list a shell narrows or cuts out itself takes its levels from `lines::levels(depths)`
   (`levels()` over the FFI), so no shell counts them. **No shell joins two of the core's words

@@ -32,7 +32,6 @@ android {
     }
 
     buildFeatures {
-        aidl = true
         resValues = true
     }
 
@@ -50,6 +49,8 @@ android {
 
 dependencies {
     implementation(project(":shared"))
+    implementation(project(":orbit-sdk"))
+    // The dialog controller the braille apps share.
     implementation(project(":braille"))
     // ComponentActivity, which shared's `Front` is written over.
     implementation(libs.activity.compose)

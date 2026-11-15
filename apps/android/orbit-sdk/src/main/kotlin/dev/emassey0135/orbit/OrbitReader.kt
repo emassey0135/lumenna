@@ -1,4 +1,4 @@
-package dev.emassey0135.lumenna.orbit
+package dev.emassey0135.orbit
 
 import android.content.ComponentName
 import android.content.Context
@@ -8,16 +8,18 @@ import com.orbit.olympus_sdk.IOlympusSDKCallback
 import com.orbit.screenreader.IScreenReaderService
 import com.orbit.screenreader.ISettingsCallback
 import com.orbit.screenreader.IUARTKeypadCallback
-import dev.emassey0135.lumenna.braille.Claim
-import dev.emassey0135.lumenna.braille.ServiceLink
 
 /**
  * Orbit's screen reader: bound by explicit intent, every call in order on [ServiceLink]'s worker,
  * the keypad claimed under this app's own name while its window has focus.
  *
- * Rather than speak lines, this describes the screen ([focusList], [dialog], [contextMenu],
- * [focusEdit]…) and Orbit voices them in the person's own voice and verbosity. Until Orbit says
- * it is ready, what it is told it drops, so nothing is sent until then.
+ * Rather than speak lines, an app describes its screen ([focusList], [dialog], [contextMenu],
+ * [focusEdit]…) and Orbit voices it in the person's own voice and verbosity, as it voices Orbit's
+ * own apps. Until Orbit says it is ready, what it is told it drops, so nothing is sent until then.
+ *
+ * Orbit routes its keypad to an app (rather than reading its window through accessibility) only
+ * when the app says it speaks for itself: Satellite's hook does so for an app whose manifest has
+ * `orbit.self_voicing`, and Orbit's own apps are routed by their `com.orbit.` package.
  *
  * Never #44 (`canSpeakLanguage`), which the Player lacks: the AIDL here stops before it.
  */
@@ -141,15 +143,6 @@ class OrbitReader(context: Context, private val listener: Listener) {
             putString("focusedElement", focused)
         }
         tell("onAppOpened") { it.onAppOpened(bundle) }
-    }
-
-    /** One description of the screen ([describe]). */
-    fun perform(call: ReaderCall) = when (call) {
-        is ReaderCall.FocusList -> focusList(call.name, call.count, call.selected, call.item)
-        is ReaderCall.ItemChanged -> itemChanged(call.name, call.count, call.selected, call.item)
-        is ReaderCall.Dialog -> dialog(call.name, "", call.focused)
-        is ReaderCall.ContextMenu -> contextMenu(call.name, "")
-        is ReaderCall.Say -> speakQueued(call.text)
     }
 
     /** Lists are said as list boxes (role 5), the name the list's, the selected the row in hand. */

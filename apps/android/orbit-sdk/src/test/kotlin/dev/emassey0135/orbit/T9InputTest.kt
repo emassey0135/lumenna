@@ -1,4 +1,4 @@
-package dev.emassey0135.lumenna.orbit
+package dev.emassey0135.orbit
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -39,7 +39,7 @@ class T9InputTest {
         type(1)
         t9.commitNow()
         assertEquals("A55.", field.text.toString())
-        assertEquals(listOf("uppercase", "digits", "symbols"), field.modes)
+        assertEquals(listOf(T9Input.Mode.UPPERCASE, T9Input.Mode.DIGITS, T9Input.Mode.SYMBOLS), field.modes)
     }
 
     @Test fun theCandidateGoesWhereItsKeyWasFirstTapped() {
@@ -75,13 +75,13 @@ class T9InputTest {
     private class Field : T9Input.Host {
         val text = StringBuilder()
         val offered = StringBuilder()
-        val modes = mutableListOf<String>()
+        val modes = mutableListOf<T9Input.Mode>()
         val feedback = mutableListOf<Boolean>()
         var caret = 0
         override fun caret(): Int = caret
         override fun timeoutMs(): Long = 1000
         override fun candidate(character: Char) { offered.append(character) }
-        override fun modeChanged(name: String) { modes.add(name) }
+        override fun modeChanged(mode: T9Input.Mode) { modes.add(mode) }
         override fun commit(character: Char, position: Int, feedback: Boolean) {
             text.insert(position, character)
             caret = position + 1

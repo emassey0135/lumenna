@@ -1,4 +1,4 @@
-package dev.emassey0135.lumenna.orbit
+package dev.emassey0135.orbit
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

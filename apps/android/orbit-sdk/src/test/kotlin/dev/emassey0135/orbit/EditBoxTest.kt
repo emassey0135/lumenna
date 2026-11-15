@@ -1,14 +1,14 @@
-package dev.emassey0135.lumenna.orbit
+package dev.emassey0135.orbit
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class LineEditorTest {
+class EditBoxTest {
     private val output = Recorded()
     private var confirmedText: String? = null
     private var cancelled = false
 
-    private fun editor(phone: Boolean, initial: String = "", multiline: Boolean = false) = LineEditor(
+    private fun editor(phone: Boolean, initial: String = "", multiline: Boolean = false) = EditBox(
         "Task", initial, phone, output, multiline,
         { cells, _ -> cells.joinToString("") { if (it == 0b10011) "h" else if (it == CAPITAL) "" else "i" } },
         object : T9Input.Later {
@@ -41,7 +41,7 @@ class LineEditorTest {
     }
 
     @Test fun aCellThatMakesNothingAndHasNoNameSaysDotAndItsNumbers() {
-        val editor = LineEditor(
+        val editor = EditBox(
             "Task", "", false, output, false, { _, _ -> "" },
             object : T9Input.Later {
                 override fun after(milliseconds: Long, run: () -> Unit) {}
@@ -54,7 +54,7 @@ class LineEditorTest {
     }
 
     @Test fun spaceSaysTheWordAsCommittedNotTheCharactersItsCellsEchoed() {
-        val editor = LineEditor(
+        val editor = EditBox(
             "Task", "", false, output, false,
             { cells, mode -> if (mode == CellBuffer.MODE_COMMIT) "knowledge " else "k" },
             object : T9Input.Later {
@@ -144,6 +144,30 @@ class LineEditorTest {
         assertEquals(true, cancelled)
     }
 
+    @Test fun spaceWithAllSixDotsIsNoneOfTheFieldsAsInOrbitsOwn() {
+        val editor = editor(phone = false, initial = "hi")
+        assertEquals(false, editor.key(Key.Chord(0x3f)))
+        assertEquals(false, cancelled)
+    }
+
+    @Test fun upInALineOfOneSoundsTheEdgeAsOrbitsDoesButSpaceWithLOnlyMoves() {
+        val editor = editor(phone = false, initial = "hi")
+        editor.key(Key.Up)
+        assertEquals(listOf("error", "boundary_start"), output.calls)
+        output.calls.clear()
+        editor.key(Key.Last)
+        assertEquals(listOf("cursor_moved"), output.calls)
+        output.calls.clear()
+        editor.key(Key.Chord(0b101))
+        assertEquals("Space with dots 1 3 is the line's start", listOf("cursor_moved"), output.calls)
+    }
+
+    @Test fun starNamesTheModeInTheDevicesWords() {
+        val editor = editor(phone = true)
+        editor.key(Key.Star)
+        assertEquals("mode uppercase", output.calls.last())
+    }
+
     @Test fun thePlayerTapsDigitsAndConfirmsWithOk() {
         val editor = editor(phone = true)
         editor.key(Key.Digit(2))
@@ -168,7 +192,7 @@ class LineEditorTest {
 
     @Test fun downOffersCompletionsOnlyWhereThereAreAny() {
         var offered = 0
-        val editor = LineEditor(
+        val editor = EditBox(
             "Task", "", false, output, false, { _, _ -> "" },
             object : T9Input.Later {
                 override fun after(milliseconds: Long, run: () -> Unit) {}
@@ -181,7 +205,7 @@ class LineEditorTest {
         assertEquals(1, offered)
     }
 
-    private class Recorded : LineEditor.Output {
+    private class Recorded : EditBox.Output {
         val calls = mutableListOf<String>()
         override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) { calls += "focus" }
         override fun syncEdit(name: String, content: String, cursor: Int) { calls += "sync" }
@@ -190,16 +214,15 @@ class LineEditorTest {
             calls += "word $word"
             return true
         }
-        override fun cellName(cells: List<Int>, at: Int): String? = if (cells[at] == CAPITAL) "capital sign" else null
         override var contracted = true
         override var computer = false
         var clipboard: String? = null
         override fun copy(text: String) { clipboard = text }
         override fun paste(): String? = clipboard
         override fun say(text: String) { calls += "say $text" }
-        override val words = LineEditor.Words(
-            "dot %s", "%s deleted", "space", "new line", "blank",
-            "started", "finished", "all", "nothing", "none", "copied", "cut", "pasted",
+        override val words = OrbitWords(
+            selectionStarted = "started", selectionFinished = "finished", allSelected = "all",
+            nothingSelected = "nothing", noTextSelected = "none", copied = "copied", cut = "cut", pasted = "pasted",
         )
         override fun candidate(character: Char, field: String) { calls += "candidate" }
         override fun edited(name: String, content: String, cursor: Int, change: String) {
@@ -207,7 +230,7 @@ class LineEditorTest {
         }
         override fun playError() { calls += "error" }
         override fun commitFeedback(character: Char, mode: Int) { calls += "feedback" }
-        override fun modeChanged(name: String, content: String, cursor: Int, mode: String) { calls += "mode" }
+        override fun modeChanged(name: String, content: String, cursor: Int, mode: String) { calls += "mode $mode" }
     }
 
     private companion object {

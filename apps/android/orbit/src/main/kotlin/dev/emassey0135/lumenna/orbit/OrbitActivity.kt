@@ -12,7 +12,6 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
-import dev.emassey0135.lumenna.braille.KeyDelivery
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Core
@@ -24,6 +23,10 @@ import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.ThisDevice
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.thisDevice
+import dev.emassey0135.orbit.BrailleInput
+import dev.emassey0135.orbit.KeyDelivery
+import dev.emassey0135.orbit.KeyEvent
+import dev.emassey0135.orbit.OrbitReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -37,7 +40,7 @@ import kotlinx.coroutines.withContext
 class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var reader: OrbitReader
-    private lateinit var liblouis: Liblouis
+    private lateinit var braille: BrailleInput
     private lateinit var view: TextView
     private var ui: Ui? = null
     private var front: Front? = null
@@ -69,7 +72,7 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         setContentView(view)
         reader = OrbitReader(this, this)
         reader.claim.guardCrashes()
-        liblouis = Liblouis(this)
+        braille = BrailleInput(this)
         val core = (application as CoreHolder).core.getOrNull()
         if (core == null) {
             view.text = appWords.storeNotOpen
@@ -78,15 +81,17 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         }
         this.core = core
         val app = core.app
-        val ui = Ui(app, core, reader, liblouis, view, ::finish)
+        val ui = Ui(app, core, reader, braille, view, ::finish)
         ui.chooseFile = { openDocument.launch(arrayOf("*/*")) }
         this.ui = ui
         front = Front(this, core, "android").also { it.created() }
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
         reader.bind()
         // A word half typed is shown again in the new table.
-        liblouis.changed = { ui.redraw(Why.Turn) }
-        liblouis.bind()
+        braille.changed = { ui.redraw(Why.Turn) }
+        // Root refused: typing goes on in the table last read, and the person is told why it may not match.
+        braille.failed = { ui.say(ui.orbitWords.rootFailed.replace("%s", it.reason)) }
+        braille.bind()
         ui.push(HomeScreen())
         reminderTapped(intent)
         app.described = ui::turned
@@ -94,9 +99,14 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         lifecycleScope.launch { app.files.collect { saveFile(it) } }
     }
 
+    private var resumedOnce = false
+
     override fun onResume() {
         super.onResume()
-        liblouis.follow()
+        // Back in front: what came due meanwhile is offered on Home. The first time, Home looks itself.
+        if (resumedOnce) ui?.lookBack()
+        resumedOnce = true
+        braille.follow()
         Clock.update(this)
         front?.resumed()
         reader.claim.resumed()
@@ -147,7 +157,7 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         stopDebugKeys()
         core?.app?.described = null
         reader.unbind()
-        liblouis.unbind()
+        braille.unbind()
         super.onDestroy()
     }
 
@@ -172,7 +182,7 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
     override fun key(event: KeyEvent, phoneKeypad: Boolean): Boolean = keys.deliver(event to phoneKeypad)
 
     override fun settingsChanged() {
-        liblouis.refresh()
+        braille.refresh()
     }
 
     private companion object {

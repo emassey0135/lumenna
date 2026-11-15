@@ -1,11 +1,12 @@
-package dev.emassey0135.lumenna.orbit
+package dev.emassey0135.orbit
 
 /**
- * A line being typed: the Speak's cell buffer through liblouis, or the Player's T9.
+ * An edit box as Orbit's own are: the Speak's cell buffer through liblouis, or the Player's T9.
  *
  * The keys are those of Orbit's edit fields: on the Speak Select or dot 8 confirms, dot 7 is
  * backspace, Left and Right and Space with dots 3 and 6 move by a character, Space with 2 and 5 by a
- * word, Space with L and dots 4 5 6 to the ends, Space with E or Z cancels. On the Player digits are multi-tap, a held digit types itself, star
+ * word, Space with dots 1 3 and 4 6 to the line's start and end, Space with L and dots 4 5 6 to the
+ * text's, Space with E or Z cancels. On the Player digits are multi-tap, a held digit types itself, star
  * the mode, Left and Right move, Up and Down go to the ends, Back deletes, held cancels, and OK
  * confirms. Changes are reported to Orbit as edit-field changes ([Output]), so it speaks them by
  * the person's own typing echo. Down offers completions where the line has them ([completing]).
@@ -15,7 +16,7 @@ package dev.emassey0135.lumenna.orbit
  * computer braille, where dot 8 with a cell types it), and Space with dots 1 2 7 reads it, over
  * the system clipboard.
  */
-class LineEditor(
+class EditBox(
     val name: String,
     initial: String,
     private val phoneKeypad: Boolean,
@@ -44,8 +45,6 @@ class LineEditor(
          * it was. The space after a word said is not echoed too, since the reader would stop the word for it.
          */
         fun word(word: String): Boolean
-        /** What Orbit's own fields call cell [at] of [cells] by itself, if they name it. */
-        fun cellName(cells: List<Int>, at: Int): String?
         /** Whether the person types contracted braille now. */
         val contracted: Boolean
         /** Whether the person types computer braille now, where dot 8 with a cell types it. */
@@ -63,26 +62,9 @@ class LineEditor(
         /** Feedback on a commit timeout: sound, speech, vibration by the person's setting. */
         fun commitFeedback(character: Char, mode: Int)
         fun modeChanged(name: String, content: String, cursor: Int, mode: String)
-        /** The words the echo is said in: the core's (`OrbitWords`). */
-        val words: Words
+        /** The words the echo is said in: the device's own. */
+        val words: OrbitWords
     }
-
-    /** The Speak's echo words, each `%s` filled in. */
-    class Words(
-        val dots: String,
-        val deleted: String,
-        val space: String,
-        val newLine: String,
-        val blank: String,
-        val selectionStarted: String = "",
-        val selectionFinished: String = "",
-        val allSelected: String = "",
-        val nothingSelected: String = "",
-        val noTextSelected: String = "",
-        val copied: String = "",
-        val cut: String = "",
-        val pasted: String = "",
-    )
 
     private val buffer = CellBuffer(translate).apply { set(initial) }
     private val t9 = T9Input(T9Host(), later)
@@ -139,8 +121,8 @@ class LineEditor(
                 else -> moveEdge(false)
             }
             Key.Up -> if (multiline) moveLine(-1) else moveEdge(true)
-            Key.First -> moveEdge(true)
-            Key.Last -> moveEdge(false)
+            Key.First -> moveEnd(true)
+            Key.Last -> moveEnd(false)
             Key.Escape -> cancel()
             is Key.Enter -> if (output.computer || !selection(key.dots)) inputCell(key.dots or DOT8)
             is Key.Chord -> when (key.dots) {
@@ -148,9 +130,8 @@ class LineEditor(
                 DOT6 -> moveCharacter(1)
                 DOT2 -> moveWord(-1)
                 DOT5 -> moveWord(1)
-                DOTS13 -> if (multiline) moveLineEdge(true) else moveEdge(true)
-                DOTS46 -> if (multiline) moveLineEdge(false) else moveEdge(false)
-                DOTS_ALL -> cancel()
+                DOTS13 -> if (multiline) moveLineEdge(true) else moveEnd(true)
+                DOTS46 -> if (multiline) moveLineEdge(false) else moveEnd(false)
                 DOTS127 -> readSelection()
                 else -> if (!output.computer || (key.dots and DOT8) == 0 || !selection(key.dots and DOT8.inv())) return false
             }
@@ -176,15 +157,22 @@ class LineEditor(
                 t9.commitNow()
                 moveCharacter(1)
             }
-            Key.Up, Key.First -> {
+            Key.Up -> {
                 t9.commitNow()
                 moveEdge(true)
+            }
+            Key.First -> {
+                t9.commitNow()
+                moveEnd(true)
             }
             Key.Down -> {
                 t9.commitNow()
                 if (completing?.invoke() == true) complete() else moveEdge(false)
             }
-            Key.Last -> moveEdge(false)
+            Key.Last -> {
+                t9.commitNow()
+                moveEnd(false)
+            }
             is Key.BackReleased -> if (key.held) {
                 cancel()
             } else {
@@ -208,7 +196,7 @@ class LineEditor(
      */
     private fun inputCell(cell: Int) {
         val typed = buffer.type(cell)
-        val called = output.cellName(typed.cells, typed.at)
+        val called = output.words.cellNames.name(typed.cells, typed.at)
         when {
             called != null && (output.contracted || typed.live.isEmpty()) -> output.say(called)
             typed.live.isNotEmpty() -> output.typed(typed.live.last())
@@ -243,7 +231,7 @@ class LineEditor(
                 output.say(words.blank)
                 return
             }
-            is CellBuffer.Deleted.Cell -> output.cellName(listOf(deleted.cell), 0)
+            is CellBuffer.Deleted.Cell -> output.words.cellNames.name(listOf(deleted.cell), 0)
                 ?: deleted.translated.ifEmpty { words.dots.replace("%s", CellBuffer.dotNumbers(deleted.cell)) }
             is CellBuffer.Deleted.Character -> when (deleted.character) {
                 ' ' -> words.space
@@ -303,10 +291,20 @@ class LineEditor(
         }
     }
 
+    /**
+     * Up or Down in a field of one line, as Orbit's: the caret goes to the start or the end, and
+     * there is no line beyond, so the error tone and the boundary are said whether it moved or not.
+     */
     private fun moveEdge(start: Boolean) {
         buffer.moveEdge(start)
         output.playError()
         output.edited(name, buffer.display(), buffer.caret, if (start) "boundary_start" else "boundary_end")
+    }
+
+    /** To the start or the end of the text, asked for by name (Space with L): a move, no tone. */
+    private fun moveEnd(start: Boolean) {
+        buffer.moveEdge(start)
+        output.edited(name, buffer.display(), buffer.caret, "cursor_moved")
     }
 
     /** The Editor's selection and clipboard commands, by the dots pressed with dot 8; false for none. */
@@ -378,12 +376,13 @@ class LineEditor(
 
     private inner class T9Host : T9Input.Host {
         override fun caret(): Int = buffer.caret
-        override fun timeoutMs(): Long = this@LineEditor.timeoutMs()
+        override fun timeoutMs(): Long = this@EditBox.timeoutMs()
         override fun candidate(character: Char) = output.candidate(character, name)
         override fun commit(character: Char, position: Int, feedback: Boolean) {
             if (open && position <= buffer.display().length) insertChar(character, position, feedback)
         }
-        override fun modeChanged(name: String) = output.modeChanged(this@LineEditor.name, buffer.display(), buffer.caret, name)
+        override fun modeChanged(mode: T9Input.Mode) =
+            output.modeChanged(this@EditBox.name, buffer.display(), buffer.caret, output.words.mode(mode))
     }
 
     private companion object {
@@ -400,6 +399,5 @@ class LineEditor(
         const val DOT8 = 1 shl 7
         const val DOTS13 = 1 or (1 shl 2)
         const val DOTS46 = (1 shl 3) or (1 shl 5)
-        const val DOTS_ALL = 0x3f
     }
 }

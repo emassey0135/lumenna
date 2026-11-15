@@ -1,7 +1,5 @@
 package dev.emassey0135.lumenna.orbit
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.os.Handler
 import android.os.Looper
 import android.widget.TextView
@@ -17,6 +15,8 @@ import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.ListShown
 import dev.emassey0135.lumenna.app.QuestionShown
 import dev.emassey0135.lumenna.app.ScreenChange
+import dev.emassey0135.lumenna.app.DueEvent
+import dev.emassey0135.lumenna.app.ScreenAction
 import dev.emassey0135.lumenna.app.ScreenView
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Shown
@@ -24,7 +24,6 @@ import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.brailleLetter
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.nothingOnLetter
-import dev.emassey0135.lumenna.app.orbitCellName
 import dev.emassey0135.lumenna.app.SpeakLetter
 import dev.emassey0135.lumenna.app.speakLetter
 import dev.emassey0135.lumenna.app.speakPress
@@ -33,6 +32,16 @@ import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.commandTitle
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.name
+import dev.emassey0135.orbit.BrailleInput
+import dev.emassey0135.orbit.CellBuffer
+import dev.emassey0135.orbit.EditBox
+import dev.emassey0135.orbit.Key
+import dev.emassey0135.orbit.KeyDecoder
+import dev.emassey0135.orbit.KeyEvent
+import dev.emassey0135.orbit.OrbitReader
+import dev.emassey0135.orbit.OrbitWords
+import dev.emassey0135.orbit.ReaderEditOutput
+import dev.emassey0135.orbit.T9Input
 
 /** One thing on a screen a person can stop on: what is said, what its Select and Menu do. */
 class Row(
@@ -51,8 +60,8 @@ class Row(
     val expanded: Boolean? = null,
 )
 
-/** An entry of a screen's context menu that is the screen's own: New task, Undo. */
-class Command(val text: String, val run: () -> Unit)
+/** An entry of a context menu: a row's action or the screen's own, and the letter that runs it. */
+class Command(val text: String, val letter: String? = null, val run: () -> Unit)
 
 /**
  * One screen on the stack. The rows are read fresh on each [Ui.redraw] from the view the app last
@@ -103,10 +112,11 @@ abstract class Screen {
     /** A letter only this screen knows (Space with it); true if it took it. */
     open fun letter(letter: String): Boolean = false
 
+    /** Whether the core's screen actions are this screen's (a place, Home): their letters run here. */
+    open val showsScreenActions: Boolean get() = false
+
     /** Which of the app's lists this screen shows, if one: what a letter and a landing are. */
     open val lands: Lands get() = Lands.NONE
-
-    open val isEdit: Boolean get() = false
 }
 
 /** Whose list a screen shows: the app's main one, one beside it, or none of the app's. */
@@ -127,17 +137,19 @@ class Ui(
     val app: AppModel,
     val core: Core,
     val reader: OrbitReader,
-    val liblouis: Liblouis,
+    val braille: BrailleInput,
     private val textView: TextView,
     private val finish: () -> Unit,
 ) : T9Input.Later {
     private val stack = ArrayDeque<Screen>()
     private val main = Handler(Looper.getMainLooper())
     private val decoder = KeyDecoder()
-    private val clipboard = textView.context.getSystemService(ClipboardManager::class.java)
+    /** What the device says in its own words: its fields' echo, T9's modes. */
+    val orbitWords = OrbitWords()
+    private val editOutput = ReaderEditOutput(reader, braille, textView.context, orbitWords)
     private val finder = FirstLetters(this)
-    /** Whether the keys are the Player's phone keypad, as the last key said. */
-    var phoneKeypad = false
+    /** Whether the keys are the Player's phone keypad, as the last key said; at first, a device with no translator. */
+    var phoneKeypad = !braille.available
         private set
     private var saidScreen: Screen? = null
     private var introduced = false
@@ -179,6 +191,25 @@ class Ui(
 
     fun pop() {
         top?.let { remove(it) }
+    }
+
+    /**
+     * A menu closed to run what was chosen in it: the screen under it, said before the menu opened,
+     * is not said again, and what was chosen says what it did.
+     */
+    fun closeMenu(menu: Screen, run: () -> Unit) {
+        if (!stack.contains(menu)) return
+        while (top !== menu) stack.removeLast().leaving()
+        stack.removeLast().leaving()
+        val under = top
+        saidScreen = under
+        // What it showed before the menu: a change the choice makes to it is said, nothing else.
+        lastItem = under?.let { screen -> screen.rows().getOrNull(screen.index)?.text }.orEmpty()
+        run()
+        if (top === under) {
+            follow()
+            redraw(Why.Turn)
+        }
     }
 
     /** A reminder's notification was tapped: where it leads. */
@@ -266,9 +297,54 @@ class Ui(
         return landed
     }
 
+    /** Whether Home was shown as of the last turn, and the place the app was on. */
+    private var wasHome = false
+    private var lastPlace: dev.emassey0135.lumenna.app.Place? = null
+
+    /**
+     * Where the app went: Home left for a place (Enter, a letter, What Should I Work On?) shows that
+     * place over Home, and the app moving from the place shown (a project renamed or deleted, today
+     * from anywhere) shows where it went in its stead.
+     */
+    private fun followPlace(v: ViewModel) {
+        val home = v.home != null
+        val place = v.place
+        val left = wasHome && !home
+        val moved = lastPlace != null && place != lastPlace
+        wasHome = home
+        lastPlace = place
+        if (home || !v.ready || place == null) return
+        val at = stack.indexOfLast { it is ShowsPlace || it is HomeScreen }
+        if (at < 0) return
+        val showing = stack[at]
+        when {
+            showing is HomeScreen && left -> insertAbove(at, screenFor(place))
+            showing is ShowsPlace && moved && showing.place != place -> {
+                showing.leaving()
+                val next = screenFor(place)
+                next.ui = this
+                stack[at] = next
+                next.resumed()
+                saidScreen = null
+            }
+        }
+    }
+
+    private fun screenFor(place: dev.emassey0135.lumenna.app.Place): Screen =
+        if (place is dev.emassey0135.lumenna.app.Place.Today) DayScreen()
+        else PlaceScreen(place, view.sidebar.firstOrNull { (it.kind as? dev.emassey0135.lumenna.app.SidebarKind.Place)?.field0 == place }?.title.orEmpty())
+
+    private fun insertAbove(at: Int, screen: Screen) {
+        screen.ui = this
+        stack.add(at + 1, screen)
+        screen.resumed()
+        saidScreen = null
+    }
+
     /** The screens the app has open: a question, the block form, a proposal, a reminder list. */
     private fun follow() {
         val v = view
+        followPlace(v)
         // What the app has put away goes first, from the top.
         while (true) {
             val screen = top ?: break
@@ -293,6 +369,9 @@ class Ui(
         // Only when none is open: a field being typed sits above the form. One just closed here is
         // still open in the view until the app has the close, and is not opened again meanwhile.
         if (v.line == null) lineClosed = false
+        if (v.settings == null) settingsClosed = false
+        // Settings the core opened (Home's Settings, its letter): shown here too.
+        if (v.settings != null && !settingsClosed && stack.none { it is SettingsScreen }) pushApp(SettingsScreen())
         if (v.line != null && !lineClosed && stack.none { it is QuickAddScreen }) pushApp(QuickAddScreen())
         if (v.blockForm != null && stack.none { it is BlockFormScreen }) pushApp(BlockFormScreen())
         if (v.proposal != null && stack.none { it is ProposalScreen }) pushApp(ProposalScreen())
@@ -301,6 +380,12 @@ class Ui(
 
     /** Quick add was left here, and the app has not yet said its line is closed. */
     var lineClosed = false
+
+    /** Looks back over the last day for reminders due, so Home offers them: as Home opens, and as the app comes to the front. */
+    fun lookBack() = send(ShellEvent.Due(DueEvent.LookBack))
+
+    /** Settings were left here, and the app has not yet said they are closed. */
+    var settingsClosed = false
 
     private var formAskedFor = 0u
 
@@ -317,7 +402,7 @@ class Ui(
     }
 
     private fun pushQuestion(asking: dev.emassey0135.lumenna.app.Asking) {
-        pushApp(if (asking.question is Question.Text) TextQuestionScreen(asking) else QuestionScreen(asking))
+        pushApp(QuestionScreen(asking))
     }
 
     private fun pushApp(screen: Screen) {
@@ -411,7 +496,8 @@ class Ui(
             val on = row.on
             row.offered.filter { it.kind != dev.emassey0135.lumenna.app.ActionKind.EXPAND && it.kind != dev.emassey0135.lumenna.app.ActionKind.COLLAPSE }
                 .forEach { action ->
-                    if (on != null) commands += Command(withLetter(action.name, actionLetter(action.kind))) { send(ShellEvent.ActOn(on, action)) }
+                    val letter = actionLetter(action.kind)
+                    if (on != null) commands += Command(withLetter(action.name, letter), letter) { send(ShellEvent.ActOn(on, action)) }
                 }
         }
         commands += screen.commands()
@@ -436,12 +522,19 @@ class Ui(
     }
 
     private fun runLetter(letter: String, screen: Screen, rows: List<Row>) {
-        // This app's own lists first (the main menu's places, the settings pages), then the screen's.
+        // This app's own lists first (a menu's commands, the settings pages), then the screen's.
         rows.firstOrNull { it.letter == letter }?.let { row ->
             row.open?.invoke()
             return
         }
         if (screen.letter(letter)) return
+        // The screen's own actions that are this app's to run (the filter, Key Help, About).
+        if (screen.showsScreenActions) {
+            view.screenActions.firstOrNull { it.shell && it.enabled && it.letter == letter }?.let {
+                runScreenAction(it)
+                return
+            }
+        }
         if (screen.lands == Lands.NONE) {
             refuse()
             say(nothingOnLetter(letter))
@@ -451,6 +544,27 @@ class Ui(
         // answers there. D is the delete key, which no letter of the core's table is.
         rows.getOrNull(screen.index)?.let(screen::moved)
         send(if (letter == "d") ShellEvent.Key("delete") else ShellEvent.Letter(letter))
+    }
+
+    /** The screen's own actions, the core's (`ViewModel.screen_actions`), as a menu's commands. */
+    fun screenActionCommands(): List<Command> = view.screenActions.filter { it.enabled }.map { action ->
+        val letter = action.letter.ifEmpty { null }
+        Command(withLetter(action.title, letter), letter) { runScreenAction(action) }
+    }
+
+    /** A screen action: the core's `Key(id)`, but one that is this app's own to run. */
+    fun runScreenAction(action: ScreenAction) {
+        if (!action.shell) {
+            send(ShellEvent.Key(action.id))
+            return
+        }
+        when (action.id) {
+            "filter" -> view.place?.let { push(FilterScreen(it)) } ?: refuse()
+            "keyboard-help" -> push(KeyHelpScreen())
+            "reminders-due" -> push(DueScreen())
+            "about" -> appWords.metadata.let { say("${it.name} ${it.version}. ${it.description}") }
+            else -> refuse()
+        }
     }
 
     // ---- describing ----------------------------------------------------------------------
@@ -465,7 +579,7 @@ class Ui(
             return
         }
         if (!introduced) return
-        if (screen is EditScreen && phoneKeypad) {
+        if (screen is DialogScreen && screen.lineFills && phoneKeypad && screen.rows().isEmpty()) {
             textView.text = "${screen.title}\n\n${screen.display()}"
             if (saidScreen !== screen) {
                 saidScreen = screen
@@ -477,7 +591,8 @@ class Ui(
         if (BuildConfigDebug.on) android.util.Log.i("LumennaOrbit", "redraw $why ${screen.javaClass.simpleName} ${rows.map { it.text }}")
         val before = screen.index
         // The row in hand is the app's where it has one; else the same row by key, else the place.
-        val held = screen.inHand()
+        // The person's own move wins until the app has it: its row in hand is the one before.
+        val held = if (why == Why.Moved) null else screen.inHand()
         val heldIndex = held?.let { key -> rows.indexOfFirst { it.key == key }.takeIf { it >= 0 } }
         if (heldIndex != null) {
             screen.index = heldIndex
@@ -496,6 +611,8 @@ class Ui(
         // The row in hand reworded by what the person just did (a toggle, a field saved).
         val reworded = why == Why.Turn && !newlyShown && expectingChange && item != lastItem
         if (why == Why.Turn) expectingChange = false
+        // The app landing on the row just said (Home's row in hand as it comes back) says nothing more.
+        val landedAgain = why == Why.Landed && !newlyShown && item == lastItem && before == screen.index
         saidScreen = screen
         lastItem = item
         if (screen is DialogScreen && screen.inPlace) {
@@ -504,7 +621,7 @@ class Ui(
             return
         }
         val shown = Drawn(screen.title, rows.size, screen.index, item, screen.openedAs(), screen.empty)
-        describe(newlyShown, why, before != screen.index || reworded, shown).forEach(reader::perform)
+        describe(newlyShown, if (landedAgain) Why.Turn else why, before != screen.index || reworded, shown).forEach(reader::perform)
     }
 
     // ---- what a key opens ---------------------------------------------------------------
@@ -518,14 +635,14 @@ class Ui(
         completing: (() -> Boolean)? = null,
         complete: () -> Unit = {},
         multiline: Boolean = false,
-    ): LineEditor = LineEditor(
-        name, initial, phoneKeypad, EditOutput(reader, liblouis, clipboard), multiline, CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
+    ): EditBox = EditBox(
+        name, initial, phoneKeypad, editOutput, multiline, CellBuffer.Translator { cells, mode -> braille.translate(cells, mode) },
         this,
         timeoutMs = { reader.characterCommitTimeout.toLong() },
         commitFeedback = { reader.characterCommitFeedback },
         changed = { text, caret ->
             changed(text, caret)
-            top?.let { if (it is EditScreen) textView.text = "${it.title}\n\n${it.display()}" else if (it is DialogScreen) textView.text = "${it.title}\n\n$text" }
+            top?.let { if (it is DialogScreen) textView.text = "${it.title}\n\n${if (it.lineFills && phoneKeypad) it.display() else text}" }
         },
         confirmed, cancelled, completing, complete,
     )
@@ -561,69 +678,6 @@ class Ui(
 /** Verbose logging for debug builds. */
 object BuildConfigDebug {
     @Volatile var on = false
-}
-
-/** Tells Orbit's reader what the line editor did, as its own edit fields report. */
-private class EditOutput(
-    private val reader: OrbitReader,
-    private val liblouis: Liblouis,
-    private val clipboard: ClipboardManager?,
-) : LineEditor.Output {
-    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) =
-        reader.focusEdit(name, content, cursor, line, multiline)
-    override fun syncEdit(name: String, content: String, cursor: Int) = reader.editChanged(name, content, cursor, "field_opened")
-
-    /**
-     * Sent as its name, the character itself left empty: the reader then says it by the person's
-     * character echo but keeps it out of the word it echoes, which would otherwise be made of the
-     * characters a contracted word's cells echoed. A space goes as itself, which ends no word now.
-     */
-    override fun typed(character: Char) = if (character == ' ') {
-        reader.characterTyped(" ", " ", false, null)
-    } else {
-        reader.characterTyped("", character.toString(), character.isUpperCase(), null)
-    }
-
-    /** Said as the reader says an echo, stopping what was being said. */
-    override fun word(word: String): Boolean {
-        if (!liblouis.echoesWords) return false
-        reader.speak(word)
-        return true
-    }
-
-    override fun cellName(cells: List<Int>, at: Int): String? =
-        orbitCellName(ByteArray(cells.size) { cells[it].toByte() }, at.toUInt())
-    override val contracted: Boolean get() = liblouis.contracted
-    override val computer: Boolean get() = liblouis.computer
-
-    override fun copy(text: String) {
-        clipboard?.setPrimaryClip(ClipData.newPlainText("Lumenna", text))
-    }
-
-    override fun paste(): String? = runCatching {
-        clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
-    }.getOrNull()
-
-    override fun say(text: String) = reader.speak(text)
-    override val words: LineEditor.Words by lazy {
-        appWords.orbit.let {
-            LineEditor.Words(
-                it.dots, it.deleted, it.space, it.newLine, it.blank,
-                it.selectionStarted, it.selectionFinished, it.allSelected, it.nothingSelected, it.noTextSelected,
-                it.copied, it.cut, it.pasted,
-            )
-        }
-    }
-    override fun candidate(character: Char, field: String) = reader.characterTyped(character.toString(), field, false, null)
-    override fun edited(name: String, content: String, cursor: Int, change: String) = reader.editChanged(name, content, cursor, change)
-    override fun playError() = reader.sound(OrbitReader.SOUND_ERROR)
-    override fun commitFeedback(character: Char, mode: Int) {
-        if (mode == 1 || mode == 4) reader.sound(OrbitReader.SOUND_COMMIT)
-        if (mode == 3 || mode == 5) reader.vibrate(50)
-        if (mode == 2 || mode == 4 || mode == 5) reader.speakQueued(character.toString())
-    }
-    override fun modeChanged(name: String, content: String, cursor: Int, mode: String) =
-        reader.editChanged(name, content, cursor, "t9_mode_changed:$mode")
 }
 
 /** [text], with the chord that also runs it said after it on the Speak. */

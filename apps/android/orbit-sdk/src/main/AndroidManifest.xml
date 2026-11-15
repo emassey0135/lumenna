@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The services the SDK binds: Android 11 hides other apps' packages from a target of 30. -->
+    <queries>
+        <package android:name="com.orbit.screenreader" />
+        <package android:name="com.orbit.liblouisservice" />
+    </queries>
+</manifest>

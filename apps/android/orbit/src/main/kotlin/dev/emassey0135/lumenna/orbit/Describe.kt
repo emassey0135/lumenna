@@ -1,5 +1,7 @@
 package dev.emassey0135.lumenna.orbit
 
+import dev.emassey0135.orbit.OrbitReader
+
 /** Why the screen is being drawn: what decides whether Orbit is told anything. */
 enum class Why { Entered, Moved, Landed, Turn }
 
@@ -54,4 +56,13 @@ fun describe(newlyShown: Boolean, why: Why, moved: Boolean, shown: Drawn): List<
         moved && why == Why.Turn -> listOf(change)
         else -> emptyList()
     }
+}
+
+/** One description of the screen ([describe]), told to Orbit's screen reader. */
+fun OrbitReader.perform(call: ReaderCall) = when (call) {
+    is ReaderCall.FocusList -> focusList(call.name, call.count, call.selected, call.item)
+    is ReaderCall.ItemChanged -> itemChanged(call.name, call.count, call.selected, call.item)
+    is ReaderCall.Dialog -> dialog(call.name, "", call.focused)
+    is ReaderCall.ContextMenu -> contextMenu(call.name, "")
+    is ReaderCall.Say -> speakQueued(call.text)
 }
