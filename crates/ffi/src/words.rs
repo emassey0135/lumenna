@@ -6,7 +6,7 @@ use lumenna_records::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_app::Capitals;
 use lumenna_app::ShellEvent;
-use lumenna_app::arrangement::Arrangement;
+use lumenna_app::arrangement::{Arrangement, WatchKind};
 use lumenna_app::speech::Line;
 use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
@@ -543,8 +543,9 @@ pub fn line_with_level(line: Line) -> String {
 }
 
 /// Where a phone and a watch put the places, from the sidebar as the view gives it: a phone's
-/// tabs, its Browse tab's rows and each group's screen, and a watch's root list.
+/// tabs, its Browse tab's rows and each group's screen, and a watch's root list (from Home, as a
+/// watch of `watch`'s kind has it; a phone passes either).
 #[export]
-pub fn place_arrangement(sidebar: Vec<SidebarEntry>, capitals: Capitals) -> Arrangement {
-    lumenna_app::arrangement::arrangement(&sidebar, capitals == Capitals::Sentence)
+pub fn place_arrangement(sidebar: Vec<SidebarEntry>, watch: WatchKind, capitals: Capitals) -> Arrangement {
+    lumenna_app::arrangement::arrangement(&sidebar, watch, capitals == Capitals::Sentence)
 }

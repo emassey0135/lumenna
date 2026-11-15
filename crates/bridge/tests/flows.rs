@@ -2923,7 +2923,7 @@ fn a_phones_browse_and_a_watchs_root_come_from_the_sidebar() {
     let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
     store.add_project("Work", None).unwrap();
     app.session.tick();
-    let arranged = lumenna_app::arrangement::arrangement(&app.view().sidebar, true);
+    let arranged = lumenna_app::arrangement::arrangement(&app.view().sidebar, lumenna_app::arrangement::WatchKind::SyncsItself, true);
     let browse: Vec<&str> = arranged.browse.iter().map(|row| row.title.as_str()).collect();
     assert_eq!(browse, ["Projects", "Labels", "Saved Filters", "Blocks", "History", "Trash"], "in the view's own capitals");
     let projects = arranged.groups.iter().find(|group| group.group == lumenna_records::places::SidebarGroup::Projects).unwrap();
