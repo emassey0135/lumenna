@@ -32,6 +32,7 @@ pub mod lines;
 pub mod day;
 pub mod details;
 pub mod devices;
+pub mod dialog;
 pub mod due;
 pub mod glance;
 pub mod host;
@@ -42,6 +43,7 @@ pub mod network;
 pub mod outline;
 pub mod proposal;
 pub mod screen;
+pub mod screen_actions;
 pub mod settings;
 pub mod shell;
 pub mod speech;
@@ -66,12 +68,13 @@ pub use typing::{LineView, Typing};
 pub use host::{Arrival, HostAnswer, HostRequest, Watch};
 pub use list::{Asks, Item, Offered};
 pub use proposal::{ProposalEvent, ProposalView};
-pub use settings::{Background, BackgroundEvent, SaveFile, SettingsEvent, SettingsView};
+pub use settings::{Abilities, Background, BackgroundEvent, SaveFile, SettingsEvent, SettingsView};
 pub use due::{Due, DueEvent, Notice};
 pub use network::{DevicesEvent, DevicesView, NetworkAnswer, NetworkRequest, PairEvent};
 pub use view::{Asking, ListView, ViewModel};
 pub use asking::{ANOTHER_DAY, Open, Purpose};
 pub use model::{Model, Screen, ScreenId};
+pub use screen_actions::{HomePlace, HomeView, ScreenAction};
 
 /// Something to say, once the shell has moved focus where the view model puts it: said
 /// before, it is cut off by the focus change.
@@ -178,6 +181,10 @@ pub enum Event {
     Start,
     /// Go to a place.
     Open(Place),
+    /// Show Home (`ViewModel::home`): the places, then what can be done from anywhere, the
+    /// sidebar's row in hand. Only a shell that shows a Home sends it (a braille device); opening
+    /// a place leaves it. The same as `Key("home")`.
+    Home,
     /// The person moved to a row.
     Focus(String),
     /// The person moved to a row of a list beside the main one: the sidebar, a reminder list,
@@ -264,6 +271,9 @@ pub enum Event {
     /// Whether this shell's list shows each task's checkbox, which says whether it is done: then
     /// the list's lines (`lines::Lines::list`) leave "completed" to it.
     Checkboxes(bool),
+    /// What this shell can do that settings depend on (saving files, a backup folder), said once
+    /// as it starts: settings then list only what applies. One never said can do both.
+    Abilities(settings::Abilities),
     /// What this shell is called in pairing's sentences ("this computer", "this watch"), and
     /// whether it finds devices on its own network or pairs only by code: for pairing's words.
     PairingAs {
@@ -360,7 +370,10 @@ impl Event {
     /// What every screen takes in alike: the store, the clock and the capitals the shell says
     /// things in, the moment proposals are made against.
     fn is_everyones(&self) -> bool {
-        matches!(self, Event::Arrived(_) | Event::Clock(_) | Event::Capitals(_) | Event::Checkboxes(_) | Event::PairingAs { .. } | Event::PlanFrom(_))
+        matches!(
+            self,
+            Event::Arrived(_) | Event::Clock(_) | Event::Capitals(_) | Event::Checkboxes(_) | Event::PairingAs { .. } | Event::PlanFrom(_) | Event::Abilities(_)
+        )
     }
 
     /// Whether the person did it, rather than the store, the network or the shell's own clock.
@@ -379,9 +392,10 @@ impl Event {
                 | Event::Clock(_)
                 | Event::Capitals(_)
                 | Event::Checkboxes(_)
+                | Event::Abilities(_)
                 | Event::PairingAs { .. }
                 | Event::PlanFrom(_)
-                | Event::Due(DueEvent::Look { .. })
+                | Event::Due(DueEvent::Look { .. } | DueEvent::LookBack)
         )
     }
 }
@@ -513,6 +527,21 @@ impl Lumenna {
     fn command(&self, id: &str, model: &mut Screen) -> Command<Effect, Event> {
         use lumenna_records::places::SidebarGroup;
         let new_in = |group: SidebarGroup| lumenna_records::actions::heading(group).into_iter().next();
+        match id {
+            // From any place: today, its question asked, as the launch shortcut does.
+            "what-now" => return self.launch("what-now", model),
+            "home" => return self.home(model),
+            "new-project-inside" => {
+                return model.new_inside_shown().map_or_else(
+                    || refused(lumenna_records::not_offered(ActionKind::NewInside, lumenna_records::Subject::Project, false)),
+                    |action| self.perform(action, model),
+                );
+            }
+            // Enter on a place opens it, wherever the places are listed (the sidebar, Home); on a
+            // heading it folds or unfolds what is under it.
+            "open" if model.acting == Some(Side::Sidebar) => return self.open_held_place(model),
+            _ => {}
+        }
         match keys::what_runs(id) {
             keys::Runs::Row(kinds) => self.run(kinds.to_vec(), model),
             keys::Runs::Day(kinds) => {
@@ -550,6 +579,44 @@ impl Lumenna {
                     render()
                 }
             },
+        }
+    }
+
+    /// Home, its places' row in hand the sidebar's.
+    fn home(&self, model: &mut Screen) -> Command<Effect, Event> {
+        model.open = None;
+        model.home = true;
+        model.acting = Some(Side::Sidebar);
+        let keys = model.side_keys(Side::Sidebar);
+        if model.sidebar_held.key.is_none() {
+            model.sidebar_held.key = keys.first().cloned();
+        } else {
+            model.sidebar_held.settle(&keys);
+        }
+        // Focus lands on Home's row in hand as it opens.
+        model.sidebar_held.landing += 1;
+        render()
+    }
+
+    /// The sidebar's row in hand opened: a place goes there, a heading folds or unfolds.
+    fn open_held_place(&self, model: &mut Screen) -> Command<Effect, Event> {
+        use lumenna_records::places::SidebarKind;
+        let held = model.sidebar_held.key.clone();
+        let place = model.store.as_ref().and_then(|store| {
+            lumenna_records::places::sidebar(&store.snapshot, &store.now)
+                .into_iter()
+                .find(|entry| Some(&entry.key) == held.as_ref())
+                .map(|entry| entry.kind)
+        });
+        match place {
+            Some(SidebarKind::Place(place)) => {
+                model.open = None;
+                model.acting = None;
+                model.go(place);
+                render()
+            }
+            Some(SidebarKind::Group(_)) => self.run(vec![ActionKind::Expand, ActionKind::Collapse], model),
+            None => refused(lumenna_records::no_longer_here()),
         }
     }
 
@@ -592,7 +659,7 @@ impl Lumenna {
             Event::Hold(side, _) | Event::ActOn(ActingOn::Held(side, _), _) => model.acting = Some(*side),
             Event::ActOn(ActingOn::Reminders, _) => model.acting = Some(Side::Reminders),
             // A reminder's button acts from the reminders due: what takes its place lands there.
-            Event::Due(DueEvent::Dismiss(id) | DueEvent::Snooze(id) | DueEvent::Carry(id)) => {
+            Event::Due(DueEvent::Dismiss(id) | DueEvent::Snooze(id) | DueEvent::Carry(id) | DueEvent::Press { id, .. }) => {
                 model.acting = Some(Side::Due);
                 let keys = model.side_keys(Side::Due);
                 model.due_held.hold(id, &keys);
@@ -652,6 +719,7 @@ impl Lumenna {
                 render()
             }
             Event::Launch(id) => self.launch(&id, model),
+            Event::Home => self.home(model),
             Event::Focus(key) => {
                 model.hold(&key);
                 model.details.shown = None;
@@ -712,6 +780,10 @@ impl Lumenna {
             }
             Event::Checkboxes(shown) => {
                 model.checkboxes = shown;
+                render()
+            }
+            Event::Abilities(abilities) => {
+                model.abilities = abilities;
                 render()
             }
             Event::Capitals(capitals) => {

@@ -10,6 +10,7 @@
 
 use lumenna_records::{Offered, Question};
 
+use crate::dialog::DialogShown;
 use crate::lines::Lines;
 use crate::speech::Line;
 use crate::{Asking, Side, ViewModel, braille};
@@ -23,6 +24,10 @@ pub struct ScreenView {
     /// What changed, in the order to say it: a place entered, then a move, a question opened, a
     /// refusal.
     pub changes: Vec<ScreenChange>,
+    /// The dialog the app has open on top, as its controls in tab order (`dialog::open`): a
+    /// question, the block form, quick add. The task form and a settings page, which the shell
+    /// opens, are `dialog::task_form` and `dialog::settings_page`.
+    pub dialog: Option<DialogShown>,
 }
 
 /// What is on the screen, the topmost of it.
@@ -146,8 +151,19 @@ pub enum ScreenChange {
     },
 }
 
-fn prompt(parts: &[&str]) -> String {
-    parts.iter().map(|part| part.trim().trim_end_matches('.')).filter(|part| !part.is_empty()).collect::<Vec<_>>().join(". ")
+/// A question's parts as one prompt, each a sentence ended once: a part that ends in its own
+/// question or exclamation mark ("Erase lose me permanently?") keeps it, with no period after.
+#[must_use]
+pub fn prompt(parts: &[&str]) -> String {
+    let parts: Vec<&str> = parts.iter().map(|part| part.trim().trim_end_matches('.')).filter(|part| !part.is_empty()).collect();
+    let mut joined = String::new();
+    for (index, part) in parts.iter().enumerate() {
+        if let Some(before) = index.checked_sub(1).and_then(|before| parts.get(before)) {
+            joined.push_str(if before.ends_with(['?', '!']) { " " } else { ". " });
+        }
+        joined.push_str(part);
+    }
+    joined
 }
 
 fn action_name(offered: &Offered) -> String {
@@ -229,6 +245,20 @@ fn beneath(view: &ViewModel, lines: &Lines) -> Shown {
     }
     if view.settings.is_some() {
         return other(&crate::keys::command_of("settings").map_or_else(String::new, |command| lumenna_records::fields::sentence_case(command.title.to_owned())));
+    }
+    // Home's places, its row in hand the sidebar's; its own actions are `ViewModel::screen_actions`.
+    if let Some(home) = &view.home {
+        let shown: Vec<(String, Line, Vec<Offered>)> = home
+            .places
+            .iter()
+            .filter(|place| !place.entry.hidden)
+            .map(|place| {
+                let mut line = Line::of(place.entry.title.clone(), vec![place.entry.detail.clone()]);
+                line.level.clone_from(&place.entry.level);
+                (place.entry.key.clone(), line, place.entry.offered.clone())
+            })
+            .collect();
+        return Shown::List(list(home.title.clone(), Some(Side::Sidebar), String::new(), String::new(), view.sidebar_held.focus.as_deref(), &shown));
     }
     let focus = view.focus.as_deref();
     if let Some(day) = &view.day {
@@ -313,13 +343,20 @@ pub fn shown(view: &ViewModel, lines: &Lines) -> Shown {
 }
 
 /// What tells two views' places apart, a question left aside.
-fn place_of(view: &ViewModel) -> (bool, Option<&lumenna_records::places::Place>, Option<&str>, Option<&str>, [bool; 5]) {
+fn place_of(view: &ViewModel) -> (bool, Option<&lumenna_records::places::Place>, Option<&str>, Option<&str>, [bool; 6]) {
     (
         view.ready,
         view.place.as_ref(),
         view.day.as_ref().map(|day| day.date.as_str()),
         view.reminders_title.as_deref(),
-        [view.block_form.is_some(), view.proposal.is_some(), view.line.is_some(), view.devices.is_some(), view.settings.is_some()],
+        [
+            view.block_form.is_some(),
+            view.proposal.is_some(),
+            view.line.is_some(),
+            view.devices.is_some(),
+            view.settings.is_some(),
+            view.home.is_some(),
+        ],
     )
 }
 
@@ -346,8 +383,12 @@ pub fn screen_view(before: Option<&ViewModel>, view: &ViewModel, lines: &Lines, 
         };
         changes.push(ScreenChange::Entered { name, row: row_in_hand(&under) });
     } else if let Some(before) = before
-        && view.landing > before.landing
-        && view.focus != before.focus
+        && (if view.home.is_some() {
+            // Home's row in hand is the sidebar's, which lands by its own count.
+            view.sidebar_held.landing > before.sidebar_held.landing && view.sidebar_held.focus != before.sidebar_held.focus
+        } else {
+            view.landing > before.landing && view.focus != before.focus
+        })
         && let Some(row) = row_in_hand(&under)
     {
         changes.push(ScreenChange::Moved(row));
@@ -365,5 +406,16 @@ pub fn screen_view(before: Option<&ViewModel>, view: &ViewModel, lines: &Lines, 
     {
         changes.push(ScreenChange::Refused { reason, said: false });
     }
-    ScreenView { shown: shown(view, lines), changes }
+    ScreenView { shown: shown(view, lines), changes, dialog: view.ready.then(|| crate::dialog::open(view, lines)).flatten() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prompt;
+
+    #[test]
+    fn a_prompts_parts_are_each_a_sentence_ended_once() {
+        assert_eq!(prompt(&["Erase lose me permanently?", "It cannot be undone."]), "Erase lose me permanently? It cannot be undone");
+        assert_eq!(prompt(&["Go to day.", "A date, such as Friday", "", "Day"]), "Go to day. A date, such as Friday. Day");
+    }
 }

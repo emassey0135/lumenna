@@ -163,6 +163,11 @@ pub struct ChangeView {
     pub checked: bool,
     /// Whether it is to be made, said: "checked", "not checked".
     pub state: String,
+    /// Its line, the change then whether it is to be made: "Gym moves to 6:00 PM, checked".
+    pub line: String,
+    /// What a check box says as it changes: what a change is called, then its state: "Change,
+    /// not checked".
+    pub toggled: String,
 }
 
 /// A proposal's screen as shown.
@@ -175,6 +180,8 @@ pub struct ProposalView {
     pub words: ProposalWords,
     /// Whether a proposal has come yet.
     pub ready: bool,
+    /// Its title, then the whole proposal, as one line to read as it opens.
+    pub heading: String,
     /// The whole proposal in a sentence or two.
     pub announcement: String,
     /// Each change.
@@ -204,7 +211,7 @@ pub fn view(screen: &Sheet) -> ProposalView {
         None => (String::new(), Vec::new(), Vec::new(), Vec::new()),
         Some(p @ Proposal::Replan(r)) => (
             p.spoken(),
-            r.changes.iter().enumerate().map(|(at, c)| ChangeView { sentence: c.sentence.clone(), reason: None, checked: checked(at), state: lumenna_records::words::checked(checked(at)) }).collect(),
+            r.changes.iter().enumerate().map(|(at, c)| ChangeView { sentence: c.sentence.clone(), reason: None, checked: checked(at), state: lumenna_records::words::checked(checked(at)), line: String::new(), toggled: String::new() }).collect(),
             r.unplaceable.clone(),
             r.alternatives.iter().map(|a| a.sentence.clone()).collect(),
         ),
@@ -213,7 +220,7 @@ pub fn view(screen: &Sheet) -> ProposalView {
             d.sittings
                 .iter()
                 .enumerate()
-                .map(|(at, s)| ChangeView { sentence: s.sentence.clone(), reason: s.reason.clone(), checked: checked(at), state: lumenna_records::words::checked(checked(at)) })
+                .map(|(at, s)| ChangeView { sentence: s.sentence.clone(), reason: s.reason.clone(), checked: checked(at), state: lumenna_records::words::checked(checked(at)), line: String::new(), toggled: String::new() })
                 .collect(),
             d.unfit.clone(),
             Vec::new(),
@@ -223,6 +230,7 @@ pub fn view(screen: &Sheet) -> ProposalView {
         kind,
         words: proposal_words(kind),
         ready: screen.proposal.is_some(),
+        heading: String::new(),
         announcement,
         changes,
         unfit,
@@ -356,4 +364,22 @@ impl Lumenna {
 fn planned_from(model: &Screen) -> Option<jiff::Zoned> {
     let moment = model.plan_from.as_deref()?.parse::<jiff::civil::DateTime>().ok()?;
     moment.to_zoned(jiff::tz::TimeZone::system()).ok()
+}
+
+/// The lines a proposal's screen reads, composed once its words are in the shell's capitals: its
+/// heading, and each change's line and what its check box says as it changes.
+pub(crate) fn compose(view: &mut ProposalView) {
+    view.heading = [view.words.title.as_str(), view.announcement.as_str()]
+        .iter()
+        .map(|part| part.trim().trim_end_matches('.'))
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(". ");
+    if !view.announcement.trim().is_empty() && view.announcement.trim_end().ends_with('.') {
+        view.heading.push('.');
+    }
+    for change in &mut view.changes {
+        change.line = format!("{}, {}", change.sentence, change.state);
+        change.toggled = format!("{}, {}", view.words.item, change.state);
+    }
 }

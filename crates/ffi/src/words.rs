@@ -5,13 +5,16 @@ use boltffi::export;
 use lumenna_records::places::{Place, SidebarGroup, SidebarKind};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_app::Capitals;
+use lumenna_app::ShellEvent;
+use lumenna_app::speech::Line;
+use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetterCommand, LetteredMenu, LineSettings, MenuShortcut, SpeakLetter};
+use lumenna_app::braille::{BrailleSigns, DeviceLine, DeviceReading, LetteredMenu, LineSettings, MenuShortcut, SenseLetter, SpeakLetter};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
-use lumenna_records::{ActionKind, Candidate};
+use lumenna_records::{ActionKind, Candidate, Offered};
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
 #[export]
@@ -138,8 +141,8 @@ pub fn menu_shortcuts(items: Vec<MenuShortcut>) -> Vec<String> {
     lumenna_app::braille::menu_shortcuts(&items)
 }
 
-/// The shared menu bar on a braille device, each with its letter, under the place shown or (with
-/// no place) over `main`, the list of places.
+/// The shared menu bar on a braille device, each with its letter: under the place shown, its own
+/// actions (`ViewModel::screen_actions`) among it, or over Home (`main`, `ViewModel::home` shown), Home's.
 #[export]
 pub fn braille_menu_bar(place: Option<Place>, main: bool, sentence: bool) -> Vec<LetteredMenu> {
     lumenna_app::braille::menu_bar(place.as_ref(), main, sentence)
@@ -515,18 +518,7 @@ pub fn command_letter(id: String) -> Option<String> {
     lumenna_app::braille::command_letter(&id).map(str::to_owned)
 }
 
-/// What `place` itself offers on a braille device besides its rows, each with its letter.
-#[export]
-pub fn place_commands(place: Place, sentence: bool) -> Vec<LetterCommand> {
-    lumenna_app::braille::place_commands(&place, sentence)
-}
 
-/// A braille device's main menu: the places, then adding, undo and redo, reminders, syncing and
-/// settings, each with its letter.
-#[export]
-pub fn braille_main_menu(sentence: bool) -> Vec<LetterCommand> {
-    lumenna_app::braille::main_menu(sentence)
-}
 
 /// What is said when no row's line starts with the letter pressed.
 #[export]
@@ -538,4 +530,46 @@ pub fn no_row_starts_with(letter: String) -> String {
 #[export]
 pub fn nothing_on_letter(letter: String) -> String {
     lumenna_records::words::nothing_on_letter(&letter)
+}
+
+/// How `letter` is pressed on the HIMS BrailleSense: Space with it, or Enter with it where Space
+/// with those dots is the device's own; none for a character with no dots.
+#[export]
+pub fn braillesense_letter(letter: String) -> Option<SenseLetter> {
+    lumenna_app::braille::braillesense_letter(&letter)
+}
+
+/// A letter's press on the BrailleSense as the device names a key ("Space-u", "Enter-c"), for a
+/// menu to show beside its item; none for a character with no dots.
+#[export]
+pub fn braillesense_press(letter: String) -> Option<String> {
+    lumenna_app::braille::braillesense_press(&letter)
+}
+
+/// What doing `how` to a dialog's control that sends `sends`, holding `value`, sends, in order
+/// (`dialog::control_event`): a shell sends each, building none itself.
+#[export]
+pub fn control_event(sends: ControlSends, value: String, how: ControlMove) -> Vec<ShellEvent> {
+    lumenna_app::dialog::control_event(&sends, &value, how)
+}
+
+/// What a key of the shared table (`id`) runs on a row offering `offered`, in short: the action
+/// a screen reader names as the row's default (Enter's is `key_runs_on("open", …)`).
+#[export]
+pub fn key_runs_on(id: String, offered: Vec<Offered>) -> Option<Offered> {
+    lumenna_app::keys::runs_on(&id, &offered)
+}
+
+/// Parts of a question or a heading as one line, each a sentence ended once: a refusal before
+/// what is asked, a title before what it says.
+#[export]
+pub fn prompt_of(parts: Vec<String>) -> String {
+    lumenna_app::screen::prompt(&parts.iter().map(String::as_str).collect::<Vec<_>>())
+}
+
+/// A line said with its level after it, where it has one: a project in a pick, read one line a
+/// row.
+#[export]
+pub fn line_with_level(line: Line) -> String {
+    lumenna_app::lines::with_level(&line)
 }

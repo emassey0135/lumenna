@@ -42,6 +42,7 @@ pub(crate) fn in_sentence_case(view: &mut ViewModel) {
         for word in [&mut words.title, &mut words.wait, &mut words.join, &mut words.match_title, &mut words.match_yes, &mut words.match_no, &mut words.copy_code] {
             *word = sentence_case(std::mem::take(word));
         }
+        words.heading = format!("{}. {}", words.title, words.intro_sentence);
     }
     if let Some(proposal) = &mut view.proposal {
         let words = &mut proposal.words;

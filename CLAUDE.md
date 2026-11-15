@@ -120,7 +120,8 @@ crosses the FFI.
 - **Each action has a `sentence` and a `primary`.** Capitals follow the platform: Title
   Case (`title`) on Apple, Windows, GTK and Emacs; sentence case (`sentence`, and
   `sentence_case()` for a fixed button or question) on Android, Wear OS, the web and BTSpeak,
-  where every capital also costs a braille cell. A row shows its `primary` actions by itself
+  where every capital also costs a braille cell. A name keeps its capitals in either: an
+  acronym, "I", and Lumenna's own ("About Lumenna"). A row shows its `primary` actions by itself
   and offers the rest a menu away; every client still offers every action.
 - **Lines are joined in one order everywhere** (`lumenna_app::speech`), the clock and day
   words being the app's: a block "<start> to <end>, <title>, <details>"; a sitting "<title>,
@@ -134,7 +135,14 @@ crosses the FFI.
   controls from them, never from a table of its own. **Which page a setting is on is the
   core's** (`settings_pages`, also `SettingsView::pages`): the pages in order with their titles,
   descriptions, captions and buttons, every setting on exactly one, so a new setting reaches
-  every settings screen. A shell matches no key and keeps no page table.
+  every settings screen. A shell matches no key and keeps no page table. **Which pages a device
+  lists is the core's too**: `SettingsView::pages` holds only those with something on them here
+  (a page's `keys` are the settings this device lists; General goes where the shell keeps nothing
+  running and has its own clock), so a shell lists them all and filters none. What a shell can
+  do is said once as it starts (`Event::Abilities`, `Abilities { files, backup_folder }`; a shell
+  that never says can do both): one that saves and picks no files (a watch) lists no exports,
+  imports or restores, one with no folder of backups (a browser) none of the backup schedule and
+  folder settings.
 - **The task details' words are the core's** (`details_words`; `DetailsView::lines`, also
   `Lines::details`: the state, a rule the form cannot say, what it waits for, its history). The
   buttons a details pane shows by themselves are the task's `primary` offered actions, the rest a
@@ -154,7 +162,16 @@ crosses the FFI.
   the record, never written in the shell. A sidebar entry says its
   own folding (`hidden`, `expanded`, `level`), as a list's rows and a pick's lines (`Line::level`)
   do; a list a shell narrows or cuts out itself takes its levels from `lines::levels(depths)`
-  (`levels()` over the FFI), so no shell counts them.
+  (`levels()` over the FFI), so no shell counts them. **No shell joins two of the core's words
+  into a line either**: a setting's row is `SettingView::line` ("Clock, 24-hour"), pairing's
+  title and intro `PairingWords::heading`, a proposal's title and announcement
+  `ProposalView::heading`, a change's line and what its check box says as it changes
+  `ChangeView::line` and `toggled`, the task's fields read rather than edited
+  `DetailsView::field_lines` ("Priority: High"), parts of a prompt (a refusal before what is
+  asked) `screen::prompt` (`prompt_of`), a line with its level after it `lines::with_level`
+  (`line_with_level`), and About's lines `ShellWords::about_lines`. A shell drawing a dialog's
+  controls (`lumenna_app::dialog`) takes them apart instead: a label and a value, a refusal as a
+  line of its own.
 - **What Lumenna is is said once** (`[workspace.metadata.lumenna]` in the workspace's
   `Cargo.toml`: name, description, version, homepage, issues, publisher, the identifier `id` in
   freedesktop's and Windows' capitals and `package_id` lowercase for Apple's bundles and Android's
@@ -258,7 +275,31 @@ directly (8805659 is the last commit before the move). How the app works inside 
 - **What a shell used to ask the core for itself is the app's too.** Put in a Block's pick ends
   in the app's Another Day (`ANOTHER_DAY`), which asks Go to Day's question and offers that
   day's blocks. Pairing's words come with the Devices view, worded as the shell says it is
-  called (`Event::PairingAs`, sent once like the clock).
+  called (`Event::PairingAs`, sent once like the clock). A pairing code is taken as typed, spaces
+  between its groups and all (`PairEvent::Code`, `lum pair`): no shell strips it.
+- **Each screen's own actions are the core's** (`ViewModel::screen_actions`, `ScreenAction`,
+  `screen_actions.rs`): what the place shown offers beside its rows, in order (New Task, the
+  filter, New Project Inside, New Block, the day's moves, Undo, Redo; the trash and the history
+  only Undo and Redo; the day's own actions, What Should I Work On? among them, are the day's
+  `offered`, never a second time here),
+  each with its title in the shell's capitals, its braille letter, whether it `asks`, whether it
+  is the shell's own to run (`shell`: the filter field, Key Help, About, the reminders due list)
+  and whether it is `enabled` now. Every one not the shell's runs as `Event::Key(id)`, so no shell
+  hand-picks a toolbar: a desktop or a phone draws them as its buttons, a braille device lists
+  them on its screen's menu after the row's actions. Their group is named `ShellWords::screen_actions`
+  ("Commands"), an overflow menu `more_options`, and About's line is `ShellWords::about`.
+  `Key("what-now")` goes to Today from any place and asks, as the launch shortcut does.
+- **Home is for a shell without a sidebar or tabs** (`Event::Home`, `Key("home")`,
+  `ViewModel::home`, `HomeView`): a braille device opens on it, and Emacs may. It is the places
+  (the sidebar's entries, folded as the sidebar is, each with its letter: `HomePlace`), then
+  Home's own actions (`HomeView::actions`, also `screen_actions` while it is shown): Reminders Due
+  while any are due, New Task, Undo, Redo, What Should I Work On?, Sync Now, Settings, Key Help
+  and About. Its row in hand is the sidebar's (`Hold(Side::Sidebar, key)`); `Key("open")` opens a
+  place and folds or unfolds a heading, and a place's letter does the same as Enter on it; an
+  action's letter runs it. New Task from Home starts an empty line (the Inbox), whatever place
+  Home was opened over. Opening a place leaves Home; acting on one there (renaming it, making one)
+  does not, the place beneath following it. A desktop or a phone never shows Home: its places are
+  its sidebar or tabs, and its app-wide actions the menu bar's or the Browse tab's.
 - **Settings offer the store's own actions** (`SettingsView::offered`: Erase Everything
   Deleted), a button each under `offered_caption`, handed back with
   `Event::ActOn(ActingOn::Settings, offered)`; the app asks its question as any row's.
@@ -267,7 +308,14 @@ directly (8805659 is the last commit before the move). How the app works inside 
   `Event::Key("delete")`, Enter `Key("open")`, a menu's Mark Done `Key("mark-done")`, and never a
   list of kinds of its own, so a command does the same everywhere: a row's action, the day's, or
   the app's own (quick add, a place, undo, a day). One the row lacks is refused in
-  `not_offered`'s words; the details take `DetailsEvent::Key`. The menu bar and the tray's menu
+  `not_offered`'s words; the details take `DetailsEvent::Key`. **Enter is `Key("open")` on every
+  row of every platform**, never a choice per place: a task's details, a block's form, free
+  time's new block, a cancelled day back, a trashed task restored, a device renamed; on a place in
+  the sidebar or on Home, the place opened (a heading folded). On a task, Enter runs its Edit
+  Details, which asks for the task's form (`Question::Form`): every shell opens its task form for
+  it, as for any action asking that, `ScreenView::dialog` describing it to one that speaks for
+  itself. What Enter does on a row, for a screen reader to name its default action (TalkBack's
+  double tap), is `keys::runs_on("open", offered)` (`key_runs_on` over the FFI). The menu bar and the tray's menu
   are the core's (`keys::MENUS`, `TRAY`, `menus()`, `tray_menu()`), and each row or day command's
   name and whether it applies now are `ViewModel::commands` (Mark Not Done on a task done). A
   platform adds only what is its own (Cut, Copy and Paste).
@@ -278,33 +326,56 @@ directly (8805659 is the last commit before the move). How the app works inside 
   notification): today, Replan from Now open, the warning dismissed once something is replanned.
   An overrun never sends `ProposalEvent::Replan`. A reminder dealt with elsewhere leaves the list
   once the store says so, at the next look for reminders as at the next tick; a summary of what was
-  missed refuses Snooze in the core's words.
+  missed refuses Snooze in the core's words. **A button is handed back by its id**
+  (`DueEvent::Press { id, button }`, `DueButton::id`): no shell maps `dismiss`, `snooze`, `carry`
+  or `replan` to an event itself. A list of reminders due opening looks back over the last day by
+  the app's own clock (`DueEvent::LookBack`), never by the shell's arithmetic.
 - **A braille device's letters are the core's** (`lumenna_app::braille`): a letter per kind of
   action (`action_letter`), per settings page and button (`page_letter`, `button_letter`), per
-  reminder's button (`due_letter`), per screen's own command (`command_letter`, `place_commands`,
-  `braille_main_menu`), each asked for over the FFI by what a shell already holds: a shell shows
-  it beside the thing, and presses it with `Event::Letter`, which runs the row's action of that
-  letter (the shared table's command where it has one, asking which where a row has several),
-  else the reminder list's, the day's or the place's own, else says why. First-letter moving is `Event::FindLetter` (`first_letter` for a list a
-  shell draws). How a letter is pressed is each app's own, mapped onto those two: on a BTSpeak a
-  plain letter is the command and a capital (Dot 7 with the letter) moves by first letter, never
-  Space with one; on the Orbit Speak and the BrailleSense, Space with the letter is the command
-  (Enter with it where the device keeps Space's while the app is in front: `speak_letter` on the
-  Speak, whose Enter is dot 8)
-  and the letter alone moves.
+  reminder's button (`due_letter`), per screen's own action and Home's place (`ScreenAction::letter`,
+  `HomePlace::letter`, `command_letter`), each asked for over the FFI by what a shell already
+  holds: a shell shows it beside the thing, and presses it with `Event::Letter`, which runs the
+  row's action of that letter (the shared table's command where it has one, asking which where a
+  row has several), else the reminder list's, the day's or the screen's own (on Home its places'
+  and its actions' first), else says why; a letter of an action that is the shell's own
+  (`ScreenAction::shell`) the shell runs itself. First-letter moving is `Event::FindLetter`
+  (`first_letter` for a list a shell draws). How a letter is pressed is each app's own, mapped
+  onto those two: on a BTSpeak a plain letter is the command and a capital (Dot 7 with the
+  letter) moves by first letter, never Space with one; on the Orbit Speak and the BrailleSense,
+  Space with the letter is the command, Enter with it where the device keeps Space's while the
+  app is in front (`speak_letter`/`speak_press` on the Speak, whose Enter is dot 8;
+  `braillesense_letter`/`braillesense_press` on the BrailleSense, whose key help
+  `braillesense_keys` is built from the same rule), and the letter alone moves.
   A device reporting dots turns them into a letter by `braille_letter`, the core's own a to z and
   never the person's table: dot 7 or 8 in a chord is no letter. Erase Permanently has no letter. How a device with its own controls reads a line (its role in
   speech and on the cells, where its settings put it, a shortcut letter, a sign for a dialog or a
   submenu, a control's label and place) is `braille::device_reading`, the words and the order
   being the core's; the device's settings and its braille code's signs are the shell's to hand in.
   A braille device's menu bar is the shared one with its letters (`braille::menu_bar`, over
-  `keys::MENUS`), and what a letter gives where none is set is `braille::menu_shortcuts`.
+  `keys::MENUS`), and what a letter gives where none is set is `braille::menu_shortcuts`. It holds
+  every one of the screen's own actions (Home's on Home), each with its letter as a real hot key,
+  and everything the menu bar offers but a window's or a pane's own is reachable without it: on
+  Home, among a place's actions, as a row's or the day's, on a heading, or as a settings page or
+  its button (both held by `screen_actions`' tests).
 - **What a shell that speaks for itself needs is the core's** (`lumenna_app::screen`,
   `Turn::described`, `App::screen_view`): what is shown (a list with its name, the row in hand's
   line, its place, "3 of 12", and its actions with their letters; a question with its prompt,
   typed text, buttons; a form's name) and what changed since the turn before (`ScreenChange`:
   entered, a move only when `landing` rose, a question asked, a refusal). A refusal also marked
-  on `Announce::refusal`, so a shell can mark it apart from what else is said.
+  on `Announce::refusal`, so a shell can mark it apart from what else is said. **A form or a
+  dialog comes as its controls in tab order** (`lumenna_app::dialog`, `DialogShown`): the one the
+  app has open is `ScreenView::dialog` (a question, the block form, quick add), and the two a shell
+  opens itself are `App::task_form_on(screen)` and `App::settings_page_on(screen, page)`. Each
+  control (`ControlShown`) says what it is in Lumenna's own terms (`ControlType`: a line, several
+  lines, a choice, a check, a list, a button, a line to read), which each device maps to its own
+  roles, with its label, value, options, hint, letter, whether it is the default or the Cancel,
+  and what it sends (`ControlSends`). A shell builds no event for a control: it hands
+  `control_event(sends, value, how)` what the person did (`ControlMove`: typed, set, pressed) and
+  sends what comes back; a button that sends what a line or a list holds (`Answer`, `Pick`,
+  `QuickAdd`) is pressed with that control's value. Escape is the dialog's `cancel`. A form asked
+  for by a question (`Question::Form`, a task's Edit) is the task form, closing the question as it
+  saves or cancels. What a dialog's button leaves to the shell (a file to pick, a backup into the
+  folder, pairing, a folder setting) is `ControlSends::Shell(id)`.
 - **Erasing permanently is never what deleting does**: a trashed task's Erase Permanently
   (`ErasePermanently`) is a menu away, after Delete from Trash, and no key runs it. It begins the
   store's history again without what it erased, on every device (`crates/store/CLAUDE.md`).
@@ -313,7 +384,8 @@ directly (8805659 is the last commit before the move). How the app works inside 
   which question it is (`Asking::number`: a new number is a new question, the same one refused
   is the same), what was typed in it (`typed`, where a refused field starts), and, when it asks
   how long, the usual lengths in words (`lengths`): a shell neither waits for the app to be still
-  before asking nor keeps the text itself.
+  before asking nor keeps the text itself. A question open is never `Question::Immediate`: an
+  action that asks nothing runs as it is handed back, so no shell answers one Yes itself.
 - **A list's first row is in hand as soon as it opens**, so the details show it.
 - **The view says when focus is the app's to move** (`ViewModel::landing`, a count): it moves
   when a turn wrote or moved the row in hand, and never for `Event::Focus`, the person's own

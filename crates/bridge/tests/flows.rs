@@ -2516,3 +2516,403 @@ fn a_refusal_of_a_letter_is_marked_as_one_for_the_screen() {
         .collect();
     assert_eq!(refused.len(), 1, "said, and marked as a refusal");
 }
+
+// ---------------------------------------------------------------------------------------
+// Home and each screen's own actions
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn home_lists_the_places_then_what_is_done_from_anywhere_and_enter_opens_the_place_in_hand() {
+    use lumenna_app::Side;
+    let mut app = App::new();
+    app.send(Event::Home);
+    let view = app.view();
+    let home = view.home.clone().expect("Home is shown");
+    assert_eq!(home.title, "Home");
+    assert_eq!(home.places[0].entry.title, "Today");
+    assert_eq!(home.places[0].letter, "t");
+    let ids: Vec<&str> = home.actions.iter().map(|action| action.id.as_str()).collect();
+    assert_eq!(ids, ["new-task", "undo", "redo", "what-now", "sync-now", "settings", "keyboard-help", "about"]);
+    assert_eq!(view.screen_actions, home.actions, "Home's own actions are the screen's");
+    assert_eq!(view.sidebar_held.focus.as_ref(), Some(&home.places[0].entry.key), "Home opens on its first place");
+    let tasks = home.places.iter().find(|place| place.entry.title == "Tasks").unwrap().entry.key.clone();
+    app.send(Event::Hold(Side::Sidebar, tasks));
+    app.send(Event::Key("open".to_owned()));
+    let view = app.view();
+    assert_eq!(view.place, Some(Place::Tasks));
+    assert!(view.home.is_none(), "a place opened leaves Home");
+    assert_eq!(view.screen_actions.iter().map(|action| action.id.as_str()).collect::<Vec<_>>(), ["new-task", "filter", "undo", "redo"]);
+}
+
+#[test]
+fn a_letter_on_home_opens_its_place_or_runs_homes_own_action() {
+    let mut app = App::new();
+    app.send(Event::Home);
+    app.send(Event::Letter("k".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Tasks));
+    assert!(app.view().home.is_none());
+    app.send(Event::Home);
+    app.send(Event::Letter("a".to_owned()));
+    assert!(app.view().line.is_some(), "New Task opens quick add");
+}
+
+#[test]
+fn enter_on_a_heading_on_home_folds_it() {
+    use lumenna_app::Side;
+    let mut app = App::new();
+    app.send(Event::Home);
+    app.send(Event::Hold(Side::Sidebar, "group:Projects".to_owned()));
+    let shell = app.send(Event::Key("open".to_owned()));
+    assert_eq!(said(&shell), ["Collapsed"]);
+    assert!(app.view().home.is_some(), "a heading is no place to go");
+}
+
+#[test]
+fn a_place_renamed_or_made_from_home_leaves_home_shown_its_row_in_hand() {
+    let mut app = App::new();
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Wrok", None).unwrap();
+    app.session.tick();
+    app.send(Event::Open(Place::Project("Wrok".to_owned())));
+    app.send(Event::Home);
+    app.send(sidebar_action(&app, "Wrok", ActionKind::Rename));
+    app.send(Event::Answer(Answer::Text { text: "Work".to_owned() }));
+    let view = app.view();
+    assert!(view.home.is_some(), "renaming a place on Home is not opening it");
+    assert_eq!(view.place, Some(Place::Project("Work".to_owned())), "the place beneath follows it");
+    let work = lumenna_records::places::SidebarEntry::key_of(&lumenna_records::places::SidebarKind::Place(Place::Project("Work".to_owned())));
+    assert_eq!(view.sidebar_held.focus.as_ref(), Some(&work), "its row in hand follows it");
+    let heading = app.view().sidebar.into_iter().find(|e| e.title == "Projects").unwrap();
+    let new = heading.offered.into_iter().find(|a| a.kind == ActionKind::New).unwrap();
+    app.send(Event::ActOn(ActingOn::Held(lumenna_app::Side::Sidebar, heading.key), new));
+    app.send(Event::Answer(Answer::Text { text: "Garden".to_owned() }));
+    assert!(app.view().home.is_some(), "a place made from Home is not opened");
+}
+
+#[test]
+fn what_should_i_work_on_goes_to_today_from_any_place() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Trash));
+    app.send(Event::Key("what-now".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Today));
+    let ids: Vec<String> = app.view().screen_actions.into_iter().map(|action| action.id).collect();
+    assert!(!ids.contains(&"what-now".to_owned()), "the day offers it of its own, not twice: {ids:?}");
+}
+
+#[test]
+fn new_project_inside_is_the_project_shown_offering_it() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    app.send(Event::Open(Place::Project("Work".to_owned())));
+    let action = app.view().screen_actions.into_iter().find(|action| action.id == "new-project-inside").expect("offered");
+    assert!(action.enabled && action.asks && !action.shell);
+    app.send(Event::Key("new-project-inside".to_owned()));
+    assert_eq!(app.view().asking.unwrap().action.unwrap().kind, ActionKind::NewInside);
+}
+
+#[test]
+fn enter_restores_a_task_in_the_trash() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Key("delete".to_owned()));
+    app.send(Event::Open(Place::Trash));
+    assert_eq!(app.titles(), ["Buy milk"]);
+    app.send(Event::Key("open".to_owned()));
+    assert!(app.titles().is_empty(), "restored");
+    app.send(Event::Open(Place::Tasks));
+    assert_eq!(app.titles(), ["Buy milk"]);
+}
+
+#[test]
+fn a_reminders_button_is_pressed_by_its_id() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    let since = jiff::Timestamp::now().to_string();
+    let tz = jiff::tz::TimeZone::system();
+    let now = jiff::Zoned::now().date().tomorrow().unwrap().at(8, 56, 0, 0).to_zoned(tz).unwrap().timestamp().to_string();
+    app.send(Event::Due(lumenna_app::DueEvent::Look { since, now: Some(now) }));
+    let due = app.view().due;
+    assert_eq!(due.len(), 1);
+    let shell = app.send(Event::Due(lumenna_app::DueEvent::Press { id: due[0].id.clone(), button: "dismiss".to_owned() }));
+    assert!(app.view().due.is_empty(), "{:?}", said(&shell));
+}
+
+#[test]
+fn reminders_due_look_back_over_the_last_day_by_the_apps_own_clock() {
+    let mut app = App::new();
+    let started = jiff::Zoned::now().checked_sub(jiff::SignedDuration::from_mins(90)).unwrap();
+    let at = format!("{:02}:{:02}", started.hour(), started.minute());
+    block(&mut app, "Deep work", &at, &started.date().to_string(), None);
+    app.send(Event::Due(lumenna_app::DueEvent::LookBack));
+    let due = app.view().due;
+    assert!(!due.is_empty(), "a block's reminder 95 minutes ago is found");
+}
+
+#[test]
+fn a_settings_page_with_nothing_on_it_for_this_device_is_not_listed() {
+    let mut app = App::new();
+    app.send(Event::Clock(lumenna_records::proposals::TimeStyle::TwentyFourHour));
+    app.send(Event::Settings(SettingsEvent::Open));
+    let pages: Vec<String> = app.view().settings.unwrap().pages.into_iter().map(|page| page.id).collect();
+    assert!(!pages.contains(&"general".to_owned()), "nothing runs in the background here and the clock is the shell's: {pages:?}");
+    assert!(pages.contains(&"devices".to_owned()) && pages.contains(&"export".to_owned()), "a page of buttons stays: {pages:?}");
+    app.send(Event::Background(lumenna_app::BackgroundEvent::Offered { kind: lumenna_records::background::BackgroundKind::WindowsSignIn, on: false }));
+    let pages = app.view().settings.unwrap().pages;
+    let general = pages.iter().find(|page| page.id == "general").expect("the background setting is on General");
+    assert_eq!(general.keys, [lumenna_records::background::KEY]);
+}
+
+#[test]
+fn a_pairing_code_typed_with_spaces_is_dialled_as_one() {
+    use lumenna_app::PairEvent;
+    let mut app = App::new();
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    pair(&mut app, PairEvent::Open("Test browser".to_owned()));
+    app.network();
+    pair(&mut app, PairEvent::Code("ab12 cd34\tef56 ".to_owned()));
+    pair(&mut app, PairEvent::Join);
+    let dialled = app.network();
+    assert!(matches!(&dialled[..], [(_, NetworkRequest::Pair { code: Some(code), .. })] if code == "ab12cd34ef56"), "{dialled:?}");
+}
+
+// ---------------------------------------------------------------------------------------
+// Dialogs as their controls
+// ---------------------------------------------------------------------------------------
+
+use lumenna_app::dialog::{ControlMove, ControlSends, ControlShown, ControlType, DialogShown, control_event};
+
+/// The dialog the app has open, as a turn describes it.
+fn open_dialog(app: &App) -> DialogShown {
+    let view = app.view();
+    described(None, &view, &[]).dialog.expect("a dialog is open")
+}
+
+/// The control `key` of `dialog`.
+fn control(dialog: &DialogShown, key: &str) -> ControlShown {
+    dialog.controls.iter().find(|control| control.key == key).cloned().unwrap_or_else(|| panic!("no {key} in {dialog:?}"))
+}
+
+/// Does `how` to `control` holding `value`, sending what the core says it sends.
+fn work(app: &mut App, control: &ControlShown, value: &str, how: ControlMove) -> Vec<Shell> {
+    let mut shell = Vec::new();
+    for event in control_event(&control.sends, value, how) {
+        shell.extend(app.send(event.into()));
+    }
+    shell
+}
+
+#[test]
+fn a_confirmation_is_its_message_then_cancel_and_its_answer_which_is_the_default() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Key("delete".to_owned()));
+    app.send(Event::Open(Place::Trash));
+    app.send(Event::Key("delete".to_owned()));
+    let dialog = open_dialog(&app);
+    let kinds: Vec<ControlType> = dialog.controls.iter().map(|control| control.kind).collect();
+    assert_eq!(kinds, [ControlType::Text, ControlType::Button, ControlType::Button]);
+    assert!(control(&dialog, "cancel").cancel);
+    assert_eq!(dialog.cancel.len(), 1, "Escape sends its Cancel");
+    let yes = control(&dialog, "yes");
+    assert!(yes.default);
+    assert_eq!(dialog.focus, 1, "it opens on its first button");
+    work(&mut app, &yes, "", ControlMove::Pressed);
+    assert!(app.titles().is_empty(), "deleted from the trash");
+}
+
+#[test]
+fn a_question_that_asks_for_a_line_answers_with_what_is_typed_when_pressed() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    app.send(sidebar_action(&app, "Work", ActionKind::Rename));
+    let dialog = open_dialog(&app);
+    let line = control(&dialog, "line");
+    assert_eq!((line.kind, line.value.as_str()), (ControlType::Line, "Work"));
+    assert!(work(&mut app, &line, "Office", ControlMove::Typed { cursor: 6 }).is_empty(), "typing sends nothing yet");
+    let yes = control(&dialog, "yes");
+    assert_eq!(yes.sends, ControlSends::Answer, "its button answers with the line's text");
+    work(&mut app, &yes, "Office", ControlMove::Pressed);
+    assert_eq!(app.view().place, Some(Place::Project("Office".to_owned())));
+}
+
+#[test]
+fn a_pick_is_a_list_of_its_choices_answered_by_the_one_chosen() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    app.add("Buy milk");
+    app.send(Event::Key("move-to-project".to_owned()));
+    let dialog = open_dialog(&app);
+    let list = control(&dialog, "choices");
+    assert_eq!(list.kind, ControlType::List);
+    let work_id = list.options.iter().find(|option| option.title.starts_with("Work")).expect("Work is offered").id.clone();
+    work(&mut app, &list, &work_id, ControlMove::Set);
+    assert!(app.view().asking.is_none());
+    app.send(Event::Open(Place::Project("Work".to_owned())));
+    assert_eq!(app.titles(), ["Buy milk"]);
+}
+
+#[test]
+fn quick_add_is_its_line_then_add_which_adds_what_is_typed() {
+    let mut app = App::new();
+    app.send(Event::Typing(Typing::Open));
+    let dialog = open_dialog(&app);
+    assert_eq!(dialog.id, "quick-add");
+    let line = control(&dialog, "line");
+    work(&mut app, &line, "Buy milk", ControlMove::Typed { cursor: 8 });
+    let dialog = open_dialog(&app);
+    assert!(dialog.controls.iter().any(|control| control.key == "readback"), "what it will add is read back");
+    let add = control(&dialog, "add");
+    assert!(add.default);
+    work(&mut app, &add, "Buy milk", ControlMove::Pressed);
+    assert_eq!(app.titles(), ["Buy milk"]);
+}
+
+#[test]
+fn the_block_form_is_its_fields_then_save_and_cancel() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Key("new-block".to_owned()));
+    let dialog = open_dialog(&app);
+    assert_eq!(dialog.id, "block");
+    let title = control(&dialog, "field:title");
+    assert_eq!(title.kind, ControlType::Line);
+    assert!(dialog.controls.iter().any(|control| control.kind == ControlType::Check), "a block's flags are checks");
+    assert_eq!(control(&dialog, "field:start").field, Some(lumenna_records::fields::FieldKind::Time));
+    work(&mut app, &title, "Gym", ControlMove::Set);
+    let save = control(&open_dialog(&app), "save");
+    work(&mut app, &save, "", ControlMove::Pressed);
+    assert!(app.view().block_form.is_none(), "saved");
+    app.send(Event::Open(Place::Blocks));
+    assert_eq!(app.titles(), ["Gym"]);
+}
+
+#[test]
+fn the_task_form_is_its_fields_then_save_and_cancel_and_comes_up_for_enter() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let view = app.view();
+    let form = lumenna_app::dialog::task_form(&view, &lumenna_app::lines::lines(&view, &PlainClock)).expect("the task in hand");
+    let title = control(&form, "field:title");
+    assert_eq!(title.value, "Buy milk");
+    let priority = control(&form, "field:priority");
+    assert_eq!(priority.kind, ControlType::Choice);
+    assert!(priority.selected.is_some());
+    work(&mut app, &title, "Buy oat milk", ControlMove::Typed { cursor: 12 });
+    let save = control(&form, "save");
+    work(&mut app, &save, "", ControlMove::Pressed);
+    assert_eq!(app.titles(), ["Buy oat milk"]);
+    // Enter asks for the task's form: the dialog is the form, its Cancel closing the question too.
+    app.send(Event::Key("open".to_owned()));
+    let dialog = open_dialog(&app);
+    assert!(dialog.id.starts_with("question:"));
+    assert!(dialog.controls.iter().any(|control| control.key == "field:title"));
+    let cancel = control(&dialog, "cancel");
+    work(&mut app, &cancel, "", ControlMove::Pressed);
+    assert!(app.view().asking.is_none());
+}
+
+#[test]
+fn a_settings_page_is_its_settings_as_controls_each_applied_as_it_changes() {
+    let mut app = App::new();
+    app.send(Event::Settings(SettingsEvent::Open));
+    let view = app.view();
+    let page = lumenna_app::dialog::settings_page(&view, "planning").expect("the planning page");
+    assert!(page.cancel.is_empty(), "nothing to undo: a setting applies as it changes");
+    let start = control(&page, "setting:day-start");
+    assert_eq!(start.kind, ControlType::Line);
+    assert_eq!(start.field, Some(lumenna_records::fields::FieldKind::Time));
+    work(&mut app, &start, "07:30", ControlMove::Typed { cursor: 5 });
+    work(&mut app, &start, "07:30", ControlMove::Set);
+    let view = app.view();
+    let page = lumenna_app::dialog::settings_page(&view, "planning").unwrap();
+    assert_eq!(control(&page, "setting:day-start").value, "07:30");
+    let devices = lumenna_app::dialog::settings_page(&view, "devices").unwrap();
+    assert_eq!(control(&devices, "sync-now").sends, ControlSends::Press(vec![lumenna_app::ShellEvent::Key("sync-now".to_owned())]));
+    assert_eq!(control(&devices, "pair").sends, ControlSends::Shell("pair".to_owned()));
+}
+
+#[test]
+fn settings_list_only_what_the_shell_can_do_with_files_and_a_backup_folder() {
+    let mut app = App::new();
+    app.send(Event::Abilities(lumenna_app::Abilities { files: false, backup_folder: false }));
+    app.send(Event::Settings(SettingsEvent::Open));
+    let settings = app.view().settings.unwrap();
+    let pages: Vec<String> = settings.pages.iter().map(|page| page.id.clone()).collect();
+    assert!(!pages.contains(&"export".to_owned()) && !pages.contains(&"backups".to_owned()), "a watch saves and keeps nothing: {pages:?}");
+    assert!(settings.exports.is_empty());
+    assert!(!settings.settings.iter().any(|shown| shown.setting.key.starts_with("backup-")));
+    // A browser saves and picks files, and keeps no folder of backups.
+    app.send(Event::Abilities(lumenna_app::Abilities { files: true, backup_folder: false }));
+    let settings = app.view().settings.unwrap();
+    let backups = settings.pages.iter().find(|page| page.id == "backups").expect("a backup can be saved and restored");
+    assert!(backups.keys.is_empty(), "no schedule or folder: {:?}", backups.keys);
+    let buttons: Vec<&str> = backups.buttons.iter().map(|button| button.id.as_str()).collect();
+    assert_eq!(buttons, ["back-up", "restore-backup"]);
+    assert!(!settings.exports.is_empty());
+    assert!(!settings.settings.iter().any(|shown| shown.setting.key.starts_with("backup-")));
+}
+
+#[test]
+fn enter_names_what_it_runs_on_each_row() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let list = app.view().list.unwrap();
+    let offered: Vec<lumenna_records::Offered> = list.items[0].actions.iter().map(|at| list.offered[*at as usize].clone()).collect();
+    assert_eq!(lumenna_app::keys::runs_on("open", &offered).map(|action| action.kind), Some(ActionKind::Edit));
+    app.send(Event::Key("delete".to_owned()));
+    app.send(Event::Open(Place::Trash));
+    let list = app.view().list.unwrap();
+    let offered: Vec<lumenna_records::Offered> = list.items[0].actions.iter().map(|at| list.offered[*at as usize].clone()).collect();
+    assert_eq!(lumenna_app::keys::runs_on("open", &offered).map(|action| action.kind), Some(ActionKind::Restore));
+}
+
+#[test]
+fn a_headings_letter_on_home_does_what_enter_does_there() {
+    let mut app = App::new();
+    app.send(Event::Home);
+    let shell = app.send(Event::Letter("p".to_owned()));
+    assert_eq!(said(&shell), ["Collapsed"]);
+    assert_eq!(app.view().sidebar_held.focus.as_deref(), Some("group:Projects"));
+    let shell = app.send(Event::Letter("p".to_owned()));
+    assert_eq!(said(&shell), ["Expanded"]);
+    assert!(app.view().home.is_some());
+}
+
+#[test]
+fn new_task_from_home_starts_in_the_inbox_whatever_place_is_beneath() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    app.send(Event::Open(Place::Project("Work".to_owned())));
+    app.send(Event::Home);
+    assert_eq!(app.view().quick_add, "");
+    app.send(Event::Letter("a".to_owned()));
+    assert_eq!(app.view().line.unwrap().text, "", "no project's prefix from Home");
+}
+
+#[test]
+fn the_lines_a_shell_reads_come_composed() {
+    let mut app = App::new();
+    app.add("Buy milk p1");
+    let details = app.view().details.unwrap();
+    assert!(details.field_lines.iter().any(|line| line.starts_with("Priority: ")), "{:?}", details.field_lines);
+    assert!(!details.field_lines.iter().any(|line| line.starts_with("Title")), "the title is the details' own heading");
+    app.send(Event::Capitals(lumenna_app::Capitals::Sentence));
+    app.send(Event::Settings(SettingsEvent::Open));
+    let settings = app.view().settings.unwrap();
+    let day_start = settings.settings.iter().find(|shown| shown.setting.key == "day-start").unwrap();
+    assert_eq!(day_start.line, format!("{}, {}", day_start.setting.title, day_start.typed));
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    let words = app.view().devices.unwrap().words;
+    assert_eq!(words.heading, format!("{}. {}", words.title, words.intro_sentence));
+    assert!(words.heading.starts_with("Pair a device. "), "{}", words.heading);
+    assert_eq!(lumenna_app::screen::prompt(&["Name is taken.", "Rename Work"]), "Name is taken. Rename Work");
+    let about = lumenna_app::words::shell_words(lumenna_app::Capitals::Sentence, lumenna_app::words::ThisDevice::Computer).about_lines;
+    assert!(about[1].starts_with("Version "), "{about:?}");
+}

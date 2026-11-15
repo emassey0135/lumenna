@@ -94,6 +94,42 @@ pub struct DetailsView {
     /// state, how it repeats when the form cannot say, what it waits for, its history.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<DetailsLine>,
+    /// Each field of the form that holds something but the title, as a line to read: "Priority:
+    /// High" (`field_lines`), for details read rather than edited.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub field_lines: Vec<String>,
+}
+
+/// What field `key` of `fields` holds, as text: the priority as its number.
+#[must_use]
+pub fn get(fields: &TaskFields, key: &str) -> String {
+    match key {
+        "title" => fields.title.clone(),
+        "due" => fields.due.clone(),
+        "repeat" => fields.repeat.clone(),
+        "priority" => fields.priority.to_string(),
+        "estimate" => fields.estimate.clone(),
+        "project" => fields.project.clone(),
+        "labels" => fields.labels.clone(),
+        "notes" => fields.notes.clone(),
+        "sittings" => fields.sittings.clone(),
+        _ => String::new(),
+    }
+}
+
+/// Each field of the task form that holds something, but the title, as a line to read: its label
+/// then its value as the form names it ("Priority: High", "Project: Work").
+#[must_use]
+pub fn field_lines(fields: &TaskFields, form: &[FormField], projects: &[Choice]) -> Vec<String> {
+    form.iter()
+        .filter(|field| field.key != "title")
+        .filter_map(|field| {
+            let value = get(fields, &field.key);
+            let options = if field.key == "project" { projects } else { &field.options };
+            let named = options.iter().find(|option| option.id == value).map_or(value.as_str(), |option| option.title.as_str());
+            (!named.trim().is_empty()).then(|| format!("{}: {named}", field.label))
+        })
+        .collect()
 }
 
 /// `fields` with `key` set to `value`.

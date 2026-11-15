@@ -362,6 +362,26 @@ pub fn app_description() -> String {
     DESCRIPTION.to_owned()
 }
 
+/// What About says, in one line: its name and version, then what it is.
+#[must_use]
+pub fn about_line() -> String {
+    format!("{NAME} {VERSION}. {}.", DESCRIPTION.trim().trim_end_matches('.'))
+}
+
+/// What About lists, a line each, each labelled where its value alone would not say what it is:
+/// the name, "Version 0.1.0", what it is, "Website: …", "Published by …", "Licence: …".
+#[must_use]
+pub fn about_lines() -> Vec<String> {
+    vec![
+        NAME.to_owned(),
+        format!("Version {VERSION}"),
+        DESCRIPTION.to_owned(),
+        format!("Website: {HOMEPAGE}"),
+        format!("Published by {PUBLISHER}"),
+        format!("Licence: {LICENCE}"),
+    ]
+}
+
 /// What a browser calls itself when it pairs, from what it runs as: "Firefox on Windows", or
 /// the browser alone when the system is not known. `browser` and `system` are the platform's
 /// names for them, found from its user agent.

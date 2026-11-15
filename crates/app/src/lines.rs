@@ -185,3 +185,14 @@ pub fn lines(view: &ViewModel, clock: &dyn Clock) -> Lines {
             .unwrap_or_default(),
     }
 }
+
+/// A line said with its level after it, where it has one, for a list that reads one line per row
+/// and says nothing of indentation: "Website, project, level 2". After rather than before, so the
+/// row is still found by its first letter.
+#[must_use]
+pub fn with_level(line: &Line) -> String {
+    match &line.level {
+        Some(level) if !level.is_empty() => format!("{}, {level}", line.text),
+        _ => line.text.clone(),
+    }
+}

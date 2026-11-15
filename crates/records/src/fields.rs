@@ -225,6 +225,9 @@ pub struct PairingWords {
     pub refusing: String,
     /// The button that copies this device's code.
     pub copy_code: String,
+    /// The screen's title and what it says before anything starts, as one line to read: "Pair a
+    /// device. On the same network, …".
+    pub heading: String,
     /// [`intro`](Self::intro) in sentence case, its buttons named as they read there.
     pub intro_sentence: String,
 }
@@ -269,6 +272,7 @@ pub fn pairing_words(this_device: String, local: bool) -> PairingWords {
         finishing: "The words match. Finishing pairing.".to_owned(),
         refusing: "The words differ, so the devices are not paired.".to_owned(),
         copy_code: "Copy Code".to_owned(),
+        heading: format!("Pair a Device. {intro}"),
         intro_sentence: intro.replace("Wait for the Other Device", "Wait for the other device"),
     }
 }
@@ -312,10 +316,12 @@ pub fn picker_words() -> PickerWords {
 /// costs a cell. Never for a task's title or a name, whose capitals are their own.
 #[must_use]
 pub fn sentence_case(text: String) -> String {
-    // An acronym keeps its capitals: "JSON" is a name, not a word. So does "I", and "I'm".
+    // An acronym keeps its capitals: "JSON" is a name, not a word. So do "I", "I'm", and a
+    // name: Lumenna's own ("About Lumenna").
     let lower = |word: &str| {
         let letters: Vec<char> = word.chars().filter(|c| c.is_alphabetic()).collect();
-        let pronoun = word.trim_matches(|c: char| !c.is_alphabetic()) == "I" || word.starts_with("I'") || word.starts_with("I\u{2019}");
+        let bare = word.trim_matches(|c: char| !c.is_alphabetic());
+        let pronoun = bare == "I" || bare == crate::words::NAME || word.starts_with("I'") || word.starts_with("I\u{2019}");
         if pronoun || (letters.len() > 1 && letters.iter().all(|c| c.is_uppercase())) { word.to_owned() } else { word.to_lowercase() }
     };
     let mut words = text.split(' ');
@@ -333,6 +339,7 @@ mod tests {
         assert_eq!(sentence_case("Export As JSON".to_owned()), "Export as JSON");
         assert_eq!(sentence_case("Where I'm Going".to_owned()), "Where I'm going");
         assert_eq!(sentence_case("Mark Done".to_owned()), "Mark done");
+        assert_eq!(sentence_case("About Lumenna".to_owned()), "About Lumenna", "a name stays as written");
     }
 
     #[test]
