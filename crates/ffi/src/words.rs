@@ -135,8 +135,9 @@ pub fn menu_shortcuts(items: Vec<MenuShortcut>) -> Vec<String> {
     lumenna_app::braille::menu_shortcuts(&items)
 }
 
-/// The shared menu bar on a braille device, each with its letter: under the place shown, its own
-/// actions (`ViewModel::screen_actions`) among it, or over Home (`main`, `ViewModel::home` shown), Home's.
+/// The menu bar on a braille device, each item with its letter: first the screen's own menu
+/// (`SCREEN_MENU`, its `screen_actions`, named for the screen), then the shared menu bar. Under the
+/// place shown, or over Home (`main`, `ViewModel::home` shown).
 #[export]
 pub fn braille_menu_bar(place: Option<Place>, main: bool, sentence: bool) -> Vec<LetteredMenu> {
     lumenna_app::braille::menu_bar(place.as_ref(), main, sentence)

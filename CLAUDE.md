@@ -359,7 +359,14 @@ directly (8805659 is the last commit before the move). How the app works inside 
   submenu, a control's label and place) is the device's own convention, in its SDK
   (`deviceReading`, `apps/android/braillesense-sdk`), not the core's.
   A braille device's menu bar is the shared one with its letters (`braille::menu_bar`, over
-  `keys::MENUS`), and what a letter gives where none is set is `braille::menu_shortcuts`. It holds
+  `keys::MENUS`), and what a letter gives where none is set is `braille::menu_shortcuts`. **Its
+  first menu is the screen's own** (`braille::SCREEN_MENU`), ahead of File: named for the screen
+  ("Tasks", "Today", a project's name, "Home"), its letter the first of that name free of the
+  shared menus', holding the screen's `screen_actions` (Home's on Home) in order, each with its
+  letter as a real hot key; the same commands stay under File, Edit and Day too. How it is opened
+  is each device's: BTSpeak's M chord opens straight into it, Tab and Shift-Tab moving to the other
+  menus as its editor's menu bar does; the BrailleSense's Space-M opens the bar on it; Orbit uses
+  no menu bar. It holds
   every one of the screen's own actions (Home's on Home), each with its letter as a real hot key,
   and everything the menu bar offers but a window's or a pane's own is reachable without it: on
   Home, among a place's actions, as a row's or the day's, on a heading, or as a settings page or

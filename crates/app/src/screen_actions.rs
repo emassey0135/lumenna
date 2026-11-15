@@ -280,9 +280,17 @@ mod tests {
             every_kind_of_place().into_iter().map(|place| (Some(place), false)).chain([(None, true)]).collect();
         for (place, home) in screens {
             let bar = crate::braille::menu_bar(place.as_ref(), home, true);
+            let first = &bar[0];
+            assert_eq!(first.id, crate::braille::SCREEN_MENU, "the screen's own menu leads over {place:?} (home: {home})");
+            let own: Vec<&str> = first.items.iter().map(|item| item.id.as_str()).collect();
+            assert_eq!(own, screen_action_ids(place.as_ref(), home, true), "the screen's own menu over {place:?} (home: {home})");
+            // Each is in the shared menus as well, and in both with its letter as a hot key.
             for id in screen_action_ids(place.as_ref(), home, true) {
+                let mine = first.items.iter().find(|item| item.id == id).expect("in the screen's own menu");
+                assert!(mine.hot_key && Some(mine.letter.as_str()) == crate::braille::command_letter(id), "{id} in the screen's own menu");
                 let item = bar
                     .iter()
+                    .skip(1)
                     .flat_map(|menu| &menu.items)
                     .find(|item| item.id == id)
                     .unwrap_or_else(|| panic!("{id} is not in the menu bar over {place:?} (home: {home})"));
