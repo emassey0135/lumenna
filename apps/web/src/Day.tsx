@@ -5,10 +5,11 @@
 // now as a position rather than a highlight. Opening the day puts it on now, not midnight. Which
 // day is shown, which row is in hand and what is folded are the app's.
 //
-// Each row's actions are the core's, in its menu (the Menu key, Shift+F10, a right-click, or
-// Actions). On a sitting, Space runs its timer action (start, pause or resume) and Delete
-// unassigns it; on a block, Enter changes it and Delete deletes it; on free time, Enter adds a
-// block there; on a cancelled day, Enter restores it.
+// What the day offers of its own (its moves, New block, What should I work on?, Undo and Redo)
+// is the core's, as buttons above it (ScreenActions.tsx). Each row's actions are the core's, in
+// its menu (the Menu key, Shift+F10, a right-click, or Actions). On a sitting, Space runs its
+// timer action (start, pause or resume) and Delete unassigns it; on a block, Enter changes it and
+// Delete deletes it; on free time, Enter adds a block there; on a cancelled day, Enter restores it.
 
 import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
@@ -25,7 +26,8 @@ import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
-import { commandTitle, groupTitle, words } from "./words";
+import { ScreenActions } from "./ScreenActions";
+import { groupTitle, words } from "./words";
 
 /** Each kind of row's class, for the styles: the kind crosses as a number. */
 const KIND_CLASS: Record<DayKind, string> = {
@@ -110,18 +112,10 @@ export function Day(props: { screen: Screen }) {
   return (
     <>
       <h2>{day?.title ?? props.screen.title}</h2>
-      {/* A toolbar is one Tab stop, its buttons a press of the arrows apart (ARIA's toolbar pattern);
-          each named as the shared table names its command. */}
+      {/* A toolbar is one Tab stop, its buttons a press of the arrows apart (ARIA's toolbar pattern):
+          Today's own actions, the core's (the day's moves, New block, Undo), then its menus. */}
       <Toolbar className="buttons" aria-label={groupTitle("day")}>
-        <Button isDisabled={!day} onPress={() => move(DayMove.Previous)}>
-          {commandTitle("previous-day")}
-        </Button>
-        <Button onPress={() => move(DayMove.Today)}>{commandTitle("go-today")}</Button>
-        <Button isDisabled={!day} onPress={() => move(DayMove.Next)}>
-          {commandTitle("next-day")}
-        </Button>
-        <Button onPress={() => move(DayMove.Ask)}>{commandTitle("go-to-day")}</Button>
-        <Button onPress={addBlock}>{commandTitle("new-block")}</Button>
+        <ScreenActions actions={props.screen.screenActions} />
         {/* The day's own actions, wherever focus is: its summary row offers them too. */}
         <RowMenu
           label={words().dayActions}

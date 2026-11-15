@@ -139,6 +139,26 @@ test("the details save only what changed", async ({ page }) => {
   await expect(page.getByRole("main").getByRole("row", { name: /^Write the report/ })).toBeVisible();
 });
 
+test("a list's buttons are the core's own actions for it, and the banner keeps only Settings and the keys", async ({ page }) => {
+  await open(page);
+  await expect(page.getByRole("banner").getByRole("button")).toHaveText(["Settings", "Keyboard shortcuts"]);
+  const main = page.getByRole("main");
+  const buttons = main.getByRole("button");
+  const names = ["New task", "Filter tasks", "Undo", "Redo", "Actions"];
+  await expect(buttons).toHaveCount(names.length);
+  for (const [at, name] of names.entries()) await expect(buttons.nth(at)).toHaveAccessibleName(name);
+  // The filter is the page's own to run: its field takes focus.
+  await main.getByRole("button", { name: "Filter tasks" }).click();
+  await expect(main.getByRole("combobox", { name: "Filter" })).toBeFocused();
+  // Undo is sent to the app, which takes back what was added.
+  await add(page, "Buy milk");
+  await expect(main.getByRole("row", { name: /^Buy milk/ })).toBeVisible();
+  await main.getByRole("button", { name: "Undo" }).click();
+  await expect(main.getByRole("row", { name: /^Buy milk/ })).toHaveCount(0);
+  await main.getByRole("button", { name: "Redo" }).click();
+  await expect(main.getByRole("row", { name: /^Buy milk/ })).toBeVisible();
+});
+
 test("nothing on the page breaks axe's accessibility rules", async ({ page }) => {
   await open(page);
   await add(page, "Buy milk");

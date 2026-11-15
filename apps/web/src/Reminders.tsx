@@ -5,8 +5,9 @@
 // last looked, from when it opened. Each is said through the live region, always, and shown as
 // a notification where the browser allows; acting on one is in the page, in Reminders due,
 // whose buttons are the core's Dismiss and Snooze, at a block's end with work left short its
-// Carry Forward, and when a block's work outruns its time its Replan. When each fires and what it says are the core's; this decides nothing about
-// them.
+// Carry Forward, and when a block's work outruns its time its Replan, each handed back by its id
+// (`DueEvent::Press`). When each fires, what it says and what its buttons do are the core's; this
+// decides nothing about them.
 //
 // A browser has no device settings the core can keep (no file system), so whether reminders
 // are on in this browser is kept in its storage, under the core's name for the setting.
@@ -84,22 +85,6 @@ export function useDelivery(ready: boolean): void {
   }, [ready]);
 }
 
-/** A reminder's button, as its `DueEvent`, by the button's id. */
-function dueEvent(id: string, due: string): DueEvent | undefined {
-  switch (id) {
-    case "dismiss":
-      return { tag: "Dismiss", value0: due };
-    case "snooze":
-      return { tag: "Snooze", value0: due };
-    case "carry":
-      return { tag: "Carry", value0: due };
-    case "replan":
-      return { tag: "Replan", value0: due };
-    default:
-      return undefined;
-  }
-}
-
 /** What came due and was not dealt with, each with the core's buttons in the core's order. In
  * the banner. Which reminder is in hand after a button is the app's (`dueHeld`), landed as every
  * side list's is (session.ts). */
@@ -119,16 +104,12 @@ export function RemindersDue(props: { due: Due[] }) {
         {props.due.map((due) => (
           <li key={due.id} id={`due-${due.id}`} data-key={due.id}>
             <span id={`due-text-${due.id}`}>{due.text}</span>
-            {due.buttons.map((button) => {
-              const event = dueEvent(button.id, due.id);
-              return (
-                event && (
-                  <Button key={button.id} aria-describedby={`due-text-${due.id}`} onPress={() => void deal(event)}>
-                    {button.title}
-                  </Button>
-                )
-              );
-            })}
+            {due.buttons.map((button) => (
+              // Handed back by the reminder's id and the button's: which event that is, the core's.
+              <Button key={button.id} aria-describedby={`due-text-${due.id}`} onPress={() => void deal({ tag: "Press", id: due.id, button: button.id })}>
+                {button.title}
+              </Button>
+            ))}
           </li>
         ))}
       </ul>

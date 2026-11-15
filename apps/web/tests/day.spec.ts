@@ -149,14 +149,45 @@ test("a sitting's planned length refuses what is not a length, and the dialog st
   await expect(field).toHaveAccessibleDescription(/could not read a duration/);
 });
 
-test("moving to the next day says it, and Today comes back", async ({ page }) => {
+test("moving to the next day says it, and Go to now comes back to today", async ({ page }) => {
   await open(page);
   await place(page, /^Today/);
   await page.getByRole("button", { name: "Next day" }).click();
   await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveText("Tomorrow");
   await expect(page.locator('[aria-live="polite"]')).toContainText("Tomorrow");
-  await page.getByRole("button", { name: "Today", exact: true }).click();
+  const now = page.getByRole("button", { name: "Go to now" });
+  await now.click();
   await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveText("Today");
+  // Pressed from its toolbar, focus stays on the button, so it can be pressed again.
+  await expect(now).toBeFocused();
+});
+
+test("today's buttons are the core's own actions for it, in its order, then its menus", async ({ page }) => {
+  await open(page);
+  await place(page, /^Today/);
+  const buttons = page.getByRole("main").getByRole("toolbar", { name: "Day" }).getByRole("button");
+  const names = ["New block", "What should I work on?", "Previous day", "Next day", "Go to day", "Go to now", "Undo", "Redo", "Day actions", "Actions"];
+  await expect(buttons).toHaveCount(names.length);
+  for (const [at, name] of names.entries()) await expect(buttons.nth(at)).toHaveAccessibleName(name);
+  // One that asks something first says it opens a dialog, its ellipsis no part of its name.
+  await expect(buttons.first()).toHaveAttribute("aria-haspopup", "dialog");
+  await expect(buttons.nth(2)).not.toHaveAttribute("aria-haspopup", /.+/);
+  await axe(page);
+});
+
+test("enter on a trashed task restores it, as it does on every platform", async ({ page }) => {
+  await open(page);
+  await add(page, "Old idea");
+  const tasks = page.getByRole("main");
+  await tasks.getByRole("row", { name: /^Old idea/ }).focus();
+  await page.keyboard.press("Delete");
+  await expect(tasks.getByRole("row", { name: /^Old idea/ })).toHaveCount(0);
+  await place(page, /^Trash/);
+  await tasks.getByRole("row", { name: /^Old idea/ }).focus();
+  await page.keyboard.press("Enter");
+  await expect(tasks.getByRole("row", { name: /^Old idea/ })).toHaveCount(0);
+  await place(page, /^Tasks/);
+  await expect(tasks.getByRole("row", { name: /^Old idea/ })).toBeVisible();
 });
 
 test("a repeating block asks which occurrences a change is for", async ({ page }) => {
@@ -192,11 +223,12 @@ test("the blocks list every series, and Delete asks before deleting one", async 
 
 test("a task is put in a block from its own details", async ({ page }) => {
   await open(page);
+  // Added from Tasks: New task is a list's own button, not the day's.
+  await add(page, "Write report");
   await place(page, /^Today/);
   // Ending at midnight, so today's is never over yet whenever the test runs: the week's work
   // blocks leave out those already over.
   await addBlock(page, "Deep work", "11:00pm");
-  await add(page, "Write report");
   await place(page, /^Tasks/);
   await page.getByRole("main").getByRole("row", { name: /^Write report/ }).click();
   await page.getByRole("complementary", { name: "Task details" }).getByRole("button", { name: "Put in a block" }).click();
