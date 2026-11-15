@@ -196,19 +196,20 @@ class SettingsScreen : ListScreen() {
 
     override fun loaded(view: ViewModel): Boolean = view.settings?.settings?.isNotEmpty() == true
 
+    // Opened by the core (Settings on Home, its letter) or here: opened once either way.
     override fun resumed() {
-        ui.send(ShellEvent.Settings(SettingsEvent.Open))
+        if (ui.view.settings == null) ui.send(ShellEvent.Settings(SettingsEvent.Open))
     }
 
     override fun leaving() {
+        ui.settingsClosed = true
         ui.send(ShellEvent.Settings(SettingsEvent.Close))
     }
 
+    // The core lists only the pages with something on them here.
     override fun rows(): List<Row> {
         val view = ui.view.settings ?: return emptyList()
-        val keys = view.settings.map { it.setting.key }.toSet()
-        return view.pages.filter { page -> page.buttons.isNotEmpty() || page.id == "export" || page.id == "devices" || page.keys.any { it in keys } }
-            .map { page ->
+        return view.pages.map { page ->
                 Row(page.id, listOf(page.title, page.description).filter { it.isNotEmpty() }.joinToString(". "), {
                     ui.push(if (page.id == "devices") DevicesScreen() else PageScreen(page))
                 }, letter = pageLetter(page.id))
@@ -330,11 +331,12 @@ class DevicesScreen : ListScreen() {
             view.list?.devices?.forEachIndexed { index, device ->
                 add(Row(device.nodeId, lines.getOrNull(index)?.text ?: device.name, null, device.offered, ActingOn.Held(Side.DEVICES, device.nodeId)))
             }
-            add(Row("sync", titleOf("sync-now"), { ui.send(ShellEvent.Devices(DevicesEvent.SyncNow)) }, letter = buttonLetter("sync-now")))
+            add(Row("sync", titleOf("sync-now"), { ui.send(ShellEvent.Key("sync-now")) }, letter = buttonLetter("sync-now")))
             add(Row("wait", view.words.wait, { pair(null) }, letter = buttonLetter("pair")))
             add(Row("join", view.words.join, {
                 ui.push(FieldEditScreen(view.words.theirCode, "", view.words.intro) { code ->
-                    pair(code.replace(" ", ""))
+                    // As typed, spaces and all: the core reads the code.
+                    pair(code)
                 })
             }))
         }

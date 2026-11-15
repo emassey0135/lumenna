@@ -257,7 +257,7 @@ abstract class DialogScreen : ListScreen() {
             is Control.Line -> {
                 ui.braille.follow()
                 editorFor(control).focus()
-                if (control.hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { ui.reader.speakQueued(control.hint) }
+                if (control.hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { if (ui.top === this) ui.reader.speakQueued(control.hint) }
             }
             is Control.Choosing -> {
                 val at = control.options.indexOfFirst { it.id == control.value }

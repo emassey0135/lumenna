@@ -15,6 +15,7 @@ import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.ListShown
 import dev.emassey0135.lumenna.app.QuestionShown
 import dev.emassey0135.lumenna.app.ScreenChange
+import dev.emassey0135.lumenna.app.ScreenAction
 import dev.emassey0135.lumenna.app.ScreenView
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Shown
@@ -58,8 +59,8 @@ class Row(
     val expanded: Boolean? = null,
 )
 
-/** An entry of a screen's context menu that is the screen's own: New task, Undo. */
-class Command(val text: String, val run: () -> Unit)
+/** An entry of a context menu: a row's action or the screen's own, and the letter that runs it. */
+class Command(val text: String, val letter: String? = null, val run: () -> Unit)
 
 /**
  * One screen on the stack. The rows are read fresh on each [Ui.redraw] from the view the app last
@@ -110,6 +111,9 @@ abstract class Screen {
     /** A letter only this screen knows (Space with it); true if it took it. */
     open fun letter(letter: String): Boolean = false
 
+    /** Whether the core's screen actions are this screen's (a place, Home): their letters run here. */
+    open val showsScreenActions: Boolean get() = false
+
     /** Which of the app's lists this screen shows, if one: what a letter and a landing are. */
     open val lands: Lands get() = Lands.NONE
 
@@ -145,8 +149,8 @@ class Ui(
     val orbitWords = OrbitWords()
     private val editOutput = ReaderEditOutput(reader, braille, textView.context, orbitWords)
     private val finder = FirstLetters(this)
-    /** Whether the keys are the Player's phone keypad, as the last key said. */
-    var phoneKeypad = false
+    /** Whether the keys are the Player's phone keypad, as the last key said; at first, a device with no translator. */
+    var phoneKeypad = !braille.available
         private set
     private var saidScreen: Screen? = null
     private var introduced = false
@@ -188,6 +192,23 @@ class Ui(
 
     fun pop() {
         top?.let { remove(it) }
+    }
+
+    /**
+     * A menu closed to run what was chosen in it: the screen under it, said before the menu opened,
+     * is not said again, and what was chosen says what it did.
+     */
+    fun closeMenu(menu: Screen, run: () -> Unit) {
+        if (!stack.contains(menu)) return
+        while (top !== menu) stack.removeLast().leaving()
+        stack.removeLast().leaving()
+        val under = top
+        saidScreen = under
+        run()
+        if (top === under) {
+            follow()
+            redraw(Why.Turn)
+        }
     }
 
     /** A reminder's notification was tapped: where it leads. */
@@ -275,9 +296,54 @@ class Ui(
         return landed
     }
 
+    /** Whether Home was shown as of the last turn, and the place the app was on. */
+    private var wasHome = false
+    private var lastPlace: dev.emassey0135.lumenna.app.Place? = null
+
+    /**
+     * Where the app went: Home left for a place (Enter, a letter, What Should I Work On?) shows that
+     * place over Home, and the app moving from the place shown (a project renamed or deleted, today
+     * from anywhere) shows where it went in its stead.
+     */
+    private fun followPlace(v: ViewModel) {
+        val home = v.home != null
+        val place = v.place
+        val left = wasHome && !home
+        val moved = lastPlace != null && place != lastPlace
+        wasHome = home
+        lastPlace = place
+        if (home || !v.ready || place == null) return
+        val at = stack.indexOfLast { it is ShowsPlace || it is HomeScreen }
+        if (at < 0) return
+        val showing = stack[at]
+        when {
+            showing is HomeScreen && left -> insertAbove(at, screenFor(place))
+            showing is ShowsPlace && moved && showing.place != place -> {
+                showing.leaving()
+                val next = screenFor(place)
+                next.ui = this
+                stack[at] = next
+                next.resumed()
+                saidScreen = null
+            }
+        }
+    }
+
+    private fun screenFor(place: dev.emassey0135.lumenna.app.Place): Screen =
+        if (place is dev.emassey0135.lumenna.app.Place.Today) DayScreen()
+        else PlaceScreen(place, view.sidebar.firstOrNull { (it.kind as? dev.emassey0135.lumenna.app.SidebarKind.Place)?.field0 == place }?.title.orEmpty())
+
+    private fun insertAbove(at: Int, screen: Screen) {
+        screen.ui = this
+        stack.add(at + 1, screen)
+        screen.resumed()
+        saidScreen = null
+    }
+
     /** The screens the app has open: a question, the block form, a proposal, a reminder list. */
     private fun follow() {
         val v = view
+        followPlace(v)
         // What the app has put away goes first, from the top.
         while (true) {
             val screen = top ?: break
@@ -302,6 +368,9 @@ class Ui(
         // Only when none is open: a field being typed sits above the form. One just closed here is
         // still open in the view until the app has the close, and is not opened again meanwhile.
         if (v.line == null) lineClosed = false
+        if (v.settings == null) settingsClosed = false
+        // Settings the core opened (Home's Settings, its letter): shown here too.
+        if (v.settings != null && !settingsClosed && stack.none { it is SettingsScreen }) pushApp(SettingsScreen())
         if (v.line != null && !lineClosed && stack.none { it is QuickAddScreen }) pushApp(QuickAddScreen())
         if (v.blockForm != null && stack.none { it is BlockFormScreen }) pushApp(BlockFormScreen())
         if (v.proposal != null && stack.none { it is ProposalScreen }) pushApp(ProposalScreen())
@@ -310,6 +379,9 @@ class Ui(
 
     /** Quick add was left here, and the app has not yet said its line is closed. */
     var lineClosed = false
+
+    /** Settings were left here, and the app has not yet said they are closed. */
+    var settingsClosed = false
 
     private var formAskedFor = 0u
 
@@ -420,7 +492,8 @@ class Ui(
             val on = row.on
             row.offered.filter { it.kind != dev.emassey0135.lumenna.app.ActionKind.EXPAND && it.kind != dev.emassey0135.lumenna.app.ActionKind.COLLAPSE }
                 .forEach { action ->
-                    if (on != null) commands += Command(withLetter(action.name, actionLetter(action.kind))) { send(ShellEvent.ActOn(on, action)) }
+                    val letter = actionLetter(action.kind)
+                    if (on != null) commands += Command(withLetter(action.name, letter), letter) { send(ShellEvent.ActOn(on, action)) }
                 }
         }
         commands += screen.commands()
@@ -445,12 +518,19 @@ class Ui(
     }
 
     private fun runLetter(letter: String, screen: Screen, rows: List<Row>) {
-        // This app's own lists first (the main menu's places, the settings pages), then the screen's.
+        // This app's own lists first (a menu's commands, the settings pages), then the screen's.
         rows.firstOrNull { it.letter == letter }?.let { row ->
             row.open?.invoke()
             return
         }
         if (screen.letter(letter)) return
+        // The screen's own actions that are this app's to run (the filter, Key Help, About).
+        if (screen.showsScreenActions) {
+            view.screenActions.firstOrNull { it.shell && it.enabled && it.letter == letter }?.let {
+                runScreenAction(it)
+                return
+            }
+        }
         if (screen.lands == Lands.NONE) {
             refuse()
             say(nothingOnLetter(letter))
@@ -460,6 +540,27 @@ class Ui(
         // answers there. D is the delete key, which no letter of the core's table is.
         rows.getOrNull(screen.index)?.let(screen::moved)
         send(if (letter == "d") ShellEvent.Key("delete") else ShellEvent.Letter(letter))
+    }
+
+    /** The screen's own actions, the core's (`ViewModel.screen_actions`), as a menu's commands. */
+    fun screenActionCommands(): List<Command> = view.screenActions.filter { it.enabled }.map { action ->
+        val letter = action.letter.ifEmpty { null }
+        Command(withLetter(action.title, letter), letter) { runScreenAction(action) }
+    }
+
+    /** A screen action: the core's `Key(id)`, but one that is this app's own to run. */
+    fun runScreenAction(action: ScreenAction) {
+        if (!action.shell) {
+            send(ShellEvent.Key(action.id))
+            return
+        }
+        when (action.id) {
+            "filter" -> view.place?.let { push(FilterScreen(it)) } ?: refuse()
+            "keyboard-help" -> push(KeyHelpScreen())
+            "reminders-due" -> push(DueScreen())
+            "about" -> appWords.metadata.let { say("${it.name} ${it.version}. ${it.description}") }
+            else -> refuse()
+        }
     }
 
     // ---- describing ----------------------------------------------------------------------
@@ -486,7 +587,8 @@ class Ui(
         if (BuildConfigDebug.on) android.util.Log.i("LumennaOrbit", "redraw $why ${screen.javaClass.simpleName} ${rows.map { it.text }}")
         val before = screen.index
         // The row in hand is the app's where it has one; else the same row by key, else the place.
-        val held = screen.inHand()
+        // The person's own move wins until the app has it: its row in hand is the one before.
+        val held = if (why == Why.Moved) null else screen.inHand()
         val heldIndex = held?.let { key -> rows.indexOfFirst { it.key == key }.takeIf { it >= 0 } }
         if (heldIndex != null) {
             screen.index = heldIndex
@@ -505,6 +607,8 @@ class Ui(
         // The row in hand reworded by what the person just did (a toggle, a field saved).
         val reworded = why == Why.Turn && !newlyShown && expectingChange && item != lastItem
         if (why == Why.Turn) expectingChange = false
+        // The app landing on the row just said (Home's row in hand as it comes back) says nothing more.
+        val landedAgain = why == Why.Landed && !newlyShown && item == lastItem && before == screen.index
         saidScreen = screen
         lastItem = item
         if (screen is DialogScreen && screen.inPlace) {
@@ -513,7 +617,7 @@ class Ui(
             return
         }
         val shown = Drawn(screen.title, rows.size, screen.index, item, screen.openedAs(), screen.empty)
-        describe(newlyShown, why, before != screen.index || reworded, shown).forEach(reader::perform)
+        describe(newlyShown, if (landedAgain) Why.Turn else why, before != screen.index || reworded, shown).forEach(reader::perform)
     }
 
     // ---- what a key opens ---------------------------------------------------------------

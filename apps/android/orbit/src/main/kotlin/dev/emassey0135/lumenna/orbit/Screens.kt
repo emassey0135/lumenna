@@ -4,10 +4,8 @@ import dev.emassey0135.lumenna.TextOffsets
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.actionLetter
-import dev.emassey0135.lumenna.app.brailleMainMenu
 import dev.emassey0135.lumenna.app.commandLetter
 import dev.emassey0135.lumenna.app.dueLetter
-import dev.emassey0135.lumenna.app.placeCommands
 import dev.emassey0135.lumenna.app.SpeakLetter
 import dev.emassey0135.lumenna.app.speakLetter
 import dev.emassey0135.lumenna.app.speakPress
@@ -24,9 +22,6 @@ import dev.emassey0135.lumenna.app.ProposalEvent
 import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Side
-import dev.emassey0135.lumenna.app.SidebarEntry
-import dev.emassey0135.lumenna.app.SidebarGroup
-import dev.emassey0135.lumenna.app.SidebarKind
 import dev.emassey0135.lumenna.app.Syntax
 import dev.emassey0135.lumenna.app.Typing
 import dev.emassey0135.lumenna.app.ViewModel
@@ -42,53 +37,69 @@ import dev.emassey0135.orbit.Key
 fun rowText(text: String, expanded: Boolean?, level: String?): String =
     listOfNotNull(text.ifEmpty { null }, expanded?.let(::foldState), level).joinToString(", ")
 
-/** The root: the core's main menu (the places, adding, undo, reminders, syncing, settings), then what to work on and the keys. */
+/**
+ * Home, the core's (`ViewModel.home`): the places as the sidebar has them, folded as it is, each
+ * with its letter, then what can be done from anywhere. Its row in hand is the sidebar's; Enter
+ * opens a place or folds a heading, and the app follows where the core goes ([Ui.follow]).
+ */
 class HomeScreen : Screen() {
-    override val title: String get() = appWords.metadata.name
+    override val title: String get() = ui.view.home?.title?.ifEmpty { null } ?: appWords.metadata.name
+
+    override val lands: Lands get() = Lands.SIDE
+
+    override val showsScreenActions: Boolean get() = true
+
+    override fun loaded(view: ViewModel): Boolean = view.home != null
+
+    // Coming back from a place: Home again. Already shown, it is left as it is. Each time it is
+    // shown it looks back for reminders due, which Android's alarms show but the app's list does
+    // not hold until something looks, so Home offers them while any are due.
+    override fun resumed() {
+        if (ui.view.home == null) ui.send(ShellEvent.Home)
+        ui.send(ShellEvent.Due(DueEvent.LookBack))
+    }
+
+    /** The sidebar's row in hand, unless the person stands on one of Home's actions. */
+    override fun inHand(): String? = if (selectedKey?.startsWith(ACTION) == true) null else ui.view.sidebarHeld.focus
+
+    override fun moved(row: Row) {
+        if (row.on != null) ui.send(ShellEvent.Hold(Side.SIDEBAR, row.key))
+    }
 
     override fun rows(): List<Row> {
-        val sidebar = ui.view.sidebar
-        fun place(wanted: Place) = sidebar.firstOrNull { (it.kind as? SidebarKind.Place)?.field0 == wanted }
-        fun group(wanted: SidebarGroup) = sidebar.firstOrNull { (it.kind as? SidebarKind.Group)?.field0 == wanted }
-        val rows = brailleMainMenu(true).mapNotNull { command ->
-            val entry = when (command.id) {
-                "go-today" -> place(Place.Today)
-                "go-tasks" -> place(Place.Tasks)
-                "go-blocks" -> place(Place.Blocks)
-                "go-history" -> place(Place.History)
-                "go-trash" -> place(Place.Trash)
-                "projects" -> group(SidebarGroup.PROJECTS)
-                "labels" -> group(SidebarGroup.LABELS)
-                "filters" -> group(SidebarGroup.FILTERS)
-                else -> null
-            }
-            val open: (() -> Unit)? = when (command.id) {
-                "go-today" -> ({ ui.push(DayScreen()) })
-                "go-tasks", "go-blocks", "go-history", "go-trash" -> entry?.let { found ->
-                    { ui.push(PlaceScreen((found.kind as SidebarKind.Place).field0, found.title)) }
-                }
-                "projects" -> ({ ui.push(GroupScreen(SidebarGroup.PROJECTS)) })
-                "labels" -> ({ ui.push(GroupScreen(SidebarGroup.LABELS)) })
-                "filters" -> ({ ui.push(GroupScreen(SidebarGroup.FILTERS)) })
-                "new-task" -> ({ ui.push(QuickAddScreen()) })
-                "undo" -> ({ ui.send(ShellEvent.Undo) })
-                "redo" -> ({ ui.send(ShellEvent.Redo) })
-                "reminders-due" -> ({ ui.push(DueScreen()) })
-                "sync-now" -> ({ ui.send(ShellEvent.Key("sync-now")) })
-                "settings" -> ({ ui.push(SettingsScreen()) })
-                else -> null
-            }
-            open?.let { Row(command.id, entry?.text ?: command.title, it, letter = command.letter) }
+        val home = ui.view.home ?: return emptyList()
+        val shown = home.places.filter { !it.entry.hidden }
+        val levels = levelsOf(shown.map { it.entry.depth })
+        val places = shown.mapIndexed { index, place ->
+            val entry = place.entry
+            Row(
+                entry.key,
+                rowText(ui.withLetter(entry.text, place.letter.ifEmpty { null }), entry.expanded, levels.getOrNull(index)),
+                open = {
+                    ui.send(ShellEvent.Hold(Side.SIDEBAR, entry.key))
+                    ui.send(ShellEvent.Key("open"))
+                },
+                offered = entry.offered,
+                on = ActingOn.Held(Side.SIDEBAR, entry.key),
+                expanded = entry.expanded,
+            )
         }
-        return rows + listOf(
-            Row("what-now", titleOf("what-now"), { ui.send(ShellEvent.Key("what-now")) }),
-            Row("keys", appWords.braille.keyHelp, { ui.push(KeyHelpScreen()) }),
-        )
+        val actions = home.actions.filter { it.enabled }.map { action ->
+            Row(ACTION + action.id, ui.withLetter(action.title, action.letter.ifEmpty { null }), { ui.runScreenAction(action) })
+        }
+        return places + actions
+    }
+
+    override fun commands(): List<Command> = ui.screenActionCommands()
+
+    private companion object {
+        /** Home's own actions' keys, apart from the sidebar's. */
+        const val ACTION = "action:"
     }
 }
 
 /** One of the app's places as a list of tasks or block series: Select shows or opens a row. */
-class PlaceScreen(private val place: Place, private val name: String) : ListScreen() {
+class PlaceScreen(override val place: Place, private val name: String) : ListScreen(), ShowsPlace {
     override fun loaded(view: ViewModel): Boolean = view.place == place && view.list != null
 
     override val title: String get() = heading(ui.listShown, name)
@@ -118,11 +129,7 @@ class PlaceScreen(private val place: Place, private val name: String) : ListScre
                 rowText(line?.text ?: item.row.title, item.row.expanded, item.level),
                 open = {
                     ui.send(ShellEvent.Focus(key))
-                    when (place) {
-                        Place.Trash -> ui.send(ShellEvent.Key("restore-task"))
-                        Place.Blocks -> ui.send(ShellEvent.Key("open"))
-                        else -> ui.push(DetailsScreen(key))
-                    }
+                    ui.send(ShellEvent.Key("open"))
                 },
                 offered = list.offeredOf(item),
                 on = ActingOn.Row(key),
@@ -131,12 +138,9 @@ class PlaceScreen(private val place: Place, private val name: String) : ListScre
         }
     }
 
-    override fun commands(): List<Command> = placeCommands(place, true).map { command ->
-        Command(ui.withLetter(command.title, command.letter)) {
-            // The filter is this app's field: the core's letter has no dots here.
-            if (command.id == "filter") ui.push(FilterScreen(place)) else ui.send(ShellEvent.Letter(command.letter))
-        }
-    }
+    override val showsScreenActions: Boolean get() = true
+
+    override fun commands(): List<Command> = ui.screenActionCommands()
 }
 
 /** Typing a filter over the list, which the app narrows as typed. */
@@ -156,7 +160,9 @@ class FilterScreen(private val place: Place) : EditScreen() {
 }
 
 /** The day: blocks, sittings under them, free time, now; the day's own actions in its menu. */
-class DayScreen : ListScreen() {
+class DayScreen : ListScreen(), ShowsPlace {
+    override val place: Place get() = Place.Today
+
     override fun loaded(view: ViewModel): Boolean = view.place is Place.Today && view.day != null
 
     override val title: String get() = heading(ui.listShown, titleOf("go-today"))
@@ -194,22 +200,27 @@ class DayScreen : ListScreen() {
         }
     }
 
+    override val showsScreenActions: Boolean get() = true
+
     override fun commands(): List<Command> = buildList {
         ui.view.day?.offered?.forEach { action ->
-            add(Command(ui.withLetter(action.name, actionLetter(action.kind))) {
-                ui.send(ShellEvent.ActOn(ActingOn.Day, action))
-            })
+            val letter = actionLetter(action.kind)
+            add(Command(ui.withLetter(action.name, letter), letter) { ui.send(ShellEvent.ActOn(ActingOn.Day, action)) })
         }
-        placeCommands(Place.Today, true).forEach { command ->
-            add(Command(ui.withLetter(command.title, command.letter)) { ui.send(ShellEvent.Letter(command.letter)) })
-        }
+        addAll(ui.screenActionCommands())
     }
 }
 
-fun undoCommands(ui: Ui): List<Command> = listOf(
-    Command(ui.withLetter(titleOf("undo"), commandLetter("undo"))) { ui.send(ShellEvent.Undo) },
-    Command(ui.withLetter(titleOf("redo"), commandLetter("redo"))) { ui.send(ShellEvent.Redo) },
-)
+/** A screen showing one of the app's places, which the app's own moves between places replace. */
+interface ShowsPlace {
+    val place: Place
+}
+
+/** Undo and Redo on a list beside the place (a task's reminders), by the core's commands. */
+fun undoCommands(ui: Ui): List<Command> = listOf("undo", "redo").map { id ->
+    val letter = commandLetter(id)
+    Command(ui.withLetter(titleOf(id), letter), letter) { ui.send(ShellEvent.Key(id)) }
+}
 
 /** The heading of the list the core says is showing: its name, then what it says of itself. */
 fun heading(list: ListShown?, name: String): String {
@@ -222,98 +233,15 @@ fun heading(list: ListShown?, name: String): String {
     }
 }
 
-/** A group's places (Projects, Labels, Filters) from the sidebar, held in its hand. */
-class GroupScreen(private val group: SidebarGroup) : ListScreen() {
-    override val lands: Lands get() = Lands.SIDE
-
-    private val entries: List<SidebarEntry>
-        get() {
-            val under = mutableListOf<SidebarEntry>()
-            var inside = false
-            for (entry in ui.view.sidebar) {
-                if (entry.depth == 0u) {
-                    inside = (entry.kind as? SidebarKind.Group)?.field0 == group
-                    continue
-                }
-                if (inside && !entry.hidden) under += entry
-            }
-            return under
-        }
-
-    override val title: String
-        get() = ui.view.sidebar.firstOrNull { (it.kind as? SidebarKind.Group)?.field0 == group }?.title.orEmpty()
-
-    override fun inHand(): String? = ui.view.sidebarHeld.focus
-
-    override fun moved(row: Row) = ui.send(ShellEvent.Hold(Side.SIDEBAR, row.key))
-
-    override fun rows(): List<Row> {
-        val shown = entries
-        val levels = levelsOf(shown.map { it.depth - 1u })
-        return shown.mapIndexed { index, entry ->
-            val place = (entry.kind as? SidebarKind.Place)?.field0
-            Row(
-                entry.key,
-                rowText(entry.text, entry.expanded, levels.getOrNull(index)),
-                open = { place?.let { ui.push(PlaceScreen(it, entry.title)) } },
-                offered = entry.offered,
-                on = ActingOn.Held(Side.SIDEBAR, entry.key),
-                expanded = entry.expanded,
-            )
-        }
-    }
-
-    private fun headingEntry() = ui.view.sidebar.firstOrNull { (it.kind as? SidebarKind.Group)?.field0 == group }
-
-    private fun addNew() {
-        val heading = headingEntry() ?: return
-        val action = heading.offered.firstOrNull { it.kind == ActionKind.NEW } ?: return
-        ui.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, heading.key), action))
-    }
-
-    /** A task in the row's own place: its tasks opened, then quick add starting as they do. */
-    private fun addTaskIn() {
-        val entry = entries.getOrNull(index) ?: return
-        val place = (entry.kind as? SidebarKind.Place)?.field0 ?: return
-        ui.push(PlaceScreen(place, entry.title))
-        ui.push(QuickAddScreen())
-    }
-
-    private val addTaskWords: String
-        get() = if (group == SidebarGroup.LABELS) appWords.addTaskWearingIt else appWords.addTaskToIt
-
-    override fun letter(letter: String): Boolean = when (letter) {
-        actionLetter(ActionKind.NEW) -> {
-            addNew()
-            true
-        }
-        commandLetter("add-task-in") -> {
-            addTaskIn()
-            true
-        }
-        else -> false
-    }
-
-    override fun commands(): List<Command> = buildList {
-        add(Command(ui.withLetter(addTaskWords, commandLetter("add-task-in"))) { addTaskIn() })
-        headingEntry()?.offered?.firstOrNull { it.kind == ActionKind.NEW }?.let { action ->
-            add(Command(ui.withLetter(action.name, actionLetter(action.kind))) { addNew() })
-        }
-        addAll(undoCommands(ui))
-    }
-}
-
 /** A row's actions, then the screen's. */
 class ContextMenuScreen(private val name: String, private val commands: List<Command>) : Screen() {
     override val title: String get() = name
 
     override fun openedAs(): Opened = Opened.ContextMenu
 
+    // Each command's letter runs it here too, as it does from the screen under the menu.
     override fun rows(): List<Row> = commands.mapIndexed { index, command ->
-        Row(index.toString(), command.text, {
-            ui.pop()
-            command.run()
-        })
+        Row(index.toString(), command.text, { ui.closeMenu(this, command.run) }, letter = command.letter)
     }
 
     override fun leaving() {
@@ -334,11 +262,6 @@ open class QuestionScreen(private val asking: Asking) : DialogScreen(), AskingSc
         get() = shown?.prompt?.ifEmpty { null } ?: asking.action?.name.orEmpty()
 
     override fun stands(view: ViewModel): Boolean = view.asking?.number == number
-
-    override fun resumed() {
-        // Asked once, answered at once: read in `rows`, it would answer on every redraw.
-        if (asking.question is Question.Immediate) ui.send(ShellEvent.Answer(Answer.Yes))
-    }
 
     override fun leaving() {
         if (ui.view.asking?.number == number) ui.send(ShellEvent.Cancel)
@@ -481,14 +404,22 @@ abstract class EditScreen : DialogScreen() {
         ui.braille.follow()
         editor.focus()
         // After the field's name: what Orbit is told goes through its event queue, speech does not.
-        if (hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { ui.reader.speakQueued(hint) }
+        if (hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { if (ui.top === this) ui.reader.speakQueued(hint) }
     }
 
     override fun key(key: Key): Boolean {
         if (ui.top === this && !loaded(ui.view)) return true
         if (inPlace) return super.key(key)
+        // The Player's Menu is the line's menu (its Confirm and Cancel); every other key is the line's.
+        if (key == Key.Menu) return false
         editor.key(key)
         return true
+    }
+
+    /** On the Player, where Tab does not reach them, the line's Confirm and Cancel are its menu. */
+    override fun commands(): List<Command> = if (inPlace) emptyList() else buildList {
+        confirmWord?.let { word -> add(Command(word) { editorFor(line()).finish() }) }
+        add(Command(cancelWord) { cancelled() })
     }
 
     /** What could go at the caret in the field's own syntax. */
@@ -591,9 +522,8 @@ class RemindersScreen : ListScreen() {
 
     override fun commands(): List<Command> = buildList {
         ui.view.reminders?.offered?.firstOrNull { it.kind == ActionKind.NEW }?.let { action ->
-            add(Command(ui.withLetter(action.name, actionLetter(action.kind))) {
-                ui.send(ShellEvent.ActOn(ActingOn.Reminders, action))
-            })
+            val letter = actionLetter(action.kind)
+            add(Command(ui.withLetter(action.name, letter), letter) { ui.send(ShellEvent.ActOn(ActingOn.Reminders, action)) })
         }
         addAll(undoCommands(ui))
     }
@@ -605,11 +535,7 @@ class DueScreen : ListScreen() {
 
     override val title: String get() = appWords.remindersDue
 
-    override fun resumed() {
-        val now = java.time.Instant.now()
-        val from = now.minus(java.time.Duration.ofHours(24))
-        ui.send(ShellEvent.Due(DueEvent.Look(from.toString(), now.toString())))
-    }
+    override fun resumed() = ui.send(ShellEvent.Due(DueEvent.LookBack))
 
     override val empty: String get() = appWords.nothingDue
 
@@ -623,25 +549,20 @@ class DueScreen : ListScreen() {
         })
     }
 
-    /** D dismisses: the delete keys', as on BTSpeak. */
+    /** A button's letter presses it on the reminder in hand, as in its menu. */
     override fun letter(letter: String): Boolean {
-        if (letter != "d") return false
         val row = rows().getOrNull(index) ?: return false
-        ui.send(ShellEvent.Due(DueEvent.Dismiss(row.key)))
+        val command = buttonCommands(row.key).firstOrNull { it.letter == letter } ?: return false
+        command.run()
         return true
     }
 
+    /** Each button handed back by its id: the core says what it does. */
     private fun buttonCommands(id: String): List<Command> {
         val due = ui.view.due.firstOrNull { it.id == id } ?: return emptyList()
         return due.buttons.map { button ->
-            Command(ui.withLetter(button.title, dueLetter(button.id))) {
-                when (button.id) {
-                    "carry" -> ui.send(ShellEvent.Due(DueEvent.Carry(id)))
-                    "replan" -> ui.send(ShellEvent.Due(DueEvent.Replan(id)))
-                    "dismiss" -> ui.send(ShellEvent.Due(DueEvent.Dismiss(id)))
-                    "snooze" -> ui.send(ShellEvent.Due(DueEvent.Snooze(id)))
-                }
-            }
+            val letter = dueLetter(button.id)
+            Command(ui.withLetter(button.title, letter), letter) { ui.send(ShellEvent.Due(DueEvent.Press(id, button.id))) }
         }
     }
 
@@ -674,8 +595,12 @@ class KeyHelpScreen : Screen() {
         addAll(letters(SpeakLetter.SPACE))
         add(appWords.orbit.withDot8)
         addAll(letters(SpeakLetter.ENTER))
-        add(words.mainMenu)
-        brailleMainMenu(true).forEach { add("${speakPress(it.letter) ?: it.letter}, ${it.title}") }
+        // Home's places and actions, under its name.
+        ui.view.home?.let { home ->
+            add(home.title)
+            home.places.filter { it.letter.isNotEmpty() }.forEach { add("${speakPress(it.letter) ?: it.letter}, ${it.entry.title}") }
+            home.actions.filter { it.letter.isNotEmpty() }.forEach { add("${speakPress(it.letter) ?: it.letter}, ${it.title}") }
+        }
         add(words.letterAlone)
         add(words.findsARow)
     }
