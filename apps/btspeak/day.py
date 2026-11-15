@@ -9,13 +9,11 @@ now are the app's.
 
 from __future__ import annotations
 
-from BTSpeak import dialogs
-
 import actions
 from actions import L
 import core
 from rows import Row, items
-from session import Command, Session, command_title, empty_then, heading, live_menu, screen
+from session import Command, Session, empty_then, heading, live_menu, screen
 import proposals  # noqa: F401 - Replan from now's and Plan the day's screen
 import tasks
 
@@ -75,14 +73,14 @@ def day_plan(session: Session) -> str:
 
     Enter does a row's main thing, the shared table's Open — edits a block or a sitting's task,
     adds a block in free time, puts a cancelled day back. The rest is on the row's context menu (M-Chord with
-    Dot 7); the day's own actions, moving between days and adding a block are on the main
-    menu (M-Chord), and on their keys.
+    Dot 7); the day's own actions, then what Today offers of its own (the core's: a new block,
+    moving between days, undo and redo) are on the main menu (M-Chord), and on their keys.
     """
 
-    def move(step) -> str:
-        said = session.send(L.ShellEventDay(step))
-        # Go to Day asks which; the app's question.
-        return actions.joined(said, actions.follow(session))
+    def commands():
+        own = day_commands(session)
+        # The day's What should I work on? is the screen's too: offered once, as the day's.
+        return [*own, *tasks.place_commands(session, skip={command.key for command in own})]
 
     def build():
         session.show(L.PlaceToday())
@@ -96,15 +94,7 @@ def day_plan(session: Session) -> str:
             # free time, puts a cancelled day back.
             main=lambda row: actions.press(session, "open", row),
             context=lambda rows: actions.commands(session, rows),
-            app=lambda: [
-                *day_commands(session),
-                Command(command_title("new-block"), lambda _: add_block(session), key=L.command_letter("new-block"), through=True),
-                Command(command_title("previous-day"), lambda _: move(L.DayMove.PREVIOUS), key=L.command_letter("previous-day"), through=True),
-                Command(command_title("next-day"), lambda _: move(L.DayMove.NEXT), key=L.command_letter("next-day"), through=True),
-                Command(command_title("go-to-day"), lambda _: move(L.DayMove.ASK), key=L.command_letter("go-to-day"), through=True),
-                Command(command_title("go-to-now"), lambda _: move(L.DayMove.NOW), key=L.command_letter("go-to-now"), through=True),
-                *tasks.undo_commands(session),
-            ],
+            app=commands,
             empty=core.words().nothing_planned,
             app_title=L.menu_of(L.place_title(L.PlaceToday())),
             focus=lambda: session.view().focus,
@@ -124,20 +114,14 @@ def day_commands(session: Session) -> list[Command]:
     ]
 
 
-def add_block(session: Session) -> str:
-    """One block, once or repeating, in the app's block form: it starts when the core says for
-    its day — today the next whole hour, another day when the day starts."""
-    session.send(L.ShellEventBlock(L.BlockEventNew(None, None)))
-    return actions.follow(session)
-
-
 # ---------------------------------------------------------------------------------------
 # Blocks
 # ---------------------------------------------------------------------------------------
 
 
 def blocks(session: Session) -> str:
-    """Every block series: Enter edits one, the delete keys delete it, a adds one."""
+    """Every block series: Enter edits one, the delete keys delete it; the main menu is what the
+    Blocks list offers of its own, the core's (New block, undo and redo)."""
     state = {"heading": L.place_title(L.PlaceBlocks())}
 
     def build():
@@ -151,7 +135,7 @@ def blocks(session: Session) -> str:
             session, build, lambda: state["heading"],
             main=lambda row: actions.press(session, "open", row),
             context=lambda rows: actions.commands(session, rows),
-            app=[Command(command_title("new-block"), lambda _: add_block(session), key=L.command_letter("new-block")), *tasks.undo_commands(session)],
+            app=lambda: tasks.place_commands(session),
             empty=empty_then(lambda: tasks.readback(session), L.press_to_add(L.command_letter("new-block"))),
             app_title=L.menu_of(L.place_title(L.PlaceBlocks())),
             focus=lambda: session.view().focus,
@@ -160,51 +144,15 @@ def blocks(session: Session) -> str:
 
 
 # ---------------------------------------------------------------------------------------
-# The block form: the app's (`ViewModel::block_form`), filled in with the device's form.
+# The block form: the app's (`ViewModel::block_form`), described as a dialog
+# (`ScreenView::dialog`) and filled in with the device's form.
 # ---------------------------------------------------------------------------------------
-
-
-def value_of(form, key: str):
-    """What the form shows in field `key`: the day it is for, or one of its values."""
-    return form.date if key == "date" else getattr(form.values, key, "")
 
 
 def block_form(session: Session) -> str:
     """The block form the app has open — a new block, a block changed for one day or every
-    day, a block in free time — asked with the device's form. Each field changed is sent as
-    typed, then saved; the app sends only what changed, brings a kind's own settings with it,
-    and moves a start left as offered to the day typed. A refused form is asked again with the
-    app's sentence. What was said."""
-    while True:
-        form = session.view().block_form
-        if form is None:
-            return ""
-        if form.refusal:
-            dialogs.show_message(form.refusal)
-        fields = []
-        for field in form.fields:
-            value = value_of(form, field.key)
-            if field.kind == L.FieldKind.TOGGLE:
-                fields.append(dialogs.InputField(
-                    key=field.key, prompt=field.label, field_type="choice", choices={choice.id: choice.title for choice in core.words().yes_no},
-                    default_text="yes" if value else "no",
-                ))
-            else:
-                fields.append(tasks.form_field(field, str(value)))
-        answers = dialogs.request_form(fields)
-        if answers is None:
-            return session.send(L.ShellEventBlock(L.BlockEventCancel()))
-        for field in form.fields:
-            typed = answers.get(field.key)
-            before = value_of(form, field.key)
-            if field.kind == L.FieldKind.TOGGLE:
-                # Sent as the app takes a toggle.
-                typed = None if typed is None else "true" if typed == "yes" else "false"
-                shown = "true" if before else "false"
-            else:
-                shown = str(before)
-            if typed is not None and typed != shown:
-                session.send(L.ShellEventBlock(L.BlockEventField(field.key, str(typed))))
-        said = session.send(L.ShellEventBlock(L.BlockEventSave()))
-        if session.view().block_form is None:
-            return said
+    day, a block in free time — asked with the device's form (`forms.form`), again while saving
+    is refused, the app's sentence first. What was said."""
+    import forms
+
+    return forms.form_until_closed(session, "block")

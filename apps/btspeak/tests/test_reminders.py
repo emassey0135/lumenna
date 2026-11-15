@@ -68,7 +68,6 @@ class Reminders(unittest.TestCase):
         self.session = self.store.session
         self.ran = []
         service.RUN = self.ran.append
-        reminder_lists.NOW = None
         btspeak_stub.given.clear()
         self.client.call("block.add", title="Deep work", at="9:00", minutes=60, date="2030-01-15")
         self.givers = []
@@ -77,7 +76,6 @@ class Reminders(unittest.TestCase):
         for giver in self.givers:
             giver.let_go()
         service.RUN = service._run
-        reminder_lists.NOW = None
         self.store.close()
 
     def giver(self, at: dict):
@@ -86,6 +84,14 @@ class Reminders(unittest.TestCase):
         giver = reminders.Giver(open_store=lambda: L.Device(str(self.profile)), now=lambda: at["now"])
         self.givers.append(giver)
         return giver
+
+    def block_at(self, title: str, minutes_from_now: int, minutes: int = 60) -> str:
+        """A block starting `minutes_from_now` from now, by the real clock: a list of reminders due
+        looks back over the last day by the app's own clock, which a test cannot fix. Its date."""
+        when = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=minutes_from_now)
+        date = when.strftime("%Y-%m-%d")
+        self.client.call("block.add", title=title, at=when.strftime("%H:%M"), minutes=minutes, date=date)
+        return date
 
     def run_script(self, steps, start):
         script = play(steps)
@@ -167,7 +173,7 @@ class Reminders(unittest.TestCase):
     # -- what came due --------------------------------------------------------------------
 
     def test_what_came_due_is_listed_and_dismissed_on_every_device(self):
-        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 9, 0, tzinfo=datetime.timezone.utc)
+        self.block_at("Deep work", 3)
         script = self.run_script(
             [("menu", "Deep work starts", "delete"), ("back",)],
             lambda: reminder_lists.due(self.session),
@@ -178,7 +184,7 @@ class Reminders(unittest.TestCase):
         self.assertEqual(script.menus[-1]["empty"], "Nothing has come due.")
 
     def test_what_came_due_is_snoozed_by_its_letter(self):
-        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 9, 0, tzinfo=datetime.timezone.utc)
+        self.block_at("Deep work", 3)
         script = self.run_script(
             [("key", "Deep work starts", "z"), ("back",)],
             lambda: reminder_lists.due(self.session),
@@ -187,25 +193,27 @@ class Reminders(unittest.TestCase):
 
     def test_a_blocks_end_that_left_work_short_is_carried_forward_from_what_came_due(self):
         self.client.call("config.set", key="default-block-reminders", value="")
-        self.client.call("block.add", title="Admin", at="9:00", minutes=60, date="2030-01-16")
+        # Ended a minute ago.
+        date = self.block_at("Deep work", -61)
+        after = (datetime.date.fromisoformat(date) + datetime.timedelta(days=1)).isoformat()
+        self.client.call("block.add", title="Admin", at="9:00", minutes=60, date=after)
         self.client.call("task.add", text="Essay")
-        block = self.client.call("plan", date="2030-01-15")["blocks"][0]["id"]
+        block = self.client.call("plan", date=date)["blocks"][0]["id"]
         task = self.client.call("task.list")["rows"][0]["id"]
-        self.client.call("assign", task=task, block=block, date="2030-01-15", minutes=90)
-        sitting = self.client.call("plan", date="2030-01-15")["blocks"][0]["assignments"][0]["id"]
+        self.client.call("assign", task=task, block=block, date=date, minutes=90)
+        sitting = self.client.call("plan", date=date)["blocks"][0]["assignments"][0]["id"]
         self.client.call("stop", assignment=sitting, minutes=40)
-        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 10, 1, tzinfo=datetime.timezone.utc)
         ending = "Deep work is ending. Essay: 40 minutes of 1 hour 30 minutes. Carry the remaining 50 minutes to Admin tomorrow?"
         script = self.run_script(
             [("context", ending, "Carry forward"), ("back",)],
             lambda: reminder_lists.due(self.session),
         )
         self.assertIn("Carried forward Essay to Admin", script.said)
-        admin = self.client.call("plan", date="2030-01-16")["blocks"][0]
+        admin = self.client.call("plan", date=after)["blocks"][0]
         self.assertEqual(admin["assignments"][0]["planned_mins"], 50)
 
     def test_carrying_forward_where_a_reminder_does_not_offer_it_says_why(self):
-        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 9, 0, tzinfo=datetime.timezone.utc)
+        self.block_at("Deep work", 3)
         script = self.run_script(
             [("key", "Deep work starts", "f"), ("back",)],
             lambda: reminder_lists.due(self.session),
@@ -215,13 +223,15 @@ class Reminders(unittest.TestCase):
     def test_a_blocks_work_outrunning_it_opens_replan_from_what_came_due(self):
         import proposals
         self.client.call("config.set", key="default-block-reminders", value="")
-        self.client.call("block.add", title="Meeting", at="10:00", minutes=60, date="2030-01-15")
-        block = self.client.call("plan", date="2030-01-15")["blocks"][0]["id"]
+        # Started a minute ago, a meeting after it.
+        date = self.block_at("Deep work", -1)
+        self.block_at("Meeting", 59)
+        block = self.client.call("plan", date=date)["blocks"][0]["id"]
         for title, minutes in [("Essay", 40), ("Email", 30)]:
             task = self.client.call("task.add", text=title)["task"]["id"]
-            self.client.call("assign", task=task, block=block, date="2030-01-15", minutes=minutes)
-        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 9, 1, tzinfo=datetime.timezone.utc)
-        proposals.NOW = lambda: "2030-01-15T09:01"
+            self.client.call("assign", task=task, block=block, date=date, minutes=minutes)
+        moment = datetime.datetime.now(datetime.timezone.utc)
+        proposals.NOW = lambda: moment.strftime("%Y-%m-%dT%H:%M")
         self.addCleanup(setattr, proposals, "NOW", None)
         overrun = "Deep work has 1 hour left and 1 hour 10 minutes of work planned, more than it holds"
         script = self.run_script(
@@ -234,7 +244,7 @@ class Reminders(unittest.TestCase):
         self.assertNotIn("Nothing needs to change", replans[0])
 
     def test_replan_where_a_reminder_does_not_offer_it_says_why(self):
-        reminder_lists.NOW = lambda: datetime.datetime(2030, 1, 15, 9, 0, tzinfo=datetime.timezone.utc)
+        self.block_at("Deep work", 3)
         script = self.run_script(
             [("key", "Deep work starts", "p"), ("back",)],
             lambda: reminder_lists.due(self.session),

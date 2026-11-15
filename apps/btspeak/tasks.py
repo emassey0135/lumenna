@@ -13,7 +13,7 @@ from BTSpeak import dialogs
 
 import actions
 import options
-from actions import K, L
+from actions import L
 import core
 from core import refused
 from rows import Row, items
@@ -26,11 +26,35 @@ from session import Command, Session, choose, command_title, empty_then, heading
 
 
 def undo_commands(session: Session) -> list[Command]:
-    """Undo and redo, on every screen's main menu, with the same keys everywhere."""
+    """Undo and redo, on the main menu of a screen that is no place (a reminder list, a settings
+    page), as the app runs them, with the letters the places give them."""
     return [
-        Command(command_title("undo"), lambda _: session.send(L.ShellEventUndo()), key=L.command_letter("undo")),
-        Command(command_title("redo"), lambda _: session.send(L.ShellEventRedo()), key=L.command_letter("redo")),
+        Command(command_title(command), lambda _, command=command: actions.key(session, command),
+                key=L.command_letter(command) or "", through=True)
+        for command in ("undo", "redo")
     ]
+
+
+def own_commands(session: Session) -> dict:
+    """What this app runs itself of a screen's own actions, by id: the filter typed over the list,
+    Key help, About and Reminders due, which the core leaves to the shell, and Sync now, whose
+    answer is waited for under the device's activity sound."""
+    import menus  # here: menus imports this module
+    import preferences
+    import reminder_lists
+
+    return {
+        "filter": query_tasks,
+        "keyboard-help": menus.key_help,
+        "about": menus.about,
+        "reminders-due": reminder_lists.due,
+        "sync-now": preferences.sync_now,
+    }
+
+
+def place_commands(session: Session, skip=()) -> list[Command]:
+    """The place shown's own actions, the core's (`screen_actions`), as its main menu."""
+    return actions.screen_commands(session, own_commands(session), skip)
 
 
 def list_rows(session: Session) -> list[Row]:
@@ -58,16 +82,13 @@ def readback(session: Session) -> str:
     return session.lines().readback
 
 
-def task_list(
-    session: Session, place=None, title: str = "", query: str | None = None, more: list | None = None,
-    main=None,
-) -> str:
+def task_list(session: Session, place=None, title: str = "", query: str | None = None, main=None) -> str:
     """One of the app's places as a foldable list of tasks, with `query` typed over it.
 
-    Enter shows a task; its context menu (M-Chord with Dot 7) has everything else, and the main
-    menu (M-Chord) adds a task, starting the line as the app says this place does — `#Work ` in
-    a project's list, so a task added there lands there. `more` adds to the main menu: a
-    project's list can add a project inside it.
+    Enter opens a task's form; its context menu (M-Chord with Dot 7) has everything else, and the main
+    menu (M-Chord) is what the place offers of its own, the core's: New task, starting the line as
+    the app says this place does (`#Work ` in a project's list, so a task added there lands
+    there), the filter, New project inside on a project's list, undo and redo.
     """
     place = place or L.PlaceTasks()
     title = title or L.place_title(place)
@@ -82,14 +103,10 @@ def task_list(
     with screen("lumenna-tasks"):
         live_menu(
             session, build, lambda: state["heading"],
-            main=main or (lambda row: show(session, row)),
+            # Enter is `Key("open")`, as on every row: a task's form, a trashed task restored.
+            main=main or (lambda row: actions.press(session, "open", row)),
             context=lambda rows: task_commands(session, rows),
-            app=[
-                Command(command_title("new-task"), lambda _: add_task(session, session.view().quick_add), key=L.command_letter("new-task")),
-                Command(command_title("filter"), lambda _: query_tasks(session), key=L.command_letter("filter")),
-                *(more or []),
-                *undo_commands(session),
-            ],
+            app=lambda: place_commands(session),
             empty=empty_then(lambda: readback(session), L.press_to_add(L.command_letter("new-task"))),
             app_title=L.menu_of(title),
             focus=lambda: session.view().focus,
@@ -119,12 +136,9 @@ def history(session: Session) -> str:
 
 
 def trash(session: Session) -> str:
-    """Deleted tasks: Enter puts one back; deleting one from the trash is its context menu's,
-    or the delete keys'."""
-    return task_list(
-        session, L.PlaceTrash(),
-        main=lambda row: actions.press(session, "restore-task", row),
-    )
+    """Deleted tasks: Enter puts one back, as Enter does on every platform (`Key("open")`);
+    deleting one from the trash is its context menu's, or the delete keys'."""
+    return task_list(session, L.PlaceTrash())
 
 
 # ---------------------------------------------------------------------------------------
@@ -165,97 +179,51 @@ def task_details(details, about=()) -> str:
     return ""
 
 
-def edit_task(session: Session, task: str) -> str:
-    """The task form, the app's details: each field as the app starts it, and each one
-    changed sent as typed, then saved — the app sends only what changed, so a concurrent edit
-    to another field on another device is not overwritten with what this form showed."""
-    details = details_of(session, task)
-    if details is None:
-        return ""
-    before = details.fields
-    fields = []
-    for field in details.form:
-        value = str(getattr(before, field.key))
-        if field.key == "project":
-            # Chosen from the projects the app offers, by name, each with its level where it
-            # changes, since a list says nothing of indentation.
-            levels = L.levels([choice.depth for choice in details.projects])
-            choices = {
-                choice.id: f"{choice.title}, {level}" if level else choice.title
-                for choice, level in zip(details.projects, levels)
-            }
-            fields.append(form_field(field, value, choices=choices))
-            continue
-        fields.append(form_field(field, value))
-    answers = dialogs.request_form(fields)
-    if answers is None:
-        return ""
-    for field in details.form:
-        typed = answers.get(field.key)
-        if typed is not None and typed != str(getattr(before, field.key)):
-            session.send(L.ShellEventDetails(L.DetailsEventField(field.key, str(typed))))
-    return session.send(L.ShellEventDetails(L.DetailsEventSave()))
-
-
-def form_field(field, value: str, choices=None) -> dialogs.InputField:
-    """One of the core's form fields as the device's form takes it: a choice where it has
-    options, else a line, or several lines where it may run to them; named, and hinted, in the
-    core's words."""
-    offered = choices or {option.id: option.title for option in field.options}
-    if offered:
-        return dialogs.InputField(
-            key=field.key, prompt=field.label, field_type="choice", choices=offered, default_text=value,
-        )
-    return dialogs.InputField(
-        key=field.key, prompt=field.label, default_text=value,
-        field_type="multiline" if field.kind == L.FieldKind.LINES else "text", required=field.key == "title",
-        format_hint=field.hint,
-    )
-
-
-def open_task_form(session: Session, action, row=None) -> str:
-    """The task form, wherever an action asks for it: a task's Edit Details, a sitting's
-    Edit Task Details."""
-    return edit_task(session, action.target)
-
-
-actions.FORMS[(L.Subject.TASK, K.EDIT)] = open_task_form
-actions.FORMS[(L.Subject.TASK, K.EDIT_TASK)] = open_task_form
-
-
 # ---------------------------------------------------------------------------------------
 # Capture
 # ---------------------------------------------------------------------------------------
 
 
-def add_task(session: Session, prefix: str = "", refusal: str = "") -> str:
-    """Capture, in the quick-add grammar: the app's quick-add line.
+def add_task(session: Session, prefix=None, refusal: str = "") -> str:
+    """Capture, in the quick-add grammar: the app's quick-add line, opened as New task opens it
+    (`Key("new-task")`, starting as the place shown starts it) unless it is open already, and
+    drawn from the app's own description of it (`ScreenView::dialog`, `quick-add`).
 
     Where the person asked for it, the line is read back before it is added. A line the core
     refuses — an unknown project — is asked again as typed, the app's sentence first, rather
-    than retyped on a braille keyboard.
+    than retyped on a braille keyboard. `prefix` is unused: the line starts as the app has it.
     """
-    text = assisted_input(session, actions.prompt(refusal, core.words().quick_add.label), L.Syntax.QUICK_ADD,
-                          history_key="lumenna-add", default=prefix)
-    if not text or not text.strip():
+    import forms
+
+    if session.view().line is None:
+        session.send(L.ShellEventKey("new-task"))
+    dialog = forms.opened(session)
+    if dialog is None or dialog.id != "quick-add":
         return ""
-    session.send(
-        L.ShellEventTyping(L.TypingOpen()),
-        L.ShellEventTyping(L.TypingText(text, len(text.encode("utf-8")))),
-    )
-    line = session.view().line
-    if line is not None and options.get(options.READ_BACK, False):
+    line = next(control for control in dialog.controls if control.key == "line")
+    refusal = refusal or forms.text_of(dialog, "refused")
+    session.typing = True
+    try:
+        text = assisted_input(session, actions.prompt(refusal, line.label), L.Syntax.QUICK_ADD,
+                              history_key="lumenna-add", default=line.value)
+    finally:
+        session.typing = False
+    if not text or not text.strip():
+        # Left: the line the app opened is put away.
+        return forms.cancel(session, dialog)
+    forms.send(session, line, text, L.ControlMoveSet())
+    dialog = forms.opened(session)
+    readback = forms.text_of(dialog, "readback") if dialog is not None else ""
+    if readback and options.get(options.READ_BACK, False):
         words = core.words().read_back
-        answer = choose({"add": words.add, "change": words.change}, L.add_it(line.readback))
+        answer = choose({"add": words.add, "change": words.change}, L.add_it(readback))
         if answer != "add":
-            session.send(L.ShellEventTyping(L.TypingClose()))
-            return "" if answer is None else add_task(session, prefix=text)
-    said = session.send(L.ShellEventQuickAdd(text))
-    why = session.view().add_refused
-    if why:
-        # The refusal, said once: as the question asked again.
-        session.send(L.ShellEventTyping(L.TypingClose()))
-        return add_task(session, prefix=text, refusal=why)
+            return forms.cancel(session, dialog) if answer is None else add_task(session)
+    add = forms.default_button(dialog) if dialog is not None else None
+    said = forms.send(session, add, text) if add is not None else ""
+    if session.view().line is not None and session.view().add_refused:
+        # Refused, the line stays open as typed: asked again, the refusal said once, as its question.
+        return add_task(session, refusal=session.view().add_refused)
     return said
 
 

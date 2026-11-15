@@ -12,31 +12,12 @@ service that gives them while the app is closed is on its General page (`prefere
 
 from __future__ import annotations
 
-import datetime
-
 import actions
 from actions import K, L
 import core
 from rows import Row, items
 from session import Command, Session, live_menu, screen, sentences
 from tasks import undo_commands
-
-
-#: For tests: a function of nothing giving now, as an aware datetime. None is now.
-NOW = None
-
-#: How far back the Reminders screen looks for what came due: as far as the service ever
-#: goes back after being stopped.
-LOOK_BACK = datetime.timedelta(hours=24)
-
-
-def _moment(when: datetime.datetime) -> str:
-    return when.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def now() -> datetime.datetime:
-    """Now, or the moment a test has fixed."""
-    return NOW() if NOW else datetime.datetime.now(datetime.timezone.utc)
 
 
 # ---------------------------------------------------------------------------------------
@@ -109,13 +90,17 @@ def reminders_of(session: Session, row=None) -> str:
 # ---------------------------------------------------------------------------------------
 
 
+#: A reminder's buttons, by the ids the core gives them (`DueButton::id`), for their letters.
+BUTTONS = ("carry", "replan", "dismiss", "snooze")
+
+
 def due(session: Session) -> str:
     """What came due over the last day and was not dismissed: the delete keys dismiss one,
-    z snoozes it, on every device."""
-    looked = now()
+    z snoozes it, on every device. How far back to look is the app's, by its own clock
+    (`DueEvent::LookBack`); what each button does is the app's too (`DueEvent::Press`)."""
     # What a look finds is said as it arrives; here the screen says it, as its heading as it
     # opens, and only then: the rows say them after that.
-    found = session.send(L.ShellEventDue(L.DueEventLook(_moment(looked - LOOK_BACK), _moment(looked))))
+    found = session.send(L.ShellEventDue(L.DueEventLookBack()))
     named = core.words().reminders_due
     state = {"heading": sentences(named, found)}
 
@@ -132,40 +117,37 @@ def due(session: Session) -> str:
             made.append(row)
         return items(made)
 
-    def replan(key: str) -> str:
+    def press(row, which: str) -> str:
+        """A reminder's button, handed back by its id: the app does what it is (Replan opens its
+        proposal, answered here), or says why the reminder has no such button."""
         import proposals  # here: proposals imports actions, which imports this module
 
         proposals.pin(session)
-        # A reminder without the button: the app says why, and opens nothing.
-        said = session.send(L.ShellEventDue(L.DueEventReplan(key)))
+        said = session.send(L.ShellEventDue(L.DueEventPress(row.key, which)))
         return actions.joined(said, actions.follow(session))
-
-    #: What each button sends; Replan opens the app's proposal, answered here.
-    runs = {
-        "carry": lambda key: session.send(L.ShellEventDue(L.DueEventCarry(key))),
-        "replan": replan,
-        "dismiss": lambda key: session.send(L.ShellEventDue(L.DueEventDismiss(key))),
-        "snooze": lambda key: session.send(L.ShellEventDue(L.DueEventSnooze(key))),
-    }
 
     def button(row, which):
         return next((b for b in row.record.buttons if b.id == which), None)
 
     def commands(rows) -> list[Command]:
         """Each row's buttons, the core's, in its order: what a reminder offers of its own
-        (Carry forward, Replan) first, then Dismiss, which the delete keys run, and Snooze. The
-        letter a reminder lacks is sent all the same, and the app says why (`actions.letter`)."""
+        (Carry forward, Replan) first, then Dismiss, which the delete keys run, and Snooze. A
+        letter of a button some reminder here offers is pressed as the app's letter on every row
+        (`Event::Letter`), the app saying why where a reminder lacks it."""
         order: list[str] = []
         for row in rows:
             for offered in row.record.buttons:
-                if offered.id not in order and offered.id in runs:
+                if offered.id not in order:
                     order.append(offered.id)
-        # A letter no reminder here offers still runs, for the app to say why.
-        order.extend(which for which in runs if which not in order)
-        return [
+        # A letter of a button no reminder here offers still goes to the app, which says why.
+        unoffered = [
+            Command("", lambda _: "", key=L.due_letter(which) or "", through=True, listed=False)
+            for which in BUTTONS if which not in order and L.due_letter(which)
+        ]
+        return unoffered + [
             Command(
                 lambda row, which=which: button(row, which).title,
-                lambda row, which=which: runs[which](row.key),
+                lambda row, which=which: press(row, which),
                 key=L.due_letter(which) or "",
                 applies=lambda row, which=which: button(row, which) is not None,
                 deletes=which == "dismiss",

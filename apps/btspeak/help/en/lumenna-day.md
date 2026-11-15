@@ -30,16 +30,20 @@ On a task in a block, one sitting of it:
 
 On free time, Add block here, a. On a cancelled day, Restore this day, o.
 
-## The day's main menu, M-Chord
+## The day's menu, M-Chord
 
 - First, what the day offers itself, as it does: Plan the day; Replan from now; What should I work on?, w, which offers the tasks to start on, each saying after a moment why it is suggested; End the day; Clear the rest of the day.
-- New block, a. Previous day, p. Next day, n. Go to day, g: any date you can say, such as "next friday". Go to now, t.
-- Undo, u, and Redo, y.
+- Then what Today offers of its own: New block, a. Previous day, p. Next day, n. Go to day, g: any date you can say, such as "next friday". Go to now, t. Undo, u, and Redo, y.
+- A letter is said only where it does that from the item you are on: on a running sitting t stops its timer, so Go to now says no letter there.
 
 ## Replan from now and Plan the day
 
-The title says the whole proposal before anything changes. Each change is a row, checked to begin with; Enter turns it off or on, and a sitting of Plan the day says after a moment why its task was chosen. Make the changes checked, or Plan the ones checked, makes them, and also says after a moment what becomes of one left unchecked: the core proposes again around it, and the new proposal is shown, until nothing more is proposed. Cancel leaves, making nothing. Both are on the main menu too. Under Other options, Replan from now lists up to three other ways through the day, each saying what it costs; Enter on one shows its proposal in place.
+The title says the whole proposal before anything changes. Each change is a row, checked to begin with; Enter turns it off or on, and a sitting of Plan the day says after a moment why its task was chosen. Make the changes checked, or Plan the ones checked, makes them, and also says after a moment what becomes of one left unchecked: the core proposes again around it, and the new proposal is shown, until nothing more is proposed. Cancel leaves, making nothing. Both are on the screen's menu, M-Chord, too. Under Other options, Replan from now lists up to three other ways through the day, each saying what it costs; Enter on one shows its proposal in place.
 
 ## Blocks
 
-The Blocks list on the main menu holds every block. Enter edits every occurrence of one; Control-D deletes it, asking first; a adds one.
+Blocks, b, on Home holds every block. Enter edits every occurrence of one; Control-D deletes it, asking first; its menu, M-Chord, has New block, a.
+
+## The block form
+
+The form's fields are the block's, as every Lumenna app has them; changing the kind brings that kind's own settings, unless you changed them too. If the block cannot be saved as it is, Lumenna says why and shows the form again as you left it.

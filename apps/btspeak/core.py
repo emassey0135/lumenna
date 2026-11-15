@@ -116,9 +116,23 @@ class _Locale:
         return rows.clock(f"{hour:02d}:{minute:02d}")
 
     def date(self, year: int, month: int, day: int, with_year: bool) -> str:
+        """The date as the device's locale writes one, its weekday and month named: the order of
+        day, month and year is the locale's (`D_FMT`), "Sunday, November 15" in the United
+        States and "Sunday 15 November" in Britain, as every platform's own formatter has it."""
         import datetime
+        import locale
 
         when = datetime.date(year, month, day)
+        try:
+            order = locale.nl_langinfo(locale.D_FMT)
+        except (AttributeError, ValueError):
+            order = "%d/%m/%Y"
+        at = {code: order.find(code) for code in ("%d", "%m", "%b", "%e")}
+        day_at = min((i for code, i in at.items() if code in ("%d", "%e") and i >= 0), default=0)
+        month_at = min((i for code, i in at.items() if code in ("%m", "%b") and i >= 0), default=1)
+        if month_at < day_at:
+            said = f"{when:%A}, {when:%B} {when.day}"
+            return f"{said}, {year}" if with_year else said
         said = f"{when:%A} {when.day} {when:%B}"
         return f"{said} {year}" if with_year else said
 

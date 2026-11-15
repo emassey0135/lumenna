@@ -2,7 +2,7 @@
 
 A list of tasks, as a tree: subtasks sit under their task, and the level is said where it changes. The title says how the list's filter was understood, then how many tasks it holds.
 
-Press Enter on a task to read its details. Press Z-Chord to leave the list.
+Press Enter on a task to open its form. Press Z-Chord to leave the list.
 
 ## A task's context menu, M-Chord with Dot 7
 
@@ -18,11 +18,16 @@ It holds what can be done to the task now, as every Lumenna app offers it, then 
 - Move to trash. Control-D and the D chord do the same.
 - Task details: everything about the task, to pan through.
 
-## The list's main menu, M-Chord
+## The list's menu, M-Chord
 
 - New task, a. In a project's or label's list, the line starts with it, so the task lands there.
 - Filter tasks, slash: a filter such as "#Work & overdue", or "search:" and words to look through titles and notes.
-- Undo, u, and Redo, y.
+- New project inside, p, in a project's list.
+- Undo, u, and Redo, y. In the Trash and History, these alone.
+
+## The task form
+
+Edit details, e, or Enter, opens one form: the title, due date, repetition, priority, estimate, sittings, project, labels and notes. Only what you change is saved, so a change made meanwhile on another device to another field is kept.
 
 ## Writing a task
 
@@ -30,6 +35,6 @@ Write it the way you would say it: "water the plants every monday", "draft the r
 
 ## The Trash
 
-Enter restores a task. Its context menu has Restore, r, and Delete from Trash, which asks first; Control-D and the D chord do the same. Undo can bring a deleted task back, and it stays in the history every device keeps, and in backups.
+Trash, x, on Home. Enter restores a task. Its context menu has Restore, r, and Delete from Trash, which asks first; Control-D and the D chord do the same. Undo can bring a deleted task back, and it stays in the history every device keeps, and in backups.
 
 The context menu also has Erase permanently, which no key does: it erases the task from every device's history too, and cannot be undone. It asks first, saying what else it does.

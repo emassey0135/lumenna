@@ -28,7 +28,6 @@ from harness import LUM, Store, connect  # noqa: E402
 from actions import L  # noqa: E402
 import day  # noqa: E402
 import menus  # noqa: E402
-import organise  # noqa: E402
 import preferences  # noqa: E402
 import rows  # noqa: E402
 import tasks  # noqa: E402
@@ -105,15 +104,15 @@ class Menus(unittest.TestCase):
     def test_a_task_added_and_completed_comes_back_with_undo(self):
         script = self.run_script(
             [
-                ("menu", "New task"),
+                ("app", "New task"),
                 ("input", "buy milk tomorrow"),
                 ("menu", "Tasks"),
                 ("key", "buy milk", "c"),
                 ("back",),
-                ("menu", "Undo"),
+                ("app", "Undo"),
                 ("back",),
             ],
-            lambda: menus.main_menu(self.session),
+            lambda: menus.home(self.session),
         )
         self.assertTrue(any("buy milk" in said for said in script.said), script.said)
         self.assertTrue(any(said.startswith("Undid") for said in script.said), script.said)
@@ -125,7 +124,7 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("context", "water plants", "Edit"),
-                ("form", {"due": "2026-12-10", "priority": "1", "project": "Home", "labels": "garden"}),
+                ("form", {"field:due": "2026-12-10", "field:priority": "1", "field:project": "Home", "field:labels": "garden"}),
                 ("back",),
             ],
             lambda: tasks.task_list(self.session),
@@ -140,10 +139,10 @@ class Menus(unittest.TestCase):
         self.call("project.add", name="Reports", parent="Work")
         self.call("task.add", text="file the summary")
         script = self.run_script(
-            [("context", "file the summary", "Edit"), ("form", {"project": "Reports"}), ("back",)],
+            [("context", "file the summary", "Edit"), ("form", {"field:project": "Reports"}), ("back",)],
             lambda: tasks.task_list(self.session),
         )
-        fields = {f.key: f for f in script.forms[0]}
+        fields = {f.key.removeprefix("field:"): f for f in script.forms[0]}
         self.assertEqual(fields["project"].field_type, "choice")
         self.assertEqual(list(fields["project"].choices.values()), ["Inbox", "Work", "Reports, level 2"])
         self.assertEqual(fields["title"].field_type, "text")
@@ -154,10 +153,10 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="dusty #Old")
         self.call("project.archive", name="Old")
         script = self.run_script(
-            [("context", "dusty", "Edit"), ("form", {"priority": "1"}), ("back",)],
+            [("context", "dusty", "Edit"), ("form", {"field:priority": "1"}), ("back",)],
             lambda: tasks.task_list(self.session),
         )
-        fields = {f.key: f for f in script.forms[0]}
+        fields = {f.key.removeprefix("field:"): f for f in script.forms[0]}
         self.assertEqual(list(fields["project"].choices), ["Inbox", "Old"])
         self.assertEqual(self.task("dusty")["project"], "Old")
 
@@ -287,17 +286,17 @@ class Menus(unittest.TestCase):
         self.call("config.set", key="day-start", value="07:30")
         offered = self.session.device.new_block_start("today")
         script = self.run_script(
-            [("app", "New block"), ("form", {"title": "Run", "date": "tomorrow"}), ("back",)],
+            [("app", "New block"), ("form", {"field:title": "Run", "field:date": "tomorrow"}), ("back",)],
             lambda: day.day_plan(self.session),
         )
-        fields = {f.key: f for f in script.forms[0]}
+        fields = {f.key.removeprefix("field:"): f for f in script.forms[0]}
         self.assertEqual(fields["start"].default_text, offered)
         # The day changed and the start was left as offered: tomorrow's, when the day starts.
         self.assertEqual(self.call("block.list")["rows"][0]["due_time"], "07:30")
         # A start typed is kept. Not on the hour: an offer always is, and one typed the same as
         # the offer counts as left as offered (between 17:00 and 18:00 the offer is 18:00).
         script = self.run_script(
-            [("app", "New block"), ("form", {"title": "Swim", "date": "tomorrow", "start": "18:15"}), ("back",)],
+            [("app", "New block"), ("form", {"field:title": "Swim", "field:date": "tomorrow", "field:start": "18:15"}), ("back",)],
             lambda: day.day_plan(self.session),
         )
         times = sorted(row["due_time"] for row in self.call("block.list")["rows"])
@@ -309,7 +308,7 @@ class Menus(unittest.TestCase):
             [
                 ("app", "New block"),
                 # Ending at midnight, so it is never over while the test runs.
-                ("form", {"title": "Deep work", "start": "11pm", "minutes": "60"}),
+                ("form", {"field:title": "Deep work", "field:start": "11pm", "field:minutes": "60"}),
                 ("key", "Deep work", "i"),
                 ("choose", "write the chapter"),
                 ("input", ""),
@@ -404,7 +403,7 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("context", "Train", "Edit block"),
-                ("form", {"accepts_tasks": "yes"}),
+                ("form", {"field:accepts_tasks": "yes"}),
                 ("key", "Train", "i"),
                 ("choose", "read"),
                 ("input", ""),
@@ -579,10 +578,18 @@ class Menus(unittest.TestCase):
     def test_a_tasks_details_end_with_its_history(self):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
-            [("menu", "write the chapter"), ("back",)],
+            [("context", "write the chapter", "Task details"), ("back",)],
             lambda: tasks.task_list(self.session),
         )
         self.assertEqual(script.shown[-1][-1], "History, made today")
+
+    def test_enter_on_a_task_opens_its_form_and_saves_what_changed(self):
+        self.call("task.add", text="write the chapter")
+        self.run_script(
+            [("menu", "write the chapter"), ("form", {"field:priority": "1"}), ("back",)],
+            lambda: tasks.task_list(self.session),
+        )
+        self.assertEqual(self.task("write the chapter")["priority"], 1)
 
     def test_a_task_is_read_back_before_it_is_added_when_asked_for(self):
         import options
@@ -621,7 +628,7 @@ class Menus(unittest.TestCase):
             [
                 ("menu", "Run"),
                 ("choose", "only"),
-                ("form", {"minutes": "45"}),
+                ("form", {"field:minutes": "45"}),
                 ("key", "Run", "x"),
                 ("menu", "cancelled for this day"),
                 ("back",),
@@ -645,7 +652,7 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("menu", "Standup"),
-                ("form", {"repeat": "every monday"}),
+                ("form", {"field:repeat": "every monday"}),
                 ("menu", "every monday", "delete"),
                 ("confirm", True),
                 ("back",),
@@ -678,7 +685,7 @@ class Menus(unittest.TestCase):
             [("app", "New block"), ("form", None), ("back",)],
             lambda: day.day_plan(self.session),
         )
-        fields = {f.key: f for f in script.forms[0]}
+        fields = {f.key.removeprefix("field:"): f for f in script.forms[0]}
         self.assertEqual(list(fields)[:6], ["title", "date", "start", "minutes", "kind", "accepts_tasks"])
         self.assertEqual(fields["minutes"].prompt, "Lasts, in minutes")
         self.assertEqual(fields["kind"].choices, {"work": "Work", "break": "Break", "event": "Event"})
@@ -697,8 +704,6 @@ class Menus(unittest.TestCase):
         )
 
     def test_an_empty_list_leaves_its_count_out_of_its_heading(self):
-        script = self.run_script([("back",)], lambda: organise.labels(self.session))
-        self.assertEqual(script.titles[0], "Labels")
         script = self.run_script([("back",)], lambda: preferences.devices(self.session))
         self.assertEqual(script.menus[0]["empty"], "Press p to pair one.")
         self.assertTrue(script.titles[0].startswith("Not paired"), script.titles)
@@ -706,13 +711,6 @@ class Menus(unittest.TestCase):
     def test_an_empty_task_list_says_the_cores_words_then_the_key_that_adds(self):
         script = self.run_script([("back",)], lambda: tasks.task_list(self.session))
         self.assertEqual(script.menus[0]["empty"], "No open tasks. Press a to add one.")
-
-    def test_saved_filters_and_devices_say_the_cores_words_when_empty(self):
-        script = self.run_script([("back",)], lambda: organise.saved_filters(self.session))
-        self.assertEqual(
-            script.menus[0]["empty"],
-            "No saved filters. A filter's query is kept here under a name. Press a to add one, or slash to filter now.",
-        )
 
     def test_going_to_a_day_and_a_new_filter_ask_in_the_cores_words(self):
         script = self.run_script(
@@ -722,8 +720,8 @@ class Menus(unittest.TestCase):
         self.assertIn("Go to day. A date, such as Friday, or 12 October. Day", script.prompts)
         self.assertTrue(script.titles[-1].startswith("Tomorrow. "), script.titles)
         script = self.run_script(
-            [("app", "New saved filter"), ("input", "Urgent"), ("input", "p1"), ("back",)],
-            lambda: organise.saved_filters(self.session),
+            [("context", "Saved filters", "New saved filter"), ("input", "Urgent"), ("input", "p1"), ("back",)],
+            lambda: menus.home(self.session),
         )
         self.assertEqual([f["name"] for f in self.call("filter.list")["filters"]], ["Urgent"])
         self.assertEqual(script.prompts[:2], ["New saved filter. Name", "New saved filter. A filter, such as p1 & due before: friday. Query"])
@@ -733,7 +731,7 @@ class Menus(unittest.TestCase):
     def test_a_project_is_made_renamed_archived_and_unarchived(self):
         self.run_script(
             [
-                ("app", "New project"),
+                ("context", "Projects", "New project"),
                 ("input", "Wrok"),
                 ("key", "Wrok", "r"),
                 ("input", "Work"),
@@ -741,7 +739,7 @@ class Menus(unittest.TestCase):
                 ("context", "archived", "Unarchive"),
                 ("back",),
             ],
-            lambda: organise.projects(self.session),
+            lambda: menus.home(self.session),
         )
         work = next(r for r in self.call("project.list")["rows"] if r["title"] == "Work")
         self.assertNotIn("archived", work["state"])
@@ -756,7 +754,7 @@ class Menus(unittest.TestCase):
                 ("back",),
                 ("back",),
             ],
-            lambda: organise.projects(self.session),
+            lambda: menus.home(self.session),
         )
         rows = [(r["title"], r["depth"]) for r in self.call("project.list")["rows"]]
         self.assertIn(("Errands", 1), rows)
@@ -773,7 +771,7 @@ class Menus(unittest.TestCase):
                 ("choose", "calls"),
                 ("back",),
             ],
-            lambda: organise.labels(self.session),
+            lambda: menus.home(self.session),
         )
         rows = self.call("label.list")["rows"]
         self.assertEqual([(r["title"], r["value"]) for r in rows], [("calls", "1 open task, teal")])
@@ -782,7 +780,7 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="urgent thing p1")
         self.run_script(
             [
-                ("app", "New saved filter"),
+                ("context", "Saved filters", "New saved filter"),
                 ("input", "Urgent"),
                 ("input", "p1"),
                 ("key", "Urgent", "q"),
@@ -791,7 +789,7 @@ class Menus(unittest.TestCase):
                 ("confirm", True),
                 ("back",),
             ],
-            lambda: organise.saved_filters(self.session),
+            lambda: menus.home(self.session),
         )
         self.assertEqual(self.call("filter.list")["filters"], [])
 
@@ -802,8 +800,7 @@ class Menus(unittest.TestCase):
         screens = [
             lambda: tasks.task_list(self.session), lambda: tasks.trash(self.session),
             lambda: day.day_plan(self.session), lambda: day.blocks(self.session),
-            lambda: organise.projects(self.session), lambda: organise.labels(self.session),
-            lambda: organise.saved_filters(self.session),
+            lambda: menus.home(self.session),
         ]
         for open_screen in screens:
             script = self.run_script([("back",)], open_screen)
@@ -842,51 +839,54 @@ class Menus(unittest.TestCase):
         )
         self.assertNotIn("Move to top level, t", labels, "only for a subtask")
 
-    def test_an_empty_list_says_so_and_still_adds_from_its_main_menu(self):
-        script = self.run_script(
-            [("app", "New label"), ("input", "calls"), ("back",)],
-            lambda: organise.labels(self.session),
+    def test_a_heading_on_home_adds_a_place_of_its_kind_from_its_context_menu(self):
+        self.run_script(
+            [("context", "Labels", "New label"), ("input", "calls"), ("back",)],
+            lambda: menus.home(self.session),
         )
-        self.assertEqual("No labels. Press a to add one.", script.menus[0]["empty"])
         self.assertEqual([r["title"] for r in self.call("label.list")["rows"]], ["calls"])
 
     def test_a_weight_typed_wrong_is_refused_in_the_cores_words(self):
         self.call("project.add", name="Work")
         script = self.run_script(
-            [("key", "Work", "w"), ("input", "1,5"), ("input", "1.5"), ("back",)],
-            lambda: organise.projects(self.session),
+            [("context", "Work", "Weight"), ("input", "1,5"), ("input", "1.5"), ("back",)],
+            lambda: menus.home(self.session),
         )
         # Refused, the question stays open, the core's sentence first.
         self.assertTrue(script.prompts[1].startswith("'1,5' is not a weight"), script.prompts)
         work = next(r for r in self.call("project.list")["rows"] if r["title"] == "Work")
         self.assertIn("1.5", work["value"])
 
-    def test_the_inbox_offers_only_what_the_core_gives_it(self):
-        script = self.run_script([("back",)], lambda: organise.projects(self.session))
+    def test_the_inbox_offers_only_what_the_core_gives_it_its_letter_left_off_where_home_takes_it(self):
+        script = self.run_script([("back",)], lambda: menus.home(self.session))
         menu = btspeak_stub._Menu([])
-        inbox = organise.group_rows(self.session, L.SidebarGroup.PROJECTS)[0]
+        inbox = next(row for row in menus.home_rows(self.session) if row.title == "Inbox")
         menu.menu = [type("Row", (), {"row": inbox})()]
         labels = [c.get_label(menu) for c in script.menus[-1]["context"] if c.applies(menu)]
-        self.assertEqual(labels, ["Show its tasks", "Add a task to it, t", "Weight, w"])
+        # w is What should I work on? on Home, which comes first there.
+        self.assertEqual(labels, ["Add a task to it", "Weight"])
 
     def test_collapsing_a_project_hides_what_is_under_it_and_keeps_it(self):
         self.call("project.add", name="Work")
         self.call("project.add", name="Reports", parent="Work")
-        self.run_script([("menu", "Work", "left"), ("back",)], lambda: organise.projects(self.session))
-        titles = [row.title for row in organise.group_rows(self.session, L.SidebarGroup.PROJECTS)]
-        self.assertEqual(titles, ["Inbox", "Work"])
-        work = next(row for row in organise.group_rows(self.session, L.SidebarGroup.PROJECTS) if row.title == "Work")
+        self.run_script([("menu", "Work", "left"), ("back",)], lambda: menus.home(self.session))
+        titles = [row.title for row in menus.home_rows(self.session)]
+        self.assertIn("Work", titles)
+        self.assertNotIn("Reports", titles)
+        work = next(row for row in menus.home_rows(self.session) if row.title == "Work")
         self.assertTrue(work.said().endswith("collapsed"), work.said())
 
-    def test_a_subproject_says_its_level_counted_from_the_projects_list_where_it_changes(self):
+    def test_a_subproject_on_home_says_its_level_where_it_changes(self):
         self.call("project.add", name="Work")
         self.call("project.add", name="Reports", parent="Work")
         self.call("project.add", name="Home")
         self.store.caught_up()
-        said = {row.title: row.said() for row in organise.group_rows(self.session, L.SidebarGroup.PROJECTS)}
-        self.assertEqual(said["Inbox"].split(",")[0], "Inbox")
-        self.assertTrue(said["Reports"].startswith("level 2, Reports"), said)
-        self.assertTrue(said["Home"].startswith("level 1, Home"), said)
+        self.session.send(L.ShellEventHome())
+        said = {row.title: row.said() for row in menus.home_rows(self.session)}
+        self.assertTrue(said["Inbox"].startswith("level 2, Inbox"), said)
+        self.assertTrue(said["Reports"].startswith("level 3, Reports"), said)
+        self.assertTrue(said["Home"].startswith("level 2, Home"), said)
+        self.assertTrue(said["Today"].startswith("Today"), said)
         self.assertTrue(said["Work"].endswith("expanded"), said)
 
     def test_enter_on_a_sitting_edits_its_task_as_every_apps_open_does(self):
@@ -895,12 +895,12 @@ class Menus(unittest.TestCase):
             [
                 ("app", "New block"),
                 # Ending at midnight, so it is never over while the test runs.
-                ("form", {"title": "Deep work", "start": "11pm", "minutes": "60"}),
+                ("form", {"field:title": "Deep work", "field:start": "11pm", "field:minutes": "60"}),
                 ("key", "Deep work", "i"),
                 ("choose", "write the chapter"),
                 ("input", ""),
                 ("menu", "write the chapter"),
-                ("form", {"title": "write the last chapter"}),
+                ("form", {"field:title": "write the last chapter"}),
                 ("back",),
             ],
             lambda: day.day_plan(self.session),
@@ -909,13 +909,13 @@ class Menus(unittest.TestCase):
 
     def test_a_letter_a_row_does_not_offer_says_why_in_the_cores_words(self):
         self.call("project.add", name="Work")
-        script = self.run_script([("key", "Inbox", "r"), ("back",)], lambda: organise.projects(self.session))
+        script = self.run_script([("key", "Inbox", "r"), ("back",)], lambda: menus.home(self.session))
         self.assertIn("The Inbox keeps its name and its place; only its order and weight change.", script.said)
 
     def test_a_project_with_a_space_opens_its_tasks_by_the_cores_reference(self):
         self.call("project.add", name="Home Office")
         self.call("task.add", text='file receipts #"Home Office"')
-        script = self.run_script([("menu", "Home Office"), ("back",), ("back",)], lambda: organise.projects(self.session))
+        script = self.run_script([("menu", "Home Office"), ("back",), ("back",)], lambda: menus.home(self.session))
         self.assertTrue(any("1 task" in title for title in script.titles[1:]), script.titles)
 
     def test_a_pick_with_nothing_to_offer_says_why(self):
@@ -923,14 +923,60 @@ class Menus(unittest.TestCase):
         script = self.run_script([("key", "alone", "w"), ("back",)], lambda: tasks.task_list(self.session))
         self.assertIn("There is no task it could wait for.", script.said)
 
-    def test_the_main_menu_lists_the_cores_places(self):
-        script = self.run_script([("menu", "Saved filters"), ("back",), ("back",)], lambda: menus.main_menu(self.session))
-        self.assertTrue(script.titles[1].startswith("Saved filters"), script.titles)
+    def test_home_lists_the_cores_places_with_their_letters_and_a_letter_opens_one(self):
+        script = self.run_script([("key", "Today", "k"), ("back",), ("back",)], lambda: menus.home(self.session))
+        self.assertEqual(script.titles[0], "Home")
+        self.assertTrue(script.titles[1].startswith("Tasks"), script.titles)
+        self.session.send(L.ShellEventHome())
+        lettered = {row.title: row.letter for row in menus.home_rows(self.session)}
+        self.assertEqual(
+            {title: lettered.get(title) for title in ("Today", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "History", "Trash")},
+            {"Today": "t", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b", "History": "h", "Trash": "x"},
+        )
+
+    def test_homes_main_menu_is_the_cores_with_its_letters(self):
+        script = self.run_script([("back",)], lambda: menus.home(self.session))
+        labels = [command.get_label(None) for command in script.menus[-1]["app"]]
+        self.assertEqual(labels[:3], ["New task, a", "Undo, u", "Redo, y"])
+        offered = [f"{action.title}, {action.letter}" for action in self.session.view().screen_actions if action.enabled]
+        self.assertEqual(labels, offered, "the core's, in its order, with its letters")
+
+    def test_key_help_and_about_are_this_apps_own(self):
+        script = self.run_script([("app", "Keyboard"), ("app", "About"), ("back",)], lambda: menus.home(self.session))
+        self.assertTrue(script.shown[0][0].endswith("lumenna.md"), script.shown)
+        self.assertEqual(script.shown[1][0], "Lumenna")
+
+    def test_the_day_menu_says_a_letter_only_where_it_runs(self):
+        self.call("task.add", text="write the chapter")
+        script = self.run_script(
+            [
+                ("app", "New block"),
+                # Ending at midnight, so it is never over while the test runs.
+                ("form", {"field:title": "Deep work", "field:start": "11pm", "field:minutes": "60"}),
+                ("key", "Deep work", "i"),
+                ("choose", "write the chapter"),
+                ("input", ""),
+                ("key", "write the chapter", "s"),
+                ("back",),
+            ],
+            lambda: day.day_plan(self.session),
+        )
+
+        def labels(kind):
+            menu = btspeak_stub._Menu([])
+            row = next(row for row in day.day_rows(self.session) if row.record.kind == kind)
+            menu.menu = [type("Row", (), {"row": row})()]
+            return [command.get_label(menu) for command in script.menus[-1]["app"]]
+
+        self.assertIn("Go to now, t", labels(L.DayKind.BLOCK))
+        # t stops the sitting's timer: Go to now is there, its letter not.
+        self.assertIn("Go to now", labels(L.DayKind.SITTING))
+        self.assertIn("Next day, n", labels(L.DayKind.SITTING))
 
     def test_a_priority_is_chosen_by_the_cores_words(self):
         self.call("task.add", text="file taxes")
         self.run_script(
-            [("context", "file taxes", "Edit details"), ("form", {"priority": "1"}), ("back",)],
+            [("context", "file taxes", "Edit details"), ("form", {"field:priority": "1"}), ("back",)],
             lambda: tasks.task_list(self.session),
         )
         self.assertEqual(self.task("file taxes")["priority"], 1)
@@ -964,8 +1010,8 @@ class Menus(unittest.TestCase):
         folder = self.profile / "out"
         folder.mkdir()
         self.run_script(
-            [("choose", "JSON"), ("directory", str(folder))],
-            lambda: preferences.export(self.session),
+            [("menu", "JSON"), ("directory", str(folder)), ("back",)],
+            lambda: preferences.setting_page(self.session, "export"),
         )
         written = list(folder.iterdir())
         self.assertEqual(len(written), 1, written)

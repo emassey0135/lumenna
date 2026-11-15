@@ -23,6 +23,20 @@ test with a newer one (`PYTHON=…`).
   thread (`core.py`) and queue; a menu wakes on them (`restless`), and what the app said that no
   action asked for is said as it settles. Seeing another process's writes is `tick`, every five
   seconds (`TICK`).
+- **It opens on the core's Home** (`menus.home`, `ShellEvent::Home`, `ViewModel::home`): the
+  places as the sidebar has them, headings folding the projects, labels and saved filters under
+  them, each with its letter (`HomePlace::letter`, the item's `shortcut`, whose press runs Enter);
+  its row in hand the sidebar's. Opening a place (Enter, `Key("open")`, or a letter) leaves Home in
+  the app; the place's screen is shown (`menus.place_screen`) until left, then Home is asked for
+  again. No main menu of this app's own, and no screen per heading.
+- **M-Chord on every screen is the core's `screen_actions`** (`actions.screen_commands`): each run
+  as `Key(id)` and its letter pressed as `Letter`, but those the core marks `shell` (the filter,
+  Key help, About, Reminders due) and Sync now's wait, which `tasks.own_commands` runs. Home's
+  letters come before a row's (`live_menu(screen_first=True)`), as the core's do, so a row's
+  action whose letter Home takes says none in its context menu; elsewhere a screen's letter is said
+  only on rows that do not take it themselves (`session.app_commands`). The day's own actions lead
+  the Day menu (`day.day_commands`), the screen's What should I work on? left to them. A key the
+  app answers by opening something (the quick-add line, settings) is followed by `actions.follow`.
 - **A row's context menu is its actions in short** (`actions.py`): the rows' actions merged into
   one list of commands that keeps each row's order, each offered where its row has it, with
   the core's letter (`action_letter`); a letter pressed runs through the app
@@ -31,20 +45,38 @@ test with a newer one (`PYTHON=…`).
   answers whatever the app opens, one after another, with the device's dialogs: a question (a
   refusal staying in it), the block form, a proposal, a reminder list. The task form registers
   in `actions.FORMS`. Erase Permanently has no letter: only the context menu runs it.
-- **Enter runs the shared table's commands** (`Key`, `actions.press`): Enter on the day and the
-  Blocks list is `open`, on the trash `restore-task`, on a device `rename`. **Every letter this
-  app shows is the core's** (`L.action_letter`, `command_letter`, `page_letter`, `button_letter`,
-  `due_letter`), none written here: what a letter runs on the row is the app's
-  (`Event::Letter`), `Command.through` unset only for what this app runs itself (quick add, the
-  filter, a project's New Inside, Settings' buttons). A plain letter is the command, never Space
+- **Enter is `Key("open")` on every row** (`actions.press`): a place opened, a task's details, a
+  block edited, a trashed task restored, a device renamed; never a command chosen per screen.
+  **Every letter this app shows is the core's** (`L.action_letter`, `ScreenAction::letter`,
+  `HomePlace::letter`, `page_letter`, `button_letter`, `due_letter`), none written here: what a
+  letter runs on the row is the app's (`Event::Letter`), `Command.through` unset only for what
+  this app runs itself (the screen actions the core marks `shell`, Sync now's wait, Settings'
+  buttons). A plain letter is the command, never Space
   with one; a capital, Dot 7 with the letter, moves by first letter, which the device's dialogs
   already do, so this app needs `first_letter` nowhere. **The
   delete keys send `Key("delete")`** (a command that is only the keys', not `listed`): Control-D,
   the D chord and low-d. What it runs on the row (Delete, Delete from trash, Unassign, Unpair) or
   why it runs nothing is the app's (`keys::runs`); never a list of kinds here.
-- **Settings are the core's pages** (`SettingsView.pages`): each page's settings, caption,
-  buttons and letter are the core's (`page_letter`, `button_letter`); a time or number line says
-  the setting's own hint, else `SettingsView.words`.
+- **Settings are the core's pages** (`SettingsView.pages`), every one listed, never filtered here:
+  each page's settings, caption, buttons and letter are the core's (`page_letter`,
+  `button_letter`); a time or number line says the setting's own hint, else `SettingsView.words`.
+  The app opens them for Settings (`Key("settings")`) as well as this screen does
+  (`preferences.opened`), and leaving puts them away (`settings_open` keeps `follow` from opening
+  them twice).
+- **Every question and form is the core's dialog, drawn with the device's** (`forms.py`, over
+  `lumenna_app::dialog`): a question, the block form and quick add are `ScreenView::dialog`, the
+  task form a question's (Enter or Edit details shows the task, and the question becomes its form),
+  a settings page `App::settings_page_on`. `forms.ask` picks the device's dialog by the controls (a
+  list, a line, one button, several), `forms.form` asks a form's lines, choices and checks with
+  `request_form`, and a settings page is a menu of its controls. What the person did goes to
+  `control_event` and what comes back is sent: no event is built here, and no field is known by
+  its key (they are the core's `field:…`, `setting:…`). A form sends only the fields the person
+  changed, then presses its default button: a block's kind brings its own settings unless they
+  were changed too. A refusal is the dialog's `refusal` line, said before it is asked again. The
+  prompt is `QuestionShown::prompt`; a pairing code is sent as typed, spaces and all. Two things are
+  still this app's: a project choice says its level after it (`Lines::projects`), and a check
+  setting's states are its setting's own options ("On", "Off"), neither of which the controls
+  carry yet.
 - **The Export and import page lists the store's own actions** (`SettingsView.offered`, Erase
   everything deleted) as rows after its buttons, with no shortcut, each handed back as `ActOn` with
   `ActingOnSettings` (`preferences.store_items`), the core's `offered_caption` its hint, which
@@ -108,7 +140,19 @@ test with a newer one (`PYTHON=…`).
   `proposals.NOW` fixes the moment for tests (`PlanFrom`, sent before every action).
 - **Carry Forward at a block's end and Replan on an overrun are the Reminders screen's**
   (`f`, `p`, in `reminder_lists.py`): the background service has no keys, and only says the
-  text, which already ends in the question or says the overrun.
+  text, which already ends in the question or says the overrun. The list looks back by the app's
+  own clock (`DueEvent::LookBack`) and hands each button back by its id (`DueEvent::Press`), so
+  its tests place blocks by the real clock (`block_at`), as the core's flow test does.
 - **The tests seed and check the store over `lum rpc`** (`tests/client.py`, `harness.py`), as
   another process would, and `tick` the app before each script. They run in UTC: the core
   reads the zone once per process, so a test cannot set its own.
+- **`help/en` is this app's own prose, for now**: H-Chord's topics, and Keyboard shortcuts on
+  Home's menu (`menus.key_help`, the topic of the screen in front). What in it is the device's
+  own stays here: the device's keys (H-Chord, Z-Chord, M-Chord and Dot 7, Control-D and the D
+  chord, left and right, a capital moving by first letter) and how the device's dialogs behave.
+  What should become the core's Key Help later, since every braille device would say it: each
+  screen's and Home's commands with their letters (`screen_actions`, `HomeView`), each row's
+  actions and letters (`action_letter`), what Enter does per row (`keys::runs_on`), what an
+  action asks (Weight's range, Delete's choice for a project's tasks, Erase Permanently's warning),
+  how to write a quick-add line and a filter, pairing's steps, and what the exports and backups
+  hold. Keep the help in step with Home and the screens' menus until then.
