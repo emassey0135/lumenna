@@ -141,6 +141,9 @@ pub struct SettingsView {
     pub offered_caption: String,
     /// The pages settings are shown on, in order, each setting on one (`settings_pages`): a shell
     /// that follows its platform's clock (one that sent `Event::Clock`) is not offered the clock.
+    /// Only the pages this device has something on: a page's `keys` are the settings it lists
+    /// here, and a page with none and no button is left out (General, where the shell keeps
+    /// nothing running and follows its own clock). A shell lists these, never filtering them.
     pub pages: Vec<SettingsPage>,
     /// What a setting's own control says.
     pub words: SettingWords,
@@ -163,6 +166,23 @@ pub struct SaveFile {
 
 impl crux_core::capability::Operation for SaveFile {
     type Output = ();
+}
+
+/// The settings pages this device lists, in order: each page's settings only those this device
+/// has (keeping Lumenna running in the background only where the shell offers it, once the store
+/// has listed them only those it lists), and a page left with no setting and no button not
+/// listed at all, so no shell filters the pages itself.
+fn pages(settings: &Settings, background: bool, own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
+    let listed: Option<std::collections::BTreeSet<&str>> = settings.list.as_ref().map(|list| {
+        list.iter().map(|setting| setting.key.as_str()).chain(background.then_some(BACKGROUND)).collect()
+    });
+    lumenna_records::fields::settings_pages(own_clock, sentence)
+        .into_iter()
+        .filter_map(|mut page| {
+            page.keys.retain(|key| (key != BACKGROUND || background) && listed.as_ref().is_none_or(|listed| listed.contains(key.as_str())));
+            (!page.keys.is_empty() || !page.buttons.is_empty()).then_some(page)
+        })
+        .collect()
 }
 
 /// Settings as shown, the exports named for `today`, with keeping Lumenna running in the
@@ -195,7 +215,7 @@ pub fn view(settings: &Settings, background: Option<(BackgroundKind, bool)>, tod
         exports,
         offered,
         offered_caption: lumenna_records::actions::STORE_ACTIONS.to_owned(),
-        pages: lumenna_records::fields::settings_pages(own_clock, sentence),
+        pages: pages(settings, background.is_some(), own_clock, sentence),
         words: lumenna_records::fields::setting_words(),
     }
 }

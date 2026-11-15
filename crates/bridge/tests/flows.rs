@@ -2516,3 +2516,141 @@ fn a_refusal_of_a_letter_is_marked_as_one_for_the_screen() {
         .collect();
     assert_eq!(refused.len(), 1, "said, and marked as a refusal");
 }
+
+// ---------------------------------------------------------------------------------------
+// Home and each screen's own actions
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn home_lists_the_places_then_what_is_done_from_anywhere_and_enter_opens_the_place_in_hand() {
+    use lumenna_app::Side;
+    let mut app = App::new();
+    app.send(Event::Home);
+    let view = app.view();
+    let home = view.home.clone().expect("Home is shown");
+    assert_eq!(home.title, "Home");
+    assert_eq!(home.places[0].entry.title, "Today");
+    assert_eq!(home.places[0].letter, "t");
+    let ids: Vec<&str> = home.actions.iter().map(|action| action.id.as_str()).collect();
+    assert_eq!(ids, ["new-task", "undo", "redo", "what-now", "sync-now", "settings", "keyboard-help", "about"]);
+    assert_eq!(view.screen_actions, home.actions, "Home's own actions are the screen's");
+    assert_eq!(view.sidebar_held.focus.as_ref(), Some(&home.places[0].entry.key), "Home opens on its first place");
+    let tasks = home.places.iter().find(|place| place.entry.title == "Tasks").unwrap().entry.key.clone();
+    app.send(Event::Hold(Side::Sidebar, tasks));
+    app.send(Event::Key("open".to_owned()));
+    let view = app.view();
+    assert_eq!(view.place, Some(Place::Tasks));
+    assert!(view.home.is_none(), "a place opened leaves Home");
+    assert_eq!(view.screen_actions.iter().map(|action| action.id.as_str()).collect::<Vec<_>>(), ["new-task", "filter", "undo", "redo"]);
+}
+
+#[test]
+fn a_letter_on_home_opens_its_place_or_runs_homes_own_action() {
+    let mut app = App::new();
+    app.send(Event::Home);
+    app.send(Event::Letter("k".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Tasks));
+    assert!(app.view().home.is_none());
+    app.send(Event::Home);
+    app.send(Event::Letter("a".to_owned()));
+    assert!(app.view().line.is_some(), "New Task opens quick add");
+}
+
+#[test]
+fn enter_on_a_heading_on_home_folds_it() {
+    use lumenna_app::Side;
+    let mut app = App::new();
+    app.send(Event::Home);
+    app.send(Event::Hold(Side::Sidebar, "group:Projects".to_owned()));
+    let shell = app.send(Event::Key("open".to_owned()));
+    assert_eq!(said(&shell), ["Collapsed"]);
+    assert!(app.view().home.is_some(), "a heading is no place to go");
+}
+
+#[test]
+fn what_should_i_work_on_goes_to_today_from_any_place() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Trash));
+    app.send(Event::Key("what-now".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Today));
+    let ids: Vec<String> = app.view().screen_actions.into_iter().map(|action| action.id).collect();
+    assert!(ids.contains(&"what-now".to_owned()), "{ids:?}");
+}
+
+#[test]
+fn new_project_inside_is_the_project_shown_offering_it() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    app.send(Event::Open(Place::Project("Work".to_owned())));
+    let action = app.view().screen_actions.into_iter().find(|action| action.id == "new-project-inside").expect("offered");
+    assert!(action.enabled && action.asks && !action.shell);
+    app.send(Event::Key("new-project-inside".to_owned()));
+    assert_eq!(app.view().asking.unwrap().action.unwrap().kind, ActionKind::NewInside);
+}
+
+#[test]
+fn enter_restores_a_task_in_the_trash() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Key("delete".to_owned()));
+    app.send(Event::Open(Place::Trash));
+    assert_eq!(app.titles(), ["Buy milk"]);
+    app.send(Event::Key("open".to_owned()));
+    assert!(app.titles().is_empty(), "restored");
+    app.send(Event::Open(Place::Tasks));
+    assert_eq!(app.titles(), ["Buy milk"]);
+}
+
+#[test]
+fn a_reminders_button_is_pressed_by_its_id() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    let since = jiff::Timestamp::now().to_string();
+    let tz = jiff::tz::TimeZone::system();
+    let now = jiff::Zoned::now().date().tomorrow().unwrap().at(8, 56, 0, 0).to_zoned(tz).unwrap().timestamp().to_string();
+    app.send(Event::Due(lumenna_app::DueEvent::Look { since, now: Some(now) }));
+    let due = app.view().due;
+    assert_eq!(due.len(), 1);
+    let shell = app.send(Event::Due(lumenna_app::DueEvent::Press { id: due[0].id.clone(), button: "dismiss".to_owned() }));
+    assert!(app.view().due.is_empty(), "{:?}", said(&shell));
+}
+
+#[test]
+fn reminders_due_look_back_over_the_last_day_by_the_apps_own_clock() {
+    let mut app = App::new();
+    let started = jiff::Zoned::now().checked_sub(jiff::SignedDuration::from_mins(90)).unwrap();
+    let at = format!("{:02}:{:02}", started.hour(), started.minute());
+    block(&mut app, "Deep work", &at, &started.date().to_string(), None);
+    app.send(Event::Due(lumenna_app::DueEvent::LookBack));
+    let due = app.view().due;
+    assert!(!due.is_empty(), "a block's reminder 95 minutes ago is found");
+}
+
+#[test]
+fn a_settings_page_with_nothing_on_it_for_this_device_is_not_listed() {
+    let mut app = App::new();
+    app.send(Event::Clock(lumenna_records::proposals::TimeStyle::TwentyFourHour));
+    app.send(Event::Settings(SettingsEvent::Open));
+    let pages: Vec<String> = app.view().settings.unwrap().pages.into_iter().map(|page| page.id).collect();
+    assert!(!pages.contains(&"general".to_owned()), "nothing runs in the background here and the clock is the shell's: {pages:?}");
+    assert!(pages.contains(&"devices".to_owned()) && pages.contains(&"export".to_owned()), "a page of buttons stays: {pages:?}");
+    app.send(Event::Background(lumenna_app::BackgroundEvent::Offered { kind: lumenna_records::background::BackgroundKind::WindowsSignIn, on: false }));
+    let pages = app.view().settings.unwrap().pages;
+    let general = pages.iter().find(|page| page.id == "general").expect("the background setting is on General");
+    assert_eq!(general.keys, [lumenna_records::background::KEY]);
+}
+
+#[test]
+fn a_pairing_code_typed_with_spaces_is_dialled_as_one() {
+    use lumenna_app::PairEvent;
+    let mut app = App::new();
+    app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    pair(&mut app, PairEvent::Open("Test browser".to_owned()));
+    app.network();
+    pair(&mut app, PairEvent::Code("ab12 cd34\tef56 ".to_owned()));
+    pair(&mut app, PairEvent::Join);
+    let dialled = app.network();
+    assert!(matches!(&dialled[..], [(_, NetworkRequest::Pair { code: Some(code), .. })] if code == "ab12cd34ef56"), "{dialled:?}");
+}

@@ -231,7 +231,9 @@ impl Lumenna {
             PairEvent::Wait if pairing.running => Command::done(),
             PairEvent::Wait => start_pairing(pairing, None, &words),
             PairEvent::Join => {
-                let code = pairing.theirs.trim().to_owned();
+                // Taken as typed: a code read out in groups and typed with spaces between them is
+                // the same code.
+                let code: String = pairing.theirs.split_whitespace().collect();
                 if code.is_empty() {
                     pairing.problem = Some(words.need_code.clone());
                     return render().and(say(words.need_code));
