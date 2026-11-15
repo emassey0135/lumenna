@@ -62,19 +62,24 @@ final class SharedScreensTests: XCTestCase {
         _ = questions
     }
 
-    func testTheSidebarLeavesOutWhatIsFoldedAndSaysTheLevelWhereItChanges() throws {
+    /// The Projects screen's rows, the core's (`GroupScreen`).
+    private func projectRows() -> [AppItem] {
+        core.app.groupScreen(.projects)?.shown ?? []
+    }
+
+    func testAGroupsScreenLeavesOutWhatIsFoldedAndSaysTheLevelWhereItChanges() throws {
         _ = try core.app.device.addProject(name: "Work", parent: nil)
         _ = try core.app.device.addProject(name: "Reports", parent: "Work")
         _ = try core.app.device.addProject(name: "Home", parent: nil)
-        settle { core.app.sidebarItems(under: .projects).contains { $0.title == "Reports" } }
-        let projects = core.app.sidebarItems(under: .projects).filter { ["Work", "Reports", "Home"].contains($0.title) }
+        settle { projectRows().contains { $0.title == "Reports" } }
+        let projects = projectRows().filter { ["Work", "Reports", "Home"].contains($0.title) }
         XCTAssertEqual(projects.map(\.title), ["Work", "Reports", "Home"])
         XCTAssertEqual(projects.map(\.level), [nil, "level 2", "level 1"], "said only where it changes")
         XCTAssertEqual(projects[0].expanded, true)
         let collapse = try XCTUnwrap(projects[0].actions.first { $0.kind == .collapse })
         core.app.run(collapse, on: projects[0].key, side: .sidebar)
-        settle { !core.app.sidebarItems(under: .projects).contains { $0.title == "Reports" } }
-        let folded = try XCTUnwrap(core.app.sidebarItems(under: .projects).first { $0.title == "Work" })
+        settle { !projectRows().contains { $0.title == "Reports" } }
+        let folded = try XCTUnwrap(projectRows().first { $0.title == "Work" })
         XCTAssertEqual(folded.expanded, false)
         XCTAssertTrue(folded.spoken?.contains("collapsed") == true, folded.spoken ?? "")
     }

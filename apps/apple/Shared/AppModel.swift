@@ -310,40 +310,48 @@ struct AppItem: Hashable {
     var swatch: LumennaApp.Swatch?
 }
 
+extension AppItem {
+    /// A sidebar entry as a list shows it: its detail, the depth it is drawn at and, said after
+    /// the detail, whether it is folded and its level where that changes (`SidebarEntry`'s
+    /// `expanded` and `level`, the core's), its actions and its swatch.
+    init(entry: LumennaApp.SidebarEntry) {
+        self.init(
+            key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: entry.depth,
+            actions: entry.offered, swatch: entry.swatch
+        )
+        spoken = AppModel.spoken(detail: entry.detail, expanded: entry.expanded, level: entry.level)
+        expanded = entry.expanded
+        level = entry.level
+        if case .group = entry.kind { heading = true }
+    }
+}
+
+extension LumennaApp.GroupScreen {
+    /// Its places as a list shows them, those folded away left out, each with the level the
+    /// core says against the others shown.
+    var shown: [AppItem] {
+        entries.filter { !$0.hidden }.map(AppItem.init(entry:))
+    }
+}
+
 extension AppModel {
-    /// The sidebar's rows as a list shows them, not folded away, each saying its detail, whether
-    /// it is folded and, against the row shown before, its level: the app's (`SidebarEntry`'s
-    /// `hidden`, `expanded`, `level`). `under` limits them to one heading's places, a level up,
-    /// whose level is said against those rows alone, in the core's words.
-    func sidebarItems(under group: LumennaApp.SidebarGroup? = nil) -> [AppItem] {
-        var shown: [LumennaApp.SidebarEntry] = []
-        var inside = group == nil
-        for entry in view.sidebar {
-            if let group {
-                if entry.depth == 0 {
-                    if case let .group(heading) = entry.kind { inside = heading == group } else { inside = false }
-                    continue
-                }
-                guard inside else { continue }
-            }
-            guard !entry.hidden else { continue }
-            shown.append(entry)
-        }
-        // One heading's places, cut out here, have their levels from the core against each other.
-        let depths = shown.map { group == nil ? $0.depth : $0.depth - 1 }
-        let levels = group == nil ? shown.map(\.level) : LumennaApp.levels(depths: depths).map { $0.isEmpty ? nil : $0 }
-        var items: [AppItem] = []
-        for (index, entry) in shown.enumerated() {
-            let depth = depths[index]
-            let level = levels[index]
-            var item = AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: depth, actions: entry.offered, swatch: entry.swatch)
-            item.spoken = AppModel.spoken(detail: entry.detail, expanded: entry.expanded, level: level)
-            item.expanded = entry.expanded
-            item.level = level
-            if case .group = entry.kind { item.heading = true }
-            items.append(item)
-        }
-        return items
+    /// The sidebar's rows as a list shows them, those folded away left out: the app's
+    /// (`SidebarEntry`'s `hidden`, `expanded`, `level`).
+    func sidebarItems() -> [AppItem] {
+        view.sidebar.filter { !$0.hidden }.map(AppItem.init(entry:))
+    }
+
+    /// Where the iPhone and the watch put the places, the core's (`placeArrangement`): the
+    /// iPhone's tabs, Browse's rows and each group's screen, and the watch's root list, from the
+    /// sidebar the app shows now.
+    var arrangement: LumennaApp.Arrangement {
+        LumennaApp.placeArrangement(sidebar: view.sidebar, capitals: .title)
+    }
+
+    /// One group's own screen, the core's: its heading, its places a level shallower, and what
+    /// it says with none.
+    func groupScreen(_ group: LumennaApp.SidebarGroup) -> LumennaApp.GroupScreen? {
+        arrangement.groups.first { $0.group == group }
     }
 
     /// The sidebar entry held by `key`.

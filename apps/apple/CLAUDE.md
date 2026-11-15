@@ -338,6 +338,14 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   current user activity with its entity, for "this task" (`showingTask`). The SDK's Reminders schema (iOS
   and macOS 27, not watchOS) is not adopted: its reminder carries a list, flags, URLs, images
   and location triggers that no operation takes.
+- **The iPhone's tabs, Browse and each group's screen are the core's** (`placeArrangement`, as
+  `AppModel.arrangement`, from the view's own sidebar): `RootTabs` makes a tab of each of
+  `Arrangement.tabs`, in its order and title, only the symbol its own; Browse lists `browse`, a
+  group with the count of every place under it, nested ones too, and a place with its detail and
+  swatch; a place opens inside Browse and a group its `PlacesViewController`, drawn from its
+  `GroupScreen`: titled by its heading in full, its add button the heading's New (`offered`), run
+  as any row's action, its rows folded as the sidebar's, and its `empty` with none. No shell picks
+  places out of the sidebar by kind, counts them or titles them.
 - **The iPad is the Mac's layout, not the iPhone's tabs** (`IPadRoot`, three columns): the
   app's places in a sidebar (`SidebarViewController`, from `ViewModel.sidebar`, plus
   Settings), the place chosen, and what was opened from it (`showBeside`, which pushes on
@@ -769,6 +777,11 @@ iPhone's and iPad's and the Mac's are behind `#available`, the watch's always th
 - **The watch's lists and day follow the phone's models** (`TaskListModel`, `DayModel`): what
   is listed, the row in hand put back on returning, the filter, and VoiceOver taken to a row
   the app moved, its swipes split by the phone's `AppRowActions`.
+- **The root list is the core's** (`Arrangement.watch`, `RootView`): New Task, every place the
+  sidebar shows, as it folds them, then Undo, Redo and Settings, a section of their own after the
+  last place. An action is the core's key (`AppModel.perform`), but for New Task, which brings up
+  quick add (that opens the app's line itself), and Settings, the watch's own screen. The section
+  over syncing with the phone is headed by the core's word (`Wording.phone`).
 - **A row's actions are the app's, run once for every Apple app** (`AppModel.run`: `ActOn`
   naming the row, or one held in a side list; `AppModel.act` for the day's own, the details'
   task and a reminder list's own), their questions `AppQuestions`' (alerts and a
