@@ -21,8 +21,8 @@ pub struct Arrangement {
     /// Each group's screen, in order: what a group's row in Browse opens.
     pub groups: Vec<GroupScreen>,
     /// A watch's root list, in order: New Task, every place as the sidebar has it (headings
-    /// folding what is under them, a heading's New after it while it is unfolded), then Undo,
-    /// Redo and Settings.
+    /// folding what is under them; a heading's New is among its `offered`, for the watch to draw
+    /// after it while it is unfolded), then Undo, Redo and Settings.
     pub watch: Vec<RootRow>,
 }
 
@@ -121,6 +121,18 @@ pub fn arrangement(sidebar: &[SidebarEntry], sentence: bool) -> Arrangement {
                         place
                     })
                     .collect();
+                // The group's screen is opened past its heading, so the heading's own folding in
+                // the sidebar hides nothing there: only a folded place hides what is under it.
+                let mut hidden_below: Option<u32> = None;
+                for place in &mut entries {
+                    if hidden_below.is_some_and(|depth| place.depth <= depth) {
+                        hidden_below = None;
+                    }
+                    place.hidden = hidden_below.is_some();
+                    if !place.hidden && place.expanded == Some(false) {
+                        hidden_below = Some(place.depth);
+                    }
+                }
                 let shown: Vec<u32> = entries.iter().filter(|place| !place.hidden).map(|place| place.depth).collect();
                 let mut levels = crate::lines::levels(&shown).into_iter();
                 for place in &mut entries {
@@ -181,6 +193,18 @@ mod tests {
         assert!(projects.entries[1].level.is_some(), "its level said where it changes");
         assert!(arranged.groups[1].entries.is_empty());
         assert!(!arranged.groups[1].empty.is_empty());
+    }
+
+    #[test]
+    fn a_groups_screen_shows_its_places_while_the_sidebar_folds_its_heading() {
+        let mut folded = sidebar();
+        folded[2].expanded = Some(false);
+        folded[3].hidden = true;
+        folded[3].expanded = Some(false);
+        folded[4].hidden = true;
+        let projects = &arrangement(&folded, true).groups[0];
+        let hidden: Vec<bool> = projects.entries.iter().map(|place| place.hidden).collect();
+        assert_eq!(hidden, [false, true], "Work shown, folding Website under it");
     }
 
     #[test]
