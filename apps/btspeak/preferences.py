@@ -17,6 +17,7 @@ from pathlib import Path
 from BTSpeak import clipboard, dialogs
 
 import actions
+import forms
 from actions import L
 import core
 from core import device_name, refused
@@ -45,12 +46,6 @@ def toggle_read_back() -> str:
     options.put(options.READ_BACK, on)
     words = core.words().read_back
     return words.turned_on if on else words.turned_off
-
-
-def setting_title(setting) -> str:
-    """A setting's row: its name and its value, as the core names them."""
-    named = {option.id: option.title for option in setting.options}
-    return f"{setting.title}, {named.get(setting.value, setting.value)}"
 
 
 @contextlib.contextmanager
@@ -103,61 +98,74 @@ def settings(session: Session) -> str:
 
 
 def open_page(session: Session, page_id: str) -> str:
-    """One of the core's pages: Devices and sync, and Export and import, are screens of their
-    own; the rest list their settings."""
+    """One of the core's pages: Devices and sync is a screen of its own, its devices a list; the
+    rest are the app's description of the page (`App::settings_page_on`), a row per control."""
     if page_id == "devices":
         return devices(session)
-    if page_id == "export":
-        return export_import(session)
     return setting_page(session, page_id)
 
 
-def button_commands(session: Session, page) -> list[Command]:
-    """A page's buttons, the core's, as its main menu's commands, each with the core's letter."""
-    runs = {"sync-now": sync_now, "pair": pair, "back-up": back_up, "restore-backup": restore, "import": import_file}
-    return [
-        Command(button.title, lambda _, run=runs[button.id]: run(session), key=L.button_letter(button.id) or "")
-        for button in (page.buttons if page is not None else [])
-        if button.id in runs
-    ]
+def page_dialog(session: Session, page_id: str):
+    """Settings page `page_id` as the app describes it, its controls in tab order; None while
+    settings are not open, or for a page this device does not list."""
+    session.view()
+    return session.app.settings_page_on(0, page_id)
 
 
-def store_items(session: Session) -> list:
-    """What the app offers to do to the store as a whole (Erase everything deleted), a row
-    each beside backups and export, under the core's name, its caption the row's hint. No shortcut: what it does cannot be
-    undone, so it is reached by moving to it, and the app asks first."""
+def control_of(session: Session, page_id: str, key: str):
+    dialog = page_dialog(session, page_id)
+    return next((control for control in (dialog.controls if dialog is not None else []) if control.key == key), None)
+
+
+def check_words(session: Session, control) -> dict:
+    """What a setting that is on or off calls each state, `true` and `false`: the setting's own
+    options ("On", "Off"), which its check does not carry."""
+    key = control.sends.field_0 if isinstance(control.sends, L.ControlSendsSetting) else ""
     view = session.view().settings
-    return [
-        dialogs.DynamicMenuItem(
-            title=actions.named(offered),
-            action=lambda offered=offered: actions.act(session, offered, on=L.ActingOnSettings()),
-            # The core's caption for them, said and brailled as the device says a row's hint.
-            hint=view.offered_caption or None,
-        )
-        for offered in (view.offered if view is not None else [])
-    ]
+    shown = next((shown for shown in (view.settings if view is not None else []) if shown.setting.key == key), None)
+    named = {option.id: option.title for option in (shown.setting.options if shown is not None else [])}
+    if {"true", "false"} <= set(named):
+        return {"true": named["true"], "false": named["false"]}
+    yes_no = {choice.id: choice.title for choice in core.words().yes_no}
+    return {"true": yes_no.get("yes", "true"), "false": yes_no.get("no", "false")}
 
 
-def shown_settings(session: Session) -> list:
-    """Every setting as the app shows it, once the host has said."""
-    view = session.view().settings
-    return view.settings if view is not None else []
+def control_title(session: Session, control) -> str:
+    """A setting's row: its name and what it holds, as the core names them."""
+    value = check_words(session, control)[forms.shown_value(control)] if control.kind == forms.T.CHECK else control.value
+    return f"{control.label}, {value}" if value else control.label
 
 
 def setting_items(session: Session, page_id: str) -> list:
-    """The settings on the core's page `page_id`, in its order, one row each, said as the core
-    names them."""
-    page = page_of(session, page_id)
+    """The page's controls, in its order, one row each: a setting said as the core names it, a
+    button with its letter, a line to read (the store's actions' caption) as the hint of the rows
+    it is about. Enter changes a setting or presses a button."""
+    dialog = page_dialog(session, page_id)
     made = []
-    for key in (page.keys if page is not None else []):
-        shown = setting_of(session, key)
-        if shown is None:
+    for control in (dialog.controls if dialog is not None else []):
+        if control.kind == forms.T.TEXT:
+            if control.key == "offered-caption":
+                # The caption of the store's own actions, said after each as the device says a hint.
+                for item in made:
+                    if getattr(item, "store_action", False):
+                        item.hint = control.value
             continue
-        made.append(dialogs.DynamicMenuItem(
-            title=setting_title(shown.setting),
-            action=lambda key=key: change_setting(session, key),
-        ))
+        if is_folder(control):
+            # A folder setting, chosen with the device's folder dialog.
+            title, action = control_title(session, control), (lambda key=control.key: change_setting(session, page_id, key))
+        elif control.kind == forms.T.BUTTON:
+            title, action = control.label, (lambda key=control.key: press(session, page_id, key))
+        else:
+            title, action = control_title(session, control), (lambda key=control.key: change_setting(session, page_id, key))
+        item = dialogs.DynamicMenuItem(title=title, action=action, shortcut=control.letter or None)
+        item.store_action = control.key.startswith("action:")
+        made.append(item)
     return made
+
+
+def is_folder(control) -> bool:
+    """Whether `control` is a folder setting, which the app leaves to this app to choose."""
+    return control.kind == forms.T.BUTTON and isinstance(control.sends, L.ControlSendsShell) and control.key.startswith("setting:")
 
 
 def page_title(page) -> str:
@@ -165,53 +173,90 @@ def page_title(page) -> str:
     return sentences(page.title, page.caption) if page is not None else ""
 
 
+def button_commands(session: Session, page_id: str) -> list[Command]:
+    """A page's buttons with letters, the core's, as its main menu's commands too."""
+    dialog = page_dialog(session, page_id)
+    return [
+        Command(control.label, lambda _, key=control.key: press(session, page_id, key), key=control.letter)
+        for control in (dialog.controls if dialog is not None else [])
+        if control.kind == forms.T.BUTTON and control.letter
+    ]
+
+
 def setting_page(session: Session, page_id: str) -> str:
-    """One of the core's pages of settings, one per row: Enter changes one; its buttons are on
-    its main menu."""
+    """One of the core's pages, one row per control: Enter changes a setting or presses a
+    button; its lettered buttons are on its main menu too."""
     with screen("lumenna-settings"), opened(session):
         page = page_of(session, page_id)
         if page is None:
             return ""
         live_menu(
             session, lambda: setting_items(session, page_id), lambda: page_title(page_of(session, page_id)),
-            app=[*button_commands(session, page), *undo_commands(session)], app_title=L.menu_of(page.title),
+            app=lambda: [*button_commands(session, page_id), *undo_commands(session)], app_title=L.menu_of(page.title),
         )
     return ""
 
 
-def setting_of(session: Session, key: str):
-    return next((shown for shown in shown_settings(session) if shown.setting.key == key), None)
-
-
-def change_setting(session: Session, key: str) -> str:
-    """A choice where the setting has options; else a line of text, which the core reads and
-    checks. The device has a date dialog but no time one, so a time is typed as said."""
-    shown = setting_of(session, key)
-    if shown is None:
+def press(session: Session, page_id: str, key: str) -> str:
+    """A page's button pressed: what the app says it sends, sent, and whatever that asks
+    answered; or what it leaves to this app (`ControlSends::Shell`): a file to pick, a backup to
+    take, a device to pair. Sync now waits for its answer; an export asks where to save."""
+    control = control_of(session, page_id, key)
+    if control is None:
         return ""
-    setting = shown.setting
-    value = setting.value
-    offered = {option.id: option.title for option in setting.options}
-    if offered:
-        chosen = choose(offered, actions.prompt(setting.title, setting.hint), default=value)
-        if chosen is None or chosen == value:
+    if isinstance(control.sends, L.ControlSendsShell):
+        runs = {"pair": pair, "back-up": back_up, "restore-backup": restore, "import": import_file}
+        run = runs.get(control.sends.field_0)
+        return run(session) if run is not None else ""
+    if key == "sync-now":
+        return sync_now(session)
+    if key.startswith("export:"):
+        return export(session, control)
+    return actions.joined(forms.send(session, control), actions.follow(session))
+
+
+def change_setting(session: Session, page_id: str, key: str) -> str:
+    """A setting changed as its control is shaped: a choice from its options, a yes or no, a
+    folder from the device's folder dialog, else a line of text, which the core reads and
+    checks: one it refuses is asked again, its sentence first and the line as typed, as a
+    refused field stays in its dialog. The device has a date dialog but no time one, so a time
+    is typed as said."""
+    control = control_of(session, page_id, key)
+    if control is None:
+        return ""
+    asked = actions.prompt(control.label, control.hint)
+    if control.kind == forms.T.CHOICE:
+        chosen = choose({option.id: option.title for option in control.options}, asked, default=forms.selected_id(control))
+        if chosen is None or chosen == forms.selected_id(control):
             return ""
-        return session.send(L.ShellEventSettings(L.SettingsEventSet(key, chosen)))
-    words = session.view().settings.words
-    # What a line takes is the setting's own hint; where it has none, the core's for its shape.
-    hint = setting.hint or {L.SettingKind.TIME: words.time_hint, L.SettingKind.NUMBER: words.number_hint}.get(setting.kind, "")
-    asked = actions.prompt(setting.title, hint)
-    # Saved when entered. One the core refuses is asked again, its sentence first and the
-    # line as typed, as a refused field stays in its dialog.
-    wrong, typed = "", value
+        return forms.send(session, control, chosen, L.ControlMoveSet())
+    if control.kind == forms.T.CHECK:
+        now = forms.shown_value(control)
+        chosen = choose(check_words(session, control), asked, default=now)
+        if chosen is None or chosen == now:
+            return ""
+        return forms.send(session, control, chosen, L.ControlMoveSet())
+    if is_folder(control):
+        start = control.value if control.value and Path(control.value).is_dir() else str(Path.home())
+        folder = dialogs.request_directory(start, prompt=control.label)
+        if folder is None:
+            return ""
+        # The folder is the setting's value, set as any setting's is.
+        events = L.control_event(L.ControlSendsSetting(control.sends.field_0), folder, L.ControlMoveSet())
+        return session.send(*events)
+    wrong, typed = "", control.value
     while True:
         chosen = dialogs.request_input(actions.prompt(wrong, asked), default_text=typed)
-        if chosen is None or chosen == value:
+        if chosen is None or (not wrong and chosen == control.value):
             return ""
-        made = session.send(L.ShellEventSettings(L.SettingsEventSet(key, chosen)))
-        shown = setting_of(session, key)
-        if shown is not None and shown.problem:
-            wrong, typed = shown.problem, chosen
+        made = forms.send(session, control, chosen, L.ControlMoveSet())
+        problem = next(
+            (shown.value for shown in (page_dialog(session, page_id).controls if page_dialog(session, page_id) else [])
+             if shown.key == f"problem:{key.removeprefix('setting:')}"),
+            "",
+        )
+        if problem:
+            wrong, typed = problem, chosen
             continue
         return made
 
@@ -268,7 +313,7 @@ def devices(session: Session) -> str:
             # Enter renames a device, as Enter does on every platform (`Key("open")`).
             main=lambda row: actions.press(session, "open", row),
             context=lambda rows: actions.commands(session, rows),
-            app=button_commands(session, page),
+            app=lambda: button_commands(session, page.id),
             # The status heading already says nothing is paired; the empty list adds only the key.
             empty=L.press_to_pair(L.button_letter("pair")),
             app_title=L.menu_of(page.title),
@@ -444,7 +489,8 @@ def back_up(session: Session) -> str:
 
 
 def setting_value(session: Session, key: str) -> str:
-    shown = setting_of(session, key)
+    view = session.view().settings
+    shown = next((shown for shown in (view.settings if view is not None else []) if shown.setting.key == key), None)
     return shown.setting.value if shown is not None else ""
 
 
@@ -459,46 +505,13 @@ def restore(session: Session) -> str:
     return import_path(session, Path(chosen))
 
 
-def export_import(session: Session) -> str:
-    with opened(session):
-        return _export_import(session)
-
-
-def _export_import(session: Session) -> str:
-    """The core's Export and import page: Export (this app's row, choosing among the core's
-    exports), the page's buttons, then what the app offers to do to the store as a whole."""
-    page = page_of(session, "export")
-    runs = {"import": import_file}
-    menu = [
-        dialogs.DynamicMenuItem(title=core.words().files.export, action=lambda: export(session)),
-        *[
-            # Each of the page's buttons with its letter, the core's, as on every other page.
-            dialogs.DynamicMenuItem(title=button.title, shortcut=L.button_letter(button.id) or None,
-                                    action=lambda run=runs[button.id]: run(session))
-            for button in (page.buttons if page is not None else []) if button.id in runs
-        ],
-        *store_items(session),
-    ]
-    dialogs.dynamic_menu(menu, title=page_title(page))
-    return ""
-
-
-def export(session: Session) -> str:
-    """Writes the current state to a file in a folder of the person's choosing, named as the
-    app names it."""
-    with opened(session):
-        return _export(session)
-
-
-def _export(session: Session) -> str:
+def export(session: Session, control) -> str:
+    """Writes the current state to a file in a folder of the person's choosing, named as the app
+    names it: one of the Export page's exports (`control`), as the app describes it."""
     view = session.view().settings
-    offered = view.exports if view is not None else []
-    if not offered:
+    picked = next((made for made in (view.exports if view is not None else []) if made.label == control.label), None)
+    if picked is None:
         return core.words().nothing_to_choose
-    index = choose({i: choice.label for i, choice in enumerate(offered)}, core.words().export_as)
-    if index is None:
-        return ""
-    picked = offered[index]
     folder = dialogs.request_directory(str(Path.home()), prompt=core.words().files.save_in)
     if folder is None:
         return ""
@@ -506,7 +519,7 @@ def _export(session: Session) -> str:
     if path.exists() and not confirm(L.already_there(picked.name)):
         return ""
     session.files.clear()
-    said = session.send(L.ShellEventSettings(L.SettingsEventExport(picked.format)))
+    said = forms.send(session, control)
     if not session.files:
         return said
     made = session.files.pop()

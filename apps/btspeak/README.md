@@ -82,6 +82,7 @@ subtasks. That is all the core's, so that every client behaves alike and none ca
 | `session.py` | What every menu shares: sending to the app, live rebuilding, and what is said. |
 | `actions.py` | Each row's actions, the core's, as its context menu, letters and delete keys; what the app opens answered with the device's dialogs. |
 | `menus.py` | Home: the places and what can be done from anywhere; the screen each place opens; Key help and About. |
+| `forms.py` | The core's dialogs (a question, the task and block forms, quick add) drawn with the device's own. |
 | `tasks.py` | Task lists, what can be done to one task, quick add, and the trash. |
 | `day.py` | The planner — blocks, sittings, free time and now, and the day's own actions — and the block series. |
 | `proposals.py` | Replan from now and Plan the day: the core's proposal, checked and made. |

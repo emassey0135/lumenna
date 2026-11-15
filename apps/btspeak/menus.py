@@ -168,7 +168,7 @@ def add_in(session: Session, row) -> str:
     place = row.record.entry.kind.field_0
     session.show(place)
     try:
-        return tasks.add_task(session, session.view().quick_add)
+        return tasks.add_task(session)
     finally:
         session.send(L.ShellEventHome())
 

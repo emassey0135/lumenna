@@ -63,9 +63,20 @@ test with a newer one (`PYTHON=…`).
   The app opens them for Settings (`Key("settings")`) as well as this screen does
   (`preferences.opened`), and leaving puts them away (`settings_open` keeps `follow` from opening
   them twice).
-- **A question's prompt is the core's** (`Session.prompt`, `QuestionShown::prompt` from
-  `App::screen_view`); a refusal goes in front of it. A pairing code is sent as typed, spaces and
-  all.
+- **Every question and form is the core's dialog, drawn with the device's** (`forms.py`, over
+  `lumenna_app::dialog`): a question, the block form and quick add are `ScreenView::dialog`, the
+  task form a question's (Enter or Edit details shows the task, and the question becomes its form),
+  a settings page `App::settings_page_on`. `forms.ask` picks the device's dialog by the controls (a
+  list, a line, one button, several), `forms.form` asks a form's lines, choices and checks with
+  `request_form`, and a settings page is a menu of its controls. What the person did goes to
+  `control_event` and what comes back is sent: no event is built here, and no field is known by
+  its key (they are the core's `field:…`, `setting:…`). A form sends only the fields the person
+  changed, then presses its default button: a block's kind brings its own settings unless they
+  were changed too. A refusal is the dialog's `refusal` line, said before it is asked again. The
+  prompt is `QuestionShown::prompt`; a pairing code is sent as typed, spaces and all. Two things are
+  still this app's: a project choice says its level after it (`Lines::projects`), and a check
+  setting's states are its setting's own options ("On", "Off"), neither of which the controls
+  carry yet.
 - **The Export and import page lists the store's own actions** (`SettingsView.offered`, Erase
   everything deleted) as rows after its buttons, with no shortcut, each handed back as `ActOn` with
   `ActingOnSettings` (`preferences.store_items`), the core's `offered_caption` its hint, which
@@ -135,3 +146,13 @@ test with a newer one (`PYTHON=…`).
 - **The tests seed and check the store over `lum rpc`** (`tests/client.py`, `harness.py`), as
   another process would, and `tick` the app before each script. They run in UTC: the core
   reads the zone once per process, so a test cannot set its own.
+- **`help/en` is this app's own prose, for now**: H-Chord's topics, and Keyboard shortcuts on
+  Home's menu (`menus.key_help`, the topic of the screen in front). What in it is the device's
+  own stays here: the device's keys (H-Chord, Z-Chord, M-Chord and Dot 7, Control-D and the D
+  chord, left and right, a capital moving by first letter) and how the device's dialogs behave.
+  What should become the core's Key Help later, since every braille device would say it: each
+  screen's and Home's commands with their letters (`screen_actions`, `HomeView`), each row's
+  actions and letters (`action_letter`), what Enter does per row (`keys::runs_on`), what an
+  action asks (Weight's range, Delete's choice for a project's tasks, Erase Permanently's warning),
+  how to write a quick-add line and a filter, pairing's steps, and what the exports and backups
+  hold. Keep the help in step with Home and the screens' menus until then.

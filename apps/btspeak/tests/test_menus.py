@@ -124,7 +124,7 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("context", "water plants", "Edit"),
-                ("form", {"due": "2026-12-10", "priority": "1", "project": "Home", "labels": "garden"}),
+                ("form", {"field:due": "2026-12-10", "field:priority": "1", "field:project": "Home", "field:labels": "garden"}),
                 ("back",),
             ],
             lambda: tasks.task_list(self.session),
@@ -139,10 +139,10 @@ class Menus(unittest.TestCase):
         self.call("project.add", name="Reports", parent="Work")
         self.call("task.add", text="file the summary")
         script = self.run_script(
-            [("context", "file the summary", "Edit"), ("form", {"project": "Reports"}), ("back",)],
+            [("context", "file the summary", "Edit"), ("form", {"field:project": "Reports"}), ("back",)],
             lambda: tasks.task_list(self.session),
         )
-        fields = {f.key: f for f in script.forms[0]}
+        fields = {f.key.removeprefix("field:"): f for f in script.forms[0]}
         self.assertEqual(fields["project"].field_type, "choice")
         self.assertEqual(list(fields["project"].choices.values()), ["Inbox", "Work", "Reports, level 2"])
         self.assertEqual(fields["title"].field_type, "text")
@@ -153,10 +153,10 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="dusty #Old")
         self.call("project.archive", name="Old")
         script = self.run_script(
-            [("context", "dusty", "Edit"), ("form", {"priority": "1"}), ("back",)],
+            [("context", "dusty", "Edit"), ("form", {"field:priority": "1"}), ("back",)],
             lambda: tasks.task_list(self.session),
         )
-        fields = {f.key: f for f in script.forms[0]}
+        fields = {f.key.removeprefix("field:"): f for f in script.forms[0]}
         self.assertEqual(list(fields["project"].choices), ["Inbox", "Old"])
         self.assertEqual(self.task("dusty")["project"], "Old")
 
@@ -286,17 +286,17 @@ class Menus(unittest.TestCase):
         self.call("config.set", key="day-start", value="07:30")
         offered = self.session.device.new_block_start("today")
         script = self.run_script(
-            [("app", "New block"), ("form", {"title": "Run", "date": "tomorrow"}), ("back",)],
+            [("app", "New block"), ("form", {"field:title": "Run", "field:date": "tomorrow"}), ("back",)],
             lambda: day.day_plan(self.session),
         )
-        fields = {f.key: f for f in script.forms[0]}
+        fields = {f.key.removeprefix("field:"): f for f in script.forms[0]}
         self.assertEqual(fields["start"].default_text, offered)
         # The day changed and the start was left as offered: tomorrow's, when the day starts.
         self.assertEqual(self.call("block.list")["rows"][0]["due_time"], "07:30")
         # A start typed is kept. Not on the hour: an offer always is, and one typed the same as
         # the offer counts as left as offered (between 17:00 and 18:00 the offer is 18:00).
         script = self.run_script(
-            [("app", "New block"), ("form", {"title": "Swim", "date": "tomorrow", "start": "18:15"}), ("back",)],
+            [("app", "New block"), ("form", {"field:title": "Swim", "field:date": "tomorrow", "field:start": "18:15"}), ("back",)],
             lambda: day.day_plan(self.session),
         )
         times = sorted(row["due_time"] for row in self.call("block.list")["rows"])
@@ -308,7 +308,7 @@ class Menus(unittest.TestCase):
             [
                 ("app", "New block"),
                 # Ending at midnight, so it is never over while the test runs.
-                ("form", {"title": "Deep work", "start": "11pm", "minutes": "60"}),
+                ("form", {"field:title": "Deep work", "field:start": "11pm", "field:minutes": "60"}),
                 ("key", "Deep work", "i"),
                 ("choose", "write the chapter"),
                 ("input", ""),
@@ -403,7 +403,7 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("context", "Train", "Edit block"),
-                ("form", {"accepts_tasks": "yes"}),
+                ("form", {"field:accepts_tasks": "yes"}),
                 ("key", "Train", "i"),
                 ("choose", "read"),
                 ("input", ""),
@@ -578,10 +578,18 @@ class Menus(unittest.TestCase):
     def test_a_tasks_details_end_with_its_history(self):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
-            [("menu", "write the chapter"), ("back",)],
+            [("context", "write the chapter", "Task details"), ("back",)],
             lambda: tasks.task_list(self.session),
         )
         self.assertEqual(script.shown[-1][-1], "History, made today")
+
+    def test_enter_on_a_task_opens_its_form_and_saves_what_changed(self):
+        self.call("task.add", text="write the chapter")
+        self.run_script(
+            [("menu", "write the chapter"), ("form", {"field:priority": "1"}), ("back",)],
+            lambda: tasks.task_list(self.session),
+        )
+        self.assertEqual(self.task("write the chapter")["priority"], 1)
 
     def test_a_task_is_read_back_before_it_is_added_when_asked_for(self):
         import options
@@ -620,7 +628,7 @@ class Menus(unittest.TestCase):
             [
                 ("menu", "Run"),
                 ("choose", "only"),
-                ("form", {"minutes": "45"}),
+                ("form", {"field:minutes": "45"}),
                 ("key", "Run", "x"),
                 ("menu", "cancelled for this day"),
                 ("back",),
@@ -644,7 +652,7 @@ class Menus(unittest.TestCase):
         self.run_script(
             [
                 ("menu", "Standup"),
-                ("form", {"repeat": "every monday"}),
+                ("form", {"field:repeat": "every monday"}),
                 ("menu", "every monday", "delete"),
                 ("confirm", True),
                 ("back",),
@@ -677,7 +685,7 @@ class Menus(unittest.TestCase):
             [("app", "New block"), ("form", None), ("back",)],
             lambda: day.day_plan(self.session),
         )
-        fields = {f.key: f for f in script.forms[0]}
+        fields = {f.key.removeprefix("field:"): f for f in script.forms[0]}
         self.assertEqual(list(fields)[:6], ["title", "date", "start", "minutes", "kind", "accepts_tasks"])
         self.assertEqual(fields["minutes"].prompt, "Lasts, in minutes")
         self.assertEqual(fields["kind"].choices, {"work": "Work", "break": "Break", "event": "Event"})
@@ -887,12 +895,12 @@ class Menus(unittest.TestCase):
             [
                 ("app", "New block"),
                 # Ending at midnight, so it is never over while the test runs.
-                ("form", {"title": "Deep work", "start": "11pm", "minutes": "60"}),
+                ("form", {"field:title": "Deep work", "field:start": "11pm", "field:minutes": "60"}),
                 ("key", "Deep work", "i"),
                 ("choose", "write the chapter"),
                 ("input", ""),
                 ("menu", "write the chapter"),
-                ("form", {"title": "write the last chapter"}),
+                ("form", {"field:title": "write the last chapter"}),
                 ("back",),
             ],
             lambda: day.day_plan(self.session),
@@ -944,7 +952,7 @@ class Menus(unittest.TestCase):
             [
                 ("app", "New block"),
                 # Ending at midnight, so it is never over while the test runs.
-                ("form", {"title": "Deep work", "start": "11pm", "minutes": "60"}),
+                ("form", {"field:title": "Deep work", "field:start": "11pm", "field:minutes": "60"}),
                 ("key", "Deep work", "i"),
                 ("choose", "write the chapter"),
                 ("input", ""),
@@ -968,7 +976,7 @@ class Menus(unittest.TestCase):
     def test_a_priority_is_chosen_by_the_cores_words(self):
         self.call("task.add", text="file taxes")
         self.run_script(
-            [("context", "file taxes", "Edit details"), ("form", {"priority": "1"}), ("back",)],
+            [("context", "file taxes", "Edit details"), ("form", {"field:priority": "1"}), ("back",)],
             lambda: tasks.task_list(self.session),
         )
         self.assertEqual(self.task("file taxes")["priority"], 1)
@@ -1002,8 +1010,8 @@ class Menus(unittest.TestCase):
         folder = self.profile / "out"
         folder.mkdir()
         self.run_script(
-            [("choose", "JSON"), ("directory", str(folder))],
-            lambda: preferences.export(self.session),
+            [("menu", "JSON"), ("directory", str(folder)), ("back",)],
+            lambda: preferences.setting_page(self.session, "export"),
         )
         written = list(folder.iterdir())
         self.assertEqual(len(written), 1, written)

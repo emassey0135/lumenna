@@ -1,6 +1,6 @@
 # Lumenna Settings
 
-Settings are in pages, as in every Lumenna app: General, g; Planning, p; Reminders, m; Devices and sync, d; Backups, b; and Export and import, e. Each page says after a moment what is on it, and opening one says what it holds. Enter changes a setting. Times are written as you would say them: 9am, 14:30.
+Settings, s, on Home's menu. Settings are in pages, as in every Lumenna app: General, g; Planning, p; Reminders, m; Devices and sync, d; Backups, b; and Export and import, e. Each page says after a moment what is on it, and opening one says what it holds. Enter changes a setting, or presses a button; a page's buttons with a letter are on its menu, M-Chord, too. A setting is saved as soon as it is changed; one Lumenna cannot read is asked again with why. Times are written as you would say them: 9am, 14:30.
 
 ## Planning
 
@@ -22,17 +22,17 @@ On the Settings page itself, r turns this on or off. When it is on, a task you t
 
 Your paired devices and how syncing with each last went. Enter renames one. Its context menu has Rename, r, and, for every device but this one, Unpair, which leaves that device with what it already has; Control-D does the same.
 
-The main menu, M-Chord, has Sync now, s, and Pair a device, p. To pair, start pairing on both devices. Choose Wait for the other device on both: on the same network they find each other. Otherwise choose Pair using this code on one, and type or paste the code the other shows. While waiting, Copy code puts this device's code on the clipboard, to paste on the other device, and Pair using this code gives up the wait and joins with a code instead. Both show three words: say yes only if they match.
+Its menu, M-Chord, has Sync now, s, and Pair a device, p. On Home, Sync now is n. To pair, start pairing on both devices. Choose Wait for the other device on both: on the same network they find each other. Otherwise choose Pair using this code on one, and type or paste the code the other shows. While waiting, Copy code puts this device's code on the clipboard, to paste on the other device, and Pair using this code gives up the wait and joins with a code instead. Both show three words: say yes only if they match.
 
 To keep in sync while Lumenna is not open, run "lum daemon install" once from a shell.
 
 ## Backups
 
-How often a backup is taken, how many are kept, and where they go. A backup holds your whole history, including every task you deleted. The main menu has Back up now, b, and Restore from a backup, r, which adds what this device lacks and removes nothing.
+How often a backup is taken, how many are kept, and where they go: Enter on Backups go to chooses the folder. A backup holds your whole history, including every task you deleted. Back up now, b, and Restore from a backup, r, which adds what this device lacks and removes nothing.
 
 ## Export and import
 
-An export is what you have now, with nothing from the trash: JSON to import again, a Markdown checklist, an org outline, or a calendar file of your blocks. Import or restore reads a JSON export or a backup.
+An export is what you have now, with nothing from the trash: one item for each kind, JSON to import again, a Markdown checklist, an org outline, or a calendar file of your blocks. Enter on one asks for a folder to save it in. Import or restore, i, reads a JSON export or a backup.
 
 ## Erase everything deleted
 

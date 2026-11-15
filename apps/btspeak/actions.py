@@ -11,7 +11,7 @@ are the app's, the same on every client.
 A letter stands for a kind of action (the core's table, `action_letter`), so `c` is Mark Done
 on a task that is open and Mark Not Done on one that is finished; a letter is handed to the app
 (`ShellEventLetter`), which runs what it runs there or says why it runs nothing.
-The task form is this app's own (`Question::Form`), registered in `FORMS` by `tasks.py`.
+Every question and form is drawn from the app's description of it (`forms.py`).
 """
 
 from __future__ import annotations
@@ -20,18 +20,13 @@ from BTSpeak import dialogs
 
 import core
 from core import native, refused
-from session import Command, Session, choose, confirm, sentences
+from session import Command, Session, choose, sentences
 
 L = native()
 K = L.ActionKind
 
 #: Folding, which is the left and right keys' rather than the context menu's.
 FOLDS = {K.EXPAND, K.COLLAPSE}
-
-#: How each of this app's own forms opens: `(subject, kind)` to a function of the session, the
-#: action and the row it was offered on. The screens that have the forms fill this in.
-FORMS: dict = {}
-
 
 def named(action) -> str:
     """What an action is called here: its sentence-case name, as the device's own menus
@@ -103,7 +98,7 @@ def follow(session: Session, row=None) -> str:
             # The quick-add line the app opened (New task): asked here, as the app started it.
             import tasks  # here: tasks imports this module
 
-            said.append(tasks.add_task(session, view.line.text))
+            said.append(tasks.add_task(session))
         elif view.settings is not None and not getattr(session, "settings_open", False):
             # Settings the app opened (Settings): their pages, until left.
             import preferences  # here: preferences imports this module
@@ -115,67 +110,22 @@ def follow(session: Session, row=None) -> str:
 
 
 def ask(session: Session, asking, row=None) -> str:
-    """Asks the app's open question with the device's dialogs and sends the answer, or Cancel
-    when the person cancels; what the app said. A refused answer stays in the question, the
-    app's sentence first."""
-    question = asking.question
-    action = asking.action
-    wrong = asking.refusal or ""
-    cancel = L.ShellEventCancel()
+    """Asks the app's open question with the device's dialogs, drawn from the app's own
+    description of it (`ScreenView::dialog`, `forms.ask`), and sends what the person did as the
+    app says it is sent; what the app said. A refused answer stays in the question, the app's
+    sentence first. A task's form asked for (Edit details) is the task form, for the row's own
+    task: its details shown, the app describes the question as that form."""
+    import forms  # here: forms imports session, as this module does
 
-    def answer(given) -> str:
-        return session.send(L.ShellEventAnswer(given))
-
-    if isinstance(question, L.QuestionForm):
-        form = FORMS.get((action.subject, action.kind)) if action is not None else None
-        session.send(cancel)
-        if form is None:
-            return L.no_form_here(named(action)) if action is not None else ""
-        return form(session, action, row)
+    dialog = forms.opened(session)
+    if dialog is None and isinstance(asking.question, L.QuestionForm) and asking.action is not None:
+        session.send(L.ShellEventDetails(L.DetailsEventShow(asking.action.target)))
+        dialog = forms.opened(session)
+    if dialog is None or not dialog.id.startswith("question:"):
+        session.send(L.ShellEventCancel())
+        return L.cannot_ask_here(named(asking.action)) if asking.action else ""
     # What is asked, its parts joined as the core joins them (`QuestionShown::prompt`).
-    asked = session.prompt()
-    if isinstance(question, L.QuestionConfirm):
-        # Cancel is the default, as for anything that cannot be taken back lightly.
-        if not confirm(prompt(wrong, asked)):
-            return session.send(cancel)
-        return answer(L.AnswerYes())
-    if isinstance(question, L.QuestionText):
-        said = prompt(wrong, asked)
-        # Refused, the line starts as typed, the app's; else as the question starts it.
-        typed = asking.typed if wrong and asking.typed is not None else question.initial
-        # A saved filter's query is the filter language, which the app says: completion is offered.
-        if asking.syntax is not None:
-            import tasks  # here, since tasks imports this module
-
-            text = tasks.assisted_input(session, said, asking.syntax, history_key="lumenna-filter",
-                                        default=typed)
-        else:
-            text = dialogs.request_input(said, default_text=typed)
-        if text is None:
-            return session.send(cancel)
-        return answer(L.AnswerText(text))
-    if isinstance(question, L.QuestionPick):
-        return ask_pick(session, asking, question, wrong)
-    if isinstance(question, L.QuestionChoose):
-        picked = choose({a.id: a.title for a in question.answers}, prompt(wrong, asked))
-        if picked is None:
-            return session.send(cancel)
-        return answer(L.AnswerPicked(picked, None))
-    session.send(cancel)
-    return L.cannot_ask_here(named(action)) if action else ""
-
-
-def ask_pick(session: Session, asking, question, wrong: str) -> str:
-    """One of what the app offers, each said as its line, why it is offered its hint. Put in a
-    Block's ends in Another Day, the app's own: picked, the app asks which day."""
-    offered = asking.choices.choices if asking.choices is not None else []
-    lines = session.lines().choices
-    options = {choice.id: (lines[i].text if i < len(lines) else choice.title) for i, choice in enumerate(offered)}
-    picked = choose(options, prompt(wrong, session.prompt() or named(asking.action)),
-                    hints={choice.id: choice.reason for choice in offered})
-    if picked is None:
-        return session.send(L.ShellEventCancel())
-    return session.send(L.ShellEventAnswer(L.AnswerPicked(picked, None)))
+    return forms.ask(session, dialog, session.prompt() or (named(asking.action) if asking.action else ""))
 
 
 def of_kind(row, *kinds) -> list:
