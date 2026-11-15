@@ -13,11 +13,6 @@ import SwiftUI
 /// VoiceOver's focus — on now.
 struct MacDayScreen: View {
     @ObservedObject var model: DayModel
-    /// What the AppKit window does for the day: Go to Day's sheet, a cancelled day's choices, a
-    /// sitting's task beside the day.
-    let goToDay: () -> Void
-    let choose: (String, [(String, () -> Void)]) -> Void
-    let details: () -> Void
     @FocusState private var listFocused: Bool
 
     /// A row and the sittings beneath it.
@@ -32,12 +27,9 @@ struct MacDayScreen: View {
                 .accessibilityAddTraits(.isHeader)
                 .padding(.horizontal, 12)
                 .padding(.top, 12)
-            HStack(spacing: 8) {
-                Button(Commands.title("previous-day")) { model.move(.previous) }
-                Button(Commands.title("go-to-now")) { model.move(.now) }
-                Button(Commands.title("next-day")) { model.move(.next) }
-                Button(Commands.asking("go-to-day")) { goToDay() }
-                Button(Commands.asking("new-block")) { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
+            // The day's screen actions, the core's, in its order (New Block, What Should I Work
+            // On?, the moves through days, Undo, Redo), then the day's own.
+            ScreenActionRow(actions: model.screenActions, run: { model.perform($0) }) {
                 if !model.actions.isEmpty {
                     Menu(Wording.dayActions) {
                         ForEach(model.actions, id: \.self) { action in
@@ -129,9 +121,10 @@ struct MacDayScreen: View {
         .accessibilityIdentifier(row.line?.title ?? "")
     }
 
-    /// Return activates a row; Space and Delete are the core's keys: Space starts, pauses or
-    /// resumes a sitting's timer, Delete takes a sitting out or deletes a block — each also in
-    /// the row's menu. A row without one says why, in the core's words.
+    /// Return and Space and Delete are the core's keys: Return is Open (a block's Edit, a
+    /// sitting's task's details, free time's Add Block, a cancelled day restored), Space starts,
+    /// pauses or resumes a sitting's timer, Delete takes a sitting out or deletes a block — each
+    /// also in the row's menu. A row without one says why, in the core's words.
     /// Whether it took the key (`ListKeys`).
     func key(_ key: ListKey) -> Bool {
         guard let item = model.inHand else { return false }
@@ -143,25 +136,15 @@ struct MacDayScreen: View {
         return true
     }
 
-    /// Return, or a double click: a block's Edit, a sitting's task's details, free time's Add
-    /// Block, a cancelled day's actions.
+    /// Return, or a double click: the core's Open on the row in hand.
     private func activate() {
         guard let item = model.inHand else { return }
-        switch item.kind {
-        case .block: model.key("open", on: item)
-        case .sitting: details()
-        case .free: model.key("open", on: item)
-        case .cancelled:
-            let line = model.rows.first { $0.id == item.key }?.line?.text ?? ""
-            choose(line, item.offered.map { action in (action.title, { model.run(action, on: item) }) })
-        case .now, .summary: break
-        }
+        model.key("open", on: item)
     }
 }
 
 /// The SwiftUI day in the main window's middle pane, hosted by a view that steps out of
-/// VoiceOver's tree (`FlatHostingView`), with what is AppKit's: Go to Day's sheet, and the Day
-/// menu's commands.
+/// VoiceOver's tree (`FlatHostingView`), with what is AppKit's: the Day menu's commands.
 final class DayViewController: NSViewController {
     private let core: Core
     private let model: DayModel
@@ -174,12 +157,7 @@ final class DayViewController: NSViewController {
         main = window
         super.init(nibName: nil, bundle: nil)
         title = LumennaApp.placeTitle(place: .today)
-        screen = MacDayScreen(
-            model: model,
-            goToDay: { [weak self] in self?.goToDay(nil) },
-            choose: { [weak self] title, actions in self?.view.window?.choose(title, actions: actions) },
-            details: { [weak window] in window?.showDetails() }
-        )
+        screen = MacDayScreen(model: model)
     }
 
     @available(*, unavailable)

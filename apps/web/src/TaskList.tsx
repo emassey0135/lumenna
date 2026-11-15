@@ -4,7 +4,9 @@
 // is listed, what is folded and which row is in hand are the app's: the tree draws the screen
 // and sends back what the person did. Each row's actions are the core's, in its menu (the Menu
 // key, Shift+F10, a right-click, or Actions). Space runs Mark Done, Mark Not Done or Restore,
-// whichever the row has; Delete what removes it; Enter opens its details. After a change focus
+// whichever the row has; Delete what removes it; Enter what the core's `open` runs there (a
+// task's details, a trashed task restored). What the list offers of its own (New task, the
+// filter, Undo, Redo) is the core's, as buttons above it (ScreenActions.tsx). After a change focus
 // goes where the app puts it — the same task if it is still listed, else whatever now holds its
 // place — and only then is the change said, as every turn is (session.ts).
 
@@ -25,12 +27,14 @@ import { nest } from "./tree";
 import type { Node } from "./tree";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
+import { ScreenActions } from "./ScreenActions";
 import { words } from "./words";
 
-export function TaskList(props: { screen: Screen; onOpen: () => void }) {
+export function TaskList(props: { screen: Screen }) {
   const { screen } = props;
   const list = screen.list;
-  const trash = screen.place?.tag === "Trash";
+  // The filter field is there wherever the core offers the place's filter among its own actions.
+  const filterable = (screen.screenActions ?? []).some((action) => action.id === "filter");
   const items = useMemo(() => list?.items ?? [], [list]);
   const [filter, setFilter] = useState(screen.query);
   const tree = useRef<HTMLDivElement>(null);
@@ -59,9 +63,9 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
     act(keyPressed(pressed));
   };
 
-  // Filter Tasks: the filter, all of it selected so typing replaces it. Not in the trash.
+  // Filter Tasks: the filter, all of it selected so typing replaces it, where the place has one.
   useCommand("filter", () => {
-    if (trash || !filterField.current) return false;
+    if (!filterable || !filterField.current) return false;
     filterField.current.focus();
     filterField.current.select();
   });
@@ -114,7 +118,16 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
   return (
     <>
       <h2>{screen.title}</h2>
-      {!trash && (
+      <div className="buttons">
+        <ScreenActions actions={screen.screenActions} />
+        <RowMenu
+          actions={shortActions(list, inHand)}
+          onAction={(action: ShortAction) => inHand && act(actOn(rowShown(inHand.row.id), action))}
+          isOpen={menu}
+          onOpenChange={setMenu}
+        />
+      </div>
+      {filterable && (
         <CompletingField
           label={words().quickAdd.filter}
           value={filter}
@@ -137,14 +150,6 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
       <p className="quiet" id="readback">
         {list?.refusal ?? (items.length > 0 ? list?.readback : "")}
       </p>
-      <div className="buttons">
-        <RowMenu
-          actions={shortActions(list, inHand)}
-          onAction={(action: ShortAction) => inHand && act(actOn(rowShown(inHand.row.id), action))}
-          isOpen={menu}
-          onOpenChange={setMenu}
-        />
-      </div>
       {/* Space and Delete are caught on the way down, before the tree takes Space for selection. */}
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>
         <Tree
@@ -159,7 +164,7 @@ export function TaskList(props: { screen: Screen; onOpen: () => void }) {
           onSelectionChange={choose}
           expandedKeys={expanded}
           onExpandedChange={fold}
-          onAction={() => props.onOpen()}
+          onAction={(key) => void onRow(String(key), "open")}
           renderEmptyState={() => <p className="quiet">{list?.empty}</p>}
         >
           {function item(node: Node<ShownItem>) {

@@ -11,9 +11,7 @@ import dev.emassey0135.lumenna.LocalPlannerNow
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Place
 import dev.emassey0135.lumenna.app.placeTitle
-import dev.emassey0135.lumenna.app.DayMove
 import dev.emassey0135.lumenna.app.DayKind
-import dev.emassey0135.lumenna.app.BlockEvent
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,14 +28,14 @@ import dev.emassey0135.lumenna.Option
 import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.RowAction
-import dev.emassey0135.lumenna.commandTitle
 import java.time.LocalDate
 
 /**
  * The day as lived, the app's (`ViewModel.day`), as the phone's day lists it: its summary, each
  * block with its sittings beneath it, free time, now, and what is cancelled for the day. A
  * row's actions are the app's: TalkBack's custom actions, and a long press or a tap. A block
- * with sittings folds. Another day is a button away, Go to Day the app's question.
+ * with sittings folds. After the rows, the day's own actions, then the screen's (`screen_actions`):
+ * New block, another day a button away, Go to day the app's question, Undo and Redo.
  */
 @Composable
 fun DayScreen(core: Core, navigator: Navigator, block: dev.emassey0135.lumenna.BlockOn? = null) {
@@ -57,7 +55,6 @@ fun DayScreen(core: Core, navigator: Navigator, block: dev.emassey0135.lumenna.B
     val shown = rows.filter { !it.first.hidden && it.first.kind != DayKind.SUMMARY }
     // The day's own actions, the app's: on its heading, and as buttons after its rows.
     val dayActions = day?.let { app.actingOn(ActingOn.Day, it.offered) }.orEmpty()
-    val move = { step: DayMove -> app.send(ShellEvent.Day(step)) }
     val keys = listOf("\u0000heading") + shown.map { it.first.key }
     val state = rememberScalingLazyListState()
     // TalkBack goes to the row the app moved — now, when today opens — as on the phone.
@@ -90,12 +87,7 @@ fun DayScreen(core: Core, navigator: Navigator, block: dev.emassey0135.lumenna.B
         dayActions.forEach { action ->
             item { Button(onClick = action.run, modifier = Modifier.fillMaxWidth(), label = { Text(action.name) }) }
         }
-        item { Button(onClick = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("new-block")) }) }
-        // Named as every app's commands for each move are.
-        item { Button(onClick = { move(DayMove.PREVIOUS) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("previous-day")) }) }
-        if (day?.today == false) item { Button(onClick = { move(DayMove.TODAY) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("go-today")) }) }
-        item { Button(onClick = { move(DayMove.NEXT) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("next-day")) }) }
-        // As the phone asks: a day as it is said, read by the app.
-        item { Button(onClick = { move(DayMove.ASK) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("go-to-day")) }) }
+        // Today's own actions, the core's, in its order: New block, the day's moves, Undo, Redo.
+        screenActionItems(app, view?.takeIf { it.place == Place.Today }?.screenActions.orEmpty())
     }
 }

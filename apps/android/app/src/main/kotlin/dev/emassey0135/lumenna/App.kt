@@ -154,6 +154,9 @@ class Navigator(private val stack: SnapshotStateList<Screen>, private val depth:
     val current: Screen get() = stack[at]
     val canGoBack: Boolean get() = at > 0
 
+    /** The screen on top of the stack: this one, or what was opened from it. */
+    val top: Screen get() = stack.last()
+
     fun push(screen: Screen) {
         while (stack.size > at + 1) stack.removeAt(stack.lastIndex)
         stack.add(screen)
@@ -471,7 +474,10 @@ private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: L
 
 /**
  * A screen's frame: its title as a heading and the pane's name, a way back when there is one,
- * Undo and Redo, and the screen's own actions — all in the top bar, as on the iPhone.
+ * and its actions, all in the top bar, as on the iPhone. A place's are the core's ([screen]: New
+ * task, the filter, the day's moves, Undo and Redo, in its order), icons while they fit and the
+ * rest in the bar's overflow menu. A screen that is no place (a task's details, a form, settings)
+ * has only its own [actions], after Undo and Redo, which the core lists for places alone.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -479,38 +485,46 @@ fun ScreenFrame(
     title: String,
     core: Core,
     navigator: Navigator,
+    screen: ScreenButtons? = null,
     actions: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Scaffold(
-        // TalkBack says a new pane's title when it appears, as VoiceOver says a new screen's.
-        modifier = Modifier.semantics { paneTitle = title },
-        topBar = {
-            TopAppBar(
-                title = { Text(title, Modifier.semantics { heading() }) },
-                navigationIcon = {
-                    if (navigator.canGoBack) {
-                        IconButton(onClick = navigator::back) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = appWords.back)
+    BoxWithConstraints {
+        // The way back takes an icon's room from the actions.
+        val room = iconRoom(if (navigator.canGoBack) maxWidth - 48.dp else maxWidth)
+        Scaffold(
+            // TalkBack says a new pane's title when it appears, as VoiceOver says a new screen's.
+            modifier = Modifier.semantics { paneTitle = title },
+            topBar = {
+                TopAppBar(
+                    title = { Text(title, Modifier.semantics { heading() }) },
+                    navigationIcon = {
+                        if (navigator.canGoBack) {
+                            IconButton(onClick = navigator::back) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = appWords.back)
+                            }
                         }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Undo) }) {
-                        Icon(Glyphs.undo, contentDescription = Command.UNDO.title)
-                    }
-                    IconButton(onClick = { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Redo) }) {
-                        Icon(Glyphs.redo, contentDescription = Command.REDO.title)
-                    }
-                    actions()
-                },
+                    },
+                    actions = {
+                        if (screen == null) {
+                            IconButton(onClick = { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("undo")) }) {
+                                Icon(Glyphs.undo, contentDescription = Command.UNDO.title)
+                            }
+                            IconButton(onClick = { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("redo")) }) {
+                                Icon(Glyphs.redo, contentDescription = Command.REDO.title)
+                            }
+                        }
+                        actions()
+                        if (screen != null) ScreenActionButtons(core.app, screen, room)
+                    },
+                )
+            },
+        ) { padding ->
+            androidx.compose.foundation.layout.Column(
+                Modifier.padding(padding).fillMaxSize(),
+                content = content,
             )
-        },
-    ) { padding ->
-        androidx.compose.foundation.layout.Column(
-            Modifier.padding(padding).fillMaxSize(),
-            content = content,
-        )
+        }
     }
 }
 
@@ -529,6 +543,11 @@ object Glyphs {
         "Not done",
         "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM12,20c-4.42,0 -8,-3.58 " +
             "-8,-8s3.58,-8 8,-8 8,3.58 8,8 -3.58,8 -8,8z",
+    )
+    val today = glyph(
+        "Today",
+        "M19,3h-1L18,1h-2v2L8,3L8,1L6,1v2L5,3c-1.11,0 -1.99,0.9 -1.99,2L3,19c0,1.1 0.89,2 2,2h14c1.1,0 " +
+            "2,-0.9 2,-2L21,5c0,-1.1 -0.9,-2 -2,-2zM19,19L5,19L5,8h14v11zM7,10h5v5L7,15z",
     )
     val redo = glyph(
         "Redo",

@@ -85,10 +85,12 @@ fun SettingsScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
     LaunchedEffect(Unit) { app.send(ShellEvent.Devices(DevicesEvent.Show)) }
-    val listed = appSettings(core)
+    // Asks the app for its settings, whose view lists the pages this phone has something on.
+    appSettings(core)
     val status = view?.devices?.status.orEmpty()
-    // The core's pages, each with what is on it; the devices' with how syncing is going.
-    val items = SettingsPages.shown(listed).map { page ->
+    // The core's pages, only those with something on them here, each with what is on it; the
+    // devices' with how syncing is going.
+    val items = view?.settings?.pages.orEmpty().map { page ->
         Item(page.id, page.title, if (page.id == "devices") status.ifEmpty { page.description } else page.description)
     }
     MenuScreen(

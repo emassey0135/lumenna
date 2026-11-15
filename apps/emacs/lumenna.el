@@ -526,16 +526,20 @@ already draws one.  EVENTS are sent there first."
     buffer))
 
 (defun lumenna--home-buffer ()
-  "The places' buffer, screen 0, made if it is not there yet, not shown."
+  "Home's buffer, screen 0, made if it is not there yet, not shown."
   (lumenna--connection)
   (or (get-buffer (lumenna--buffer-name))
       (with-current-buffer (get-buffer-create (lumenna--buffer-name))
         (lumenna-home-mode)
         (lumenna--attach 0)
+        ;; Sent again over a new connection, as a screen's opening events are.
+        (setq lumenna--opened-with (list "Home"))
+        (lumenna-send "Home")
         (lumenna--settle)
-        (let ((shown (jsonrpc-request (lumenna--connection) 'app.view (list :screen 0))))
-          (setq lumenna--view (plist-get shown :view) lumenna--lines (plist-get shown :lines))
-          (lumenna--redraw))
+        (unless lumenna--view
+          (let ((shown (jsonrpc-request (lumenna--connection) 'app.view (list :screen 0))))
+            (setq lumenna--view (plist-get shown :view) lumenna--lines (plist-get shown :lines))
+            (lumenna--redraw)))
         (current-buffer))))
 
 (defmacro lumenna--on-a-screen (&rest body)
@@ -964,7 +968,10 @@ What it runs there is the core's, the same on every app; a row it runs
 nothing on says why in the app's words.  A task's buffer presses it on the
 details' task, which no row holds."
   (let ((row (lumenna--row-here)))
-    (unless (or lumenna--actions-function row) (lumenna--refusal :nothing_to_do))
+    ;; One of the screen's own actions, as Home lists them, is no row of the app's: a key
+    ;; pressed there would run on whatever row the app last held.
+    (unless (or lumenna--actions-function (and row (not (plist-get row :screen_action))))
+      (lumenna--refusal :nothing_to_do))
     (setq lumenna--acted-on row lumenna--acting nil)
     (if lumenna--actions-function
         (lumenna-send (list :Details (list :Key key)))
@@ -1015,6 +1022,86 @@ erased permanently, which is only ever chosen by name."
   (lumenna--on-a-screen
     (lumenna-send "Redo")
     (lumenna--follow)))
+
+;;;; A screen's own actions
+
+;; What a screen offers of its own beside its rows -- New Task, the filter, the
+;; day's moves, Undo -- is the app's (`screen_actions'), in its order and
+;; words.  Each runs as the shared table's key (`Key'), but where a screen of
+;; the app's is a buffer of its own here, or the line is the minibuffer's, or it
+;; is the shell's own to run (`shell'): then this client's command runs it.
+
+(declare-function lumenna-tasks-filter "lumenna-tasks" (query))
+(declare-function lumenna-settings "lumenna-settings" ())
+(declare-function lumenna-sync-now "lumenna-settings" ())
+(declare-function lumenna-reminders-due "lumenna-reminders" ())
+(declare-function lumenna-what-now "lumenna-day" ())
+
+(defvar lumenna-screen-action-commands
+  '(;; The line is read in the minibuffer: after the same `Typing' the key opens.
+    ("new-task" . lumenna-add)
+    ;; Settings, the devices and today are buffers of their own, each its own screen: the key
+    ;; would open them over this one.
+    ("settings" . lumenna-settings)
+    ("sync-now" . lumenna-sync-now)
+    ("what-now" . lumenna-what-now)
+    ;; The shell's own (`shell').
+    ("filter" . lumenna-tasks-filter)
+    ("keyboard-help" . lumenna-help)
+    ("about" . lumenna-about)
+    ("reminders-due" . lumenna-reminders-due))
+  "This client's command for each of a screen's own actions it runs itself, by id.
+Every other one is sent to the app as its key.")
+
+(defun lumenna--screen-actions ()
+  "This buffer's screen's own actions, in the app's order."
+  (append (plist-get lumenna--view :screen_actions) nil))
+
+(defun lumenna-run-screen-action (action)
+  "Do ACTION, one of the screen's own, as the app offers it."
+  (let* ((id (plist-get action :id))
+         (own (cdr (assoc id lumenna-screen-action-commands))))
+    (cond (own (call-interactively own))
+          ((lumenna--true (plist-get action :shell))
+           (lumenna--refusal :cannot_ask_here (plist-get action :title)))
+          (t (setq lumenna--acting nil)
+             (lumenna-send (list :Key id))
+             (lumenna--follow)))))
+
+(defun lumenna-screen-action (&optional id)
+  "Choose one of this screen's own actions by name, and do it.
+New Task, New Block, the day's moves, Undo and the rest, as the app lists
+them for the screen shown; with ID, that one."
+  (interactive)
+  (let* ((actions (lumenna--screen-actions))
+         (action (if id
+                     (seq-find (lambda (a) (equal (plist-get a :id) id)) actions)
+                   (and actions
+                        ;; TODO: the core has no word for a screen's own actions as a whole
+                        ;; (EmacsWords `screen_actions', "This Screen's Own Actions, by
+                        ;; Name"); the details' Actions meanwhile.
+                        (lumenna--choose-action (lumenna--prompt (lumenna-words :details :actions)) actions)))))
+    (unless action (lumenna--refusal :nothing_to_do))
+    (lumenna-run-screen-action action)))
+
+(defun lumenna--screen-action-menu (_items)
+  "The menu's items for this buffer's screen's own actions, as it is drawn.
+One that asks something first ends \"...\", as Emacs's menus mark one."
+  (mapcar (lambda (action)
+            (vector (concat (plist-get action :title) (if (lumenna--true (plist-get action :asks)) "..." ""))
+                    (list 'lumenna-screen-action (plist-get action :id))
+                    :active (lumenna--true (plist-get action :enabled))))
+          (lumenna--screen-actions)))
+
+(defun lumenna-about ()
+  "Say what Lumenna is: its name and version, what it does, where it lives."
+  (interactive)
+  (let ((about (lumenna-words :metadata)))
+    ;; TODO: the core has no About sentence for a shell without an About box; its metadata's
+    ;; parts meanwhile, as an About box lays them out.
+    (funcall lumenna-announce-function
+             (format "%s %s" (plist-get about :name) (plist-get about :version))
+             (list (plist-get about :description) (plist-get about :homepage) (plist-get about :licence)))))
 
 ;;;; Keys, menus and the list mode
 
@@ -1084,7 +1171,8 @@ needs one: then it is the package's."
   "A menu of OWNER's keys, grouped as its help groups them.
 Where two keys run one command, the menu lists it once; the menu shows
 whichever key it is reached by.  Every name is the core's, read as the menu
-is drawn (`:label')."
+is drawn (`:label').  A mode's menu ends in its screen's own actions, as the
+app lists them while the menu is drawn."
   (append (list "Lumenna" :label '(lumenna--menu-name))
           (seq-map-indexed
            (lambda (group index)
@@ -1097,7 +1185,11 @@ is drawn (`:label')."
                                                (vector (symbol-name command) command
                                                        :label `(lumenna--label ',(nth 1 binding) ,(symbol-name command))))))
                                          (cdr group))))))
-           (lumenna--key-groups owner))))
+           (lumenna--key-groups owner))
+          (when (boundp (derived-mode-map-name owner))
+            ;; TODO: the details' Actions until the core has a word for a screen's own.
+            (list (list "screen" :label '(lumenna--label '(word :details :actions) "screen")
+                        :filter #'lumenna--screen-action-menu)))))
 
 (defun lumenna--define-menu (owner)
   "Give OWNER's keys a menu: a mode's in its own map, the global ones under Tools.
@@ -1129,6 +1221,9 @@ Subtasks sit under their task, a level deeper; TAB folds them, as the app does.
    ("p" :previous_line previous-line)
    ("RET" :main_thing lumenna-activate)
    ("." :line_actions lumenna-act-at-point)
+   ;; TODO: EmacsWords `screen_actions' ("This Screen's Own Actions, by Name") once the
+   ;; core has it; the details' Actions meanwhile.
+   ("," (word :details :actions) lumenna-screen-action)
    ("TAB" (kinds "collapse" "expand") lumenna-toggle)
    ("g" :read_again lumenna-refresh)
    ("u" (command "undo") lumenna-undo)
@@ -1274,44 +1369,106 @@ line starts with the project, as the app has it."
       (when-let* ((refused (plist-get lumenna--view :add_refused)))
         (user-error "%s" refused)))))
 
-;;;; The places, and the menu of everything
+;;;; Home, and the menu of everything
+
+;; Home is the app's (`Home', the view's `home'): its places, as every app's
+;; sidebar has them, then what can be done from anywhere, a line each.  It is
+;; screen 0, `*Lumenna*', where M-x lumenna starts.  Its row in hand is the
+;; sidebar's, and RET is the core's Enter there (`open'): a heading folds, a
+;; place opens.  The app opens a place on the screen it was asked on, where
+;; here every place is a buffer of its own: so the place it went to opens in
+;; its buffer, and screen 0 is put back over every task, Home shown again.
 
 (define-derived-mode lumenna-home-mode lumenna-list-mode "Lumenna"
-  "Lumenna's places, as every app's sidebar has them: RET opens one.
+  "Home: Lumenna's places, then what can be done from anywhere.
+RET opens a place, folds a heading, or does the action on its line.
 Under each heading are its projects, labels or saved filters, each with
 its own actions; a heading's adds another.
 
 \\{lumenna-home-mode-map}"
   (lumenna--mode-name)
   (setq-local lumenna--held :sidebar_held)
-  (setq-local lumenna--draw #'lumenna--place-rows)
-  (setq-local lumenna--activate #'lumenna--open-place))
+  (setq-local lumenna--draw #'lumenna--home-rows)
+  (setq-local lumenna--activate #'lumenna--home-activate))
+
+(defun lumenna--place-row (entry)
+  "ENTRY, one of the app's places, as a row."
+  (list :key (plist-get entry :key) :text (plist-get entry :text)
+        :title (plist-get entry :title)
+        :depth (or (plist-get entry :depth) 0) :place (plist-get entry :kind)
+        :actions (plist-get entry :offered) :swatch (plist-get entry :swatch)
+        :role (if (plist-get (plist-get entry :kind) :Group) "heading" "place")
+        :state (and (lumenna--true (plist-get entry :archived)) ["archived"])))
+
+(defun lumenna--place-entries (entries)
+  "ENTRIES, the app's places, as rows, leaving out what it folded away (`:hidden')."
+  (delq nil (mapcar (lambda (entry) (unless (lumenna--true (plist-get entry :hidden)) (lumenna--place-row entry)))
+                    entries)))
 
 (defun lumenna--place-rows ()
-  "The app's places, its sidebar, then Settings, as rows.
-What the app folded away under a collapsed row (`:hidden') is left out."
-  (let (rows)
-    (dolist (entry (append (plist-get lumenna--view :sidebar) nil))
-      (unless (lumenna--true (plist-get entry :hidden))
-        (push (list :key (plist-get entry :key) :text (plist-get entry :text)
-                    :title (plist-get entry :title)
-                    :depth (or (plist-get entry :depth) 0) :place (plist-get entry :kind)
-                    :actions (plist-get entry :offered) :swatch (plist-get entry :swatch)
-                    :role (if (plist-get (plist-get entry :kind) :Group) "heading" "place")
-                    :state (and (lumenna--true (plist-get entry :archived)) ["archived"]))
-              rows)))
-    (cons (lumenna--name)
-          (nreverse (cons (list :key "Settings" :title (lumenna-word '(command "settings")) :place '(:Place "Settings"))
-                          rows)))))
+  "The app's places, its sidebar, as rows."
+  (cons (lumenna--name) (lumenna--place-entries (plist-get lumenna--view :sidebar))))
+
+(defun lumenna--screen-action-row (action)
+  "ACTION, one of the screen's own, as a line: RET does it.
+One that does nothing now is quiet; done, the app says why."
+  (list :key (concat "screen action " (plist-get action :id)) :role "button"
+        :title (plist-get action :title) :text (plist-get action :title) :screen_action action
+        :face (unless (lumenna--true (plist-get action :enabled)) 'lumenna-quiet)))
+
+(defun lumenna--home-rows ()
+  "Home as rows: its places, then its own actions.
+Until the app shows it, the places alone."
+  (if-let* ((home (plist-get lumenna--view :home)))
+      (cons (plist-get home :title)
+            (append (lumenna--place-entries (mapcar (lambda (place) (plist-get place :entry)) (plist-get home :places)))
+                    (mapcar #'lumenna--screen-action-row (plist-get home :actions))))
+    (lumenna--place-rows)))
 
 (declare-function lumenna-open-place "lumenna-tasks" (place))
 
-(defun lumenna--open-place (row)
-  "Open the place ROW names; on a heading, fold what is under it."
-  (let ((kind (plist-get row :place)))
-    (cond ((plist-get kind :Group) (lumenna-toggle))
-          ((equal (plist-get kind :Place) "Settings") (call-interactively #'lumenna-settings))
-          (t (lumenna-open-place (plist-get kind :Place))))))
+(defun lumenna--home-again ()
+  "Show Home on screen 0 again, over every task, saying nothing.
+Over every task, as screen 0 opened, so a task added from anywhere starts
+with no project of its own."
+  (let ((lumenna--heard (list 'heard)))
+    (lumenna-send (list :Open "Tasks") 0)
+    (lumenna-send "Home" 0)
+    (lumenna--settle)))
+
+(defun lumenna--home-activate (row)
+  "RET on ROW of Home or the places: its action, or the core's Enter."
+  (if-let* ((action (plist-get row :screen_action)))
+      (lumenna-run-screen-action action)
+    (lumenna--home-open row)))
+
+(defun lumenna--home-open (row)
+  "The core's Enter on ROW, a place or a heading: a heading folds, a place opens.
+The place the app went to on screen 0 opens in its own buffer, as every
+place does here, and Home comes back on screen 0."
+  (unless (plist-get lumenna--view :home) (lumenna--home-again))
+  (setq lumenna--acted-on row lumenna--acting nil)
+  (lumenna--hold row)
+  (lumenna-send (list :Key "open"))
+  (lumenna--settle)
+  (unless (plist-get lumenna--view :home)
+    (let ((place (plist-get lumenna--view :place)))
+      (lumenna--home-again)
+      (when place (lumenna-open-place place)))))
+
+(defun lumenna--home-kept ()
+  "Show Home again where the app went on from it on screen 0.
+A project made or renamed from Home goes to where it now is, as on a device
+whose Home is its only list; here that place is a buffer of its own."
+  (when (and (eql lumenna--screen 0) lumenna--view
+             (not (plist-get lumenna--view :home))
+             (not (plist-get lumenna--view :asking))
+             (not (plist-get lumenna--view :proposal))
+             (not (plist-get lumenna--view :reminders)))
+    (lumenna--home-again)))
+
+;; Last, after whatever else the app opened is shown.
+(add-hook 'lumenna-followed-hook #'lumenna--home-kept t)
 
 (defun lumenna-heading-action (group)
   "The action the places' GROUP heading offers: \"Projects\", \"Labels\", \"Filters\"."
@@ -1323,7 +1480,8 @@ What the app folded away under a collapsed row (`:hidden') is left out."
 
 ;;;###autoload
 (defun lumenna ()
-  "Open Lumenna: its places, one per line.  RET opens one; ? shows every command."
+  "Open Lumenna's Home: its places, then what can be done from anywhere.
+RET opens a place or does an action; ? shows every command."
   (interactive)
   (pop-to-buffer-same-window (lumenna--home-buffer)))
 

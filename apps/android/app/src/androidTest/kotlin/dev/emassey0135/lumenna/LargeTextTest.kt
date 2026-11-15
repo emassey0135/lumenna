@@ -104,10 +104,7 @@ class LargeTextTest {
         rule.waitForIdle()
     }
 
-    private fun press(name: String) {
-        rule.onNodeWithContentDescription(name).performClick()
-        rule.waitForIdle()
-    }
+    private fun press(name: String) = rule.pressInBar(name)
 
     private fun back() = press("Back")
 

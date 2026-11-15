@@ -6,8 +6,8 @@ import SwiftUI
 /// line. Its primary actions, the app's, are its swipe actions — Mark Done from the leading
 /// edge, the rest and Expand or Collapse from the trailing — which VoiceOver offers as the
 /// row's actions; every one is on the task's own screen. Tasks can be filtered, with the
-/// filter read back; a project, label or filter's own actions are at the foot, as Browse
-/// offers them.
+/// filter read back; the place's own actions, the core's, are at the foot, then a project,
+/// label or filter's own, as Browse offers them.
 struct TaskListView: View {
     @EnvironmentObject private var core: Core
     @Environment(\.dismiss) private var dismiss
@@ -37,11 +37,18 @@ struct TaskListView: View {
                 // The readback: how the query was understood and how many it found, or what is
                 // empty, in the core's words. A misread filter shows wrong results silently.
                 Text(model.readback).font(.footnote)
-                if !model.trash {
-                    Button(Commands.title("new-task")) { adding = true }
-                }
                 ForEach(model.shown) { row in
                     taskRow(row)
+                }
+                // The place's own actions, the core's, in its order, at the foot: New Task, New
+                // Project Inside, Undo, Redo. Filter Tasks is the field above, where a watch has
+                // no way to put a field in hand.
+                Section {
+                    ForEach(model.screenActions.filter { !$0.shell }, id: \.id) { action in
+                        ScreenActionButton(action: action) { action in
+                            core.app.perform(action, lineOpened: { adding = true })
+                        }
+                    }
                 }
                 if model.here { PlaceActions(place: place, acted: $acted) }
             }
@@ -193,8 +200,11 @@ struct BlockListView: View {
                         }
                     }
                 }
+                // The place's own actions, the core's: New Block, Undo, Redo.
                 Section {
-                    Button(Commands.title("new-block")) { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
+                    ForEach(model.screenActions, id: \.id) { action in
+                        ScreenActionButton(action: action) { model.core.app.perform($0) }
+                    }
                 }
             }
             .navigationTitle(LumennaApp.placeTitle(place: .blocks))

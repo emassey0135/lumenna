@@ -44,6 +44,7 @@ export type {
   PlanAssignment,
   PlanBlock,
   RowView,
+  ScreenAction,
   KeyCommand,
   KeyGroup,
   QuickAddWords,

@@ -1,9 +1,10 @@
 // Every block series, as the app lists them: its actions are the core's, in its menu; Enter
-// changes one, Delete deletes it, asking first; New block makes one.
+// changes one, Delete deletes it, asking first. What the list offers of its own (New block, Undo,
+// Redo) is the core's, as buttons above it (ScreenActions.tsx).
 
 import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import { Button, Tree, TreeItem, TreeItemContent } from "react-aria-components";
+import { Tree, TreeItem, TreeItemContent } from "react-aria-components";
 import type { Key, Selection } from "react-aria-components";
 import type { Screen, ShellEvent } from "./core";
 import { actOn, isDelete, keyPressed, rowShown, shortActions } from "./actions";
@@ -13,7 +14,7 @@ import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
-import { commandTitle } from "./words";
+import { ScreenActions } from "./ScreenActions";
 
 export function Blocks(props: { screen: Screen }) {
   const list = props.screen.list;
@@ -70,7 +71,7 @@ export function Blocks(props: { screen: Screen }) {
         {items.length > 0 ? list?.readback : ""}
       </p>
       <div className="buttons">
-        <Button onPress={add}>{commandTitle("new-block")}</Button>
+        <ScreenActions actions={props.screen.screenActions} />
         <RowMenu actions={shortActions(list, inHand)} onAction={(action) => inHand && act(actOn(rowShown(inHand.row.id), action))} isOpen={menu} onOpenChange={setMenu} />
       </div>
       <div onKeyDownCapture={keys} onContextMenu={rightClick}>

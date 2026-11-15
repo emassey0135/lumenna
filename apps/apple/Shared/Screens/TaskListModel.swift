@@ -24,8 +24,11 @@ final class TaskListModel: ObservableObject {
     var trash: Bool { place == .trash }
     /// Whether this is the Blocks list, every block series, rather than tasks.
     var blocks: Bool { place == .blocks }
-    /// Whether the list has a filter above it: the trash and the blocks have none.
-    var filters: Bool { !trash && !blocks }
+    /// Whether the list has a filter above it: wherever the core offers Filter Tasks among the
+    /// place's own actions (`screenActions`), the field being how the filter is drawn.
+    var filters: Bool { screenActions.contains { $0.id == "filter" } }
+    /// Whether its rows are tasks that can be checked off: not the trash's, nor Blocks'.
+    var checks: Bool { !trash && !blocks }
     /// What a row here is, for saying why it has no action of a kind.
     var subject: LumennaApp.Subject { blocks ? .block : .task }
     /// Every row, those folded away included (`hidden`): a tree draws them inside their
@@ -34,6 +37,9 @@ final class TaskListModel: ObservableObject {
     /// How the query was understood and how many it found, or what is empty.
     @Published private(set) var readback = ""
     @Published private(set) var title: String
+    /// What the place offers of its own beside its rows, the core's (`ViewModel.screenActions`),
+    /// as the app last showed it here.
+    @Published private(set) var screenActions: [LumennaApp.ScreenAction] = []
     /// The row in hand, the app's.
     @Published private(set) var focus: String?
     /// The row the app moved focus to, each time it moves it: a new `count` is a new move.
@@ -98,6 +104,7 @@ final class TaskListModel: ObservableObject {
         if rows != self.rows { self.rows = rows }
         if readback != lines.readback { readback = lines.readback }
         if title != view.title { title = view.title }
+        if screenActions != view.screenActions { screenActions = view.screenActions }
         if focus != view.focus { focus = view.focus }
         if filters, filter != view.query, core.app.isStill {
             following = true

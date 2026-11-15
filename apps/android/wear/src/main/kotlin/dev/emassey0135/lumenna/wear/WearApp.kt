@@ -220,7 +220,8 @@ fun WearApp(
     LaunchedEffect(launch) {
         val id = launch?.second ?: return@LaunchedEffect
         when (val went = core.app.launch(id)) {
-            Launched.QuickAdd -> navigator.open(Screen.AddTask)
+            // Unless the app's line opening has shown quick add already (`Follow`).
+            Launched.QuickAdd -> if (navigator.current() != Screen.AddTask) navigator.open(Screen.AddTask)
             is Launched.At -> went.place?.let { navigator.open(placeScreen(it)) }
             null -> {}
         }
@@ -295,8 +296,9 @@ fun WearApp(
 }
 
 /**
- * The screens the app opens itself — its block form, a proposal, a reminder list — opened over
- * whatever is shown while the app has one open; each goes back when the app closes it.
+ * The screens the app opens itself — its block form, a proposal, a reminder list, quick add's
+ * line (New task, a screen's action) — opened over whatever is shown while the app has one open;
+ * each goes back when the app closes it.
  */
 @Composable
 private fun Follow(core: Core, navigator: Navigator) {
@@ -304,7 +306,10 @@ private fun Follow(core: Core, navigator: Navigator) {
     val form = view?.blockForm != null
     val proposal = view?.proposal != null
     val reminders = view?.reminders != null
+    val line = view?.line != null
     LaunchedEffect(form) { if (form) navigator.open(Screen.BlockForm) }
+    // Quick add opens the line itself as it is shown: only a line the app opened is followed.
+    LaunchedEffect(line) { if (line && navigator.current() != Screen.AddTask) navigator.open(Screen.AddTask) }
     LaunchedEffect(proposal) { if (proposal) navigator.open(Screen.Proposal) }
     LaunchedEffect(reminders) { if (reminders) navigator.open(Screen.Reminders) }
 }

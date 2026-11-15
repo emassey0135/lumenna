@@ -34,10 +34,12 @@ whole, a line each, which RET does, asking first.
 
 (defun lumenna--setting-rows ()
   "Devices and sync, then every setting, shared ones first."
-  (let* ((settings (append (plist-get (plist-get lumenna--view :settings) :settings) nil))
-         ;; `clock' is for clients with no clock of their own; Emacs follows
-         ;; `display-time-24hr-format'.
-         (settings (seq-remove (lambda (s) (equal (plist-get (plist-get s :setting) :key) "clock")) settings))
+  (let* ((view (plist-get lumenna--view :settings))
+         ;; Only what the app's pages list here: not `clock', since Emacs follows
+         ;; `display-time-24hr-format' and has told the app so.
+         (listed (mapcan (lambda (page) (append (plist-get page :keys) nil)) (append (plist-get view :pages) nil)))
+         (settings (seq-filter (lambda (s) (member (plist-get (plist-get s :setting) :key) listed))
+                               (append (plist-get view :settings) nil)))
          (shared (seq-filter (lambda (s) (lumenna--true (plist-get (plist-get s :setting) :syncs))) settings))
          (own (seq-remove (lambda (s) (lumenna--true (plist-get (plist-get s :setting) :syncs))) settings))
          (status (plist-get (plist-get lumenna--view :devices) :status)))
@@ -232,7 +234,8 @@ the app's asking, which is then told why when `lum' cannot say."
   (lumenna--mode-name '(word :settings :devices))
   (setq-local lumenna--held :devices_held)
   (setq-local lumenna--draw #'lumenna--device-rows)
-  (setq-local lumenna--activate (lambda (_row) (lumenna-act-rename))))
+  ;; The core's Enter (`open'): a device renamed.
+  (setq-local lumenna--activate (lambda (_row) (lumenna-press "open"))))
 
 (defun lumenna--device-rows ()
   "How syncing goes, then each paired device in the app's words."

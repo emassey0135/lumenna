@@ -1,3 +1,4 @@
+import Combine
 import LumennaApp
 import SwiftUI
 import UIKit
@@ -14,8 +15,6 @@ import UIKit
 /// moved it, and where VoiceOver goes is the app's row in hand.
 struct TaskListScreen: View {
     @ObservedObject var model: TaskListModel
-    /// Opens a task's own screen, beside the list on iPad: UIKit's.
-    let open: (LumennaApp.RowView) -> Void
     @AccessibilityFocusState private var spoken: String?
     @FocusState private var typing: Bool
     /// What could finish the filter's last word, the app's.
@@ -108,17 +107,12 @@ struct TaskListScreen: View {
         let done = row.row.checked == true
         let detail = row.line?.detail ?? ""
         return Button {
-            guard !model.trash else { return }
-            model.moved(to: row.id)
-            // A block's own screen is the block form, for every occurrence: its Edit Block.
-            if model.blocks {
-                model.key("open", on: row.row)
-            } else {
-                open(row.row)
-            }
+            // The core's Open, as Return is on every app: a task's details (its form, which the
+            // window opens beside the list), a block's Edit Block, a trashed task restored.
+            model.key("open", on: row.row)
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                if !model.blocks {
+                if model.checks {
                     Image(systemName: done ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(done ? Color.accentColor : Color.quietLabel)
                 }
@@ -206,25 +200,34 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
         self.core = core
         let model = TaskListModel(core: core, place: place)
         self.model = model
-        weak var opener: UIViewController?
-        super.init(rootView: TaskListScreen(model: model, open: { row in
-            opener?.showBeside(TaskDetailViewController(core: core, id: row.id))
-        }))
-        opener = self
+        super.init(rootView: TaskListScreen(model: model))
         title = model.title
-        let undo = UIBarButtonItem.undo { [weak self] in self?.undoChange() }
-        let redo = UIBarButtonItem.redo { [weak self] in self?.redoChange() }
-        navigationItem.leftItemsSupplementBackButton = true
-        navigationItem.leftBarButtonItems = place == .trash ? [undo] : [undo, redo]
-        if place != .trash {
-            let add = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.addTask() })
-            add.accessibilityLabel = Commands.title(place == .blocks ? "new-block" : "new-task")
-            navigationItem.rightBarButtonItem = add
-        }
         observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
             guard let self else { return }
             if self.title != self.model.title { self.title = self.model.title }
         }
+        // The place's own actions, the core's, in the bar: Undo and Redo, New Task or New Block,
+        // and the rest (the filter, New Project Inside) in its Place Actions menu.
+        actions = model.$screenActions.removeDuplicates().sink { [weak self] actions in
+            guard let self else { return }
+            ScreenActionBar.place(actions, in: self.navigationItem, menu: true) { [weak self] action in self?.perform(action) }
+        }
+    }
+
+    private var actions: AnyCancellable?
+
+    /// One of the place's own actions: Undo Typing where a field has typing to undo, the filter
+    /// field put in hand, and every other the core's, quick add coming up over the list where
+    /// it opened the app's line.
+    func perform(_ action: LumennaApp.ScreenAction) {
+        guard !ScreenActionBar.undoesTyping(action) else { return }
+        core.app.perform(action, shell: { [weak self] id in
+            if id == "filter" { self?.focusFilter() }
+        }, lineOpened: { [weak self] in
+            // Unless quick add is up already: the line is the one it shows.
+            guard self?.presentedViewController == nil else { return }
+            self?.presentQuickAdd()
+        })
     }
 
     @available(*, unavailable)
@@ -264,10 +267,15 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
     @objc func undoChange() { undoInStore(core) }
     @objc func redoChange() { redoInStore(core) }
 
-    /// Quick add, or in Blocks the block form for a new one.
+    /// Quick add, or in Blocks the block form for a new one: the keyboard's New Task.
     @objc func addTask() {
         guard place != .trash else { return }
         guard place != .blocks else { return core.app.send(.block(.new(start: nil, minutes: nil))) }
+        presentQuickAdd()
+    }
+
+    /// Quick add over the list, on the app's line.
+    private func presentQuickAdd() {
         let adding = QuickAddViewController(core: core)
         adding.closed = { [weak self] in self?.takeKeyboardCommands() }
         present(UINavigationController(rootViewController: adding), animated: true)

@@ -58,23 +58,36 @@ pairing with `lum`.
   (`isDelete`). Enter and the Task menu's commands are the table's too: `Key("open")` on a row,
   `Key("mark-done")` and the rest on the row in hand, `Details(Key(id))` on the details' task, so
   what each runs, or why it runs nothing, is the core's (`keys::what_runs`); only with no task in
-  hand does the page say so, in the details' own words.
+  hand does the page say so, in the details' own words. A reminder due's button is handed back
+  by the reminder's id and the button's (`DueEvent::Press`), never mapped to an event here.
 - **Every fixed word is the core's, read once as the app starts** (`words.ts`, `loadWords`):
   its record of what a shell draws (`shell_words`, `ShellWords`, in sentence case as a browser
   calls itself), the shared keys and their groups among it (`keyGroups`, which name the
-  header's and the day toolbar's buttons and the keyboard help), with the few that take a part
+  banner's two buttons and the keyboard help), with the few that take a part
   (`backingUpToFolder` and the rest, which name the folder). A word found missing goes in
   `ShellWords` (`crates/app/src/words.rs`), never here. What comes with the screen (a
   setting's, Settings' pages, pairing's, a reminder's buttons) is the screen's. The words need
   the module, not the store, so they are read before the store's lock: the tab already open
   and "Opening Lumenna…" are the core's as well. A project offered in the details says the core's level
   where it changes (`Lines::projects`), never one worded here.
-- **Settings' tabs are the core's pages** (`SettingsView::pages`), in its order, a page's
+- **Settings' tabs are the core's pages** (`SettingsView::pages`), in its order and never
+  filtered here (the core lists only the pages with something on them for this device), a page's
   settings by its keys, its caption and its buttons by id (`back-up` a download here,
-  `restore-backup`, `import`); a page a browser has nothing of (the general page's clock and
-  background) is left out, as are a device's own settings but Reminders on this device.
+  `restore-backup`, `import`); a device's own settings but Reminders on this device are left out
+  of a page, since a browser backs up by download or to a folder of its own.
   The forms are drawn from the app's: the details, the block form, quick add, Settings, a
   proposal, pairing's words.
+- **Each screen's own actions are the core's buttons** (`ViewModel::screen_actions`,
+  `ScreenActions.tsx`), above its rows, in its order and under its titles, disabled where it says
+  (`enabled`): the day's toolbar, the Blocks list's and a list's button row, beside the row's
+  Actions menu. Each is sent as `Key(id)`, but for what the core marks the shell's (`shell`: the
+  filter field, the keyboard help), which runs as its key does (`runCommand`), and New task, which
+  goes through the page's own command so quick add opens at once, then sends the same key. One
+  that `asks` has `aria-haspopup="dialog"` and an `aria-hidden` "…", its name the core's alone. A
+  list's filter field is there where its actions offer `filter`. The banner holds only Settings
+  and Keyboard shortcuts: the app's own, which a desktop's menu bar holds, and the core lists only
+  on Home (`ViewModel::home`), which a page with a sidebar never shows. A row's actions stay its
+  menu's.
 - **A dialog that is the app's is open while the screen says so**, and closes when the app lets
   it go.
 - **Quick add opens at once and closes at once**: open from the moment it is asked for, before

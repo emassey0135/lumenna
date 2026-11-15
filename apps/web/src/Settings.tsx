@@ -3,9 +3,9 @@
 // text field when it is left), and says so.
 //
 // Each setting describes itself (`Setting`): its name, its control, what it can be and what
-// it does. A page lists the settings the store holds here: a device's own clock and backup
-// folder a browser does not have, since it words times as its locale does and backs up by
-// download, so a page with nothing else on it is left out.
+// it does. Which pages there are is the core's (only those with something on them here); a page
+// lists the settings that sync, and reminders on this device: a device's own backup folder and
+// schedule a browser does not have, since it backs up by download or to a folder of its own.
 //
 // A browser has no folder to back up into and nothing running to do it on a schedule, so a
 // backup here is a download, asked for; restoring and importing read a file the person chooses.
@@ -56,9 +56,8 @@ export function Settings(props: {
   /** The devices list's row in hand. */
   held: Screen["devicesHeld"];
 }) {
-  // The core's pages, in its order, each setting on one; a page with nothing a browser has (the
-  // device's own clock and backup folder) is left out.
-  const pages = (props.settings?.pages ?? []).filter((page) => SHOWN.has(page.id) || present(props.settings, page).length > 0);
+  // The core's pages, in its order, each setting on one, and only those with something on them here.
+  const pages = props.settings?.pages ?? [];
   return (
     <Modal isDismissable isOpen={props.isOpen} onOpenChange={(open) => !open && props.onClose()}>
       <Dialog>
@@ -84,9 +83,6 @@ export function Settings(props: {
     </Modal>
   );
 }
-
-/** The pages a browser shows whatever settings they hold: what is on them is the page's own. */
-const SHOWN = new Set(["devices", "backups", "export"]);
 
 /** The settings of `page` a browser has, in the page's order: those that sync, and reminders on
  * this device, which it keeps itself. A device's own others (where backups go, how often) are a

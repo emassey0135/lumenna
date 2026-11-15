@@ -1,3 +1,4 @@
+import Combine
 import LumennaApp
 import SwiftUI
 import UIKit
@@ -12,13 +13,9 @@ import UIKit
 /// the row in hand.
 struct DayScreen: View {
     @ObservedObject var model: DayModel
-    /// Opens a sitting's task beside the day on iPad, pushed on iPhone: UIKit's.
-    let openTask: (String) -> Void
-    /// Go to Day: the app's own question, asked with the calendar beside the line.
-    let chooseDay: () -> Void
+    /// Runs one of the day's screen actions: UIKit's, which holds the bar's too.
+    let run: (LumennaApp.ScreenAction) -> Void
     @AccessibilityFocusState private var spoken: String?
-    /// A cancelled day whose actions are offered, tapped.
-    @State private var offering: DayModel.Row?
 
     var body: some View {
         ScrollViewReader { scroller in
@@ -33,11 +30,6 @@ struct DayScreen: View {
             }
             .listStyle(.plain)
             .navigationTitle(model.title)
-            .confirmationDialog(offering?.line?.text ?? "", isPresented: Binding(get: { offering != nil }, set: { if !$0 { offering = nil } }), presenting: offering) { row in
-                ForEach(row.item.offered, id: \.self) { action in
-                    Button(action.title, role: action.destructive ? .destructive : nil) { model.run(action, on: row.item) }
-                }
-            }
             .onChange(of: model.landed?.count) { _, _ in
                 // The app moved the row in hand: VoiceOver goes there, once the row is drawn.
                 guard let key = model.landed?.key else { return }
@@ -66,41 +58,22 @@ struct DayScreen: View {
             }
     }
 
-    /// Moving through days, and the day's own actions: side by side while they fit, then on two
-    /// lines, the moves and the rest, and one above another only once the text is too large for
-    /// that. One per line on an SE at the ordinary size, the day's rows went under the tab bar.
+    /// The screen's own actions the bar holds no icon for (`ScreenActionBar`), the core's, in its
+    /// order: What Should I Work On?, the moves through days, Go to Day; then the day's own
+    /// actions. Side by side while they fit, then on two lines, and one above another only once the
+    /// text is too large for that. One per line on an SE at the ordinary size, the day's rows went
+    /// under the tab bar.
     private var buttons: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack { moves; Spacer(minLength: 0); others }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack { moves }
-                HStack { others }
-            }
-            VStack(alignment: .leading, spacing: 8) { moves; others }
-        }
-        .buttonStyle(.borderless)
-    }
-
-    /// The day before, now, and the day after.
-    @ViewBuilder private var moves: some View {
-        Button(Commands.title("previous-day")) { model.move(.previous) }
-        Spacer(minLength: 0)
-        Button(Commands.title("go-to-now")) { model.move(.now) }
-        Spacer(minLength: 0)
-        Button(Commands.title("next-day")) { model.move(.next) }
-    }
-
-    /// Going to another day, and the day's own actions.
-    @ViewBuilder private var others: some View {
-        Button(Commands.title("go-to-day")) { chooseDay() }
-        if !model.actions.isEmpty {
-            Spacer(minLength: 0)
-            Menu(Wording.dayActions) {
-                ForEach(model.actions, id: \.self) { action in
-                    Button(action.title, role: action.destructive ? .destructive : nil) { model.perform(action) }
+        ScreenActionRow(actions: model.screenActions.filter { !ScreenActionBar.holds($0) }, spread: true, run: run) {
+            if !model.actions.isEmpty {
+                Menu(Wording.dayActions) {
+                    ForEach(model.actions, id: \.self) { action in
+                        Button(action.title, role: action.destructive ? .destructive : nil) { model.perform(action) }
+                    }
                 }
             }
         }
+        .buttonStyle(.borderless)
     }
 
     private func rowView(_ row: DayModel.Row) -> some View {
@@ -156,21 +129,11 @@ struct DayScreen: View {
         }
     }
 
-    /// What a tap does: a block's Edit, a sitting's task, free time's Add Block, a cancelled
-    /// day's actions offered.
+    /// What a tap does: the core's Open, as Return is on every app — a block's Edit, a sitting's
+    /// task's details (its form, which the window opens beside the day), free time's Add Block,
+    /// a cancelled day restored — or the app says why the row has none.
     private func tapped(_ row: DayModel.Row) {
-        let item = row.item
-        switch item.kind {
-        case .block: model.key("open", on: item)
-        case .sitting:
-            if let task = item.sitting?.task {
-                model.moved(to: item.key)
-                openTask(task)
-            }
-        case .free: model.key("open", on: item)
-        case .cancelled: offering = row
-        case .now, .summary: break
-        }
+        model.key("open", on: row.item)
     }
 
     /// A row's actions as the day offers them (`AppRowActions`): the primary ones and Expand or
@@ -204,26 +167,29 @@ final class DayViewController: UIHostingController<DayScreen> {
         let model = DayModel(core: core)
         self.model = model
         weak var host: DayViewController?
-        super.init(rootView: DayScreen(
-            model: model,
-            openTask: { task in host?.showBeside(TaskDetailViewController(core: core, id: task)) },
-            chooseDay: { host?.chooseDay() }
-        ))
+        super.init(rootView: DayScreen(model: model, run: { action in host?.perform(action) }))
         host = self
         title = LumennaApp.placeTitle(place: .today)
-        let add = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.newBlock() })
-        add.accessibilityLabel = Commands.title("new-block")
-        navigationItem.rightBarButtonItem = add
-        // In the navigation bar, as on the task list: a bottom toolbar would sit under the
-        // floating tab bar.
-        navigationItem.leftBarButtonItems = [
-            .undo { [weak self] in self?.undoChange() },
-            .redo { [weak self] in self?.redoChange() },
-        ]
         observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
             guard let self, self.title != self.model.title else { return }
             self.title = self.model.title
         }
+        // The day's screen actions, the core's: Undo, Redo and New Block in the navigation bar,
+        // as on the task list (a bottom toolbar would sit under the floating tab bar), the rest
+        // among the day's buttons.
+        actions = model.$screenActions.removeDuplicates().sink { [weak self] actions in
+            guard let self else { return }
+            ScreenActionBar.place(actions, in: self.navigationItem, menu: false) { [weak self] action in self?.perform(action) }
+        }
+    }
+
+    private var actions: AnyCancellable?
+
+    /// One of the day's screen actions: Undo Typing where a field has typing to undo, else the
+    /// core's, on the day shown.
+    func perform(_ action: LumennaApp.ScreenAction) {
+        guard !ScreenActionBar.undoesTyping(action) else { return }
+        model.perform(action)
     }
 
     @available(*, unavailable)

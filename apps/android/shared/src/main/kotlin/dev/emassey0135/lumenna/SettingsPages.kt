@@ -18,6 +18,9 @@ object SettingsPages {
      * The pages worth opening, given [listed] (the settings the store lists here): a page with
      * a setting listed or a button. Before the settings come, every page but General, whose
      * settings are this device's own and need the store to say whether it lists any.
+     *
+     * Superseded by the app's own list (`SettingsView.pages`, only the pages with something on
+     * them here), which the phone and the watch draw; kept until the BrailleSense app takes it.
      */
     fun shown(listed: List<SettingView>): List<SettingsPage> {
         val keys = listed.map { it.setting.key }.toSet()

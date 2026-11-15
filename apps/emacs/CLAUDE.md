@@ -5,7 +5,7 @@ Read when working in `apps/emacs/`. The root `CLAUDE.md` holds what every part o
 `apps/emacs/`: Elisp over `jsonrpc.el`, built-in libraries only, drawing the Crux app, which
 runs in the process serving RPC (`app.*`). Each Lumenna buffer is one of its screens; a buffer
 opened from another — a proposal from a day, a reminder list from a list — draws the same
-screen (`lumenna--attach`), and the places' buffer `*Lumenna*` is screen 0. Tests are ERT
+screen (`lumenna--attach`), and Home's buffer `*Lumenna*` is screen 0. Tests are ERT
 against a real `lum rpc`, answering the minibuffer by rebinding the reading functions:
 `emacs --batch -Q -L apps/emacs -l apps/emacs/test/lumenna-test.el -f ert-run-tests-batch-and-exit`.
 CI byte-compiles every file first with warnings as errors (bar `lumenna-emacsvox.el`, which needs
@@ -28,6 +28,30 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
 - **Settings' own buttons are rows** (`lumenna--store-rows`, from `settings.offered`): RET or
   `.` hands the action back naming `Settings`, the row's `:on`, which `lumenna--acting-on`
   takes before any list's name for a row. Never a key: erasing is a line chosen, then asked.
+  The settings listed are those on the app's `pages`, which leave out what this device has not
+  (the clock, Emacs's own); never a filter of this client's.
+- **Home is screen 0** (`Home`, the view's `home`; `lumenna-home-mode`, what `M-x lumenna`
+  opens): its places, then its own actions as lines. Its row in hand is the sidebar's, held as
+  a line is acted on (`Hold(Sidebar)`), and RET on a place or heading is the core's Enter
+  (`Key("open")`): a heading folds, and a place the app goes to *on screen 0*, where here every
+  place is a buffer of its own, so `lumenna--home-open` opens that place's buffer as any other
+  is opened and puts screen 0 back over Tasks with Home shown (`lumenna--home-again`, saying
+  nothing). Anything else that takes screen 0 off Home (a project made or renamed there goes to
+  it) is put back after the command (`lumenna--home-kept`, last on `lumenna-followed-hook`).
+  Over Tasks, so a task added from anywhere, which goes through screen 0, starts with no project.
+  The group buffers (Projects, Labels, Saved Filters) are screen 0 too and inherit its RET.
+- **A screen's own actions are the app's** (`screen_actions`): `,` chooses one by title
+  (`lumenna-screen-action`), the mode's menu ends in them (a `:filter` submenu read as it is
+  drawn), and Home lists them as lines. Each is sent as `Key(id)` but those in
+  `lumenna-screen-action-commands`: the shell's own (`shell`: filter, keyboard help, About,
+  reminders due) and those whose screen is a buffer of its own here or whose line is the
+  minibuffer (New Task is `lumenna-add`, Settings, Sync Now, What Should I Work On? in today's
+  buffer). The hand-made keys stay (`a`, `[`, `w`…): Emacs binds a key per command. A row's key
+  on one of Home's action lines refuses (`lumenna-press`), since it would run on the place the
+  app last held.
+- **Enter is the core's `open`** wherever RET was a row's own action: the day, a series in
+  Blocks, the trash (restore), a device (rename), Home. A task list's RET opens the details
+  directly: the core's `open` there is Edit, whose form is this client's.
 - **Depth is an outline level**: `outline-level` reads the `lumenna-level` text property, for
   Emacspeak's level announcements; the folding is the app's (TAB runs Collapse or Expand).
 - **Every fixed word is the core's** (`app.words`, asked once as the connection opens, in
@@ -85,8 +109,11 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
 - **Reminders are given through `reminder.deliver`** (`lumenna-reminders-mode`), which takes
   this device's reminder lock and says what came due; the app is then handed the same moments
   (`Due(Look)`, from just before the earliest firing to the moment delivered at), and lists,
-  says and gives notices of what it finds (`ViewModel.due`). The due list draws that list from
-  screen 0, each notice is a desktop notification, and every button is a `DueEvent`, so which
+  says and gives notices of what it finds (`ViewModel.due`); never `LookBack`, since what the
+  app finds it says and notifies, and another process holding the lock gave it already. The due
+  list draws that list from screen 0, each notice is a desktop notification, and every button is
+  `DueEvent::Press` by the reminder's id and the button's (`lumenna-reminders--deal`; Replan
+  pressed in today's buffer, which it opens over), so which
   are still listed is the app's: one dismissed on another device leaves it, and Snooze on a
   summary of what was missed is the app's to refuse. `lumenna-disconnect` stops the mode (`lumenna-disconnected-hook`),
   whose timer would connect again at once; connecting starts it again. A task's or block's
@@ -94,7 +121,7 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
 - **A new connection draws every buffer's screen again** (`lumenna--leave-screens`,
   `lumenna--reopen-screens`): the new app has none of the old one's screens, so each buffer that
   opened a screen sends the events that opened it (`lumenna--opened-with`) to the same number,
-  screen 0's buffers simply attach, and a buffer drawing what the app opened on another's (a
+  screen 0's buffers simply attach, Home's sending `Home` again, and a buffer drawing what the app opened on another's (a
   proposal, a reminder list) is closed.
 - **A choice's reason is its completion annotation**, never part of the line chosen.
 - **Tests seed the store through its own methods** (`lumenna-test--seed`), then tick the app

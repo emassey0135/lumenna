@@ -354,7 +354,8 @@ it with \\[lumenna-act-at-point].
 \\{lumenna-trash-mode-map}"
   (lumenna--mode-name '(command "go-trash"))
   (setq-local lumenna--draw #'lumenna--list-rows)
-  (setq-local lumenna--activate (lambda (_row) (lumenna-act-restore))))
+  ;; The core's Enter (`open'): a trashed task restored.
+  (setq-local lumenna--activate (lambda (_row) (lumenna-press "open"))))
 
 ;;;###autoload
 (defun lumenna-trash ()

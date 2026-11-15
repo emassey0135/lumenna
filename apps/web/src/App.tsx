@@ -26,6 +26,7 @@ import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { TaskList } from "./TaskList";
 import { useFolderBackups } from "./backups";
+import { keyPressed } from "./actions";
 import { commandTitle, loadWords, words } from "./words";
 import type { Words } from "./words";
 
@@ -103,7 +104,8 @@ export function App() {
     return () => clearInterval(timer);
   }, [ready]);
 
-  const undo = (redo: boolean) => void send({ tag: redo ? "Redo" : "Undo" });
+  // The shared keys, as the screen's Undo and Redo buttons send them.
+  const undo = (redo: boolean) => void send(keyPressed(redo ? "redo" : "undo"));
 
   // Ctrl+Z undoes and Ctrl+Shift+Z or Ctrl+Y redoes, from anywhere but a field, where they
   // undo typing as they do in the desktop apps' fields, or a dialog, whose question is not the
@@ -183,10 +185,11 @@ export function App() {
 
   // Asked for, quick add stays open until the screen drawn has its line, or the app's answer has
   // none: that answer can come before the turn that draws the line, and in Firefox quick add
-  // closed between the two, focus going back to the row and its field left without it.
+  // closed between the two, focus going back to the row and its field left without it. What it
+  // sends is the shared key, as the screen's New task button does (ScreenActions.tsx).
   const newTask = () => {
     setOpening(true);
-    void send({ tag: "Typing", value0: { tag: "Open" } }).then(
+    void send(keyPressed("new-task")).then(
       (turn) => turn.screen.line || setOpening(false),
       () => setOpening(false),
     );
@@ -202,6 +205,8 @@ export function App() {
     void send({ tag: "Settings", value0: { tag: "Open" } });
   };
   useCommand("settings", openSettings, -1);
+  // The keyboard help, which the core marks the shell's own to show.
+  useCommand("keyboard-help", () => setKeysOpen(true), -1);
   useCommand(
     "sync-now",
     () =>
@@ -244,9 +249,9 @@ export function App() {
     <div className="app">
       <header>
         <h1>{words().metadata.name}</h1>
-        <Button onPress={newTask}>{commandTitle("new-task")}</Button>
-        <Button onPress={() => void undo(false)}>{commandTitle("undo")}</Button>
-        <Button onPress={() => void undo(true)}>{commandTitle("redo")}</Button>
+        {/* The screen's own actions are the screen's, above its rows (ScreenActions.tsx). These two
+            are the app's, which a desktop's menu bar holds and a page has no menu bar for: the
+            core lists them only on Home, which a browser does not show. */}
         <Button onPress={openSettings}>{commandTitle("settings")}</Button>
         <Button onPress={() => setKeysOpen(true)}>{commandTitle("keyboard-help")}</Button>
         {/* In the banner, so landmark navigation does not skip it. */}
@@ -266,7 +271,7 @@ export function App() {
         ) : place.tag === "Blocks" ? (
           <Blocks screen={screen} />
         ) : (
-          <TaskList screen={screen} onOpen={() => details.current?.focus()} />
+          <TaskList screen={screen} />
         )}
       </main>
       <aside aria-label={words().details.title}>
