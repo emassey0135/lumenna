@@ -6,6 +6,9 @@ import dev.emassey0135.braillesense.edit.TextBox
 import dev.emassey0135.braillesense.reading.BraillePart
 import dev.emassey0135.braillesense.reading.ControlRole
 import dev.emassey0135.braillesense.reading.DeviceLine
+import dev.emassey0135.lumenna.app.ControlShown
+import dev.emassey0135.lumenna.app.ControlType
+import dev.emassey0135.lumenna.braille.DialogController
 
 /** What a frame shows and says now. */
 data class Rendered(
@@ -206,232 +209,157 @@ class LineFrame(
     }
 }
 
-/** A control in a dialog: something Tab stops at. */
-sealed class Control(val key: String) {
-    /** The line it reads as. */
-    abstract val line: DeviceLine
-
-    /** Text to type; [box] holds it while the dialog is open, a line or, [TextBox.multiLine], several. */
-    class Edit(
-        key: String,
-        val label: String,
-        val box: TextBox,
-        val hint: String = "",
-        /** What is typed, as it changes. */
-        val changed: (String) -> Unit = {},
-        val submit: (() -> Unit)? = null,
-        /** What it holds as Tab leaves it: a setting applies then. */
-        val left: (String) -> Unit = changed,
-    ) : Control(key) {
-        /** The line the cursor is on. */
-        val editor: LineEditor get() = box.line
-
-        override val line: DeviceLine
-            get() = if (box.multiLine) {
-                line(ControlRole.MULTI_LINE_EDIT_BOX, editor.text.ifEmpty { if (box.text.isEmpty()) hint else "" }, editor.text, label = label)
-            } else {
-                line(ControlRole.EDIT_BOX, box.text.ifEmpty { hint }, box.text, label = label)
-            }
-    }
-
-    /** One of several options, changed with Space, Backspace, Space-1 and Space-4 or by first letter. */
-    class Choice(
-        key: String,
-        val label: String,
-        val options: List<Pair<String, String>>,
-        val selected: Int,
-        val choose: (String) -> Unit,
-        val press: (() -> Unit)? = null,
-    ) : Control(key) {
-        private val value get() = options.getOrNull(selected)?.second.orEmpty()
-        override val line get() = line(ControlRole.COMBO_BOX, value, label = label, position = selected + 1, count = options.size)
-    }
-
-    /** A flag, changed with Space or Backspace. */
-    class Toggle(key: String, val label: String, val on: Boolean, val change: (Boolean) -> Unit) : Control(key) {
-        override val line get() = line(if (on) ControlRole.CHECK_BOX_CHECKED else ControlRole.CHECK_BOX_UNCHECKED, label)
-    }
-
-    /**
-     * Enter presses it, or its [letter] with Space or Enter. A question's answers are prompt
-     * buttons ([role]), which Space and Backspace step between, as the device's prompts do.
-     */
-    class Button(
-        key: String,
-        val label: String,
-        val letter: Char? = null,
-        val asks: Boolean = false,
-        val role: ControlRole = ControlRole.BUTTON,
-        val press: () -> Unit,
-    ) : Control(key) {
-        override val line get() = line(role, label, letter = letter, asks = asks)
-    }
-
-    /**
-     * A list to pick one from, in place, as a dialog's own list is: Space-1 and Space-4 move
-     * through it (and Space-1-2-3, Space-4-5-6, a first letter), Enter picks the one in hand.
-     */
-    class Pick(
-        key: String,
-        val label: String,
-        val options: List<Pair<String, String>>,
-        val selected: Int,
-        val move: (Int) -> Unit,
-        val pick: (String) -> Unit,
-    ) : Control(key) {
-        override val line get() = line(ControlRole.LIST_ITEM, options.getOrNull(selected)?.second.orEmpty(), label = label, position = selected + 1, count = options.size)
-    }
-
-    /** A line of information: a refusal, a caption. */
-    class Static(key: String, val text: String) : Control(key) {
-        override val line get() = line(ControlRole.STATIC_BOX, text)
-    }
-}
-
 /**
- * A dialog's controls, in order. Tab and Shift-Tab are all that move between them, as in the
- * device's own dialogs; Space-1 and Space-4 move within the control that is a list of choices, and
- * do nothing on one that is not.
+ * A dialog the core describes (`DialogShown`), as the device works one, over the braille apps'
+ * shared [DialogController]: the controller keeps the control in hand, the tab order, what is typed
+ * until the core has it, each choice and check, and presses; this maps the device's keys onto it and
+ * reads the control in hand in the device's own roles (`ControlRole`). Tab (Space-4-5, F3) and
+ * Shift-Tab are all that move between controls, as in the device's own dialogs; Space-1 and
+ * Space-4 move only within a list, Space and Backspace change a combo box or a check box, and step
+ * between a question's answers. A line's own keys are the SDK's box (`BoxEditing`, run by the shell
+ * ahead of the frame), its text handed to the controller as it changes.
  */
 class FormFrame(
-    id: String,
-    /** What it is called, said when it opens; null for what has no title. */
-    val title: String?,
-    private val controls: List<Control>,
-    selected: String?,
+    val controller: DialogController,
     private val letters: Letters,
     private val readings: Readings,
-    private val moved: (Control) -> Unit = {},
-    /** Where it opens when nothing is in hand yet: the core's first control that takes anything. */
-    first: Int = 0,
-) : Frame(id) {
-    private var index = controls.indexOfFirst { it.key == selected }.takeIf { it >= 0 } ?: first.coerceIn(0, (controls.size - 1).coerceAtLeast(0))
+    /** The text box of a line, which the shell keeps while the dialog is open. */
+    private val boxOf: (ControlShown) -> TextBox,
+    /** A button's letter: the core's, else the first free one of its name. */
+    private val letterOf: (ControlShown) -> Char?,
+    /** A question of answers alone: its buttons the device's prompt buttons, said as its prompt. */
+    val prompt: Boolean = false,
+) : Frame(controller.dialog.id) {
+    /** What it is called, said as it opens. */
+    val title: String? get() = controller.dialog.title.ifEmpty { null }
 
-    val current: Control? get() = controls.getOrNull(index)
-
-    /** A question of answers alone: said as its prompt, not as a dialog. */
-    var prompt = false
+    /** The control in hand. */
+    val current: ControlShown? get() = controller.control
 
     /** The lines to read ahead of where it opens (a message, why saving was refused), said as it opens. */
-    val preamble: String = controls.take(first.coerceAtLeast(0)).filterIsInstance<Control.Static>().joinToString(". ") { it.text }
+    val preamble: String
+        get() = controller.controls.take(controller.dialog.focus.toInt()).filter { it.kind == ControlType.TEXT }.joinToString(". ") { it.value }
+
+    /** The box of the line in hand, if a line is in hand. */
+    fun box(): TextBox? = current?.takeIf(::isLine)?.let(boxOf)
+
+    /** The line in hand's text, as its box now holds it, handed to the controller where it changed. */
+    fun typed() {
+        val line = current?.takeIf(::isLine) ?: return
+        val text = boxOf(line).text
+        if (text != controller.text(line)) controller.type(text)
+    }
 
     override val rendered: Rendered
         get() {
             val control = current ?: return Rendered("")
-            val reading = readings.read(control.line)
-            if (control is Control.Edit) {
-                val shown = control.editor.shown()
+            val reading = readings.read(lineOf(control))
+            if (isLine(control)) {
+                val shown = boxOf(control).line.shown()
                 return reading.rendered(shown.cells, shown.cursor)
             }
             return reading.rendered()
         }
 
-    private fun move(step: Int): Boolean {
-        if (controls.isEmpty()) return true
-        (current as? Control.Edit)?.let { it.left(it.box.text) }
-        index = (index + step + controls.size) % controls.size
-        current?.let(moved)
-        return true
+    private fun lineOf(control: ControlShown): DeviceLine {
+        val hint = control.example.ifEmpty { control.hint }
+        return when (control.kind) {
+            ControlType.TEXT -> line(ControlRole.STATIC_BOX, control.value)
+            ControlType.LINE -> boxOf(control).let { box -> line(ControlRole.EDIT_BOX, box.text.ifEmpty { hint }, box.text, label = control.label) }
+            ControlType.LINES -> boxOf(control).let { box ->
+                line(ControlRole.MULTI_LINE_EDIT_BOX, box.line.text.ifEmpty { if (box.text.isEmpty()) hint else "" }, box.line.text, label = control.label)
+            }
+            ControlType.CHOICE -> {
+                val at = controller.selected(control) ?: 0
+                line(ControlRole.COMBO_BOX, control.options.getOrNull(at)?.title.orEmpty(), label = control.label, position = at + 1, count = control.options.size)
+            }
+            ControlType.LIST -> {
+                val at = controller.selected(control) ?: 0
+                line(ControlRole.LIST_ITEM, control.options.getOrNull(at)?.title.orEmpty(), label = control.label, position = at + 1, count = control.options.size)
+            }
+            ControlType.CHECK -> line(if (controller.checked(control)) ControlRole.CHECK_BOX_CHECKED else ControlRole.CHECK_BOX_UNCHECKED, control.label)
+            ControlType.BUTTON -> line(if (prompt) ControlRole.PROMPT_BUTTON else ControlRole.BUTTON, control.label, letter = letterOf(control), asks = control.asks)
+        }
     }
 
-    /** Presses the button of [letter]; false if none has it. */
+    /** Presses the button of [letter], the line in hand taken first; false if none has it. */
     fun press(letter: Char): Boolean {
-        val button = controls.filterIsInstance<Control.Button>().firstOrNull { it.letter == letter } ?: return false
-        button.press()
+        val button = controller.controls.firstOrNull { it.kind == ControlType.BUTTON && letterOf(it) == letter } ?: return false
+        typed()
+        controller.press(button)
         return true
     }
 
     override fun routed(at: Int) {
-        val control = current
-        if (control is Control.Edit) control.editor.route(at)
-        if (control is Control.Button) control.press()
+        val control = current ?: return
+        if (isLine(control)) boxOf(control).line.route(at)
+        if (control.kind == ControlType.BUTTON) controller.press()
     }
 
     override fun key(key: Key): Boolean {
         when (key) {
-            Key.Tab -> return move(+1)
-            Key.ShiftTab -> return move(-1)
+            Key.Tab -> return run { typed(); controller.next(); true }
+            Key.ShiftTab -> return run { typed(); controller.previous(); true }
             else -> {}
         }
-        return when (val control = current) {
-            is Control.Edit -> edit(control, key)
-            is Control.Choice -> choice(control, key)
-            is Control.Toggle -> when (key) {
-                Key.Space, Key.Backspace, Key.Enter -> run { control.change(!control.on); true }
+        val control = current ?: return false
+        return when (control.kind) {
+            // Enter in a line of one presses it (quick add's, a question's) or the dialog's default;
+            // a multi-line box's Enter is its own new line.
+            ControlType.LINE -> key == Key.Enter && run { typed(); controller.press(); true }
+            ControlType.LINES -> false
+            ControlType.CHOICE -> choice(control, key)
+            ControlType.LIST -> list(control, key)
+            ControlType.CHECK -> when (key) {
+                Key.Space, Key.Backspace, Key.Enter -> run { controller.toggle(); true }
                 else -> false
             }
-            is Control.Button -> when {
-                key == Key.Enter -> run { control.press(); true }
-                control.role == ControlRole.PROMPT_BUTTON && key == Key.Space -> step(+1)
-                control.role == ControlRole.PROMPT_BUTTON && key == Key.Backspace -> step(-1)
+            ControlType.BUTTON -> when {
+                key == Key.Enter -> controller.press()
+                prompt && key == Key.Space -> answer(+1)
+                prompt && key == Key.Backspace -> answer(-1)
                 else -> false
             }
-            is Control.Pick -> pick(control, key)
-            is Control.Static, null -> false
+            ControlType.TEXT -> false
         }
-    }
-
-    /**
-     * What an edit box leaves to the dialog: Enter in a box of one line goes on, or submits. The
-     * rest of its keys are the box's (`BoxEditing`, which the shell runs ahead of the frame), and
-     * Tab leaves either kind.
-     */
-    private fun edit(control: Control.Edit, key: Key): Boolean = when {
-        key == Key.Enter && !control.box.multiLine -> {
-            control.changed(control.box.text)
-            control.submit?.invoke() ?: move(+1)
-            true
-        }
-        else -> false
     }
 
     /** Space and Backspace among a question's answers: to the next or last of them, wrapping. */
-    private fun step(by: Int): Boolean {
-        val answers = controls.withIndex().filter { (it.value as? Control.Button)?.role == ControlRole.PROMPT_BUTTON }.map { it.index }
-        val at = answers.indexOf(index)
-        if (at < 0 || answers.size < 2) return true
-        index = answers[(at + by + answers.size) % answers.size]
-        current?.let(moved)
+    private fun answer(by: Int): Boolean {
+        val answers = controller.controls.withIndex().filter { it.value.kind == ControlType.BUTTON }.map { it.index }
+        val at = answers.indexOf(controller.index)
+        if (at >= 0 && answers.size > 1) controller.moveTo(answers[Math.floorMod(at + by, answers.size)])
         return true
     }
 
-    private fun pick(control: Control.Pick, key: Key): Boolean {
-        val options = control.options
-        val to = { at: Int -> if (options.isNotEmpty()) control.move(at.coerceIn(options.indices)); true }
-        return when (key) {
-            Key.Up -> to(control.selected - 1)
-            Key.Down -> to(control.selected + 1)
-            Key.First -> to(0)
-            Key.Last -> to(options.lastIndex)
-            Key.Enter -> run { options.getOrNull(control.selected)?.let { control.pick(it.first) }; true }
-            is Key.Cell, is Key.Typed -> run {
-                val letter = letters.letter(key) ?: return@run true
-                letters.find(options.map { it.second }, control.selected, letter)?.let(to)
-                true
-            }
-            else -> false
-        }
-    }
-
-    private fun choice(control: Control.Choice, key: Key): Boolean {
+    /** A combo box steps round its options, as the device's own does, and goes to its ends. */
+    private fun choice(control: ControlShown, key: Key): Boolean {
         val options = control.options
         val step = { by: Int ->
-            if (options.isNotEmpty()) control.choose(options[(control.selected + by + options.size) % options.size].first)
+            if (options.isNotEmpty() && controller.step(by) == null) controller.choose(if (by > 0) 0 else options.lastIndex)
             true
         }
         return when (key) {
             Key.Up, Key.Backspace -> step(-1)
             Key.Down, Key.Space -> step(+1)
-            Key.First -> run { options.firstOrNull()?.let { control.choose(it.first) }; true }
-            Key.Last -> run { options.lastOrNull()?.let { control.choose(it.first) }; true }
-            Key.Enter -> run { control.press?.invoke() ?: move(+1); true }
-            is Key.Cell, is Key.Typed -> run {
-                val letter = letters.letter(key) ?: return@run true
-                val found = letters.find(options.map { it.second }, control.selected, letter)
-                if (found != null) control.choose(options[found].first)
-                true
-            }
+            Key.First -> run { if (options.isNotEmpty()) controller.choose(0); true }
+            Key.Last -> run { if (options.isNotEmpty()) controller.choose(options.lastIndex); true }
+            Key.Enter -> run { if (!controller.pressDefault()) controller.next(); true }
+            is Key.Cell, is Key.Typed -> run { letters.letter(key)?.let { controller.find(it.toString()) }; true }
             else -> false
         }
     }
+
+    /** A list moves in place, stopping at its ends, and Enter picks the one in hand. */
+    private fun list(control: ControlShown, key: Key): Boolean = when (key) {
+        Key.Up -> run { controller.step(-1); true }
+        Key.Down -> run { controller.step(+1); true }
+        Key.First -> run { if (control.options.isNotEmpty()) controller.choose(0); true }
+        Key.Last -> run { if (control.options.isNotEmpty()) controller.choose(control.options.lastIndex); true }
+        Key.Enter -> controller.press()
+        is Key.Cell, is Key.Typed -> run { letters.letter(key)?.let { controller.find(it.toString()) }; true }
+        else -> false
+    }
+
+    private fun isLine(control: ControlShown) = control.kind == ControlType.LINE || control.kind == ControlType.LINES
 }

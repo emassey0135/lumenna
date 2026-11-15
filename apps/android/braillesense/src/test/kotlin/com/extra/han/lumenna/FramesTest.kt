@@ -3,7 +3,6 @@ package com.extra.han.lumenna
 import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.braillesense.braille.Translated
 import dev.emassey0135.braillesense.braille.Translator
-import com.extra.han.lumenna.ui.Control
 import com.extra.han.lumenna.ui.FormFrame
 import dev.emassey0135.braillesense.edit.TextBox
 import com.extra.han.lumenna.ui.Letters
@@ -18,6 +17,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import dev.emassey0135.lumenna.app.Choice
+import dev.emassey0135.lumenna.app.ControlMove
+import dev.emassey0135.lumenna.app.ControlSends
+import dev.emassey0135.lumenna.app.ControlShown
+import dev.emassey0135.lumenna.app.ControlType
+import dev.emassey0135.lumenna.app.DialogShown
+import dev.emassey0135.lumenna.app.ShellEvent
+import dev.emassey0135.lumenna.braille.DialogController
 
 private val BY_LETTER = object : Letters {
     override fun letter(key: Key): Char? = when (key) {
@@ -112,14 +119,6 @@ class FramesTest {
         assertEquals("New block (n)", frame.rendered.speech)
         frame.key(Key.Typed("a"))
         assertEquals("task", ran)
-    }
-
-    @Test fun aFormsButtonIsPressedByItsLetter() {
-        var pressed = false
-        val frame = FormFrame("f", "Form", listOf(Control.Button("b", "Back up", 'b') { pressed = true }), null, BY_LETTER, READ)
-        assertFalse(frame.press('z'))
-        assertTrue(frame.press('b'))
-        assertTrue(pressed)
     }
 
     @Test fun movingTellsTheAppWhichRow() {
@@ -229,50 +228,6 @@ class FramesTest {
         assertEquals("no actions", said)
     }
 
-    @Test fun tabAloneMovesBetweenControlsAndSpaceOneAndFourDoNot() {
-        var chosen = ""
-        val controls = listOf(
-            Control.Static("s", "Note"),
-            Control.Choice("c", "Priority", listOf("1" to "High", "2" to "Low"), 0, { chosen = it }),
-            Control.Button("b", "Save") {},
-        )
-        val frame = FormFrame("f", "Form", controls, null, BY_LETTER, READ)
-        assertFalse(frame.key(Key.Down))
-        assertEquals("s", frame.current?.key)
-        frame.key(Key.Tab)
-        assertEquals("c", frame.current?.key)
-        frame.key(Key.Down)
-        assertEquals("c", frame.current?.key)
-        assertEquals("2", chosen)
-        frame.key(Key.Tab)
-        assertEquals("b", frame.current?.key)
-        assertFalse(frame.key(Key.Up))
-        frame.key(Key.ShiftTab)
-        assertEquals("c", frame.current?.key)
-    }
-
-    @Test fun backspaceCyclesAComboBoxBackAndAToggleChanges() {
-        var chosen = ""
-        var on = false
-        val controls = listOf(
-            Control.Choice("c", "P", listOf("1" to "A", "2" to "B"), 0, { chosen = it }),
-            Control.Toggle("t", "Flag", false) { on = it },
-        )
-        val frame = FormFrame("f", null, controls, null, BY_LETTER, READ)
-        frame.key(Key.Backspace)
-        assertEquals("2", chosen)
-        frame.key(Key.Tab)
-        frame.key(Key.Backspace)
-        assertTrue(on)
-    }
-
-    @Test fun anEditBoxGivesItsLabelAndLeavesSpaceOneToNothing() {
-        val editor = TextBox("milk", Plain)
-        val frame = FormFrame("f", null, listOf(Control.Edit("e", "Title", editor)), null, BY_LETTER, READ)
-        assertEquals("Title: milk", frame.rendered.speech)
-        assertFalse(frame.key(Key.Down))
-    }
-
     @Test fun aListFoldsItsRowWithSpaceThreeAndSix() {
         var folded = ""
         val row = Row("r", "r", collapse = { folded = "c" }, expand = { folded = "e" })
@@ -316,67 +271,6 @@ class FramesTest {
         assertTrue(frame.rendered.speech.startsWith("Three"))
     }
 
-    @Test fun aFormTabsAndEachControlTakesItsKeys() {
-        var on = false
-        var pressed = false
-        val edit = TextBox("", Plain)
-        val frame = FormFrame(
-            "f",
-            "Form",
-            listOf(Control.Edit("e", "Name", edit), Control.Toggle("t", "Flag", on) { on = it }, Control.Button("b", "Save", press = { pressed = true })),
-            null, BY_LETTER, READ,
-        )
-        edit.line.cell('x'.code)
-        frame.key(Key.Tab)
-        assertEquals("x", edit.text)
-        assertEquals("Flag", frame.rendered.speech)
-        frame.key(Key.Space)
-        assertTrue(on)
-        frame.key(Key.Tab)
-        frame.key(Key.Enter)
-        assertTrue(pressed)
-    }
-
-    @Test fun theFirstAndLastKeysStayOnTheControl() {
-        val frame = FormFrame("f", null, listOf(Control.Static("a", "One"), Control.Static("b", "Two")), null, BY_LETTER, READ)
-        assertFalse(frame.key(Key.Last))
-        assertEquals("One", frame.rendered.speech)
-    }
-
-    @Test fun aComboBoxGoesToItsFirstAndLastOption() {
-        var chosen = ""
-        val options = listOf("a" to "Apple", "b" to "Banana")
-        val frame = FormFrame("f", null, listOf(Control.Choice("c", "Pick", options, 0, { chosen = it })), null, BY_LETTER, READ)
-        frame.key(Key.Last)
-        assertEquals("b", chosen)
-        frame.key(Key.First)
-        assertEquals("a", chosen)
-    }
-
-    @Test fun aChoiceSteppedThroughAndFoundByLetter() {
-        var chosen = "a"
-        fun frame() = FormFrame(
-            "f",
-            null,
-            listOf(Control.Choice("c", "Pick", listOf("a" to "Apple", "b" to "Banana", "c" to "Cherry"), listOf("a", "b", "c").indexOf(chosen), { chosen = it })),
-            null, BY_LETTER, READ,
-        )
-        frame().key(Key.Space)
-        assertEquals("b", chosen)
-        frame().key(Key.Typed("c"))
-        assertEquals("c", chosen)
-    }
-
-
-    @Test fun enterInAMultiLineBoxIsTheBoxsAndInABoxOfOneLineGoesOn() {
-        val notes = TextBox("ab", Plain, multiLine = true)
-        val frame = FormFrame("f", null, listOf(Control.Edit("n", "Notes", notes), Control.Edit("t", "Title", TextBox("", Plain)), Control.Button("b", "Save") {}), null, BY_LETTER, READ)
-        assertFalse("the box's own key, a new line", frame.key(Key.Enter))
-        frame.key(Key.Tab)
-        assertTrue(frame.key(Key.Enter))
-        assertEquals("b", frame.current?.key)
-    }
-
     @Test fun aHotKeyAMenuShowsRunsWhileTheMenuIsOpen() {
         var ran = false
         var closed = false
@@ -387,27 +281,134 @@ class FramesTest {
         assertTrue(closed)
     }
 
+
+    // ── Dialogs, over the shared DialogController ─────────────────────────────────────────
+
+    /** What the app was sent, as the core's `control_event` would write it (the native library is absent here). */
+    private val sent = mutableListOf<String>()
+
+    private fun events(sends: ControlSends, value: String, how: ControlMove): List<ShellEvent> {
+        val move = when (how) {
+            is ControlMove.Typed -> "typed"
+            is ControlMove.Set -> "set"
+            is ControlMove.Pressed -> "pressed"
+        }
+        return when (sends) {
+            is ControlSends.Press -> if (how is ControlMove.Pressed) sends.field0 else emptyList()
+            is ControlSends.TaskField -> listOf(ShellEvent.Key("${sends.field0} $move $value"))
+            is ControlSends.Pick -> listOf(ShellEvent.Key("pick $move $value"))
+            else -> emptyList()
+        }
+    }
+
+    private fun control(key: String, kind: ControlType, label: String = key, value: String = "", sends: ControlSends = ControlSends.TaskField(key)) =
+        ControlShown(key, kind, label, value, "", "", emptyList(), null, false, null, null, "", false, false, false, sends)
+
+    private fun option(id: String, title: String) = Choice(id, title, 0u, null, null, null, null, null, null)
+
+    private fun button(key: String, label: String = key, letter: String = "", default: Boolean = false) =
+        control(key, ControlType.BUTTON, label, sends = ControlSends.Press(listOf(ShellEvent.Key("press $key")))).copy(letter = letter, default = default)
+
+    private fun choice(key: String, vararg options: Pair<String, String>, kind: ControlType = ControlType.CHOICE, sends: ControlSends = ControlSends.TaskField(key)) =
+        control(key, kind, sends = sends).copy(options = options.map { (id, title) -> option(id, title) }, selected = 0u)
+
+    private fun form(vararg controls: ControlShown, focus: Int = 0, id: String = "form", boxes: Map<String, TextBox> = emptyMap(), prompt: Boolean = false): FormFrame {
+        val controller = DialogController(DialogShown(id, "Form", controls.toList(), focus.toUInt(), emptyList()), { sent += (it as ShellEvent.Key).field0 }, events = ::events)
+        val made = HashMap(boxes)
+        return FormFrame(controller, BY_LETTER, READ, boxOf = { made.getOrPut(it.key) { TextBox(controller.text(it), Plain, it.kind == ControlType.LINES) } },
+            letterOf = { it.letter.singleOrNull() }, prompt = prompt)
+    }
+
+    @Test fun aFormsButtonIsPressedByItsLetter() {
+        val frame = form(button("back-up", "Back up", letter = "b"))
+        assertFalse(frame.press('z'))
+        assertTrue(frame.press('b'))
+        assertEquals(listOf("press back-up"), sent)
+    }
+
+    @Test fun tabAloneMovesBetweenControlsAndSpaceOneAndFourDoNot() {
+        val frame = form(control("note", ControlType.TEXT, value = "Note"), choice("priority", "1" to "High", "2" to "Low"), button("save"))
+        assertFalse(frame.key(Key.Down))
+        assertEquals("note", frame.current?.key)
+        frame.key(Key.Tab)
+        assertEquals("priority", frame.current?.key)
+        frame.key(Key.Down)
+        assertEquals("priority", frame.current?.key)
+        assertEquals(listOf("priority set 2"), sent)
+        frame.key(Key.Tab)
+        assertEquals("save", frame.current?.key)
+        assertFalse(frame.key(Key.Up))
+        frame.key(Key.ShiftTab)
+        assertEquals("priority", frame.current?.key)
+    }
+
+    @Test fun backspaceCyclesAComboBoxBackAndAToggleChanges() {
+        val frame = form(choice("p", "1" to "A", "2" to "B"), control("flag", ControlType.CHECK))
+        frame.key(Key.Backspace)
+        assertEquals("round from the first to the last", listOf("p set 2"), sent)
+        frame.key(Key.Tab)
+        frame.key(Key.Backspace)
+        assertEquals("flag set true", sent.last())
+    }
+
+    @Test fun anEditBoxGivesItsLabelAndLeavesSpaceOneToNothing() {
+        val frame = form(control("title", ControlType.LINE, "Title", "milk"))
+        assertEquals("Title: milk", frame.rendered.speech)
+        assertFalse(frame.key(Key.Down))
+    }
+
+    @Test fun aLineIsToldAsTypedAndTakenAsItIsLeft() {
+        val frame = form(control("name", ControlType.LINE, "Name"), control("flag", ControlType.CHECK, "Flag"), button("save"))
+        frame.box()!!.line.cell('x'.code)
+        frame.key(Key.Tab)
+        assertEquals("a cell's word is told as the line is left, then taken", listOf("name typed x", "name set x"), sent)
+        assertEquals("Flag", frame.rendered.speech)
+        frame.key(Key.Space)
+        assertEquals("flag set true", sent.last())
+        frame.key(Key.Tab)
+        frame.key(Key.Enter)
+        assertEquals("press save", sent.last())
+    }
+
+    @Test fun theFirstAndLastKeysStayOnTheControl() {
+        val frame = form(control("a", ControlType.TEXT, value = "One"), control("b", ControlType.TEXT, value = "Two"))
+        assertFalse(frame.key(Key.Last))
+        assertEquals("One", frame.rendered.speech)
+    }
+
+    @Test fun aComboBoxGoesToItsFirstAndLastOptionAndFindsByLetter() {
+        val frame = form(choice("fruit", "a" to "Apple", "b" to "Banana", "c" to "Cherry"))
+        frame.key(Key.Last)
+        assertEquals("fruit set c", sent.last())
+        frame.key(Key.First)
+        assertEquals("fruit set a", sent.last())
+        frame.key(Key.Space)
+        assertEquals("fruit set b", sent.last())
+        frame.key(Key.Typed("c"))
+        assertEquals("fruit set c", sent.last())
+        assertEquals("what is chosen shows before the app answers", "fruit: Cherry", frame.rendered.speech)
+    }
+
+    @Test fun enterInAMultiLineBoxIsTheBoxsAndInABoxOfOneLinePressesTheDefault() {
+        val frame = form(control("notes", ControlType.LINES, "Notes"), control("title", ControlType.LINE, "Title"), button("save", default = true))
+        assertFalse("the box's own key, a new line", frame.key(Key.Enter))
+        frame.key(Key.Tab)
+        assertTrue(frame.key(Key.Enter))
+        assertEquals("press save", sent.last())
+    }
+
     @Test fun aDialogsListMovesInPlaceAndEnterPicksTheOneInHand() {
-        var at = 0
-        var picked = ""
-        fun frame() = FormFrame("q", "Move to", listOf(
-            Control.Pick("choices", "Project", listOf("a" to "Home", "b" to "Office", "c" to "Garden"), at, move = { at = it }, pick = { picked = it }),
-        ), null, BY_LETTER, READ)
-        frame().key(Key.Down)
-        assertEquals(1, at)
-        frame().key(Key.Typed("g"))
-        assertEquals("a first letter finds its option", 2, at)
-        frame().key(Key.Enter)
-        assertEquals("c", picked)
+        val frame = form(choice("choices", "a" to "Home", "b" to "Office", "c" to "Garden", kind = ControlType.LIST, sends = ControlSends.Pick), id = "question:1")
+        frame.key(Key.Down)
+        assertTrue("a list only moves until it is picked", sent.isEmpty())
+        frame.key(Key.Typed("g"))
+        assertEquals("a first letter finds its option", "choices: Garden", frame.rendered.speech)
+        frame.key(Key.Enter)
+        assertEquals(listOf("pick pressed c"), sent)
     }
 
     @Test fun aQuestionsAnswersAreSteppedWithSpaceAndBackspace() {
-        val answers = listOf(
-            Control.Static("message", "It cannot be undone."),
-            Control.Button("cancel", "Cancel", role = ControlRole.PROMPT_BUTTON) {},
-            Control.Button("yes", "Delete", role = ControlRole.PROMPT_BUTTON) {},
-        )
-        val frame = FormFrame("q", "Delete?", answers, null, BY_LETTER, READ, first = 1)
+        val frame = form(control("message", ControlType.TEXT, value = "It cannot be undone."), button("cancel"), button("yes"), focus = 1, id = "question:2", prompt = true)
         assertEquals("the message is said as it opens", "It cannot be undone.", frame.preamble)
         assertEquals("cancel", frame.current?.key)
         frame.key(Key.Space)

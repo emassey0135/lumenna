@@ -23,12 +23,11 @@ import dev.emassey0135.lumenna.shownRows
 import dev.emassey0135.lumenna.text
 import dev.emassey0135.lumenna.TextOffsets
 import dev.emassey0135.lumenna.app.ActingOn
-import dev.emassey0135.lumenna.app.ControlMove
 import dev.emassey0135.lumenna.app.ControlSends
 import dev.emassey0135.lumenna.app.ControlShown
 import dev.emassey0135.lumenna.app.ControlType
 import dev.emassey0135.lumenna.app.DialogShown
-import dev.emassey0135.lumenna.app.controlEvent
+import dev.emassey0135.lumenna.braille.DialogController
 import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.Answer
 import dev.emassey0135.lumenna.app.Asks
@@ -262,10 +261,13 @@ class Shell(
     }
 
     /** What a form held goes with it: the next one opened starts from its own values. */
-    private fun forgetClosed(@Suppress("UNUSED_PARAMETER") model: ViewModel?) {
-        val open = screen.dialog?.id
-        editors.keys.removeAll { it.startsWith("dialog:") && !it.startsWith("dialog:$open:") }
-        picked.keys.removeAll { !it.startsWith("$open:") }
+    private fun forgetClosed(@Suppress("UNUSED_PARAMETER") model: ViewModel?) {}
+
+    /** No dialog shown: its controller and the text of its lines go with it. */
+    private fun closeDialog() {
+        dialogController = null
+        editors.keys.removeAll { it.startsWith("dialog:") }
+        coreValues.clear()
     }
 
     private fun forget(editorPrefix: String, frameId: String) {
@@ -288,6 +290,7 @@ class Shell(
         // The last reminder dealt with leaves nothing on its page.
         if (pages.last() == Page.Due && dueShown && model?.due.isNullOrEmpty()) pages.removeLast()
         val built = build()
+        if (built !is FormFrame && built.id != "filter") closeDialog()
         frame = built
         val rendered = built.rendered
         if (fromKey) clearMessage()
@@ -425,10 +428,7 @@ class Shell(
 
     /** A key that asks the app to change what the row says: said once the app has answered. */
     private fun changes(frame: Frame, key: Key): Boolean {
-        val control = (frame as? FormFrame)?.current
         return when {
-            control is Control.Choice -> key == Key.Up || key == Key.Down || key == Key.Space || key == Key.Backspace || key == Key.First || key == Key.Last
-            control is Control.Toggle -> key == Key.Space || key == Key.Backspace || key == Key.Enter
             frame is ListFrame -> (key == Key.Space && frame.current?.space != null) ||
                 (key == Key.CharLeft && frame.current?.collapse != null) || (key == Key.CharRight && frame.current?.expand != null)
             else -> false
@@ -437,7 +437,7 @@ class Shell(
 
     private var awaitingChange = false
 
-    private fun boxOf(frame: Frame): TextBox? = (frame as? LineFrame)?.box ?: ((frame as? FormFrame)?.current as? Control.Edit)?.box
+    private fun boxOf(frame: Frame): TextBox? = (frame as? LineFrame)?.box ?: (frame as? FormFrame)?.box()
 
     /**
      * A key in an edit box, as the device's own box takes it (`BoxEditing`): what it changed is told
@@ -465,7 +465,7 @@ class Shell(
 
     private fun told(frame: Frame, box: TextBox, edited: Edited.Taken) {
         if (edited.changed) {
-            ((frame as? FormFrame)?.current as? Control.Edit)?.changed?.invoke(box.text)
+            (frame as? FormFrame)?.typed()
             (frame as? LineFrame)?.touched()
         }
         clearMessage()
@@ -504,7 +504,8 @@ class Shell(
     private fun pushPage(page: Page) {
         pages.addLast(page)
         when (page) {
-            Page.Settings, is Page.SettingsPage -> send(ShellEvent.Key("settings"))
+            // Settings already open stay as they are: opening them again empties the page for a turn.
+            Page.Settings, is Page.SettingsPage -> if (view?.settings == null) send(ShellEvent.Key("settings"))
             Page.Devices -> {
                 // What pairing's sentences call this device, which finds others on its network.
                 send(ShellEvent.PairingAs(appWords.thisDevice, true))
@@ -518,10 +519,12 @@ class Shell(
 
     private fun back() {
         val model = view
-        val cancel = screen.dialog?.cancel.orEmpty()
+        // A dialog closes as its Cancel does (the task form's throws away what was not saved); one
+        // the app has open goes as the app closes it, one of this shell's pages with the page.
+        val cancelled = (frame as? FormFrame)?.controller?.cancel() == true
+        if (cancelled && pages.last() !is Page.Task) return
         when {
-            // A dialog the app has open closes as its Cancel does.
-            cancel.isNotEmpty() -> cancel.forEach(::send)
+            cancelled -> {}
             model?.asking != null -> send(ShellEvent.Cancel)
             model?.line != null -> send(ShellEvent.Typing(Typing.Close))
             model?.blockForm != null -> send(ShellEvent.Block(BlockEvent.Cancel))
@@ -531,10 +534,7 @@ class Shell(
                 val left = pages.removeLast()
                 when (left) {
                     // Leaving the task's form throws away what was not saved, as its Cancel does.
-                    is Page.Task -> {
-                        send(ShellEvent.Details(DetailsEvent.Discard))
-                        forget("task:${left.id}", "task:${left.id}")
-                    }
+                    is Page.Task -> if (!cancelled) send(ShellEvent.Details(DetailsEvent.Discard))
                     is Page.SettingsPage -> forget("setting:", "settings:${left.id}")
                     Page.Devices -> {
                         send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Cancel)))
@@ -877,116 +877,73 @@ class Shell(
     /** A task's form, opened here (a reminder's notification): the core's, as its controls. */
     private fun task(model: ViewModel, id: String): Frame {
         val shown = app.taskForm()?.takeIf { model.details?.task?.id == id } ?: return Rendering(appWords.details.gone)
-        return dialog(shown, "task:$id:")
-    }
-
-    private fun form(id: String, title: String?, controls: List<Control>, first: Int = 0): Frame {
-        val buttons = controls.filterIsInstance<Control.Button>()
-        val given = letters.shortcuts(buttons.map { it.label to it.letter }).zip(buttons).associate { (letter, button) -> button to letter }
-        val lettered = controls.map { control ->
-            if (control is Control.Button && control.letter == null && given[control] != null) {
-                Control.Button(control.key, control.label, given[control], control.asks, control.role, control.press)
-            } else {
-                control
-            }
-        }
-        return FormFrame(id, title, lettered, selected[id], letters, readings, moved = { selected[id] = it.key }, first = first)
+        return dialog(shown)
     }
 
     // ── Dialogs ────────────────────────────────────────────────────────────────────────────
 
-    /** Where each dialog's list stands, by `<dialog>:<control>`: the one thing a dialog keeps here. */
-    private val picked = HashMap<String, Int>()
+    /** The dialog shown and its control in hand, kept across turns while it stays open (the braille apps' shared controller). */
+    private var dialogController: DialogController? = null
 
-    /** The quick-add line as it stood when a completion was chosen, until the app's new one arrives. */
-    private var completingFrom: String? = null
+    /** Each line's value as the core last described it, to tell when the core changed it underneath. */
+    private val coreValues = HashMap<String, String>()
 
-    /** A dialog the app has open, its lines' text kept by the dialog's id. */
-    private fun appDialog(shown: DialogShown): Frame = dialog(shown, "dialog:${shown.id}:")
+    /** A dialog the app has open. */
+    private fun appDialog(shown: DialogShown): Frame = dialog(shown)
 
     /**
-     * A dialog the core describes (`DialogShown`), as the device's own: each control in its role (a
-     * line or several the SDK's edit box, a choice a combo box, a check a check box, a list in
-     * place, a button, a question's answers prompt buttons, a line to read a static box), in tab
-     * order, opening where the core says. What the person does goes through the core's
-     * `control_event`; a button that sends what a line or the list holds is pressed with it.
-     * [extra] follows the core's controls; [shell] does what a button leaves to this device.
+     * A dialog the core describes (`DialogShown`) as a `FormFrame` over the braille apps' shared
+     * `DialogController`, kept while the dialog stays open, which works its tab order, what is
+     * typed or chosen until the core has it, and presses, through the core's `control_event`.
+     * Each control is read in the device's role; a line or several is the SDK's edit box, its text
+     * kept by the dialog. A button has the core's letter, else the first free one of its name
+     * (`menu_shortcuts`). [shell] does what a button leaves to this device. A folder to choose has
+     * no control: there are none to choose here.
      */
-    private fun dialog(shown: DialogShown, editorPrefix: String, extra: List<Control> = emptyList(), shell: (String) -> Unit = {}): Frame {
-        val act = { sends: ControlSends, value: String, how: ControlMove -> controlEvent(sends, value, how).forEach(::send) }
+    private fun dialog(described: DialogShown, shell: (String) -> Unit = {}): Frame {
+        val shown = withoutFolders(described)
+        // The same dialog goes on where it was; one that held only lines to read (its controls still
+        // arriving) starts again on the core's focus once it has more.
+        val controller = dialogController?.takeIf { it.dialog.id == shown.id && it.controls.any { c -> c.kind != ControlType.TEXT } }?.also { it.update(shown) }
+            ?: DialogController(shown, ::send, shell = { button -> (button.sends as? ControlSends.Shell)?.let { shell(it.field0) } }).also {
+                closeDialog()
+                dialogController = it
+            }
         val taking = shown.controls.filter { it.kind != ControlType.TEXT }
         // A question of buttons alone is the device's prompt: its answers are stepped with Space.
         val prompt = taking.isNotEmpty() && taking.all { it.kind == ControlType.BUTTON } && shown.id.startsWith("question:")
-        val boxes = HashMap<String, TextBox>()
-        var listValue: () -> String = { "" }
-        val controls = shown.controls.mapNotNull { control ->
-            val sends = control.sends
-            when (control.kind) {
-                ControlType.TEXT -> Control.Static(control.key, control.value)
-                ControlType.LINE, ControlType.LINES -> {
-                    val key = "$editorPrefix${control.key}"
-                    if (completingFrom != null && control.value != completingFrom && sends is ControlSends.QuickAdd) {
-                        completingFrom = null
-                        editors.remove(key)
-                    }
-                    val box = editor(key, control.value, multiLine = control.kind == ControlType.LINES)
-                    if (sends is ControlSends.Answer || sends is ControlSends.QuickAdd) boxes[sendsKind(sends)] = box
-                    val default = shown.controls.firstOrNull { it.default }
-                    Control.Edit(
-                        control.key, control.label, box, control.example.ifEmpty { control.hint },
-                        changed = { act(sends, it, ControlMove.Typed(TextOffsets.bytes(it.length, it))) },
-                        submit = default?.let { button -> { press(button, boxes, listValue, act, shell) } },
-                        // Applied as it is left, only where it changed: leaving a line untouched does nothing.
-                        left = { if (it != control.value) act(sends, it, ControlMove.Set) },
-                    )
-                }
-                ControlType.CHOICE -> Control.Choice(
-                    control.key, control.label, control.options.map { it.id to it.title }, control.selected?.toInt() ?: 0,
-                    { act(sends, it, ControlMove.Set) },
-                )
-                ControlType.CHECK -> Control.Toggle(control.key, control.label, control.checked) { act(sends, it.toString(), ControlMove.Set) }
-                ControlType.LIST -> {
-                    val state = "${shown.id}:${control.key}"
-                    val at = picked[state] ?: control.selected?.toInt() ?: 0
-                    listValue = { control.options.getOrNull(picked[state] ?: at)?.id.orEmpty() }
-                    Control.Pick(control.key, control.label, control.options.map { it.id to it.title }, at,
-                        move = { picked[state] = it }, pick = { act(sends, it, ControlMove.Pressed) })
-                }
-                ControlType.BUTTON -> {
-                    // A folder to choose: there are none to choose on this device.
-                    if (sends is ControlSends.Shell && sends.field0 !in SHELL_BUTTONS) return@mapNotNull null
-                    Control.Button(
-                        control.key, control.label, control.letter.singleOrNull(), control.asks,
-                        role = if (prompt) ControlRole.PROMPT_BUTTON else ControlRole.BUTTON,
-                    ) { press(control, boxes, listValue, act, shell) }
-                }
+        val buttons = shown.controls.filter { it.kind == ControlType.BUTTON }
+        val lettered = buttons.map { it.key }.zip(letters.shortcuts(buttons.map { it.label to it.letter.singleOrNull() })).toMap()
+        val boxOf = { control: ControlShown ->
+            val key = "dialog:${shown.id}:${control.key}"
+            // The core changed a line underneath (a completion chosen, a refused setting put back) and
+            // nothing typed here is held: its box starts again from the core's.
+            val seen = coreValues.put(key, control.value)
+            val box = editors[key]
+            if (box != null && seen != null && seen != control.value && box.text != control.value && controller.text(control) == control.value) {
+                editors.remove(key)
             }
-        } + extra
-        return form(shown.id, shown.title, controls, first = shown.focus.toInt()).also { frame ->
-            (frame as? FormFrame)?.prompt = prompt
+            editor(key, controller.text(control), multiLine = control.kind == ControlType.LINES)
         }
+        return FormFrame(controller, letters, readings, boxOf, letterOf = { lettered[it.key] }, prompt = prompt)
     }
 
-    private fun sendsKind(sends: ControlSends): String = sends::class.simpleName.orEmpty()
-
-    /** A button pressed: with what the line or the list holds where it sends that, else as it is. */
-    private fun press(
-        button: ControlShown,
-        boxes: Map<String, TextBox>,
-        listValue: () -> String,
-        act: (ControlSends, String, ControlMove) -> Unit,
-        shell: (String) -> Unit,
-    ) {
-        when (val sends = button.sends) {
-            is ControlSends.Shell -> shell(sends.field0)
-            is ControlSends.Pick -> act(sends, listValue(), ControlMove.Pressed)
-            is ControlSends.Answer, is ControlSends.QuickAdd -> act(sends, boxes[sendsKind(sends)]?.text.orEmpty(), ControlMove.Pressed)
-            else -> {
-                if (button.key.startsWith("complete:")) completingFrom = screen.dialog?.controls?.firstOrNull { it.sends is ControlSends.QuickAdd }?.value
-                act(sends, "", ControlMove.Pressed)
-            }
-        }
+    /** [shown] less its folder settings, which this device has nowhere to choose, its focus kept on its control. */
+    private fun withoutFolders(shown: DialogShown): DialogShown {
+        val folder = { control: ControlShown -> (control.sends as? ControlSends.Shell)?.field0?.let { it !in SHELL_BUTTONS } == true }
+        if (shown.controls.none(folder)) return shown
+        val focused = shown.controls.getOrNull(shown.focus.toInt())
+        val controls = shown.controls.filterNot(folder)
+        return shown.copy(controls = controls, focus = controls.indexOf(focused).coerceAtLeast(0).toUInt())
     }
+
+    /** A control of this shell's own, for a page the core does not describe as a dialog. */
+    private fun control(key: String, kind: ControlType, label: String = "", value: String = "", sends: ControlSends = ControlSends.Nothing, default: Boolean = false) =
+        ControlShown(key, kind, label, value, "", "", emptyList(), null, false, null, null, "", false, default, false, sends)
+
+    private fun text(key: String, value: String) = control(key, ControlType.TEXT, value = value)
+
+    private fun pressing(key: String, label: String, vararg events: ShellEvent) = control(key, ControlType.BUTTON, label, sends = ControlSends.Press(events.toList()))
 
     /**
      * A question asking for the task's form before the details show that task: they are asked
@@ -1085,26 +1042,29 @@ class Shell(
 
     /** A settings page, the core's, with what Android allows reminders after the Reminders page's own. */
     private fun settingsPage(model: ViewModel, id: String): Frame {
-        val shown = app.settingsPage(id) ?: return Rendering(SettingsPages.of(id)?.title.orEmpty())
-        val extra = mutableListOf<Control>()
-        if (id == "reminders") reminderControls(extra)
-        return dialog(shown, "setting:", extra) { what ->
+        val core = app.settingsPage(id) ?: return Rendering(SettingsPages.of(id)?.title.orEmpty())
+        val shown = if (id == "reminders") core.copy(controls = core.controls + reminderControls()) else core
+        return dialog(shown) { what ->
             when (what) {
                 "back-up" -> send(ShellEvent.Key("back-up"))
                 "pair" -> pushPage(Page.Devices)
+                "allow-notifications" -> host.requestNotifications()
                 else -> host.importFile()
             }
         }
     }
 
-    private fun reminderControls(controls: MutableList<Control>) {
+    /** What Android allows reminders, after the Reminders page's own: Android's, so this shell's to add. */
+    private fun reminderControls(): List<ControlShown> {
         val words = appWords.notifications
         val access = reminderAccess()
+        val controls = mutableListOf<ControlShown>()
         if (!access.notifications) {
-            controls += Control.Static("notifications-off", words.off)
-            controls += Control.Button("allow-notifications", words.allow) { host.requestNotifications() }
+            controls += text("notifications-off", words.off)
+            controls += control("allow-notifications", ControlType.BUTTON, words.allow, sends = ControlSends.Shell("allow-notifications"))
         }
-        if (!access.exact) controls += Control.Static("exact-late", words.late)
+        if (!access.exact) controls += text("exact-late", words.late)
+        return controls
     }
 
     /** What Android allows reminders, asked of the system each time it is shown. */
@@ -1112,55 +1072,53 @@ class Shell(
 
     // ── Devices ───────────────────────────────────────────────────────────────────────────
 
+    /**
+     * The devices and pairing, which the core does not describe as a dialog: built here as one, of
+     * the core's records and words, so that it is worked as every other dialog is.
+     */
     private fun devices(model: ViewModel): Frame {
         val devices = model.devices ?: return Rendering(SettingsPages.of("devices")?.title.orEmpty())
         val page = SettingsPages.of("devices")
         val worded = lines?.devices.orEmpty()
-        val controls = mutableListOf<Control>()
-        devices.status.takeIf { it.isNotEmpty() }?.let { controls += Control.Static("status", it) }
+        val controls = mutableListOf<ControlShown>()
+        devices.status.takeIf { it.isNotEmpty() }?.let { controls += text("status", it) }
         val syncing = page?.buttons?.firstOrNull { it.id == "sync-now" }?.title ?: commandTitle("sync-now")
-        controls += Control.Button("sync", syncing) { send(ShellEvent.Key("sync-now")) }
+        controls += pressing("sync", syncing, ShellEvent.Key("sync-now"))
         devices.list?.devices.orEmpty().forEachIndexed { index, device ->
-            val line = worded.getOrNull(index)
-            val text = line?.text ?: device.name
+            val said = worded.getOrNull(index)?.text ?: device.name
             val on = ActingOn.Held(Side.DEVICES, device.nodeId)
-            device.offered.forEach { action ->
-                controls += Control.Button("${device.nodeId}:${action.kind}", "$text: ${action.name}") { send(ShellEvent.ActOn(on, action)) }
-            }
-            if (device.offered.isEmpty()) controls += Control.Static(device.nodeId, text)
+            device.offered.forEach { action -> controls += pressing("${device.nodeId}:${action.kind}", "$said: ${action.name}", ShellEvent.ActOn(on, action)) }
+            if (device.offered.isEmpty()) controls += text(device.nodeId, said)
         }
-        addPairing(controls, devices)
-        return form("devices", page?.title, controls)
-    }
-
-    private fun addPairing(controls: MutableList<Control>, devices: dev.emassey0135.lumenna.app.DevicesView) {
         val words = devices.words
         val pairing = devices.pairing
-        val pair = { event: PairEvent -> send(ShellEvent.Devices(DevicesEvent.Pair(event))) }
-        controls += Control.Static("pairing", words.title)
-        val status = pairing?.problem ?: when {
+        val pair = { event: PairEvent -> ShellEvent.Devices(DevicesEvent.Pair(event)) }
+        controls += text("pairing", words.title)
+        controls += text("pairing-status", pairing?.problem ?: when {
             pairing?.mine != null -> words.waiting
             pairing?.running == true -> words.connecting
             else -> words.introSentence.ifEmpty { words.intro }
-        }
-        controls += Control.Static("pairing-status", status)
-        pairing?.mineLine?.let { controls += Control.Static("mine", it) }
-        if (pairing?.running != true) controls += Control.Button("wait", words.wait) { pair(PairEvent.Wait) }
+        })
+        pairing?.mineLine?.let { controls += text("mine", it) }
+        if (pairing?.running != true) controls += pressing("wait", words.wait, pair(PairEvent.Wait))
         if (pairing?.running != true || pairing.waiting) {
-            val edit = editor("pairing-code", pairing?.theirs.orEmpty())
-            controls += Control.Edit("code", words.theirCode, edit, changed = { pair(PairEvent.Code(it)) }, submit = {
-                pair(PairEvent.Code(edit.text))
-                pair(PairEvent.Join)
-            })
-            controls += Control.Button("join", words.join) {
-                pair(PairEvent.Code(edit.text))
-                pair(PairEvent.Join)
-            }
+            controls += control("code", ControlType.LINE, words.theirCode, pairing?.theirs.orEmpty(), sends = ControlSends.Shell("code"))
+            controls += control("join", ControlType.BUTTON, words.join, sends = ControlSends.Shell("join"), default = true)
         }
         pairing?.words?.let { three ->
-            controls += Control.Static("match", "${words.matchTitle} ${pairing.matching ?: three.joinToString(", ")}")
-            controls += Control.Button("match-yes", words.matchYes) { pair(PairEvent.Confirm(true)) }
-            controls += Control.Button("match-no", words.matchNo) { pair(PairEvent.Confirm(false)) }
+            controls += text("match", "${words.matchTitle} ${pairing.matching ?: three.joinToString(", ")}")
+            controls += pressing("match-yes", words.matchYes, pair(PairEvent.Confirm(true)))
+            controls += pressing("match-no", words.matchNo, pair(PairEvent.Confirm(false)))
+        }
+        val focus = controls.indexOfFirst { it.kind != ControlType.TEXT }.coerceAtLeast(0)
+        val shown = DialogShown("devices", page?.title.orEmpty(), controls, focus.toUInt(), emptyList())
+        return dialog(shown) { what ->
+            // The code typed is joined with as it stands: the core takes it as typed (`PairEvent::Code`).
+            if (what == "join") {
+                val code = dialogController?.controls?.firstOrNull { it.key == "code" }?.let { dialogController?.text(it) }.orEmpty()
+                send(pair(PairEvent.Code(code)))
+                send(pair(PairEvent.Join))
+            }
         }
     }
 
@@ -1185,7 +1143,7 @@ class Shell(
         private const val SAY_CHARACTER_DOTS = 0x24
 
         /** What a dialog's button leaves to this device: a file to pick, a backup, pairing. */
-        private val SHELL_BUTTONS = setOf("import", "restore-backup", "back-up", "pair")
+        private val SHELL_BUTTONS = setOf("import", "restore-backup", "back-up", "pair", "allow-notifications", "code", "join")
 
         /** The shell's own yes-or-no question. */
         private const val CONFIRMING = "confirming"
