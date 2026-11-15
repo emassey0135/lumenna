@@ -35,6 +35,8 @@ import dev.emassey0135.lumenna.app.foldState
 import dev.emassey0135.lumenna.levelsOf
 import dev.emassey0135.lumenna.name
 import dev.emassey0135.lumenna.offeredOf
+import dev.emassey0135.orbit.EditBox
+import dev.emassey0135.orbit.Key
 
 /** The row a list shows: the core's line, then whether its children are folded, and its level. */
 fun rowText(text: String, expanded: Boolean?, level: String?): String =
@@ -462,7 +464,7 @@ abstract class EditScreen : DialogScreen() {
     protected var current = ""
     protected var cursor = 0
 
-    private val editor: LineEditor
+    private val editor: EditBox
         get() {
             val editor = editorFor(line())
             if (current.isEmpty()) {
@@ -476,7 +478,7 @@ abstract class EditScreen : DialogScreen() {
 
     /** On the Player, where the line is the whole screen. */
     fun describe() {
-        ui.liblouis.follow()
+        ui.braille.follow()
         editor.focus()
         // After the field's name: what Orbit is told goes through its event queue, speech does not.
         if (hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { ui.reader.speakQueued(hint) }

@@ -9,12 +9,6 @@
     <!-- Reminders: alarms set again after the device starts. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- The services this app binds: Android 11 hides other apps' packages from a target of 30. -->
-    <queries>
-        <package android:name="com.orbit.screenreader" />
-        <package android:name="com.orbit.liblouisservice" />
-    </queries>
-
     <application
         android:name=".OrbitApplication"
         android:allowBackup="false"

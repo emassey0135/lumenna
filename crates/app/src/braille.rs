@@ -678,39 +678,6 @@ pub fn speak_press_instead(letter: &str) -> String {
     format!("Press dot 8 with {letter}.")
 }
 
-/// The cells the Orbit Speak's own edit fields name rather than translate, a bit per dot (dot 1
-/// bit 0), with the names they say: the Orbit's table, kept to the Orbit, never another device's.
-/// In contracted braille a cell here is said by its name before anything it would make; otherwise
-/// only when it makes nothing yet, as the capital sign does.
-const ORBIT_CELL_NAMES: [(u8, &str); 11] = [
-    (0b00_0010, "dot 2"),
-    (0b00_0110, "low b"),
-    (0b01_0010, "low c"),
-    (0b11_0010, "low d"),
-    (0b01_0110, "low f"),
-    (0b11_0110, "low g"),
-    (0b10_0110, "low h"),
-    (0b11_0100, "low j"),
-    (0b11_1100, "number sign"),
-    (0b10_0000, "capital sign"),
-    // The Orbit's own table calls dots 3 6 "greek sign", which is dots 4 6 in UEB; dots 3 6 alone is
-    // the hyphen, so it is said as one here, a deliberate departure from the device.
-    (0b10_0100, "hyphen"),
-];
-
-/// What the Orbit Speak's edit fields call cell `at` of `word` (dot 1 bit 0) by itself, if it is
-/// one they name: a second capital sign straight after one is the capital word sign.
-#[must_use]
-pub fn orbit_cell_name(word: &[u8], at: usize) -> Option<String> {
-    let cell = *word.get(at)?;
-    if cell == CAPITAL_SIGN && at > 0 && word.get(at - 1) == Some(&CAPITAL_SIGN) {
-        return Some("capital word sign".to_owned());
-    }
-    ORBIT_CELL_NAMES.iter().find(|(dots, _)| *dots == cell).map(|(_, name)| (*name).to_owned())
-}
-
-const CAPITAL_SIGN: u8 = 0b10_0000;
-
 /// The dots of each letter from a to z, Grade 1 braille's: dots 1 to 6 only.
 const DOTS: [&[u8]; 26] = [
     &[1],
@@ -903,17 +870,6 @@ impl Lumenna {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_orbit_names_its_signs_and_the_lower_cells_as_its_own_fields_do() {
-        assert_eq!(orbit_cell_name(&[0b10_0000], 0).as_deref(), Some("capital sign"));
-        assert_eq!(orbit_cell_name(&[0b10_0000, 0b10_0000], 1).as_deref(), Some("capital word sign"));
-        assert_eq!(orbit_cell_name(&[0b11_1100], 0).as_deref(), Some("number sign"));
-        assert_eq!(orbit_cell_name(&[0b00_0110], 0).as_deref(), Some("low b"));
-        assert_eq!(orbit_cell_name(&[0b10_0100], 0).as_deref(), Some("hyphen"), "not the device's \"greek sign\"");
-        assert_eq!(orbit_cell_name(&[0b00_0001], 0), None, "a letter is translated, not named");
-        assert_eq!(orbit_cell_name(&[], 0), None);
-    }
 
     #[test]
     fn the_speak_presses_a_letter_it_keeps_space_for_with_dot_8() {

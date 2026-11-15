@@ -32,7 +32,6 @@ android {
     }
 
     buildFeatures {
-        aidl = true
         resValues = true
     }
 
@@ -50,7 +49,7 @@ android {
 
 dependencies {
     implementation(project(":shared"))
-    implementation(project(":braille"))
+    implementation(project(":orbit-sdk"))
     // ComponentActivity, which shared's `Front` is written over.
     implementation(libs.activity.compose)
     implementation(libs.work.runtime)

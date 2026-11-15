@@ -1,7 +1,5 @@
 package dev.emassey0135.lumenna.orbit
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.os.Handler
 import android.os.Looper
 import android.widget.TextView
@@ -24,7 +22,6 @@ import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.brailleLetter
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.nothingOnLetter
-import dev.emassey0135.lumenna.app.orbitCellName
 import dev.emassey0135.lumenna.app.SpeakLetter
 import dev.emassey0135.lumenna.app.speakLetter
 import dev.emassey0135.lumenna.app.speakPress
@@ -33,6 +30,16 @@ import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.commandTitle
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.name
+import dev.emassey0135.orbit.BrailleInput
+import dev.emassey0135.orbit.CellBuffer
+import dev.emassey0135.orbit.EditBox
+import dev.emassey0135.orbit.Key
+import dev.emassey0135.orbit.KeyDecoder
+import dev.emassey0135.orbit.KeyEvent
+import dev.emassey0135.orbit.OrbitReader
+import dev.emassey0135.orbit.OrbitWords
+import dev.emassey0135.orbit.ReaderEditOutput
+import dev.emassey0135.orbit.T9Input
 
 /** One thing on a screen a person can stop on: what is said, what its Select and Menu do. */
 class Row(
@@ -127,14 +134,16 @@ class Ui(
     val app: AppModel,
     val core: Core,
     val reader: OrbitReader,
-    val liblouis: Liblouis,
+    val braille: BrailleInput,
     private val textView: TextView,
     private val finish: () -> Unit,
 ) : T9Input.Later {
     private val stack = ArrayDeque<Screen>()
     private val main = Handler(Looper.getMainLooper())
     private val decoder = KeyDecoder()
-    private val clipboard = textView.context.getSystemService(ClipboardManager::class.java)
+    /** What the device says in its own words: its fields' echo, T9's modes. */
+    val orbitWords = OrbitWords()
+    private val editOutput = ReaderEditOutput(reader, braille, textView.context, orbitWords)
     private val finder = FirstLetters(this)
     /** Whether the keys are the Player's phone keypad, as the last key said. */
     var phoneKeypad = false
@@ -518,8 +527,8 @@ class Ui(
         completing: (() -> Boolean)? = null,
         complete: () -> Unit = {},
         multiline: Boolean = false,
-    ): LineEditor = LineEditor(
-        name, initial, phoneKeypad, EditOutput(reader, liblouis, clipboard), multiline, CellBuffer.Translator { cells, mode -> liblouis.translate(cells, mode) },
+    ): EditBox = EditBox(
+        name, initial, phoneKeypad, editOutput, multiline, CellBuffer.Translator { cells, mode -> braille.translate(cells, mode) },
         this,
         timeoutMs = { reader.characterCommitTimeout.toLong() },
         commitFeedback = { reader.characterCommitFeedback },
@@ -561,69 +570,6 @@ class Ui(
 /** Verbose logging for debug builds. */
 object BuildConfigDebug {
     @Volatile var on = false
-}
-
-/** Tells Orbit's reader what the line editor did, as its own edit fields report. */
-private class EditOutput(
-    private val reader: OrbitReader,
-    private val liblouis: Liblouis,
-    private val clipboard: ClipboardManager?,
-) : LineEditor.Output {
-    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) =
-        reader.focusEdit(name, content, cursor, line, multiline)
-    override fun syncEdit(name: String, content: String, cursor: Int) = reader.editChanged(name, content, cursor, "field_opened")
-
-    /**
-     * Sent as its name, the character itself left empty: the reader then says it by the person's
-     * character echo but keeps it out of the word it echoes, which would otherwise be made of the
-     * characters a contracted word's cells echoed. A space goes as itself, which ends no word now.
-     */
-    override fun typed(character: Char) = if (character == ' ') {
-        reader.characterTyped(" ", " ", false, null)
-    } else {
-        reader.characterTyped("", character.toString(), character.isUpperCase(), null)
-    }
-
-    /** Said as the reader says an echo, stopping what was being said. */
-    override fun word(word: String): Boolean {
-        if (!liblouis.echoesWords) return false
-        reader.speak(word)
-        return true
-    }
-
-    override fun cellName(cells: List<Int>, at: Int): String? =
-        orbitCellName(ByteArray(cells.size) { cells[it].toByte() }, at.toUInt())
-    override val contracted: Boolean get() = liblouis.contracted
-    override val computer: Boolean get() = liblouis.computer
-
-    override fun copy(text: String) {
-        clipboard?.setPrimaryClip(ClipData.newPlainText("Lumenna", text))
-    }
-
-    override fun paste(): String? = runCatching {
-        clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
-    }.getOrNull()
-
-    override fun say(text: String) = reader.speak(text)
-    override val words: LineEditor.Words by lazy {
-        appWords.orbit.let {
-            LineEditor.Words(
-                it.dots, it.deleted, it.space, it.newLine, it.blank,
-                it.selectionStarted, it.selectionFinished, it.allSelected, it.nothingSelected, it.noTextSelected,
-                it.copied, it.cut, it.pasted,
-            )
-        }
-    }
-    override fun candidate(character: Char, field: String) = reader.characterTyped(character.toString(), field, false, null)
-    override fun edited(name: String, content: String, cursor: Int, change: String) = reader.editChanged(name, content, cursor, change)
-    override fun playError() = reader.sound(OrbitReader.SOUND_ERROR)
-    override fun commitFeedback(character: Char, mode: Int) {
-        if (mode == 1 || mode == 4) reader.sound(OrbitReader.SOUND_COMMIT)
-        if (mode == 3 || mode == 5) reader.vibrate(50)
-        if (mode == 2 || mode == 4 || mode == 5) reader.speakQueued(character.toString())
-    }
-    override fun modeChanged(name: String, content: String, cursor: Int, mode: String) =
-        reader.editChanged(name, content, cursor, "t9_mode_changed:$mode")
 }
 
 /** [text], with the chord that also runs it said after it on the Speak. */

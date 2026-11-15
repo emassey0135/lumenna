@@ -6,6 +6,8 @@ import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.noRowStartsWith
 import dev.emassey0135.lumenna.appWords
+import dev.emassey0135.orbit.Key
+import dev.emassey0135.orbit.T9Input
 import android.os.SystemClock
 import java.util.Locale
 
@@ -31,7 +33,7 @@ class FirstLetters(private val ui: Ui) {
         override fun candidate(character: Char) = ui.reader.speak(character.toString())
         override fun commit(character: Char, position: Int, feedback: Boolean) =
             letter(character.toString())
-        override fun modeChanged(name: String) = ui.reader.speak(name)
+        override fun modeChanged(mode: T9Input.Mode) = ui.reader.speak(ui.orbitWords.mode(mode))
     }, ui)
 
     /** Forgets what was typed, as any other key does. */

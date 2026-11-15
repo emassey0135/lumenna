@@ -1,4 +1,4 @@
-package dev.emassey0135.lumenna.orbit
+package dev.emassey0135.orbit
 
 import java.util.Locale
 
@@ -22,8 +22,8 @@ class T9Input(private val host: Host, private val later: Later) {
         fun candidate(character: Char)
         /** Insert [character] at [position]; [feedback] when the commit timeout did it. */
         fun commit(character: Char, position: Int, feedback: Boolean)
-        /** The mode changed; [name] is said by the screen reader in the person's language. */
-        fun modeChanged(name: String)
+        /** Star changed the mode: named by [OrbitWords.mode]. */
+        fun modeChanged(mode: Mode)
     }
 
     /** One pending call after a delay, replaced by the next. */
@@ -32,12 +32,8 @@ class T9Input(private val host: Host, private val later: Later) {
         fun cancel()
     }
 
-    enum class Mode(val spoken: String) {
-        LOWERCASE("lowercase"),
-        UPPERCASE("uppercase"),
-        DIGITS("digits"),
-        SYMBOLS("symbols"),
-    }
+    /** In the order star goes through them. */
+    enum class Mode { LOWERCASE, UPPERCASE, DIGITS, SYMBOLS }
 
     private var mode = Mode.LOWERCASE
     private var key = -1
@@ -78,7 +74,7 @@ class T9Input(private val host: Host, private val later: Later) {
         if (pending != null) commit(false)
         val modes = Mode.entries
         mode = modes[(mode.ordinal + 1) % modes.size]
-        host.modeChanged(mode.spoken)
+        host.modeChanged(mode)
     }
 
     /** Pound: next keyboard layout. Only English exists, so this just commits any candidate. */

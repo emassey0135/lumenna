@@ -1,4 +1,4 @@
-package dev.emassey0135.lumenna.orbit
+package dev.emassey0135.orbit
 
 /**
  * What the text being typed on the Speak holds: committed text with the word being typed as

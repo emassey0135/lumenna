@@ -1,4 +1,4 @@
-package dev.emassey0135.lumenna.orbit
+package dev.emassey0135.orbit
 
 /** A key decoded from Orbit's keypad callback, whichever device it came from. */
 sealed interface Key {

@@ -3,6 +3,9 @@ package dev.emassey0135.lumenna.orbit
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.Offered
 import dev.emassey0135.lumenna.appWords
+import dev.emassey0135.orbit.EditBox
+import dev.emassey0135.orbit.Key
+import dev.emassey0135.orbit.OrbitReader
 
 /** An option of a [Control.Choosing], by the id the form takes. */
 data class Option(val id: String, val title: String)
@@ -106,12 +109,12 @@ abstract class DialogScreen : ListScreen() {
 
     // ---- the editors ----
 
-    private class Editing(val editor: LineEditor, val from: String)
+    private class Editing(val editor: EditBox, val from: String)
 
     private val editors = HashMap<String, Editing>()
 
     /** The editor of [control], made anew only if the app changed its line underneath. */
-    protected fun editorFor(control: Control.Line): LineEditor {
+    protected fun editorFor(control: Control.Line): EditBox {
         val editing = editors[control.key]
         if (editing != null && (control.value == editing.from || control.value == editing.editor.display())) return editing.editor
         val editor = ui.editor(
@@ -252,7 +255,7 @@ abstract class DialogScreen : ListScreen() {
         if (!newlyShown && why != Why.Moved && why != Why.Entered && !moved) return
         when (control) {
             is Control.Line -> {
-                ui.liblouis.follow()
+                ui.braille.follow()
                 editorFor(control).focus()
                 if (control.hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { ui.reader.speakQueued(control.hint) }
             }

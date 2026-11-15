@@ -505,34 +505,6 @@ pub struct OrbitWords {
     pub speak_keys: Vec<String>,
     /// Its key help's heading over the commands pressed with Dot 8: "Dot 8 with a letter".
     pub with_dot_8: String,
-    /// The Speak's typing echo, as Orbit's own fields and Satellite's say it, never another
-    /// device's cell names: a cell that makes no character yet, `%s` its dots, "dot 1 2 6".
-    pub dots: String,
-    /// What was deleted, `%s` it: "h deleted", "dot 6 deleted".
-    pub deleted: String,
-    /// A space, typed or deleted.
-    pub space: String,
-    /// A new line, typed or deleted.
-    pub new_line: String,
-    /// Deleting with nothing before the caret.
-    pub blank: String,
-    /// The Speak's selection in a line, as its Editor says it: selection mode turned on, the caret
-    /// the selection's start.
-    pub selection_started: String,
-    /// Selection mode turned off, the selection running to the character at the caret.
-    pub selection_finished: String,
-    /// All of the line selected.
-    pub all_selected: String,
-    /// Copy or cut with nothing selected.
-    pub nothing_selected: String,
-    /// Reading the selection with nothing selected.
-    pub no_text_selected: String,
-    /// The selection copied.
-    pub copied: String,
-    /// The selection cut.
-    pub cut: String,
-    /// What was copied, pasted.
-    pub pasted: String,
     /// The Player's keys, a sentence each, for its key help.
     pub player_keys: Vec<String>,
 }
@@ -783,7 +755,8 @@ pub const ACTION_KINDS: &[ActionKind] = {
     ]
 };
 
-/// Emacs's words, its names in `c`'s capitals.
+/// The Orbit app's words: its key help and the Player's finding by letter. What the device
+/// itself says (its fields' echo, its Editor's selection) is the Orbit SDK's.
 fn orbit_words() -> OrbitWords {
     let lines = |keys: &[&str]| keys.iter().map(|key| (*key).to_owned()).collect();
     OrbitWords {
@@ -805,19 +778,6 @@ fn orbit_words() -> OrbitWords {
             "While typing, Space with dots 1 2 7 reads what is selected.",
         ]),
         with_dot_8: "Dot 8 with a letter".to_owned(),
-        dots: "dot %s".to_owned(),
-        deleted: "%s deleted".to_owned(),
-        space: "space".to_owned(),
-        new_line: "new line".to_owned(),
-        blank: "blank".to_owned(),
-        selection_started: "Selection started. Please move to desired position and press the same key again.".to_owned(),
-        selection_finished: "Selection finished".to_owned(),
-        all_selected: "All text selected".to_owned(),
-        nothing_selected: "Nothing selected".to_owned(),
-        no_text_selected: "No text selected".to_owned(),
-        copied: "Text copied".to_owned(),
-        cut: "Text cut".to_owned(),
-        pasted: "Text pasted".to_owned(),
         player_keys: lines(&[
             "Up and Down move through the list. Held, they go to its ends.",
             "OK opens the row. Right opens a folded row first, and Left folds an open one or goes back out of a list, never a dialog.",
