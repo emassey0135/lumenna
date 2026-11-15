@@ -53,9 +53,10 @@ apps/emacs/     the Emacs client, in Elisp, drawing the Crux app over `lum rpc` 
                 socket, a screen per buffer.
 apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (app/), Wear OS
                 (wear/), the HIMS BrailleSense 7 (braillesense/), the Orbit Speak and Player (orbit/),
-                which draw no Compose and speak for themselves, the unofficial Orbit SDK the Orbit
-                app is over (orbit-sdk/, nothing of Lumenna's in it), what the BrailleSense app keeps
-                apart (braille/), and what every app shares (shared/).
+                which draw no Compose and speak for themselves, what those two share (braille/: the
+                dialog controller among it), and what every app shares (shared/); and the unofficial
+                Orbit and BrailleSense SDKs (orbit-sdk/, braillesense-sdk/), each the device itself,
+                depending on nothing of Lumenna's.
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
                 between them.
 apps/windows/   the Win32 app, over the Crux app (crates/ffi, linked as Rust).
@@ -163,7 +164,8 @@ crosses the FFI.
   the record, never written in the shell. **The one exception is a device SDK's own words**:
   what the device itself says, as its own apps say it, belongs to the SDK that speaks for the
   device and not to Lumenna (the Orbit SDK's `OrbitWords`: its fields' echo and cell names, its
-  Editor's selection, T9's modes), so another app on the device says the same. What Lumenna says
+  Editor's selection, T9's modes; the BrailleSense SDK's edit box, cell echo and role words), so
+  another app on the device says the same, and the core holds none of them. What Lumenna says
   there (its key help, its menus) stays the core's. A sidebar entry says its
   own folding (`hidden`, `expanded`, `level`), as a list's rows and a pick's lines (`Line::level`)
   do; a list a shell narrows or cuts out itself takes its levels from `lines::levels(depths)`
@@ -352,10 +354,10 @@ directly (8805659 is the last commit before the move). How the app works inside 
   `braillesense_letter`/`braillesense_press` on the BrailleSense, whose key help
   `braillesense_keys` is built from the same rule), and the letter alone moves.
   A device reporting dots turns them into a letter by `braille_letter`, the core's own a to z and
-  never the person's table: dot 7 or 8 in a chord is no letter. Erase Permanently has no letter. How a device with its own controls reads a line (its role in
+  never the person's table: dot 7 or 8 in a chord is no letter. Erase Permanently has no letter. How the BrailleSense reads a line (its role in
   speech and on the cells, where its settings put it, a shortcut letter, a sign for a dialog or a
-  submenu, a control's label and place) is `braille::device_reading`, the words and the order
-  being the core's; the device's settings and its braille code's signs are the shell's to hand in.
+  submenu, a control's label and place) is the device's own convention, in its SDK
+  (`deviceReading`, `apps/android/braillesense-sdk`), not the core's.
   A braille device's menu bar is the shared one with its letters (`braille::menu_bar`, over
   `keys::MENUS`), and what a letter gives where none is set is `braille::menu_shortcuts`. It holds
   every one of the screen's own actions (Home's on Home), each with its letter as a real hot key,

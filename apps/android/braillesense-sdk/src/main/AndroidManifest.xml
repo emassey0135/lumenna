@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The services the device's own apps use: the speech and cell output, and the settings
+         provider that holds the person's braille table and Global Options. Named so a
+         package-visibility filter lets an app see them. -->
+    <queries>
+        <package android:name="com.jawon.han.accessibility" />
+        <package android:name="com.selvashc.settingsprovider" />
+    </queries>
+</manifest>

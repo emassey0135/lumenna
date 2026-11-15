@@ -1,8 +1,14 @@
 package com.extra.han.lumenna.ui
 
-import com.extra.han.lumenna.device.Key
-import dev.emassey0135.lumenna.app.BraillePart
-import dev.emassey0135.lumenna.app.ControlRole
+import dev.emassey0135.braillesense.input.Key
+import dev.emassey0135.braillesense.edit.LineEditor
+import dev.emassey0135.braillesense.edit.TextBox
+import dev.emassey0135.braillesense.reading.BraillePart
+import dev.emassey0135.braillesense.reading.ControlRole
+import dev.emassey0135.braillesense.reading.DeviceLine
+import dev.emassey0135.lumenna.app.ControlShown
+import dev.emassey0135.lumenna.app.ControlType
+import dev.emassey0135.lumenna.braille.DialogController
 
 /** What a frame shows and says now. */
 data class Rendered(
@@ -62,6 +68,10 @@ class Row(
     /** Space-3 and Space-6: its folding. */
     val collapse: (() -> Unit)? = null,
     val expand: (() -> Unit)? = null,
+    /** Whether it opens a dialog, which the device marks. */
+    val asks: Boolean = false,
+    /** A row of the shell's own, which the app does not hold: Home's actions beside its places. */
+    val local: Boolean = false,
 )
 
 /**
@@ -105,7 +115,7 @@ class ListFrame(
         get() = current?.let { row ->
             // A prompt's answers are a choice in place, numbered no more than the device numbers them.
             val (place, count) = if (prompt) 0 to 0 else position
-            readings.read(line(row.role, row.speech, row.braille, detail = row.detail, letter = row.letter, position = place, count = count)).rendered()
+            readings.read(line(row.role, row.speech, row.braille, detail = row.detail, letter = row.letter, asks = row.asks, position = place, count = count)).rendered()
         } ?: Rendered(empty)
 
     private fun moveTo(target: Int): Boolean {
@@ -163,7 +173,10 @@ class ListFrame(
     }
 }
 
-/** A line of text the person types, with its prompt, and what Enter does with it. */
+/**
+ * A line of text the person types, with its prompt, and what Enter does with it. Its other keys
+ * are the box's (`BoxEditing`, which the shell runs ahead of the frame).
+ */
 class LineFrame(
     id: String,
     private val prompt: String,
@@ -180,11 +193,6 @@ class LineFrame(
         changed(box.text)
     }
 
-    private fun push(): Boolean {
-        changed(box.text)
-        return true
-    }
-
     override val rendered: Rendered
         get() {
             val shown = editor.shown()
@@ -197,206 +205,161 @@ class LineFrame(
 
     override fun key(key: Key): Boolean = when (key) {
         Key.Enter -> run { done(box.text); true }
-        Key.CharLeft -> run { editor.left(); push() }
-        Key.CharRight -> run { editor.right(); push() }
-        Key.WordLeft -> run { editor.wordLeft(); push() }
-        Key.WordRight -> run { editor.wordRight(); push() }
-        Key.LineStart, Key.First -> run { editor.start(); push() }
-        Key.LineEnd, Key.Last -> run { editor.end(); push() }
-        Key.Backspace -> run { box.backspace(); push() }
-        Key.Delete -> run { box.delete(); push() }
-        Key.Space -> run { editor.space(); push() }
-        is Key.Cell -> run { editor.cell(key.dots); true }
-        is Key.Typed -> run { editor.type(key.text); push() }
         else -> false
     }
 }
 
-/** A control in a dialog: something Tab stops at. */
-sealed class Control(val key: String) {
-    /** The line it reads as. */
-    abstract val line: dev.emassey0135.lumenna.app.DeviceLine
-
-    /** Text to type; [box] holds it while the dialog is open, a line or, [TextBox.multiLine], several. */
-    class Edit(
-        key: String,
-        val label: String,
-        val box: TextBox,
-        val hint: String = "",
-        val changed: (String) -> Unit = {},
-        val submit: (() -> Unit)? = null,
-    ) : Control(key) {
-        /** The line the cursor is on. */
-        val editor: LineEditor get() = box.line
-
-        override val line: dev.emassey0135.lumenna.app.DeviceLine
-            get() = if (box.multiLine) {
-                line(ControlRole.MULTI_LINE_EDIT_BOX, editor.text.ifEmpty { if (box.text.isEmpty()) hint else "" }, editor.text, label = label)
-            } else {
-                line(ControlRole.EDIT_BOX, box.text.ifEmpty { hint }, box.text, label = label)
-            }
-    }
-
-    /** One of several options, changed with Space, Backspace, Space-1 and Space-4 or by first letter. */
-    class Choice(
-        key: String,
-        val label: String,
-        val options: List<Pair<String, String>>,
-        val selected: Int,
-        val choose: (String) -> Unit,
-        val press: (() -> Unit)? = null,
-    ) : Control(key) {
-        private val value get() = options.getOrNull(selected)?.second.orEmpty()
-        override val line get() = line(ControlRole.COMBO_BOX, value, label = label, position = selected + 1, count = options.size)
-    }
-
-    /** A flag, changed with Space or Backspace. */
-    class Toggle(key: String, val label: String, val on: Boolean, val change: (Boolean) -> Unit) : Control(key) {
-        override val line get() = line(if (on) ControlRole.CHECK_BOX_CHECKED else ControlRole.CHECK_BOX_UNCHECKED, label)
-    }
-
-    /** Enter presses it, or its [letter] with Space or Enter. */
-    class Button(key: String, val label: String, val letter: Char? = null, val asks: Boolean = false, val press: () -> Unit) : Control(key) {
-        override val line get() = line(ControlRole.BUTTON, label, letter = letter, asks = asks)
-    }
-
-    /** A line of information: a refusal, a caption. */
-    class Static(key: String, val text: String) : Control(key) {
-        override val line get() = line(ControlRole.STATIC_BOX, text)
-    }
-}
-
 /**
- * A dialog's controls, in order. Tab and Shift-Tab are all that move between them, as in the
- * device's own dialogs; Space-1 and Space-4 move within the control that is a list of choices, and
- * do nothing on one that is not.
+ * A dialog the core describes (`DialogShown`), as the device works one, over the braille apps'
+ * shared [DialogController]: the controller keeps the control in hand, the tab order, what is typed
+ * until the core has it, each choice and check, and presses; this maps the device's keys onto it and
+ * reads the control in hand in the device's own roles (`ControlRole`). Tab (Space-4-5, F3) and
+ * Shift-Tab are all that move between controls, as in the device's own dialogs; Space-1 and
+ * Space-4 move only within a list, Space and Backspace change a combo box or a check box, and step
+ * between a question's answers. A line's own keys are the SDK's box (`BoxEditing`, run by the shell
+ * ahead of the frame), its text handed to the controller as it changes.
  */
 class FormFrame(
-    id: String,
-    /** What it is called, said when it opens; null for what has no title. */
-    val title: String?,
-    private val controls: List<Control>,
-    selected: String?,
+    val controller: DialogController,
     private val letters: Letters,
     private val readings: Readings,
-    private val moved: (Control) -> Unit = {},
-) : Frame(id) {
-    private var index = controls.indexOfFirst { it.key == selected }.takeIf { it >= 0 } ?: 0
+    /** The text box of a line, which the shell keeps while the dialog is open. */
+    private val boxOf: (ControlShown) -> TextBox,
+    /** A button's letter: the core's, else the first free one of its name. */
+    private val letterOf: (ControlShown) -> Char?,
+    /** A question of answers alone: its buttons the device's prompt buttons, said as its prompt. */
+    val prompt: Boolean = false,
+) : Frame(controller.dialog.id) {
+    /** What it is called, said as it opens. */
+    val title: String? get() = controller.dialog.title.ifEmpty { null }
 
-    val current: Control? get() = controls.getOrNull(index)
+    /** The control in hand. */
+    val current: ControlShown? get() = controller.control
+
+    /** The lines to read ahead of where it opens (a message, why saving was refused), said as it opens. */
+    val preamble: String
+        get() = controller.controls.take(controller.dialog.focus.toInt()).filter { it.kind == ControlType.TEXT }.joinToString(". ") { it.value }
+
+    /** The box of the line in hand, if a line is in hand. */
+    fun box(): TextBox? = current?.takeIf(::isLine)?.let(boxOf)
+
+    /** The line in hand's text, as its box now holds it, handed to the controller where it changed. */
+    fun typed() {
+        val line = current?.takeIf(::isLine) ?: return
+        val text = boxOf(line).text
+        if (text != controller.text(line)) controller.type(text)
+    }
 
     override val rendered: Rendered
         get() {
             val control = current ?: return Rendered("")
-            val reading = readings.read(control.line)
-            if (control is Control.Edit) {
-                val shown = control.editor.shown()
+            val reading = readings.read(lineOf(control))
+            if (isLine(control)) {
+                val shown = boxOf(control).line.shown()
                 return reading.rendered(shown.cells, shown.cursor)
             }
             return reading.rendered()
         }
 
-    private fun move(step: Int): Boolean {
-        if (controls.isEmpty()) return true
-        (current as? Control.Edit)?.let { it.changed(it.box.text) }
-        index = (index + step + controls.size) % controls.size
-        current?.let(moved)
-        return true
+    private fun lineOf(control: ControlShown): DeviceLine {
+        val hint = control.example.ifEmpty { control.hint }
+        return when (control.kind) {
+            ControlType.TEXT -> line(ControlRole.STATIC_BOX, control.value)
+            ControlType.LINE -> boxOf(control).let { box -> line(ControlRole.EDIT_BOX, box.text.ifEmpty { hint }, box.text, label = control.label) }
+            ControlType.LINES -> boxOf(control).let { box ->
+                line(ControlRole.MULTI_LINE_EDIT_BOX, box.line.text.ifEmpty { if (box.text.isEmpty()) hint else "" }, box.line.text, label = control.label)
+            }
+            ControlType.CHOICE -> {
+                val at = controller.selected(control) ?: 0
+                line(ControlRole.COMBO_BOX, control.options.getOrNull(at)?.title.orEmpty(), label = control.label, position = at + 1, count = control.options.size)
+            }
+            ControlType.LIST -> {
+                val at = controller.selected(control) ?: 0
+                line(ControlRole.LIST_ITEM, control.options.getOrNull(at)?.title.orEmpty(), label = control.label, position = at + 1, count = control.options.size)
+            }
+            ControlType.CHECK -> line(if (controller.checked(control)) ControlRole.CHECK_BOX_CHECKED else ControlRole.CHECK_BOX_UNCHECKED, control.label)
+            ControlType.BUTTON -> line(if (prompt) ControlRole.PROMPT_BUTTON else ControlRole.BUTTON, control.label, letter = letterOf(control), asks = control.asks)
+        }
     }
 
-    /** Presses the button of [letter]; false if none has it. */
+    /** Presses the button of [letter], the line in hand taken first; false if none has it. */
     fun press(letter: Char): Boolean {
-        val button = controls.filterIsInstance<Control.Button>().firstOrNull { it.letter == letter } ?: return false
-        button.press()
+        val button = controller.controls.firstOrNull { it.kind == ControlType.BUTTON && letterOf(it) == letter } ?: return false
+        typed()
+        controller.press(button)
         return true
     }
 
     override fun routed(at: Int) {
-        val control = current
-        if (control is Control.Edit) control.editor.route(at)
-        if (control is Control.Button) control.press()
+        val control = current ?: return
+        if (isLine(control)) boxOf(control).line.route(at)
+        if (control.kind == ControlType.BUTTON) controller.press()
     }
 
     override fun key(key: Key): Boolean {
         when (key) {
-            Key.Tab -> return move(+1)
-            Key.ShiftTab -> return move(-1)
+            Key.Tab -> return run { typed(); controller.next(); true }
+            Key.ShiftTab -> return run { typed(); controller.previous(); true }
             else -> {}
         }
-        return when (val control = current) {
-            is Control.Edit -> edit(control, key)
-            is Control.Choice -> choice(control, key)
-            is Control.Toggle -> when (key) {
-                Key.Space, Key.Backspace, Key.Enter -> run { control.change(!control.on); true }
+        val control = current ?: return false
+        return when (control.kind) {
+            // Enter in a line of one presses it (quick add's, a question's) or the dialog's default;
+            // a multi-line box's Enter is its own new line.
+            ControlType.LINE -> key == Key.Enter && run { typed(); controller.press(); true }
+            ControlType.LINES -> false
+            ControlType.CHOICE -> choice(control, key)
+            ControlType.LIST -> list(control, key)
+            ControlType.CHECK -> when (key) {
+                Key.Space, Key.Backspace, Key.Enter -> run { controller.toggle(); true }
                 else -> false
             }
-            is Control.Button -> when (key) {
-                Key.Enter -> run { control.press(); true }
+            ControlType.BUTTON -> when {
+                key == Key.Enter -> controller.press()
+                prompt && key == Key.Space -> answer(+1)
+                prompt && key == Key.Backspace -> answer(-1)
                 else -> false
             }
-            is Control.Static, null -> false
+            ControlType.TEXT -> false
         }
     }
 
-    /**
-     * An edit box's keys, as the device's own: Enter in a single line goes on (or submits), in a
-     * multi-line box starts a new line; there Space-1 and Space-4 move between lines and
-     * Space-1-2-3 and Space-4-5-6 go to the top and bottom. Tab leaves either.
-     */
-    private fun edit(control: Control.Edit, key: Key): Boolean {
-        val box = control.box
-        val editor = box.line
-        val changed = {
-            control.changed(box.text)
-            true
-        }
-        return when (key) {
-            Key.Enter -> if (box.multiLine) {
-                box.newLine()
-                changed()
-            } else {
-                control.changed(box.text)
-                control.submit?.invoke() ?: move(+1)
-                true
-            }
-            Key.Up -> box.multiLine && run { box.up(); true }
-            Key.Down -> box.multiLine && run { box.down(); true }
-            Key.First -> run { if (box.multiLine) box.top() else editor.start(); true }
-            Key.Last -> run { if (box.multiLine) box.bottom() else editor.end(); true }
-            Key.CharLeft -> run { editor.left(); true }
-            Key.CharRight -> run { editor.right(); true }
-            Key.WordLeft -> run { editor.wordLeft(); true }
-            Key.WordRight -> run { editor.wordRight(); true }
-            Key.LineStart -> run { editor.start(); true }
-            Key.LineEnd -> run { editor.end(); true }
-            Key.Backspace -> run { box.backspace(); changed() }
-            Key.Delete -> run { box.delete(); changed() }
-            Key.Space -> run { editor.space(); changed() }
-            is Key.Cell -> run { editor.cell(key.dots); true }
-            is Key.Typed -> run { editor.type(key.text); changed() }
-            else -> false
-        }
+    /** Space and Backspace among a question's answers: to the next or last of them, wrapping. */
+    private fun answer(by: Int): Boolean {
+        val answers = controller.controls.withIndex().filter { it.value.kind == ControlType.BUTTON }.map { it.index }
+        val at = answers.indexOf(controller.index)
+        if (at >= 0 && answers.size > 1) controller.moveTo(answers[Math.floorMod(at + by, answers.size)])
+        return true
     }
 
-    private fun choice(control: Control.Choice, key: Key): Boolean {
+    /** A combo box steps round its options, as the device's own does, and goes to its ends. */
+    private fun choice(control: ControlShown, key: Key): Boolean {
         val options = control.options
         val step = { by: Int ->
-            if (options.isNotEmpty()) control.choose(options[(control.selected + by + options.size) % options.size].first)
+            if (options.isNotEmpty() && controller.step(by) == null) controller.choose(if (by > 0) 0 else options.lastIndex)
             true
         }
         return when (key) {
             Key.Up, Key.Backspace -> step(-1)
             Key.Down, Key.Space -> step(+1)
-            Key.First -> run { options.firstOrNull()?.let { control.choose(it.first) }; true }
-            Key.Last -> run { options.lastOrNull()?.let { control.choose(it.first) }; true }
-            Key.Enter -> run { control.press?.invoke() ?: move(+1); true }
-            is Key.Cell, is Key.Typed -> run {
-                val letter = letters.letter(key) ?: return@run true
-                val found = letters.find(options.map { it.second }, control.selected, letter)
-                if (found != null) control.choose(options[found].first)
-                true
-            }
+            Key.First -> run { if (options.isNotEmpty()) controller.choose(0); true }
+            Key.Last -> run { if (options.isNotEmpty()) controller.choose(options.lastIndex); true }
+            Key.Enter -> run { if (!controller.pressDefault()) controller.next(); true }
+            is Key.Cell, is Key.Typed -> run { letters.letter(key)?.let { controller.find(it.toString()) }; true }
             else -> false
         }
     }
+
+    /** A list moves in place, stopping at its ends, and Enter picks the one in hand. */
+    private fun list(control: ControlShown, key: Key): Boolean = when (key) {
+        Key.Up -> run { controller.step(-1); true }
+        Key.Down -> run { controller.step(+1); true }
+        Key.First -> run { if (control.options.isNotEmpty()) controller.choose(0); true }
+        Key.Last -> run { if (control.options.isNotEmpty()) controller.choose(control.options.lastIndex); true }
+        Key.Enter -> controller.press()
+        is Key.Cell, is Key.Typed -> run { letters.letter(key)?.let { controller.find(it.toString()) }; true }
+        else -> false
+    }
+
+    private fun isLine(control: ControlShown) = control.kind == ControlType.LINE || control.kind == ControlType.LINES
 }
