@@ -144,7 +144,12 @@ crosses the FFI.
   do is said once as it starts (`Event::Abilities`, `Abilities { files, backup_folder }`; a shell
   that never says can do both): one that saves and picks no files (a watch) lists no exports,
   imports or restores, one with no folder of backups (a browser) none of the backup schedule and
-  folder settings.
+  folder settings. **About is the last page where a device has no About of its own**
+  (`Abilities::own_about` false: a phone, a watch, the iPad, the web): a page of lines alone
+  (`SettingsPage::lines`, `ShellWords::about_lines`: name, version, description, website, where to
+  report a problem, publisher, licence), with no setting and no button, which a shell draws as
+  lines to read. A desktop keeps its menu bar's About, and a braille device and Emacs Home's, so
+  the page is not listed there.
 - **The task details' words are the core's** (`details_words`; `DetailsView::lines`, also
   `Lines::details`: the state, a rule the form cannot say, what it waits for, its history). The
   buttons a details pane shows by themselves are the task's `primary` offered actions, the rest a
@@ -308,15 +313,20 @@ directly (8805659 is the last commit before the move). How the app works inside 
   does not, the place beneath following it. A desktop or a phone never shows Home: its places are
   its sidebar or tabs, and its app-wide actions the menu bar's or the Browse tab's.
 - **Where a phone and a watch put the places is the core's** (`lumenna_app::arrangement`,
-  `place_arrangement(sidebar, capitals)` over the FFI, from the view's own sidebar): a phone's
+  `place_arrangement(sidebar, watch, capitals)` over the FFI, from the view's own sidebar): a phone's
   tabs in order (`Tab`: a place, Browse or Settings, with its title), Browse's rows (every place
   not a tab, in the sidebar's order with its detail and swatch, and each group with the count of
   every place under it), each group's own screen (`GroupScreen`: its heading, whose `offered`
   holds its New, its places a level shallower with their levels said where they change, and what
-  it says with none), and a watch's root list (`RootRow`: New Task, every place shown as the
-  sidebar has it, then Undo, Redo and Settings, each action run as `Event::Key(id)`). A place
-  added to the sidebar reaches every phone and watch with no shell edit; no shell picks places
-  out of the sidebar by kind or titles them itself.
+  it says with none), and a watch's root list (`RootRow`), which is Home as a watch has it: New
+  Task first, every place shown as the sidebar has it, then the rest of Home's actions in Home's
+  order, each run as `Event::Key(id)`, but one that needs what the watch lacks (`arrangement::needs`,
+  `watch_has`): a keyboard (Key Help), reminders listed in the app (Reminders Due: a watch gives
+  them as notifications), an About beside Settings (a watch's is its Settings page), and syncing
+  itself (Sync Now, only on a watch that does: `WatchKind::SyncsItself` for Wear OS,
+  `ThroughItsPhone` for the Apple Watch). A new action on Home reaches the watches unless a rule
+  leaves it out, which a test holds. A place added to the sidebar reaches every phone and watch
+  with no shell edit; no shell picks places out of the sidebar by kind or titles them itself.
 - **Settings offer the store's own actions** (`SettingsView::offered`: Erase Everything
   Deleted), a button each under `offered_caption`, handed back with
   `Event::ActOn(ActingOn::Settings, offered)`; the app asks its question as any row's.

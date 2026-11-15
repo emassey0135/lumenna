@@ -625,6 +625,10 @@ pub struct SettingsPage {
     pub keys: Vec<String>,
     /// Its buttons, in order.
     pub buttons: Vec<SettingsButton>,
+    /// Lines to read, each a line of its own after its settings: About's name, version and links.
+    /// Empty on every other page.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<String>,
 }
 
 /// Every settings page, in order. `own_clock` leaves out the `clock` setting, for a shell that
@@ -642,6 +646,7 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
         caption: caption.to_owned(),
         keys: members,
         buttons,
+        lines: Vec::new(),
     };
     vec![
         page("general", "General", "On this device: running in the background, the clock", "These settings are this device's alone.", keys(&[crate::background::KEY, "clock"]), Vec::new()),
@@ -687,6 +692,12 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
             Vec::new(),
             vec![button("import", "Import or Restore", true)],
         ),
+        // About, for a device with no About of its own (no menu bar's, no Home's): what Lumenna
+        // is, a line each.
+        SettingsPage {
+            lines: crate::words::about_lines(),
+            ..page("about", "About", "Version, website, where to report a problem, licence", "", Vec::new(), Vec::new())
+        },
     ]
 }
 

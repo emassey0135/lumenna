@@ -34,6 +34,7 @@ mod swatch;
 mod system;
 mod tasks;
 mod toast;
+mod toolbar;
 mod tray;
 mod tree;
 mod view;

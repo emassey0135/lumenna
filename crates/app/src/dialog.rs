@@ -499,6 +499,9 @@ pub fn settings_page(view: &ViewModel, page: &str) -> Option<DialogShown> {
             controls.push(ControlShown::text(format!("problem:{}", setting.key), problem.clone()));
         }
     }
+    for (at, line) in page.lines.iter().enumerate() {
+        controls.push(ControlShown::text(format!("line:{at}"), line.clone()));
+    }
     if !page.caption.is_empty() {
         controls.push(ControlShown::text("caption", page.caption.clone()));
     }

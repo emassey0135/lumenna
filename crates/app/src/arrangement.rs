@@ -20,9 +20,11 @@ pub struct Arrangement {
     pub browse: Vec<SidebarEntry>,
     /// Each group's screen, in order: what a group's row in Browse opens.
     pub groups: Vec<GroupScreen>,
-    /// A watch's root list, in order: New Task, every place as the sidebar has it (headings
-    /// folding what is under them; a heading's New is among its `offered`, for the watch to draw
-    /// after it while it is unfolded), then Undo, Redo and Settings.
+    /// A watch's root list, from Home, in order: New Task, every place as the sidebar has it
+    /// (headings folding what is under them; a heading's New is among its `offered`, for the watch
+    /// to draw after it while it is unfolded), then the rest of Home's own actions that the watch
+    /// has what they need for (`needs`, `watch_has`): Undo, Redo, What Should I Work On?, Sync Now
+    /// on a watch that syncs itself, Settings.
     pub watch: Vec<RootRow>,
 }
 
@@ -88,10 +90,10 @@ fn under(sidebar: &[SidebarEntry], at: usize) -> &[SidebarEntry] {
     &rest[..end]
 }
 
-/// The places as a phone and a watch arrange them, from `sidebar` as the view gives it (folded,
+/// The places as a phone and a watch of `watch`'s kind arrange them, from `sidebar` as the view gives it (folded,
 /// in the shell's capitals, its actions in short), its words in sentence case where `sentence`.
 #[must_use]
-pub fn arrangement(sidebar: &[SidebarEntry], sentence: bool) -> Arrangement {
+pub fn arrangement(sidebar: &[SidebarEntry], watch: WatchKind, sentence: bool) -> Arrangement {
     let title = |id: &str| crate::screen_actions::action_title(id, sentence);
     let tabs = vec![
         Tab { kind: TabKind::Place(Place::Today), title: Place::Today.title() },
@@ -142,12 +144,69 @@ pub fn arrangement(sidebar: &[SidebarEntry], sentence: bool) -> Arrangement {
             }
         }
     }
+    Arrangement { tabs, browse, groups, watch: watch_root(sidebar, watch, sentence) }
+}
+
+/// What a watch is, as far as its root list goes: whether it syncs with other devices itself.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WatchKind {
+    /// It syncs itself, with Sync Now of its own: a Wear OS watch.
+    #[default]
+    SyncsItself,
+    /// It syncs only through its phone, which a section of its own says (the Apple Watch's
+    /// "iPhone"): no Sync Now among Home's actions.
+    ThroughItsPhone,
+}
+
+/// What one of Home's actions needs of a device that a watch may not have: an action is on a
+/// watch's root list unless it needs something the watch lacks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Needs {
+    /// A keyboard: Key Help.
+    Keyboard,
+    /// A list of reminders due in the app: a watch gives each as a notification instead.
+    RemindersInTheApp,
+    /// An About of its own beside Settings: a watch's About is a page of its Settings.
+    AboutBesideSettings,
+    /// To sync itself: Sync Now.
+    SyncingItself,
+}
+
+/// What Home's action `id` needs of the device, if anything a watch may lack.
+#[must_use]
+pub fn needs(id: &str) -> Option<Needs> {
+    match id {
+        "keyboard-help" => Some(Needs::Keyboard),
+        "reminders-due" => Some(Needs::RemindersInTheApp),
+        "about" => Some(Needs::AboutBesideSettings),
+        "sync-now" => Some(Needs::SyncingItself),
+        _ => None,
+    }
+}
+
+/// Whether a watch of `kind` has what `need` asks for.
+#[must_use]
+pub fn watch_has(kind: WatchKind, need: Needs) -> bool {
+    match need {
+        Needs::Keyboard | Needs::RemindersInTheApp | Needs::AboutBesideSettings => false,
+        Needs::SyncingItself => kind == WatchKind::SyncsItself,
+    }
+}
+
+/// The action a watch's list leads with, its main one at the top as watches put it.
+const LEADS: &str = "new-task";
+
+/// A watch's root list, from Home: New Task first, then every place shown as Home lists them,
+/// then the rest of Home's own actions in Home's order, but those needing what the watch lacks.
+fn watch_root(sidebar: &[SidebarEntry], kind: WatchKind, sentence: bool) -> Vec<RootRow> {
     let action = |id: &str| RootRow::Action(crate::screen_actions::screen_action(id, sentence, true));
-    let watch = std::iter::once(action("new-task"))
-        .chain(sidebar.iter().filter(|entry| !entry.hidden).cloned().map(RootRow::Place))
-        .chain(["undo", "redo", "settings"].map(action))
-        .collect();
-    Arrangement { tabs, browse, groups, watch }
+    let fits = |id: &&str| needs(id).is_none_or(|need| watch_has(kind, need));
+    // Home's actions as they would be with anything due: what is left out is left out by a rule.
+    let home = crate::screen_actions::screen_action_ids(None, true, true);
+    let leads = home.iter().copied().filter(|id| *id == LEADS).filter(fits).map(action);
+    let rest = home.iter().copied().filter(|id| *id != LEADS).filter(fits).map(action);
+    leads.chain(sidebar.iter().filter(|entry| !entry.hidden).cloned().map(RootRow::Place)).chain(rest).collect()
 }
 
 #[cfg(test)]
@@ -175,7 +234,7 @@ mod tests {
 
     #[test]
     fn a_phone_has_its_tabs_and_browse_holds_every_other_place_in_the_sidebars_order() {
-        let arranged = arrangement(&sidebar(), true);
+        let arranged = arrangement(&sidebar(), WatchKind::SyncsItself, true);
         let tabs: Vec<&str> = arranged.tabs.iter().map(|tab| tab.title.as_str()).collect();
         assert_eq!(tabs, ["Today", "Tasks", "Browse", "Settings"]);
         let browse: Vec<&str> = arranged.browse.iter().map(|row| row.text.as_str()).collect();
@@ -184,7 +243,7 @@ mod tests {
 
     #[test]
     fn a_groups_screen_holds_its_places_a_level_shallower() {
-        let arranged = arrangement(&sidebar(), true);
+        let arranged = arrangement(&sidebar(), WatchKind::SyncsItself, true);
         let projects = &arranged.groups[0];
         assert_eq!(projects.group, SidebarGroup::Projects);
         let depths: Vec<u32> = projects.entries.iter().map(|place| place.depth).collect();
@@ -202,24 +261,49 @@ mod tests {
         folded[3].hidden = true;
         folded[3].expanded = Some(false);
         folded[4].hidden = true;
-        let projects = &arrangement(&folded, true).groups[0];
+        let projects = &arrangement(&folded, WatchKind::SyncsItself, true).groups[0];
         let hidden: Vec<bool> = projects.entries.iter().map(|place| place.hidden).collect();
         assert_eq!(hidden, [false, true], "Work shown, folding Website under it");
     }
 
     #[test]
-    fn a_watch_lists_new_task_every_place_then_undo_redo_and_settings() {
-        let arranged = arrangement(&sidebar(), true);
-        let first = &arranged.watch[0];
-        assert!(matches!(first, RootRow::Action(action) if action.id == "new-task"));
-        let last: Vec<&str> = arranged.watch[arranged.watch.len() - 3..]
-            .iter()
-            .filter_map(|row| match row {
-                RootRow::Action(action) => Some(action.id.as_str()),
-                RootRow::Place(_) => None,
-            })
-            .collect();
-        assert_eq!(last, ["undo", "redo", "settings"]);
-        assert_eq!(arranged.watch.len(), sidebar().len() + 4);
+    fn a_watch_lists_new_task_every_place_then_the_rest_of_homes_actions() {
+        let ids = |kind| {
+            let arranged = arrangement(&sidebar(), kind, true);
+            let first = arranged.watch.iter().position(|row| matches!(row, RootRow::Place(_))).unwrap();
+            let places = arranged.watch.iter().filter(|row| matches!(row, RootRow::Place(_))).count();
+            assert_eq!(places, sidebar().len(), "every place shown");
+            let actions: Vec<String> = arranged
+                .watch
+                .iter()
+                .filter_map(|row| match row {
+                    RootRow::Action(action) => Some(action.id.clone()),
+                    RootRow::Place(_) => None,
+                })
+                .collect();
+            assert_eq!(first, 1, "New Task leads, then the places");
+            actions
+        };
+        assert_eq!(ids(WatchKind::SyncsItself), ["new-task", "undo", "redo", "what-now", "sync-now", "settings"]);
+        assert_eq!(ids(WatchKind::ThroughItsPhone), ["new-task", "undo", "redo", "what-now", "settings"]);
+    }
+
+    #[test]
+    fn every_homes_action_is_on_a_watch_or_left_out_by_a_named_rule() {
+        for kind in [WatchKind::SyncsItself, WatchKind::ThroughItsPhone] {
+            let arranged = arrangement(&sidebar(), kind, true);
+            let listed: Vec<&str> = arranged
+                .watch
+                .iter()
+                .filter_map(|row| match row {
+                    RootRow::Action(action) => Some(action.id.as_str()),
+                    RootRow::Place(_) => None,
+                })
+                .collect();
+            for id in crate::screen_actions::screen_action_ids(None, true, true) {
+                let left_out = needs(id).filter(|need| !watch_has(kind, *need));
+                assert_eq!(listed.contains(&id), left_out.is_none(), "{id} on a {kind:?} watch: left out by {left_out:?}");
+            }
+        }
     }
 }
