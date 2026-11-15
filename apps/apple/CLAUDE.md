@@ -55,8 +55,8 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   value (the rest of the app's line, whether it is folded, and the level where it changes:
   `AppModel.spoken`), its children ignored; left alone, a row says its secondary text twice.
 - **Every list is SwiftUI**, since hosted `Text` in a UIKit cell fails the audit for Dynamic
-  Type and clipping, where a SwiftUI `List` passes. The task list, Blocks (the same screen: no
-  filter, a row's tap its Edit Block) and the day are `TaskListViewController` and
+  Type and clipping, where a SwiftUI `List` passes. The task list, Blocks (the same screen,
+  with no filter) and the day are `TaskListViewController` and
   `DayViewController`, each a `UIHostingController` over its SwiftUI screen and the shared
   `TaskListModel` or `DayModel`; their rows split actions by `AppRowActions` (Mark Done swiped
   from the leading edge, the other primary actions and folding from the trailing, the rest
@@ -129,6 +129,29 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
 - **No bottom toolbars**: inside a tab bar the floating bar sits over a toolbar's buttons,
   so a tap on Undo lands on the Today tab. Rows scrolled under the glass tab bar fail
   contrast, so pushed forms set `hidesBottomBarWhenPushed`.
+- **A screen's own actions are the core's** (`ViewModel.screenActions`, followed by
+  `TaskListModel.screenActions` and `DayModel.screenActions` while the app shows their place,
+  run by `AppModel.perform`, `Shared/Screens/ScreenActions.swift`): New Task or New Block, Filter
+  Tasks, New Project Inside, What Should I Work On?, the moves through days, Undo and Redo, in the
+  core's order and Title Case, dimmed when not `enabled`. A `shell` one is the app's to run (Filter
+  Tasks puts the filter field in hand); every other is `Key(id)`, and where it opens the app's
+  quick-add line (New Task) the platform's quick add comes up over it once the app is still. No
+  app keeps its own list of them, and the filter field is shown wherever the core offers Filter
+  Tasks (`TaskListModel.filters`: the trash too, not Blocks). On the iPhone and iPad they are the
+  navigation bar's (`ScreenActionBar`): Undo and Redo leading as the system's arrows, New trailing
+  as a plus, each named by the core's title (icons, since words clip the title at large sizes); a
+  list's rest in its Place Actions menu after them, the day's among its buttons over the rows
+  (`ScreenActionRow`, with the Day Actions menu after them). Undo and Redo there undo typing first
+  where a field has some, as ⌘Z does. The Mac draws them all as a row of buttons over its pane
+  (the day's with Day Actions after them), "…" after one that `asks`, the Mac's mark alone
+  (`ScreenAction.named`); the watch as buttons at the foot of its list, but Filter Tasks, which is
+  its field above. Home (`ShellEvent.home`) is a braille device's, never shown here: the places
+  are the tab bar's, the sidebar's and the watch's root.
+- **A row's tap and Return are the core's Open** (`Key("open")`), on every Apple app's list and
+  day but the watch's, whose tap offers the row's actions: a task's details (its `Form`, which
+  each window's `AppQuestions` opens beside the list), a block's Edit Block, a sitting's task,
+  free time's Add Block, a cancelled day restored, a trashed task restored; a row with none is
+  refused in the core's words.
 - **The store is in the App Group's container** (`Shared/AppGroup.swift`; the group
   `group.dev.emassey0135.lumenna`, shared with the extensions, named once in project.yml's
   `LUMENNA_APP_GROUP` and read from the Info.plist's `LumennaAppGroup`), where a widget or an
@@ -194,10 +217,11 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   occurrence (`AppModel.replan(from:)`), never `ProposalEvent::Replan`: today with Replan from Now
   over it, the screens following, and the warning dismissed on every device once something is
   replanned. No Apple app fills the app's due list (`DueEvent::Look`), the system holding the
-  reminders, so `DueEvent::Replan(id)`, for one that list holds, is never sent. A reminder's block is the
+  reminders, so `DueEvent::Replan(id)`, `Press` and `LookBack`, for that list, are never sent: a
+  notification's button is answered through `Device` (`ReminderResponder`). A reminder's block is the
   app's `ShowBlock` on every Apple app.
-- **The day's own actions** (`Plan.actions`) are a Day Actions menu button among the day's
-  buttons (in the navigation bar it crowds the title, which the iPad's narrow column clips)
+- **The day's own actions** (`Plan.actions`) are a Day Actions menu button after the day's
+  screen actions (in the navigation bar it crowds the title, which the iPad's narrow column clips)
   and the heading's custom actions, which make the heading at least 44 points tall: an element
   with actions fails the audit's hit area. Replan from Now and Plan the Day are one SwiftUI
   screen for all three apps (`Shared/Forms/AppProposalForm.swift`, the app's proposal): each
@@ -259,8 +283,9 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   iPhone's and iPad's list and the watch's, each page the shared `SettingsPageForm` (its
   settings in order, a choice a section of its own, its buttons, its caption), what is a
   platform's own drawn beside: the Mac's login item and shortcuts on General, the exports and the
-  store's own actions on Export and Import. A page with nothing this device has is left out
-  (General on iOS; on the watch, every page with files).
+  store's own actions on Export and Import. Which pages have something on them here is the
+  core's (`SettingsView.pages` lists only those: no General on iOS), never filtered by an app; the
+  watch alone leaves out a page with no setting, whose buttons are all files, the phone's.
 - **The words are the core's, and Swift writes none** (`Shared/Words.swift`): every fixed word is
   `Wording`, the core's `ShellWords` asked for once in Title Case as this device calls itself
   (`.iPhone`, `.iPad`, `.mac`, `.watch`; its `thisDevice` is what `PairingAs` says), quick add's,
@@ -390,8 +415,8 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   hand, which follow the row in hand. Every list's selection is the row in hand, scrolled to
   only when the app moved it, and folding there is the row's own Expand or Collapse. The task
   list is SwiftUI's `List`, rows nested in disclosure groups, which is AppKit's outline
-  underneath, reporting levels and expansion itself; so are Blocks (the same screen, its Return
-  and double click Edit Block), the day, Devices and the sidebar (`SidebarScreen`, whose
+  underneath, reporting levels and expansion itself; so are Blocks (the same screen), the day,
+  Devices and the sidebar (`SidebarScreen`, whose
   headings keep the heading trait and are never selected, and whose rows' context menus are
   their own, a heading's included). Only the pick sheet is an AppKit table.
   **A SwiftUI list takes focus through its own `NSOutlineView`** (`preferredFirstResponder`,
@@ -404,9 +429,9 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   by itself, and a recognizer's, at the click's end, comes after a key pressed straight away.
   Space, Delete and Return are taken the same way (`ListKeys`) while the outline or a view in
   it is first responder, never by SwiftUI's `onKeyPress`, which waits on SwiftUI's focus, a
-  moment behind the first responder. Space and Delete are the core's keys
-  (`AppModel.key`: `.key("toggle")`, `.key("delete")`), never kinds of the app's own, so a
-  trashed task's Delete asks Delete from Trash, as iOS's Command-Delete does.
+  moment behind the first responder. All three are the core's keys (`AppModel.key`:
+  `.key("toggle")`, `.key("delete")`, `.key("open")`, a double click too), never kinds of the
+  app's own, so a trashed task's Delete asks Delete from Trash, as iOS's Command-Delete does.
 - **Resident in the menu bar, and the device's sync process.** No daemon is needed or used:
   the app's network middleware syncs for as long as it runs and, while it holds the endpoint,
   serves the command surface at the profile's address (`App.serveCommands`, the bridge's `rpc`
@@ -756,8 +781,8 @@ iPhone's and iPad's and the Mac's are behind `#available`, the watch's always th
   no list and syncs with no device directly, so nothing is "this device" and a device's
   status says only its version (`device_status(…, direct: false)`).
 - **A row offers its actions when tapped** where the phone has more swipe actions than a
-  watch row holds (a block, a sitting, free time); a project, label or filter's are buttons
-  at the foot of its list. The day's heading, tapped, offers the day's own actions, Plan the
+  watch row holds (a block, a sitting, free time); the place's screen actions, then a project,
+  label or filter's own, are buttons at the foot of its list, as the day's are at its foot. The day's heading, tapped, offers the day's own actions, Plan the
   Day and Replan from Now opening the shared proposal screen in the asker's sheet. Completion
   is offered after the line is entered, beside the field, as BTSpeak offers it: the system's
   input screen takes no suggestions.

@@ -221,12 +221,12 @@ extension UIViewController {
     /// typing is what goes; otherwise the last change to the store, the app's.
     func undoInStore(_ core: Core) {
         if let typing = UIResponder.editingWithUndo, typing.canUndo { typing.undo(); return }
-        core.app.send(.undo)
+        core.app.key("undo")
     }
 
     func redoInStore(_ core: Core) {
         if let typing = UIResponder.editingWithUndo, typing.canRedo { typing.redo(); return }
-        core.app.send(.redo)
+        core.app.key("redo")
     }
 
     /// A round with every paired device now: the app says it is syncing, then how it went.

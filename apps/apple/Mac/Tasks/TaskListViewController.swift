@@ -14,8 +14,8 @@ import SwiftUI
 /// block's Return and double click are its Edit Block, the form for every occurrence.
 struct MacTaskListScreen: View {
     @ObservedObject var model: TaskListModel
-    /// Goes to the details of the task in hand: the pane beside the list.
-    let details: () -> Void
+    /// Runs one of the place's own actions: the AppKit controller's, which has quick add's sheet.
+    let run: (LumennaApp.ScreenAction) -> Void
     @FocusState private var listFocused: Bool
     @FocusState private var filterFocused: Bool
 
@@ -23,17 +23,11 @@ struct MacTaskListScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if model.blocks {
-                HStack {
-                    Text(model.readback)
-                        .font(.subheadline)
-                        .foregroundStyle(Color.quietLabel)
-                    Spacer()
-                    Button(Commands.asking("new-block")) { model.core.app.send(.block(.new(start: nil, minutes: nil))) }
-                }
+            // The place's own actions, the core's, in its order: New Task or New Block, Filter
+            // Tasks, New Project Inside, Undo, Redo.
+            ScreenActionRow(actions: model.screenActions, run: run)
                 .padding(.horizontal, 12)
                 .padding(.top, 12)
-            }
             if model.filters {
                 // The filter language, which completes: a strip beneath, and a list on Down.
                 CompletingLine(app: model.core.app, syntax: .filter, text: $model.filter) {
@@ -47,14 +41,11 @@ struct MacTaskListScreen: View {
                         }
                 }
                 .padding(.horizontal, 12)
-                .padding(.top, 12)
             }
-            if !model.blocks {
-                Text(model.readback)
-                    .font(.subheadline)
-                    .foregroundStyle(Color.quietLabel)
-                    .padding(.horizontal, 12)
-            }
+            Text(model.readback)
+                .font(.subheadline)
+                .foregroundStyle(Color.quietLabel)
+                .padding(.horizontal, 12)
             ScrollViewReader { scroller in
                 List(selection: Binding(get: { model.focus }, set: { if let id = $0 {
                     // A row chosen takes the list's focus with it: a click selects a SwiftUI list's
@@ -75,7 +66,7 @@ struct MacTaskListScreen: View {
                         }
                     }
                 } primaryAction: { _ in
-                    if !model.trash { open() }
+                    open()
                 }
                 .onChange(of: model.landed?.count) { _, _ in
                     // The app moved the row in hand: the outline scrolls to it, which the
@@ -103,7 +94,6 @@ struct MacTaskListScreen: View {
             guard !model.blocks else { return false }
             model.core.app.key("toggle", on: row.id)
         case .returnKey:
-            guard !model.trash else { return false }
             open()
         case .delete:
             model.core.app.key("delete", on: row.id)
@@ -111,10 +101,9 @@ struct MacTaskListScreen: View {
         return true
     }
 
-    /// Return or a double click on the row in hand: a task's details beside the list, a block's
-    /// Edit Block.
+    /// Return or a double click on the row in hand: the core's Open, a task's details beside
+    /// the list (its form, which the window opens), a block's Edit Block, a trashed task restored.
     private func open() {
-        guard model.blocks else { return details() }
         if let row = model.inHand { model.key("open", on: row) }
     }
 
@@ -164,7 +153,7 @@ struct MacTaskListScreen: View {
             let done = row.row.checked == true
             let detail = row.line?.detail ?? ""
             HStack(alignment: .top, spacing: 6) {
-                if model.filters {
+                if model.checks {
                     // For a pointer alone, as the web's is: Space and the row's menu mark it done
                     // for everyone else, and its line says "completed" in words. Left in, the
                     // check box was said before the title, and differently on a row with
@@ -212,9 +201,21 @@ final class TaskListViewController: NSViewController {
         self.core = core
         let model = TaskListModel(core: core, place: place)
         self.model = model
-        screen = MacTaskListScreen(model: model, details: { [weak window] in window?.showDetails() })
+        weak var host: TaskListViewController?
+        screen = MacTaskListScreen(model: model, run: { action in host?.perform(action) })
         super.init(nibName: nil, bundle: nil)
+        host = self
         title = model.title
+    }
+
+    /// One of the place's own actions: the filter field put in hand, and every other the core's,
+    /// quick add's sheet coming up where it opened the app's line.
+    func perform(_ action: LumennaApp.ScreenAction) {
+        core.app.perform(action, shell: { [weak self] id in
+            if id == "filter" { self?.focusFilter() }
+        }, lineOpened: { [weak self] in
+            self?.addTask()
+        })
     }
 
     @available(*, unavailable)
@@ -263,7 +264,7 @@ final class TaskListViewController: NSViewController {
     }
 
     func addTask() {
-        guard let window = view.window else { return }
+        guard let window = view.window, window.attachedSheet == nil else { return }
         QuickAddSheet.present(on: window, core: core)
     }
 

@@ -5,7 +5,7 @@ import SwiftUI
 /// sittings in it, the free time between, where now falls, and what is cancelled for the day,
 /// each as the core words its line. Tapping a row offers its actions, the app's, as the
 /// phone's swipe actions do: a watch's row has room for few. A block with sittings folds, by
-/// its own Expand or Collapse. Going to another day, and a new block, are buttons at the foot.
+/// its own Expand or Collapse. The day's screen actions, the core's, are buttons at the foot.
 struct DayView: View {
     @EnvironmentObject private var core: Core
     @EnvironmentObject private var asker: WatchAsker
@@ -24,13 +24,13 @@ struct DayView: View {
                     rowView(row.item, line: row.line)
                         .accessibilityFocused($spoken, equals: row.id)
                 }
+                // The day's screen actions, the core's, in its order: New Block, What Should I Work
+                // On?, the moves through days (Go to Day asked with the watch's picker,
+                // `WatchAsker`), Undo and Redo.
                 Section {
-                    Button(Commands.title("new-block")) { core.app.send(.block(.new(start: nil, minutes: nil))) }
-                    Button(Commands.title("previous-day")) { model.move(.previous) }
-                    if core.app.view.day?.today == false { Button(Commands.title("go-to-now")) { model.move(.now) } }
-                    Button(Commands.title("next-day")) { model.move(.next) }
-                    // The app's own question, asked with the watch's picker (`WatchAsker`).
-                    Button(Commands.title("go-to-day")) { model.move(.ask) }
+                    ForEach(model.screenActions, id: \.id) { action in
+                        ScreenActionButton(action: action) { model.perform($0) }
+                    }
                 }
             }
             .navigationTitle(model.title)

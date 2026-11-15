@@ -372,8 +372,8 @@ targets:
       # differences beside theirs (FormParts.swift).
       - path: Shared/Forms
         group: Shared
-      # The lists and the day as the app has them, and how a row's actions are split, the
-      # phone's and the Mac's too.
+      # The lists and the day as the app has them, how a row's actions are split, and the
+      # screen's own actions, the phone's and the Mac's too.
       # Through their folder, so each file sits in one group: added by path into Shared, each
       # was a child of two groups, which Xcode 27.2 refuses to read.
       - path: Shared/Screens
@@ -382,6 +382,7 @@ targets:
           - TaskListModel.swift
           - DayModel.swift
           - AppRowActions.swift
+          - ScreenActions.swift
     dependencies:
       - target: LumennaAppWatch
       # The complications.

@@ -18,20 +18,17 @@ final class SettingsViewController: AppListViewController {
     override var offersUndo: Bool { false }
 
     override func appear() {
-        // How syncing is going, the network's, for the Devices row; and the settings, so a page
-        // with none this device has is left out.
+        // How syncing is going, the network's, for the Devices row; and the settings, whose
+        // pages are only those with something on them here.
         core.app.send(.devices(.show))
         core.app.send(.settings(.open))
     }
 
-    /// The core's pages, in its order and words, those with something here: General holds what
-    /// a platform keeps running in the background, which an iPhone does not offer.
+    /// The core's pages, in its order and words: only those with something on them for this
+    /// device (not General, where an iPhone keeps nothing running and follows its own clock),
+    /// once the app has the settings open.
     private var pages: [LumennaApp.SettingsPage] {
-        let view = core.app.view.settings
-        let here = Set(view?.settings.map(\.setting.key) ?? [])
-        return (view?.pages ?? LumennaApp.settingsPages(ownClock: true, sentence: false)).filter { page in
-            !page.buttons.isEmpty || page.id == "export" || page.keys.contains(where: here.contains)
-        }
+        core.app.view.settings?.pages ?? []
     }
 
     override func rows() -> (items: [AppItem], count: String)? {

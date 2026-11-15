@@ -27,6 +27,10 @@ final class DayModel: ObservableObject {
     @Published private(set) var title = LumennaApp.placeTitle(place: .today)
     /// The day's own actions (`DayView.actions`): Plan the Day, Replan from Now, End the Day.
     @Published private(set) var actions: [LumennaApp.Offered] = []
+    /// What the day offers of its own beside its rows, the core's (`ViewModel.screenActions`):
+    /// New Block, What Should I Work On?, the moves between days, Undo and Redo. Not the day's own
+    /// actions (`actions`), which are the plan's.
+    @Published private(set) var screenActions: [LumennaApp.ScreenAction] = []
     /// The row in hand, the app's.
     @Published private(set) var focus: String?
     /// The row the app moved focus to, each time it moves it: a new `count` is a new move.
@@ -81,6 +85,7 @@ final class DayModel: ObservableObject {
         if heading != self.heading { self.heading = heading }
         if title != lines.dayTitle { title = lines.dayTitle }
         if actions != day.offered { actions = day.offered }
+        if screenActions != view.screenActions { screenActions = view.screenActions }
         if date != day.date { date = day.date }
         if focus != view.focus { focus = view.focus }
         let moved = landing.map { view.landing > $0 } ?? false
@@ -121,6 +126,12 @@ final class DayModel: ObservableObject {
     /// One of the day's own actions.
     func perform(_ action: LumennaApp.Offered) {
         core.app.act(action, on: .day)
+    }
+
+    /// One of the screen's own actions, the core's, on the day shown (`AppModel.perform`).
+    func perform(_ action: LumennaApp.ScreenAction) {
+        appear()
+        core.app.perform(action)
     }
 
     /// Moves through the days: the app says the day newly shown, and puts now in hand for Now.

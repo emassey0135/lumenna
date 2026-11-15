@@ -22,17 +22,17 @@ struct SettingsView: View {
 
         var body: some View {
             List {
-                // The core's pages that hold settings this watch has; files are the phone's.
-                ForEach(pages, id: \.id) { page in
-                    NavigationLink(page.title) { SettingsPageForm(model: model, id: page.id).navigationTitle(page.title) }
+                // The core's pages, only those with something on them here, in its order: Devices
+                // the watch's own list of them, and a page with no setting left out, since what it
+                // holds are buttons for files, which are the phone's.
+                ForEach(model.pages.filter { $0.id == "devices" || !$0.keys.isEmpty }, id: \.id) { page in
+                    if page.id == "devices" {
+                        NavigationLink(page.title) { DevicesView() }
+                    } else {
+                        NavigationLink(page.title) { SettingsPageForm(model: model, id: page.id).navigationTitle(page.title) }
+                    }
                 }
-                NavigationLink(model.page("devices")?.title ?? Pages.title("devices")) { DevicesView() }
             }
-        }
-
-        private var pages: [LumennaApp.SettingsPage] {
-            let here = Set(model.settings.map(\.key))
-            return model.pages.filter { $0.id != "devices" && $0.keys.contains(where: here.contains) }
         }
     }
 }
