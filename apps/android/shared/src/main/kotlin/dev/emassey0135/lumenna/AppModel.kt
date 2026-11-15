@@ -96,6 +96,12 @@ class AppModel(
     /** What is on the screen now, with no changes (`App::screen_view`). */
     fun screenView(): dev.emassey0135.lumenna.app.ScreenView = app.screenView()
 
+    /** The task form for the task the details show, as its controls in tab order; none while none is shown. */
+    fun taskForm(): dev.emassey0135.lumenna.app.DialogShown? = app.taskFormOn(0u)
+
+    /** Settings page [page] as its controls in tab order, while settings are open; none otherwise. */
+    fun settingsPage(page: String): dev.emassey0135.lumenna.app.DialogShown? = app.settingsPageOn(0u, page)
+
     private val quiet = MutableStateFlow(0u)
     private var opening = false
 

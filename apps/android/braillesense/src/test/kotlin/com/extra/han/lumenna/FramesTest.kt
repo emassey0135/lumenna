@@ -386,4 +386,33 @@ class FramesTest {
         assertTrue("from the top of the bar, its submenu unopened", ran)
         assertTrue(closed)
     }
+
+    @Test fun aDialogsListMovesInPlaceAndEnterPicksTheOneInHand() {
+        var at = 0
+        var picked = ""
+        fun frame() = FormFrame("q", "Move to", listOf(
+            Control.Pick("choices", "Project", listOf("a" to "Home", "b" to "Office", "c" to "Garden"), at, move = { at = it }, pick = { picked = it }),
+        ), null, BY_LETTER, READ)
+        frame().key(Key.Down)
+        assertEquals(1, at)
+        frame().key(Key.Typed("g"))
+        assertEquals("a first letter finds its option", 2, at)
+        frame().key(Key.Enter)
+        assertEquals("c", picked)
+    }
+
+    @Test fun aQuestionsAnswersAreSteppedWithSpaceAndBackspace() {
+        val answers = listOf(
+            Control.Static("message", "It cannot be undone."),
+            Control.Button("cancel", "Cancel", role = ControlRole.PROMPT_BUTTON) {},
+            Control.Button("yes", "Delete", role = ControlRole.PROMPT_BUTTON) {},
+        )
+        val frame = FormFrame("q", "Delete?", answers, null, BY_LETTER, READ, first = 1)
+        assertEquals("the message is said as it opens", "It cannot be undone.", frame.preamble)
+        assertEquals("cancel", frame.current?.key)
+        frame.key(Key.Space)
+        assertEquals("yes", frame.current?.key)
+        frame.key(Key.Space)
+        assertEquals("wrapping round, never onto the message", "cancel", frame.current?.key)
+    }
 }

@@ -16,7 +16,6 @@ import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.SettingsPages
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.commandTitle
-import dev.emassey0135.lumenna.flag
 import dev.emassey0135.lumenna.name
 import dev.emassey0135.lumenna.offeredOf
 import dev.emassey0135.lumenna.on
@@ -24,6 +23,12 @@ import dev.emassey0135.lumenna.shownRows
 import dev.emassey0135.lumenna.text
 import dev.emassey0135.lumenna.TextOffsets
 import dev.emassey0135.lumenna.app.ActingOn
+import dev.emassey0135.lumenna.app.ControlMove
+import dev.emassey0135.lumenna.app.ControlSends
+import dev.emassey0135.lumenna.app.ControlShown
+import dev.emassey0135.lumenna.app.ControlType
+import dev.emassey0135.lumenna.app.DialogShown
+import dev.emassey0135.lumenna.app.controlEvent
 import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.Answer
 import dev.emassey0135.lumenna.app.Asks
@@ -31,7 +36,6 @@ import dev.emassey0135.lumenna.app.BlockEvent
 import dev.emassey0135.lumenna.app.DayKind
 import dev.emassey0135.lumenna.app.DetailsEvent
 import dev.emassey0135.lumenna.app.DevicesEvent
-import dev.emassey0135.lumenna.app.FieldKind
 import dev.emassey0135.lumenna.app.Lines
 import dev.emassey0135.lumenna.app.Offered
 import dev.emassey0135.lumenna.app.PairEvent
@@ -40,19 +44,15 @@ import dev.emassey0135.lumenna.app.ProposalEvent
 import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.ScreenChange
 import dev.emassey0135.lumenna.app.ScreenView
-import dev.emassey0135.lumenna.app.Shown
 import dev.emassey0135.lumenna.app.SidebarGroup
 import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.brailleMenuBar
 import dev.emassey0135.lumenna.app.sidebarKey
-import dev.emassey0135.lumenna.app.buttonLetter
 import dev.emassey0135.lumenna.app.commandLetter
 import dev.emassey0135.lumenna.app.dueLetter
 import dev.emassey0135.lumenna.app.nothingOnLetter
 import dev.emassey0135.lumenna.app.noRowStartsWith
 import dev.emassey0135.lumenna.app.pageLetter
-import dev.emassey0135.lumenna.app.SettingKind
-import dev.emassey0135.lumenna.app.SettingView
 import dev.emassey0135.lumenna.app.SettingsEvent
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Side
@@ -135,6 +135,9 @@ class Shell(
     private var lastSpeech = ""
     private val announcements = ArrayList<String>()
     private var pendingRow: String? = null
+
+    /** The name of the screen just opened, until it is said with its line. */
+    private var pendingTitle: String? = null
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val saying = Runnable { flush() }
 
@@ -195,6 +198,7 @@ class Shell(
         val parts = said + listOfNotNull(row.takeIf { it.isNotBlank() })
         announcements.clear()
         pendingRow = null
+        pendingTitle = null
         if (parts.isNotEmpty()) out.say(parts.joinToString(" "))
         // What changes say is for the cells too: someone reading braille alone hears none of it.
         if (said.isNotEmpty()) showMessage(said.joinToString(" "))
@@ -239,9 +243,9 @@ class Shell(
         menu?.let { return it }
         confirming?.let { return confirmation(it) }
         val model = view ?: return Blank
-        model.asking?.let { asked -> question(model, asked)?.let { return it } }
-        model.line?.let { return quickAdd(model) }
-        model.blockForm?.let { return blockForm(model) }
+        // What the app has open on top, as the core describes it: a question, the block form, quick add.
+        screen.dialog?.let { return appDialog(it) }
+        model.asking?.let { asked -> formAsked(asked)?.let { return it } }
         model.proposal?.let { return proposal(model) }
         model.reminders?.let { return reminders(model) }
         return when (val page = pages.last()) {
@@ -258,9 +262,10 @@ class Shell(
     }
 
     /** What a form held goes with it: the next one opened starts from its own values. */
-    private fun forgetClosed(model: ViewModel?) {
-        if (model?.blockForm == null) forget("block:", "blockform")
-        if (model?.line == null) forget("quickadd", "quickadd")
+    private fun forgetClosed(@Suppress("UNUSED_PARAMETER") model: ViewModel?) {
+        val open = screen.dialog?.id
+        editors.keys.removeAll { it.startsWith("dialog:") && !it.startsWith("dialog:$open:") }
+        picked.keys.removeAll { !it.startsWith("$open:") }
     }
 
     private fun forget(editorPrefix: String, frameId: String) {
@@ -301,17 +306,19 @@ class Shell(
             val title = when {
                 !fresh -> ""
                 built is ListFrame -> built.title
-                built is FormFrame -> built.title?.let(::dialogTitle).orEmpty()
+                // A dialog says it is one and what it opens with; a question's answers are its prompt.
+                built is FormFrame -> listOfNotNull(built.title?.let { if (built.prompt) it else dialogTitle(it) }, built.preamble.ifEmpty { null }).joinToString(". ")
                 else -> ""
             }
             val row = rendered.speech
-            // A menu's command opens its screen inside the key that chose it, and that key then
-            // redraws the same screen: the screen's name, already due to be said, stays.
+            // A screen opened inside the key that chose it is drawn again by that key, its line
+            // perhaps moved on: its name, due to be said, stays until it is.
+            if (title.isNotBlank()) pendingTitle = title
+            val heading = title.ifBlank { pendingTitle.orEmpty() }
             pendingRow = when {
-                title.isBlank() && pendingRow?.endsWith(row) == true -> pendingRow
-                title.isBlank() -> row
-                title.last() in ".?!" -> "$title $row"
-                else -> "$title. $row"
+                heading.isBlank() -> row
+                heading.last() in ".?!" -> "$heading $row"
+                else -> "$heading. $row"
             }
         }
         lastSpeech = rendered.speech
@@ -511,7 +518,10 @@ class Shell(
 
     private fun back() {
         val model = view
+        val cancel = screen.dialog?.cancel.orEmpty()
         when {
+            // A dialog the app has open closes as its Cancel does.
+            cancel.isNotEmpty() -> cancel.forEach(::send)
             model?.asking != null -> send(ShellEvent.Cancel)
             model?.line != null -> send(ShellEvent.Typing(Typing.Close))
             model?.blockForm != null -> send(ShellEvent.Block(BlockEvent.Cancel))
@@ -864,165 +874,135 @@ class Shell(
 
     // ── Details ────────────────────────────────────────────────────────────────────────────
 
+    /** A task's form, opened here (a reminder's notification): the core's, as its controls. */
     private fun task(model: ViewModel, id: String): Frame {
-        val details = model.details?.takeIf { it.task.id == id } ?: return Rendering(appWords.details.gone)
-        val form = details.fields
-        val set = { key: String, value: String -> send(ShellEvent.Details(DetailsEvent.Field(key, value))) }
-        val controls = mutableListOf<Control>()
-        details.form.forEach { field ->
-            when {
-                field.key == "project" -> {
-                    val options = details.projects.map { it.id to it.title }
-                    val at = details.projects.indexOfFirst { it.title == form.project }.coerceAtLeast(0)
-                    controls += Control.Choice(field.key, field.label, options, at, { set("project", it) })
-                }
-                form.text(field.key) != null -> {
-                    val edit = editor("task:$id:${field.key}", form.text(field.key).orEmpty(), multiLine = field.kind == FieldKind.LINES)
-                    controls += Control.Edit(field.key, field.label, edit, field.hint, changed = { set(field.key, it) })
-                }
-                else -> {
-                    val options = field.options.map { it.id to it.title }
-                    val at = field.options.indexOfFirst { it.id == form.priority.toString() }.coerceAtLeast(0)
-                    controls += Control.Choice(field.key, field.label, options, at, { set(field.key, it) })
-                }
-            }
-        }
-        controls += Control.Button("save", appWords.details.save) { send(ShellEvent.Details(DetailsEvent.Save)) }
-        details.lines.forEachIndexed { index, line -> controls += Control.Static("line$index", "${line.label}: ${line.value}") }
-        details.task.offered.forEach { action ->
-            controls += Control.Button("act:${action.kind}", action.name, actionLetter(action.kind)?.singleOrNull(), asks = action.asks != Asks.NOTHING) {
-                send(ShellEvent.ActOn(ActingOn.Details, action))
-            }
-        }
-        return form("task:$id", details.task.title, controls)
+        val shown = app.taskForm()?.takeIf { model.details?.task?.id == id } ?: return Rendering(appWords.details.gone)
+        return dialog(shown, "task:$id:")
     }
 
-    /**
-     * A dialog. Its buttons each have a letter, pressed with Space or Enter: the core's where it
-     * gives one, else the first free one of its name (`menu_shortcuts`), as a menu's items do.
-     */
-    private fun form(id: String, title: String?, controls: List<Control>): Frame {
+    private fun form(id: String, title: String?, controls: List<Control>, first: Int = 0): Frame {
         val buttons = controls.filterIsInstance<Control.Button>()
         val given = letters.shortcuts(buttons.map { it.label to it.letter }).zip(buttons).associate { (letter, button) -> button to letter }
         val lettered = controls.map { control ->
             if (control is Control.Button && control.letter == null && given[control] != null) {
-                Control.Button(control.key, control.label, given[control], control.asks, control.press)
+                Control.Button(control.key, control.label, given[control], control.asks, control.role, control.press)
             } else {
                 control
             }
         }
-        return FormFrame(id, title, lettered, selected[id], letters, readings, moved = { selected[id] = it.key })
+        return FormFrame(id, title, lettered, selected[id], letters, readings, moved = { selected[id] = it.key }, first = first)
     }
 
-    private fun blockForm(model: ViewModel): Frame {
-        val form = model.blockForm!!
-        val fields = form.values
-        val set = { key: String, value: String -> send(ShellEvent.Block(BlockEvent.Field(key, value))) }
-        val controls = mutableListOf<Control>()
-        form.refusal?.let { controls += Control.Static("refusal", it) }
-        form.fields.forEach { field ->
-            when (field.kind) {
-                FieldKind.CHOICE -> {
-                    val options = field.options.map { it.id to it.title }
-                    val at = field.options.indexOfFirst { it.id == fields.text(field.key) }.coerceAtLeast(0)
-                    controls += Control.Choice(field.key, field.label, options, at, { set(field.key, it) })
-                }
-                FieldKind.TOGGLE -> {
-                    val on = fields.flag(field.key)
-                    controls += Control.Toggle(field.key, field.label, on) { set(field.key, it.toString()) }
-                }
-                else -> {
-                    val initial = if (field.key == "date") form.date else fields.text(field.key)
-                    val edit = editor("block:${form.heading}:${field.key}", initial, multiLine = field.kind == FieldKind.LINES)
-                    controls += Control.Edit(field.key, field.label, edit, field.hint, changed = { set(field.key, it.trim()) })
-                }
-            }
-        }
-        controls += Control.Button("save", form.yes) { send(ShellEvent.Block(BlockEvent.Save)) }
-        return form("blockform", form.heading, controls)
-    }
+    // ── Dialogs ────────────────────────────────────────────────────────────────────────────
 
-    // ── Questions ──────────────────────────────────────────────────────────────────────────
+    /** Where each dialog's list stands, by `<dialog>:<control>`: the one thing a dialog keeps here. */
+    private val picked = HashMap<String, Int>()
 
-    private fun question(model: ViewModel, asked: dev.emassey0135.lumenna.app.Asking): Frame? {
-        val shown = (screen.shown as? Shown.Question)?.field0?.takeIf { it.number == asked.number }
-            ?: return if (asked.question is Question.Immediate) null else Rendering("")
-        val id = "question:${asked.number}"
-        val cancelled = { send(ShellEvent.Cancel) }
-        val answer = { given: Answer -> send(ShellEvent.Answer(given)) }
-        if (shown.form) {
-            // A task's form is its own screen here; building this frame opens it once.
-            if (handledForm != asked.number) {
-                handledForm = asked.number
-                val action = asked.action
-                // A task's form, by Enter (Edit) or its own Edit Task Details.
-                if (action != null && action.subject == dev.emassey0135.lumenna.app.Subject.TASK && (action.kind == ActionKind.EDIT || action.kind == ActionKind.EDIT_TASK)) {
-                    send(ShellEvent.Details(DetailsEvent.Show(action.target)))
-                    pages.addLast(Page.Task(action.target))
-                }
-                cancelled()
-            }
-            return null
-        }
-        if (shown.line) {
-            return LineFrame(id, shown.prompt, editor(id, shown.typed), readings = readings, done = {
-                answer(Answer.Text(it))
-                editors.remove(id)
-            })
-        }
-        if (asked.question is Question.Pick) {
-            val offered = asked.choices ?: return Rendering(shown.prompt)
-            val rows = offered.choices.mapIndexed { index, choice ->
-                val line = shown.choices.getOrNull(index)
-                Row(choice.id, listOfNotNull(line?.text ?: choice.title, choice.reason, line?.level).joinToString(", "),
-                    braille = line?.braille?.ifEmpty { null } ?: line?.text ?: choice.title, finding = choice.title,
-                    open = { answer(Answer.Picked(choice.id, null)) })
-            }
-            return list(id, shown.prompt, rows, null, "", hold = false)
-        }
-        val rows = shown.buttons.map { button ->
-            Row(button.id, button.title, role = ControlRole.PROMPT_BUTTON, open = {
-                when (button.id) {
-                    "yes" -> answer(Answer.Yes)
-                    "cancel" -> cancelled()
-                    else -> answer(Answer.Picked(button.id, null))
-                }
-            })
-        }
-        return list(id, shown.prompt, rows, null, "", hold = false, prompt = true)
-    }
-
-    // ── Quick add ──────────────────────────────────────────────────────────────────────────
-
-    /** The line as it stood when a completion was chosen, until the app's new one arrives. */
+    /** The quick-add line as it stood when a completion was chosen, until the app's new one arrives. */
     private var completingFrom: String? = null
 
-    private fun quickAdd(model: ViewModel): Frame {
-        val line = model.line!!
-        val key = "quickadd"
-        if (completingFrom != null && line.text != completingFrom) {
-            completingFrom = null
-            editors.remove(key)
-        }
-        val edit = editor(key, line.text)
-        val words = appWords.quickAdd
-        val controls = mutableListOf<Control>()
-        val typing = { text: String -> send(ShellEvent.Typing(Typing.Text(text, TextOffsets.bytes(text.length, text)))) }
-        controls += Control.Edit(key, words.label, edit, words.example, typing, submit = { send(ShellEvent.QuickAdd(edit.text)) })
-        val candidates = line.offer.candidates
-        candidates.take(appWords.completionsShown.toInt()).forEachIndexed { index, candidate ->
-            controls += Control.Button("complete$index", dev.emassey0135.lumenna.app.completeWith(candidate)) {
-                completingFrom = line.text
-                send(ShellEvent.Typing(Typing.Choose(index.toUInt())))
+    /** A dialog the app has open, its lines' text kept by the dialog's id. */
+    private fun appDialog(shown: DialogShown): Frame = dialog(shown, "dialog:${shown.id}:")
+
+    /**
+     * A dialog the core describes (`DialogShown`), as the device's own: each control in its role (a
+     * line or several the SDK's edit box, a choice a combo box, a check a check box, a list in
+     * place, a button, a question's answers prompt buttons, a line to read a static box), in tab
+     * order, opening where the core says. What the person does goes through the core's
+     * `control_event`; a button that sends what a line or the list holds is pressed with it.
+     * [extra] follows the core's controls; [shell] does what a button leaves to this device.
+     */
+    private fun dialog(shown: DialogShown, editorPrefix: String, extra: List<Control> = emptyList(), shell: (String) -> Unit = {}): Frame {
+        val act = { sends: ControlSends, value: String, how: ControlMove -> controlEvent(sends, value, how).forEach(::send) }
+        val taking = shown.controls.filter { it.kind != ControlType.TEXT }
+        // A question of buttons alone is the device's prompt: its answers are stepped with Space.
+        val prompt = taking.isNotEmpty() && taking.all { it.kind == ControlType.BUTTON } && shown.id.startsWith("question:")
+        val boxes = HashMap<String, TextBox>()
+        var listValue: () -> String = { "" }
+        val controls = shown.controls.mapNotNull { control ->
+            val sends = control.sends
+            when (control.kind) {
+                ControlType.TEXT -> Control.Static(control.key, control.value)
+                ControlType.LINE, ControlType.LINES -> {
+                    val key = "$editorPrefix${control.key}"
+                    if (completingFrom != null && control.value != completingFrom && sends is ControlSends.QuickAdd) {
+                        completingFrom = null
+                        editors.remove(key)
+                    }
+                    val box = editor(key, control.value, multiLine = control.kind == ControlType.LINES)
+                    if (sends is ControlSends.Answer || sends is ControlSends.QuickAdd) boxes[sendsKind(sends)] = box
+                    val default = shown.controls.firstOrNull { it.default }
+                    Control.Edit(
+                        control.key, control.label, box, control.example.ifEmpty { control.hint },
+                        changed = { act(sends, it, ControlMove.Typed(TextOffsets.bytes(it.length, it))) },
+                        submit = default?.let { button -> { press(button, boxes, listValue, act, shell) } },
+                        // Applied as it is left, only where it changed: leaving a line untouched does nothing.
+                        left = { if (it != control.value) act(sends, it, ControlMove.Set) },
+                    )
+                }
+                ControlType.CHOICE -> Control.Choice(
+                    control.key, control.label, control.options.map { it.id to it.title }, control.selected?.toInt() ?: 0,
+                    { act(sends, it, ControlMove.Set) },
+                )
+                ControlType.CHECK -> Control.Toggle(control.key, control.label, control.checked) { act(sends, it.toString(), ControlMove.Set) }
+                ControlType.LIST -> {
+                    val state = "${shown.id}:${control.key}"
+                    val at = picked[state] ?: control.selected?.toInt() ?: 0
+                    listValue = { control.options.getOrNull(picked[state] ?: at)?.id.orEmpty() }
+                    Control.Pick(control.key, control.label, control.options.map { it.id to it.title }, at,
+                        move = { picked[state] = it }, pick = { act(sends, it, ControlMove.Pressed) })
+                }
+                ControlType.BUTTON -> {
+                    // A folder to choose: there are none to choose on this device.
+                    if (sends is ControlSends.Shell && sends.field0 !in SHELL_BUTTONS) return@mapNotNull null
+                    Control.Button(
+                        control.key, control.label, control.letter.singleOrNull(), control.asks,
+                        role = if (prompt) ControlRole.PROMPT_BUTTON else ControlRole.BUTTON,
+                    ) { press(control, boxes, listValue, act, shell) }
+                }
             }
+        } + extra
+        return form(shown.id, shown.title, controls, first = shown.focus.toInt()).also { frame ->
+            (frame as? FormFrame)?.prompt = prompt
         }
-        line.readback.takeIf { it.isNotEmpty() }?.let { controls += Control.Static("readback", it.replaceFirstChar { c -> c.uppercase() }) }
-        model.addRefused?.let { controls += Control.Static("refused", it) }
-        controls += Control.Button("add", words.add) { send(ShellEvent.QuickAdd(edit.text)) }
-        return form("quickadd", commandTitle("new-task"), controls)
     }
 
-    // ── Proposals ──────────────────────────────────────────────────────────────────────────
+    private fun sendsKind(sends: ControlSends): String = sends::class.simpleName.orEmpty()
+
+    /** A button pressed: with what the line or the list holds where it sends that, else as it is. */
+    private fun press(
+        button: ControlShown,
+        boxes: Map<String, TextBox>,
+        listValue: () -> String,
+        act: (ControlSends, String, ControlMove) -> Unit,
+        shell: (String) -> Unit,
+    ) {
+        when (val sends = button.sends) {
+            is ControlSends.Shell -> shell(sends.field0)
+            is ControlSends.Pick -> act(sends, listValue(), ControlMove.Pressed)
+            is ControlSends.Answer, is ControlSends.QuickAdd -> act(sends, boxes[sendsKind(sends)]?.text.orEmpty(), ControlMove.Pressed)
+            else -> {
+                if (button.key.startsWith("complete:")) completingFrom = screen.dialog?.controls?.firstOrNull { it.sends is ControlSends.QuickAdd }?.value
+                act(sends, "", ControlMove.Pressed)
+            }
+        }
+    }
+
+    /**
+     * A question asking for the task's form before the details show that task: they are asked
+     * to, once, and the form arrives as the question's dialog. An immediate question is none.
+     */
+    private fun formAsked(asked: dev.emassey0135.lumenna.app.Asking): Frame? {
+        if (asked.question !is Question.Form) return if (asked.question is Question.Immediate) null else Rendering("")
+        val action = asked.action ?: return null
+        if (handledForm != asked.number && action.subject == dev.emassey0135.lumenna.app.Subject.TASK) {
+            handledForm = asked.number
+            send(ShellEvent.Details(DetailsEvent.Show(action.target)))
+        }
+        return Rendering("")
+    }
+
+    // ── Proposals ─────    // ── Proposals ──────────────────────────────────────────────────────────────────────────
 
     private fun proposal(model: ViewModel): Frame {
         val proposal = model.proposal!!
@@ -1103,57 +1083,17 @@ class Shell(
         return list("settings", commandTitle("settings"), rows, null, "", hold = false)
     }
 
+    /** A settings page, the core's, with what Android allows reminders after the Reminders page's own. */
     private fun settingsPage(model: ViewModel, id: String): Frame {
-        val page = model.settings?.pages?.firstOrNull { it.id == id } ?: SettingsPages.of(id)
-        val controls = mutableListOf<Control>()
-        val all = model.settings?.settings.orEmpty().on(page)
-        all.filter { it.setting.kind != SettingKind.FOLDER }.forEach { addSetting(controls, it) }
-        if (id == "reminders") reminderControls(controls)
-        page?.buttons.orEmpty().forEach { button ->
-            controls += Control.Button(button.id, button.title, buttonLetter(button.id)?.singleOrNull()) {
-                // Syncing and backing up are the app's commands, the same from here as anywhere.
-                when (button.id) {
-                    "back-up", "sync-now" -> send(ShellEvent.Key(button.id))
-                    else -> host.importFile()
-                }
+        val shown = app.settingsPage(id) ?: return Rendering(SettingsPages.of(id)?.title.orEmpty())
+        val extra = mutableListOf<Control>()
+        if (id == "reminders") reminderControls(extra)
+        return dialog(shown, "setting:", extra) { what ->
+            when (what) {
+                "back-up" -> send(ShellEvent.Key("back-up"))
+                "pair" -> pushPage(Page.Devices)
+                else -> host.importFile()
             }
-        }
-        if (id == "export") model.settings?.exports.orEmpty().forEach { export ->
-            controls += Control.Button("export:${export.format}", export.label) { send(ShellEvent.Settings(SettingsEvent.Export(export.format))) }
-        }
-        page?.caption?.takeIf { it.isNotEmpty() }?.let { controls += Control.Static("caption", it) }
-        if (id == "backups" || id == "export") {
-            model.settings?.offered.orEmpty().forEach { action ->
-                controls += Control.Button("act:${action.kind}", action.name, asks = action.asks != Asks.NOTHING) { send(ShellEvent.ActOn(ActingOn.Settings, action)) }
-            }
-            model.settings?.offeredCaption?.takeIf { it.isNotEmpty() }?.let { controls += Control.Static("offeredCaption", it) }
-        }
-        return form("settings:$id", page?.title, controls)
-    }
-
-    private fun addSetting(controls: MutableList<Control>, shown: SettingView) {
-        val setting = shown.setting
-        val set = { value: String -> send(ShellEvent.Settings(SettingsEvent.Set(setting.key, value))) }
-        when (setting.kind) {
-            SettingKind.TOGGLE -> {
-                val on = setting.value == "true"
-                controls += Control.Toggle(setting.key, setting.title, on) { set(if (it) "true" else "false") }
-            }
-            SettingKind.CHOICE -> {
-                val options = setting.options.map { it.id to it.title }
-                val at = setting.options.indexOfFirst { it.id == setting.value }.coerceAtLeast(0)
-                controls += Control.Choice(setting.key, setting.title, options, at, set)
-            }
-            else -> {
-                val edit = editor("setting:${setting.key}", shown.typed.ifEmpty { setting.value })
-                controls += Control.Edit(setting.key, setting.title, edit, setting.hint, changed = {
-                    send(ShellEvent.Settings(SettingsEvent.Type(setting.key, it)))
-                })
-            }
-        }
-        shown.problem?.let { controls += Control.Static("problem:${setting.key}", it) }
-        if (setting.hint.isNotEmpty() && setting.kind != SettingKind.LINE && setting.kind != SettingKind.TIME && setting.kind != SettingKind.NUMBER) {
-            controls += Control.Static("hint:${setting.key}", setting.hint)
         }
     }
 
@@ -1243,6 +1183,9 @@ class Shell(
         /** Space-2-5 and Space-3-6, the device's read word and read character, as dots. */
         private const val SAY_WORD_DOTS = 0x12
         private const val SAY_CHARACTER_DOTS = 0x24
+
+        /** What a dialog's button leaves to this device: a file to pick, a backup, pairing. */
+        private val SHELL_BUTTONS = setOf("import", "restore-backup", "back-up", "pair")
 
         /** The shell's own yes-or-no question. */
         private const val CONFIRMING = "confirming"

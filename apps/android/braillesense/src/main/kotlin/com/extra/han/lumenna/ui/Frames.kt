@@ -217,8 +217,11 @@ sealed class Control(val key: String) {
         val label: String,
         val box: TextBox,
         val hint: String = "",
+        /** What is typed, as it changes. */
         val changed: (String) -> Unit = {},
         val submit: (() -> Unit)? = null,
+        /** What it holds as Tab leaves it: a setting applies then. */
+        val left: (String) -> Unit = changed,
     ) : Control(key) {
         /** The line the cursor is on. */
         val editor: LineEditor get() = box.line
@@ -249,9 +252,34 @@ sealed class Control(val key: String) {
         override val line get() = line(if (on) ControlRole.CHECK_BOX_CHECKED else ControlRole.CHECK_BOX_UNCHECKED, label)
     }
 
-    /** Enter presses it, or its [letter] with Space or Enter. */
-    class Button(key: String, val label: String, val letter: Char? = null, val asks: Boolean = false, val press: () -> Unit) : Control(key) {
-        override val line get() = line(ControlRole.BUTTON, label, letter = letter, asks = asks)
+    /**
+     * Enter presses it, or its [letter] with Space or Enter. A question's answers are prompt
+     * buttons ([role]), which Space and Backspace step between, as the device's prompts do.
+     */
+    class Button(
+        key: String,
+        val label: String,
+        val letter: Char? = null,
+        val asks: Boolean = false,
+        val role: ControlRole = ControlRole.BUTTON,
+        val press: () -> Unit,
+    ) : Control(key) {
+        override val line get() = line(role, label, letter = letter, asks = asks)
+    }
+
+    /**
+     * A list to pick one from, in place, as a dialog's own list is: Space-1 and Space-4 move
+     * through it (and Space-1-2-3, Space-4-5-6, a first letter), Enter picks the one in hand.
+     */
+    class Pick(
+        key: String,
+        val label: String,
+        val options: List<Pair<String, String>>,
+        val selected: Int,
+        val move: (Int) -> Unit,
+        val pick: (String) -> Unit,
+    ) : Control(key) {
+        override val line get() = line(ControlRole.LIST_ITEM, options.getOrNull(selected)?.second.orEmpty(), label = label, position = selected + 1, count = options.size)
     }
 
     /** A line of information: a refusal, a caption. */
@@ -274,10 +302,18 @@ class FormFrame(
     private val letters: Letters,
     private val readings: Readings,
     private val moved: (Control) -> Unit = {},
+    /** Where it opens when nothing is in hand yet: the core's first control that takes anything. */
+    first: Int = 0,
 ) : Frame(id) {
-    private var index = controls.indexOfFirst { it.key == selected }.takeIf { it >= 0 } ?: 0
+    private var index = controls.indexOfFirst { it.key == selected }.takeIf { it >= 0 } ?: first.coerceIn(0, (controls.size - 1).coerceAtLeast(0))
 
     val current: Control? get() = controls.getOrNull(index)
+
+    /** A question of answers alone: said as its prompt, not as a dialog. */
+    var prompt = false
+
+    /** The lines to read ahead of where it opens (a message, why saving was refused), said as it opens. */
+    val preamble: String = controls.take(first.coerceAtLeast(0)).filterIsInstance<Control.Static>().joinToString(". ") { it.text }
 
     override val rendered: Rendered
         get() {
@@ -292,7 +328,7 @@ class FormFrame(
 
     private fun move(step: Int): Boolean {
         if (controls.isEmpty()) return true
-        (current as? Control.Edit)?.let { it.changed(it.box.text) }
+        (current as? Control.Edit)?.let { it.left(it.box.text) }
         index = (index + step + controls.size) % controls.size
         current?.let(moved)
         return true
@@ -324,10 +360,13 @@ class FormFrame(
                 Key.Space, Key.Backspace, Key.Enter -> run { control.change(!control.on); true }
                 else -> false
             }
-            is Control.Button -> when (key) {
-                Key.Enter -> run { control.press(); true }
+            is Control.Button -> when {
+                key == Key.Enter -> run { control.press(); true }
+                control.role == ControlRole.PROMPT_BUTTON && key == Key.Space -> step(+1)
+                control.role == ControlRole.PROMPT_BUTTON && key == Key.Backspace -> step(-1)
                 else -> false
             }
+            is Control.Pick -> pick(control, key)
             is Control.Static, null -> false
         }
     }
@@ -344,6 +383,34 @@ class FormFrame(
             true
         }
         else -> false
+    }
+
+    /** Space and Backspace among a question's answers: to the next or last of them, wrapping. */
+    private fun step(by: Int): Boolean {
+        val answers = controls.withIndex().filter { (it.value as? Control.Button)?.role == ControlRole.PROMPT_BUTTON }.map { it.index }
+        val at = answers.indexOf(index)
+        if (at < 0 || answers.size < 2) return true
+        index = answers[(at + by + answers.size) % answers.size]
+        current?.let(moved)
+        return true
+    }
+
+    private fun pick(control: Control.Pick, key: Key): Boolean {
+        val options = control.options
+        val to = { at: Int -> if (options.isNotEmpty()) control.move(at.coerceIn(options.indices)); true }
+        return when (key) {
+            Key.Up -> to(control.selected - 1)
+            Key.Down -> to(control.selected + 1)
+            Key.First -> to(0)
+            Key.Last -> to(options.lastIndex)
+            Key.Enter -> run { options.getOrNull(control.selected)?.let { control.pick(it.first) }; true }
+            is Key.Cell, is Key.Typed -> run {
+                val letter = letters.letter(key) ?: return@run true
+                letters.find(options.map { it.second }, control.selected, letter)?.let(to)
+                true
+            }
+            else -> false
+        }
     }
 
     private fun choice(control: Control.Choice, key: Key): Boolean {
