@@ -346,7 +346,20 @@ directly (8805659 is the last commit before the move). How the app works inside 
   line, its place, "3 of 12", and its actions with their letters; a question with its prompt,
   typed text, buttons; a form's name) and what changed since the turn before (`ScreenChange`:
   entered, a move only when `landing` rose, a question asked, a refusal). A refusal also marked
-  on `Announce::refusal`, so a shell can mark it apart from what else is said.
+  on `Announce::refusal`, so a shell can mark it apart from what else is said. **A form or a
+  dialog comes as its controls in tab order** (`lumenna_app::dialog`, `DialogShown`): the one the
+  app has open is `ScreenView::dialog` (a question, the block form, quick add), and the two a shell
+  opens itself are `App::task_form_on(screen)` and `App::settings_page_on(screen, page)`. Each
+  control (`ControlShown`) says what it is in Lumenna's own terms (`ControlType`: a line, several
+  lines, a choice, a check, a list, a button, a line to read), which each device maps to its own
+  roles, with its label, value, options, hint, letter, whether it is the default or the Cancel,
+  and what it sends (`ControlSends`). A shell builds no event for a control: it hands
+  `control_event(sends, value, how)` what the person did (`ControlMove`: typed, set, pressed) and
+  sends what comes back; a button that sends what a line or a list holds (`Answer`, `Pick`,
+  `QuickAdd`) is pressed with that control's value. Escape is the dialog's `cancel`. A form asked
+  for by a question (`Question::Form`, a task's Edit) is the task form, closing the question as it
+  saves or cancels. What a dialog's button leaves to the shell (a file to pick, a backup into the
+  folder, pairing, a folder setting) is `ControlSends::Shell(id)`.
 - **Erasing permanently is never what deleting does**: a trashed task's Erase Permanently
   (`ErasePermanently`) is a menu away, after Delete from Trash, and no key runs it. It begins the
   store's history again without what it erased, on every device (`crates/store/CLAUDE.md`).

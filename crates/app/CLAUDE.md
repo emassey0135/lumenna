@@ -78,6 +78,13 @@ contract with every shell; this is how the app keeps it.
   action needs a letter in `braille::COMMAND_LETTERS` and a way to run in `Lumenna::command`; its
   tests hold every one in the braille menu bar with its hot key, and every menu bar command
   reachable without one.
+- **A dialog's controls are `dialog.rs`**, built from the view and its lines like the rest of the
+  screen's description, one builder per form (`question`, `task_form`, `block_form`,
+  `quick_add`, `settings_page`). A field added to `TaskFields` or `BlockFields` needs its value
+  read in `task_form` or `block_form` by its key, as `details::set` and `Form::set` write it; a
+  new way a control sends needs its arm in `control_event`, which every shell goes through.
+  BoltFFI scans field types by their imported names: a field's type written as a path
+  (`crate::dialog::DialogShown`) fails its scan.
 - **The screen is built beside the lines** (`screen.rs`, `Turn::described`), not on the view: a
   row's line is the device's clock's, and what changed needs the view before (`deliver`'s
   `drawn`).

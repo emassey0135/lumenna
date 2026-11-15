@@ -32,6 +32,7 @@ pub mod lines;
 pub mod day;
 pub mod details;
 pub mod devices;
+pub mod dialog;
 pub mod due;
 pub mod glance;
 pub mod host;

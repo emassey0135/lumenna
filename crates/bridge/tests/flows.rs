@@ -2654,3 +2654,163 @@ fn a_pairing_code_typed_with_spaces_is_dialled_as_one() {
     let dialled = app.network();
     assert!(matches!(&dialled[..], [(_, NetworkRequest::Pair { code: Some(code), .. })] if code == "ab12cd34ef56"), "{dialled:?}");
 }
+
+// ---------------------------------------------------------------------------------------
+// Dialogs as their controls
+// ---------------------------------------------------------------------------------------
+
+use lumenna_app::dialog::{ControlMove, ControlSends, ControlShown, ControlType, DialogShown, control_event};
+
+/// The dialog the app has open, as a turn describes it.
+fn open_dialog(app: &App) -> DialogShown {
+    let view = app.view();
+    described(None, &view, &[]).dialog.expect("a dialog is open")
+}
+
+/// The control `key` of `dialog`.
+fn control(dialog: &DialogShown, key: &str) -> ControlShown {
+    dialog.controls.iter().find(|control| control.key == key).cloned().unwrap_or_else(|| panic!("no {key} in {dialog:?}"))
+}
+
+/// Does `how` to `control` holding `value`, sending what the core says it sends.
+fn work(app: &mut App, control: &ControlShown, value: &str, how: ControlMove) -> Vec<Shell> {
+    let mut shell = Vec::new();
+    for event in control_event(&control.sends, value, how) {
+        shell.extend(app.send(event.into()));
+    }
+    shell
+}
+
+#[test]
+fn a_confirmation_is_its_message_then_cancel_and_its_answer_which_is_the_default() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Key("delete".to_owned()));
+    app.send(Event::Open(Place::Trash));
+    app.send(Event::Key("delete".to_owned()));
+    let dialog = open_dialog(&app);
+    let kinds: Vec<ControlType> = dialog.controls.iter().map(|control| control.kind).collect();
+    assert_eq!(kinds, [ControlType::Text, ControlType::Button, ControlType::Button]);
+    assert!(control(&dialog, "cancel").cancel);
+    assert_eq!(dialog.cancel.len(), 1, "Escape sends its Cancel");
+    let yes = control(&dialog, "yes");
+    assert!(yes.default);
+    assert_eq!(dialog.focus, 1, "it opens on its first button");
+    work(&mut app, &yes, "", ControlMove::Pressed);
+    assert!(app.titles().is_empty(), "deleted from the trash");
+}
+
+#[test]
+fn a_question_that_asks_for_a_line_answers_with_what_is_typed_when_pressed() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    app.send(sidebar_action(&app, "Work", ActionKind::Rename));
+    let dialog = open_dialog(&app);
+    let line = control(&dialog, "line");
+    assert_eq!((line.kind, line.value.as_str()), (ControlType::Line, "Work"));
+    assert!(work(&mut app, &line, "Office", ControlMove::Typed { cursor: 6 }).is_empty(), "typing sends nothing yet");
+    let yes = control(&dialog, "yes");
+    assert_eq!(yes.sends, ControlSends::Answer, "its button answers with the line's text");
+    work(&mut app, &yes, "Office", ControlMove::Pressed);
+    assert_eq!(app.view().place, Some(Place::Project("Office".to_owned())));
+}
+
+#[test]
+fn a_pick_is_a_list_of_its_choices_answered_by_the_one_chosen() {
+    let mut app = App::new();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    store.add_project("Work", None).unwrap();
+    app.session.tick();
+    app.add("Buy milk");
+    app.send(Event::Key("move-to-project".to_owned()));
+    let dialog = open_dialog(&app);
+    let list = control(&dialog, "choices");
+    assert_eq!(list.kind, ControlType::List);
+    let work_id = list.options.iter().find(|option| option.title.starts_with("Work")).expect("Work is offered").id.clone();
+    work(&mut app, &list, &work_id, ControlMove::Set);
+    assert!(app.view().asking.is_none());
+    app.send(Event::Open(Place::Project("Work".to_owned())));
+    assert_eq!(app.titles(), ["Buy milk"]);
+}
+
+#[test]
+fn quick_add_is_its_line_then_add_which_adds_what_is_typed() {
+    let mut app = App::new();
+    app.send(Event::Typing(Typing::Open));
+    let dialog = open_dialog(&app);
+    assert_eq!(dialog.id, "quick-add");
+    let line = control(&dialog, "line");
+    work(&mut app, &line, "Buy milk", ControlMove::Typed { cursor: 8 });
+    let dialog = open_dialog(&app);
+    assert!(dialog.controls.iter().any(|control| control.key == "readback"), "what it will add is read back");
+    let add = control(&dialog, "add");
+    assert!(add.default);
+    work(&mut app, &add, "Buy milk", ControlMove::Pressed);
+    assert_eq!(app.titles(), ["Buy milk"]);
+}
+
+#[test]
+fn the_block_form_is_its_fields_then_save_and_cancel() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Today));
+    app.send(Event::Key("new-block".to_owned()));
+    let dialog = open_dialog(&app);
+    assert_eq!(dialog.id, "block");
+    let title = control(&dialog, "field:title");
+    assert_eq!(title.kind, ControlType::Line);
+    assert!(dialog.controls.iter().any(|control| control.kind == ControlType::Check), "a block's flags are checks");
+    assert_eq!(control(&dialog, "field:start").field, Some(lumenna_records::fields::FieldKind::Time));
+    work(&mut app, &title, "Gym", ControlMove::Set);
+    let save = control(&open_dialog(&app), "save");
+    work(&mut app, &save, "", ControlMove::Pressed);
+    assert!(app.view().block_form.is_none(), "saved");
+    app.send(Event::Open(Place::Blocks));
+    assert_eq!(app.titles(), ["Gym"]);
+}
+
+#[test]
+fn the_task_form_is_its_fields_then_save_and_cancel_and_comes_up_for_enter() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let view = app.view();
+    let form = lumenna_app::dialog::task_form(&view, &lumenna_app::lines::lines(&view, &PlainClock)).expect("the task in hand");
+    let title = control(&form, "field:title");
+    assert_eq!(title.value, "Buy milk");
+    let priority = control(&form, "field:priority");
+    assert_eq!(priority.kind, ControlType::Choice);
+    assert!(priority.selected.is_some());
+    work(&mut app, &title, "Buy oat milk", ControlMove::Typed { cursor: 12 });
+    let save = control(&form, "save");
+    work(&mut app, &save, "", ControlMove::Pressed);
+    assert_eq!(app.titles(), ["Buy oat milk"]);
+    // Enter asks for the task's form: the dialog is the form, its Cancel closing the question too.
+    app.send(Event::Key("open".to_owned()));
+    let dialog = open_dialog(&app);
+    assert!(dialog.id.starts_with("question:"));
+    assert!(dialog.controls.iter().any(|control| control.key == "field:title"));
+    let cancel = control(&dialog, "cancel");
+    work(&mut app, &cancel, "", ControlMove::Pressed);
+    assert!(app.view().asking.is_none());
+}
+
+#[test]
+fn a_settings_page_is_its_settings_as_controls_each_applied_as_it_changes() {
+    let mut app = App::new();
+    app.send(Event::Settings(SettingsEvent::Open));
+    let view = app.view();
+    let page = lumenna_app::dialog::settings_page(&view, "planning").expect("the planning page");
+    assert!(page.cancel.is_empty(), "nothing to undo: a setting applies as it changes");
+    let start = control(&page, "setting:day-start");
+    assert_eq!(start.kind, ControlType::Line);
+    assert_eq!(start.field, Some(lumenna_records::fields::FieldKind::Time));
+    work(&mut app, &start, "07:30", ControlMove::Typed { cursor: 5 });
+    work(&mut app, &start, "07:30", ControlMove::Set);
+    let view = app.view();
+    let page = lumenna_app::dialog::settings_page(&view, "planning").unwrap();
+    assert_eq!(control(&page, "setting:day-start").value, "07:30");
+    let devices = lumenna_app::dialog::settings_page(&view, "devices").unwrap();
+    assert_eq!(control(&devices, "sync-now").sends, ControlSends::Press(vec![lumenna_app::ShellEvent::Key("sync-now".to_owned())]));
+    assert_eq!(control(&devices, "pair").sends, ControlSends::Shell("pair".to_owned()));
+}

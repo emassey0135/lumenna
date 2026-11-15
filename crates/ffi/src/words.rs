@@ -5,6 +5,8 @@ use boltffi::export;
 use lumenna_records::places::{Place, SidebarGroup, SidebarKind};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_app::Capitals;
+use lumenna_app::ShellEvent;
+use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
@@ -547,4 +549,11 @@ pub fn braillesense_letter(letter: String) -> Option<SenseLetter> {
 #[export]
 pub fn braillesense_press(letter: String) -> Option<String> {
     lumenna_app::braille::braillesense_press(&letter)
+}
+
+/// What doing `how` to a dialog's control that sends `sends`, holding `value`, sends, in order
+/// (`dialog::control_event`): a shell sends each, building none itself.
+#[export]
+pub fn control_event(sends: ControlSends, value: String, how: ControlMove) -> Vec<ShellEvent> {
+    lumenna_app::dialog::control_event(&sends, &value, how)
 }
