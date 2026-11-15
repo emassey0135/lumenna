@@ -168,6 +168,8 @@ pub struct Screen {
     pub acting: Option<crate::held::Side>,
     /// Whether this screen watches the store already: Start is taken once.
     pub watching: bool,
+    /// Whether Home is shown (`Event::Home`), over the place left: until a place is opened.
+    pub home: bool,
     /// What this screen read last from the store it holds: the listing and the day's plan.
     pub(crate) worked: Worked,
 }
@@ -297,6 +299,16 @@ impl Screen {
         Some(day::day(&plan, date == store.now.date(), &self.folded))
     }
 
+    /// Today, as rows, whatever day is shown: what today offers from any place.
+    pub(crate) fn today_view(&self) -> Option<DayView> {
+        if self.day.is_none() {
+            return self.day_view();
+        }
+        let store = self.store.as_ref()?;
+        let plan = lumenna_records::plan::plan(&store.snapshot, store.now.date(), &store.now).ok()?;
+        Some(day::day(&plan, true, &self.folded))
+    }
+
     /// The rows of whatever the place shows.
     pub(crate) fn rows(&self) -> Option<Rows> {
         let shown = if self.place() == Place::Today {
@@ -335,6 +347,7 @@ impl Screen {
             self.left.insert(from, left);
         }
         let kept = self.left.remove(&place).unwrap_or_default();
+        self.home = false;
         let first_today = place == Place::Today && !self.day_opened;
         self.place = Some(place);
         self.filter = kept.filter;
@@ -425,7 +438,8 @@ impl Screen {
 
     /// Shows a day: Today shows today, and a new day opens on its summary, which it says.
     pub(crate) fn show_day(&mut self, day: Option<Date>) -> Command<Effect, Event> {
-        let changed = self.place() != Place::Today || self.day != day;
+        let changed = self.place() != Place::Today || self.day != day || self.home;
+        self.home = false;
         self.place = Some(Place::Today);
         self.day = day;
         self.open = None;

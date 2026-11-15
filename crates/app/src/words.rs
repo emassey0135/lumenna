@@ -1285,6 +1285,14 @@ pub struct DeviceKey {
 #[must_use]
 pub fn braillesense_keys() -> Vec<DeviceKey> {
     let row = |keys: &str, what: &str| DeviceKey { keys: keys.to_owned(), what: what.to_owned() };
+    // A command's press is the device's for the core's letter: "Enter-a", "Space-u".
+    let press = |id: &str| {
+        crate::braille::command_letter(id).and_then(crate::braille::braillesense_press).map(|press| {
+            let (held, letter) = press.split_once('-').unwrap_or((&press, ""));
+            format!("{held}-{}", letter.to_uppercase())
+        })
+        .unwrap_or_default()
+    };
     vec![
         row("Space-1 or the Up scroll key", "Previous row or option, or back through a long line"),
         row("Space-4 or the Down scroll key", "Next row or option, or on through a long line"),
@@ -1300,9 +1308,12 @@ pub fn braillesense_keys() -> Vec<DeviceKey> {
         row("Space-4-5 or F3, Space-1-2 or Space-F3", "Next and previous control in a dialog"),
         row("Space", "Change a check box, a combo box, a prompt button, or mark a task done"),
         row("Space with a letter", "The row's command of that letter, or the screen's"),
-        row("Enter with a letter", "The same, for A, B, C, D, E, F, H, K, L, M, O, R and Z, which Space keeps for moving and the device"),
-        row("Enter-A", "New task"),
-        row("Space-U, Space-Y", "Undo and redo"),
+        row(
+            "Enter with a letter",
+            &format!("The same, for {}, which Space keeps for moving and the device", crate::braille::braillesense_enter_letters()),
+        ),
+        row(&press("new-task"), "New task"),
+        row(&format!("{}, {}", press("undo"), press("redo")), "Undo and redo"),
         row("Space-F", "Filter the list"),
         row("Space-D", "Delete the row"),
         row("Space-H, or F1 on the QWERTY keyboard", "These keys"),
