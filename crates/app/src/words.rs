@@ -166,6 +166,13 @@ pub struct ShellWords {
     pub completions: String,
     /// A pick's list, where it is named apart from its question: "Choices".
     pub choices: String,
+    /// An overflow menu, a menu of what does not fit beside the rest: "More Options".
+    pub more_options: String,
+    /// A screen's own actions as a group (`ViewModel::screen_actions`), where a toolbar, a row of
+    /// buttons or a menu of them is named: "Commands".
+    pub screen_actions: String,
+    /// What About says, in one line: "Lumenna 0.1.0. A task manager and day planner …".
+    pub about: String,
     /// A section of a form beyond its first: "More".
     pub more: String,
     /// A block's length, where a stepper is named apart from its field: "Length".
@@ -955,6 +962,9 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         completions: core::completions(sentence),
         choices: c("Choices"),
         more: c("More"),
+        more_options: c("More Options"),
+        screen_actions: c("Commands"),
+        about: core::about_line(),
         length: c("Length"),
         query: c("Query"),
         narrow_the_list: c("Narrow the List"),

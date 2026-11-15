@@ -121,7 +121,8 @@ crosses the FFI.
 - **Each action has a `sentence` and a `primary`.** Capitals follow the platform: Title
   Case (`title`) on Apple, Windows, GTK and Emacs; sentence case (`sentence`, and
   `sentence_case()` for a fixed button or question) on Android, Wear OS, the web and BTSpeak,
-  where every capital also costs a braille cell. A row shows its `primary` actions by itself
+  where every capital also costs a braille cell. A name keeps its capitals in either: an
+  acronym, "I", and Lumenna's own ("About Lumenna"). A row shows its `primary` actions by itself
   and offers the rest a menu away; every client still offers every action.
 - **Lines are joined in one order everywhere** (`lumenna_app::speech`), the clock and day
   words being the app's: a block "<start> to <end>, <title>, <details>"; a sitting "<title>,
@@ -138,7 +139,11 @@ crosses the FFI.
   every settings screen. A shell matches no key and keeps no page table. **Which pages a device
   lists is the core's too**: `SettingsView::pages` holds only those with something on them here
   (a page's `keys` are the settings this device lists; General goes where the shell keeps nothing
-  running and has its own clock), so a shell lists them all and filters none.
+  running and has its own clock), so a shell lists them all and filters none. What a shell can
+  do is said once as it starts (`Event::Abilities`, `Abilities { files, backup_folder }`; a shell
+  that never says can do both): one that saves and picks no files (a watch) lists no exports,
+  imports or restores, one with no folder of backups (a browser) none of the backup schedule and
+  folder settings.
 - **The task details' words are the core's** (`details_words`; `DetailsView::lines`, also
   `Lines::details`: the state, a rule the form cannot say, what it waits for, its history). The
   buttons a details pane shows by themselves are the task's `primary` offered actions, the rest a
@@ -269,13 +274,16 @@ directly (8805659 is the last commit before the move). How the app works inside 
   between its groups and all (`PairEvent::Code`, `lum pair`): no shell strips it.
 - **Each screen's own actions are the core's** (`ViewModel::screen_actions`, `ScreenAction`,
   `screen_actions.rs`): what the place shown offers beside its rows, in order (New Task, the
-  filter, New Project Inside, New Block, What Should I Work On?, the day's moves, Undo, Redo),
+  filter, New Project Inside, New Block, the day's moves, Undo, Redo; the trash and the history
+  only Undo and Redo; the day's own actions, What Should I Work On? among them, are the day's
+  `offered`, never a second time here),
   each with its title in the shell's capitals, its braille letter, whether it `asks`, whether it
   is the shell's own to run (`shell`: the filter field, Key Help, About, the reminders due list)
   and whether it is `enabled` now. Every one not the shell's runs as `Event::Key(id)`, so no shell
   hand-picks a toolbar: a desktop or a phone draws them as its buttons, a braille device lists
-  them on its screen's menu after the row's actions. `Key("what-now")` goes to Today from any
-  place and asks, as the launch shortcut does.
+  them on its screen's menu after the row's actions. Their group is named `ShellWords::screen_actions`
+  ("Commands"), an overflow menu `more_options`, and About's line is `ShellWords::about`.
+  `Key("what-now")` goes to Today from any place and asks, as the launch shortcut does.
 - **Home is for a shell without a sidebar or tabs** (`Event::Home`, `Key("home")`,
   `ViewModel::home`, `HomeView`): a braille device opens on it, and Emacs may. It is the places
   (the sidebar's entries, folded as the sidebar is, each with its letter: `HomePlace`), then
@@ -298,7 +306,11 @@ directly (8805659 is the last commit before the move). How the app works inside 
   `not_offered`'s words; the details take `DetailsEvent::Key`. **Enter is `Key("open")` on every
   row of every platform**, never a choice per place: a task's details, a block's form, free
   time's new block, a cancelled day back, a trashed task restored, a device renamed; on a place in
-  the sidebar or on Home, the place opened (a heading folded). The menu bar and the tray's menu
+  the sidebar or on Home, the place opened (a heading folded). On a task, Enter runs its Edit
+  Details, which asks for the task's form (`Question::Form`): every shell opens its task form for
+  it, as for any action asking that, `ScreenView::dialog` describing it to one that speaks for
+  itself. What Enter does on a row, for a screen reader to name its default action (TalkBack's
+  double tap), is `keys::runs_on("open", offered)` (`key_runs_on` over the FFI). The menu bar and the tray's menu
   are the core's (`keys::MENUS`, `TRAY`, `menus()`, `tray_menu()`), and each row or day command's
   name and whether it applies now are `ViewModel::commands` (Mark Not Done on a task done). A
   platform adds only what is its own (Cut, Copy and Paste).

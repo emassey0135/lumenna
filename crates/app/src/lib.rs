@@ -68,7 +68,7 @@ pub use typing::{LineView, Typing};
 pub use host::{Arrival, HostAnswer, HostRequest, Watch};
 pub use list::{Asks, Item, Offered};
 pub use proposal::{ProposalEvent, ProposalView};
-pub use settings::{Background, BackgroundEvent, SaveFile, SettingsEvent, SettingsView};
+pub use settings::{Abilities, Background, BackgroundEvent, SaveFile, SettingsEvent, SettingsView};
 pub use due::{Due, DueEvent, Notice};
 pub use network::{DevicesEvent, DevicesView, NetworkAnswer, NetworkRequest, PairEvent};
 pub use view::{Asking, ListView, ViewModel};
@@ -271,6 +271,9 @@ pub enum Event {
     /// Whether this shell's list shows each task's checkbox, which says whether it is done: then
     /// the list's lines (`lines::Lines::list`) leave "completed" to it.
     Checkboxes(bool),
+    /// What this shell can do that settings depend on (saving files, a backup folder), said once
+    /// as it starts: settings then list only what applies. One never said can do both.
+    Abilities(settings::Abilities),
     /// What this shell is called in pairing's sentences ("this computer", "this watch"), and
     /// whether it finds devices on its own network or pairs only by code: for pairing's words.
     PairingAs {
@@ -367,7 +370,10 @@ impl Event {
     /// What every screen takes in alike: the store, the clock and the capitals the shell says
     /// things in, the moment proposals are made against.
     fn is_everyones(&self) -> bool {
-        matches!(self, Event::Arrived(_) | Event::Clock(_) | Event::Capitals(_) | Event::Checkboxes(_) | Event::PairingAs { .. } | Event::PlanFrom(_))
+        matches!(
+            self,
+            Event::Arrived(_) | Event::Clock(_) | Event::Capitals(_) | Event::Checkboxes(_) | Event::PairingAs { .. } | Event::PlanFrom(_) | Event::Abilities(_)
+        )
     }
 
     /// Whether the person did it, rather than the store, the network or the shell's own clock.
@@ -386,6 +392,7 @@ impl Event {
                 | Event::Clock(_)
                 | Event::Capitals(_)
                 | Event::Checkboxes(_)
+                | Event::Abilities(_)
                 | Event::PairingAs { .. }
                 | Event::PlanFrom(_)
                 | Event::Due(DueEvent::Look { .. } | DueEvent::LookBack)
@@ -773,6 +780,10 @@ impl Lumenna {
             }
             Event::Checkboxes(shown) => {
                 model.checkboxes = shown;
+                render()
+            }
+            Event::Abilities(abilities) => {
+                model.abilities = abilities;
                 render()
             }
             Event::Capitals(capitals) => {

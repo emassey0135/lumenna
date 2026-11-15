@@ -320,7 +320,9 @@ pub fn menu_bar(place: Option<&Place>, home: bool, sentence: bool) -> Vec<Letter
                 .zip(shortcuts)
                 .map(|((id, title, asks), letter)| {
                     let row = on_rows && ACTION_COMMANDS.iter().any(|(_, command)| *command == id);
-                    let hot_key = !letter.is_empty() && menu_letter(&id) == Some(letter.as_str()) && (own.contains(&id.as_str()) || row);
+                    // On a day, the day's own actions run by their letters too.
+                    let day = is_day && matches!(what_runs(&id), Runs::Day(kinds) if action_letter(kinds[0]) == Some(letter.as_str()));
+                    let hot_key = !letter.is_empty() && menu_letter(&id) == Some(letter.as_str()) && (own.contains(&id.as_str()) || row || day);
                     LetteredItem { id, title, letter, asks, hot_key }
                 })
                 .collect();

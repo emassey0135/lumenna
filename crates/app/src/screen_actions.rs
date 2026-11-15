@@ -71,8 +71,11 @@ pub struct HomePlace {
 /// The ids of what `place` offers of its own, in order.
 pub(crate) fn place_action_ids(place: &Place) -> &'static [&'static str] {
     match place {
-        Place::Today => &["new-block", "what-now", "previous-day", "next-day", "go-to-day", "go-to-now", "undo", "redo"],
+        // What Should I Work On? is the day's own action here (`DayView::offered`), never a second time.
+        Place::Today => &["new-block", "previous-day", "next-day", "go-to-day", "go-to-now", "undo", "redo"],
         Place::Blocks => &["new-block", "undo", "redo"],
+        // Nothing is added to the trash or the history, and a filter there shows nothing useful.
+        Place::Trash | Place::History => &["undo", "redo"],
         Place::Project(_) => &["new-task", "filter", "new-project-inside", "undo", "redo"],
         _ => &["new-task", "filter", "undo", "redo"],
     }
@@ -291,8 +294,14 @@ mod tests {
     }
 
     #[test]
-    fn today_offers_what_should_i_work_on_and_home_ends_in_the_help() {
-        assert!(place_action_ids(&Place::Today).contains(&"what-now"));
+    fn what_should_i_work_on_is_todays_own_once_and_home_ends_in_the_help() {
+        assert!(!place_action_ids(&Place::Today).contains(&"what-now"), "the day offers it of its own");
+        let today = crate::braille::menu_bar(Some(&Place::Today), false, true);
+        let what_now = today.iter().flat_map(|menu| &menu.items).find(|item| item.id == "what-now").expect("in the Day menu");
+        assert!(what_now.hot_key && what_now.letter == "w", "its letter runs the day's own: {what_now:?}");
+        for quiet in [Place::Trash, Place::History] {
+            assert_eq!(place_action_ids(&quiet), ["undo", "redo"], "nothing to add or filter in {quiet:?}");
+        }
         let home = screen_action_ids(None, true, true);
         assert_eq!(home.first(), Some(&"reminders-due"), "Reminders Due leads while any are due");
         assert_eq!(&home[home.len() - 2..], ["keyboard-help", "about"]);

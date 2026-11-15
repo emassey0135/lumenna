@@ -168,6 +168,8 @@ pub struct Screen {
     pub acting: Option<crate::held::Side>,
     /// Whether this screen watches the store already: Start is taken once.
     pub watching: bool,
+    /// What the shell can do that settings depend on (`Event::Abilities`). The device's.
+    pub abilities: crate::settings::Abilities,
     /// Whether Home is shown (`Event::Home`), over the place left: until a place is opened.
     pub home: bool,
     /// What this screen read last from the store it holds: the listing and the day's plan.
@@ -217,6 +219,7 @@ impl Screen {
         self.checkboxes = from.checkboxes;
         self.pairing_as.clone_from(&from.pairing_as);
         self.background = from.background;
+        self.abilities = from.abilities;
         self.plan_from.clone_from(&from.plan_from);
         self.due.clone_from(&from.due);
         self.looking = from.looking;

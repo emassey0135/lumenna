@@ -168,6 +168,15 @@ pub fn runs(id: &str) -> Option<&'static [ActionKind]> {
     }
 }
 
+/// What a key of the table (`id`) runs on a row offering `offered` (its actions in short, as a
+/// view gives them): the first of the kinds it runs that the row offers, none where it runs
+/// nothing there. What a screen reader names as the row's default action, Enter's being
+/// `runs_on("open", …)`: "Edit details" on a task, "Restore" in the trash.
+#[must_use]
+pub fn runs_on(id: &str, offered: &[lumenna_records::Offered]) -> Option<lumenna_records::Offered> {
+    runs(id)?.iter().find_map(|kind| offered.iter().find(|action| action.kind == *kind)).cloned()
+}
+
 /// One command a menu or the tray lists: its `id` (as `SHARED`'s, where it has a key), its
 /// name in a menu, and whether it asks something first, which a platform marks its own way
 /// ("…", "...").
