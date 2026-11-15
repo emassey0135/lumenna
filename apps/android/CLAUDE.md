@@ -126,8 +126,8 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
 - **Nested lists fold, as the app folds them**: a row with something under it has the app's
   Collapse or Expand among its actions and says which it is. The level is the app's, said
   against the row shown before, after folding; a list the app narrows or cuts out itself (a pick
-  narrowed by typing, Browse's groups, the details' projects) takes the core's `levels(depths)`
-  (`levelsOf`), so no Kotlin counts where a level changes.
+  narrowed by typing, the details' projects) takes the core's `levels(depths)` (`levelsOf`), so
+  no Kotlin counts where a level changes. A group's screen has its levels from the core already.
 - **What changes say, the phone shows as a snackbar**, a newer one taking the place of the one
   showing (`collectLatest`), which TalkBack has begun saying: waiting for each, the last of a
   run came long after. The announcements are a buffer of 64 that drops the oldest, so a run
@@ -157,6 +157,14 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   at the root.
 - **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
   tests leave it first (`setInTouchMode(false)`), or no tab could be focused.
+- **The tabs, Browse and the group screens are the core's** (`place_arrangement`, shared's
+  `arrangement(sidebar)`, from the view's own sidebar): the tabs in order with their titles
+  (`Arrangement.tabs`; the icon and the stack's first screen are Android's, by `TabKind`), Browse's
+  rows (`browse`: every place that is no tab, opened inside Browse, and each group with how many
+  places it holds, opening `Screen.Group`), and each group's screen (`groups`: titled by its
+  heading, whose `offered` New is the add button, its places a level shallower and folded as the
+  app has them, its `empty` said with none). No screen here picks places out of the sidebar by
+  kind, counts them or titles them.
 - **A wide window has the desktop apps' sidebar** (`Sidebar.kt`, from the app's
   `ViewModel.sidebar`, plus Settings) from 840dp, with a stack of its own for the place chosen;
   a heading's or place's actions are the app's, run as Browse runs them. Between 600 and 840dp
@@ -341,8 +349,11 @@ phone does.
   `ShellEvent.Key(id)`; no "…" on a watch's button. A task list's and Blocks' come first, under
   the heading, a task list's filter being the shell's line in its place; the day's come after its
   rows and its own actions, so the day is first. The app opening quick add's line opens its screen
-  (`Follow`). The list of places is no place: its New task, Undo, Redo and Settings are the
-  watch's own, as the core's Home, which a watch does not show, would have them.
+  (`Follow`). The list of places is no place: it is the core's root list (`Arrangement.watch`,
+  `place_arrangement`): New task, every place as the sidebar has it, then Undo, Redo and Settings,
+  each action `ShellEvent.Key(id)` but Settings, which opens the watch's own screen (it asks the
+  app for its settings). A heading's New follows it while it is unfolded, from its `offered`. No
+  screen here picks places out of the sidebar by kind or titles them.
 - **A refused line is asked again with why**: the input screen's label is the app's refusal,
   then the question; backing out of the input screen gives the question up (`TextEntry`'s
   `cancelled`). A place merged or deleted takes its list to where the app went, as the phone's.

@@ -21,6 +21,8 @@ import dev.emassey0135.lumenna.app.Capitals
 import dev.emassey0135.lumenna.app.ShellWords
 import dev.emassey0135.lumenna.app.ThisDevice
 import dev.emassey0135.lumenna.app.shellWords
+import dev.emassey0135.lumenna.app.Arrangement
+import dev.emassey0135.lumenna.app.placeArrangement
 
 // What Android adds to the lines the core words (crates/app, through the turn's `lines`):
 // what a tree control would report by itself, which a Compose list does not.
@@ -151,28 +153,8 @@ fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> = entries.map { entry
 }
 
 /**
- * Some of the sidebar's [entries] as a list of their own (the projects alone, a level up), the
- * folding and levels worked out among themselves: the app's are the whole sidebar's, where a
- * folded heading hides them all. A row is open while it offers Collapse; [levels] is the core's
- * ([levelsOf]), among the rows shown.
+ * Where a phone and a watch put the places, the core's (`place_arrangement`), from the view's
+ * own [sidebar] in this app's capitals: the phone's tabs, Browse's rows and each group's screen,
+ * and the watch's root list. No screen here picks places out of the sidebar by kind.
  */
-fun placeRowsWithin(entries: List<SidebarEntry>, levels: (List<UInt>) -> List<String?> = ::levelsOf): List<PlaceRow> {
-    var hiddenBelow: UInt? = null
-    val rows = entries.map { entry ->
-        val below = hiddenBelow
-        if (below != null && entry.depth <= below) hiddenBelow = null
-        val hidden = hiddenBelow != null
-        val expanded = entry.offered.firstNotNullOfOrNull {
-            when (it.kind) {
-                ActionKind.COLLAPSE -> true
-                ActionKind.EXPAND -> false
-                else -> null
-            }
-        }
-        if (expanded == false && !hidden) hiddenBelow = entry.depth
-        PlaceRow(entry.key, entry, entry.title, entry.detail, entry.depth.toInt(), hidden, expanded)
-    }
-    val shown = rows.indices.filter { !rows[it].hidden }
-    val said = shown.zip(levels(shown.map { rows[it].depth.toUInt() })).toMap()
-    return rows.mapIndexed { index, row -> said[index]?.let { row.copy(level = it) } ?: row }
-}
+fun arrangement(sidebar: List<SidebarEntry>): Arrangement = placeArrangement(sidebar, Capitals.SENTENCE)
