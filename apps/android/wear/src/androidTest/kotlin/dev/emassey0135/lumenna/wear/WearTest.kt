@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.accessibility.disableAccessibilityChecks
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -103,6 +104,16 @@ class WearTest {
         rule.waitForIdle()
     }
 
+    /**
+     * The first button with `text` of several, scrolled to: What should I work on? is both one of
+     * the day's own actions and one of Today's screen actions, which the core lists apart.
+     */
+    private fun firstShown(text: String): SemanticsNodeInteraction {
+        val matcher = hasText(text) and hasClickAction()
+        runCatching { rule.onNode(hasScrollToNodeAction()).performScrollToNode(matcher) }
+        return rule.onAllNodes(matcher).onFirst()
+    }
+
     /** What a row says after its title, in its one description: "Projects, expanded" says "expanded". */
     private fun stateOf(text: String, substring: Boolean = false): String {
         val said = shown(text, substring).fetchSemanticsNode().config.getOrNull(SemanticsProperties.ContentDescription).orEmpty().joinToString(", ")
@@ -186,6 +197,15 @@ class WearTest {
         shown("water plants").performCustomAccessibilityActionWithLabel("Mark done")
         rule.waitForIdle()
         assertTrue(core.device.listTasks("").rows.isEmpty())
+    }
+
+    @Test
+    fun todaysOwnActionsAreTheCoresButtonsAfterItsRows() {
+        press("Today")
+        val actions = core.app.view.value!!.screenActions
+        assertTrue("Today has its own actions", actions.isNotEmpty())
+        // Each a button named by the core's title.
+        actions.forEach { firstShown(it.title).assertExists() }
     }
 
     @Test
@@ -441,7 +461,7 @@ class WearTest {
         val heading = rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading) and hasText("Today. ", substring = true))
         assertEquals(expected, heading.fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.CustomActions).orEmpty().map { it.label })
         assertTrue(expected.toString(), "Replan from now" in expected)
-        expected.forEach { shown(it).assertExists() }
+        expected.forEach { firstShown(it).assertExists() }
     }
 
     @Test
@@ -495,7 +515,8 @@ class WearTest {
         core.device.addTask("write the chapter p1")
         rule.runOnIdle { core.changed() }
         press("Today")
-        press(core.device.plan(null).actions.single { it.kind == dev.emassey0135.lumenna.app.ActionKind.WHAT_NOW }.sentence)
+        firstShown(core.device.plan(null).actions.single { it.kind == dev.emassey0135.lumenna.app.ActionKind.WHAT_NOW }.sentence).performClick()
+        rule.waitForIdle()
         shown("write the chapter").assertExists()
         said("Suggested because").assertExists()
         press("write the chapter")

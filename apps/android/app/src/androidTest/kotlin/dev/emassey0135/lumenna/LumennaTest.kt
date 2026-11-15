@@ -16,6 +16,8 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.isPopup
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.hasText
@@ -110,10 +112,8 @@ class LumennaTest {
         rule.waitForIdle()
     }
 
-    private fun press(name: String) {
-        rule.onNodeWithContentDescription(name).performClick()
-        rule.waitForIdle()
-    }
+    /** A button named by its icon's description: the top bar's, its overflow menu's included. */
+    private fun press(name: String) = rule.pressInBar(name)
 
     /** A button by its text, scrolled into view first, as TalkBack would bring it. */
     private fun button(text: String) {
@@ -610,8 +610,8 @@ class LumennaTest {
     @Test
     fun goToDayHasACalendarBesideItsLineOpenOnTheDayShown() {
         tab("Today")
-        button("Next day")
-        button("Go to day")
+        press("Next day")
+        press("Go to day")
         button("Choose a day")
         button("Choose")
         assertEquals(java.time.LocalDate.now().plusDays(1).toString(), valueOf("Day"))
@@ -666,6 +666,23 @@ class LumennaTest {
         says("Run", "cancelled for this day")
         act("Run", "Restore this day", substring = true)
         says("Run", "work block")
+    }
+
+    @Test
+    fun aPlacesOwnActionsAreTheCoresInItsOrderIconsFirstThenTheOverflowMenu() {
+        tab("Today")
+        val actions = core.app.view.value!!.screenActions
+        assertTrue("Today has its own actions", actions.size > 2)
+        // As many as fit are icons, in the core's order, each named by its title.
+        val icons = actions.takeWhile { rule.onAllNodesWithContentDescription(it.title).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue("an icon at least", icons.isNotEmpty())
+        // The rest are the overflow menu's, in the same order, none of them an icon too.
+        val rest = actions.drop(icons.size)
+        rest.forEach { assertTrue(it.title, rule.onAllNodesWithContentDescription(it.title).fetchSemanticsNodes().isEmpty()) }
+        press(appWords.more)
+        val listed = rule.onAllNodes(hasClickAction() and hasAnyAncestor(isPopup())).fetchSemanticsNodes()
+            .map { node -> node.config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString() }
+        assertEquals(rest.map { if (it.asks) "${it.title}…" else it.title }, listed)
     }
 
     @Test
@@ -980,7 +997,7 @@ class LumennaTest {
             it.addTask("Filing p3")
         }
         tab("Today")
-        button("Next day")
+        press("Next day")
         button("Plan the day")
         shows("Report goes in Morning")
         rule.onNode(hasText("Report goes in Morning", substring = true) and hasText("Suggested because priority 1", substring = true)).assertExists()

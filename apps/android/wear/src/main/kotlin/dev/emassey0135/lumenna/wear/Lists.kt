@@ -46,6 +46,8 @@ import dev.emassey0135.lumenna.detailOf
 import dev.emassey0135.lumenna.sentence
 import dev.emassey0135.lumenna.name
 import dev.emassey0135.lumenna.commandTitle
+import dev.emassey0135.lumenna.AppModel
+import dev.emassey0135.lumenna.app.ScreenAction
 
 /**
  * A screen's list: Wear's scaling list, which the rotary crown scrolls, with rows kept at
@@ -132,6 +134,38 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
     }
 }
 
+/**
+ * A screen's own actions, the core's (`ViewModel.screen_actions`), a button each in its order,
+ * named by its title and disabled while it does nothing now; each sent as `ShellEvent.Key(id)`,
+ * the app opening what it opens (quick add, the block form, a question). What is the shell's own
+ * is drawn by [own], by `id` (the filter is its field), and left out where it has none.
+ */
+fun ScalingLazyListScope.screenActionItems(
+    app: AppModel,
+    actions: List<ScreenAction>,
+    own: Map<String, @Composable () -> Unit> = emptyMap(),
+) {
+    shownActions(actions, own).forEach { action ->
+        val drawn = own[action.id]
+        item {
+            if (action.shell && drawn != null) {
+                drawn()
+            } else {
+                Button(
+                    onClick = { app.send(ShellEvent.Key(action.id)) },
+                    enabled = action.enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(action.title) },
+                )
+            }
+        }
+    }
+}
+
+/** What [screenActionItems] draws of [actions], one item each: the shell's own only where [own] draws it. */
+fun shownActions(actions: List<ScreenAction>, own: Map<String, *>): List<ScreenAction> =
+    actions.filter { !it.shell || it.id in own }
+
 internal fun placeScreen(place: Place): Screen = when (place) {
     Place.Today -> Screen.Day()
     Place.Blocks -> Screen.Blocks
@@ -141,7 +175,8 @@ internal fun placeScreen(place: Place): Screen = when (place) {
 /**
  * A place's tasks, the app's list, each row as the phone says it: the title, then what the core
  * says of it. Its actions are the app's — TalkBack's custom actions, and a long press — the
- * primary ones first. Subtasks fold. A project, label or filter's own actions are at the foot.
+ * primary ones first. Subtasks fold. The place's own actions (New task, the filter, Undo, Redo)
+ * are the core's, at the top; a project, label or filter's own actions are at the foot.
  */
 @Composable
 fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
@@ -162,19 +197,26 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
     // Narrowing the list, as the phone's field above it does: the app's filter, and why what
     // was typed does not read yet.
     var filter by rememberSaveable(place) { mutableStateOf("") }
-    val trash = place == Place.Trash
     val here = view?.takeIf { it.place == place }
     val list = here?.list
     val worded by app.lines.collectAsState()
     val lines = worded?.takeIf { here != null }
     val items = shownRows(list?.items.orEmpty(), lines?.list.orEmpty())
+    // The place's own actions, the core's (New task, the filter, Undo, Redo), first: the filter
+    // is the shell's own, the line the app reads as it is typed.
+    val own: Map<String, @Composable () -> Unit> = mapOf(
+        "filter" to {
+            TextFieldButton(appWords.quickAdd.filter, filter, appWords.quickAdd.filterHint) {
+                filter = it
+                app.send(ShellEvent.Filter(it))
+            }
+        },
+    )
+    val actions = here?.screenActions.orEmpty()
     val keys = buildList {
         add("\u0000heading")
-        if (!trash) {
-            add("\u0000new")
-            add("\u0000filter")
-            if (list?.refusal != null) add("\u0000refusal")
-        }
+        shownActions(actions, own).forEach { add("\u0000${it.id}") }
+        if (list?.refusal != null) add("\u0000refusal")
         if (list != null && items.isEmpty()) add("\u0000empty")
         items.forEach { (shown, _) -> add(shown.row.id) }
     }
@@ -183,16 +225,8 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
     val focus = rememberLanding(core, keys) { state.scrollToItem(it) }
     WearList(state) {
         item { Heading(placeTitle(place)) }
-        if (!trash) {
-            item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text(appWords.quickAdd.title) }) }
-            item {
-                TextFieldButton(appWords.quickAdd.filter, filter, appWords.quickAdd.filterHint) {
-                    filter = it
-                    app.send(ShellEvent.Filter(it))
-                }
-            }
-            list?.refusal?.let { item { Text(it) } }
-        }
+        screenActionItems(app, actions, own)
+        list?.refusal?.let { item { Text(it) } }
         if (list != null && items.isEmpty()) item { Text(lines?.readback.orEmpty()) }
         items.forEach { (shown, line) ->
             item {
@@ -230,7 +264,10 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
     }
 }
 
-/** Every block series, the app's Blocks place, each opening the app's form for every occurrence; Delete asks first. */
+/**
+ * Every block series, the app's Blocks place, each opening the app's form for every occurrence;
+ * Delete asks first. New block, the core's, opens the form for a new one.
+ */
 @Composable
 fun BlocksScreen(core: Core, navigator: Navigator) {
     val app = core.app
@@ -240,8 +277,11 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
     val list = here?.list
     val worded by app.lines.collectAsState()
     val lines = worded?.takeIf { here != null }
+    // The place's own actions, the core's (New block, Undo, Redo), first.
+    val actions = here?.screenActions.orEmpty()
     val keys = buildList {
         add("\u0000heading")
+        shownActions(actions, emptyMap<String, Unit>()).forEach { add("\u0000${it.id}") }
         if (list != null && list.items.isEmpty()) add("\u0000empty")
         list?.items.orEmpty().forEach { add(it.row.id) }
     }
@@ -249,6 +289,7 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
     val focus = rememberLanding(core, keys) { state.scrollToItem(it) }
     WearList(state) {
         item { Heading(placeTitle(Place.Blocks)) }
+        screenActionItems(app, actions)
         if (list != null && list.items.isEmpty()) item { Text(list.empty) }
         list?.items.orEmpty().forEachIndexed { index, shown ->
             item {

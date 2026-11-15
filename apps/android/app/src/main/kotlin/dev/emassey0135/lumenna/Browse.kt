@@ -12,7 +12,6 @@ import dev.emassey0135.lumenna.app.ActionKind
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
-import dev.emassey0135.lumenna.app.BlockEvent
 import dev.emassey0135.lumenna.app.ShellEvent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -165,7 +164,7 @@ fun FiltersScreen(core: Core, navigator: Navigator) =
 /**
  * Every block series, as the app lists them (its Blocks place): said as a task row is, when in
  * this device's clock ("every weekday at 9:00 AM"), then how long. Opening one changes every
- * occurrence, in the app's block form.
+ * occurrence, in the app's block form, as New block in the top bar opens it for a new one.
  */
 @Composable
 fun BlocksScreen(core: Core, navigator: Navigator) {
@@ -177,11 +176,8 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
     val worded by app.lines.collectAsState()
     val lines = worded?.takeIf { here != null }
     FollowBlockForm(core, navigator)
-    ScreenFrame(placeTitle(Place.Blocks), core, navigator, actions = {
-        IconButton(onClick = { app.send(ShellEvent.Block(BlockEvent.New(null, null))) }) {
-            Icon(Icons.Filled.Add, contentDescription = Command.NEW_BLOCK.title)
-        }
-    }) {
+    // The place's own actions, the core's (New block, Undo, Redo): the app opens the block form.
+    ScreenFrame(placeTitle(Place.Blocks), core, navigator, screen = ScreenButtons(here?.screenActions.orEmpty())) {
         val count = lines?.readback.orEmpty()
         if (count.isNotEmpty()) {
             Text(

@@ -42,11 +42,14 @@ import androidx.wear.compose.material3.RadioButton
 /** Settings, as the phone groups them: what syncs, the devices, backups. */
 @Composable
 fun SettingsScreen(core: Core, navigator: Navigator) {
-    val listed = appSettings(core)
+    // Asks the app for its settings, whose view lists the pages this watch has something on.
+    appSettings(core)
+    val view by core.app.view.collectAsState()
     WearList {
         item { Heading(commandTitle("settings")) }
-        // The core's pages, but Export and Import: a watch has nowhere to save a file or pick one.
-        SettingsPages.shown(listed).filter { it.id != "export" }.forEach { page ->
+        // The core's pages, but Export and Import: a watch has nowhere to save a file or pick one,
+        // which the core does not know, so it lists the page here too.
+        view?.settings?.pages.orEmpty().filter { it.id != "export" }.forEach { page ->
             item {
                 Button(
                     onClick = {

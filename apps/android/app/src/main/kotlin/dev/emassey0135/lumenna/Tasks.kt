@@ -89,8 +89,10 @@ import dev.emassey0135.lumenna.app.Syntax
 
 
 /**
- * A place's tasks, with a filter field above them, or the trash: the app's list (`ViewModel.list`)
- * while this screen shows its place, which it opens as it comes to the front.
+ * A place's tasks, with a filter field above them: the app's list (`ViewModel.list`) while this
+ * screen shows its place, which it opens as it comes to the front. Its own actions are the
+ * core's, in the top bar: New task, which the app opens quick add for, the filter, which is the
+ * field's, and Undo and Redo.
  *
  * The filter is the app's too, applied as it is typed and read back: how it was understood and
  * how many tasks it found. A misread filter shows wrong results silently, and wrong results are
@@ -108,6 +110,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
     val lines = worded?.takeIf { here != null }
     val trash = screen.place == Place.Trash
     FollowReminders(core, navigator)
+    FollowLine(core, navigator)
     var filter by rememberSaveable(screen, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
     // The app's filter, once nothing typed is on its way: coming back to a place, the app puts
     // back the filter it was left with, and the field shows it. While typing, the field's own.
@@ -117,48 +120,41 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
     }
 
     val field = remember { FocusRequester() }
-    if (!trash) {
-        val shortcuts = LocalShortcuts.current
-        // Collected, not a key: clearing the request would change the key, and cancel the
-        // effect before the field had focus.
-        LaunchedEffect(shortcuts) {
-            shortcuts.filterAsked.collect { asked ->
-                if (!asked) return@collect
-                // The tab was only just chosen: the field takes focus once it is laid out.
-                for (frame in 1..10) {
-                    withFrameNanos {}
-                    if (runCatching { field.requestFocus(FocusDirection.Enter) }.getOrDefault(false)) break
-                }
-                shortcuts.filterAsked.value = false
+    // Every place listed here offers the filter (`screen_actions`): the field above its list.
+    val shortcuts = LocalShortcuts.current
+    // Collected, not a key: clearing the request would change the key, and cancel the
+    // effect before the field had focus.
+    LaunchedEffect(shortcuts) {
+        shortcuts.filterAsked.collect { asked ->
+            if (!asked) return@collect
+            // The tab was only just chosen: the field takes focus once it is laid out.
+            for (frame in 1..10) {
+                withFrameNanos {}
+                if (runCatching { field.requestFocus(FocusDirection.Enter) }.getOrDefault(false)) break
             }
+            shortcuts.filterAsked.value = false
         }
-        Offer(Command.FILTER) { runCatching { field.requestFocus() } }
     }
+    Offer(Command.FILTER) { runCatching { field.requestFocus() } }
 
-    ScreenFrame(here?.title ?: placeTitle(screen.place), core, navigator, actions = {
-        if (!trash) {
-            IconButton(onClick = { navigator.push(Screen.QuickAdd) }) {
-                Icon(Icons.Filled.Add, contentDescription = Command.NEW_TASK.title)
-            }
-        }
-    }) {
-        if (!trash) {
-            CompletingField(
-                core = core,
-                syntax = Syntax.FILTER,
-                label = appWords.quickAdd.filter,
-                example = appWords.quickAdd.filterHint,
-                value = filter,
-                onValueChange = {
-                    if (it.text != filter.text) app.send(ShellEvent.Filter(it.text))
-                    filter = it
-                },
-                onSubmit = {},
-                imeAction = ImeAction.Search,
-                modifier = Modifier.padding(horizontal = 16.dp),
-                focus = field,
-            )
-        }
+    // The place's own actions, the core's; the filter is this screen's field, which it focuses.
+    val screenActions = ScreenButtons(here?.screenActions.orEmpty(), mapOf<String, () -> Unit>("filter" to { runCatching { field.requestFocus() } }))
+    ScreenFrame(here?.title ?: placeTitle(screen.place), core, navigator, screen = screenActions) {
+        CompletingField(
+            core = core,
+            syntax = Syntax.FILTER,
+            label = appWords.quickAdd.filter,
+            example = appWords.quickAdd.filterHint,
+            value = filter,
+            onValueChange = {
+                if (it.text != filter.text) app.send(ShellEvent.Filter(it.text))
+                filter = it
+            },
+            onSubmit = {},
+            imeAction = ImeAction.Search,
+            modifier = Modifier.padding(horizontal = 16.dp),
+            focus = field,
+        )
         Text(
             lines?.readback.orEmpty(),
             style = MaterialTheme.typography.bodySmall,
@@ -367,6 +363,22 @@ fun SwatchDot(swatch: Swatch, modifier: Modifier = Modifier) {
  * is offered beneath, named as the core names it ("project Work", not "#Work"), and put in
  * where the app says. The line starts with what the place adds.
  */
+/**
+ * Quick add, shown over [navigator]'s screen once the app opens its line (New task, the core's
+ * screen action): only as it opens, so a line still closing as the person comes back from quick
+ * add does not open it again.
+ */
+@Composable
+fun FollowLine(core: Core, navigator: Navigator) {
+    val view by core.app.view.collectAsState()
+    val open = view?.line != null
+    var was by remember { mutableStateOf(open) }
+    LaunchedEffect(open) {
+        if (open && !was && navigator.top != Screen.QuickAdd) navigator.push(Screen.QuickAdd)
+        was = open
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun QuickAddScreen(core: Core, navigator: Navigator) {

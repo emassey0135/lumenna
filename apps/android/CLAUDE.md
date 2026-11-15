@@ -82,10 +82,27 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   `app`: `./gradlew :shared:testDebugUnitTest :app:testDebugUnitTest`), with the core's records
   built by hand: there is no native library there, so nothing a test calls may reach it.
 - **Settings are the core's pages** (`SettingsPages`, `settings_pages`): each page's title,
-  description, settings in order, caption and buttons; a page with nothing the store lists here is
-  left out, Export and Import on the watch, which has nowhere to save a file. Where they are
+  description, settings in order, caption and buttons. Which pages are listed is the app's
+  (`SettingsView.pages`, only those with something on them here), drawn whole: the watch alone
+  still leaves out Export and Import, since it has nowhere to save a file and the core does not
+  know that. `SettingsPages.shown` is the BrailleSense's until it takes the view's. Where they are
   Android's own (whether notifications and exact alarms are allowed), the words are
   `notification_words`.
+- **A place's own actions are the core's** (`ViewModel.screenActions`, `ScreenButtons`,
+  `ScreenActions.kt`): Today's, Blocks' and a task list's top bar draws them in the core's order,
+  named by its titles and disabled while not `enabled`, as icons while they fit (`iconRoom`, by
+  the pane's width) and the rest in the bar's overflow menu (named `appWords.more`), where one
+  that `asks` ends in "…". The icon for each `id` is Android's look (`iconOf`); an `id` with none
+  goes to the menu. Each is `ShellEvent.Key(id)`, but what is the shell's (`shell`): the filter is
+  the field above the list, which the action focuses, and every task list has it, as the core
+  offers it on each, the trash's included. The screens follow what the app opens: quick add as its
+  line opens (`FollowLine`, only as it opens, so a line closing as the person comes back does not
+  reopen it), the block form and the question as before. A screen that is no place (the details,
+  a form, settings, Browse) has Undo and Redo in its bar, Android's own, since the core lists
+  screen actions for places alone. Home (`ShellEvent.Home`) is never shown: the tabs and the
+  sidebar are the places. Today's What should I work on? is also one of the day's own actions,
+  so it shows twice there, as the core lists it. Tests press a bar's action with `pressInBar`,
+  which opens the overflow menu where the action is not an icon.
 - **An overrun's Replan** from its notification is the app's `DueEvent.ReplanFiring(key,
   occurrence)`, the firing the notification carries, so replanning dismisses the warning on every
   device though the app's own list of what is due, which Android's alarms do not fill, never held
@@ -129,8 +146,8 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   `keys::what_runs(id)` names that the row offers, or says why not; the folding arrows
   (`Command.runs`: `expand`, `collapse`) go on to the list where the row does not fold. Shift+F10
   opens the row's own menu. With no row focused they are the details' task's
-  (`DetailsEvent.Key`); the day's moves, New Block, Undo and Redo are `ShellEvent.Key` too, and a
-  block's Enter is `open`. Space is not bound: on a row it is a click. Compose's root takes the keys while
+  (`DetailsEvent.Key`); the day's moves, New Block, Undo and Redo are `ShellEvent.Key` too, as
+  their buttons are, and a block's Enter is `open`. Space is not bound: on a row it is a click. Compose's root takes the keys while
   anything has focus; `MainActivity.dispatchKeyEvent` takes them when nothing does.
 - **Erasing for good is a menu away, never a key's**: a trashed task's Erase Permanently is
   in its long-press menu and custom actions with the rest, and Delete, the core's key, runs
@@ -319,6 +336,13 @@ phone does.
   partly visible. They are said in turn, each held long enough to be heard (`sayInTurn`), and
   every other one carries an unheard mark (`Said.description`), so the same sentence twice is a
   change TalkBack says.
+- **A place's own actions are the core's** (`ViewModel.screenActions`, `screenActionItems`): a
+  button each, in its order, named by its title, disabled while not `enabled`, sent as
+  `ShellEvent.Key(id)`; no "…" on a watch's button. A task list's and Blocks' come first, under
+  the heading, a task list's filter being the shell's line in its place; the day's come after its
+  rows and its own actions, so the day is first. The app opening quick add's line opens its screen
+  (`Follow`). The list of places is no place: its New task, Undo, Redo and Settings are the
+  watch's own, as the core's Home, which a watch does not show, would have them.
 - **A refused line is asked again with why**: the input screen's label is the app's refusal,
   then the question; backing out of the input screen gives the question up (`TextEntry`'s
   `cancelled`). A place merged or deleted takes its list to where the app went, as the phone's.

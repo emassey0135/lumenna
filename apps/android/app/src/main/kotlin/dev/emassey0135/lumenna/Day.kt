@@ -112,7 +112,6 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
 
     // Each of the day's commands is the core's to run (`ShellEvent.Key`), by key or button alike.
     val run = { command: Command -> command.id?.let { app.send(ShellEvent.Key(it)) } ?: Unit }
-    val addBlock = { run(Command.NEW_BLOCK) }
 
     for (command in listOf(Command.PREVIOUS_DAY, Command.NEXT_DAY, Command.GO_TO_NOW, Command.GO_TO_DAY, Command.NEW_BLOCK)) {
         androidx.compose.runtime.key(command) { Offer(command) { run(command) } }
@@ -121,11 +120,9 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     // The day's own actions, the app's, in the core's order.
     val dayActions = day?.let { app.actingOn(ActingOn.Day, it.offered) }.orEmpty()
 
-    ScreenFrame(lines?.dayTitle?.ifEmpty { null } ?: placeTitle(Place.Today), core, navigator, actions = {
-        IconButton(onClick = { addBlock() }) {
-            Icon(Icons.Filled.Add, contentDescription = Command.NEW_BLOCK.title)
-        }
-    }) {
+    // Today's own actions, the core's (New block, the day's moves, Undo, Redo), in the top bar.
+    val screenActions = ScreenButtons(view?.takeIf { it.place == Place.Today }?.screenActions.orEmpty())
+    ScreenFrame(lines?.dayTitle?.ifEmpty { null } ?: placeTitle(Place.Today), core, navigator, screen = screenActions) {
         val summary = day?.summary.orEmpty()
         Text(
             summary,
@@ -142,14 +139,11 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
                 }
             },
         )
-        FlowRow(
+        // The day's own actions as buttons too, as on its heading; its moves are the top bar's.
+        if (dayActions.isNotEmpty()) FlowRow(
             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Named as the core's commands for each move are, which the keys run too.
-            for (command in listOf(Command.PREVIOUS_DAY, Command.GO_TO_NOW, Command.NEXT_DAY, Command.GO_TO_DAY)) {
-                OutlinedButton(modifier = Target, onClick = { run(command) }) { Text(command.title) }
-            }
             dayActions.forEach { action ->
                 OutlinedButton(modifier = Target, onClick = action.run) {
                     Text(action.name, color = if (action.destructive) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
