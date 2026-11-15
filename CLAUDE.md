@@ -144,7 +144,12 @@ crosses the FFI.
   do is said once as it starts (`Event::Abilities`, `Abilities { files, backup_folder }`; a shell
   that never says can do both): one that saves and picks no files (a watch) lists no exports,
   imports or restores, one with no folder of backups (a browser) none of the backup schedule and
-  folder settings.
+  folder settings. **About is the last page where a device has no About of its own**
+  (`Abilities::own_about` false: a phone, a watch, the iPad, the web): a page of lines alone
+  (`SettingsPage::lines`, `ShellWords::about_lines`: name, version, description, website, where to
+  report a problem, publisher, licence), with no setting and no button, which a shell draws as
+  lines to read. A desktop keeps its menu bar's About, and a braille device and Emacs Home's, so
+  the page is not listed there.
 - **The task details' words are the core's** (`details_words`; `DetailsView::lines`, also
   `Lines::details`: the state, a rule the form cannot say, what it waits for, its history). The
   buttons a details pane shows by themselves are the task's `primary` offered actions, the rest a

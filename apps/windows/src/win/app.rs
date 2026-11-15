@@ -24,7 +24,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::UI::Controls::{
-    ICC_DATE_CLASSES, ICC_HOTKEY_CLASS, ICC_STANDARD_CLASSES, ICC_TAB_CLASSES, ICC_TREEVIEW_CLASSES, INITCOMMONCONTROLSEX,
+    ICC_BAR_CLASSES, ICC_DATE_CLASSES, ICC_HOTKEY_CLASS, ICC_STANDARD_CLASSES, ICC_TAB_CLASSES, ICC_TREEVIEW_CLASSES, INITCOMMONCONTROLSEX,
     InitCommonControlsEx, LIM_LARGE, LIM_SMALL, LoadIconMetric, NM_RCLICK, NMHDR,
     WC_STATICW,
 };
@@ -156,6 +156,8 @@ pub struct App {
     pub sidebar: Sidebar,
     content: RefCell<Option<Content>>,
     pub detail: Detail,
+    /// The screen's own actions, above the list (`toolbar.rs`).
+    pub toolbar: super::toolbar::Toolbar,
     deferred: RefCell<VecDeque<Deferred>>,
     /// Where focus was when the window was last active, to put it back on return.
     last_focus: Cell<HWND>,
@@ -198,7 +200,7 @@ pub fn run() {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let controls = INITCOMMONCONTROLSEX {
             dwSize: size_of::<INITCOMMONCONTROLSEX>() as u32,
-            dwICC: ICC_STANDARD_CLASSES | ICC_TREEVIEW_CLASSES | ICC_TAB_CLASSES | ICC_HOTKEY_CLASS | ICC_DATE_CLASSES,
+            dwICC: ICC_STANDARD_CLASSES | ICC_TREEVIEW_CLASSES | ICC_TAB_CLASSES | ICC_HOTKEY_CLASS | ICC_DATE_CLASSES | ICC_BAR_CLASSES,
         };
         let _ = InitCommonControlsEx(&controls);
     }
@@ -361,6 +363,11 @@ impl App {
         a11y::make_live(status);
         let sidebar = Sidebar::create(panes[0]);
         let detail = Detail::create(panes[2]);
+        // The screen's own actions, between the places and the list in Tab's order as on the screen.
+        let toolbar = super::toolbar::Toolbar::create(main);
+        unsafe {
+            let _ = SetWindowPos(toolbar.hwnd, Some(panes[0]), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
         let relay = Arc::new(Relay(Poster::new(main)));
         let crux = match lumenna_ffi::App::new(&device, "windows".to_owned(), Arc::new(Formats), relay) {
             Ok(crux) => crux,
@@ -406,6 +413,7 @@ impl App {
             sidebar,
             content: RefCell::new(None),
             detail,
+            toolbar,
             deferred: RefCell::new(VecDeque::new()),
             last_focus: Cell::new(HWND::default()),
             settings: RefCell::new(None),
@@ -529,6 +537,9 @@ impl App {
         let now = self.crux.view();
         self.follow(now.place.clone());
         self.sidebar.draw(self, &turn.view);
+        if self.toolbar.draw(&now.screen_actions) {
+            self.layout();
+        }
         let still = self.crux.is_still();
         let mut typing = self.detail.draw(&turn.view, &turn.lines, still);
         let list = self.task_list().filter(|list| turn.view.place.as_ref() == Some(&list.place));
@@ -1005,13 +1016,16 @@ impl App {
         let sidebar = m.px(230).min(width / 4);
         let detail = m.px(340).min(width / 3);
         let middle = (width - sidebar - detail).max(0);
+        // The screen's own actions over the list they act on.
+        let bar = self.toolbar.height(m.button).min(body);
         controls::place(self.panes[0], rect(0, 0, sidebar, body));
-        controls::place(self.panes[1], rect(sidebar, 0, middle, body));
+        controls::place(self.toolbar.hwnd, rect(sidebar, 0, middle, bar));
+        controls::place(self.panes[1], rect(sidebar, bar, middle, body - bar));
         controls::place(self.panes[2], rect(sidebar + middle, 0, detail, body));
         controls::place(self.status, rect(m.gap(), body + m.px(5), width - 2 * m.gap(), m.line));
         self.sidebar.layout(sidebar, body, m);
         if let Some(content) = self.content() {
-            content.view().layout(middle, body, m);
+            content.view().layout(middle, body - bar, m);
         }
         self.detail.layout(detail, body, m);
     }
@@ -1289,6 +1303,13 @@ impl App {
             self.menu_command(id);
             return;
         }
+        // A toolbar button: its command, as the menu runs the same one.
+        if control == self.toolbar.hwnd {
+            if let Some(action) = self.toolbar.action(id).filter(|action| action.enabled) {
+                self.run_command(&action.id);
+            }
+            return;
+        }
         if let Some(content) = self.content()
             && content.view().command(self, control, id, code) {
                 return;
@@ -1317,6 +1338,9 @@ impl App {
         }
         if header.hwndFrom == self.sidebar.tree.hwnd {
             return self.sidebar.notify(self, header, lparam);
+        }
+        if header.hwndFrom == self.toolbar.hwnd {
+            return super::toolbar::notify(header, lparam);
         }
         self.content()?.view().notify(self, header, lparam)
     }
