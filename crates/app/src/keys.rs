@@ -93,7 +93,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::Day, "next-day", "Next Day", &["Ctrl+Page Down"]),
     key(Group::Day, "go-to-now", "Go to Now", &["Ctrl+T"]),
     key(Group::Day, "go-to-day", "Go to Day", &["Ctrl+G"]),
-    key(Group::Lists, "open", "Open the Task, or Change the Block", &["Enter"]),
+    key(Group::Lists, "open", "Open the Task, Place or Block, or Restore from the Trash", &["Enter"]),
     key(Group::Lists, "toggle", "Mark Done, Restore from the Trash, or Start, Pause or Resume a Timer", &["Space"]),
     key(Group::Lists, "delete", "Delete, Move to Trash, Delete from the Trash, or Unassign", &["Delete"]),
     key(Group::Lists, "actions", "Everything That Can Be Done to the Row", &["Shift+F10", "Applications key"]),
@@ -123,7 +123,10 @@ pub fn what_runs(id: &str) -> Runs {
     match id {
         "delete" => Runs::Row(&[K::Delete, K::DeleteForGood, K::Unassign, K::Unpair]),
         "toggle" => Runs::Row(&[K::MarkDone, K::MarkNotDone, K::Restore, K::StartTimer, K::PauseTimer, K::ResumeTimer]),
-        "open" => Runs::Row(&[K::Edit, K::EditTask, K::AddBlock, K::RestoreDay]),
+        // Enter, the same on every row of every platform: a task's details, a block's form, free
+        // time's new block, a cancelled day back, a trashed task restored, a device renamed. A
+        // place in the sidebar or on Home opens (`Lumenna::command`).
+        "open" => Runs::Row(&[K::Edit, K::EditTask, K::AddBlock, K::RestoreDay, K::Restore, K::Rename]),
         "open-task" | "properties" => Runs::Row(&[K::Edit, K::EditTask]),
         "mark-done" => Runs::Row(&[K::MarkDone, K::MarkNotDone]),
         "put-in-block" => Runs::Row(&[K::PutInBlock]),
@@ -147,7 +150,7 @@ pub fn what_runs(id: &str) -> Runs {
         "clear-day" => Runs::Day(&[K::ClearDay]),
         "new-task" | "new-block" | "new-project" | "new-label" | "new-filter" | "sync-now" | "settings" | "undo" | "redo"
         | "go-today" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "save-task" | "previous-day" | "next-day"
-        | "go-to-now" | "go-to-day" | "back-up" => Runs::App,
+        | "go-to-now" | "go-to-day" | "back-up" | "home" | "new-project-inside" => Runs::App,
         _ => Runs::Shell,
     }
 }

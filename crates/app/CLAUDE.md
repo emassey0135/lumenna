@@ -65,10 +65,19 @@ contract with every shell; this is how the app keeps it.
 - **A letter is the core's** (`braille.rs`): `Event::Letter` runs the row's action of that
   letter, the shared table's command where `ACTION_COMMANDS` names one, a row with several of
   the kind asking which (`Purpose::Which`), else the reminder list's own, the day's and the
-  place's own (`place_commands`); only the screen in front's, so a side list does not fall back
-  to the place behind it. Refusals go through `refuse`, so `Announce::refusal` is set
+  place's own (`screen_actions::place_action_ids`); only the screen in front's, so a side list
+  does not fall back to the place behind it. On Home (`Screen::home`, acting from the sidebar) a
+  letter is Home's places' and its own actions' first (`home_letter`), then the sidebar row's. Refusals go through `refuse`, so `Announce::refusal` is set
   (`screen::ScreenChange::Refused`). `Event::FindLetter` searches row *names* (`Screen::names`):
   a day's line starts with a time, so a block is found by what it is called.
+- **A screen's own actions and Home are `screen_actions.rs`**: which ids each place offers
+  (`place_action_ids`) and Home's (`HOME_ACTIONS`), their records built as the view is (after the
+  capitals, over the sidebar as cased), and Home a flag on the screen (`Screen::home`) that
+  opening a place (`Screen::go`, `show_day`) clears. Home acts from the sidebar (`acting =
+  Side::Sidebar`), so `Key("open")` there opens the held place (`open_held_place`). A new screen
+  action needs a letter in `braille::COMMAND_LETTERS` and a way to run in `Lumenna::command`; its
+  tests hold every one in the braille menu bar with its hot key, and every menu bar command
+  reachable without one.
 - **The screen is built beside the lines** (`screen.rs`, `Turn::described`), not on the view: a
   row's line is the device's clock's, and what changed needs the view before (`deliver`'s
   `drawn`).

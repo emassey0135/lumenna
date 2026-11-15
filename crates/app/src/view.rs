@@ -93,6 +93,15 @@ pub struct ViewModel {
     /// (Mark Not Done on a task done) and whether what is in hand offers it, for a menu to draw.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<CommandState>,
+    /// What the screen shown offers of its own beside its rows, in order (`screen_actions`): the
+    /// place's (New Task, the filter, the day's moves, Undo, Redo), or Home's while it is shown.
+    /// Buttons on a desktop or a phone, the screen's menu on a braille device; each sent back as
+    /// `Event::Key(id)`, but one that is the shell's own (`shell`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub screen_actions: Vec<crate::ScreenAction>,
+    /// Home, while it is shown (`Event::Home`): only a shell that shows one asks for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<crate::HomeView>,
 }
 
 /// A list of tasks as shown.
@@ -128,7 +137,8 @@ pub struct Asking {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<Action>,
     /// What to ask now: the action's question, or, once a pick that asks how long has its
-    /// choice, how long.
+    /// choice, how long. Never `Question::Immediate`: an action that asks nothing runs as it is
+    /// handed back, and no question opens for it, so a shell never answers one itself.
     pub question: Question,
     /// What a pick offers, once known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -217,6 +227,11 @@ pub(crate) fn whole(model: &Screen) -> ViewModel {
     if model.capitals == crate::Capitals::Sentence {
         crate::capitals::in_sentence_case(&mut view);
     }
+    // Worded in the shell's capitals as they are made, over the sidebar as it is now cased.
+    if view.ready {
+        view.screen_actions = model.screen_actions();
+        view.home = model.home.then(|| model.home_view(&view.sidebar));
+    }
     view
 }
 
@@ -231,6 +246,11 @@ fn offer(view: &mut ViewModel) {
     let short = |actions: &mut Vec<lumenna_records::Action>| std::mem::take(actions).iter().map(Offered::of).collect::<Vec<_>>();
     for entry in &mut view.sidebar {
         entry.offered = short(&mut entry.actions);
+    }
+    if let Some(home) = &mut view.home {
+        for place in &mut home.places {
+            place.entry.offered = short(&mut place.entry.actions);
+        }
     }
     if let Some(day) = &mut view.day {
         day.offered = short(&mut day.actions);
@@ -359,15 +379,24 @@ fn shown(model: &Screen) -> ViewModel {
         landing: model.landing,
         checkboxes: model.checkboxes,
         asking: model.open.as_ref().map(|open| asking(open, model)),
-        commands: crate::keys::states(
-            &match model.acting {
-                Some(side) => model.side_actions(side),
-                None => model.actions_in_hand(),
+        commands: {
+            let mut states = crate::keys::states(
+                &match model.acting {
+                    Some(side) => model.side_actions(side),
+                    None => model.actions_in_hand(),
+                }
+                .unwrap_or_default(),
+                &model.day_view().filter(|_| model.place() == Place::Today).map(|day| day.actions).unwrap_or_default(),
+                model.capitals == crate::Capitals::Sentence,
+            );
+            // What Should I Work On? goes to today from anywhere: it applies wherever today offers it.
+            if let Some(what_now) = states.iter_mut().find(|state| state.id == "what-now") {
+                what_now.enabled = model.today_offers(lumenna_records::ActionKind::WhatNow);
             }
-            .unwrap_or_default(),
-            &model.day_view().filter(|_| model.place() == Place::Today).map(|day| day.actions).unwrap_or_default(),
-            model.capitals == crate::Capitals::Sentence,
-        ),
+            states
+        },
+        screen_actions: Vec::new(),
+        home: None,
     }
 }
 
@@ -397,6 +426,7 @@ fn asking(open: &crate::Open, model: &Screen) -> Asking {
     };
     let syntax = query.then_some(Syntax::Filter);
     let question = open.question(model.capitals == crate::Capitals::Sentence);
+    debug_assert!(question != Question::Immediate, "an action that asks nothing never opens a question");
     // How long: once a pick that asks it has its choice, or an action whose line is a length.
     let length = open.picked.is_some()
         || open.action().is_some_and(|a| matches!(a.kind, lumenna_records::ActionKind::PlannedLength | lumenna_records::ActionKind::LogMinutes));

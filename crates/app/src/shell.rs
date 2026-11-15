@@ -23,6 +23,8 @@ use lumenna_records::{ActionKind, Answer};
 pub enum ShellEvent {
     /// Go to a place.
     Open(Place),
+    /// Show Home: the places, then what can be done from anywhere. Only a shell that shows one.
+    Home,
     /// The person moved to a row.
     Focus(String),
     /// The person moved to a row of a list beside the main one.
@@ -107,6 +109,7 @@ impl From<ShellEvent> for Event {
     fn from(event: ShellEvent) -> Self {
         match event {
             ShellEvent::Open(place) => Event::Open(place),
+            ShellEvent::Home => Event::Home,
             ShellEvent::Focus(key) => Event::Focus(key),
             ShellEvent::Hold(side, key) => Event::Hold(side, key),
             ShellEvent::Filter(text) => Event::Filter(text),
@@ -149,6 +152,7 @@ impl TryFrom<Event> for ShellEvent {
     fn try_from(event: Event) -> Result<Self, Event> {
         Ok(match event {
             Event::Open(place) => ShellEvent::Open(place),
+            Event::Home => ShellEvent::Home,
             Event::Focus(key) => ShellEvent::Focus(key),
             Event::Hold(side, key) => ShellEvent::Hold(side, key),
             Event::Filter(text) => ShellEvent::Filter(text),
