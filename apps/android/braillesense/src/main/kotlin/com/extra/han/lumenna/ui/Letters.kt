@@ -1,6 +1,6 @@
 package com.extra.han.lumenna.ui
 
-import com.extra.han.lumenna.device.Key
+import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.lumenna.app.brailleLetter
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.MenuShortcut

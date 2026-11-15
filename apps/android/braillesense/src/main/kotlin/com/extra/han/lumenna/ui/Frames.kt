@@ -1,8 +1,11 @@
 package com.extra.han.lumenna.ui
 
-import com.extra.han.lumenna.device.Key
-import dev.emassey0135.lumenna.app.BraillePart
-import dev.emassey0135.lumenna.app.ControlRole
+import dev.emassey0135.braillesense.input.Key
+import dev.emassey0135.braillesense.edit.LineEditor
+import dev.emassey0135.braillesense.edit.TextBox
+import dev.emassey0135.braillesense.reading.BraillePart
+import dev.emassey0135.braillesense.reading.ControlRole
+import dev.emassey0135.braillesense.reading.DeviceLine
 
 /** What a frame shows and says now. */
 data class Rendered(
@@ -163,7 +166,10 @@ class ListFrame(
     }
 }
 
-/** A line of text the person types, with its prompt, and what Enter does with it. */
+/**
+ * A line of text the person types, with its prompt, and what Enter does with it. Its other keys
+ * are the box's (`BoxEditing`, which the shell runs ahead of the frame).
+ */
 class LineFrame(
     id: String,
     private val prompt: String,
@@ -180,11 +186,6 @@ class LineFrame(
         changed(box.text)
     }
 
-    private fun push(): Boolean {
-        changed(box.text)
-        return true
-    }
-
     override val rendered: Rendered
         get() {
             val shown = editor.shown()
@@ -197,17 +198,6 @@ class LineFrame(
 
     override fun key(key: Key): Boolean = when (key) {
         Key.Enter -> run { done(box.text); true }
-        Key.CharLeft -> run { editor.left(); push() }
-        Key.CharRight -> run { editor.right(); push() }
-        Key.WordLeft -> run { editor.wordLeft(); push() }
-        Key.WordRight -> run { editor.wordRight(); push() }
-        Key.LineStart, Key.First -> run { editor.start(); push() }
-        Key.LineEnd, Key.Last -> run { editor.end(); push() }
-        Key.Backspace -> run { box.backspace(); push() }
-        Key.Delete -> run { box.delete(); push() }
-        Key.Space -> run { editor.space(); push() }
-        is Key.Cell -> run { editor.cell(key.dots); true }
-        is Key.Typed -> run { editor.type(key.text); push() }
         else -> false
     }
 }
@@ -215,7 +205,7 @@ class LineFrame(
 /** A control in a dialog: something Tab stops at. */
 sealed class Control(val key: String) {
     /** The line it reads as. */
-    abstract val line: dev.emassey0135.lumenna.app.DeviceLine
+    abstract val line: DeviceLine
 
     /** Text to type; [box] holds it while the dialog is open, a line or, [TextBox.multiLine], several. */
     class Edit(
@@ -229,7 +219,7 @@ sealed class Control(val key: String) {
         /** The line the cursor is on. */
         val editor: LineEditor get() = box.line
 
-        override val line: dev.emassey0135.lumenna.app.DeviceLine
+        override val line: DeviceLine
             get() = if (box.multiLine) {
                 line(ControlRole.MULTI_LINE_EDIT_BOX, editor.text.ifEmpty { if (box.text.isEmpty()) hint else "" }, editor.text, label = label)
             } else {
@@ -339,43 +329,17 @@ class FormFrame(
     }
 
     /**
-     * An edit box's keys, as the device's own: Enter in a single line goes on (or submits), in a
-     * multi-line box starts a new line; there Space-1 and Space-4 move between lines and
-     * Space-1-2-3 and Space-4-5-6 go to the top and bottom. Tab leaves either.
+     * What an edit box leaves to the dialog: Enter in a box of one line goes on, or submits. The
+     * rest of its keys are the box's (`BoxEditing`, which the shell runs ahead of the frame), and
+     * Tab leaves either kind.
      */
-    private fun edit(control: Control.Edit, key: Key): Boolean {
-        val box = control.box
-        val editor = box.line
-        val changed = {
-            control.changed(box.text)
+    private fun edit(control: Control.Edit, key: Key): Boolean = when {
+        key == Key.Enter && !control.box.multiLine -> {
+            control.changed(control.box.text)
+            control.submit?.invoke() ?: move(+1)
             true
         }
-        return when (key) {
-            Key.Enter -> if (box.multiLine) {
-                box.newLine()
-                changed()
-            } else {
-                control.changed(box.text)
-                control.submit?.invoke() ?: move(+1)
-                true
-            }
-            Key.Up -> box.multiLine && run { box.up(); true }
-            Key.Down -> box.multiLine && run { box.down(); true }
-            Key.First -> run { if (box.multiLine) box.top() else editor.start(); true }
-            Key.Last -> run { if (box.multiLine) box.bottom() else editor.end(); true }
-            Key.CharLeft -> run { editor.left(); true }
-            Key.CharRight -> run { editor.right(); true }
-            Key.WordLeft -> run { editor.wordLeft(); true }
-            Key.WordRight -> run { editor.wordRight(); true }
-            Key.LineStart -> run { editor.start(); true }
-            Key.LineEnd -> run { editor.end(); true }
-            Key.Backspace -> run { box.backspace(); changed() }
-            Key.Delete -> run { box.delete(); changed() }
-            Key.Space -> run { editor.space(); changed() }
-            is Key.Cell -> run { editor.cell(key.dots); true }
-            is Key.Typed -> run { editor.type(key.text); changed() }
-            else -> false
-        }
+        else -> false
     }
 
     private fun choice(control: Control.Choice, key: Key): Boolean {

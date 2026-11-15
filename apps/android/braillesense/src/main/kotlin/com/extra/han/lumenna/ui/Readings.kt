@@ -1,17 +1,19 @@
 package com.extra.han.lumenna.ui
 
-import com.extra.han.lumenna.device.BrailleSettings
-import dev.emassey0135.lumenna.app.ControlRole
-import dev.emassey0135.lumenna.app.DeviceLine
-import dev.emassey0135.lumenna.app.DeviceReading
-import dev.emassey0135.lumenna.app.deviceReading
+import dev.emassey0135.braillesense.braille.BrailleSettings
+import dev.emassey0135.braillesense.output.BrailleDisplay
+import dev.emassey0135.braillesense.output.DisplayLine
+import dev.emassey0135.braillesense.reading.ControlRole
+import dev.emassey0135.braillesense.reading.DeviceLine
+import dev.emassey0135.braillesense.reading.DeviceReading
+import dev.emassey0135.braillesense.reading.deviceReading
 
-/** How the core reads a line in the person's settings; the JVM tests give their own. */
+/** How the device reads a line in the person's settings; the JVM tests give their own. */
 fun interface Readings {
     fun read(line: DeviceLine): DeviceReading
 }
 
-class CoreReadings(private val settings: BrailleSettings) : Readings {
+class SettingsReadings(private val settings: BrailleSettings) : Readings {
     override fun read(line: DeviceLine): DeviceReading = deviceReading(line, settings.lines, settings.signs)
 }
 
@@ -27,8 +29,12 @@ fun line(
     asks: Boolean = false,
     position: Int = 0,
     count: Int = 0,
-) = DeviceLine(role, label, speech, text, detail, letter?.toString(), hotKey, asks, position.toUInt(), count.toUInt())
+) = DeviceLine(role, label, speech, text, detail, letter?.toString(), hotKey, asks, position, count)
 
 /** A reading as a frame shows it, an edit box's own [cells] in place of its text. */
 fun DeviceReading.rendered(cells: ByteArray? = null, cellCursor: Int = -1) =
     Rendered(speech, body, cells = cells, cellCursor = cellCursor, before = before, after = after)
+
+/** Puts what a frame shows on the display. */
+fun BrailleDisplay.show(rendered: Rendered) =
+    show(DisplayLine(rendered.braille, rendered.cursor, rendered.cells, rendered.cellCursor, rendered.before, rendered.after))

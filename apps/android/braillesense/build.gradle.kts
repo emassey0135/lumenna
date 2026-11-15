@@ -1,42 +1,6 @@
-import org.gradle.api.DefaultTask
-import org.gradle.api.file.DirectoryProperty
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.OutputDirectory
-import org.gradle.api.tasks.TaskAction
-import org.gradle.process.ExecOperations
-import javax.inject.Inject
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-}
-
-/**
- * Builds liblouis for the device and gathers its tables (`build-louis.sh`): what is built
- * already is left, so this costs nothing when nothing changed.
- */
-abstract class BuildLouis @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
-    @get:OutputDirectory abstract val jniLibs: DirectoryProperty
-    @get:OutputDirectory abstract val assets: DirectoryProperty
-    @get:Input abstract val profile: Property<String>
-    @get:Input abstract val script: Property<String>
-
-    init {
-        outputs.upToDateWhen { false }
-    }
-
-    @TaskAction
-    fun build() {
-        exec.exec {
-            commandLine(
-                script.get(),
-                jniLibs.get().asFile.absolutePath,
-                assets.get().asFile.absolutePath,
-                profile.get(),
-            )
-        }
-    }
 }
 
 // The BrailleSense 7 app. Its package is the one Android ID that is not the workspace's
@@ -72,30 +36,16 @@ android {
     }
 
     buildFeatures {
-        aidl = true
         buildConfig = true
         compose = true
         resValues = true
     }
 }
 
-androidComponents {
-    onVariants { variant ->
-        val name = variant.name.replaceFirstChar { it.uppercase() }
-        val louis = tasks.register<BuildLouis>("buildLouis$name") {
-            script.set(file("build-louis.sh").absolutePath)
-            profile.set(if (variant.buildType == "release") "release" else "debug")
-            jniLibs.set(layout.buildDirectory.dir("generated/louis/${variant.name}/jniLibs"))
-            assets.set(layout.buildDirectory.dir("generated/louis/${variant.name}/assets"))
-        }
-        variant.sources.jniLibs?.addGeneratedSourceDirectory(louis, BuildLouis::jniLibs)
-        variant.sources.assets?.addGeneratedSourceDirectory(louis, BuildLouis::assets)
-    }
-}
-
 dependencies {
     implementation(project(":shared"))
     implementation(project(":braille"))
+    implementation(project(":braillesense-sdk"))
     // `Core`'s Compose state and the activity it runs on.
     val bom = platform(libs.compose.bom)
     implementation(bom)

@@ -54,7 +54,8 @@ apps/emacs/     the Emacs client, in Elisp, drawing the Crux app over `lum rpc` 
 apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (app/), Wear OS
                 (wear/), the HIMS BrailleSense 7 (braillesense/), the Orbit Speak and Player (orbit/),
                 which draw no Compose and speak for themselves, what those two share (braille/), and
-                what every app shares (shared/).
+                what every app shares (shared/); and an unofficial BrailleSense SDK
+                (braillesense-sdk/), the device itself, depending on nothing of Lumenna's.
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
                 between them.
 apps/windows/   the Win32 app, over the Crux app (crates/ffi, linked as Rust).
@@ -151,7 +152,10 @@ crosses the FFI.
   comes with the view. That includes what only one shell needs today (BTSpeak's menus and file
   prompts, the web's folder backups and tab notices, a watch's placeholders): a shell writes no
   sentence of its own, a key it names being a part. A word a shell finds missing is added to
-  the record, never written in the shell. A sidebar entry says its
+  the record, never written in the shell. **The exception is a device SDK's own words**: what a
+  device's own controls say as the device says them (the BrailleSense SDK's edit box, its cell
+  echo, its role words, `apps/android/braillesense-sdk`) are that device's, not Lumenna's, so they
+  live in the SDK, in the device's words, and the core holds none of them. A sidebar entry says its
   own folding (`hidden`, `expanded`, `level`), as a list's rows and a pick's lines (`Line::level`)
   do; a list a shell narrows or cuts out itself takes its levels from `lines::levels(depths)`
   (`levels()` over the FFI), so no shell counts them.
@@ -293,10 +297,10 @@ directly (8805659 is the last commit before the move). How the app works inside 
   Speak, whose Enter is dot 8)
   and the letter alone moves.
   A device reporting dots turns them into a letter by `braille_letter`, the core's own a to z and
-  never the person's table: dot 7 or 8 in a chord is no letter. Erase Permanently has no letter. How a device with its own controls reads a line (its role in
+  never the person's table: dot 7 or 8 in a chord is no letter. Erase Permanently has no letter. How the BrailleSense reads a line (its role in
   speech and on the cells, where its settings put it, a shortcut letter, a sign for a dialog or a
-  submenu, a control's label and place) is `braille::device_reading`, the words and the order
-  being the core's; the device's settings and its braille code's signs are the shell's to hand in.
+  submenu, a control's label and place) is the device's own convention, in its SDK
+  (`deviceReading`, `apps/android/braillesense-sdk`), not the core's.
   A braille device's menu bar is the shared one with its letters (`braille::menu_bar`, over
   `keys::MENUS`), and what a letter gives where none is set is `braille::menu_shortcuts`.
 - **What a shell that speaks for itself needs is the core's** (`lumenna_app::screen`,

@@ -1,24 +1,21 @@
 package com.extra.han.lumenna
 
-import com.extra.han.lumenna.device.Key
-import com.extra.han.lumenna.device.Translated
-import com.extra.han.lumenna.device.Translator
+import dev.emassey0135.braillesense.input.Key
+import dev.emassey0135.braillesense.braille.Translated
+import dev.emassey0135.braillesense.braille.Translator
 import com.extra.han.lumenna.ui.Control
 import com.extra.han.lumenna.ui.FormFrame
-import com.extra.han.lumenna.ui.LineEditor
-import com.extra.han.lumenna.ui.TextBox
+import dev.emassey0135.braillesense.edit.TextBox
 import com.extra.han.lumenna.ui.Letters
 import com.extra.han.lumenna.ui.ListFrame
 import com.extra.han.lumenna.ui.MenuEntry
 import com.extra.han.lumenna.ui.MenuFrame
 import com.extra.han.lumenna.ui.Readings
 import com.extra.han.lumenna.ui.Row
-import dev.emassey0135.lumenna.app.ControlRole
-import dev.emassey0135.lumenna.app.DeviceReading
-import org.junit.Assert.assertArrayEquals
+import dev.emassey0135.braillesense.reading.ControlRole
+import dev.emassey0135.braillesense.reading.DeviceReading
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -61,35 +58,6 @@ private val READ = Readings { line ->
     val key = line.hotKey?.let { " $it" }.orEmpty()
     val role = if (line.role == ControlRole.MENU) " pulldown" else if (line.asks) " dialog" else ""
     DeviceReading("$name$letter$key$role", emptyList(), line.text, emptyList())
-}
-
-/** One contraction: "the" is one cell. */
-private const val THE = 0x2e
-
-private object Contracted : Translator {
-    override fun computer(text: String): ByteArray = Plain.computer(text)
-
-    override fun translate(text: String, cursor: Int): Translated {
-        val cells = ArrayList<Byte>()
-        val textAt = ArrayList<Int>()
-        var at = 0
-        while (at < text.length) {
-            textAt += at
-            if (text.startsWith("the", at)) { cells += THE.toByte(); at += 3 } else { cells += text[at].code.toByte(); at++ }
-        }
-        return Translated(cells.toByteArray(), IntArray(text.length), textAt.toIntArray())
-    }
-
-    override fun back(cells: ByteArray): String = cells.joinToString("") { if (it.toInt() == THE) "the" else it.toInt().toChar().toString() }
-}
-
-/** Shows anything and reads back only lower case: what a round trip through a table can lose. */
-private object Lossy : Translator {
-    override fun computer(text: String): ByteArray = Plain.computer(text)
-
-    override fun translate(text: String, cursor: Int): Translated = Plain.translate(text, cursor)
-
-    override fun back(cells: ByteArray): String = Plain.back(cells).lowercase()
 }
 
 class FramesTest {
@@ -244,11 +212,11 @@ class FramesTest {
     }
 
     @Test fun aRowCarriesItsNumberAndAPromptsAnswersDoNot() {
-        val seen = mutableListOf<Pair<UInt, UInt>>()
+        val seen = mutableListOf<Pair<Int, Int>>()
         val readings = Readings { line -> seen += line.position to line.count; READ.read(line) }
         ListFrame("l", "", listOf(Row("a", "a"), Row("b", "b")), "b", "", BY_LETTER, readings = readings).rendered
         ListFrame("l", "", listOf(Row("y", "Yes")), null, "", BY_LETTER, readings = readings, prompt = true).rendered
-        assertEquals(listOf(2u to 2u, 0u to 0u), seen)
+        assertEquals(listOf(2 to 2, 0 to 0), seen)
     }
 
     @Test fun enterWithNothingToOpenSaysSoAndAnActionlessRowToo() {
@@ -348,40 +316,6 @@ class FramesTest {
         assertTrue(frame.rendered.speech.startsWith("Three"))
     }
 
-    @Test fun aLineTakesAWordOfCellsAndReadsItBackAtSpace() {
-        val editor = LineEditor("", Plain)
-        "hi".forEach { editor.cell(it.code) }
-        assertEquals("hi", editor.text)
-        editor.space()
-        assertEquals("hi ", editor.text)
-        assertEquals("hi", editor.takeFinished())
-    }
-
-    @Test fun backspaceTakesTheLastCellThenTheLastCharacter() {
-        val editor = LineEditor("a", Plain)
-        editor.cell('b'.code)
-        editor.backspace()
-        assertEquals("a", editor.text)
-        editor.backspace()
-        assertEquals("", editor.text)
-    }
-
-    @Test fun theCaretMovesThroughTheLineAndAWordGoesInAtIt() {
-        val editor = LineEditor("ad", Plain)
-        editor.left()
-        editor.type("b")
-        editor.right()
-        editor.start()
-        editor.cell('c'.code)
-        assertEquals("cabd", editor.text)
-    }
-
-    @Test fun aRoutingKeyPutsTheCaretOverItsCharacter() {
-        val editor = LineEditor("abcd", Plain)
-        editor.route(1)
-        assertEquals(1, editor.caret)
-    }
-
     @Test fun aFormTabsAndEachControlTakesItsKeys() {
         var on = false
         var pressed = false
@@ -392,7 +326,7 @@ class FramesTest {
             listOf(Control.Edit("e", "Name", edit), Control.Toggle("t", "Flag", on) { on = it }, Control.Button("b", "Save", press = { pressed = true })),
             null, BY_LETTER, READ,
         )
-        frame.key(Key.Cell('x'.code))
+        edit.line.cell('x'.code)
         frame.key(Key.Tab)
         assertEquals("x", edit.text)
         assertEquals("Flag", frame.rendered.speech)
@@ -433,256 +367,13 @@ class FramesTest {
         assertEquals("c", chosen)
     }
 
-    @Test fun backspaceTakesOneCellOfAContraction() {
-        val editor = LineEditor("", Contracted)
-        editor.cell(THE)
-        editor.cell('n'.code)
-        assertEquals("then", editor.text)
-        editor.backspace()
-        assertEquals("the", editor.text)
-        val removed = editor.takeRemoved()!!
-        assertEquals('n'.code.toByte(), removed.cell)
-        assertArrayEquals("the word it was in, to say it as it was", byteArrayOf(THE.toByte(), 'n'.code.toByte()), removed.word)
-        assertEquals(1, removed.at)
-    }
 
-    @Test fun theCellJustTypedIsSaidWithItsWord() {
-        val editor = LineEditor("", Plain)
-        "ab".forEach { editor.cell(it.code) }
-        val typed = editor.cellBeforeCaret()!!
-        assertEquals('b'.code.toByte(), typed.cell)
-        assertEquals(1, typed.at)
-        assertNull("past the end of the line there is no cell", editor.cellAtCaret())
-        editor.start()
-        assertEquals('a'.code.toByte(), editor.cellAtCaret()!!.cell)
-    }
-
-    @Test fun theLineShowsWhatWasTyped() {
-        val editor = LineEditor("", Contracted)
-        editor.cell(THE)
-        assertArrayEquals(byteArrayOf(THE.toByte()), editor.shown().cells)
-        assertEquals(1, editor.shown().cursor)
-    }
-
-    @Test fun aWordNobodyTouchedKeepsItsTextWhenAnotherIsEdited() {
-        // This translator could not read "Road" back from its cells; the edit never asks it to.
-        val editor = LineEditor("Road milk", Lossy)
-        editor.backspace()
-        assertEquals("Road mil", editor.text)
-    }
-
-    @Test fun aRoutingKeyLandsOnTheCellUnderIt() {
-        val editor = LineEditor("", Contracted)
-        editor.cell(THE)
-        editor.cell('n'.code)
-        editor.route(1)
-        assertEquals(1, editor.caret)
-        editor.cell('x'.code)
-        assertEquals("thexn", editor.text)
-    }
-
-    @Test fun spaceEndsAWordAndBackspaceJoinsItAgain() {
-        val editor = LineEditor("", Plain)
-        "ab".forEach { editor.cell(it.code) }
-        editor.space()
-        assertEquals("ab", editor.takeFinished())
-        editor.cell('c'.code)
-        assertEquals("ab c", editor.text)
-        editor.backspace()
-        editor.backspace()
-        assertEquals(LineEditor.BLANK, editor.takeRemoved()!!.cell)
-        assertEquals("ab", editor.text)
-    }
-
-    @Test fun typingOnTheKeyboardKeepsItsText() {
-        val editor = LineEditor("", Contracted)
-        editor.type("t")
-        editor.type("h")
-        editor.type("e")
-        assertEquals("the", editor.text)
-        assertArrayEquals(byteArrayOf(THE.toByte()), editor.shown().cells)
-    }
-
-    @Test fun aSpaceTypedOnTheKeyboardSplitsTheWord() {
-        val editor = LineEditor("", Plain)
-        editor.type("a b")
-        assertEquals("a b", editor.text)
-    }
-
-    @Test fun aMultiLineBoxTakesEnterAsANewLineAndBackspaceJoinsItAgain() {
-        val box = TextBox("ab", Plain, multiLine = true)
-        val frame = FormFrame("f", null, listOf(Control.Edit("n", "Notes", box), Control.Button("b", "Save") {}), null, BY_LETTER, READ)
-        frame.key(Key.Enter)
-        assertEquals("Enter is a new line, not the next control", "n", frame.current?.key)
-        assertEquals("ab", box.takeFinished())
-        frame.key(Key.Cell('c'.code))
-        assertEquals("ab\nc", box.text)
-        assertEquals(1, box.row)
-        frame.key(Key.Backspace)
-        frame.key(Key.Backspace)
-        assertTrue("backspace at a line's start joins it to the line before", box.takeJoined())
-        assertEquals("ab", box.text)
+    @Test fun enterInAMultiLineBoxIsTheBoxsAndInABoxOfOneLineGoesOn() {
+        val notes = TextBox("ab", Plain, multiLine = true)
+        val frame = FormFrame("f", null, listOf(Control.Edit("n", "Notes", notes), Control.Edit("t", "Title", TextBox("", Plain)), Control.Button("b", "Save") {}), null, BY_LETTER, READ)
+        assertFalse("the box's own key, a new line", frame.key(Key.Enter))
         frame.key(Key.Tab)
-        assertEquals("Tab still leaves it", "b", frame.current?.key)
-    }
-
-    @Test fun aMultiLineBoxMovesByLineAndToItsTopAndBottom() {
-        val box = TextBox("one\ntwo\nthree", Plain, multiLine = true)
-        val frame = FormFrame("f", null, listOf(Control.Edit("n", "Notes", box)), null, BY_LETTER, READ)
-        assertEquals("three", box.line.text)
-        frame.key(Key.Up)
-        assertEquals("two", box.line.text)
-        assertEquals("the cursor keeps as far along as the line allows", 3, box.line.caret)
-        frame.key(Key.First)
-        assertEquals(0, box.row)
-        assertEquals(0, box.line.caret)
-        frame.key(Key.Last)
-        assertEquals(2, box.row)
-        assertEquals(5, box.line.caret)
-        assertEquals("Notes: three", frame.rendered.speech)
-    }
-
-    @Test fun aSingleLineBoxTakesANewLinePastedAsASpace() {
-        val box = TextBox("", Plain)
-        box.insert("a\nb")
-        assertEquals("a b", box.text)
-        assertEquals(1, box.count)
-    }
-
-    @Test fun aSelectionRunsFromWhereItStartedToTheCursor() {
-        val box = TextBox("milk eggs", Plain)
-        box.line.start()
-        box.startSelection()
-        box.line.wordRight()
-        assertEquals("milk ", box.selected())
-        assertTrue(box.deleteSelected())
-        assertEquals("eggs", box.text)
-        assertFalse(box.selecting)
-        assertNull("with nothing selected there is nothing to copy", box.selected())
-    }
-
-    @Test fun aSelectionAcrossLinesKeepsItsNewLines() {
-        val box = TextBox("one\ntwo", Plain, multiLine = true)
-        box.top()
-        box.line.right()
-        box.startSelection()
-        box.down()
-        assertEquals("ne\nt", box.selected())
-        box.deleteSelected()
-        assertEquals("owo", box.text)
-        box.selectAll()
-        assertEquals("owo", box.selected())
-    }
-
-    @Test fun pastingAtTheCursorTypesTheTextIn() {
-        val box = TextBox("ac", Plain, multiLine = true)
-        box.line.left()
-        box.insert("b\nx")
-        assertEquals("ab\nxc", box.text)
-    }
-
-    @Test fun aNewTableWritesTheCellsAgainAndKeepsTheText() {
-        var table: Translator = Contracted
-        val switching = object : Translator {
-            override fun computer(text: String) = table.computer(text)
-            override fun translate(text: String, cursor: Int) = table.translate(text, cursor)
-            override fun back(cells: ByteArray) = table.back(cells)
-        }
-        val box = TextBox("", switching)
-        box.line.cell(THE)
-        box.line.cell('n'.code)
-        box.settle()
-        table = Plain
-        box.recell()
-        assertEquals("then", box.text)
-        assertArrayEquals("then".toByteArray(), box.line.shown().cells)
-    }
-
-    @Test fun backspaceTwoFiveTakesTheWordAtTheCursorAndTheSpacesAfterIt() {
-        val box = TextBox("buy  milk now", Plain)
-        box.line.start()
-        box.line.wordRight()
-        box.line.right()
-        assertEquals(TextBox.WordRemoved.Word("milk"), box.deleteWord())
-        assertEquals("buy  now", box.text)
-        assertEquals("the cursor where the word began", 5, box.line.caret)
-    }
-
-    @Test fun backspaceTwoFiveAtTheEndTakesTheLastWordAndLeavesTheSpaceBeforeIt() {
-        val box = TextBox("buy milk", Plain)
-        assertEquals(TextBox.WordRemoved.Word("milk"), box.deleteWord())
-        assertEquals("buy ", box.text)
-        assertEquals("a space at the end goes by itself", TextBox.WordRemoved.Space, box.deleteWord())
-        assertEquals("buy", box.text)
-        assertEquals(TextBox.WordRemoved.Word("buy"), box.deleteWord())
-        assertEquals("", box.text)
-        assertNull("an empty line has nothing to take", box.deleteWord())
-    }
-
-    @Test fun backspaceTwoFiveAtTheEndOfALineJoinsTheNextOnAsANewParagraph() {
-        val box = TextBox("one\ntwo", Plain, multiLine = true)
-        box.up()
-        box.line.end()
-        assertEquals(TextBox.WordRemoved.LineBreak, box.deleteWord())
-        assertEquals("onetwo", box.text)
-    }
-
-    @Test fun backspaceOneFourTakesThePartOfTheLineShownAndAnEmptiedLineGoes() {
-        val box = TextBox("one two\nthree", Plain, multiLine = true)
-        box.up()
-        assertTrue(box.deleteLine(4, 7))
-        assertEquals("one \nthree", box.text)
-        assertEquals(4, box.line.caret)
-        box.down()
-        assertTrue(box.deleteLine(0, 5))
-        assertEquals("the emptied last line goes, the cursor at the end of the one before", "one ", box.text)
-        assertEquals(0, box.row)
-        assertEquals(4, box.line.caret)
-        assertTrue(box.deleteLine(0, 4))
-        assertEquals("", box.text)
-        assertFalse("nothing left to take", box.deleteLine(0, 0))
-    }
-
-    @Test fun deletingTheParagraphTakesTheWholeLine() {
-        val box = TextBox("one\ntwo\nthree", Plain, multiLine = true)
-        box.up()
-        assertTrue(box.deleteParagraph())
-        assertEquals("one\nthree", box.text)
-        assertEquals("three", box.line.text)
-        assertEquals(0, box.line.caret)
-        val single = TextBox("milk", Plain)
-        assertTrue(single.deleteParagraph())
-        assertEquals("", single.text)
-        assertFalse(single.deleteParagraph())
-    }
-
-    @Test fun enterUReadsASelectionInOneLineWholeAndOneAcrossLinesToTheEndOfItsFirst() {
-        val box = TextBox("milk eggs", Plain)
-        assertNull(box.selectionStart(40))
-        box.line.start()
-        box.startSelection()
-        box.line.wordRight()
-        assertEquals("milk ", box.selectionStart(40))
-        val notes = TextBox("buy milk and eggs\nbread", Plain, multiLine = true)
-        notes.top()
-        notes.line.wordRight()
-        notes.startSelection()
-        notes.down()
-        assertEquals("milk and eggs", notes.selectionStart(40))
-        assertEquals("as a display of 10 cells breaks it", "milk ", notes.selectionStart(10))
-    }
-
-    @Test fun spaceDInAMultiLineBoxTakesTheCharacterAtTheCursorOrJoinsTheNextLine() {
-        val box = TextBox("ab\nc", Plain, multiLine = true)
-        val frame = FormFrame("f", null, listOf(Control.Edit("n", "Notes", box)), null, BY_LETTER, READ)
-        frame.key(Key.Up)
-        frame.key(Key.LineStart)
-        frame.key(Key.Delete)
-        assertEquals("b\nc", box.text)
-        assertEquals('a'.code.toByte(), box.line.takeRemoved()?.cell)
-        frame.key(Key.LineEnd)
-        frame.key(Key.Delete)
-        assertEquals("bc", box.text)
-        assertNull("a line break taken is no character", box.line.takeRemoved())
+        assertTrue(frame.key(Key.Enter))
+        assertEquals("b", frame.current?.key)
     }
 }

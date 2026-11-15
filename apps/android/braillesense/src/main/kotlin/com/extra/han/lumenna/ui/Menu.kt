@@ -1,7 +1,7 @@
 package com.extra.han.lumenna.ui
 
-import com.extra.han.lumenna.device.Key
-import dev.emassey0135.lumenna.app.ControlRole
+import dev.emassey0135.braillesense.input.Key
+import dev.emassey0135.braillesense.reading.ControlRole
 
 /** One item of a menu: a submenu when it has [children]. */
 class MenuEntry(

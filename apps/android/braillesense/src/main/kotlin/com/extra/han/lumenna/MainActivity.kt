@@ -15,17 +15,18 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
-import com.extra.han.lumenna.device.BrailleSettings
-import com.extra.han.lumenna.device.Chords
-import com.extra.han.lumenna.device.HanInputClient
-import com.extra.han.lumenna.device.HanOutputClient
-import com.extra.han.lumenna.device.Key
-import com.extra.han.lumenna.device.Louis
-import com.extra.han.lumenna.device.Qwerty
-import com.extra.han.lumenna.ui.CoreReadings
+import dev.emassey0135.braillesense.braille.BrailleSettings
+import dev.emassey0135.braillesense.input.Chords
+import dev.emassey0135.braillesense.input.HanInputClient
+import dev.emassey0135.braillesense.output.HanOutputClient
+import dev.emassey0135.braillesense.input.Key
+import dev.emassey0135.braillesense.braille.Louis
+import dev.emassey0135.braillesense.input.Qwerty
+import com.extra.han.lumenna.ui.SettingsReadings
 import com.extra.han.lumenna.ui.Host
 import com.extra.han.lumenna.ui.Shell
-import com.extra.han.lumenna.ui.Speaker
+import dev.emassey0135.braillesense.output.BrailleDisplay
+import dev.emassey0135.braillesense.edit.SystemClipboard
 import dev.emassey0135.lumenna.braille.Claim
 import dev.emassey0135.lumenna.braille.KeyDelivery
 import dev.emassey0135.lumenna.Clock
@@ -54,10 +55,10 @@ class MainActivity : ComponentActivity(), Host {
     private val application get() = super.getApplication() as BrailleSenseApplication
     private val core get() = application.core
 
-    private val output by lazy { HanOutputClient(applicationContext) }
+    private val output by lazy { HanOutputClient(applicationContext, trace = BuildConfig.DEBUG, tag = "LumennaOutput") }
     private val settings by lazy { BrailleSettings(applicationContext) }
     private val translator by lazy { Louis.translator { settings.tables } }
-    private val speaker by lazy { Speaker(output, translator) }
+    private val speaker by lazy { BrailleDisplay(output, translator) }
     private var shell: Shell? = null
     private val main = Handler(Looper.getMainLooper())
     private lateinit var screen: TextView
@@ -152,7 +153,7 @@ class MainActivity : ComponentActivity(), Host {
             return
         }
         Clock.update(this)
-        val shown = Shell(opened, speaker, translator, this, CoreReadings(settings), messageMillis = { settings.messageMillis }, opensOnLetter = { settings.opensOnLetter }, echoSetting = { settings.echo }).apply {
+        val shown = Shell(opened, speaker, translator, this, SettingsReadings(settings), SystemClipboard(this, applicationInfo.loadLabel(packageManager)), messageMillis = { settings.messageMillis }, opensOnLetter = { settings.opensOnLetter }, echoSetting = { settings.echo }).apply {
             reminderAccess = { Reminders.access(this@MainActivity) }
         }
         shell = shown
@@ -252,19 +253,6 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun deviceName(): String = deviceName(this)
-
-    private val clipboards get() = getSystemService(android.content.ClipboardManager::class.java)
-
-    override fun clipboard(): String? = runCatching {
-        clipboards?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
-    }.getOrNull()
-
-    override fun setClipboard(text: String?) {
-        val manager = clipboards ?: return
-        runCatching {
-            if (text == null) manager.clearPrimaryClip() else manager.setPrimaryClip(android.content.ClipData.newPlainText(applicationInfo.loadLabel(packageManager), text))
-        }
-    }
 
     companion object {
         const val PLATFORM = "android"
