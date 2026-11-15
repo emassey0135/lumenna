@@ -1,4 +1,4 @@
-"""The app: the main menu.
+"""The app: Home, and the screen each place opens.
 
 Everything reachable here is the Crux app's, run in this process beside the store (`core.py`).
 Nothing parses prose, nothing computes a due date, nothing decides what completing a task does
@@ -6,17 +6,20 @@ to its subtasks, which row is in hand after a change or what a question offers: 
 core's and the app's, so that every client behaves alike and none can drift.
 
 The menus themselves live beside this file: `tasks.py`, `day.py` for the planner and blocks,
-`organise.py` for projects, labels and filters, and `preferences.py` for settings, devices
-and data. They are laid out as the phone's are, so the two can be described in one breath.
+and `preferences.py` for settings, devices and data. Projects, labels and saved filters are
+Home's own rows, under their headings, each with its own actions.
 
 The device's conventions, followed rather than invented:
 
-- **Enter does a row's main thing**: shows a project's tasks, a task's details, edits a block.
+- **The app opens on Home** (`ViewModel::home`): the places, as every app's sidebar lists them,
+  each with its letter, then what can be done from anywhere on its main menu.
+- **Enter does a row's main thing**, the app's `Key("open")` on every row: opens a place, shows a
+  task's details, edits a block, restores a trashed task, renames a device.
 - **M-Chord with Dot 7 is the row's context menu**, with everything else that can be done to
-  it; **M-Chord is the screen's main menu**: adding, moving between days, undo and redo.
-  Both are `Command`s (`session.py`), and each command's lowercase letter does the same from
-  the list — the same letter for the same thing on every screen. A capital, Dot 7 with the
-  letter, still moves by first letter.
+  it; **M-Chord is the screen's main menu**: what the screen offers of its own, the core's
+  (`ViewModel::screen_actions`). Both are `Command`s (`session.py`), and each command's
+  lowercase letter does the same from the list — the same letter for the same thing on every
+  screen. A capital, Dot 7 with the letter, still moves by first letter.
 - **The delete keys delete.** Control-D and the D chord act on the row under the cursor.
 - **H-Chord is help about the screen in front**: the app's own topics, in `help/`.
 - **Left and right fold a branch.** They are already bound to left-arrow/Dot7 and
@@ -27,21 +30,22 @@ The device's conventions, followed rather than invented:
 
 from __future__ import annotations
 
-from BTSpeak import dialogs
+from pathlib import Path
 
+from BTSpeak import dialogs, host
+
+import actions
 from actions import L
 from core import Core, LumennaError, words
-from session import Session, announce, command_title, live_menu
+from rows import Row, items
+from session import HELP, Command, Session, announce, live_menu, screen
 import day
-import organise
-import preferences
-import reminder_lists
 import reminders
 import tasks
 
 
 def run(core: Core) -> int:
-    """Waits for the store, then hands over to the main menu."""
+    """Waits for the store, then hands over to Home."""
     session = Session(core)
     try:
         session.ready()
@@ -54,66 +58,137 @@ def run(core: Core) -> int:
     core.app.in_front(True)
     giving = reminders.give_in_background(reminders.Giver(open_store=lambda: core.device))
     try:
-        main_menu(session)
+        home(session)
     finally:
         giving()
         core.app.in_front(False)
     return 0
 
 
-def opens(entry):
-    """The letter and screen for one of the sidebar's top-level rows, or None for one this app
-    does not show."""
-    kind = entry.kind
-    if isinstance(kind, L.SidebarKindGroup):
-        return {
-            L.SidebarGroup.PROJECTS: (L.command_letter("projects"), organise.projects),
-            L.SidebarGroup.LABELS: (L.command_letter("labels"), organise.labels),
-            L.SidebarGroup.FILTERS: (L.command_letter("filters"), organise.saved_filters),
-        }.get(kind.field_0)
-    place = kind.field_0
+def place_screen(place):
+    """The screen that shows `place`: the day, a list of tasks, the blocks."""
     if isinstance(place, L.PlaceToday):
-        return L.command_letter("go-today"), day.day_plan
-    if isinstance(place, L.PlaceTasks):
-        return L.command_letter("go-tasks"), tasks.task_list
+        return day.day_plan
     if isinstance(place, L.PlaceBlocks):
-        return L.command_letter("go-blocks"), day.blocks
+        return day.blocks
     if isinstance(place, L.PlaceHistory):
-        return L.command_letter("go-history"), tasks.history
+        return tasks.history
     if isinstance(place, L.PlaceTrash):
-        return L.command_letter("go-trash"), tasks.trash
-    return None
+        return tasks.trash
+    return lambda session: tasks.task_list(session, place)
 
 
-def main_menu(session: Session) -> None:
-    """The app's places, as every app's sidebar lists them, one level down — each project,
-    label and filter is in its own list — then what this app adds: adding a task, undo and
-    redo, reminders, syncing, settings."""
-    item = dialogs.DynamicMenuItem
+def home_rows(session: Session) -> list[Row]:
+    """Home's places, the app's (`HomeView::places`), not folded away: each its line, its level
+    where it changes, whether what is under it is folded, its letter, and its own actions."""
+    view = session.view().home
+    made = []
+    for place in (view.places if view is not None else []):
+        entry = place.entry
+        if entry.hidden:
+            continue
+        row = Row(entry.key, entry.text, entry.offered, place, level=entry.level, expanded=entry.expanded,
+                  title=entry.title)
+        row.side = L.Side.SIDEBAR
+        row.letter = place.letter
+        made.append(row)
+    return made
+
+
+def home(session: Session) -> None:
+    """Home: the places, each opened by Enter or its letter, then what can be done from anywhere,
+    on the main menu (M-Chord). Opening a place leaves Home in the app; its screen is shown here
+    until the person leaves it, and Home is shown again."""
 
     def build():
-        places = []
-        for entry in session.view().sidebar:
-            found = opens(entry) if entry.depth == 0 else None
-            if found is not None:
-                key, screen = found
-                places.append(item(title=entry.text, shortcut=key, action=lambda screen=screen: screen(session)))
-        # The task list sits beside adding a task, as it always has here.
-        at = next((i + 1 for i, it in enumerate(places) if it.shortcut == L.command_letter("go-tasks")), len(places))
-        places.insert(at, item(title=command_title("new-task"), shortcut=L.command_letter("new-task"), action=lambda: add_task(session)))
-        return places + [
-            item(title=command_title("undo"), shortcut=L.command_letter("undo"), action=lambda: session.send(L.ShellEventUndo())),
-            item(title=command_title("redo"), shortcut=L.command_letter("redo"), action=lambda: session.send(L.ShellEventRedo())),
-            item(title=words().reminders_due, shortcut=L.command_letter("reminders-due"), action=lambda: reminder_lists.due(session)),
-            item(title=command_title("sync-now"), shortcut=L.command_letter("sync-now"), action=lambda: preferences.sync_now(session)),
-            item(title=command_title("settings"), shortcut=L.command_letter("settings"), action=lambda: preferences.settings(session)),
+        if session.view().home is None:
+            session.send(L.ShellEventHome())
+        made = items(home_rows(session), fold=lambda row, open_: actions.fold(session, row, open_))
+        for item in made:
+            # The place's letter, said after it as the device says a shortcut; pressed, it runs
+            # the row's Enter, which opens the place, as the letter does.
+            item.shortcut = item.row.letter or None
+        return made
+
+    def went() -> bool:
+        """Whether the app has left Home for a place, which is then shown."""
+        view = session.view()
+        return view.ready and view.home is None and view.place is not None
+
+    def commands():
+        view = session.view().home
+        own = actions.screen_commands(session, tasks.own_commands(session))
+        # Each place's letter runs as the app runs it (`Event::Letter`): never a menu entry.
+        places = [
+            Command("", lambda _: "", key=place.letter, through=True, listed=False)
+            for place in (view.places if view is not None else []) if place.letter
         ]
+        return [*own, *places]
+
+    def context(rows):
+        named = words()
+        return actions.commands(session, rows, before=[
+            Command(lambda row: added_title(row, named), lambda row: add_in(session, row),
+                    applies=lambda row: added_title(row, named) != ""),
+        ])
 
     name = words().metadata.name
-    live_menu(session, build, name, app_title=L.menu_of(name))
+    while True:
+        with screen("lumenna"):
+            live_menu(
+                session, build, lambda: session.view().home.title if session.view().home else name,
+                main=lambda row: actions.press(session, "open", row),
+                context=context,
+                app=commands,
+                app_title=L.menu_of(name),
+                focus=lambda: session.view().sidebar_held.focus,
+                until=went,
+                screen_first=True,
+            )
+        if not went():
+            return
+        place_screen(session.view().place)(session)
 
 
-def add_task(session: Session) -> str:
-    """A task added from the main menu goes in the Inbox, as the task list's own would."""
-    session.show(L.PlaceTasks())
-    return tasks.add_task(session, session.view().quick_add)
+def added_title(row, named) -> str:
+    """What adding a task to a place on Home is called: a project's or a filter's "Add task to
+    it", a label's "Add task wearing it"; none for anything else."""
+    kind = row.record.entry.kind
+    place = kind.field_0 if isinstance(kind, L.SidebarKindPlace) else None
+    if isinstance(place, L.PlaceLabel):
+        return named.add_task_wearing_it
+    if isinstance(place, (L.PlaceProject, L.PlaceFilter)):
+        return named.add_task_to_it
+    return ""
+
+
+def add_in(session: Session, row) -> str:
+    """Adds a task in the place on Home's `row`, starting the line as the app says a task added
+    there does, then shows Home again."""
+    place = row.record.entry.kind.field_0
+    session.show(place)
+    try:
+        return tasks.add_task(session, session.view().quick_add)
+    finally:
+        session.send(L.ShellEventHome())
+
+
+def key_help(session: Session) -> str:
+    """Key help, the shell's own: the help topic of the screen in front, from `help/`."""
+    topic = host.get_help_topic() or "lumenna"
+    if not (Path(HELP) / "en" / f"{topic}.md").is_file():
+        topic = "lumenna"
+    dialogs.view_file(Path(HELP) / "en" / f"{topic}.md", use_markdown=True, help_dir=HELP, help_topic=topic)
+    return ""
+
+
+def about(session: Session) -> str:
+    """About, the shell's own: what Lumenna is, from the one source every platform says
+    (`words().metadata`), a line each to pan through."""
+    metadata = words().metadata
+    dialogs.view_lines(
+        [line for line in (metadata.name, metadata.version, metadata.description, metadata.homepage,
+                           metadata.publisher, metadata.licence) if line],
+        wrap=True,
+    )
+    return ""

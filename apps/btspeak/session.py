@@ -7,6 +7,7 @@ each use it without importing one another.
 from __future__ import annotations
 
 import contextlib
+import copy
 import queue
 import subprocess
 import time
@@ -56,6 +57,8 @@ class Session:
         #: What the app last asked the background service to be, until it is done.
         self._background = None
         self._lines = None
+        #: What the app says is on the screen (`Turn::described`): a question's prompt, worded whole.
+        self._described = None
         #: Files the app made for the person to keep — an export — not yet saved.
         self.files: list = []
         self._shown = None
@@ -63,6 +66,10 @@ class Session:
         self._unsaid: list[str] = []
         #: Whether a reminder list is open, so an action run from it does not open it again.
         self.reminders_open = False
+        #: Whether settings are shown, so what is run from them does not open them again.
+        self.settings_open = False
+        #: Whether the quick-add line is being asked, so it is not asked twice.
+        self.typing = False
         self._ticked = time.monotonic()
         import rows  # here: rows reads the device's settings
 
@@ -93,7 +100,7 @@ class Session:
                 turn = self.core.turns.get_nowait()
             except queue.Empty:
                 break
-            self._view, self._lines = turn.view, turn.lines
+            self._view, self._lines, self._described = turn.view, turn.lines, turn.described
             self.files.extend(turn.files)
             self._unsaid.extend(turn.said)
             if turn.background is not None:
@@ -158,13 +165,23 @@ class Session:
         """What the app shows now."""
         self._take()
         if self._view is None:
-            self._view, self._lines = self.app.view(), self.app.lines()
+            self._view, self._lines, self._described = self.app.view(), self.app.lines(), self.app.screen_view()
         return self._view
 
     def lines(self):
         """The view's lines, in this device's clock."""
         self.view()
         return self._lines
+
+    def described(self):
+        """What the app says is on the screen now (`ScreenView`)."""
+        self.view()
+        return self._described
+
+    def prompt(self) -> str:
+        """The open question's prompt, its parts joined as the core joins them."""
+        shown = getattr(self.described(), "shown", None)
+        return shown.field_0.prompt if isinstance(shown, self.lumenna.ShownQuestion) else ""
 
     def ready(self) -> None:
         """Waits for the store to arrive: there is nothing to show until it has."""
@@ -280,7 +297,7 @@ def _menu(items, braille_title: str = "", **arguments):
 def live_menu(
     session: Session, build, title, default: int = 0, moved=None, *,
     main=None, context=(), app=(), empty=None, app_title: str = "", focus=None, until=None,
-    braille_title=None,
+    braille_title=None, screen_first: bool = False,
 ) -> None:
     """A menu rebuilt whenever the store moves, reopened where the cursor was.
 
@@ -297,7 +314,9 @@ def live_menu(
     unusable without sight: `focus()`, when given, is the key of the row the app has in hand,
     which the menu reopens on — the same row after a change, else the one now in its place, as
     the app keeps it — and otherwise the selection is kept by position. `until()`, when given,
-    closes the menu once it holds: the app has put away what the menu shows.
+    closes the menu once it holds: the app has put away what the menu shows. `screen_first` gives
+    a letter to the screen's own commands before the row's, as Home has it (its places' and its
+    own actions' first); elsewhere a row's action of a letter comes first.
     """
     selection = default
     while True:
@@ -323,12 +342,13 @@ def live_menu(
             exit_condition=lambda: session.restless() or bool(moved and moved()) or bool(until and until()),
             refresh_interval=REFRESH,
             default=min(selection, max(len(items) - 1, 0)),
-            context_menu=context_commands(here),
-            app_menu=app_commands(offered),
+            # On Home a letter is the screen's first: a row's action of one says no letter there.
+            context_menu=context_commands(here, {c.key for c in offered if c.key} if screen_first else set()),
+            app_menu=app_commands(offered, here, screen_first),
             # A heading says more than a name (a list's readback after it), so the screen names
             # its menu; a title cut at its first comma broke a name like "Work, home".
             app_menu_title=app_title or native().menu_of(heading),
-            global_keys=keys(session, here, offered),
+            global_keys=keys(session, here, offered, screen_first),
             empty_message=empty() if callable(empty) else (words().nothing_here if empty is None else empty),
         )
         nudged = bool(moved and moved(clear=True))
@@ -356,14 +376,15 @@ def wire(items, main, context, app) -> None:
                 break
 
 
-def context_commands(context):
-    """The `Command`s as the device's context menu takes them: each for the rows it applies to."""
+def context_commands(context, taken=frozenset()):
+    """The `Command`s as the device's context menu takes them: each for the rows it applies to,
+    saying its letter unless the screen's own take that letter first (`taken`, on Home)."""
     return [
         dialogs.MenuCommand(
             name=f"context-{index}",
             label=lambda dialog, command=command: command.label_for(selected_row(dialog)),
             action=lambda item, command=command: command.run(row_of(item)),
-            key=key_label(command.key),
+            key=key_label(command.key) if command.key not in taken else "",
             dependency=lambda dialog, command=command: (
                 selected_row(dialog) is not None and command.applies(selected_row(dialog))
             ),
@@ -374,16 +395,54 @@ def context_commands(context):
     ]
 
 
-def app_commands(app):
-    return [
-        dialogs.MenuCommand(
+def app_commands(app, context=(), screen_first: bool = False):
+    """The screen's `Command`s as the device's main menu takes them, each saying its letter only
+    where pressing it runs this: on the row under the cursor a letter is the row's action first
+    (the core's `Event::Letter`), unless the screen's come first (`screen_first`, Home). Two of
+    the screen's with one letter (the day's own What should I work on? and the screen's) say it
+    on the first alone, which is the one it runs."""
+    listed = [command for command in app if command.listed]
+    made = []
+    for index, command in enumerate(listed):
+        earlier = any(other.key == command.key for other in listed[:index])
+        made.append(_MenuCommand(
             name=f"app-{index}",
             label=command.label_for(None),
             action=lambda command=command: command.run(None),
-            key=key_label(command.key),
-        )
-        for index, command in enumerate(app)
-    ]
+            key=key_label(command.key) if command.key and not earlier else "",
+            runs_here=None if screen_first or not command.key else (
+                lambda dialog, key=command.key: not row_has_letter(context, selected_row(dialog), key)
+            ),
+        ))
+    return made
+
+
+def row_has_letter(context, row, key: str) -> bool:
+    """Whether `row` offers an action of the letter `key`, which the letter then runs."""
+    return row is not None and any(
+        command.key == key and command.through and command.applies(row) for command in context
+    )
+
+
+class _MenuCommand:
+    """The device's menu entry (`dialogs.MenuCommand`) whose letter is said only on the rows it
+    runs on (`runs_here`, a function of the dialog)."""
+
+    def __new__(cls, runs_here=None, **arguments):
+        made = dialogs.MenuCommand(**arguments)
+        if runs_here is None or not made.key:
+            return made
+        lettered = made.get_label
+
+        def get_label(dialog) -> str:
+            if runs_here(dialog):
+                return lettered(dialog)
+            bare = copy.copy(made)
+            bare.key = ""
+            return type(made).get_label(bare, dialog)
+
+        made.get_label = get_label
+        return made
 
 
 def command_title(command: str) -> str:
@@ -398,16 +457,19 @@ def key_label(key: str) -> str:
 
 
 def selected_row(dialog):
+    if dialog is None:
+        return None
     if 0 <= dialog.selection < len(dialog.menu):
         return row_of(dialog.menu[dialog.selection])
     return None
 
 
-def keys(session, context, app):
+def keys(session, context, app, screen_first: bool = False):
     """The letters this screen's commands use, each pressed as the core's letter (`actions.letter`):
     the app says what it runs on the row, or why it runs nothing there, the same on every braille
-    device. What this app runs itself (`Command.through` unset: a menu of its own) runs here, a
-    row's first, then the screen's."""
+    device. What this app runs itself (`Command.through` unset: a menu of its own, or one of the
+    screen's own actions the core marks `shell`) runs here: a row's first, then the screen's, but
+    the row's own action of the letter comes before the screen's unless `screen_first`."""
     letters = {command.key for command in [*context, *app] if command.key}
 
     def run(key, item):
@@ -417,12 +479,12 @@ def keys(session, context, app):
         for command in context:
             if command.key == key and not command.through and row is not None and command.applies(row):
                 return command.run(row)
+        own = next((command for command in app if command.key == key and not command.through), None)
+        if own is not None and (screen_first or not row_has_letter(context, row, key)):
+            return own.run(None)
         if any(command.key == key and command.through for command in [*context, *app]):
             return actions.letter(session, key, row)
-        for command in app:
-            if command.key == key and not command.through:
-                return command.run(None)
-        return ""
+        return own.run(None) if own is not None else ""
 
     return {key: (lambda item, key=key: run(key, item)) for key in letters}
 

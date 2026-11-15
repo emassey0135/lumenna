@@ -55,7 +55,8 @@ def setting_title(setting) -> str:
 
 @contextlib.contextmanager
 def opened(session: Session):
-    """The app's settings, open while a page is shown: opened here unless a page opened them."""
+    """The app's settings, open while a page is shown: opened here unless they are open already,
+    and put away here only if opened here."""
     if session.view().settings is not None:
         yield
         return
@@ -63,7 +64,8 @@ def opened(session: Session):
     try:
         yield
     finally:
-        session.send(L.ShellEventSettings(L.SettingsEventClose()))
+        if session.view().settings is not None:
+            session.send(L.ShellEventSettings(L.SettingsEventClose()))
 
 
 def pages(session: Session) -> list:
@@ -78,20 +80,25 @@ def page_of(session: Session, page_id: str):
 
 def settings(session: Session) -> str:
     """The core's settings pages, as every app groups them, each with its letter here and its
-    description as its hint, then this app's own preference. A page with nothing on it here —
-    no setting the app shows, no button, no screen of its own — is left out."""
-    with screen("lumenna-settings"), opened(session):
-        shown = {setting.setting.key for setting in shown_settings(session)}
-        menu = [
-            dialogs.DynamicMenuItem(
-                title=page.title, shortcut=L.page_letter(page.id) or "", hint=page.description or None,
-                action=lambda page_id=page.id: open_page(session, page_id),
-            )
-            for page in pages(session)
-            if page.buttons or page.id == "export" or any(key in shown for key in page.keys)
-        ]
-        menu.append(dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut=L.command_letter("read-back"), action=toggle_read_back))
-        dialogs.dynamic_menu(menu, title=command_title("settings"))
+    description as its hint, then this app's own preference. Which pages this device lists is
+    the core's (`SettingsView::pages`): every one is listed. The app may have opened settings
+    itself (Settings on Home's menu, `Key("settings")`); either way they are put away on leaving."""
+    session.settings_open = True
+    try:
+        with screen("lumenna-settings"), opened(session):
+            menu = [
+                dialogs.DynamicMenuItem(
+                    title=page.title, shortcut=L.page_letter(page.id) or "", hint=page.description or None,
+                    action=lambda page_id=page.id: open_page(session, page_id),
+                )
+                for page in pages(session)
+            ]
+            menu.append(dialogs.DynamicMenuItem(title=lambda *_: read_back_title(), shortcut=L.command_letter("read-back"), action=toggle_read_back))
+            dialogs.dynamic_menu(menu, title=command_title("settings"))
+            if session.view().settings is not None:
+                session.send(L.ShellEventSettings(L.SettingsEventClose()))
+    finally:
+        session.settings_open = False
     return ""
 
 
@@ -198,7 +205,7 @@ def change_setting(session: Session, key: str) -> str:
     # line as typed, as a refused field stays in its dialog.
     wrong, typed = "", value
     while True:
-        chosen = dialogs.request_input(f"{wrong}. {asked}" if wrong else asked, default_text=typed)
+        chosen = dialogs.request_input(actions.prompt(wrong, asked), default_text=typed)
         if chosen is None or chosen == value:
             return ""
         made = session.send(L.ShellEventSettings(L.SettingsEventSet(key, chosen)))
@@ -258,7 +265,8 @@ def devices(session: Session) -> str:
     with screen("lumenna-settings"):
         live_menu(
             session, build, lambda: state["heading"],
-            main=lambda row: actions.press(session, "rename", row),
+            # Enter renames a device, as Enter does on every platform (`Key("open")`).
+            main=lambda row: actions.press(session, "open", row),
             context=lambda rows: actions.commands(session, rows),
             app=button_commands(session, page),
             # The status heading already says nothing is paired; the empty list adds only the key.
@@ -271,8 +279,9 @@ def devices(session: Session) -> str:
 
 def sync_now(session: Session) -> str:
     """One round with every paired device, through whatever on this device holds the sync
-    endpoint (the background service, once it is on); the app says how it went once it has."""
-    session.send(L.ShellEventDevices(L.DevicesEventSyncNow()))
+    endpoint (the background service, once it is on), as the app runs Sync now
+    (`Key("sync-now")`); the app says how it went once it has, waited for here."""
+    session.send(L.ShellEventKey("sync-now"))
     with dialogs.activity(core.words().syncing):
         return session.wait_said(SYNC_FOR)
 
@@ -287,13 +296,14 @@ def pairing_words(session: Session):
 
 
 def ask_code(session: Session) -> str | None:
-    """The other device's code, as typed or pasted into the field. Nothing is taken from the
-    clipboard unasked, as in every other client. None if cancelled; empty if none was given."""
+    """The other device's code, as typed or pasted into the field, spaces between its groups and
+    all: the app takes it as typed. Nothing is taken from the clipboard unasked, as in every other
+    client. None if cancelled; empty if none was given."""
     words = pairing_words(session)
     text = dialogs.request_input(words.their_code, default_text="")
     if text is None:
         return None
-    return text.strip().replace(" ", "")
+    return text.strip()
 
 
 def pairing_view(session: Session):
@@ -462,7 +472,9 @@ def _export_import(session: Session) -> str:
     menu = [
         dialogs.DynamicMenuItem(title=core.words().files.export, action=lambda: export(session)),
         *[
-            dialogs.DynamicMenuItem(title=button.title, action=lambda run=runs[button.id]: run(session))
+            # Each of the page's buttons with its letter, the core's, as on every other page.
+            dialogs.DynamicMenuItem(title=button.title, shortcut=L.button_letter(button.id) or None,
+                                    action=lambda run=runs[button.id]: run(session))
             for button in (page.buttons if page is not None else []) if button.id in runs
         ],
         *store_items(session),

@@ -354,6 +354,11 @@ def view_lines(lines, wrap=False, line=1):
     script.shown.append(list(lines) if not isinstance(lines, str) else [lines])
 
 
+def view_file(file, use_markdown=False, help_dir=None, help_topic="", **_ignored):
+    """The device's viewer: what it was handed is kept, to be checked."""
+    script.shown.append([str(file)])
+
+
 def request_file(start_dir, extensions=None, prompt="", **_ignored):
     (path,) = script.take("file", prompt)
     return path
@@ -388,6 +393,7 @@ def install() -> None:
     host = types.ModuleType("BTSpeak.host")
     host.push_app_context = lambda *a, **k: None
     host.pop_app_context = lambda *a, **k: None
+    host.get_help_topic = lambda: ""
     host.say = lambda text, *a, **k: given.append(("say", text))
 
     def say_brl(text, *a, **k):
@@ -403,7 +409,7 @@ def install() -> None:
     for name, value in list(globals().items()):
         if name in {"Choice", "DynamicMenuItem", "DynamicMenuDialog", "MenuCommand", "InputField", "dynamic_menu", "request_choice",
                     "request_input", "request_form", "request_confirmation", "show_message",
-                    "view_lines", "request_file", "request_directory", "activity"}:
+                    "view_lines", "view_file", "request_file", "request_directory", "activity"}:
             setattr(dialogs, name, value)
     clipboard = types.ModuleType("BTSpeak.clipboard")
     clipboard.copy = lambda text, isbraille, append=False: _clipboard.__setitem__(0, text) or "copied"

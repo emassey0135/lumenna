@@ -26,11 +26,35 @@ from session import Command, Session, choose, command_title, empty_then, heading
 
 
 def undo_commands(session: Session) -> list[Command]:
-    """Undo and redo, on every screen's main menu, with the same keys everywhere."""
+    """Undo and redo, on the main menu of a screen that is no place (a reminder list, a settings
+    page), as the app runs them, with the letters the places give them."""
     return [
-        Command(command_title("undo"), lambda _: session.send(L.ShellEventUndo()), key=L.command_letter("undo")),
-        Command(command_title("redo"), lambda _: session.send(L.ShellEventRedo()), key=L.command_letter("redo")),
+        Command(command_title(command), lambda _, command=command: actions.key(session, command),
+                key=L.command_letter(command) or "", through=True)
+        for command in ("undo", "redo")
     ]
+
+
+def own_commands(session: Session) -> dict:
+    """What this app runs itself of a screen's own actions, by id: the filter typed over the list,
+    Key help, About and Reminders due, which the core leaves to the shell, and Sync now, whose
+    answer is waited for under the device's activity sound."""
+    import menus  # here: menus imports this module
+    import preferences
+    import reminder_lists
+
+    return {
+        "filter": query_tasks,
+        "keyboard-help": menus.key_help,
+        "about": menus.about,
+        "reminders-due": reminder_lists.due,
+        "sync-now": preferences.sync_now,
+    }
+
+
+def place_commands(session: Session, skip=()) -> list[Command]:
+    """The place shown's own actions, the core's (`screen_actions`), as its main menu."""
+    return actions.screen_commands(session, own_commands(session), skip)
 
 
 def list_rows(session: Session) -> list[Row]:
@@ -58,16 +82,13 @@ def readback(session: Session) -> str:
     return session.lines().readback
 
 
-def task_list(
-    session: Session, place=None, title: str = "", query: str | None = None, more: list | None = None,
-    main=None,
-) -> str:
+def task_list(session: Session, place=None, title: str = "", query: str | None = None, main=None) -> str:
     """One of the app's places as a foldable list of tasks, with `query` typed over it.
 
     Enter shows a task; its context menu (M-Chord with Dot 7) has everything else, and the main
-    menu (M-Chord) adds a task, starting the line as the app says this place does — `#Work ` in
-    a project's list, so a task added there lands there. `more` adds to the main menu: a
-    project's list can add a project inside it.
+    menu (M-Chord) is what the place offers of its own, the core's: New task, starting the line as
+    the app says this place does (`#Work ` in a project's list, so a task added there lands
+    there), the filter, New project inside on a project's list, undo and redo.
     """
     place = place or L.PlaceTasks()
     title = title or L.place_title(place)
@@ -84,12 +105,7 @@ def task_list(
             session, build, lambda: state["heading"],
             main=main or (lambda row: show(session, row)),
             context=lambda rows: task_commands(session, rows),
-            app=[
-                Command(command_title("new-task"), lambda _: add_task(session, session.view().quick_add), key=L.command_letter("new-task")),
-                Command(command_title("filter"), lambda _: query_tasks(session), key=L.command_letter("filter")),
-                *(more or []),
-                *undo_commands(session),
-            ],
+            app=lambda: place_commands(session),
             empty=empty_then(lambda: readback(session), L.press_to_add(L.command_letter("new-task"))),
             app_title=L.menu_of(title),
             focus=lambda: session.view().focus,
@@ -119,12 +135,9 @@ def history(session: Session) -> str:
 
 
 def trash(session: Session) -> str:
-    """Deleted tasks: Enter puts one back; deleting one from the trash is its context menu's,
-    or the delete keys'."""
-    return task_list(
-        session, L.PlaceTrash(),
-        main=lambda row: actions.press(session, "restore-task", row),
-    )
+    """Deleted tasks: Enter puts one back, as Enter does on every platform (`Key("open")`);
+    deleting one from the trash is its context menu's, or the delete keys'."""
+    return task_list(session, L.PlaceTrash(), main=lambda row: actions.press(session, "open", row))
 
 
 # ---------------------------------------------------------------------------------------
@@ -177,12 +190,13 @@ def edit_task(session: Session, task: str) -> str:
     for field in details.form:
         value = str(getattr(before, field.key))
         if field.key == "project":
-            # Chosen from the projects the app offers, by name, each with its level where it
-            # changes, since a list says nothing of indentation.
-            levels = L.levels([choice.depth for choice in details.projects])
+            # Chosen from the projects the app offers, each the core's line, its level after it
+            # where it changes, since a list says nothing of indentation, and after rather than
+            # before so that a choice is still found by its first letter.
+            lines = session.lines().projects
             choices = {
-                choice.id: f"{choice.title}, {level}" if level else choice.title
-                for choice, level in zip(details.projects, levels)
+                choice.id: ", ".join(part for part in (line.text, line.level or "") if part) if line is not None else choice.title
+                for choice, line in zip(details.projects, [*lines, *[None] * len(details.projects)])
             }
             fields.append(form_field(field, value, choices=choices))
             continue
@@ -235,9 +249,16 @@ def add_task(session: Session, prefix: str = "", refusal: str = "") -> str:
     refuses — an unknown project — is asked again as typed, the app's sentence first, rather
     than retyped on a braille keyboard.
     """
-    text = assisted_input(session, actions.prompt(refusal, core.words().quick_add.label), L.Syntax.QUICK_ADD,
-                          history_key="lumenna-add", default=prefix)
+    session.typing = True
+    try:
+        text = assisted_input(session, actions.prompt(refusal, core.words().quick_add.label), L.Syntax.QUICK_ADD,
+                              history_key="lumenna-add", default=prefix)
+    finally:
+        session.typing = False
     if not text or not text.strip():
+        if session.view().line is not None:
+            # Left: the line the app opened is put away.
+            session.send(L.ShellEventTyping(L.TypingClose()))
         return ""
     session.send(
         L.ShellEventTyping(L.TypingOpen()),

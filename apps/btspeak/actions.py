@@ -99,6 +99,16 @@ def follow(session: Session, row=None) -> str:
             import reminder_lists  # here: reminder_lists imports this module
 
             said.append(reminder_lists.reminders_of(session, row))
+        elif view.line is not None and not getattr(session, "typing", False):
+            # The quick-add line the app opened (New task): asked here, as the app started it.
+            import tasks  # here: tasks imports this module
+
+            said.append(tasks.add_task(session, view.line.text))
+        elif view.settings is not None and not getattr(session, "settings_open", False):
+            # Settings the app opened (Settings): their pages, until left.
+            import preferences  # here: preferences imports this module
+
+            said.append(preferences.settings(session))
         else:
             break
     return joined(*said)
@@ -122,15 +132,15 @@ def ask(session: Session, asking, row=None) -> str:
         if form is None:
             return L.no_form_here(named(action)) if action is not None else ""
         return form(session, action, row)
-    if isinstance(question, L.QuestionImmediate):
-        return answer(L.AnswerYes())
+    # What is asked, its parts joined as the core joins them (`QuestionShown::prompt`).
+    asked = session.prompt()
     if isinstance(question, L.QuestionConfirm):
         # Cancel is the default, as for anything that cannot be taken back lightly.
-        if not confirm(prompt(wrong, f"{question.title} {question.message}")):
+        if not confirm(prompt(wrong, asked)):
             return session.send(cancel)
         return answer(L.AnswerYes())
     if isinstance(question, L.QuestionText):
-        said = prompt(wrong, question.title, question.hint, question.label)
+        said = prompt(wrong, asked)
         # Refused, the line starts as typed, the app's; else as the question starts it.
         typed = asking.typed if wrong and asking.typed is not None else question.initial
         # A saved filter's query is the filter language, which the app says: completion is offered.
@@ -147,10 +157,7 @@ def ask(session: Session, asking, row=None) -> str:
     if isinstance(question, L.QuestionPick):
         return ask_pick(session, asking, question, wrong)
     if isinstance(question, L.QuestionChoose):
-        picked = choose(
-            {a.id: a.title for a in question.answers},
-            prompt(wrong, question.title, question.message),
-        )
+        picked = choose({a.id: a.title for a in question.answers}, prompt(wrong, asked))
         if picked is None:
             return session.send(cancel)
         return answer(L.AnswerPicked(picked, None))
@@ -164,7 +171,7 @@ def ask_pick(session: Session, asking, question, wrong: str) -> str:
     offered = asking.choices.choices if asking.choices is not None else []
     lines = session.lines().choices
     options = {choice.id: (lines[i].text if i < len(lines) else choice.title) for i, choice in enumerate(offered)}
-    picked = choose(options, prompt(wrong, question.title or named(asking.action)),
+    picked = choose(options, prompt(wrong, session.prompt() or named(asking.action)),
                     hints={choice.id: choice.reason for choice in offered})
     if picked is None:
         return session.send(L.ShellEventCancel())
@@ -204,6 +211,42 @@ def press(session: Session, key: str, row) -> str:
     said = [session.send(held(row), L.ShellEventKey(key))]
     said.append(follow(session, row))
     return joined(*said)
+
+
+def key(session: Session, command: str) -> str:
+    """One of the screen's own actions (`ScreenAction`), run as the app runs it (`Event::Key`),
+    then whatever it opens answered: a question, the block form, the quick-add line, settings."""
+    import proposals  # here: proposals imports this module
+
+    proposals.pin(session)
+    said = [session.send(L.ShellEventKey(command))]
+    said.append(follow(session))
+    return joined(*said)
+
+
+def screen_commands(session: Session, own: dict, skip=()) -> list[Command]:
+    """What the screen shown offers of its own (`ViewModel::screen_actions`), in the core's order
+    with its letters, as the screen's main menu (M-Chord): each run as the app runs it
+    (`Event::Key`), but those the core marks the shell's (`shell`: the filter, Key help, About,
+    Reminders due) and those this app follows its own way (`own`, by id: Sync now's wait),
+    which run `own`'s function of the session. One that does nothing now (`enabled` unset) is
+    left off the menu; its letter still goes to the app, which says why. `skip` leaves out those
+    whose letter the screen offers already (the day's own What should I work on?)."""
+    made = []
+    for action in session.view().screen_actions:
+        if action.letter and action.letter in skip:
+            continue
+        mine = own.get(action.id)
+        if action.shell and mine is None:
+            continue
+        made.append(Command(
+            action.title,
+            (lambda _, mine=mine: mine(session)) if mine is not None else (lambda _, id=action.id: key(session, id)),
+            key=action.letter,
+            through=not action.shell,
+            listed=action.enabled,
+        ))
+    return made
 
 
 def letter(session: Session, key: str, row) -> str:
