@@ -417,7 +417,11 @@ impl Lumenna {
                         let keys = model.side_keys(crate::Side::Sidebar);
                         model.sidebar_held.hold(&key, &keys);
                     }
+                    // On Home the place goes on beneath it: acting on a place there (renaming,
+                    // making, recolouring) is not opening it, and Home stays shown.
+                    let home = model.home;
                     model.go(place);
+                    model.home = home;
                 }
                 if let Some(saving) = saving {
                     model.saved_details(saving);

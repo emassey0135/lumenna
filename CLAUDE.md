@@ -279,7 +279,7 @@ directly (8805659 is the last commit before the move). How the app works inside 
   while any are due, New Task, Undo, Redo, What Should I Work On?, Sync Now, Settings, Key Help
   and About. Its row in hand is the sidebar's (`Hold(Side::Sidebar, key)`); `Key("open")` opens a
   place and folds a heading; a letter opens its place or runs its action. Opening a place leaves
-  it. A desktop or a phone never shows Home: its places are its sidebar or tabs, and its
+  it; acting on one there (renaming it, making one) does not, the place beneath following it. A desktop or a phone never shows Home: its places are its sidebar or tabs, and its
   app-wide actions the menu bar's or the Browse tab's. `braille::main_menu`/`braille_main_menu`
   and `place_commands` are superseded by it and by `screen_actions`, kept only until the braille
   apps take these, then removed.

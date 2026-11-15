@@ -2568,6 +2568,27 @@ fn enter_on_a_heading_on_home_folds_it() {
 }
 
 #[test]
+fn a_place_renamed_or_made_from_home_leaves_home_shown_its_row_in_hand() {
+    let mut app = App::new();
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().add_project("Wrok", None).unwrap();
+    app.session.tick();
+    app.send(Event::Open(Place::Project("Wrok".to_owned())));
+    app.send(Event::Home);
+    app.send(sidebar_action(&app, "Wrok", ActionKind::Rename));
+    app.send(Event::Answer(Answer::Text { text: "Work".to_owned() }));
+    let view = app.view();
+    assert!(view.home.is_some(), "renaming a place on Home is not opening it");
+    assert_eq!(view.place, Some(Place::Project("Work".to_owned())), "the place beneath follows it");
+    let work = lumenna_records::places::SidebarEntry::key_of(&lumenna_records::places::SidebarKind::Place(Place::Project("Work".to_owned())));
+    assert_eq!(view.sidebar_held.focus.as_ref(), Some(&work), "its row in hand follows it");
+    let heading = app.view().sidebar.into_iter().find(|e| e.title == "Projects").unwrap();
+    let new = heading.offered.into_iter().find(|a| a.kind == ActionKind::New).unwrap();
+    app.send(Event::ActOn(ActingOn::Held(lumenna_app::Side::Sidebar, heading.key), new));
+    app.send(Event::Answer(Answer::Text { text: "Garden".to_owned() }));
+    assert!(app.view().home.is_some(), "a place made from Home is not opened");
+}
+
+#[test]
 fn what_should_i_work_on_goes_to_today_from_any_place() {
     let mut app = App::new();
     app.send(Event::Open(Place::Trash));
