@@ -2,6 +2,7 @@ package com.extra.han.lumenna.ui
 
 import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.lumenna.app.brailleLetter
+import dev.emassey0135.lumenna.app.braillesensePress
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.MenuShortcut
 import dev.emassey0135.lumenna.app.menuShortcuts
@@ -34,17 +35,8 @@ object BrailleLetters : Letters {
         menuShortcuts(items.map { (title, letter) -> MenuShortcut(title, letter?.toString()) }).map { it.singleOrNull() }
 
     /**
-     * Space with these letters is already a command on every screen of the device (Space-1 is
-     * A, Up; Space-1-2 is B, Shift-Tab; Space-1-3 is K, the line's start; Space-1-2-3 is L, the
-     * first row; and C, D, E, F, H, M, O, R and Z the manual's own), so the core's letter is
-     * pressed with Enter there.
+     * How a letter is pressed here, for a menu to show: the core's (`braillesense_press`), Space
+     * with it, or Enter where Space with those dots is already the device's on every screen.
      */
-    private val SPACE_TAKEN = setOf('a', 'b', 'c', 'd', 'e', 'f', 'h', 'k', 'l', 'm', 'o', 'r', 'z')
-
-    /** How a letter is pressed here, for a menu to show: a key's name is the device's. */
-    fun press(letter: Char): String? = when {
-        letter !in 'a'..'z' -> null
-        letter in SPACE_TAKEN -> "Enter-$letter"
-        else -> "Space-$letter"
-    }
+    fun press(letter: Char): String? = braillesensePress(letter.toString())
 }

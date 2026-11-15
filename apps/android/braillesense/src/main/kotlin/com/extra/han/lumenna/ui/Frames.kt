@@ -65,6 +65,10 @@ class Row(
     /** Space-3 and Space-6: its folding. */
     val collapse: (() -> Unit)? = null,
     val expand: (() -> Unit)? = null,
+    /** Whether it opens a dialog, which the device marks. */
+    val asks: Boolean = false,
+    /** A row of the shell's own, which the app does not hold: Home's actions beside its places. */
+    val local: Boolean = false,
 )
 
 /**
@@ -108,7 +112,7 @@ class ListFrame(
         get() = current?.let { row ->
             // A prompt's answers are a choice in place, numbered no more than the device numbers them.
             val (place, count) = if (prompt) 0 to 0 else position
-            readings.read(line(row.role, row.speech, row.braille, detail = row.detail, letter = row.letter, position = place, count = count)).rendered()
+            readings.read(line(row.role, row.speech, row.braille, detail = row.detail, letter = row.letter, asks = row.asks, position = place, count = count)).rendered()
         } ?: Rendered(empty)
 
     private fun moveTo(target: Int): Boolean {

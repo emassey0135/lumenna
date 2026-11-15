@@ -129,4 +129,13 @@ class ChordsTest {
         assertEquals("Space-D is the character, as everywhere", Key.Delete, Chords.fromChord(Chords.SPACE or Chords.DOT1 or Chords.DOT4 or Chords.DOT5))
         assertEquals(Key.BackspaceDots(0x03), Chords.fromChord(backspace or Chords.DOT1 or Chords.DOT2))
     }
+
+    @Test fun altAloneOpensTheMenusAndAltWithAKeyDoesNot() {
+        val keyboard = dev.emassey0135.braillesense.input.QwertyKeyboard()
+        assertNull(keyboard.down(android.view.KeyEvent.KEYCODE_ALT_LEFT, 0, 0))
+        assertEquals(Key.Menu, keyboard.up(android.view.KeyEvent.KEYCODE_ALT_LEFT))
+        keyboard.down(android.view.KeyEvent.KEYCODE_ALT_LEFT, 0, 0)
+        assertEquals(Key.DeleteWord, keyboard.down(android.view.KeyEvent.KEYCODE_DEL, android.view.KeyEvent.META_ALT_ON, 0))
+        assertNull("Alt-Backspace opens nothing as Alt is let go", keyboard.up(android.view.KeyEvent.KEYCODE_ALT_LEFT))
+    }
 }

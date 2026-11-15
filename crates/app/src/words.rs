@@ -426,6 +426,14 @@ pub struct BrailleWords {
     pub no_actions: String,
     /// The screen of reminders due asked for with none due.
     pub nothing_due: String,
+    /// Escape on Home, which has nothing behind it.
+    pub at_home: String,
+    /// Tab in a list, whose rows are moved through otherwise.
+    pub tab_in_a_list: String,
+    /// The filter asked for where no list is shown.
+    pub no_list_to_filter: String,
+    /// A row's actions asked for where there is no row: a dialog, a menu.
+    pub no_actions_here: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -914,6 +922,10 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
             opens_nothing: "Nothing to open here.".to_owned(),
             no_actions: "No actions on this row.".to_owned(),
             nothing_due: "No reminders are due.".to_owned(),
+            at_home: "This is Home; there is nothing to go back to.".to_owned(),
+            tab_in_a_list: "Tab moves between a dialog's controls; this is a list.".to_owned(),
+            no_list_to_filter: "There is no list here to filter.".to_owned(),
+            no_actions_here: "Nothing here has actions of its own.".to_owned(),
         },
         yes_no: lumenna_records::fields::yes_no(),
 

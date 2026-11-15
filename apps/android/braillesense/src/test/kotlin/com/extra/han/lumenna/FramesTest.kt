@@ -376,4 +376,14 @@ class FramesTest {
         assertTrue(frame.key(Key.Enter))
         assertEquals("b", frame.current?.key)
     }
+
+    @Test fun aHotKeyAMenuShowsRunsWhileTheMenuIsOpen() {
+        var ran = false
+        var closed = false
+        val undo = MenuEntry("Undo", hotkey = "Space-u", letter = 'u') { ran = true }
+        val frame = MenuFrame(listOf(MenuEntry("Edit", children = listOf(undo))), BY_LETTER, READ, closed = { closed = true })
+        frame.key(Key.SpaceLetter('u'))
+        assertTrue("from the top of the bar, its submenu unopened", ran)
+        assertTrue(closed)
+    }
 }

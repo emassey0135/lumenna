@@ -22,7 +22,8 @@ class MenuEntry(
  * item", and an item that opens a dialog adds its sign and the word. Space-1 and Space-4 move and
  * wrap, Space-1-2-3 and Space-4-5-6 go to the ends, Enter opens or runs, an item's letter jumps to
  * it and runs it (or only jumps, as the person's setting has it), Backspace or Escape goes up a level or, at the top, closes the menu, and the
- * menu key or Exit closes it all.
+ * menu key or Exit closes it all. A hot key an item shows runs it while the menu is open too, as
+ * it does from the screen under the menu.
  */
 class MenuFrame(
     private val top: List<MenuEntry>,
@@ -84,6 +85,22 @@ class MenuFrame(
         Key.Enter -> run { here.entries.getOrNull(here.index)?.let(::choose); true }
         Key.Escape, Key.Backspace -> leave()
         Key.Menu, Key.Exit -> run { closed(true); true }
+        is Key.SpaceDots, is Key.EnterDots, is Key.SpaceLetter, is Key.EnterLetter -> run {
+            val press = when (key) {
+                is Key.SpaceDots -> letters.letter(Key.Cell(key.dots))?.let { "Space-$it" }
+                is Key.EnterDots -> letters.letter(Key.Cell(key.dots))?.let { "Enter-$it" }
+                is Key.SpaceLetter -> "Space-${key.letter.lowercaseChar()}"
+                is Key.EnterLetter -> "Enter-${key.letter.lowercaseChar()}"
+            }
+            val item = press?.let { hotKeyed(top, it) }
+            if (item != null) {
+                closed(false)
+                item.run()
+            } else {
+                press?.last()?.let(notFound)
+            }
+            true
+        }
         is Key.Cell, is Key.Typed -> run {
             val letter = letters.letter(key)?.lowercaseChar()
             val match = shortcutsOf(here.entries).entries.firstOrNull { it.value == letter }?.key
@@ -96,6 +113,15 @@ class MenuFrame(
             true
         }
         else -> false
+    }
+
+    /** The item anywhere in [entries] whose hot key is [press]. */
+    private fun hotKeyed(entries: List<MenuEntry>, press: String): MenuEntry? {
+        entries.forEach { entry ->
+            if (entry.children.isEmpty() && entry.hotkey.equals(press, ignoreCase = true)) return entry
+            hotKeyed(entry.children, press)?.let { return it }
+        }
+        return null
     }
 
     override fun routed(at: Int) {

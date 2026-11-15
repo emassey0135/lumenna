@@ -5,7 +5,7 @@ import android.view.KeyEvent
 /**
  * The snap-on QWERTY keyboard, which is an ordinary keyboard to Android: what its keys mean, by
  * the table in the manual's Common Commands (arrows and Home/End for moving, Escape, Tab, F1 for
- * help, Alt for the menus, the Application key for a row's own menu; Control is Enter's hotkeys
+ * help, Alt alone for the menus (`QwertyKeyboard`), the Application key for a row's own menu; Control is Enter's hotkeys
  * and Control-Shift Space's commands). In a line of text Delete takes the character at the cursor,
  * Alt-Backspace the word, Control-Backspace the line and Alt-Delete the paragraph, and Control-Insert
  * and Control-Delete add to and clear the clipboard, by the command summary's QWERTY table.
@@ -45,6 +45,7 @@ object Qwerty {
             KeyEvent.KEYCODE_F4 -> if (alt) Key.Exit else Key.Escape
             KeyEvent.KEYCODE_F10 -> if (shift) Key.Context else Key.Options
             KeyEvent.KEYCODE_MENU -> Key.Context
+            // Alone, the menus once it is let go: `QwertyKeyboard`.
             KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.KEYCODE_ALT_RIGHT -> null
             else -> printed(meta, char, ctrl, shift, alt)
         }
@@ -65,4 +66,32 @@ object Qwerty {
             else -> Key.Typed(text)
         }
     }
+}
+
+/**
+ * The QWERTY keyboard as presses and releases: Alt pressed and let go with nothing between is the
+ * menus (`Key.Menu`), as on a computer, where the device's own F2 is Windows-Alt; Alt held with
+ * another key is that key's Alt form (Alt-Backspace, Alt-Delete), so it opens nothing.
+ */
+class QwertyKeyboard {
+    private var altAlone = false
+
+    /** A key pressed; null where it means nothing here (Alt, until it is let go). */
+    fun down(keyCode: Int, meta: Int, char: Int): Key? {
+        if (isAlt(keyCode)) {
+            altAlone = true
+            return null
+        }
+        altAlone = false
+        return Qwerty.decode(keyCode, meta, char)
+    }
+
+    /** A key let go: the menus for Alt alone, else nothing. */
+    fun up(keyCode: Int): Key? {
+        val alone = isAlt(keyCode) && altAlone
+        altAlone = false
+        return if (alone) Key.Menu else null
+    }
+
+    private fun isAlt(keyCode: Int) = keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT
 }

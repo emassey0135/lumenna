@@ -21,7 +21,7 @@ import dev.emassey0135.braillesense.input.HanInputClient
 import dev.emassey0135.braillesense.output.HanOutputClient
 import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.braillesense.braille.Louis
-import dev.emassey0135.braillesense.input.Qwerty
+import dev.emassey0135.braillesense.input.QwertyKeyboard
 import com.extra.han.lumenna.ui.SettingsReadings
 import com.extra.han.lumenna.ui.Host
 import com.extra.han.lumenna.ui.Shell
@@ -58,6 +58,8 @@ class MainActivity : ComponentActivity(), Host {
     private val output by lazy { HanOutputClient(applicationContext, trace = BuildConfig.DEBUG, tag = "LumennaOutput") }
     private val settings by lazy { BrailleSettings(applicationContext) }
     private val translator by lazy { Louis.translator { settings.tables } }
+    /** The snap-on keyboard, whose Alt alone opens the menus as it is let go. */
+    private val keyboard = QwertyKeyboard()
     private val speaker by lazy { BrailleDisplay(output, translator) }
     private var shell: Shell? = null
     private val main = Handler(Looper.getMainLooper())
@@ -229,8 +231,11 @@ class MainActivity : ComponentActivity(), Host {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (!front.holding) return super.dispatchKeyEvent(event)
         if (event.deviceId == -1 && event.scanCode != 0) return true
-        if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
-        val key = Qwerty.decode(event.keyCode, event.metaState, event.getUnicodeChar(event.metaState))
+        val key = when (event.action) {
+            KeyEvent.ACTION_DOWN -> keyboard.down(event.keyCode, event.metaState, event.getUnicodeChar(event.metaState))
+            KeyEvent.ACTION_UP -> keyboard.up(event.keyCode)
+            else -> null
+        }
         if (key != null) {
             shell?.press(key)
             return true
