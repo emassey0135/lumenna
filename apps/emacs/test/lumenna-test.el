@@ -1031,7 +1031,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     ;; The day's, from its own buffer.
     (lumenna-today)
     (should (equal (mapcar (lambda (a) (plist-get a :id)) (lumenna--screen-actions))
-                   '("new-block" "what-now" "previous-day" "next-day" "go-to-day" "go-to-now" "undo" "redo")))
+                   '("new-block" "previous-day" "next-day" "go-to-day" "go-to-now" "undo" "redo")))
     (let ((shown (plist-get (plist-get lumenna--view :day) :date)))
       (lumenna-screen-action "next-day")
       (should-not (equal (plist-get (plist-get lumenna--view :day) :date) shown)))))

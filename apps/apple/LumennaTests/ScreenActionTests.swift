@@ -60,7 +60,7 @@ final class ScreenActionTests: XCTestCase {
         XCTAssertEqual(names(day.navigationItem.leftBarButtonItems), ["Undo", "Redo"])
         XCTAssertEqual(names(day.navigationItem.rightBarButtonItems), ["New Block"])
         let besides = core.app.view.screenActions.filter { !ScreenActionBar.holds($0) }.map(\.id)
-        XCTAssertEqual(besides, ["what-now", "previous-day", "next-day", "go-to-day", "go-to-now"])
+        XCTAssertEqual(besides, ["previous-day", "next-day", "go-to-day", "go-to-now"])
     }
 
     func testTheFilterFieldIsWhereTheCoreOffersFilterTasks() {

@@ -166,7 +166,7 @@ test("today's buttons are the core's own actions for it, in its order, then its 
   await open(page);
   await place(page, /^Today/);
   const buttons = page.getByRole("main").getByRole("toolbar", { name: "Day" }).getByRole("button");
-  const names = ["New block", "What should I work on?", "Previous day", "Next day", "Go to day", "Go to now", "Undo", "Redo", "Day actions", "Actions"];
+  const names = ["New block", "Previous day", "Next day", "Go to day", "Go to now", "Undo", "Redo", "Day actions", "Actions"];
   await expect(buttons).toHaveCount(names.length);
   for (const [at, name] of names.entries()) await expect(buttons.nth(at)).toHaveAccessibleName(name);
   // One that asks something first says it opens a dialog, its ellipsis no part of its name.
