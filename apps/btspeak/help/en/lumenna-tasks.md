@@ -18,7 +18,7 @@ It holds what can be done to the task now, as every Lumenna app offers it, then 
 - Move to trash. Control-D and the D chord do the same.
 - Task details: everything about the task, to pan through.
 
-## The list's menu, M-Chord
+## The list's own menu, first on the menu bar, M-Chord
 
 - New task, a. In a project's or label's list, the line starts with it, so the task lands there.
 - Filter tasks, slash: a filter such as "#Work & overdue", or "search:" and words to look through titles and notes.

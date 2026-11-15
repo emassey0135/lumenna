@@ -154,6 +154,18 @@ class DynamicMenuDialog:
         self.menu = menu
         self.title = title
         self.arguments = arguments
+        self.message = None
+        self.is_running = True
+        self.selection = arguments.get("default", 0)
+
+    def close(self):
+        self.is_running = False
+
+    def _run_menu_fn(self, fn):
+        return _call(fn, _Menu(self.menu), None)
+
+    def on_AppMenu(self) -> bool:
+        return False
 
     def on_TitleRead(self) -> bool:
         host = sys.modules["BTSpeak.host"]
@@ -162,16 +174,16 @@ class DynamicMenuDialog:
         return True
 
     def run(self):
-        DynamicMenuDialog.current = self
+        before, DynamicMenuDialog.current = DynamicMenuDialog.current, self
         try:
-            return dynamic_menu(self.menu, title=self.title, **self.arguments)
+            return dynamic_menu(self.menu, title=self.title, dialog=self, **self.arguments)
         finally:
-            DynamicMenuDialog.current = None
+            DynamicMenuDialog.current = before
 
 
 def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, default=0,
                  context_menu=(), app_menu=(), app_menu_title="", global_keys=None,
-                 empty_message=None, **_ignored):
+                 empty_message=None, dialog=None, **_ignored):
     """A menu, played from the script:
 
     - `("menu", text)` presses Enter on the visible row whose title contains `text`;
@@ -182,6 +194,10 @@ def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, defa
     - `("key", text, letter)` presses a letter on that row;
     - `("back",)` leaves; `("wait",)` stays until the exit condition fires, as the real menu
       would on its refresh.
+
+    Over a dialog with a menu bar of its own (one answering M-Chord, `on_AppMenu`), `("app", label)`
+    opens the bar and chooses `label` in its first menu; `("bar",)` opens it alone, for the steps
+    after to play it, where `("tab",)` and `("shift-tab",)` move between its menus.
     """
     script.titles.append(title() if callable(title) else (title or ""))
     selection = default
@@ -202,6 +218,23 @@ def dynamic_menu(menu, title=None, exit_condition=None, refresh_interval=0, defa
         if kind == "back":
             script.steps.pop(0)
             return None
+        if kind in ("tab", "shift-tab") and dialog is not None:
+            script.steps.pop(0)
+            (dialog.on_Tab if kind == "tab" else dialog.on_ShiftTab)()
+            return None
+        if kind in ("app", "bar") and dialog is not None and type(dialog).on_AppMenu is not DynamicMenuDialog.on_AppMenu:
+            step = script.steps.pop(0)
+            if kind == "app":
+                script.steps.insert(0, ("menu", step[1]))
+            selected = [i for i, it in enumerate(menu) if it.dependency is None or it.dependency()]
+            handle.selection = selected[0] if selected else 0
+            dialog.selection = handle.selection
+            dialog.on_AppMenu()
+            if isinstance(dialog.message, str) and dialog.message:
+                script.said.append(dialog.message)
+            if exit_condition and exit_condition():
+                return Choice(selection, "")
+            continue
         if kind == "title":
             script.steps.pop(0)
             (DynamicMenuDialog.current or DynamicMenuDialog(menu, title)).on_TitleRead()

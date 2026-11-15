@@ -144,10 +144,20 @@ def home(session: Session) -> None:
                 focus=lambda: session.view().sidebar_held.focus,
                 until=went,
                 screen_first=True,
+                bar=(None, True),
             )
-        if not went():
+        session.moved_on = False
+        if session.leaving or not went():
             return
-        place_screen(session.view().place)(session)
+        # The place opened, then wherever the menu bar takes the app from there, until the person
+        # leaves a place or the app goes Home.
+        while went():
+            place_screen(session.view().place)(session)
+            if session.leaving:
+                return
+            if not session.moved_on:
+                break
+            session.moved_on = False
 
 
 def added_title(row, named) -> str:

@@ -70,6 +70,11 @@ class Session:
         self.settings_open = False
         #: Whether the quick-add line is being asked, so it is not asked twice.
         self.typing = False
+        #: Whether the person left the app from a menu (Quit): every screen closes.
+        self.leaving = False
+        #: Whether a command from the menu bar took the app to another place, or Home: every screen
+        #: closes, and Home shows where the app is now.
+        self.moved_on = False
         self._ticked = time.monotonic()
         import rows  # here: rows reads the device's settings
 
@@ -273,16 +278,21 @@ def row_of(item):
     return getattr(item, "row", None)
 
 
-def _menu(items, braille_title: str = "", **arguments):
+def _menu(items, braille_title: str = "", bar=None, **arguments):
     """The device's menu, its T-Chord showing `braille_title` on the display where it is given:
     the dialog takes one title, said as the menu opens and drawn at the top of the screen, and
     T-Chord says it again and pushes it to the display, so the shorter braille needs the key
-    answered here, as the device's file manager answers it."""
-    if not braille_title:
+    answered here, as the device's file manager answers it. With `bar`, a function of the row
+    under the cursor, M-Chord opens the menu bar it runs in place of the device's single menu,
+    as the device's file manager opens a menu of its own; what it picked is run, as a context
+    menu's entry is, and what that said is said."""
+    if not braille_title and bar is None:
         return dialogs.dynamic_menu(items, **arguments)
 
-    class BrailledTitle(dialogs.DynamicMenuDialog):
+    class ScreenMenu(dialogs.DynamicMenuDialog):
         def on_TitleRead(self) -> bool:
+            if not braille_title:
+                return super().on_TitleRead()
             host.say(self.title or "", immediate=True, as_ui=True)
             try:
                 from BTSpeak import brl
@@ -291,13 +301,70 @@ def _menu(items, braille_title: str = "", **arguments):
                 pass
             return True
 
-    return BrailledTitle(menu=items, **arguments).run()
+        def on_AppMenu(self) -> bool:
+            if bar is None:
+                return super().on_AppMenu()
+            self.message = bar(selected_row(self))
+            return True
+
+    return ScreenMenu(menu=items, **arguments).run()
+
+
+class _RingMenu(dialogs.DynamicMenuDialog):
+    """One menu of the menu bar: Tab, and M-Chord pressed again, ask for the next menu, Shift-Tab
+    for the previous, as in the device's editor (`menu_ring.c`)."""
+
+    moved = 0
+
+    def _move(self, step: int) -> bool:
+        self.moved = step
+        self.close()
+        return True
+
+    def on_Tab(self) -> bool:
+        return self._move(1)
+
+    def on_AppMenu(self) -> bool:
+        return self._move(1)
+
+    def on_ShiftTab(self) -> bool:
+        return self._move(-1)
+
+
+def menu_bar(menus) -> tuple[str, str] | None:
+    """The menu bar, as the device's editor has one: opened on its first menu, each a menu of its
+    own said by its name as it opens, Tab and M-Chord on to the next and Shift-Tab back, round from
+    either end; within one, a letter runs its item. `menus` are the core's (`LetteredMenu`). What
+    was picked, as its id and letter; None when the bar was left."""
+    menus = [menu for menu in menus if menu.items]
+    at = 0
+    while menus:
+        picked: list = []
+
+        def pick(menu, lettered) -> None:
+            picked.append((lettered.id, lettered.letter))
+            menu.close()
+
+        # Not called `item`: the device hands a menu's action the row it is on by that name.
+        rows = [
+            dialogs.DynamicMenuItem(title=lettered.title, shortcut=lettered.letter or None,
+                                    action=lambda menu, lettered=lettered: pick(menu, lettered))
+            for lettered in menus[at].items
+        ]
+        dialog = _RingMenu(menu=rows, title=native().menu_of(menus[at].title))
+        dialog.run()
+        if picked:
+            return picked[0]
+        if not dialog.moved:
+            return None
+        at = (at + dialog.moved) % len(menus)
+    return None
 
 
 def live_menu(
     session: Session, build, title, default: int = 0, moved=None, *,
     main=None, context=(), app=(), empty=None, app_title: str = "", focus=None, until=None,
-    braille_title=None, screen_first: bool = False,
+    braille_title=None, screen_first: bool = False, bar=None,
 ) -> None:
     """A menu rebuilt whenever the store moves, reopened where the cursor was.
 
@@ -316,7 +383,10 @@ def live_menu(
     the app keeps it — and otherwise the selection is kept by position. `until()`, when given,
     closes the menu once it holds: the app has put away what the menu shows. `screen_first` gives
     a letter to the screen's own commands before the row's, as Home has it (its places' and its
-    own actions' first); elsewhere a row's action of a letter comes first.
+    own actions' first); elsewhere a row's action of a letter comes first. `bar`, for a place's
+    screen or Home, is `(place, home)`: M-Chord is then the core's menu bar (`actions.menu_bar`),
+    not a menu of `app` alone. A menu closes when the person left the app (`session.leaving`) or
+    the app went on to another place (`session.moved_on`), for Home to show where it is now.
     """
     selection = default
     while True:
@@ -339,12 +409,14 @@ def live_menu(
             items,
             braille_title=brailled if brailled and brailled != heading else "",
             title=heading,
-            exit_condition=lambda: session.restless() or bool(moved and moved()) or bool(until and until()),
+            exit_condition=lambda: session.restless() or bool(moved and moved()) or bool(until and until())
+            or session.leaving or session.moved_on,
             refresh_interval=REFRESH,
             default=min(selection, max(len(items) - 1, 0)),
             # On Home a letter is the screen's first: a row's action of one says no letter there.
             context_menu=context_commands(here, {c.key for c in offered if c.key} if screen_first else set()),
-            app_menu=app_commands(offered, here, screen_first),
+            app_menu=() if bar is not None else app_commands(offered, here, screen_first),
+            bar=(lambda row: bar_run(session, bar, row)) if bar is not None else None,
             # A heading says more than a name (a list's readback after it), so the screen names
             # its menu; a title cut at its first comma broke a name like "Work, home".
             app_menu_title=app_title or native().menu_of(heading),
@@ -352,6 +424,9 @@ def live_menu(
             empty_message=empty() if callable(empty) else (words().nothing_here if empty is None else empty),
         )
         nudged = bool(moved and moved(clear=True))
+        if session.leaving or session.moved_on:
+            session.settle()
+            return
         if until is not None and until():
             session.settle()
             return
@@ -359,6 +434,14 @@ def live_menu(
             # The menu closed because the user left it, not because anything moved.
             return
         selection = choice.key if choice else 0
+
+
+def bar_run(session, bar, row) -> str:
+    """M-Chord on a place's screen or Home: the menu bar, and what was picked run there."""
+    import actions  # here: actions imports this module
+
+    place, home = bar() if callable(bar) else bar
+    return actions.run_from_bar(session, menu_bar(native().braille_menu_bar(place, home, True)), row, place, home)
 
 
 def wire(items, main, context, app) -> None:
