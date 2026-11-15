@@ -88,7 +88,7 @@ impl crux_core::capability::Operation for Background {
 }
 
 /// What a shell can do that settings depend on, said once as it starts (`Event::Abilities`), so
-/// the core lists only what applies there. A shell that never says can do both.
+/// the core lists only what applies there. A shell that never says can do all of it.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Abilities {
@@ -98,12 +98,21 @@ pub struct Abilities {
     /// Whether it keeps backups in a folder on a schedule (`backup-every`, `backup-keep`,
     /// `backup-dir`), and takes one there when asked: a browser does not.
     pub backup_folder: bool,
+    /// Whether it shows About of its own: a menu bar's (the Mac's, Windows', GTK's), Home's (a
+    /// braille device, Emacs). One that does not (a phone, a watch, the iPad, the web) is given
+    /// About as a settings page.
+    #[serde(default = "yes")]
+    pub own_about: bool,
 }
 
 impl Default for Abilities {
     fn default() -> Self {
-        Self { files: true, backup_folder: true }
+        Self { files: true, backup_folder: true, own_about: true }
     }
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// The settings a shell keeping no backup folder has no use for.
@@ -217,7 +226,11 @@ fn pages(settings: &Settings, background: bool, abilities: Abilities, own_clock:
                 "restore-backup" | "import" => abilities.files,
                 _ => true,
             });
-            (!page.keys.is_empty() || !page.buttons.is_empty()).then_some(page)
+            // About is a page only where the shell shows none of its own.
+            if page.id == "about" && abilities.own_about {
+                return None;
+            }
+            (!page.keys.is_empty() || !page.buttons.is_empty() || !page.lines.is_empty()).then_some(page)
         })
         .collect()
 }

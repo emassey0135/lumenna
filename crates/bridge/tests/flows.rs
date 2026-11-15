@@ -2839,7 +2839,7 @@ fn a_settings_page_is_its_settings_as_controls_each_applied_as_it_changes() {
 #[test]
 fn settings_list_only_what_the_shell_can_do_with_files_and_a_backup_folder() {
     let mut app = App::new();
-    app.send(Event::Abilities(lumenna_app::Abilities { files: false, backup_folder: false }));
+    app.send(Event::Abilities(lumenna_app::Abilities { files: false, backup_folder: false, own_about: true }));
     app.send(Event::Settings(SettingsEvent::Open));
     let settings = app.view().settings.unwrap();
     let pages: Vec<String> = settings.pages.iter().map(|page| page.id.clone()).collect();
@@ -2847,7 +2847,7 @@ fn settings_list_only_what_the_shell_can_do_with_files_and_a_backup_folder() {
     assert!(settings.exports.is_empty());
     assert!(!settings.settings.iter().any(|shown| shown.setting.key.starts_with("backup-")));
     // A browser saves and picks files, and keeps no folder of backups.
-    app.send(Event::Abilities(lumenna_app::Abilities { files: true, backup_folder: false }));
+    app.send(Event::Abilities(lumenna_app::Abilities { files: true, backup_folder: false, own_about: true }));
     let settings = app.view().settings.unwrap();
     let backups = settings.pages.iter().find(|page| page.id == "backups").expect("a backup can be saved and restored");
     assert!(backups.keys.is_empty(), "no schedule or folder: {:?}", backups.keys);
@@ -2931,4 +2931,21 @@ fn a_phones_browse_and_a_watchs_root_come_from_the_sidebar() {
     assert!(projects.entries.iter().any(|place| place.title == "Work"));
     assert!(projects.heading.offered.iter().any(|action| action.kind == ActionKind::New), "its New is the heading's");
     assert!(arranged.watch.iter().any(|row| matches!(row, lumenna_app::arrangement::RootRow::Place(place) if place.title == "Work")));
+}
+
+#[test]
+fn about_is_a_settings_page_only_where_the_shell_has_none_of_its_own() {
+    let mut app = App::new();
+    app.send(Event::Settings(SettingsEvent::Open));
+    let pages = app.view().settings.unwrap().pages;
+    assert!(!pages.iter().any(|page| page.id == "about"), "a desktop's menu bar has About, a braille device's Home");
+    app.send(Event::Abilities(lumenna_app::Abilities { files: true, backup_folder: false, own_about: false }));
+    let view = app.view();
+    let about = view.settings.as_ref().unwrap().pages.iter().find(|page| page.id == "about").cloned().expect("a phone's About");
+    assert!(about.keys.is_empty() && about.buttons.is_empty());
+    assert_eq!(about.lines, lumenna_records::words::about_lines());
+    assert!(about.lines.iter().any(|line| line.starts_with("Version ")));
+    let dialog = lumenna_app::dialog::settings_page(&view, "about").unwrap();
+    assert!(dialog.controls.iter().all(|control| control.kind == ControlType::Text), "lines to read and nothing else");
+    assert_eq!(dialog.controls.len(), about.lines.len());
 }
