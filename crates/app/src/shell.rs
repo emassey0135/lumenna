@@ -7,7 +7,7 @@
 //! exhaustive match, so a new event is sorted into one or the other where it is added.
 
 use boltffi::data;
-use crate::{ActingOn, BackgroundEvent, BlockEvent, Capitals, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Side, Typing};
+use crate::{Abilities, ActingOn, BackgroundEvent, BlockEvent, Capitals, DayMove, DetailsEvent, DevicesEvent, DueEvent, Event, ProposalEvent, SettingsEvent, Side, Typing};
 use lumenna_records::places::Place;
 use lumenna_records::proposals::TimeStyle;
 use lumenna_records::Offered;
@@ -84,6 +84,8 @@ pub enum ShellEvent {
     Capitals(Capitals),
     /// Whether this shell's list shows each task's checkbox, which says whether it is done.
     Checkboxes(bool),
+    /// What this shell can do that settings depend on: whether it saves files, keeps a backup folder.
+    Abilities(Abilities),
     /// What this shell is called in pairing's sentences ("this computer", "this watch"), and
     /// whether it finds devices on its own network or pairs only by code: for pairing's words.
     PairingAs {
@@ -135,6 +137,7 @@ impl From<ShellEvent> for Event {
             ShellEvent::Clock(style) => Event::Clock(style),
             ShellEvent::Capitals(capitals) => Event::Capitals(capitals),
             ShellEvent::Checkboxes(shown) => Event::Checkboxes(shown),
+            ShellEvent::Abilities(abilities) => Event::Abilities(abilities),
             ShellEvent::PairingAs { called, nearby } => Event::PairingAs { called, nearby },
             ShellEvent::PlanFrom(moment) => Event::PlanFrom(moment),
             ShellEvent::QuickAdd(line) => Event::QuickAdd(line),
@@ -178,6 +181,7 @@ impl TryFrom<Event> for ShellEvent {
             Event::Clock(style) => ShellEvent::Clock(style),
             Event::Capitals(capitals) => ShellEvent::Capitals(capitals),
             Event::Checkboxes(shown) => ShellEvent::Checkboxes(shown),
+            Event::Abilities(abilities) => ShellEvent::Abilities(abilities),
             Event::PairingAs { called, nearby } => ShellEvent::PairingAs { called, nearby },
             Event::PlanFrom(moment) => ShellEvent::PlanFrom(moment),
             Event::QuickAdd(line) => ShellEvent::QuickAdd(line),

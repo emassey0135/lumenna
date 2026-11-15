@@ -333,7 +333,7 @@ fn shown(model: &Screen) -> ViewModel {
         block_form: model.block_form.as_ref().map(|form| form.view(model.capitals == crate::Capitals::Sentence)),
         proposal: model.proposal.as_ref().map(crate::proposal::view),
         proposal_made: model.proposal_made,
-        settings: model.settings.as_ref().map(|s| crate::settings::view(s, model.background, store.now.date(), model.style.is_some(), model.capitals == crate::Capitals::Sentence)),
+        settings: model.settings.as_ref().map(|s| crate::settings::view(s, model.background, model.abilities, store.now.date(), model.style.is_some(), model.capitals == crate::Capitals::Sentence)),
         devices: model.devices.as_ref().map(|d| crate::DevicesView {
             pairing: model.pairing.as_ref().map(|pairing| pairing.view(&model.pairing_words())),
             words: model.pairing_words(),

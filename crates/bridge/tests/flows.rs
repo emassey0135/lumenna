@@ -2574,7 +2574,7 @@ fn what_should_i_work_on_goes_to_today_from_any_place() {
     app.send(Event::Key("what-now".to_owned()));
     assert_eq!(app.view().place, Some(Place::Today));
     let ids: Vec<String> = app.view().screen_actions.into_iter().map(|action| action.id).collect();
-    assert!(ids.contains(&"what-now".to_owned()), "{ids:?}");
+    assert!(!ids.contains(&"what-now".to_owned()), "the day offers it of its own, not twice: {ids:?}");
 }
 
 #[test]
@@ -2813,4 +2813,39 @@ fn a_settings_page_is_its_settings_as_controls_each_applied_as_it_changes() {
     let devices = lumenna_app::dialog::settings_page(&view, "devices").unwrap();
     assert_eq!(control(&devices, "sync-now").sends, ControlSends::Press(vec![lumenna_app::ShellEvent::Key("sync-now".to_owned())]));
     assert_eq!(control(&devices, "pair").sends, ControlSends::Shell("pair".to_owned()));
+}
+
+#[test]
+fn settings_list_only_what_the_shell_can_do_with_files_and_a_backup_folder() {
+    let mut app = App::new();
+    app.send(Event::Abilities(lumenna_app::Abilities { files: false, backup_folder: false }));
+    app.send(Event::Settings(SettingsEvent::Open));
+    let settings = app.view().settings.unwrap();
+    let pages: Vec<String> = settings.pages.iter().map(|page| page.id.clone()).collect();
+    assert!(!pages.contains(&"export".to_owned()) && !pages.contains(&"backups".to_owned()), "a watch saves and keeps nothing: {pages:?}");
+    assert!(settings.exports.is_empty());
+    assert!(!settings.settings.iter().any(|shown| shown.setting.key.starts_with("backup-")));
+    // A browser saves and picks files, and keeps no folder of backups.
+    app.send(Event::Abilities(lumenna_app::Abilities { files: true, backup_folder: false }));
+    let settings = app.view().settings.unwrap();
+    let backups = settings.pages.iter().find(|page| page.id == "backups").expect("a backup can be saved and restored");
+    assert!(backups.keys.is_empty(), "no schedule or folder: {:?}", backups.keys);
+    let buttons: Vec<&str> = backups.buttons.iter().map(|button| button.id.as_str()).collect();
+    assert_eq!(buttons, ["back-up", "restore-backup"]);
+    assert!(!settings.exports.is_empty());
+    assert!(!settings.settings.iter().any(|shown| shown.setting.key.starts_with("backup-")));
+}
+
+#[test]
+fn enter_names_what_it_runs_on_each_row() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    let list = app.view().list.unwrap();
+    let offered: Vec<lumenna_records::Offered> = list.items[0].actions.iter().map(|at| list.offered[*at as usize].clone()).collect();
+    assert_eq!(lumenna_app::keys::runs_on("open", &offered).map(|action| action.kind), Some(ActionKind::Edit));
+    app.send(Event::Key("delete".to_owned()));
+    app.send(Event::Open(Place::Trash));
+    let list = app.view().list.unwrap();
+    let offered: Vec<lumenna_records::Offered> = list.items[0].actions.iter().map(|at| list.offered[*at as usize].clone()).collect();
+    assert_eq!(lumenna_app::keys::runs_on("open", &offered).map(|action| action.kind), Some(ActionKind::Restore));
 }
