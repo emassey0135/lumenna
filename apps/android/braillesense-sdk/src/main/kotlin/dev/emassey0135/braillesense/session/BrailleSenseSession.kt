@@ -88,7 +88,7 @@ class BrailleSenseSession(
         },
     )
 
-    private val keys = KeyDelivery(claim, { main.post(it) }) { onKey(it) }
+    private val keys = KeyDelivery<Key>(claim, { main.post(it) }) { onKey(it) }
 
     private val input = HanInputClient(context) { code, value, data ->
         keys.deliver(Chords.decode(code, value, data, settings.eightDot, settings.doubleTapRoutes))
