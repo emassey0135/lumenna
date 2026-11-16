@@ -17,9 +17,9 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Controls::NMHDR;
 use windows::Win32::UI::Accessibility::NotifyWinEvent;
 use windows::Win32::UI::Controls::{
-    BTNS_AUTOSIZE, BTNS_BUTTON, BTNS_SHOWTEXT, CCS_NODIVIDER, CCS_NOPARENTALIGN, CCS_NORESIZE, I_IMAGENONE, TB_ADDBUTTONSW,
+    BTNS_AUTOSIZE, BTNS_BUTTON, BTNS_SHOWTEXT, CCS_NODIVIDER, CCS_NOPARENTALIGN, CCS_NORESIZE, ILC_COLOR32, ImageList_Create, TB_ADDBUTTONSW,
     TB_BUTTONCOUNT, TB_BUTTONSTRUCTSIZE, TB_DELETEBUTTON, TB_ENABLEBUTTON, TB_GETHOTITEM, TB_GETMAXSIZE, TB_ISBUTTONENABLED,
-    TB_SETBITMAPSIZE, TB_SETHOTITEM, TBBUTTON, TBSTATE_ENABLED, TBSTYLE_FLAT, TBSTYLE_LIST, TBSTYLE_TRANSPARENT, TOOLBARCLASSNAMEW,
+    TB_SETHOTITEM, TB_SETIMAGELIST, TBBUTTON, TBSTATE_ENABLED, TBSTYLE_FLAT, TBSTYLE_LIST, TBSTYLE_TRANSPARENT, TOOLBARCLASSNAMEW,
     CDDS_ITEMPREPAINT, CDDS_PREPAINT, CDRF_DODEFAULT, CDRF_NOTIFYITEMDRAW, NM_CUSTOMDRAW, NMTBCUSTOMDRAW,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DOWN, VK_END, VK_HOME, VK_LEFT, VK_RETURN, VK_RIGHT, VK_SPACE, VK_UP};
@@ -53,8 +53,12 @@ impl Toolbar {
         let style = WS_TABSTOP.0 | TBSTYLE_FLAT | TBSTYLE_LIST | TBSTYLE_TRANSPARENT | (CCS_NORESIZE | CCS_NOPARENTALIGN | CCS_NODIVIDER) as u32;
         let hwnd = controls::create(parent, TOOLBARCLASSNAMEW, name, style, 0, 0);
         controls::send(hwnd, TB_BUTTONSTRUCTSIZE, size_of::<TBBUTTON>(), 0);
-        // Text alone: no room kept for an image.
-        controls::send(hwnd, TB_SETBITMAPSIZE, 0, 0);
+        // Text alone, but over an image list of one blank pixel, each button naming its first
+        // image, which draws nothing: a toolbar with no images, or a button with none
+        // (`I_IMAGENONE`), is read by Windows' accessibility proxy as a menu bar of menu items,
+        // and a screen reader would say so. With images it is a toolbar of buttons.
+        let images = unsafe { ImageList_Create(1, 1, ILC_COLOR32, 0, 1) };
+        controls::send(hwnd, TB_SETIMAGELIST, 0, images.0 as isize);
         a11y::set_name(hwnd, name);
         unsafe {
             let _ = SetWindowSubclass(hwnd, Some(procedure), 1, 0);
@@ -90,7 +94,8 @@ impl Toolbar {
             .zip(&texts)
             .enumerate()
             .map(|(at, (action, text))| TBBUTTON {
-                iBitmap: I_IMAGENONE,
+                // The blank image: see `create`.
+                iBitmap: 0,
                 idCommand: i32::from(FIRST) + at as i32,
                 fsState: if action.enabled { TBSTATE_ENABLED as u8 } else { 0 },
                 fsStyle: (BTNS_BUTTON | BTNS_AUTOSIZE | BTNS_SHOWTEXT) as u8,

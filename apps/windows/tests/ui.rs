@@ -295,12 +295,26 @@ fn every_control_in_the_main_window_is_named() {
     assert!(missing.is_empty(), "unnamed: {missing:#?}");
 }
 
+/// The settings pages the app shows, as the core lists them for it (`SettingsView::pages`): this
+/// PC keeps Lumenna running at sign-in and follows its own clock, and has an About of its own in
+/// the Help menu, so General is there and About is not. Never the whole table, which ends in a
+/// page a desktop leaves out.
+fn shown_settings_pages() -> Vec<String> {
+    let background = Some((lumenna_records::background::BackgroundKind::WindowsSignIn, false));
+    let today = jiff::civil::date(2026, 1, 1);
+    lumenna_app::settings::view(&lumenna_app::settings::Settings::default(), background, lumenna_app::Abilities::default(), today, true, false)
+        .pages
+        .into_iter()
+        .map(|page| page.title)
+        .collect()
+}
+
 #[test]
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn every_settings_page_names_its_controls() {
     let app = App::launch(|_| {});
     app.post(&[SETTINGS]);
-    for page in lumenna_records::fields::settings_pages(true, false).into_iter().map(|page| page.title) {
+    for page in shown_settings_pages() {
         app.post(&[&format!("select:{page}")]);
         let lines = app.front();
         assert!(lines.iter().any(|l| l.contains(&format!("TabItem '{page}' selected"))), "{page} is shown");
@@ -1139,7 +1153,7 @@ fn every_dialog_fits_the_screen_at_the_largest_text_size_with_nothing_overlappin
     app.post(&["esc", "cmd:185"]);
     fits_and_nothing_overlaps(&app, "Replan from Now");
     app.post(&["esc", SETTINGS]);
-    for page in lumenna_records::fields::settings_pages(true, false).into_iter().map(|page| page.title) {
+    for page in shown_settings_pages() {
         app.post(&[&format!("select:{page}")]);
         fits_and_nothing_overlaps(&app, &format!("Settings, {page}"));
     }
@@ -1885,7 +1899,7 @@ fn the_toolbar_holds_the_screens_own_actions_in_the_cores_order_and_runs_them() 
     let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
     let today = ["New Block...", "Previous Day", "Next Day", "Go to Day...", "Go to Now", "Undo", "Redo"];
     let shown = automation::wait(Duration::from_secs(5), || (toolbar(&app) == today).then_some(()));
-    assert!(shown.is_some(), "Today's own actions: {:?}", toolbar(&app));
+    assert!(shown.is_some(), "Today's own actions: {:?} in {:#?}", toolbar(&app), app.automation.dump(app.window, 8));
     app.post(&[GO_TASKS]);
     let tasks = ["New Task...", "Filter Tasks", "Undo", "Redo"];
     let shown = automation::wait(Duration::from_secs(5), || (toolbar(&app) == tasks).then_some(()));
@@ -1893,6 +1907,14 @@ fn the_toolbar_holds_the_screens_own_actions_in_the_cores_order_and_runs_them() 
     // Filter Tasks pressed is the window's own: the filter field above the list.
     app.post(&["invoke:Filter Tasks"]);
     assert!(app.lands(|focus| focus.starts_with("Edit 'Filter")), "{}", app.focus());
+    // From the keyboard: one Tab stop after the places, the arrows moving through it, Enter
+    // pressing the button in hand.
+    app.post(&["f6", "f6"]);
+    assert!(app.focus().starts_with("Tree 'Places'"), "{}", app.focus());
+    app.post(&["tab"]);
+    assert!(app.focus().starts_with("ToolBar 'Commands'"), "the toolbar is the next Tab stop: {}", app.focus());
+    app.post(&["right", "enter"]);
+    assert!(app.lands(|focus| focus.starts_with("Edit 'Filter")), "Right, then Enter, presses Filter Tasks: {}", app.focus());
     // The trash has nothing to add or filter.
     app.post(&[GO_TRASH]);
     let shown = automation::wait(Duration::from_secs(5), || (toolbar(&app) == ["Undo", "Redo"]).then_some(()));
