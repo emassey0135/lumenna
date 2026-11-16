@@ -11,6 +11,17 @@ import dev.emassey0135.braillesense.reading.dialogTitle
 import dev.emassey0135.braillesense.braille.Echo
 import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.braillesense.braille.Translator
+import dev.emassey0135.braillesense.ui.Frame
+import dev.emassey0135.braillesense.ui.LineFrame
+import dev.emassey0135.braillesense.ui.ListFrame
+import dev.emassey0135.braillesense.ui.Letters
+import dev.emassey0135.braillesense.ui.MenuEntry
+import dev.emassey0135.braillesense.ui.MenuFrame
+import dev.emassey0135.braillesense.ui.Messages
+import dev.emassey0135.braillesense.ui.Readings
+import dev.emassey0135.braillesense.ui.Rendered
+import dev.emassey0135.braillesense.ui.Row
+import dev.emassey0135.braillesense.ui.show
 import dev.emassey0135.lumenna.AppModel
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.SettingsPages
@@ -203,25 +214,12 @@ class Shell(
         if (said.isNotEmpty()) showMessage(said.joinToString(" "))
     }
 
-    private val restoring = Runnable {
-        messageUp = false
-        frame?.rendered?.let(out::show)
-    }
-
-    private var messageUp = false
-
     /** A message on the cells for the device's own time, then the line under it again. */
-    private fun showMessage(text: String) {
-        out.show(Rendered(text))
-        messageUp = true
-        handler.removeCallbacks(restoring)
-        handler.postDelayed(restoring, messageMillis())
-    }
+    private val messages = Messages(out, messageMillis, under = { frame?.rendered }, handler = handler)
 
-    private fun clearMessage() {
-        messageUp = false
-        handler.removeCallbacks(restoring)
-    }
+    private fun showMessage(text: String) = messages.show(text)
+
+    private fun clearMessage() = messages.clear()
 
     /** What is on the screen for a sighted helper: the line in front. */
     fun currentText(): String = frame?.rendered?.speech.orEmpty()
@@ -294,7 +292,7 @@ class Shell(
         frame = built
         val rendered = built.rendered
         if (fromKey) clearMessage()
-        if (!messageUp) out.show(rendered)
+        if (!messages.up) out.show(rendered)
         out.selecting(boxOf(built)?.selecting == true)
         drawn(rendered.speech)
         val fresh = built.id != lastId
@@ -721,7 +719,7 @@ class Shell(
         val chosen = if (landedNow && appChoice != null) appChoice else selected[id] ?: appChoice
         return ListFrame(id, title, rows, chosen, empty, letters, moved = { row ->
             selected[id] = row.key
-            if (hold && !row.local) held(row.key, side)
+            if (hold && row.tag !== OWN_ROW) held(row.key, side)
         }, openActions = ::actionsMenu,
             findInApp = if (mainList) ({ send(ShellEvent.FindLetter(it.toString())) }) else null,
             notFound = { announce(noRowStartsWith(it.toString())) },
@@ -778,7 +776,7 @@ class Shell(
         }
         val actions = home.actions.filter { it.enabled }.map { action ->
             Row("action:${action.id}", action.title, finding = action.title, letter = action.letter.singleOrNull(), asks = action.asks,
-                open = { runScreenAction(action) }, command = { homeLetter(home, it) }, local = true)
+                open = { runScreenAction(action) }, command = { homeLetter(home, it) }, tag = OWN_ROW)
         }
         return list("home", home.title, places + actions, model.sidebarHeld.focus, "", side = Side.SIDEBAR, byLetter = { homeLetter(home, it) })
     }
@@ -1148,6 +1146,8 @@ class Shell(
         /** The shell's own yes-or-no question. */
         private const val CONFIRMING = "confirming"
 
+        /** A row's tag for one of the shell's own, which the app does not hold: Home's actions beside its places. */
+        private val OWN_ROW = Any()
 
         /** How long after a turn its speech waits, for what the app said to arrive with it. */
         const val SPEECH_DELAY = 60L

@@ -1,4 +1,4 @@
-package dev.emassey0135.lumenna.braille
+package dev.emassey0135.braillesense.session
 
 import android.util.Log
 
@@ -81,7 +81,7 @@ class Claim(
     }
 
     private companion object {
-        const val TAG = "LumennaClaim"
+        const val TAG = "BrailleSenseClaim"
     }
 }
 

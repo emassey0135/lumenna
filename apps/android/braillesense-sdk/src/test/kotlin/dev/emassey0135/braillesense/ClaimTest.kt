@@ -1,5 +1,7 @@
-package dev.emassey0135.lumenna.braille
+package dev.emassey0135.braillesense
 
+import dev.emassey0135.braillesense.session.Claim
+import dev.emassey0135.braillesense.session.KeyDelivery
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

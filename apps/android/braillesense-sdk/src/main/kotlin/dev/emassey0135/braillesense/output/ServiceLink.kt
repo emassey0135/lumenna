@@ -18,7 +18,7 @@ import java.util.concurrent.Executors
  * can die under the app whenever the vendor updates it, and Android then never binds it again
  * ([onBindingDied]), so the link does.
  *
- * A copy of Lumenna's own (`apps/android/braille`), so that this module stands alone.
+ * The Orbit SDK keeps a copy of its own: each SDK stands alone, depending on nothing but Android.
  */
 internal class ServiceLink<S : IInterface>(
     context: Context,

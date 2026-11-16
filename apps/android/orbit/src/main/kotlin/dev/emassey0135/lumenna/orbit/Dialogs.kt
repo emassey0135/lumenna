@@ -15,6 +15,7 @@ import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.braille.DialogController
 import dev.emassey0135.orbit.EditBox
 import dev.emassey0135.orbit.Key
+import dev.emassey0135.orbit.OrbitDialog
 import dev.emassey0135.orbit.OrbitReader
 
 /**
@@ -274,37 +275,38 @@ abstract class DialogScreen : ListScreen() {
             editorFor(line).key(key)
             return true
         }
-        when (key) {
-            Key.Tab -> return moveFocus { controller.next() }
-            Key.BackTab -> return moveFocus { controller.previous() }
-            Key.Escape -> {
-                cancelDialog()
-                return true
-            }
-            Key.Menu -> return false
-            else -> {}
-        }
-        val control = controller.control ?: return false
-        return when (control.kind) {
-            ControlType.LINE, ControlType.LINES -> {
-                editorFor(control).key(key)
-                true
-            }
-            ControlType.CHOICE, ControlType.LIST -> choosingKey(controller, control, key)
-            ControlType.CHECK -> checkKey(controller, control, key)
-            ControlType.BUTTON, ControlType.TEXT -> when (key) {
-                Key.Select, Key.Dot8 -> {
-                    if (control.kind == ControlType.BUTTON) controller.press()
-                    true
-                }
-                Key.Dot7 -> {
-                    cancelDialog()
-                    true
-                }
-                Key.Left, Key.Right -> true
+        // What a key does is Orbit's dialogs' (the SDK's); what it does to the core's form is ours.
+        val control = controller.control
+        if (control == null) {
+            return when (OrbitDialog.does(key, OrbitDialog.Control.TEXT)) {
+                OrbitDialog.Does.Next -> moveFocus { controller.next() }
+                OrbitDialog.Does.Previous -> moveFocus { controller.previous() }
+                OrbitDialog.Does.Cancel -> if (key == Key.Escape) true.also { cancelDialog() } else false
                 else -> false
             }
         }
+        when (val does = OrbitDialog.does(key, orbitControl(control))) {
+            OrbitDialog.Does.Next -> return moveFocus { controller.next() }
+            OrbitDialog.Does.Previous -> return moveFocus { controller.previous() }
+            OrbitDialog.Does.Cancel -> cancelDialog()
+            OrbitDialog.Does.NotTaken -> return false
+            OrbitDialog.Does.Nothing -> {}
+            OrbitDialog.Does.Edit -> editorFor(control).key(key)
+            OrbitDialog.Does.Press -> controller.press()
+            OrbitDialog.Does.Toggle -> controller.toggle()?.let { ui.reader.focusCheck(control.label, it) }
+            is OrbitDialog.Does.Step, OrbitDialog.Does.First, OrbitDialog.Does.Last, is OrbitDialog.Does.Find -> choose(controller, control, does)
+        }
+        return true
+    }
+
+    /** What Orbit calls a control of the core's. */
+    private fun orbitControl(control: ControlShown): OrbitDialog.Control = when (control.kind) {
+        ControlType.LINE, ControlType.LINES -> OrbitDialog.Control.EDIT
+        ControlType.CHOICE -> OrbitDialog.Control.COMBO_BOX
+        ControlType.LIST -> OrbitDialog.Control.LIST_BOX
+        ControlType.CHECK -> OrbitDialog.Control.CHECK_BOX
+        ControlType.BUTTON -> OrbitDialog.Control.BUTTON
+        ControlType.TEXT -> OrbitDialog.Control.TEXT
     }
 
     private fun moveFocus(move: () -> ControlShown?): Boolean {
@@ -314,43 +316,21 @@ abstract class DialogScreen : ListScreen() {
         return true
     }
 
-    private fun choosingKey(controller: DialogController, control: ControlShown, key: Key): Boolean {
-        val to: Int? = when (key) {
-            Key.Up -> controller.step(-1)
-            Key.Down -> controller.step(1)
-            Key.First -> controller.step(-(controller.selected(control) ?: 0))
-            Key.Last -> controller.step(control.options.size - 1 - (controller.selected(control) ?: 0))
-            is Key.Cell -> brailleLetter(key.dots.toUByte())?.let(controller::find)
-            Key.Select, Key.Dot8 -> {
-                controller.press()
-                return true
-            }
-            Key.Dot7 -> {
-                cancelDialog()
-                return true
-            }
-            Key.Left, Key.Right -> return true
-            else -> return false
+    /** A combo box or list box changed: Orbit is told the option it now holds. */
+    private fun choose(controller: DialogController, control: ControlShown, does: OrbitDialog.Does) {
+        val at = controller.selected(control) ?: 0
+        val to: Int? = when (does) {
+            is OrbitDialog.Does.Step -> controller.step(does.by)
+            OrbitDialog.Does.First -> controller.step(-at)
+            OrbitDialog.Does.Last -> controller.step(control.options.size - 1 - at)
+            is OrbitDialog.Does.Find -> brailleLetter(does.dots.toUByte())?.let(controller::find)
+            else -> return
         }
         if (to == null) {
             ui.refuse()
-            return true
+            return
         }
         ui.reader.itemChanged(control.label, control.options.size, to, control.options.getOrNull(to)?.title.orEmpty())
-        return true
-    }
-
-    private fun checkKey(controller: DialogController, control: ControlShown, key: Key): Boolean = when (key) {
-        Key.Up, Key.Down, Key.Select, Key.Dot8 -> {
-            controller.toggle()?.let { ui.reader.focusCheck(control.label, it) }
-            true
-        }
-        Key.Dot7 -> {
-            cancelDialog()
-            true
-        }
-        Key.Left, Key.Right -> true
-        else -> false
     }
 
     // ---- what Orbit is told -------------------------------------------------------------

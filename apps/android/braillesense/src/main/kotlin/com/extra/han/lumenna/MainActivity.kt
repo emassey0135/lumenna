@@ -2,7 +2,6 @@ package com.extra.han.lumenna
 
 import android.Manifest
 import android.content.Intent
-import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,20 +14,11 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
-import dev.emassey0135.braillesense.braille.BrailleSettings
-import dev.emassey0135.braillesense.input.Chords
-import dev.emassey0135.braillesense.input.HanInputClient
-import dev.emassey0135.braillesense.output.HanOutputClient
-import dev.emassey0135.braillesense.input.Key
-import dev.emassey0135.braillesense.braille.Louis
-import dev.emassey0135.braillesense.input.QwertyKeyboard
-import com.extra.han.lumenna.ui.SettingsReadings
 import com.extra.han.lumenna.ui.Host
 import com.extra.han.lumenna.ui.Shell
-import dev.emassey0135.braillesense.output.BrailleDisplay
 import dev.emassey0135.braillesense.edit.SystemClipboard
-import dev.emassey0135.lumenna.braille.Claim
-import dev.emassey0135.lumenna.braille.KeyDelivery
+import dev.emassey0135.braillesense.session.BrailleSenseSession
+import dev.emassey0135.braillesense.ui.SettingsReadings
 import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.Front
 import dev.emassey0135.lumenna.Launching
@@ -47,74 +37,23 @@ import kotlinx.coroutines.launch
 
 /**
  * The one activity: the device's braille keys and QWERTY keyboard in, speech and cells out, over
- * the Crux app. Everything shown on the screen is for a sighted helper; the person reads the
- * cells and listens. Taking the keys and the display is what `resumed`/`paused` do, as HIMS' own
- * apps take them.
+ * the Crux app, through the BrailleSense SDK's session. Everything shown on the screen is for a
+ * sighted helper; the person reads the cells and listens. Taking the keys and the display is what
+ * `resumed`/`paused` do, as HIMS' own apps take them.
  */
 class MainActivity : ComponentActivity(), Host {
     private val application get() = super.getApplication() as BrailleSenseApplication
     private val core get() = application.core
 
-    private val output by lazy { HanOutputClient(applicationContext, trace = BuildConfig.DEBUG, tag = "LumennaOutput") }
-    private val settings by lazy { BrailleSettings(applicationContext) }
-    private val translator by lazy { Louis.translator { settings.tables } }
-    /** The snap-on keyboard, whose Alt alone opens the menus as it is let go. */
-    private val keyboard = QwertyKeyboard()
-    private val speaker by lazy { BrailleDisplay(output, translator) }
+    private val device by lazy { BrailleSenseSession(this, BuildConfig.VERSION_NAME, trace = BuildConfig.DEBUG, tag = "LumennaOutput") }
     private var shell: Shell? = null
     private val main = Handler(Looper.getMainLooper())
     private lateinit var screen: TextView
 
-    private val keys: KeyDelivery<Key> by lazy { KeyDelivery(front, { main.post(it) }) { shell?.press(it) } }
-
-    private val input: HanInputClient by lazy {
-        HanInputClient(applicationContext) { code, value, data ->
-            keys.deliver(Chords.decode(code, value, data, settings.eightDot, settings.doubleTapRoutes))
-        }
-    }
-
     /** Coming to the front and leaving it, as far as syncing and the store are concerned. */
     private val syncing by lazy { core.getOrNull()?.let { Front(this, it, PLATFORM) } }
 
-    /** Whether the keys and display are ours: resumed and focused, and nothing else. */
-    private val front: Claim = Claim(
-        take = {
-            rereadSettings()
-            output.claim()
-            input.claim()
-            shell?.front()
-            main.post(looking)
-        },
-        release = {
-            main.removeCallbacks(looking)
-            input.release()
-            output.release()
-        },
-    )
     private var saving: SaveFile? = null
-
-    /**
-     * A global option changed, perhaps by its own hot key with the app in front (F2 with the Down
-     * scroll key is Control Information), which no focus change tells the app about.
-     */
-    private val settingsChanged = object : ContentObserver(main) {
-        override fun onChange(selfChange: Boolean) {
-            rereadSettings()
-            if (front.holding) shell?.redraw()
-        }
-    }
-
-    /**
-     * Reads the person's settings again. A box's text is read in the table it was typed in before
-     * the table can change (the G chord, or Global Options while away), and written again in the
-     * new one after: the device's own boxes follow the table so.
-     */
-    private fun rereadSettings() {
-        val before = settings.tables
-        shell?.settle()
-        settings.refresh()
-        if (settings.tables != before) shell?.retable()
-    }
 
     private val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
         val file = saving ?: return@registerForActivityResult
@@ -139,23 +78,35 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        front.guardCrashes()
         screen = TextView(this).apply {
             textSize = 28f
             setPadding(32, 32, 32, 32)
         }
         setContentView(screen)
-        settings.refresh()
-        contentResolver.registerContentObserver(BrailleSettings.URI, true, settingsChanged)
-        output.connect()
-        lifecycleScope.launch(Dispatchers.IO) { Louis.install(applicationContext, BuildConfig.VERSION_NAME) }
+        device.onKey = { shell?.press(it) }
+        device.onTaken = {
+            shell?.front()
+            main.post(looking)
+        }
+        device.onReleased = { main.removeCallbacks(looking) }
+        // A box's text is read in the table it was typed in before the table can change (the G
+        // chord, or Global Options while away), and written again in the new one after.
+        device.beforeSettings = { shell?.settle() }
+        device.onTableChanged = { shell?.retable() }
+        device.onSettingsChanged = { shell?.redraw() }
+        device.created()
         val opened = core.getOrElse { error ->
-            speaker.say(storeUnopened(error.message.orEmpty()))
+            device.display.say(storeUnopened(error.message.orEmpty()))
             screen.text = storeUnopened(error.message.orEmpty())
             return
         }
         Clock.update(this)
-        val shown = Shell(opened, speaker, translator, this, SettingsReadings(settings), SystemClipboard(this, applicationInfo.loadLabel(packageManager)), messageMillis = { settings.messageMillis }, opensOnLetter = { settings.opensOnLetter }, echoSetting = { settings.echo }).apply {
+        val settings = device.settings
+        val shown = Shell(
+            opened, device.display, device.translator, this, SettingsReadings(settings),
+            SystemClipboard(this, applicationInfo.loadLabel(packageManager)),
+            messageMillis = { settings.messageMillis }, opensOnLetter = { settings.opensOnLetter }, echoSetting = { settings.echo },
+        ).apply {
             reminderAccess = { Reminders.access(this@MainActivity) }
         }
         shell = shown
@@ -187,18 +138,14 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun onResume() {
         super.onResume()
-        front.resumed()
+        device.resumed()
         Clock.update(this)
         syncing?.resumed()
     }
 
-    /**
-     * What is drawn over the app without pausing it (the task list, the global options, an alert)
-     * takes the window's focus and nothing else: the keys have to go with it.
-     */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        front.windowFocus(hasFocus)
+        device.windowFocus(hasFocus)
     }
 
     /** What is due is looked for while in front; a reminder away from it comes as a notification. */
@@ -211,37 +158,17 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun onPause() {
         // First of all: whatever else leaving does, the device is the next app's.
-        front.paused()
+        device.paused()
         syncing?.paused() ?: SyncWorker.syncOnLeaving(this)
         super.onPause()
     }
 
     override fun onDestroy() {
-        contentResolver.unregisterContentObserver(settingsChanged)
-        input.release()
-        output.disconnect()
+        device.destroyed()
         super.onDestroy()
     }
 
-    /**
-     * The QWERTY keyboard, which reaches the app as ordinary key events. Keys the braille
-     * keyboard's service did not take arrive here too, with no device behind them and the
-     * chord as their scan code: those are not typing, and are swallowed.
-     */
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (!front.holding) return super.dispatchKeyEvent(event)
-        if (event.deviceId == -1 && event.scanCode != 0) return true
-        val key = when (event.action) {
-            KeyEvent.ACTION_DOWN -> keyboard.down(event.keyCode, event.metaState, event.getUnicodeChar(event.metaState))
-            KeyEvent.ACTION_UP -> keyboard.up(event.keyCode)
-            else -> null
-        }
-        if (key != null) {
-            shell?.press(key)
-            return true
-        }
-        return super.dispatchKeyEvent(event)
-    }
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean = device.keyEvent(event) || super.dispatchKeyEvent(event)
 
     override fun exit() = finishAffinity()
 
