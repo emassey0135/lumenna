@@ -29,6 +29,18 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   the app holds it now, since a turn made before the person last went somewhere still names
   where they were. The window opens before the places come, so the first drawn take focus
   from their empty pane.
+- **The place shown's own actions are a toolbar over the middle pane** (`toolbar.rs`,
+  `view.screen_actions`): a box with the toolbar role named by `ShellWords::screen_actions`
+  ("Commands"), a button each in the core's order and title, insensitive where not `enabled`,
+  "…" after one that `asks`. A button is sent as `Key(id)`, but a `shell` one (the filter, Key
+  Help), which runs as the window's command. It is one Tab stop, between the places and the
+  filter: only the button last used is focusable, and Left, Right, Home and End are ours, as
+  the ARIA toolbar has it. F6 passes it (from it, F6 goes to the view, Shift+F6 to the places).
+  The buttons are made again only when the ids change; otherwise relabelled and resensitised in
+  place, so focus stays. The day and the Blocks list have no buttons of their own beside it, and
+  the menu bar still holds every command.
+- **The filter is shown where the core offers it** (`filter` among `screen_actions`; at first
+  `screen_action_ids` for the place, before its view comes): not the trash, History or Blocks.
 - **The day is the app's** (`view.day`, `lines.day`, `lines.day_title` as the window's
   title): its moves (`Day`: Previous, Next, Now, Ask for Go to Day) and a reminder's block
   (`ShowBlock`). The day's own actions are its heading row's (the summary) and the Day

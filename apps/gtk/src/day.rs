@@ -42,15 +42,7 @@ impl DayView {
             .margin_start(8)
             .margin_end(8)
             .build();
-        let buttons = gtk::Box::builder().spacing(6).build();
-        // The day's commands, named as the menus name them.
-        for id in ["previous-day", "go-to-now", "next-day", "new-block"] {
-            let Some(command) = lumenna_app::keys::command_of(id) else { continue };
-            let label = if command.asks { format!("{}…", command.title) } else { command.title.to_owned() };
-            buttons.append(&gtk::Button::builder().label(label).action_name(format!("win.{id}")).build());
-        }
         let tree = Tree::new(&lumenna_records::sentence_case(crate::words().the_day.clone()));
-        widget.append(&buttons);
         widget.append(&tree.widget);
         let day = Rc::new(Self {
             widget,

@@ -23,9 +23,11 @@ use crate::window::App;
 
 pub struct TaskList {
     pub place: Place,
-    /// Whether it has a filter to change: not the trash, History or the block series.
-    filtered: bool,
+    /// Whether it has a filter to change: whether the core offers the filter among the place's
+    /// own actions (`ViewModel::screen_actions`), which the trash, History and Blocks do not.
+    filtered: Cell<bool>,
     pub widget: gtk::Box,
+    filter_label: gtk::Label,
     filter: gtk::Entry,
     readback: gtk::Label,
     pub tree: Rc<Tree>,
@@ -41,9 +43,8 @@ pub struct TaskList {
 
 impl TaskList {
     pub fn new(place: Place) -> Rc<Self> {
-        // The block series have no filter either, and a button to add one.
-        let blocks = place == Place::Blocks;
-        let filtered = !matches!(place, Place::Trash | Place::History | Place::Blocks);
+        // As the core offers it for the place, until the app's view says so itself.
+        let filtered = lumenna_app::screen_actions::screen_action_ids(Some(&place), false, false).contains(&"filter");
         let widget = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(6)
@@ -60,23 +61,18 @@ impl TaskList {
         crate::completion::attach(&filter, crate::completion::Source::Filter);
         let readback = gtk::Label::builder().xalign(0.0).wrap(true).build();
         let tree = Tree::new(&place.title());
-        // The trash is everything deleted and History everything done lately, nothing else:
-        // there is no filter to change.
-        if filtered {
-            widget.append(&label);
-            widget.append(&filter);
-        }
+        // Shown only where the core offers a filter; New Block and the rest are the toolbar's.
+        label.set_visible(filtered);
+        filter.set_visible(filtered);
+        widget.append(&label);
+        widget.append(&filter);
         widget.append(&readback);
-        if blocks {
-            let title = crate::command_title("new-block");
-            let add = gtk::Button::builder().label(format!("{title}…")).action_name("win.new-block").halign(gtk::Align::Start).build();
-            widget.append(&add);
-        }
         widget.append(&tree.widget);
         let list = Rc::new(Self {
             place,
-            filtered,
+            filtered: Cell::new(filtered),
             widget,
+            filter_label: label,
             filter,
             readback,
             tree,
@@ -187,7 +183,12 @@ impl TaskList {
         let Some(list) = &view.list else { return };
         let lines = app.model.lines();
         self.readback.set_label(&lines.readback);
-        if self.filtered && self.filter.text() != view.query && !has_focus(&self.filter) {
+        let filtered = view.screen_actions.iter().any(|action| action.id == "filter");
+        if filtered != self.filtered.replace(filtered) {
+            self.filter_label.set_visible(filtered);
+            self.filter.set_visible(filtered);
+        }
+        if filtered && self.filter.text() != view.query && !has_focus(&self.filter) {
             self.setting.set(true);
             self.filter.set_text(&view.query);
             self.setting.set(false);
@@ -215,7 +216,7 @@ impl TaskList {
 
     /// Whether it has a filter to change.
     pub fn has_filter(&self) -> bool {
-        self.filtered
+        self.filtered.get()
     }
 
     /// Moves focus into the list once it is drawn, or now if it is.
@@ -225,7 +226,7 @@ impl TaskList {
 
     /// Puts focus in the filter, all of it selected so typing replaces it.
     pub fn focus_filter(&self) {
-        if self.filtered {
+        if self.filtered.get() {
             self.filter.grab_focus();
         }
     }
