@@ -43,7 +43,11 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   `enabled`, each run as the menu runs the same command (`App::run_command`: `Key(id)`, or the
   window's own for the filter field and the keyboard help). The menu bar stays complete. A stock
   `ToolbarWindow32`, so UI Automation reads one ToolBar named as the core names the group
-  (`ShellWords::screen_actions`) holding Buttons named by their text. It is one Tab stop, between
+  (`ShellWords::screen_actions`) holding Buttons named by their text. **Only with images**: a
+  toolbar with no image list, or a button with no image (`I_IMAGENONE`), is read by Windows'
+  accessibility proxy as a menu bar of MenuItems, which a screen reader then says; so the
+  toolbar has an image list of one blank pixel and each button names its first image, which
+  draws nothing. It is one Tab stop, between
   the places and the list (its place in the window's z-order), not an F6 pane: the toolbar asks
   the dialog manager for the arrows, Home, End, Enter and Space (`WM_GETDLGCODE`), moves its hot
   item itself and says which button has focus (`EVENT_OBJECT_FOCUS` on the button's child id),
