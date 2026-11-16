@@ -8,8 +8,8 @@ Press H-Chord on any Lumenna screen for help about that screen. Press Z-Chord to
 
 - Enter does the main thing for the item you are on: opens a place, opens a task's form, edits a block, restores a task from the Trash, renames a device.
 - M-Chord with Dot 7 opens the item's context menu, with everything else that can be done to it.
-- M-Chord opens the screen's own menu: what the screen offers besides its items, such as adding, moving between days, filtering, undo and redo.
-- Most commands also have a letter that does the same from the list; the menus say it after each command, and only where pressing it there does that. The same letter means the same thing everywhere: a adds, u undoes, y redoes. A letter the item you are on does not offer says why.
+- M-Chord opens the menu bar, as in the editor: first the screen's own menu (the Today menu, the Tasks menu, the Home menu), with what the screen offers besides its items, such as adding, moving between days, filtering, undo and redo. Tab, or M-Chord again, moves to the next menu: File, Edit, View, Task, Day on Today, and Help. Shift-Tab moves back. In a menu, Enter or an item's letter runs it; Z-Chord leaves the menu bar.
+- The screen's own commands also have a letter that does the same from the list, without opening the menu bar; the menu bar says it after each. The same letter means the same thing everywhere: a adds, u undoes, y redoes. A letter the item you are on does not offer says why.
 - A capital letter, the letter with Dot 7, moves to the next item starting with it.
 - Control-D or the D chord deletes the item you are on. A deleted task goes to the Trash and can be restored.
 - Left and right, or Dot 7-Chord and Dot 8-Chord, fold and unfold an item that has others under it.
@@ -27,13 +27,14 @@ Lumenna opens on Home: your places, then what can be done from anywhere. Enter o
 
 On Home a letter is Home's first: a place's, or one of Home's own commands. An item's own command whose letter Home takes is in its context menu without the letter.
 
-## Home's menu, M-Chord
+## The Home menu, the first of the menu bar on Home
 
-- Reminders due, r, while anything has come due. See [Lumenna Reminders](help:lumenna-reminders).
+- Reminders due, r: what has come due and was not dealt with; its letter works from Home while anything has. See [Lumenna Reminders](help:lumenna-reminders).
 - New task, a: type it the way you would say it, such as "call the bank tomorrow at 3pm p1 #Home".
 - Undo, u, and Redo, y: the last change made on this device, wherever it was made.
 - What should I work on?, w: goes to Today and offers the tasks to start on.
 - Sync now, n: one round with your other devices now. See [Lumenna Settings](help:lumenna-settings).
 - Settings, s. See [Lumenna Settings](help:lumenna-settings).
 - Keyboard shortcuts, e: help about the screen you are on.
+- Quit, in the File menu, closes Lumenna.
 - About Lumenna, o: its version, and where it lives.

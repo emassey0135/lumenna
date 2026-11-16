@@ -174,6 +174,68 @@ def key(session: Session, command: str) -> str:
     return joined(*said)
 
 
+def leave(session: Session) -> str:
+    """Quit, or Close window: the person leaves the app, every screen closing."""
+    session.leaving = True
+    return ""
+
+
+def bar_commands(session: Session) -> dict:
+    """What this app runs itself of the menu bar's commands, by id: those the core marks the
+    shell's among a screen's own actions (`tasks.own_commands`), and of the shared menus' what the
+    core leaves to a platform (`keys::Runs::Shell`): a settings page opened, a backup's file picked,
+    leaving the app. Every other command runs as the app runs it (`Event::Key`)."""
+    import preferences  # here: preferences imports this module
+    import tasks
+
+    def devices(session: Session) -> str:
+        with preferences.opened(session):
+            return preferences.devices(session)
+
+    return {
+        **tasks.own_commands(session),
+        "devices": devices,
+        "export-import": lambda session: preferences.setting_page(session, "export"),
+        "restore-backup": preferences.restore,
+        "close-window": leave,
+        "quit": leave,
+    }
+
+
+#: The menu bar's commands that open a heading of Home's (`HomePlace::letter`): Home is shown and
+#: the heading's letter pressed there, as Home's own letters are.
+HEADINGS = ("projects", "labels", "filters")
+
+
+def run_from_bar(session: Session, picked, row, place, home: bool) -> str:
+    """What the menu bar picked (`picked`, its id and letter), run on `row`, the row under the
+    cursor of the screen showing `place` (or Home, `home`): the app's own command as the app runs
+    it, with the row in hand (`Event::Key`); a heading of Home's by its letter there; what the
+    app leaves to this one, here. Where it took the app to another place, or Home, every screen
+    closes for Home to show it (`session.moved_on`). What was said."""
+    if picked is None:
+        return ""
+    command, letter_of = picked
+    own = bar_commands(session).get(command)
+    if own is not None:
+        said = own(session)
+    elif command in HEADINGS:
+        if not home:
+            session.send(L.ShellEventHome())
+        said = letter(session, letter_of, None)
+    elif row is not None and getattr(row, "key", None):
+        said = press(session, command, row)
+    else:
+        said = key(session, command)
+    if own is None:
+        # This app's own commands open screens of their own over this one (a filtered list), never
+        # moving the app on; the app's may (View's places, What should I work on?).
+        view = session.view()
+        if (view.home is not None) != home or (not home and view.place != place):
+            session.moved_on = True
+    return said
+
+
 def screen_commands(session: Session, own: dict, skip=()) -> list[Command]:
     """What the screen shown offers of its own (`ViewModel::screen_actions`), in the core's order
     with its letters, as the screen's main menu (M-Chord): each run as the app runs it

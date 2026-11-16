@@ -107,6 +107,7 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
             main=main or (lambda row: actions.press(session, "open", row)),
             context=lambda rows: task_commands(session, rows),
             app=lambda: place_commands(session),
+            bar=(place, False),
             empty=empty_then(lambda: readback(session), L.press_to_add(L.command_letter("new-task"))),
             app_title=L.menu_of(title),
             focus=lambda: session.view().focus,

@@ -30,11 +30,11 @@ On a task in a block, one sitting of it:
 
 On free time, Add block here, a. On a cancelled day, Restore this day, o.
 
-## The day's menu, M-Chord
+## The menu bar, M-Chord
 
-- First, what the day offers itself, as it does: Plan the day; Replan from now; What should I work on?, w, which offers the tasks to start on, each saying after a moment why it is suggested; End the day; Clear the rest of the day.
-- Then what Today offers of its own: New block, a. Previous day, p. Next day, n. Go to day, g: any date you can say, such as "next friday". Go to now, t. Undo, u, and Redo, y.
-- A letter is said only where it does that from the item you are on: on a running sitting t stops its timer, so Go to now says no letter there.
+- The Today menu, first: New block, a. Previous day, p. Next day, n. Go to day, g: any date you can say, such as "next friday". Go to now, t. Undo, u, and Redo, y.
+- The Day menu, Shift-Tab twice from there: what the day offers itself, as it does: Plan the day; Replan from now; What should I work on?, w, which offers the tasks to start on, each saying after a moment why it is suggested; End the day; Clear the rest of the day.
+- From the day, a letter is the item's own first: on a running sitting t stops its timer rather than going to now. What should I work on?, w, works from the day itself.
 
 ## Replan from now and Plan the day
 
@@ -42,7 +42,7 @@ The title says the whole proposal before anything changes. Each change is a row,
 
 ## Blocks
 
-Blocks, b, on Home holds every block. Enter edits every occurrence of one; Control-D deletes it, asking first; its menu, M-Chord, has New block, a.
+Blocks, b, on Home holds every block. Enter edits every occurrence of one; Control-D deletes it, asking first; the Blocks menu, first on M-Chord, has New block, a.
 
 ## The block form
 

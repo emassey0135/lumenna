@@ -29,14 +29,32 @@ test with a newer one (`PYTHON=…`).
   its row in hand the sidebar's. Opening a place (Enter, `Key("open")`, or a letter) leaves Home in
   the app; the place's screen is shown (`menus.place_screen`) until left, then Home is asked for
   again. No main menu of this app's own, and no screen per heading.
-- **M-Chord on every screen is the core's `screen_actions`** (`actions.screen_commands`): each run
-  as `Key(id)` and its letter pressed as `Letter`, but those the core marks `shell` (the filter,
-  Key help, About, Reminders due) and Sync now's wait, which `tasks.own_commands` runs. Home's
-  letters come before a row's (`live_menu(screen_first=True)`), as the core's do, so a row's
-  action whose letter Home takes says none in its context menu; elsewhere a screen's letter is said
-  only on rows that do not take it themselves (`session.app_commands`). The day's own actions lead
-  the Day menu (`day.day_commands`), the screen's What should I work on? left to them. A key the
-  app answers by opening something (the quick-add line, settings) is followed by `actions.follow`.
+- **M-Chord on a place's screen and on Home is the core's menu bar** (`braille_menu_bar(place,
+  home, sentence)`, `session.menu_bar`), as the device's editor has one (`Editor/Source/src/
+  menu_ring.c`, `Libraries/ui_menu.c`): it opens on the screen's own menu (`SCREEN_MENU`, "Today
+  menu", "Home menu": its `screen_actions`), then File, Edit, View, Task, Day on Today, and Help,
+  each a menu of its own said by name as it opens (`_RingMenu`). Tab, and M-Chord pressed again,
+  go to the next menu and Shift-Tab to the previous, round from either end; a letter runs its item
+  within a menu; Z-Chord leaves. `session._menu`'s `ScreenMenu` answers M-Chord with it
+  (`on_AppMenu`), as the device's file manager opens a menu of its own. What is picked runs on the
+  row under the cursor (`actions.run_from_bar`): as the app runs it (`Key(id)`, the row put in
+  hand), a heading of Home's by its letter there, and what the core leaves to a platform here
+  (`actions.bar_commands`: the screen actions it marks `shell`, Sync now's wait, Devices and
+  pairing, Export and import, Restore from a backup, Close window and Quit). The bar's items carry
+  no `shell` of their own yet, so that list is this app's. A command that takes the app to another
+  place or Home (View's places, What should I work on?) closes every screen
+  (`session.moved_on`) and Home's loop shows where the app now is; Quit closes them all
+  (`session.leaving`). Unlike the editor, no chord jumps straight to one menu: the dialogs pass the
+  editor's menu chords to no Python dialog, and a menu's letter runs an item in it, as the editor's
+  do, so a menu is reached by Tab. Dot 7 with M-Chord stays the row's actions. Screens that are no
+  place (a reminder list, a settings page, the devices) keep a single M-Chord menu of their own.
+- **A screen's letters are its `screen_actions`'** (`actions.screen_commands`), pressed from the
+  list as hot keys: each run as `Key(id)` and its letter pressed as `Letter`, but those the core
+  marks `shell` (the filter, Key help, About, Reminders due) and Sync now's wait, which
+  `tasks.own_commands` runs. Home's letters come before a row's (`live_menu(screen_first=True)`),
+  as the core's do, so a row's action whose letter Home takes says none in its context menu. The
+  day's own actions (`day.day_commands`) are its hot keys too. A key the app answers by opening
+  something (the quick-add line, settings) is followed by `actions.follow`.
 - **A row's context menu is its actions in short** (`actions.py`): the rows' actions merged into
   one list of commands that keeps each row's order, each offered where its row has it, with
   the core's letter (`action_letter`); a letter pressed runs through the app

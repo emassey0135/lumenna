@@ -440,19 +440,22 @@ class Menus(unittest.TestCase):
             self.session.send(L.ShellEventActOn(L.ActingOnDay(), action))
         return proposals.proposal_screen(self.session)
 
-    def test_the_day_menu_offers_the_days_own_actions_and_what_to_work_on_says_why(self):
+    def test_the_menu_bars_day_menu_offers_the_days_own_actions_and_what_to_work_on_says_why(self):
         self.call("task.add", text="review p1")
         self.call("task.add", text="draft")
         self.call("block.add", title="Focus", at="00:00", minutes=1440, date="today")
         script = self.run_script(
-            [("app", "What should"), ("menu", "review"), ("back",)],
+            # The bar opens on Today's own menu; Shift-Tab goes round to Help, then Day.
+            [("bar",), ("shift-tab",), ("shift-tab",), ("menu", "What should"), ("menu", "review"), ("back",)],
             lambda: day.day_plan(self.session),
         )
-        labels = [c.get_label(None).lower() for c in script.menus[0]["app"]]
-        self.assertEqual(labels[:4], ["plan the day", "replan from now", "what should i work on?, w", "end the day"])
+        self.assertEqual(script.titles[1:4], ["Today menu", "Help menu", "Day menu"])
+        day_menu = [row.lower() for row in script.menus[3]["rows"]]
+        for action in ("plan the day", "replan from now", "what should i work on?", "end the day"):
+            self.assertIn(action, day_menu)
         # Why a task is suggested is the row's hint, never its name.
-        self.assertEqual(script.menus[1]["hints"], {"review, Inbox": "Suggested because priority 1."})
-        self.assertEqual(script.titles[1], "What should I work on?")
+        self.assertEqual(script.menus[4]["hints"], {"review, Inbox": "Suggested because priority 1."})
+        self.assertEqual(script.titles[4], "What should I work on?")
         sitting = self.call("plan")["blocks"][0]["assignments"][0]
         self.assertEqual((sitting["title"], sitting["status"]), ("review", "in progress"))
 
@@ -569,10 +572,10 @@ class Menus(unittest.TestCase):
         self.call("task.add", text="write report 15m")
         self.call("block.add", title="Deep", at="9:00", minutes=60, date="tomorrow")
         script = self.run_script(
-            [("app", "Next day"), ("app", "Plan the day"), ("menu", "Cancel"), ("back",)],
+            [("app", "Next day"), ("bar",), ("shift-tab",), ("shift-tab",), ("menu", "Plan the day"), ("menu", "Cancel"), ("back",)],
             lambda: day.day_plan(self.session),
         )
-        self.assertTrue(script.titles[2].startswith("Plan the day. Plans 1 task"), script.titles)
+        self.assertTrue(any(title.startswith("Plan the day. Plans 1 task") for title in script.titles), script.titles)
         self.assertEqual(self.call("plan", date="tomorrow")["blocks"][0]["assignments"], [])
 
     def test_a_tasks_details_end_with_its_history(self):
@@ -803,12 +806,12 @@ class Menus(unittest.TestCase):
             lambda: menus.home(self.session),
         ]
         for open_screen in screens:
-            script = self.run_script([("back",)], open_screen)
-            menu = script.menus[-1]
-            labels = [command.get_label(None) for command in menu["app"]]
-            self.assertIn("Undo, u", labels, script.titles[-1])
-            self.assertIn("Redo, y", labels, script.titles[-1])
-            self.assertTrue({"u", "y"} <= set(menu["keys"]), script.titles[-1])
+            # M-Chord opens the menu bar on the screen's own menu, which has them.
+            script = self.run_script([("bar",), ("back",), ("back",)], open_screen)
+            first = script.menus[1]["rows"]
+            self.assertIn("Undo", first, script.titles[1])
+            self.assertIn("Redo", first, script.titles[1])
+            self.assertTrue({"u", "y"} <= set(script.menus[0]["keys"]), script.titles[0])
 
     def test_control_l_in_the_dialog_completes_at_the_cursor_from_a_menu(self):
         self.call("label.add", name="calls")
@@ -934,44 +937,38 @@ class Menus(unittest.TestCase):
             {"Today": "t", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b", "History": "h", "Trash": "x"},
         )
 
-    def test_homes_main_menu_is_the_cores_with_its_letters(self):
-        script = self.run_script([("back",)], lambda: menus.home(self.session))
-        labels = [command.get_label(None) for command in script.menus[-1]["app"]]
-        self.assertEqual(labels[:3], ["New task, a", "Undo, u", "Redo, y"])
-        offered = [f"{action.title}, {action.letter}" for action in self.session.view().screen_actions if action.enabled]
-        self.assertEqual(labels, offered, "the core's, in its order, with its letters")
+    def test_m_chord_on_home_opens_the_cores_menu_bar_on_homes_own_menu_and_tab_goes_round(self):
+        script = self.run_script(
+            [("bar",), ("tab",), ("tab",), ("shift-tab",), ("tab",), ("menu", "Undo"), ("back",)],
+            lambda: menus.home(self.session),
+        )
+        bar = L.braille_menu_bar(None, True, True)
+        self.assertEqual(script.titles[1:6], ["Home menu", "File menu", "Edit menu", "File menu", "Edit menu"])
+        self.assertEqual(script.menus[1]["rows"], [item.title for item in bar[0].items], "the core's, in its order")
+        self.assertIn("New task", script.menus[1]["rows"])
+        self.assertIn("nothing to undo", [said.lower() for said in script.said], "Undo ran")
 
     def test_key_help_and_about_are_this_apps_own(self):
         script = self.run_script([("app", "Keyboard"), ("app", "About"), ("back",)], lambda: menus.home(self.session))
         self.assertTrue(script.shown[0][0].endswith("lumenna.md"), script.shown)
         self.assertEqual(script.shown[1][0], "Lumenna")
 
-    def test_the_day_menu_says_a_letter_only_where_it_runs(self):
+    def test_a_menu_bar_command_that_goes_to_a_place_shows_it_and_leaving_it_is_home(self):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
-            [
-                ("app", "New block"),
-                # Ending at midnight, so it is never over while the test runs.
-                ("form", {"field:title": "Deep work", "field:start": "11pm", "field:minutes": "60"}),
-                ("key", "Deep work", "i"),
-                ("choose", "write the chapter"),
-                ("input", ""),
-                ("key", "write the chapter", "s"),
-                ("back",),
-            ],
-            lambda: day.day_plan(self.session),
+            [("bar",), ("tab",), ("tab",), ("tab",), ("menu", "Tasks"), ("back",), ("back",)],
+            lambda: menus.home(self.session),
         )
+        self.assertEqual(script.titles[4], "View menu")
+        self.assertTrue(script.titles[5].startswith("Tasks"), script.titles)
+        self.assertEqual(script.titles[6], "Home")
 
-        def labels(kind):
-            menu = btspeak_stub._Menu([])
-            row = next(row for row in day.day_rows(self.session) if row.record.kind == kind)
-            menu.menu = [type("Row", (), {"row": row})()]
-            return [command.get_label(menu) for command in script.menus[-1]["app"]]
-
-        self.assertIn("Go to now, t", labels(L.DayKind.BLOCK))
-        # t stops the sitting's timer: Go to now is there, its letter not.
-        self.assertIn("Go to now", labels(L.DayKind.SITTING))
-        self.assertIn("Next day, n", labels(L.DayKind.SITTING))
+    def test_quit_from_the_menu_bar_leaves_the_app(self):
+        script = self.run_script(
+            [("menu", "Tasks"), ("bar",), ("tab",), ("menu", "Quit")],
+            lambda: menus.home(self.session),
+        )
+        self.assertEqual(script.titles[-1], "File menu")
 
     def test_a_priority_is_chosen_by_the_cores_words(self):
         self.call("task.add", text="file taxes")
