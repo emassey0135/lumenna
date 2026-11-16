@@ -258,7 +258,9 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   seconds on, for text still fading in on a slow runner; text that fails at rest fails both
   looks. Exemptions, all narrow: "potentially inaccessible text" on `NamedRow` screens, the
   keyboard's `TUIPredictionViewCell`, a navigation bar's own title clipped (a record's name
-  makes it any length; UIKit shows it whole in the large content viewer), contrast on text under a navigation bar or the soft
+  makes it any length, and the iPad's narrow column leaves even "Inbox" little room beside a
+  list's Undo, Redo, New and Place Actions; UIKit shows it whole in the large content viewer:
+  `clipsABarsOwnTitle`, which every audit asks), contrast on text under a navigation bar or the soft
   scroll edge just beneath it, contrast the audit judges of a SwiftUI text on the iPad by its
   whole row's frame (`judgesAPadRowNotItsText`), and "partially unsupported" Dynamic Type on
   SwiftUI nodes (the audit reports it even for a stock button), or with no element at all on a

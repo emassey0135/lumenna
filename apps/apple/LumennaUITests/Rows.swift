@@ -18,6 +18,17 @@ extension XCUIAccessibilityAuditIssue {
     /// a short line inside it. The task list's count failed so in the full text colour, pure
     /// black on white, which cannot fail, with nothing over it; the same text passes on the
     /// iPhone.
+    /// A navigation bar's own title, found clipped: cut short where a record's name makes it
+    /// long ("Reminders for Deep work"), or where the bar's buttons leave it little room, as
+    /// the iPad's narrow column does once a list's bar holds Undo, Redo, New and Place Actions.
+    /// The bar's to shorten, and UIKit shows it whole in the large content viewer at the
+    /// accessibility sizes. Only clipping, only the title of a bar it names.
+    func clipsABarsOwnTitle(in app: XCUIApplication) -> Bool {
+        guard auditType == .textClipped, let element, !element.label.isEmpty else { return false }
+        let bar = app.navigationBars.matching(identifier: element.label).firstMatch
+        return bar.exists && bar.frame.contains(element.frame)
+    }
+
     var judgesAPadRowNotItsText: Bool {
         guard UIDevice.current.userInterfaceIdiom == .pad, auditType == .contrast,
               detailedDescription.contains("SwiftUI"), let element, element.elementType == .staticText

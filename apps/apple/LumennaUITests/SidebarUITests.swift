@@ -70,6 +70,8 @@ final class SidebarUITests: XCTestCase {
             if issue.auditType == .dynamicType, issue.compactDescription.contains("partially"),
                issue.detailedDescription.contains("SwiftUI") { return true }
             if issue.judgesAPadRowNotItsText { return true }
+            // As in the other audits: a bar's own title, which the place opened names.
+            if issue.clipsABarsOwnTitle(in: self.app) { return true }
             issues.append("\(issue.compactDescription) — \(issue.detailedDescription) [\(issue.element.map { "\($0.label) \($0.frame)" } ?? "unnamed")]")
             return true
         }
