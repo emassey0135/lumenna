@@ -439,6 +439,9 @@ class LumennaTest {
         type("Filter", "#Old")
         row("draft report").performClick()
         rule.waitForIdle()
+        // Below the fold at a phone's width since Sitting length joined the form: a click on a
+        // field off the screen lands on nothing, so it is scrolled to first, as a person would.
+        field("Project").performScrollTo()
         field("Project").performClick()
         rule.waitForIdle()
         rule.onNode(hasContentDescription("Old")).assertExists()
