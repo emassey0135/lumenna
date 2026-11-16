@@ -93,6 +93,14 @@ class Reminders(unittest.TestCase):
         self.client.call("block.add", title=title, at=when.strftime("%H:%M"), minutes=minutes, date=date)
         return date
 
+    def away_from_midnight(self, minutes: int) -> None:
+        """Waits, if need be, until `minutes` past midnight (UTC), so that a block placed that far
+        back by the real clock is today's and not yesterday's."""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        since = now - now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if since < datetime.timedelta(minutes=minutes):
+            time.sleep((datetime.timedelta(minutes=minutes) - since).total_seconds() + 1)
+
     def run_script(self, steps, start):
         script = play(steps)
         self.store.caught_up()
@@ -195,7 +203,10 @@ class Reminders(unittest.TestCase):
         self.client.call("config.set", key="default-block-reminders", value="")
         # Ended a minute ago.
         date = self.block_at("Deep work", -61)
-        after = (datetime.date.fromisoformat(date) + datetime.timedelta(days=1)).isoformat()
+        # The day after today by the clock the reminder is said by, so it is "tomorrow" whenever
+        # the test runs: the day after the block's would be today just after midnight.
+        today = datetime.datetime.now(datetime.timezone.utc).date()
+        after = (today + datetime.timedelta(days=1)).isoformat()
         self.client.call("block.add", title="Admin", at="9:00", minutes=60, date=after)
         self.client.call("task.add", text="Essay")
         block = self.client.call("plan", date=date)["blocks"][0]["id"]
@@ -223,7 +234,8 @@ class Reminders(unittest.TestCase):
     def test_a_blocks_work_outrunning_it_opens_replan_from_what_came_due(self):
         import proposals
         self.client.call("config.set", key="default-block-reminders", value="")
-        # Started a minute ago, a meeting after it.
+        # Started a minute ago, a meeting after it, both today: Replan plans today.
+        self.away_from_midnight(2)
         date = self.block_at("Deep work", -1)
         self.block_at("Meeting", 59)
         block = self.client.call("plan", date=date)["blocks"][0]["id"]
