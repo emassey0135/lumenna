@@ -178,7 +178,39 @@ class OrbitReader(context: Context, private val listener: Listener) {
         })
     }
 
-    fun contextMenuClosed() = tell("onContextMenuClosed") { it.onContextMenuClosed(Bundle()) }
+    fun contextMenuClosed(dismissed: Boolean = false) = tell("onContextMenuClosed") {
+        it.onContextMenuClosed(Bundle().apply { putBoolean("dismissed", dismissed) })
+    }
+
+    /**
+     * A menu of Orbit's own kind ([OrbitMenu]) opened, as its apps open theirs: no name, so Orbit
+     * says its own "Context menu" in the person's language.
+     */
+    fun menuOpened() = tell("onContextMenuOpened") { it.onContextMenuOpened(Bundle()) }
+
+    /**
+     * The item in hand of a menu (role 8), as Orbit's apps tell each move of theirs: Orbit says
+     * its name, "Sub-menu" for a submenu, its access key where the person has Orbit say them, and
+     * its place ("2 of 7") where they have it say that.
+     */
+    fun focusMenu(item: String, subMenu: Boolean, accessKey: Char?, position: Int, total: Int) = tell("onFocusChanged") {
+        it.onFocusChanged(Bundle().apply {
+            putString("name", item)
+            putInt("roleId", ROLE_MENU)
+            putString("selectedItem", item)
+            putString("menuName", item)
+            putBoolean("isSubMenu", subMenu)
+            putString("accessKey", accessKey?.toString().orEmpty())
+            putInt("positionCurrent", position)
+            putInt("positionTotal", total)
+        })
+    }
+
+    /** [focusMenu] for the item [menu] has in hand. */
+    fun focusMenu(menu: OrbitMenu<*>) {
+        val item = menu.current ?: return
+        focusMenu(item.name, item.isSubMenu, item.accessKey, menu.index + 1, menu.items.size)
+    }
 
     /** An edit box (role 6), so Orbit says the field and its review commands read its text. */
     fun focusEdit(name: String, content: String, cursor: Int, line: String = content, multiline: Boolean = false) = tell("onFocusChanged") {
@@ -253,6 +285,7 @@ class OrbitReader(context: Context, private val listener: Listener) {
         const val ROLE_LIST_BOX = 5
         const val ROLE_EDIT_BOX = 6
         const val ROLE_TEXT_BOX = 7
+        const val ROLE_MENU = 8
         const val SOUND_ERROR = 1
         const val SOUND_COMMIT = 9
     }

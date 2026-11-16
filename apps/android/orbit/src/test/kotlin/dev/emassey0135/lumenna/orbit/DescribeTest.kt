@@ -49,4 +49,15 @@ class DescribeTest {
             describe(true, Why.Entered, false, menu),
         )
     }
+
+    private val file = ReaderCall.FocusMenu("File", true, 'f', 3, 8)
+
+    @Test fun theMenuBarOpensAsOrbitsMenusDoThenItsItemIsAMenusFocus() {
+        assertEquals(listOf(ReaderCall.MenuOpened, file), describeMenu(true, Why.Entered, file))
+    }
+
+    @Test fun eachMoveInTheMenuBarIsItsFocusAgainAndARedrawSaysNothing() {
+        assertEquals(listOf(file), describeMenu(false, Why.Moved, file))
+        assertEquals(emptyList<ReaderCall>(), describeMenu(false, Why.Turn, file))
+    }
 }

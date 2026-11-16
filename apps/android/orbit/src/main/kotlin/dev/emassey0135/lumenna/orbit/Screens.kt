@@ -82,6 +82,7 @@ class HomeScreen : Screen() {
                 offered = entry.offered,
                 on = ActingOn.Held(Side.SIDEBAR, entry.key),
                 expanded = entry.expanded,
+                title = entry.title,
             )
         }
         val actions = home.actions.filter { it.enabled }.map { action ->
@@ -89,8 +90,6 @@ class HomeScreen : Screen() {
         }
         return places + actions
     }
-
-    override fun commands(): List<Command> = ui.screenActionCommands()
 
     private companion object {
         /** Home's own actions' keys, apart from the sidebar's. */
@@ -134,13 +133,12 @@ class PlaceScreen(override val place: Place, private val name: String) : ListScr
                 offered = list.offeredOf(item),
                 on = ActingOn.Row(key),
                 expanded = item.row.expanded,
+                title = line?.title ?: item.row.title,
             )
         }
     }
 
     override val showsScreenActions: Boolean get() = true
-
-    override fun commands(): List<Command> = ui.screenActionCommands()
 }
 
 /** Typing a filter over the list, which the app narrows as it is confirmed: a line of this app's own. */
@@ -167,7 +165,7 @@ class FilterScreen(@Suppress("unused") private val place: Place) : DialogScreen(
     }
 }
 
-/** The day: blocks, sittings under them, free time, now; the day's own actions in its menu. */
+/** The day: blocks, sittings under them, free time, now; the day's own actions in the menu bar's Day menu. */
 class DayScreen : ListScreen(), ShowsPlace {
     override val place: Place get() = Place.Today
 
@@ -194,9 +192,10 @@ class DayScreen : ListScreen(), ShowsPlace {
         return day.items.mapIndexedNotNull { index, item ->
             if (item.hidden) return@mapIndexedNotNull null
             val key = item.key
+            val line = lines.getOrNull(index)
             Row(
                 key,
-                rowText(lines.getOrNull(index)?.text.orEmpty(), item.expanded, item.level),
+                rowText(line?.text.orEmpty(), item.expanded, item.level),
                 open = {
                     ui.send(ShellEvent.Focus(key))
                     ui.send(ShellEvent.Key("open"))
@@ -204,19 +203,12 @@ class DayScreen : ListScreen(), ShowsPlace {
                 offered = item.offered,
                 on = ActingOn.Row(key),
                 expanded = item.expanded,
+                title = line?.title,
             )
         }
     }
 
     override val showsScreenActions: Boolean get() = true
-
-    override fun commands(): List<Command> = buildList {
-        ui.view.day?.offered?.forEach { action ->
-            val letter = actionLetter(action.kind)
-            add(Command(ui.withLetter(action.name, letter), letter) { ui.send(ShellEvent.ActOn(ActingOn.Day, action)) })
-        }
-        addAll(ui.screenActionCommands())
-    }
 }
 
 /** A screen showing one of the app's places, which the app's own moves between places replace. */

@@ -18,7 +18,7 @@
 
 use crux_core::Command;
 use lumenna_records::places::{Place, SidebarKind, sidebar};
-use lumenna_records::{Action, ActionKind};
+use lumenna_records::{Action, ActionKind, Asks, Offered};
 
 use crate::asking::{Open, Purpose, refuse};
 use crate::keys::{Runs, what_runs};
@@ -223,6 +223,9 @@ pub struct LetteredItem {
     pub asks: bool,
     /// Whether its letter also runs it from the screen under the menu, so is a hot key there.
     pub hot_key: bool,
+    /// The row's action it hands back (`Event::ActOn`), in the row's menu (`ROW_MENU`); none for a
+    /// command, which runs as `Key(id)` or as the shell's own.
+    pub action: Option<Offered>,
 }
 
 /// One menu of a braille device's menu bar.
@@ -323,6 +326,7 @@ pub fn menu_bar(place: Option<&Place>, home: bool, sentence: bool) -> Vec<Letter
                     hot_key: !letter.is_empty(),
                     letter,
                     asks: crate::screen_actions::screen_action(id, sentence, true).asks,
+                    action: None,
                 }
             })
             .collect(),
@@ -351,12 +355,69 @@ pub fn menu_bar(place: Option<&Place>, home: bool, sentence: bool) -> Vec<Letter
                     // On a day, the day's own actions run by their letters too.
                     let day = is_day && matches!(what_runs(&id), Runs::Day(kinds) if action_letter(kinds[0]) == Some(letter.as_str()));
                     let hot_key = !letter.is_empty() && menu_letter(&id) == Some(letter.as_str()) && (own.contains(&id.as_str()) || row || day);
-                    LetteredItem { id, title, letter, asks, hot_key }
+                    LetteredItem { id, title, letter, asks, hot_key, action: None }
                 })
                 .collect();
             LetteredMenu { id: group.id, title: group.title, letter, items }
         });
     screen.into_iter().chain(shared).collect()
+}
+
+/// The id of the menu of the row in hand's actions, where a device's one menu key opens the bar
+/// ([`menu_bar_on_row`]).
+pub const ROW_MENU: &str = "row";
+
+/// The row in hand, for the menu of its actions: its name and its actions in short.
+#[derive(Debug, Clone, Copy)]
+pub struct RowMenu<'a> {
+    /// The row's name (its line's `title`), which the menu is named for.
+    pub title: &'a str,
+    /// Its actions, as the view offers them.
+    pub offered: &'a [Offered],
+}
+
+/// The menu bar of a device whose one menu key is both the menu bar and a row's actions (the
+/// Orbit's, as its own apps' Space with M): the row in hand's actions first (`ROW_MENU`), named
+/// for the row, each with its `action_letter` (none for one no letter runs), then [`menu_bar`]'s.
+/// The row's menu takes the first letter of the row's name the others leave free. Where the row's
+/// letter is what a letter runs from the screen (on a place, the row's actions before the place's
+/// own), another menu's item of that letter is no hot key; on Home, Home's own letters come first,
+/// so a row's action of one of those is none. A row with no actions has no menu.
+#[must_use]
+pub fn menu_bar_on_row(place: Option<&Place>, home: bool, sentence: bool, row: Option<RowMenu<'_>>) -> Vec<LetteredMenu> {
+    let mut bar = menu_bar(place, home, sentence);
+    let Some(row) = row.filter(|row| !row.offered.is_empty()) else { return bar };
+    let taken: std::collections::BTreeSet<String> = bar.iter().map(|menu| menu.letter.clone()).collect();
+    let letter = row.title.to_lowercase().chars().find(|c| c.is_alphanumeric() && !taken.contains(&c.to_string())).map(String::from);
+    let screens: std::collections::BTreeSet<String> =
+        bar.iter().flat_map(|menu| &menu.items).filter(|item| item.hot_key).map(|item| item.letter.clone()).collect();
+    let items: Vec<LetteredItem> = row
+        .offered
+        .iter()
+        .enumerate()
+        .map(|(at, offered)| {
+            let letter = action_letter(offered.kind).unwrap_or_default().to_owned();
+            LetteredItem {
+                id: format!("{ROW_MENU}:{at}"),
+                title: if sentence { offered.sentence.clone() } else { offered.title.clone() },
+                hot_key: !letter.is_empty() && !(home && screens.contains(&letter)),
+                letter,
+                asks: offered.asks != Asks::Nothing,
+                action: Some(offered.clone()),
+            }
+        })
+        .collect();
+    if !home {
+        let rows: Vec<&str> = items.iter().filter(|item| item.hot_key).map(|item| item.letter.as_str()).collect();
+        // A shared command that is a row's action by its letter (Mark Done) still runs the row's.
+        for item in bar.iter_mut().flat_map(|menu| &mut menu.items) {
+            if rows.contains(&item.letter.as_str()) && !ACTION_COMMANDS.iter().any(|(_, command)| *command == item.id) {
+                item.hot_key = false;
+            }
+        }
+    }
+    bar.insert(0, LetteredMenu { id: ROW_MENU.to_owned(), title: row.title.to_owned(), letter: letter.unwrap_or_default(), items });
+    bar
 }
 
 fn command_for(kind: ActionKind) -> Option<&'static str> {
@@ -842,6 +903,69 @@ mod tests {
         assert!(has_filter(bar(Some(&Place::Tasks), false)));
         assert!(!has_filter(bar(Some(&Place::Today), false)));
         assert!(!has_filter(bar(None, true)));
+    }
+
+    fn command_for_id(id: &str) -> bool {
+        ACTION_COMMANDS.iter().any(|(_, command)| *command == id)
+    }
+
+    fn offered(kind: ActionKind, title: &str) -> Offered {
+        Offered {
+            kind,
+            subject: lumenna_records::Subject::Task,
+            title: title.to_owned(),
+            sentence: lumenna_records::fields::sentence_case(title.to_owned()),
+            destructive: false,
+            primary: false,
+            other: None,
+            asks: Asks::Nothing,
+        }
+    }
+
+    #[test]
+    fn a_device_with_one_menu_key_has_the_rows_actions_first_named_for_the_row() {
+        let actions = [
+            offered(K::MarkDone, "Mark Done"),
+            offered(K::Edit, "Edit Details"),
+            offered(K::Delete, "Delete"),
+            offered(K::Collapse, "Collapse"),
+        ];
+        let row = RowMenu { title: "Buy milk", offered: &actions };
+        let bar = menu_bar_on_row(Some(&Place::Tasks), false, true, Some(row));
+        let first = &bar[0];
+        assert_eq!((first.id.as_str(), first.title.as_str()), (ROW_MENU, "Buy milk"));
+        assert_eq!(bar[1].id, SCREEN_MENU, "then the screen's own menu, then the shared ones");
+        assert_eq!(bar.iter().skip(1).cloned().collect::<Vec<_>>(), menu_bar(Some(&Place::Tasks), false, true)
+            .into_iter()
+            .map(|mut menu| {
+                for item in &mut menu.items {
+                    item.hot_key &= !["c", "e"].contains(&item.letter.as_str()) || command_for_id(&item.id);
+                }
+                menu
+            })
+            .collect::<Vec<_>>());
+        let letters: Vec<&str> = first.items.iter().map(|item| item.letter.as_str()).collect();
+        assert_eq!(letters, ["c", "e", "", ""], "each action's own letter, none where no letter runs it");
+        assert_eq!(first.items[0].title, "Mark done", "in the shell's capitals");
+        assert_eq!(first.items[0].action, Some(actions[0].clone()), "handed back as the row's action");
+        assert!(first.items[0].hot_key && !first.items[2].hot_key);
+        let mut tops = std::collections::BTreeSet::new();
+        assert!(bar.iter().all(|menu| menu.letter.is_empty() || tops.insert(menu.letter.clone())), "no two menus share a letter");
+        assert_eq!(first.letter, "b", "the first of the row's name the other menus leave free: {tops:?}");
+    }
+
+    #[test]
+    fn the_rows_letter_is_its_own_on_a_place_and_homes_go_first_on_home() {
+        let actions = [offered(K::MarkDone, "Mark Done")];
+        let row = RowMenu { title: "Tasks", offered: &actions };
+        let tasks = menu_bar_on_row(Some(&Place::Tasks), false, true, Some(row));
+        let mark_done = tasks.iter().skip(1).flat_map(|menu| &menu.items).find(|item| item.id == "mark-done").unwrap();
+        assert!(mark_done.hot_key, "the shared command runs the same row's action");
+        let rename = [offered(K::Rename, "Rename"), offered(K::NewInside, "New Project Inside")];
+        let home = menu_bar_on_row(None, true, true, Some(RowMenu { title: "Projects", offered: &rename }));
+        let row: Vec<(&str, bool)> = home[0].items.iter().map(|item| (item.letter.as_str(), item.hot_key)).collect();
+        assert_eq!(row, [("r", false), ("n", false)], "Reminders Due and Sync Now are Home's letters first");
+        assert_eq!(menu_bar_on_row(None, true, true, Some(RowMenu { title: "Inbox", offered: &[] })), menu_bar(None, true, true));
     }
 
     #[test]

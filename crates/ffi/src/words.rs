@@ -144,6 +144,15 @@ pub fn braille_menu_bar(place: Option<Place>, main: bool, sentence: bool) -> Vec
     lumenna_app::braille::menu_bar(place.as_ref(), main, sentence)
 }
 
+/// The menu bar of a device whose one menu key is the bar and a row's actions both (the Orbit's
+/// Space with M): the row in hand's actions first (`ROW_MENU`, named for the row, `title` its
+/// line's, each item's `action` handed back with `ActOn`), then [`braille_menu_bar`]'s. A row with
+/// no actions (`offered` empty) has none.
+#[export]
+pub fn braille_menu_bar_on_row(place: Option<Place>, main: bool, sentence: bool, title: String, offered: Vec<Offered>) -> Vec<LetteredMenu> {
+    lumenna_app::braille::menu_bar_on_row(place.as_ref(), main, sentence, Some(lumenna_app::braille::RowMenu { title: &title, offered: &offered }))
+}
+
 /// How long, in words: "1 hour 30 minutes".
 #[export]
 pub fn duration_words(minutes: u32) -> String {

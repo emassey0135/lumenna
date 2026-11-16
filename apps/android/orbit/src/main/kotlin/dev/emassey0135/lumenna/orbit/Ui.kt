@@ -22,6 +22,8 @@ import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Shown
 import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.brailleLetter
+import dev.emassey0135.lumenna.app.brailleMenuBar
+import dev.emassey0135.lumenna.app.brailleMenuBarOnRow
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.nothingOnLetter
 import dev.emassey0135.lumenna.app.SpeakLetter
@@ -38,6 +40,7 @@ import dev.emassey0135.orbit.EditBox
 import dev.emassey0135.orbit.Key
 import dev.emassey0135.orbit.KeyDecoder
 import dev.emassey0135.orbit.KeyEvent
+import dev.emassey0135.orbit.OrbitMenu
 import dev.emassey0135.orbit.OrbitReader
 import dev.emassey0135.orbit.OrbitWords
 import dev.emassey0135.orbit.ReaderEditOutput
@@ -58,6 +61,8 @@ class Row(
     val letter: String? = null,
     /** What Left and Right fold: the row's own Expand or Collapse among [offered]. */
     val expanded: Boolean? = null,
+    /** Its name alone (its line's `title`), which the menu of its actions is named for. */
+    val title: String? = null,
 )
 
 /** An entry of a context menu: a row's action or the screen's own, and the letter that runs it. */
@@ -445,7 +450,7 @@ class Ui(
             Key.Dot7, Key.Back, Key.Escape -> back()
             Key.Tab -> moveRound(screen, rows, 1)
             Key.BackTab -> moveRound(screen, rows, -1)
-            Key.Menu -> menu(screen, rows)
+            Key.Menu -> if (screen.showsScreenActions) menuBar(screen, rows) else menu(screen, rows)
             is Key.Chord -> spaceLetter(key.dots, screen, rows)
             is Key.Enter -> brailleLetter(key.dots.toUByte())?.let { runLetter(it, screen, rows) } ?: refuse()
             else -> {}
@@ -508,6 +513,40 @@ class Ui(
         push(ContextMenuScreen(appWords.braille.actionsMenu, commands))
     }
 
+    /**
+     * Space with M, the Player's Menu, on a place, the day or Home: the core's menu bar
+     * (`braille_menu_bar_on_row`), the row in hand's actions its first menu, as Orbit's own apps
+     * have one menu key for both ([MenuBarScreen]).
+     */
+    fun menuBar(screen: Screen, rows: List<Row>) {
+        val row = selected(screen, rows)
+        val home = screen is HomeScreen
+        val place = if (home) null else view.place
+        val on = row?.on
+        val offered = row?.offered.orEmpty().takeIf { on != null }.orEmpty()
+        val bar = if (row != null && offered.isNotEmpty()) brailleMenuBarOnRow(place, home, true, row.title ?: row.text, offered)
+        else brailleMenuBar(place, home, true)
+        val hot = mutableMapOf<String, BarChoice>()
+        val items = menuBarItems(bar, view, on, ::withLetter, hot)
+        if (items.isEmpty()) {
+            refuse()
+            return
+        }
+        push(MenuBarScreen(OrbitMenu(items), hot))
+    }
+
+    /** Back to Home from whatever is shown over it, which says itself again. */
+    fun goHome() {
+        while (stack.size > 1 && top !is HomeScreen) stack.removeLast().leaving()
+        top?.resumed()
+        saidScreen = null
+        follow()
+        redraw(Why.Entered)
+    }
+
+    /** Leaving Lumenna, as Back from Home does. */
+    fun quit() = finish()
+
     /** Space with a letter: its command, or which key the Speak presses it with instead. */
     private fun spaceLetter(dots: Int, screen: Screen, rows: List<Row>) {
         val letter = brailleLetter(dots.toUByte())
@@ -546,12 +585,6 @@ class Ui(
         send(if (letter == "d") ShellEvent.Key("delete") else ShellEvent.Letter(letter))
     }
 
-    /** The screen's own actions, the core's (`ViewModel.screen_actions`), as a menu's commands. */
-    fun screenActionCommands(): List<Command> = view.screenActions.filter { it.enabled }.map { action ->
-        val letter = action.letter.ifEmpty { null }
-        Command(withLetter(action.title, letter), letter) { runScreenAction(action) }
-    }
-
     /** A screen action: the core's `Key(id)`, but one that is this app's own to run. */
     fun runScreenAction(action: ScreenAction) {
         if (!action.shell) {
@@ -579,6 +612,12 @@ class Ui(
             return
         }
         if (!introduced) return
+        if (screen is MenuBarScreen) {
+            val newlyShown = saidScreen !== screen
+            saidScreen = screen
+            screen.draw(newlyShown, why, textView)
+            return
+        }
         if (screen is DialogScreen && screen.lineFills && phoneKeypad && screen.rows().isEmpty()) {
             textView.text = "${screen.title}\n\n${screen.display()}"
             if (saidScreen !== screen) {

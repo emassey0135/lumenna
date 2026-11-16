@@ -385,8 +385,14 @@ directly (8805659 is the last commit before the move). How the app works inside 
   shared menus', holding the screen's `screen_actions` (Home's on Home) in order, each with its
   letter as a real hot key; the same commands stay under File, Edit and Day too. How it is opened
   is each device's: BTSpeak's M chord opens straight into it, Tab and Shift-Tab moving to the other
-  menus as its editor's menu bar does; the BrailleSense's Space-M opens the bar on it; Orbit uses
-  no menu bar. It holds
+  menus as its editor's menu bar does; the BrailleSense's Space-M opens the bar on it. **A device
+  whose one menu key is both the bar and a row's actions** (the Orbit's Space with M, as its own
+  apps have it) **has the row's menu first** (`braille::menu_bar_on_row`, `braille_menu_bar_on_row`
+  over the FFI, `ROW_MENU`): named for the row in hand, its `offered` actions in order, each with
+  its `action_letter` and its `action` to hand back with `ActOn`, the menu's letter the first of the
+  row's name the others leave free; on a place an item of another menu whose letter the row's
+  action takes is no hot key (but the shared command that is that action), and on Home a row's
+  action of one of Home's letters is none. The screen's own menu follows it. The bar holds
   every one of the screen's own actions (Home's on Home), each with its letter as a real hot key,
   and everything the menu bar offers but a window's or a pane's own is reachable without it: on
   Home, among a place's actions, as a row's or the day's, on a heading, or as a settings page or

@@ -532,8 +532,8 @@ everything about Orbit itself; Lumenna's app is over it. JVM tests:
   Lumenna's. Copy nothing from Orbit's own APKs: port only the Satellite launcher's code
   (Apache-2.0, the same author's).
 - **`OrbitReader` is the screen reader**: an app describes its screen (`focusList`, `itemChanged`,
-  `dialog`, `contextMenu`, `focusEdit`, `focusControl`, `focusCheck`, `focusChoice`) and Orbit voices
-  it in the person's own voice and verbosity. Nothing is sent before `onScreenReaderReady`, which
+  `dialog`, `contextMenu`, `menuOpened` and `focusMenu`, `focusEdit`, `focusControl`, `focusCheck`,
+  `focusChoice`) and Orbit voices it in the person's own voice and verbosity. Nothing is sent before `onScreenReaderReady`, which
   Orbit calls at once when it is ready already; speech sent earlier is dropped. Its `Listener` hears
   readiness, keys (whether from the Player's phone keypad) and settings changing. Orbit routes the
   keypad to an app only when it speaks for itself: Satellite's hook does so for a manifest with
@@ -590,6 +590,20 @@ everything about Orbit itself; Lumenna's app is over it. JVM tests:
   itself, star the mode (named by `OrbitWords.mode`, in the order Satellite's T9 has: Orbit's own
   puts symbols before digits), Left and Right move, Up and Down go to the ends, Back deletes, held
   cancels, and OK confirms.
+- **`OrbitMenu` is a menu as Orbit's own apps have one** (pure, JVM-tested), found in its Editor's
+  and File Manager's (the user guide's "Editor Menu" and "File Manager Menu", and the `Menu` and
+  `ContextMenuKeyProcessor` of Orbit's own SDK inside its APKs): one menu key, the Speak's Space
+  with M (code 3405) and the Player's Menu (1018), opens the focused item's menu or else the
+  screen's, never both, so Orbit has no separate key for a row's actions. Its menus are one list of
+  items and submenus (File, Edit, Read…), not a bar across the screen: Up and Down (and Tab) go round
+  a level, Right or Select opens a submenu on its first item, Right on an item does nothing, Left
+  goes back up onto the submenu and closes the menu from the top, a letter alone is an item's access
+  key (the only one selected as Select would, several gone round), and choosing closes it. Orbit's
+  reader is told as its apps tell it: `onContextMenuOpened` with no name (Orbit says its own
+  "Context menu"), then each item moved to as `onFocusChanged` of a menu (role 8: `selectedItem`,
+  `isSubMenu`, said "Sub-menu", `accessKey`, said where the person has Orbit say them, and its
+  place), and `onContextMenuClosed` with `dismissed`. Escape and the Player's Back close it
+  (Orbit's cancel keys).
 - **The device's words are the SDK's** (`OrbitWords`, `CellNames`): its fields' echo, its Editor's
   selection and clipboard, T9's modes, what a root failure says. They are the stock strings of
   Orbit's English build (Satellite's for the echo of dots and deletions, which Orbit leaves to its
@@ -609,7 +623,8 @@ holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, r
 
 - **What the app tells Orbit's reader is `describe`'s** (`Describe.kt`, pure, tested on the JVM, and
   `OrbitReader.perform`): a list is `onFocusChanged` of a list box, a move `onItemChanged`, a
-  question `onDialogOpened` then its first answer, a row's actions `onContextMenuOpened`. A turn
+  question `onDialogOpened` then its first answer, a row's actions `onContextMenuOpened`, the menu
+  bar as Orbit's own menus (`describeMenu`: `menuOpened`, then each item as a menu's focus). A turn
   that only redrew says nothing, and a row reworded by what the person just did is read again.
   `speakText` jumps Orbit's event queue, so what follows a description (a hint) waits a moment.
   What is shown and what changed are the core's (`Turn::described`, handed over by
@@ -633,19 +648,28 @@ holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, r
   Settings, its letter) are shown too. Home looks back for reminders due as it first opens, and the app as
   it comes back to the front (`DueEvent.LookBack`, `Ui.lookBack`; each look says what was missed), since Android's alarms show them but the app's list holds none until
   something looks, and Home offers Reminders Due only while any are.
-- **A menu is the row's actions, then the screen's own** (Space with M, the Player's Menu,
-  `Ui.menu`): the core's `screen_actions` on a place or the day (the day's own `offered` before
-  them), Home's on Home, each `Key(id)` but for what is this app's to run (`shell`: the filter, Key
-  Help, About, Reminders Due, `Ui.runScreenAction`). What is not `enabled` is left out, as Orbit's
-  menus leave it. Every letter shown in a menu runs inside it and from the screen under it: the
-  menu's commands carry their letters, and a `shell` action's letter is run here before the core is
-  asked. A menu closed to run what was chosen does not say the screen under it again. On the
+- **On a place, the day and Home, the menu is the core's menu bar** (Space with M, the Player's
+  Menu: `Ui.menuBar`, `MenuBar.kt`, the SDK's `OrbitMenu`), since Orbit's one menu key is a row's
+  menu and the screen's both: `braille_menu_bar_on_row`, the row in hand's actions first, named for
+  the row (its line's `title`), then the screen's own menu, then File, Edit, View, Task, Day and
+  Help, each a submenu moved as Orbit's Editor's are. Each name and whether it applies are
+  `ViewModel::commands` and `screen_actions`, so what does not apply is left out, as Orbit's menus
+  leave it, and a menu left empty too. A row's action is handed back with `ActOn`, and a command is
+  `Key(id)` but for what is this app's to run (`Ui.runMenuCommand`: a `shell` screen action, the
+  filter, Key Help, About, Reminders Due, a heading's places on Home, the Devices and settings pages,
+  quitting). A letter alone is an item's access key in the level shown; Space with a letter (Dot 8
+  with one the Speak keeps) is a hot key from anywhere in the bar, as from the screen, and every
+  letter the bar shows as a hot key still runs from the screen under it. On the Player a digit
+  chooses that item of the level, and Back closes it. A choice closes the bar without saying the
+  screen under it again; Escape, Back, the menu key or Left at the top dismiss it, and the screen
+  is said again, as Orbit's do. **Every other screen's menu is the row's actions, then the
+  screen's own** (`Ui.menu`, one list). On the
   Player a line's menu is its Confirm and Cancel, which Tab reaches on the Speak. A reminder due's
   buttons are its menu and its letters, each handed back as `DueEvent.Press(id, button)`.
 - **A turn is taken from `AppModel.described`**, once its view and lines are in place: a collector
   of the view on `Main.immediate` runs between the view being set and the lines, with the last
   turn's lines.
-- **Keys**: `KeyDecoder` turns Orbit's bundle into a `Key`. On the Speak, as its user guide has them: Space with dots 1 and 4 are Up and Down (Space with dots 3 and 6 are the screen reader's, reviewing the item's text, except in an edit box, where they move the caret), Space with dots 4 5 and dots 1 2 Tab and Shift-Tab, Space with L and dots 4 5 6 the top and bottom, Space with E or Z back whatever the row, Space with M only the menu, dot 7 back and dot 8 open. Left goes back out of a list, never out of a dialog, on the Player too, whose Back leaves it. Which key presses a letter is the core's (`speak_letter`): Space with it, or Dot 8 (Enter) with it where the device keeps Space with those dots while Lumenna is in front: C and T the screen reader's; A, B, E, L, M and Z on every screen. What Orbit's own apps do with Space and a letter (the Editor's D, K and S, the Recorder's and Media Player's) is theirs alone. G is the screen reader's with both keys, so what it names is a menu away. Space with a letter that takes Dot 8 says so (`speak_press_instead`). A letter alone is a first letter (`FindLetter` on the app's main list, `first_letter` on this app's own). On the Player digits open rows, holding star finds by letter (T9), its modes named in the SDK's words, Menu the menu, Back goes back; a device with no braille translator is taken for the Player until a key says otherwise, so no Speak press is shown there. A letter is the core's: `brailleLetter(dots)` (a to z, none with dot 7 or 8) then `ShellEvent.Letter`. D is the delete key's, which the core's table does not have. Letters a row or screen shows on the Speak are `action_letter`, `ScreenAction::letter`, `HomePlace::letter` and their kin, with their press (`speak_press`) said after the name; `,`, `.` and `/` have no dots, so Move Up, Move Down and the filter are the menu's.
+- **Keys**: `KeyDecoder` turns Orbit's bundle into a `Key`. On the Speak, as its user guide has them: Space with dots 1 and 4 are Up and Down (Space with dots 3 and 6 are the screen reader's, reviewing the item's text, except in an edit box, where they move the caret), Space with dots 4 5 and dots 1 2 Tab and Shift-Tab, Space with L and dots 4 5 6 the top and bottom, Space with E or Z back whatever the row, Space with M only the menu (the menu bar on a place, the day and Home), dot 7 back and dot 8 open. Left goes back out of a list, never out of a dialog, on the Player too, whose Back leaves it. Which key presses a letter is the core's (`speak_letter`): Space with it, or Dot 8 (Enter) with it where the device keeps Space with those dots while Lumenna is in front: C and T the screen reader's; A, B, E, L, M and Z on every screen. What Orbit's own apps do with Space and a letter (the Editor's D, K and S, the Recorder's and Media Player's) is theirs alone. G is the screen reader's with both keys, so what it names is a menu away. Space with a letter that takes Dot 8 says so (`speak_press_instead`). A letter alone is a first letter (`FindLetter` on the app's main list, `first_letter` on this app's own). On the Player digits open rows, holding star finds by letter (T9), its modes named in the SDK's words, Menu the menu, Back goes back; a device with no braille translator is taken for the Player until a key says otherwise, so no Speak press is shown there. A letter is the core's: `brailleLetter(dots)` (a to z, none with dot 7 or 8) then `ShellEvent.Letter`. D is the delete key's, which the core's table does not have. Letters a row or screen shows on the Speak are `action_letter`, `ScreenAction::letter`, `HomePlace::letter` and their kin, with their press (`speak_press`) said after the name; `,`, `.` and `/` have no dots, so Move Up, Move Down and the filter are the menu's.
 - **Every form and dialog is the core's** (`Dialogs.kt`: `DialogScreen` over `:braille`'s `DialogController`): a question and the block form are `ScreenView.dialog` by its `id` (`question:<n>`, `block`), quick add `quick-add`, the task form `AppModel.taskForm()` (`App::task_form_on`) once the details show the task, a settings page `AppModel.settingsPage(id)`. Only this app's own lines (the filter, a field on the Player, a code to pair with) are dialogs it builds itself (`DialogScreen.ownLine`, its buttons `ControlSends.Shell`). On the Speak a dialog is Orbit's: Tab and Shift-Tab move round its controls, each active as soon as it is reached, as in the Editor's Save As; a `Line` or `Lines` control is the SDK's edit box (several lines for Notes), a `Choice` a combo box and a `List` a list box that Up, Down and a first letter move, a `Check` a check box Up, Down or Select toggle, a `Button` a button, a `Text` a read-only line, each told to Orbit by that role. Select in a line presses it if it submits, else the default (Save, Add, the question's answer); a `Lines` control takes Select as a new line. Space with E or Z (and Back, and Dot 7 off a line) send the dialog's `cancel`; the task form's is `DetailsEvent::Discard`, so Back throws a form away and it saves only by its Save. Confirm and Cancel are the core's words. A setting applies as it changes, so a page has no Confirm, and what the core leaves to this app (`Shell`: back up, import, pair, a folder) is done here. A refusal the dialog holds (`refusal`, `refused`, `problem:<key>`) is said once with the error tone. The Player has no Tab: the same controls are its rows, a line or a choice opening a screen of its own, a list its options; a dialog that is a line (quick add, a question's line, the filter) fills the screen, and its Menu is the dialog's buttons.
 - **Typing is the SDK's `EditBox`** (`Ui.editor`, over `ReaderEditOutput`), the Speak's or the
   Player's by the last key, with completions on Down where a line has them. What the device says

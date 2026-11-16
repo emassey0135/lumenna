@@ -15,6 +15,20 @@ sealed interface ReaderCall {
     data class Dialog(val name: String, val focused: String) : ReaderCall
     data class ContextMenu(val name: String) : ReaderCall
     data class Say(val text: String) : ReaderCall
+    /** A menu of Orbit's own kind opened: Orbit says "Context menu" in its own words. */
+    data object MenuOpened : ReaderCall
+    /** The item in hand of a menu, as Orbit's apps tell theirs (role 8). */
+    data class FocusMenu(val item: String, val subMenu: Boolean, val accessKey: Char?, val position: Int, val total: Int) : ReaderCall
+}
+
+/**
+ * What Orbit is told of the menu bar ([MenuBarScreen]), as its Editor tells of its menu: the menu
+ * opened as it first shows, then its item in hand, and each item moved to (a level opened or left,
+ * a letter found) said as a menu's focus again. A turn that only redrew says nothing.
+ */
+fun describeMenu(newlyShown: Boolean, why: Why, item: ReaderCall.FocusMenu?): List<ReaderCall> = buildList {
+    if (newlyShown) add(ReaderCall.MenuOpened)
+    if (item != null && (newlyShown || why == Why.Moved || why == Why.Entered)) add(item)
 }
 
 /** A list screen as it is drawn now. */
@@ -65,4 +79,6 @@ fun OrbitReader.perform(call: ReaderCall) = when (call) {
     is ReaderCall.Dialog -> dialog(call.name, "", call.focused)
     is ReaderCall.ContextMenu -> contextMenu(call.name, "")
     is ReaderCall.Say -> speakQueued(call.text)
+    ReaderCall.MenuOpened -> menuOpened()
+    is ReaderCall.FocusMenu -> focusMenu(call.item, call.subMenu, call.accessKey, call.position, call.total)
 }
