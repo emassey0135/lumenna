@@ -30,6 +30,7 @@ use crate::detail::Detail;
 use crate::sidebar::Sidebar;
 use crate::day::DayView;
 use crate::tasks::TaskList;
+use crate::toolbar::Toolbar;
 use crate::prompts;
 
 /// The view in the middle pane.
@@ -68,6 +69,8 @@ pub struct App {
     pub clock: Locale,
     status: gtk::Label,
     pub sidebar: Rc<Sidebar>,
+    /// The place shown's own actions, over it.
+    toolbar: Rc<Toolbar>,
     content_slot: gtk::Box,
     content: RefCell<Option<Content>>,
     pub detail: Rc<Detail>,
@@ -224,7 +227,13 @@ impl App {
             .show_menubar(true)
             .build();
         let sidebar = Sidebar::new();
-        let content_slot = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let content_slot = gtk::Box::builder().orientation(gtk::Orientation::Vertical).vexpand(true).build();
+        // The toolbar over the place shown, before it in Tab order: the places, the toolbar, the
+        // filter, the list, the details.
+        let toolbar = Toolbar::new();
+        let middle = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        middle.append(&toolbar.widget);
+        middle.append(&content_slot);
         let detail = Detail::new();
         detail.widget.update_property(&[gtk::accessible::Property::Label(&crate::words().details.title)]);
         let sidebar_pane = gtk::Box::builder()
@@ -237,7 +246,7 @@ impl App {
         sidebar_pane.append(&sidebar.tree.widget);
         let inner = gtk::Paned::builder()
             .orientation(gtk::Orientation::Horizontal)
-            .start_child(&content_slot)
+            .start_child(&middle)
             .end_child(&detail.widget)
             .resize_start_child(true)
             .shrink_start_child(false)
@@ -275,6 +284,7 @@ impl App {
             clock,
             status,
             sidebar,
+            toolbar,
             content_slot,
             content: RefCell::new(None),
             detail,
@@ -419,6 +429,7 @@ impl App {
         self.follow_place();
         crate::menus::follow(&self.application, &self.model.view().commands);
         self.sidebar.draw(self);
+        self.toolbar.draw(self);
         if let Some(list) = self.task_list() {
             list.draw(self);
         }
@@ -543,9 +554,12 @@ impl App {
     }
 
     /// Moves focus to the next pane, or the previous: places, the view, the details — the
-    /// details only when they show a task.
+    /// details only when they show a task. The toolbar is the view's, reached by Tab: from it,
+    /// F6 goes on to the view and Shift+F6 back to the places.
     fn move_pane(&self, step: isize) {
-        let current = if self.sidebar.tree.has_focus() {
+        let current = if self.toolbar.has_focus() {
+            if step > 0 { 0 } else { 1 }
+        } else if self.sidebar.tree.has_focus() {
             0
         } else if self.content().is_some_and(|c| c.has_focus()) {
             1

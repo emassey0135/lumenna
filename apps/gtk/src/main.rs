@@ -35,6 +35,7 @@ mod settings;
 mod shortcuts;
 mod sidebar;
 mod tasks;
+mod toolbar;
 mod tray;
 mod tree;
 mod window;
