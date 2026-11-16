@@ -227,6 +227,19 @@ class WearTest {
     }
 
     @Test
+    fun aboutIsASettingsPageAndExportIsNone() {
+        press("Settings")
+        // The watch saves no file, as it told the app, so the core lists no Export and Import.
+        assertTrue(core.app.view.value!!.settings!!.pages.none { it.id == "export" })
+        press("About")
+        // Each line whole: "Lumenna" alone is in other lines too.
+        dev.emassey0135.lumenna.SettingsPages.of("about")!!.lines.forEach { line ->
+            runCatching { rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText(line)) }
+            rule.onNode(hasText(line)).assertExists()
+        }
+    }
+
+    @Test
     fun eraseEverythingDeletedIsABackupsButtonAndAsksFirst() {
         core.device.addTask("in the trash")
         core.device.trashTask(core.device.listTasks("").rows.single().id)

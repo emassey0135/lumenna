@@ -58,7 +58,7 @@ sealed interface Screen {
     /** The app's block form, while it has one open. */
     data object BlockForm : Screen
     data object Settings : Screen
-    /** One of the core's pages of settings, by its id: Planning, Backups, General. */
+    /** One of the core's pages of settings, by its id: Planning, Backups, General, About. */
     data class SettingsPage(val id: String) : Screen
     data object Devices : Screen
     /** A task's or a block series' reminders: the app's list, while it has one open. */
@@ -230,6 +230,12 @@ fun WearApp(
     // The moment proposals are made against: a test's, or now.
     val plannerNow = dev.emassey0135.lumenna.LocalPlannerNow.current
     LaunchedEffect(plannerNow) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.PlanFrom(plannerNow)) }
+    // What this watch can do that settings depend on: no file to save or pick, so no Export and
+    // Import; backups kept on a schedule in its own storage (`backUpIfDue`), with Back up now; and
+    // no About of its own, so About is a settings page.
+    LaunchedEffect(core) {
+        core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Abilities(dev.emassey0135.lumenna.app.Abilities(files = false, backupFolder = true, ownAbout = false)))
+    }
     // What changes say, one at a time and in turn, each held long enough to be heard: set as
     // they came, each overwrote the one before before TalkBack had said it.
     var said by remember { mutableStateOf<Said?>(null) }

@@ -805,6 +805,22 @@ class LumennaTest {
     }
 
     @Test
+    fun aboutIsASettingsPageOfTheCoresLinesItsAddressesLinks() {
+        tab("Settings")
+        row("About").performClick()
+        rule.waitForIdle()
+        val lines = SettingsPages.of("about")!!.lines
+        assertTrue("the core says what Lumenna is", lines.isNotEmpty())
+        lines.forEach { line ->
+            val node = rule.onNode(hasText(line))
+            runCatching { node.performScrollTo() }
+            node.assertExists()
+            // An address is opened in the browser: not pressed here, where a browser would come in front.
+            if ("https://" in line) node.assert(hasClickAction())
+        }
+    }
+
+    @Test
     fun theDevicesPageSaysThisDevice() {
         tab("Settings")
         row("Devices and sync").performClick()

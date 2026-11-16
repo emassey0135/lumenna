@@ -218,6 +218,12 @@ fun LumennaApp(
     // The moment proposals are made against: a test's, or now.
     val plannerNow = LocalPlannerNow.current
     LaunchedEffect(plannerNow) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.PlanFrom(plannerNow)) }
+    // What this phone can do that settings depend on: it saves and picks files, keeps backups on
+    // a schedule (in its own storage, `backUpIfDue`), and has no About of its own, so About is a
+    // settings page.
+    LaunchedEffect(core) {
+        core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Abilities(dev.emassey0135.lumenna.app.Abilities(files = true, backupFolder = true, ownAbout = false)))
+    }
 
     // The core's sentence for each change, said politely: a snackbar is a live region, and
     // Material gives it the time the person's accessibility settings ask for. A newer one takes

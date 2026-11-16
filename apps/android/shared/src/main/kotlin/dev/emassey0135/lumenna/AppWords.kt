@@ -23,6 +23,7 @@ import dev.emassey0135.lumenna.app.ThisDevice
 import dev.emassey0135.lumenna.app.shellWords
 import dev.emassey0135.lumenna.app.Arrangement
 import dev.emassey0135.lumenna.app.placeArrangement
+import dev.emassey0135.lumenna.app.WatchKind
 
 // What Android adds to the lines the core words (crates/app, through the turn's `lines`):
 // what a tree control would report by itself, which a Compose list does not.
@@ -155,6 +156,7 @@ fun placeRows(entries: List<SidebarEntry>): List<PlaceRow> = entries.map { entry
 /**
  * Where a phone and a watch put the places, the core's (`place_arrangement`), from the view's
  * own [sidebar] in this app's capitals: the phone's tabs, Browse's rows and each group's screen,
- * and the watch's root list. No screen here picks places out of the sidebar by kind.
+ * and the watch's root list, Home as a Wear OS watch has it: one that syncs itself, so with Sync
+ * now (the phone reads no root list). No screen here picks places out of the sidebar by kind.
  */
-fun arrangement(sidebar: List<SidebarEntry>): Arrangement = placeArrangement(sidebar, Capitals.SENTENCE)
+fun arrangement(sidebar: List<SidebarEntry>): Arrangement = placeArrangement(sidebar, WatchKind.SYNCS_ITSELF, Capitals.SENTENCE)

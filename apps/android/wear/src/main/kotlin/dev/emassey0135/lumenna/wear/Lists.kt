@@ -72,9 +72,11 @@ fun WearList(state: ScalingLazyListState = rememberScalingLazyListState(), conte
 /**
  * The watch's root list, the core's (`Arrangement.watch`): New task, every place as the sidebar
  * has it (headings and project trees folding through the app, a heading's own New beneath it
- * while it is unfolded), then Undo, Redo and Settings. An action is `ShellEvent.Key(id)`, named
- * by its title; the app opening quick add's line opens its screen (`Follow`), and Settings is
- * this watch's own screen, which asks the app for its settings.
+ * while it is unfolded), then the rest of Home's own actions a watch that syncs itself has: Undo,
+ * Redo, What should I work on?, Sync now and Settings. An action is `ShellEvent.Key(id)`, named
+ * by its title; what it opens is drawn where the app's is (quick add's line by `Follow`, What
+ * should I work on?'s pick by `WearQuestions`, Sync now's sentences as every announcement), and
+ * Settings is this watch's own screen, which asks the app for its settings.
  */
 @Composable
 fun PlacesScreen(core: Core, navigator: Navigator) {
