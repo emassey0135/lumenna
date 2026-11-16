@@ -66,9 +66,11 @@ final class WatchScreens {
     }
 }
 
-/// The core's root list (`Arrangement.watch`): New Task, the places as every app's sidebar has
-/// them (Today, Tasks, the projects, labels and saved filters, Blocks and Trash, folded as the
-/// app has them), Undo, Redo and Settings. Then syncing with the iPhone.
+/// The core's root list (`Arrangement.watch`, as a watch that syncs through its phone has it):
+/// New Task, the places as every app's sidebar has them (Today, Tasks, the projects, labels and
+/// saved filters, Blocks and Trash, folded as the app has them), Undo, Redo, What Should I Work
+/// On? and Settings. Then syncing with the iPhone, which stands for the Sync Now the list leaves
+/// out.
 struct RootView: View {
     @EnvironmentObject private var core: Core
     @EnvironmentObject private var phone: PhoneSync
@@ -88,8 +90,9 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             List {
-                // The core's root list: New Task, the places, then Undo, Redo and Settings, the
-                // actions after the last place a section of their own.
+                // The core's root list: New Task, the places, then the rest of Home's actions
+                // (Undo, Redo, What Should I Work On?, Settings), a section of their own after the
+                // last place.
                 let rows = self.rows
                 let foot = (rows.lastIndex { if case .place = $0 { true } else { false } }).map { $0 + 1 } ?? 0
                 ForEach(rows[..<foot], id: \.id) { row($0) }
@@ -195,12 +198,18 @@ struct RootView: View {
 
     /// One of what can be done from anywhere, as a button named by the core: New Task brings up
     /// quick add, which opens the app's line itself; Settings is the watch's own screen of them;
-    /// any other is the core's key.
+    /// any other is the core's key. What Should I Work On? takes the app to today with its pick
+    /// asked, as its launch does: the day is pushed under the asker's sheet, as a launch's is.
     @ViewBuilder
     private func action(_ action: LumennaApp.ScreenAction) -> some View {
         switch action.id {
         case "new-task": Button(action.title) { adding = true }
         case "settings": NavigationLink(action.title) { SettingsView() }
+        case "what-now":
+            ScreenActionButton(action: action) {
+                core.app.perform($0)
+                core.app.whenStill { launched = core.app.view.place }
+            }
         default: ScreenActionButton(action: action) { core.app.perform($0) }
         }
     }

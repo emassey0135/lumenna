@@ -44,6 +44,15 @@ final class AppModel {
         app.send(event: .capitals(.title))
         // What pairing's sentences call this device, which finds others on its network.
         app.send(event: .pairingAs(called: AppModel.thisDevice, nearby: true))
+        // What settings depend on here: the iPhone and iPad save and pick files and keep their
+        // scheduled backups in a folder beside the profile; the watch does neither. Neither has
+        // an About of its own, so About is a settings page. The Mac says nothing: it does all of
+        // it, and has its About box.
+        #if os(iOS)
+        app.send(event: .abilities(LumennaApp.Abilities(files: true, backupFolder: true, ownAbout: false)))
+        #elseif os(watchOS)
+        app.send(event: .abilities(LumennaApp.Abilities(files: false, backupFolder: false, ownAbout: false)))
+        #endif
         #if os(macOS)
         if ProcessInfo.processInfo.environment["LUMENNA_NO_SYNC"] != nil {
             // The UI tests' copy: syncing would listen on the network, and on a fresh machine
@@ -343,9 +352,10 @@ extension AppModel {
 
     /// Where the iPhone and the watch put the places, the core's (`placeArrangement`): the
     /// iPhone's tabs, Browse's rows and each group's screen, and the watch's root list, from the
-    /// sidebar the app shows now.
+    /// sidebar the app shows now. An Apple Watch syncs only through its iPhone, so its list has
+    /// no Sync Now (its own iPhone section says how syncing stands); the iPhone reads no `watch`.
     var arrangement: LumennaApp.Arrangement {
-        LumennaApp.placeArrangement(sidebar: view.sidebar, capitals: .title)
+        LumennaApp.placeArrangement(sidebar: view.sidebar, watch: .throughItsPhone, capitals: .title)
     }
 
     /// One group's own screen, the core's: its heading, its places a level shallower, and what

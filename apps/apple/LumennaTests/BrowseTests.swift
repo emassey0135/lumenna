@@ -131,4 +131,13 @@ final class BrowseTests: XCTestCase {
         XCTAssertEqual(filters.title, screen.heading.title, "the heading's whole title")
         XCTAssertEqual(filters.addTitle, screen.heading.offered.first { $0.kind == .new }?.title)
     }
+
+    func testTheWatchsRootListIsHomeWithoutSyncNowSinceItSyncsThroughItsPhone() {
+        core.app.tick()
+        settle { !core.app.view.sidebar.isEmpty }
+        let actions = core.app.arrangement.watch.compactMap { row -> String? in
+            if case let .action(action) = row { action.id } else { nil }
+        }
+        XCTAssertEqual(actions, ["new-task", "undo", "redo", "what-now", "settings"], "its iPhone section syncs it")
+    }
 }

@@ -285,7 +285,17 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   platform's own drawn beside: the Mac's login item and shortcuts on General, the exports and the
   store's own actions on Export and Import. Which pages have something on them here is the
   core's (`SettingsView.pages` lists only those: no General on iOS), never filtered by an app; the
-  watch alone leaves out a page with no setting, whose buttons are all files, the phone's.
+  watch alone leaves out a page with no setting and no lines, whose buttons are all files, the
+  phone's. What the pages depend on is said once as `AppModel` starts, beside the clock, the
+  capitals and `pairingAs` (`ShellEvent.abilities`): the iPhone and iPad save and pick files and
+  keep scheduled backups in a folder (`Abilities(files: true, backupFolder: true, ownAbout:
+  false)`), the watch neither (`false, false, false`), and the Mac says nothing, so it has all of
+  it and no About page, its About box being its own. **About is a page where the device has no
+  About of its own** (the iPhone, iPad and watch): `SettingsPageForm` draws its `lines` after the
+  settings and buttons, a line each, read as written, one holding an address a `Link` to it (found
+  by its `https://`, not by the words before it) but on the watch, which shows text. The Mac's
+  tabs are made from the pages before the app has the settings open, the core's whole list, so
+  `SettingsModel.unopened` leaves About out there.
 - **The words are the core's, and Swift writes none** (`Shared/Words.swift`): every fixed word is
   `Wording`, the core's `ShellWords` asked for once in Title Case as this device calls itself
   (`.iPhone`, `.iPad`, `.mac`, `.watch`; its `thisDevice` is what `PairingAs` says), quick add's,
@@ -777,11 +787,15 @@ iPhone's and iPad's and the Mac's are behind `#available`, the watch's always th
 - **The watch's lists and day follow the phone's models** (`TaskListModel`, `DayModel`): what
   is listed, the row in hand put back on returning, the filter, and VoiceOver taken to a row
   the app moved, its swipes split by the phone's `AppRowActions`.
-- **The root list is the core's** (`Arrangement.watch`, `RootView`): New Task, every place the
-  sidebar shows, as it folds them, then Undo, Redo and Settings, a section of their own after the
-  last place. An action is the core's key (`AppModel.perform`), but for New Task, which brings up
-  quick add (that opens the app's line itself), and Settings, the watch's own screen. The section
-  over syncing with the phone is headed by the core's word (`Wording.phone`).
+- **The root list is the core's** (`Arrangement.watch`, `RootView`), Home as a watch that syncs
+  through its phone has it (`AppModel.arrangement` passes `WatchKind.throughItsPhone`): New Task,
+  every place the sidebar shows, as it folds them, then Undo, Redo, What Should I Work On? and
+  Settings, a section of their own after the last place; no Sync Now, since the section over
+  syncing with the phone, headed by the core's word (`Wording.phone`), is the watch's own. An
+  action is the core's key (`AppModel.perform`), but for New Task, which brings up quick add (that
+  opens the app's line itself), and Settings, the watch's own screen. What Should I Work On? takes
+  the app to today with its pick asked: the pick is the asker's sheet, and the day is pushed under
+  it, as the same launch from a complication does.
 - **A row's actions are the app's, run once for every Apple app** (`AppModel.run`: `ActOn`
   naming the row, or one held in a side list; `AppModel.act` for the day's own, the details'
   task and a reminder list's own), their questions `AppQuestions`' (alerts and a

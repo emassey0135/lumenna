@@ -34,7 +34,19 @@ final class SettingsModel: NSObject, ObservableObject {
     /// What the core says under them: what erasing takes.
     @Published private(set) var offeredCaption = ""
     /// The pages the settings are on, the core's, in its order, each setting on exactly one.
-    @Published private(set) var pages: [LumennaApp.SettingsPage] = LumennaApp.settingsPages(ownClock: true, sentence: false)
+    @Published private(set) var pages: [LumennaApp.SettingsPage] = SettingsModel.unopened
+
+    /// The pages until the app has the settings open, which the Mac's window makes its tabs
+    /// from: the core's whole list, but About on the Mac, which has an About box of its own
+    /// and so says no `Abilities` (`ownAbout`), as the app then lists them.
+    private static var unopened: [LumennaApp.SettingsPage] {
+        let pages = LumennaApp.settingsPages(ownClock: true, sentence: false)
+        #if os(macOS)
+        return pages.filter { $0.id != "about" }
+        #else
+        return pages
+        #endif
+    }
     /// What a setting's own control says: a time's hint and example, a number's.
     @Published private(set) var words = Wording.settings
     @Published var failure: String?
@@ -369,6 +381,13 @@ struct SettingsPageForm: View {
                     StoreActions(model: model)
                 }
                 #endif
+                if !page.lines.isEmpty {
+                    Section {
+                        ForEach(Array(page.lines.enumerated()), id: \.offset) { _, line in
+                            PageLine(line: line)
+                        }
+                    }
+                }
             }
         }
         .modifier(SettingsPage(model: model))
@@ -402,6 +421,35 @@ struct SettingsPageForm: View {
         default: break
         }
         #endif
+    }
+}
+
+/// One of a page's lines, the core's (About's: the name, the version, the website, …), read
+/// as it is written. One holding an address (`https://`) is a link to it, wherever in the line
+/// it starts, its name the whole line; the watch, which opens no web page, shows it as text.
+private struct PageLine: View {
+    let line: String
+
+    var body: some View {
+        #if os(watchOS)
+        text
+        #else
+        if let url = address {
+            Link(destination: url) { text }
+        } else {
+            text
+        }
+        #endif
+    }
+
+    private var text: some View {
+        Text(line).fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// The address the line holds, from `https://` to its end.
+    private var address: URL? {
+        guard let start = line.range(of: "https://") else { return nil }
+        return URL(string: String(line[start.lowerBound...]).trimmingCharacters(in: .whitespaces))
     }
 }
 
