@@ -252,8 +252,13 @@ const BRAILLE_VIEW_EXTRAS: &[&str] = &["projects", "labels", "filters", "reminde
 /// What Home's places run, by their letters' ids: they are hot keys on Home.
 const HOME_PLACES: &[&str] = &["go-today", "go-tasks", "go-blocks", "go-history", "go-trash", "projects", "labels", "filters"];
 
-/// The shared menu bar (`keys::MENUS`) on a braille device: the same menus, commands and order
-/// as every other platform's, each with its letter. `place` is the place shown under the menu
+/// The id of the braille menu bar's first menu: the screen's own actions (`screen_actions`).
+pub const SCREEN_MENU: &str = "screen";
+
+/// The menu bar on a braille device: first the screen's own menu (`SCREEN_MENU`), named for the
+/// screen ("Tasks", a project's name, "Home") and holding its own actions with their letters as
+/// hot keys; then the shared menu bar (`keys::MENUS`), the same menus, commands and order as every
+/// other platform's, each with its letter, the screen's own actions there too. `place` is the place shown under the menu
 /// (`None` over anything else), whose own actions (`screen_actions`) are all there, keep the
 /// letters they share with another and are real hot keys; on `home` (Home shown) Home's are,
 /// its places' among them. What the table lacks that a device with no sidebar needs is added
@@ -290,16 +295,39 @@ pub fn menu_bar(place: Option<&Place>, home: bool, sentence: bool) -> Vec<Letter
     });
 
     let groups: Vec<_> = groups.collect();
+    // The screen's own menu leads, named for the screen: its letter the first of its name free of
+    // the shared menus' own.
+    let screen_title = if home { Some(crate::screen_actions::home_title()) } else { place.map(Place::title) };
     let bar = menu_shortcuts(
-        &groups
+        &screen_title
             .iter()
-            .map(|(group, _)| MenuShortcut {
+            .map(|title| MenuShortcut { title: title.clone(), letter: None })
+            .chain(groups.iter().map(|(group, _)| MenuShortcut {
                 title: group.title.clone(),
                 letter: found(GROUP_LETTERS, &group.id).map(str::to_owned),
-            })
+            }))
             .collect::<Vec<_>>(),
     );
-    groups
+    let (screen_letter, bar) = if screen_title.is_some() { (bar.first().cloned(), bar[1..].to_vec()) } else { (None, bar) };
+    let screen = screen_title.map(|title| LetteredMenu {
+        id: SCREEN_MENU.to_owned(),
+        title,
+        letter: screen_letter.unwrap_or_default(),
+        items: crate::screen_actions::screen_action_ids(place, home, true)
+            .into_iter()
+            .map(|id| {
+                let letter = command_letter(id).unwrap_or_default().to_owned();
+                LetteredItem {
+                    id: id.to_owned(),
+                    title: command_title(id, sentence),
+                    hot_key: !letter.is_empty(),
+                    letter,
+                    asks: crate::screen_actions::screen_action(id, sentence, true).asks,
+                }
+            })
+            .collect(),
+    });
+    let shared = groups
         .into_iter()
         .zip(bar)
         .map(|((group, ids), letter)| {
@@ -327,8 +355,8 @@ pub fn menu_bar(place: Option<&Place>, home: bool, sentence: bool) -> Vec<Letter
                 })
                 .collect();
             LetteredMenu { id: group.id, title: group.title, letter, items }
-        })
-        .collect()
+        });
+    screen.into_iter().chain(shared).collect()
 }
 
 fn command_for(kind: ActionKind) -> Option<&'static str> {
@@ -768,7 +796,11 @@ mod tests {
     #[test]
     fn the_menu_bar_is_the_shared_table_in_its_order() {
         let shared: Vec<String> = crate::keys::menus(true).into_iter().map(|menu| menu.id).collect();
-        let ids: Vec<String> = bar(Some(&Place::Today), false).into_iter().map(|menu| menu.id).collect();
+        let menus = bar(Some(&Place::Today), false);
+        assert_eq!(menus[0].id, SCREEN_MENU, "the screen's own menu leads");
+        assert_eq!(menus[0].title, "Today");
+        assert_eq!(menus[0].letter, "o", "the first of its name free of the shared menus' own");
+        let ids: Vec<String> = menus.into_iter().skip(1).map(|menu| menu.id).collect();
         assert_eq!(ids, shared);
         let view = bar(Some(&Place::Today), false).into_iter().find(|menu| menu.id == "view").unwrap();
         let shared_view: Vec<String> = crate::keys::menus(true).into_iter().find(|menu| menu.id == "view").unwrap().items.into_iter()

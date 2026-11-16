@@ -23,6 +23,7 @@
 //! view model is assembled in `view.rs`.
 
 mod asking;
+pub mod arrangement;
 pub mod blockform;
 pub mod braille;
 pub mod capitals;

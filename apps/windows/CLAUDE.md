@@ -37,6 +37,21 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   Done), grey only where they act on what the app judged, and are enabled again as it closes,
   since an accelerator does nothing while its item is grey. The tray adds the timer's control
   (`Device::timer_control`, `toggle_timer`) before Exit.
+- **The toolbar is the screen's own actions** (`toolbar.rs`, `ViewModel::screen_actions`, drawn
+  from the app's current view each turn), above the list, as the Mac's toolbar and the web's
+  buttons: the core's order and Title Case titles, "..." after one that `asks`, greyed where not
+  `enabled`, each run as the menu runs the same command (`App::run_command`: `Key(id)`, or the
+  window's own for the filter field and the keyboard help). The menu bar stays complete. A stock
+  `ToolbarWindow32`, so UI Automation reads one ToolBar named as the core names the group
+  (`ShellWords::screen_actions`) holding Buttons named by their text. It is one Tab stop, between
+  the places and the list (its place in the window's z-order), not an F6 pane: the toolbar asks
+  the dialog manager for the arrows, Home, End, Enter and Space (`WM_GETDLGCODE`), moves its hot
+  item itself and says which button has focus (`EVENT_OBJECT_FOCUS` on the button's child id),
+  and presses the hot one after the key is handled, since a command can rebuild it. Its buttons
+  are made again only when what they are changes, else enabled or greyed in place, so a turn
+  that changes nothing leaves focus alone; a button greyed under focus hands it on first. It is
+  transparent, the window drawing its background, and while dark its text is the dark theme's
+  (`NM_CUSTOMDRAW`).
 - **The app's dialogs are opened from the turn that has them** (`App::ask`, after the turn):
   its open question (`asking.rs`), the block form (`block_form.rs`), a proposal's screen
   (`proposal.rs`), a reminder list (`reminders.rs`). A question is asked by its number

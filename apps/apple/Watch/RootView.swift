@@ -66,9 +66,11 @@ final class WatchScreens {
     }
 }
 
-/// The places, as every app's sidebar has them, from the app: Today, Tasks, the projects,
-/// labels and saved filters, Blocks and Trash, folded as the app has them. Then Undo, Redo,
-/// and syncing with the iPhone.
+/// The core's root list (`Arrangement.watch`, as a watch that syncs through its phone has it):
+/// New Task, the places as every app's sidebar has them (Today, Tasks, the projects, labels and
+/// saved filters, Blocks and Trash, folded as the app has them), Undo, Redo, What Should I Work
+/// On? and Settings. Then syncing with the iPhone, which stands for the Sync Now the list leaves
+/// out.
 struct RootView: View {
     @EnvironmentObject private var core: Core
     @EnvironmentObject private var phone: PhoneSync
@@ -88,17 +90,16 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             List {
-                Button(Commands.title("new-task")) { adding = true }
-                let shown = entries
-                ForEach(Array(shown.enumerated()), id: \.element.key) { _, item in
-                    row(item)
-                }
+                // The core's root list: New Task, the places, then the rest of Home's actions
+                // (Undo, Redo, What Should I Work On?, Settings), a section of their own after the
+                // last place.
+                let rows = self.rows
+                let foot = (rows.lastIndex { if case .place = $0 { true } else { false } }).map { $0 + 1 } ?? 0
+                ForEach(rows[..<foot], id: \.id) { row($0) }
                 Section {
-                    Button(Commands.title("undo")) { core.app.send(.undo) }
-                    Button(Commands.title("redo")) { core.app.send(.redo) }
-                    NavigationLink(Commands.title("settings")) { SettingsView() }
+                    ForEach(rows[foot...], id: \.id) { row($0) }
                 }
-                Section("iPhone") {
+                Section(Wording.phone) {
                     Button(LumennaApp.syncWith(phone: Wording.thePhone)) { phone.syncNow() }
                     Text(phone.status).font(.footnote)
                 }
@@ -175,11 +176,12 @@ struct RootView: View {
         .environmentObject(asker)
     }
 
-    /// The sidebar's rows, those folded away left out, each saying whether it is folded and,
-    /// where it changes, its level.
-    private var entries: [AppItem] {
+    /// The core's root list (`Arrangement.watch`): every place shown as the sidebar has it,
+    /// folded away left out, each saying whether it is folded and, where it changes, its level;
+    /// what can be done from anywhere around them.
+    private var rows: [LumennaApp.RootRow] {
         _ = core.generation
-        return core.app.sidebarItems()
+        return core.app.arrangement.watch
     }
 
     private var failed: Binding<Bool> {
@@ -187,17 +189,42 @@ struct RootView: View {
     }
 
     @ViewBuilder
-    private func row(_ item: AppItem) -> some View {
-        let entry = core.app.sidebarEntry(item.key)
+    private func row(_ row: LumennaApp.RootRow) -> some View {
+        switch row {
+        case let .place(entry): place(AppItem(entry: entry), entry: entry)
+        case let .action(action): self.action(action)
+        }
+    }
+
+    /// One of what can be done from anywhere, as a button named by the core: New Task brings up
+    /// quick add, which opens the app's line itself; Settings is the watch's own screen of them;
+    /// any other is the core's key. What Should I Work On? takes the app to today with its pick
+    /// asked, as its launch does: the day is pushed under the asker's sheet, as a launch's is.
+    @ViewBuilder
+    private func action(_ action: LumennaApp.ScreenAction) -> some View {
+        switch action.id {
+        case "new-task": Button(action.title) { adding = true }
+        case "settings": NavigationLink(action.title) { SettingsView() }
+        case "what-now":
+            ScreenActionButton(action: action) {
+                core.app.perform($0)
+                core.app.whenStill { launched = core.app.view.place }
+            }
+        default: ScreenActionButton(action: action) { core.app.perform($0) }
+        }
+    }
+
+    @ViewBuilder
+    private func place(_ item: AppItem, entry: LumennaApp.SidebarEntry) -> some View {
         let fold = item.actions.first { [.expand, .collapse].contains($0.kind) }
-        switch entry?.kind {
+        switch entry.kind {
         case let .place(place):
             // Named with what is in it, "Inbox, no tasks", as the phone's sidebar says it; its
             // value whether it is folded, and its level where that changes.
             NavigationLink(value: place) {
                 HStack {
                     SwatchMark(swatch: item.swatch)
-                    Text(entry?.text ?? item.title)
+                    Text(entry.text)
                 }
             }
             .accessibilityValue(AppModel.spoken(detail: nil, expanded: item.expanded, level: item.level))
@@ -221,8 +248,6 @@ struct RootView: View {
                     Button(action.title) { core.app.run(action, on: item.key, side: .sidebar) }
                 }
             }
-        case nil:
-            EmptyView()
         }
     }
 }
@@ -239,6 +264,16 @@ struct PlaceView: View {
         case .today: DayView(core: core)
         case .blocks: BlockListView(core: core)
         default: TaskListView(core: core, place: place)
+        }
+    }
+}
+
+extension LumennaApp.RootRow {
+    /// What tells it apart in the list: a place's key, an action's id.
+    var id: String {
+        switch self {
+        case let .place(entry): entry.key
+        case let .action(action): action.id
         }
     }
 }

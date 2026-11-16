@@ -1862,3 +1862,39 @@ fn a_blocks_work_outrunning_it_is_a_notification_with_the_cores_replan_button() 
     let overrun = due.due.iter().find(|r| !r.replan.is_empty()).unwrap_or_else(|| panic!("the core offers to replan: {texts:#?}"));
     assert!(xml.contains(&format!(r#"content="{}" arguments="replan""#, overrun.replan)), "{xml}");
 }
+
+// ---------------------------------------------------------------------------------------
+// The toolbar of the screen's own actions
+// ---------------------------------------------------------------------------------------
+
+/// The toolbar's buttons, by name, in order: what a screen reader lists in it.
+fn toolbar(app: &App) -> Vec<String> {
+    let lines = app.automation.dump(app.window, 6);
+    let Some(at) = lines.iter().position(|line| line.trim_start().starts_with("ToolBar 'Commands'")) else { return Vec::new() };
+    let indent = lines[at].len() - lines[at].trim_start().len();
+    lines[at + 1..]
+        .iter()
+        .take_while(|line| line.len() - line.trim_start().len() > indent)
+        .filter_map(|line| line.trim_start().strip_prefix("Button '").and_then(|rest| rest.split('\'').next()).map(str::to_owned))
+        .collect()
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn the_toolbar_holds_the_screens_own_actions_in_the_cores_order_and_runs_them() {
+    let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
+    let today = ["New Block...", "Previous Day", "Next Day", "Go to Day...", "Go to Now", "Undo", "Redo"];
+    let shown = automation::wait(Duration::from_secs(5), || (toolbar(&app) == today).then_some(()));
+    assert!(shown.is_some(), "Today's own actions: {:?}", toolbar(&app));
+    app.post(&[GO_TASKS]);
+    let tasks = ["New Task...", "Filter Tasks", "Undo", "Redo"];
+    let shown = automation::wait(Duration::from_secs(5), || (toolbar(&app) == tasks).then_some(()));
+    assert!(shown.is_some(), "the tasks' own actions: {:?}", toolbar(&app));
+    // Filter Tasks pressed is the window's own: the filter field above the list.
+    app.post(&["invoke:Filter Tasks"]);
+    assert!(app.lands(|focus| focus.starts_with("Edit 'Filter")), "{}", app.focus());
+    // The trash has nothing to add or filter.
+    app.post(&[GO_TRASH]);
+    let shown = automation::wait(Duration::from_secs(5), || (toolbar(&app) == ["Undo", "Redo"]).then_some(()));
+    assert!(shown.is_some(), "the trash's own actions: {:?}", toolbar(&app));
+}

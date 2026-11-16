@@ -368,8 +368,9 @@ pub fn about_line() -> String {
     format!("{NAME} {VERSION}. {}.", DESCRIPTION.trim().trim_end_matches('.'))
 }
 
-/// What About lists, a line each, each labelled where its value alone would not say what it is:
-/// the name, "Version 0.1.0", what it is, "Website: …", "Published by …", "Licence: …".
+/// What About lists, a line each, as `metadata()` has it, each labelled where its value alone
+/// would not say what it is: the name, "Version 0.1.0", what it is, "Website: …", "Report a
+/// problem: …", "Published by …", "Licence: …".
 #[must_use]
 pub fn about_lines() -> Vec<String> {
     vec![
@@ -377,6 +378,7 @@ pub fn about_lines() -> Vec<String> {
         format!("Version {VERSION}"),
         DESCRIPTION.to_owned(),
         format!("Website: {HOMEPAGE}"),
+        format!("Report a problem: {ISSUES}"),
         format!("Published by {PUBLISHER}"),
         format!("Licence: {LICENCE}"),
     ]

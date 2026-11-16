@@ -63,6 +63,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
@@ -264,9 +269,40 @@ fun SettingsPageScreen(core: Core, navigator: Navigator, id: String) {
     ScreenFrame(page?.title.orEmpty(), core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             shown.forEach { key(it.setting.key) { SettingControl(core, it) } }
+            page?.lines.orEmpty().forEach { PageLine(it) }
             Caption(page?.caption.orEmpty())
         }
     }
+}
+
+/**
+ * One of a page's lines to read (About's name, version, website…), the core's words, a line of
+ * text each. One holding an address is a link, opened in the browser: the address is found by
+ * where it starts, never by the words before it.
+ */
+@Composable
+private fun PageLine(line: String) {
+    val at = line.indexOf("https://")
+    if (at < 0) {
+        Text(line, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+        return
+    }
+    val address = line.substring(at).substringBefore(' ')
+    val uri = LocalUriHandler.current
+    val text = buildAnnotatedString {
+        append(line.substring(0, at))
+        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) { append(address) }
+        append(line.substring(at + address.length))
+    }
+    // The whole line is what is pressed, 48dp tall: a link inside the text is its own target,
+    // as small as a line of it.
+    Text(
+        text,
+        modifier = Target
+            .fillMaxWidth()
+            .clickable { uri.openUri(address) }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    )
 }
 
 /** What a page says under its settings, the core's words. */

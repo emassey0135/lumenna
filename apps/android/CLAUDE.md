@@ -82,12 +82,18 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   `app`: `./gradlew :shared:testDebugUnitTest :app:testDebugUnitTest`), with the core's records
   built by hand: there is no native library there, so nothing a test calls may reach it.
 - **Settings are the core's pages** (`SettingsPages`, `settings_pages`): each page's title,
-  description, settings in order, caption and buttons. Which pages are listed is the app's
-  (`SettingsView.pages`, only those with something on them here), drawn whole: the watch alone
-  still leaves out Export and Import, since it has nowhere to save a file and the core does not
-  know that. `SettingsPages.shown` is the BrailleSense's until it takes the view's. Where they are
-  Android's own (whether notifications and exact alarms are allowed), the words are
-  `notification_words`.
+  description, settings in order, caption, buttons and lines to read. Which pages are listed is
+  the app's (`SettingsView.pages`, only those with something on them here), drawn whole, from
+  what each app says it can do as it starts (`ShellEvent.Abilities`, sent from `LumennaApp`'s
+  and `WearApp`'s root beside `PlanFrom`): the phone saves and picks files, keeps backups on a
+  schedule in its own storage (`backUpIfDue`) and has no About of its own; the watch the same
+  but no files, so the core lists it no Export and Import and no Restore. Neither has an About of
+  its own, so **About is a settings page**, drawn from the page's `lines` (`SettingsPage::lines`,
+  the core's `about_lines`), a line of text each after its settings: on the phone a line holding
+  an address is a link, the whole line pressed opening it in the browser, the address found by
+  where `https://` starts, never by the words before it. `SettingsPages.shown` is the
+  BrailleSense's until it takes the view's. Where they are Android's own (whether notifications
+  and exact alarms are allowed), the words are `notification_words`.
 - **A place's own actions are the core's** (`ViewModel.screenActions`, `ScreenButtons`,
   `ScreenActions.kt`): Today's, Blocks' and a task list's top bar draws them in the core's order,
   named by its titles and disabled while not `enabled`, as icons while they fit (`iconRoom`, by
@@ -126,8 +132,8 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
 - **Nested lists fold, as the app folds them**: a row with something under it has the app's
   Collapse or Expand among its actions and says which it is. The level is the app's, said
   against the row shown before, after folding; a list the app narrows or cuts out itself (a pick
-  narrowed by typing, Browse's groups, the details' projects) takes the core's `levels(depths)`
-  (`levelsOf`), so no Kotlin counts where a level changes.
+  narrowed by typing, the details' projects) takes the core's `levels(depths)` (`levelsOf`), so
+  no Kotlin counts where a level changes. A group's screen has its levels from the core already.
 - **What changes say, the phone shows as a snackbar**, a newer one taking the place of the one
   showing (`collectLatest`), which TalkBack has begun saying: waiting for each, the last of a
   run came long after. The announcements are a buffer of 64 that drops the oldest, so a run
@@ -157,6 +163,14 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   at the root.
 - **Buttons take focus only out of touch mode**, which a key press leaves; the keyboard
   tests leave it first (`setInTouchMode(false)`), or no tab could be focused.
+- **The tabs, Browse and the group screens are the core's** (`place_arrangement`, shared's
+  `arrangement(sidebar)`, from the view's own sidebar): the tabs in order with their titles
+  (`Arrangement.tabs`; the icon and the stack's first screen are Android's, by `TabKind`), Browse's
+  rows (`browse`: every place that is no tab, opened inside Browse, and each group with how many
+  places it holds, opening `Screen.Group`), and each group's screen (`groups`: titled by its
+  heading, whose `offered` New is the add button, its places a level shallower and folded as the
+  app has them, its `empty` said with none). No screen here picks places out of the sidebar by
+  kind, counts them or titles them.
 - **A wide window has the desktop apps' sidebar** (`Sidebar.kt`, from the app's
   `ViewModel.sidebar`, plus Settings) from 840dp, with a stack of its own for the place chosen;
   a heading's or place's actions are the app's, run as Browse runs them. Between 600 and 840dp
@@ -341,8 +355,14 @@ phone does.
   `ShellEvent.Key(id)`; no "…" on a watch's button. A task list's and Blocks' come first, under
   the heading, a task list's filter being the shell's line in its place; the day's come after its
   rows and its own actions, so the day is first. The app opening quick add's line opens its screen
-  (`Follow`). The list of places is no place: its New task, Undo, Redo and Settings are the
-  watch's own, as the core's Home, which a watch does not show, would have them.
+  (`Follow`). The list of places is no place: it is the core's root list (`Arrangement.watch`,
+  `place_arrangement` with `WatchKind.SYNCS_ITSELF`, Home as a watch that syncs itself has it): New
+  task, every place as the sidebar has it, then Undo, Redo, What should I work on?, Sync now and
+  Settings, each action `ShellEvent.Key(id)` but Settings, which opens the watch's own screen (it
+  asks the app for its settings). What should I work on? takes the app to today and asks its pick,
+  drawn over the list by `WearQuestions` as the day's own; Sync now's sentences are said as every
+  announcement is. A heading's New follows it while it is unfolded, from its `offered`. No screen
+  here picks places out of the sidebar by kind or titles them.
 - **A refused line is asked again with why**: the input screen's label is the app's refusal,
   then the question; backing out of the input screen gives the question up (`TextEntry`'s
   `cancelled`). A place merged or deleted takes its list to where the app went, as the phone's.

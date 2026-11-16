@@ -2,8 +2,9 @@ import LumennaApp
 import SwiftUI
 
 /// The settings that sync, in the form the iPhone and the Mac show them
-/// (`Shared/Forms/Settings.swift`). Backups and exports are the phone's: a watch has nowhere
-/// to save a file or pick one.
+/// (`Shared/Forms/Settings.swift`), and About, the core's lines. Backups and exports are the
+/// phone's: a watch has nowhere to save a file or pick one, which it tells the app as it starts
+/// (`Abilities`).
 struct SettingsView: View {
     @EnvironmentObject private var core: Core
 
@@ -23,9 +24,9 @@ struct SettingsView: View {
         var body: some View {
             List {
                 // The core's pages, only those with something on them here, in its order: Devices
-                // the watch's own list of them, and a page with no setting left out, since what it
-                // holds are buttons for files, which are the phone's.
-                ForEach(model.pages.filter { $0.id == "devices" || !$0.keys.isEmpty }, id: \.id) { page in
+                // the watch's own list of them, About its lines, and a page with no setting and no
+                // lines left out, since what it holds are buttons for files, which are the phone's.
+                ForEach(model.pages.filter { $0.id == "devices" || !$0.keys.isEmpty || !$0.lines.isEmpty }, id: \.id) { page in
                     if page.id == "devices" {
                         NavigationLink(page.title) { DevicesView() }
                     } else {

@@ -97,7 +97,7 @@ final class BrowseTests: XCTestCase {
         _ = try core.app.device.addProject(name: "Work", parent: nil)
         _ = try core.app.device.addProject(name: "Reports", parent: "Work")
         _ = try core.app.device.addProject(name: "Home", parent: nil)
-        let projects = shownList(PlacesViewController(core: core, group: .projects, title: "Projects"))
+        let projects = shownList(PlacesViewController(core: core, group: .projects))
         settle { projects.items.contains { $0.title == "Reports" } }
         let index = try XCTUnwrap(projects.items.firstIndex { $0.title == "Work" })
         // Folding Work away hides Reports from the list, and must not change what is offered.
@@ -109,5 +109,35 @@ final class BrowseTests: XCTestCase {
         projects.perform(move, on: work)
         settle { core.app.view.asking?.choices != nil }
         XCTAssertEqual(core.app.view.asking?.choices?.choices.map(\.title), ["Home"])
+    }
+
+    func testBrowseListsTheCoresRowsCountingEveryProjectUnderAGroup() throws {
+        _ = try core.app.device.addProject(name: "Work", parent: nil)
+        _ = try core.app.device.addProject(name: "Reports", parent: "Work")
+        let browse = shownList(BrowseViewController(core: core))
+        settle { browse.items.first { $0.key == LumennaApp.sidebarKey(kind: .group(.projects)) }?.detail == "3 projects" }
+        XCTAssertEqual(browse.items.map(\.key), core.app.arrangement.browse.map(\.key), "the core's rows, in its order")
+        let projects = try XCTUnwrap(browse.items.first { $0.key == LumennaApp.sidebarKey(kind: .group(.projects)) })
+        XCTAssertEqual(projects.detail, "3 projects", "the Inbox, Work and Reports inside it")
+        XCTAssertFalse(browse.items.contains { $0.key == LumennaApp.sidebarKey(kind: .place(.today)) }, "Today is a tab of its own")
+    }
+
+    func testAGroupsScreenIsTitledAndAddsAsItsHeading() throws {
+        // None made, so nothing to wait for in the list: the screen once the app has the sidebar.
+        core.app.tick()
+        settle { core.app.groupScreen(.filters) != nil }
+        let filters = shown(PlacesViewController(core: core, group: .filters))
+        let screen = try XCTUnwrap(core.app.groupScreen(.filters))
+        XCTAssertEqual(filters.title, screen.heading.title, "the heading's whole title")
+        XCTAssertEqual(filters.addTitle, screen.heading.offered.first { $0.kind == .new }?.title)
+    }
+
+    func testTheWatchsRootListIsHomeWithoutSyncNowSinceItSyncsThroughItsPhone() {
+        core.app.tick()
+        settle { !core.app.view.sidebar.isEmpty }
+        let actions = core.app.arrangement.watch.compactMap { row -> String? in
+            if case let .action(action) = row { action.id } else { nil }
+        }
+        XCTAssertEqual(actions, ["new-task", "undo", "redo", "what-now", "settings"], "its iPhone section syncs it")
     }
 }

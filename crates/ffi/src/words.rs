@@ -2,10 +2,11 @@
 //! completion's line, and Go to Day's question for a date picker of its own.
 
 use boltffi::export;
-use lumenna_records::places::{Place, SidebarGroup, SidebarKind};
+use lumenna_records::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
 use lumenna_app::glance::GlanceEntry;
 use lumenna_app::Capitals;
 use lumenna_app::ShellEvent;
+use lumenna_app::arrangement::{Arrangement, WatchKind};
 use lumenna_app::speech::Line;
 use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
@@ -135,8 +136,9 @@ pub fn menu_shortcuts(items: Vec<MenuShortcut>) -> Vec<String> {
     lumenna_app::braille::menu_shortcuts(&items)
 }
 
-/// The shared menu bar on a braille device, each with its letter: under the place shown, its own
-/// actions (`ViewModel::screen_actions`) among it, or over Home (`main`, `ViewModel::home` shown), Home's.
+/// The menu bar on a braille device, each item with its letter: first the screen's own menu
+/// (`SCREEN_MENU`, its `screen_actions`, named for the screen), then the shared menu bar. Under the
+/// place shown, or over Home (`main`, `ViewModel::home` shown).
 #[export]
 pub fn braille_menu_bar(place: Option<Place>, main: bool, sentence: bool) -> Vec<LetteredMenu> {
     lumenna_app::braille::menu_bar(place.as_ref(), main, sentence)
@@ -538,4 +540,12 @@ pub fn prompt_of(parts: Vec<String>) -> String {
 #[export]
 pub fn line_with_level(line: Line) -> String {
     lumenna_app::lines::with_level(&line)
+}
+
+/// Where a phone and a watch put the places, from the sidebar as the view gives it: a phone's
+/// tabs, its Browse tab's rows and each group's screen, and a watch's root list (from Home, as a
+/// watch of `watch`'s kind has it; a phone passes either).
+#[export]
+pub fn place_arrangement(sidebar: Vec<SidebarEntry>, watch: WatchKind, capitals: Capitals) -> Arrangement {
+    lumenna_app::arrangement::arrangement(&sidebar, watch, capitals == Capitals::Sentence)
 }

@@ -12,7 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import dev.emassey0135.lumenna.app.Place
-import dev.emassey0135.lumenna.app.placeTitle
+import dev.emassey0135.lumenna.app.SidebarGroup
+import dev.emassey0135.lumenna.app.TabKind
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.VerticalDivider
@@ -87,17 +88,11 @@ sealed interface Screen {
     /** The app's block form, while it has one open. */
     data object BlockForm : Screen
 
-    /** Projects, labels, saved filters, blocks and the trash. */
+    /** Every place that is no tab of its own, and the groups: the core's arrangement. */
     data object Browse : Screen
 
-    /** The project tree. */
-    data object Projects : Screen
-
-    /** Every label. */
-    data object Labels : Screen
-
-    /** The saved filters. */
-    data object Filters : Screen
+    /** One group's places, opened from Browse: the project tree, the labels, the saved filters. */
+    data class Group(val group: SidebarGroup) : Screen
 
     /** Every block series. */
     data object Blocks : Screen
@@ -130,18 +125,36 @@ sealed interface Screen {
     data object Proposal : Screen
 }
 
-/**
- * The four tabs, as on the iPhone: each its own back stack. Named as the core names the places
- * and the commands that go to them; Browse, the phones' own, is a tab no desktop app has.
- */
-enum class Tab(private val named: () -> String, val icon: ImageVector, val root: Screen) {
-    TODAY({ placeTitle(Place.Today) }, Icons.Filled.DateRange, Screen.Day()),
-    TASKS({ placeTitle(Place.Tasks) }, Icons.Filled.CheckCircle, Screen.Tasks()),
-    BROWSE({ appWords.browse }, Icons.AutoMirrored.Filled.List, Screen.Browse),
-    SETTINGS({ Command.SETTINGS.title }, Icons.Filled.Settings, Screen.Settings),
-    ;
+/** The tabs the app's own commands go to: Today's and Tasks', places of the core's tabs. */
+private val TODAY = TabKind.Place(Place.Today)
+private val TASKS = TabKind.Place(Place.Tasks)
 
-    val title: String by lazy { named() }
+/**
+ * The tabs are the core's (`Arrangement.tabs`: which, in what order, and their titles), each its
+ * own back stack, as on the iPhone. Its icon is Android's look for what it shows.
+ */
+private fun TabKind.icon(): ImageVector = when (this) {
+    is TabKind.Place -> when (field0) {
+        Place.Today -> Icons.Filled.DateRange
+        Place.Tasks -> Icons.Filled.CheckCircle
+        else -> Icons.AutoMirrored.Filled.List
+    }
+    TabKind.Browse -> Icons.AutoMirrored.Filled.List
+    TabKind.Settings -> Icons.Filled.Settings
+}
+
+/** The screen a tab's stack starts on. */
+private fun TabKind.root(): Screen = when (this) {
+    is TabKind.Place -> Destination.At(field0).screen()
+    TabKind.Browse -> Screen.Browse
+    TabKind.Settings -> Screen.Settings
+}
+
+/** What names a tab across a recreation: its place's key, else what it is. */
+private fun TabKind.key(): String = when (this) {
+    is TabKind.Place -> placeKey(field0)
+    TabKind.Browse -> "browse"
+    TabKind.Settings -> "settings"
 }
 
 /**
@@ -187,8 +200,14 @@ fun LumennaApp(
     shortcuts: Shortcuts = remember { Shortcuts() },
     opened: StateFlow<Pair<Long, ReminderOpened>?>? = null,
 ) {
-    var tab by rememberSaveable { mutableStateOf(Tab.TODAY) }
-    val stacks = remember { Tab.entries.associateWith { mutableStateListOf(it.root) } }
+    // The tabs, the core's: what each shows, in order, and its title.
+    val shownView by core.app.view.collectAsState()
+    val sidebar = shownView?.sidebar.orEmpty()
+    val tabs = remember(sidebar) { arrangement(sidebar).tabs }
+    var tabKey by rememberSaveable { mutableStateOf(TODAY.key()) }
+    val tab = tabs.firstOrNull { it.kind.key() == tabKey }?.kind ?: TODAY
+    val stacks = remember { mutableMapOf<String, SnapshotStateList<Screen>>() }
+    fun stackOf(kind: TabKind) = stacks.getOrPut(kind.key()) { mutableStateListOf(kind.root()) }
     // A wide window's: the place the sidebar chose, and what was opened from it.
     var destination by remember { mutableStateOf<Destination>(Destination.At(Place.Today)) }
     val placeStack = remember { mutableStateListOf<Screen>(Screen.Day()) }
@@ -198,8 +217,13 @@ fun LumennaApp(
     val saved = rememberSaveableStateHolder()
     // The moment proposals are made against: a test's, or now.
     val plannerNow = LocalPlannerNow.current
-    val shownView by core.app.view.collectAsState()
     LaunchedEffect(plannerNow) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.PlanFrom(plannerNow)) }
+    // What this phone can do that settings depend on: it saves and picks files, keeps backups on
+    // a schedule (in its own storage, `backUpIfDue`), and has no About of its own, so About is a
+    // settings page.
+    LaunchedEffect(core) {
+        core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Abilities(dev.emassey0135.lumenna.app.Abilities(files = true, backupFolder = true, ownAbout = false)))
+    }
 
     // The core's sentence for each change, said politely: a snackbar is a live region, and
     // Material gives it the time the person's accessibility settings ask for. A newer one takes
@@ -215,7 +239,7 @@ fun LumennaApp(
             // the tabs are a rail, then a bar along the bottom.
             val wide = maxWidth >= SplitWidth
             val rail = !wide && maxWidth >= RailWidth
-            val stack = if (wide) placeStack else stacks.getValue(tab)
+            val stack = if (wide) placeStack else stackOf(tab)
 
             /** The sidebar's [place], with [screens] opened from it. */
             fun show(place: Destination, vararg screens: Screen) {
@@ -244,20 +268,20 @@ fun LumennaApp(
             }
 
             /** A tab at its root, with [screens] opened on it; wide, the sidebar's place for it. */
-            fun go(to: Tab, vararg screens: Screen) {
+            fun go(to: TabKind, vararg screens: Screen) {
                 if (wide) {
                     val first = screens.firstOrNull()
                     when {
-                        to == Tab.TODAY -> show(Destination.At(Place.Today), *screens)
-                        to == Tab.SETTINGS -> show(Destination.Settings, *screens)
+                        to == TODAY -> show(Destination.At(Place.Today), *screens)
+                        to == TabKind.Settings -> show(Destination.Settings, *screens)
                         first == Screen.Blocks -> show(Destination.At(Place.Blocks))
                         first is Screen.Tasks && (first.place == Place.Trash || first.place == Place.History) -> show(Destination.At(first.place))
                         else -> show(Destination.At(Place.Tasks), *screens)
                     }
                     return
                 }
-                tab = to
-                stacks.getValue(to).apply {
+                tabKey = to.key()
+                stackOf(to).apply {
                     while (size > 1) removeAt(lastIndex)
                     addAll(screens)
                 }
@@ -273,14 +297,14 @@ fun LumennaApp(
             LaunchedEffect(launch) {
                 val id = launch?.second ?: return@LaunchedEffect
                 when (val went = core.app.launch(id)) {
-                    Launched.QuickAdd -> go(Tab.TASKS, Screen.QuickAdd)
+                    Launched.QuickAdd -> go(TASKS, Screen.QuickAdd)
                     is Launched.At -> {
                         val (place, task) = went
                         when {
-                            place == Place.Today -> go(Tab.TODAY)
-                            place == Place.Tasks && task != null -> go(Tab.TASKS, Screen.Task(task))
-                            place == null || place == Place.Tasks -> go(Tab.TASKS)
-                            else -> go(Tab.BROWSE, Destination.At(place).screen())
+                            place == Place.Today -> go(TODAY)
+                            place == Place.Tasks && task != null -> go(TASKS, Screen.Task(task))
+                            place == null || place == Place.Tasks -> go(TASKS)
+                            else -> go(TabKind.Browse, Destination.At(place).screen())
                         }
                     }
                     null -> {}
@@ -291,10 +315,10 @@ fun LumennaApp(
             val tapped = opened?.collectAsState()?.value
             LaunchedEffect(tapped) {
                 when (val reminded = tapped?.second?.reminded) {
-                    is Reminded.Task -> go(Tab.TASKS, Screen.Task(reminded.id))
-                    is Reminded.Block -> reminded.on?.let { go(Tab.TODAY, Screen.Day(it)) } ?: go(Tab.TODAY)
+                    is Reminded.Task -> go(TASKS, Screen.Task(reminded.id))
+                    is Reminded.Block -> reminded.on?.let { go(TODAY, Screen.Day(it)) } ?: go(TODAY)
                     is Reminded.Replan -> {
-                        go(Tab.TODAY)
+                        go(TODAY)
                         core.app.replan(reminded)
                     }
                     null -> {}
@@ -302,23 +326,23 @@ fun LumennaApp(
             }
 
             // The commands any screen answers; a screen offering one of its own answers instead.
-            Offer(Command.NEW_TASK) { go(Tab.TASKS, Screen.QuickAdd) }
+            Offer(Command.NEW_TASK) { go(TASKS, Screen.QuickAdd) }
             Offer(Command.NEW_BLOCK) {
-                go(Tab.TODAY)
+                go(TODAY)
                 core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("new-block"))
             }
             Offer(Command.FILTER) {
-                go(Tab.TASKS)
+                go(TASKS)
                 shortcuts.filterAsked.value = true
             }
             Offer(Command.UNDO) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("undo")) }
             Offer(Command.REDO) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("redo")) }
-            Offer(Command.GO_TODAY) { go(Tab.TODAY) }
-            Offer(Command.GO_TASKS) { go(Tab.TASKS) }
-            Offer(Command.GO_BLOCKS) { go(Tab.BROWSE, Screen.Blocks) }
-            Offer(Command.GO_TRASH) { go(Tab.BROWSE, Screen.Tasks(Place.Trash)) }
-            Offer(Command.GO_HISTORY) { go(Tab.BROWSE, Screen.Tasks(Place.History)) }
-            Offer(Command.SETTINGS) { go(Tab.SETTINGS) }
+            Offer(Command.GO_TODAY) { go(TODAY) }
+            Offer(Command.GO_TASKS) { go(TASKS) }
+            Offer(Command.GO_BLOCKS) { go(TabKind.Browse, Screen.Blocks) }
+            Offer(Command.GO_TRASH) { go(TabKind.Browse, Screen.Tasks(Place.Trash)) }
+            Offer(Command.GO_HISTORY) { go(TabKind.Browse, Screen.Tasks(Place.History)) }
+            Offer(Command.SETTINGS) { go(TabKind.Settings) }
             Offer(Command.SYNC_NOW) { core.app.syncNow() }
 
             // The app has one question open at a time, asked once over whatever is shown; a
@@ -345,7 +369,7 @@ fun LumennaApp(
                 .focusRequester(regions[index])
                 .focusGroup()
 
-            val choose = { each: Tab -> if (each == tab) go(each) else tab = each }
+            val choose = { each: TabKind -> if (each == tab) go(each) else tabKey = each.key() }
             val changes by core.changes.collectAsState()
 
             Scaffold(
@@ -353,11 +377,11 @@ fun LumennaApp(
                 bottomBar = {
                     if (!wide && !rail) {
                         NavigationBar(Modifier.region(0)) {
-                            Tab.entries.forEach { each ->
+                            tabs.forEach { each ->
                                 NavigationBarItem(
-                                    selected = each == tab,
-                                    onClick = { choose(each) },
-                                    icon = { Icon(each.icon, contentDescription = null) },
+                                    selected = each.kind == tab,
+                                    onClick = { choose(each.kind) },
+                                    icon = { Icon(each.kind.icon(), contentDescription = null) },
                                     label = { TabLabel(each.title) },
                                 )
                             }
@@ -374,11 +398,11 @@ fun LumennaApp(
                         VerticalDivider()
                     } else if (rail) {
                         NavigationRail(Modifier.region(0)) {
-                            Tab.entries.forEach { each ->
+                            tabs.forEach { each ->
                                 NavigationRailItem(
-                                    selected = each == tab,
-                                    onClick = { choose(each) },
-                                    icon = { Icon(each.icon, contentDescription = null) },
+                                    selected = each.kind == tab,
+                                    onClick = { choose(each.kind) },
+                                    icon = { Icon(each.kind.icon(), contentDescription = null) },
                                     label = { TabLabel(each.title) },
                                 )
                             }
@@ -387,7 +411,7 @@ fun LumennaApp(
                     @Composable
                     fun Pane(depth: Int, modifier: Modifier, region: Int) {
                         val screen = stack[depth]
-                        val owner = if (wide) "place" else tab.name
+                        val owner = if (wide) "place" else tab.key()
                         Box(modifier.fillMaxHeight().region(region)) {
                             CompositionLocalProvider(LocalPane provides panes[region]) {
                                 saved.SaveableStateProvider("$owner $depth $screen") {
@@ -456,9 +480,7 @@ private fun Screens(core: Core, navigator: Navigator, screen: Screen, changes: L
         is Screen.Day -> DayScreen(core, navigator, screen)
         Screen.BlockForm -> BlockFormScreen(core, navigator)
         Screen.Browse -> BrowseScreen(core, navigator)
-        Screen.Projects -> ProjectsScreen(core, navigator)
-        Screen.Labels -> LabelsScreen(core, navigator)
-        Screen.Filters -> FiltersScreen(core, navigator)
+        is Screen.Group -> GroupScreen(core, navigator, screen.group)
         Screen.Blocks -> BlocksScreen(core, navigator)
         Screen.Settings -> SettingsScreen(core, navigator)
         Screen.Devices -> DevicesScreen(core, navigator)

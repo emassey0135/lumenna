@@ -10,7 +10,9 @@ import dev.emassey0135.lumenna.app.Side
 import androidx.wear.compose.foundation.lazy.ScalingLazyListState
 import dev.emassey0135.lumenna.rowActions
 import dev.emassey0135.lumenna.offeredOf
-import dev.emassey0135.lumenna.placeRows
+import dev.emassey0135.lumenna.arrangement
+import dev.emassey0135.lumenna.app.RootRow
+import dev.emassey0135.lumenna.app.SidebarEntry
 import dev.emassey0135.lumenna.shownRows
 import dev.emassey0135.lumenna.spoken
 import dev.emassey0135.lumenna.app.placeTitle
@@ -68,69 +70,85 @@ fun WearList(state: ScalingLazyListState = rememberScalingLazyListState(), conte
 }
 
 /**
- * The places, as every app's sidebar has them, from the app: Today, Tasks, the projects,
- * labels and saved filters, Blocks and Trash. Headings and project trees fold, through the
- * app; a heading's own action (New Project, …) beneath it. Then Undo, Redo and Settings.
+ * The watch's root list, the core's (`Arrangement.watch`): New task, every place as the sidebar
+ * has it (headings and project trees folding through the app, a heading's own New beneath it
+ * while it is unfolded), then the rest of Home's own actions a watch that syncs itself has: Undo,
+ * Redo, What should I work on?, Sync now and Settings. An action is `ShellEvent.Key(id)`, named
+ * by its title; what it opens is drawn where the app's is (quick add's line by `Follow`, What
+ * should I work on?'s pick by `WearQuestions`, Sync now's sentences as every announcement), and
+ * Settings is this watch's own screen, which asks the app for its settings.
  */
 @Composable
 fun PlacesScreen(core: Core, navigator: Navigator) {
     val app = core.app
     val view by app.view.collectAsState()
-    // Every place the app lists, an archived project's included, as every app's sidebar has them.
-    val rows = placeRows(view?.sidebar.orEmpty()).filter { !it.hidden }
+    val sidebar = view?.sidebar.orEmpty()
+    val rows = remember(sidebar) { arrangement(sidebar).watch }
+    /** A heading's New while what is under it is shown, as every app's sidebar has it. */
+    fun newUnder(entry: SidebarEntry) =
+        if (entry.kind is SidebarKind.Group && entry.expanded != false) entry.offered.filter { it.kind == ActionKind.NEW } else emptyList()
     // Every item in the list's order, a row by its key, so a row's place is where to scroll.
     val keys = buildList {
-        add("\u0000new")
         rows.forEach { row ->
-            add(row.key)
-            if (row.entry.kind is SidebarKind.Group && row.expanded != false) {
-                row.entry.offered.filter { it.kind == ActionKind.NEW }.forEach { add("\u0000${it.name}") }
+            when (row) {
+                is RootRow.Action -> add("\u0000${row.field0.id}")
+                is RootRow.Place -> {
+                    add(row.field0.key)
+                    newUnder(row.field0).forEach { add("\u0000${it.name}") }
+                }
             }
         }
     }
     val state = rememberScalingLazyListState()
     val focus = rememberSideLanding(core, Side.SIDEBAR, keys) { state.scrollToItem(it) }
     WearList(state) {
-        item { Button(onClick = { navigator.open(Screen.AddTask) }, modifier = Modifier.fillMaxWidth(), label = { Text(appWords.quickAdd.title) }) }
-        rows.forEachIndexed { index, row ->
-            item {
-                val fold = row.entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
-                // Folding and the level where it changes, the core's words.
-                val state = listOfNotNull(row.expanded?.let(::foldState), row.level).joinToString(", ").ifEmpty { null }
-                when (val kind = row.entry.kind) {
-                    is SidebarKind.Place -> RowButton(
-                        row.entry.text,
-                        state = state,
-                        actions = listOfNotNull(fold).let { app.rowActions(row.key, it, side = Side.SIDEBAR) },
-                        key = row.key,
-                        focus = focus,
-                        swatch = row.entry.swatch,
-                        onClick = { navigator.open(placeScreen(kind.field0)) },
-                    )
-                    // A heading folds what is under it when pressed.
-                    is SidebarKind.Group -> Button(
-                        onClick = { fold?.let { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, row.key), it)) } },
-                        // One description, its name then whether it is folded, as a row's.
-                        modifier = Modifier.fillMaxWidth().semantics {
-                            heading()
-                            contentDescription = listOfNotNull(row.entry.text, state).joinToString(", ")
-                        },
-                        // In sentence case, as the app words a heading for Wear OS.
-                        label = { Text(row.entry.text) },
+        rows.forEach { root ->
+            when (root) {
+                is RootRow.Action -> item {
+                    val action = root.field0
+                    Button(
+                        onClick = { if (action.id == "settings") navigator.open(Screen.Settings) else app.send(ShellEvent.Key(action.id)) },
+                        enabled = action.enabled,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(action.title) },
                     )
                 }
-            }
-            // What a heading adds under it, as every app's sidebar has it: the core's New Project and so on.
-            if (row.entry.kind is SidebarKind.Group && row.expanded != false) {
-                row.entry.offered.filter { it.kind == ActionKind.NEW }.forEach { new ->
-                    item { Button(onClick = { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, row.key), new)) }, modifier = Modifier.fillMaxWidth(), label = { Text(new.name) }) }
+                is RootRow.Place -> {
+                    val entry = root.field0
+                    item {
+                        val fold = entry.offered.firstOrNull { it.kind == ActionKind.EXPAND || it.kind == ActionKind.COLLAPSE }
+                        // Folding and the level where it changes, the core's words.
+                        val state = listOfNotNull(entry.expanded?.let(::foldState), entry.level).joinToString(", ").ifEmpty { null }
+                        when (val kind = entry.kind) {
+                            is SidebarKind.Place -> RowButton(
+                                entry.text,
+                                state = state,
+                                actions = listOfNotNull(fold).let { app.rowActions(entry.key, it, side = Side.SIDEBAR) },
+                                key = entry.key,
+                                focus = focus,
+                                swatch = entry.swatch,
+                                onClick = { navigator.open(placeScreen(kind.field0)) },
+                            )
+                            // A heading folds what is under it when pressed.
+                            is SidebarKind.Group -> Button(
+                                onClick = { fold?.let { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, entry.key), it)) } },
+                                // One description, its name then whether it is folded, as a row's.
+                                modifier = Modifier.fillMaxWidth().semantics {
+                                    heading()
+                                    contentDescription = listOfNotNull(entry.text, state).joinToString(", ")
+                                },
+                                // In sentence case, as the app words a heading for Wear OS.
+                                label = { Text(entry.text) },
+                            )
+                        }
+                    }
+                    // What a heading adds under it: the core's New project and so on.
+                    newUnder(entry).forEach { new ->
+                        item { Button(onClick = { app.send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, entry.key), new)) }, modifier = Modifier.fillMaxWidth(), label = { Text(new.name) }) }
+                    }
                 }
             }
         }
-        // Named as every app's commands for them are.
-        item { Button(onClick = { app.send(ShellEvent.Undo) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("undo")) }) }
-        item { Button(onClick = { app.send(ShellEvent.Redo) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("redo")) }) }
-        item { Button(onClick = { navigator.open(Screen.Settings) }, modifier = Modifier.fillMaxWidth(), label = { Text(commandTitle("settings")) }) }
     }
 }
 

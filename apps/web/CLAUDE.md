@@ -74,7 +74,10 @@ pairing with `lum`.
   filtered here (the core lists only the pages with something on them for this device), a page's
   settings by its keys, its caption and its buttons by id (`back-up` a download here,
   `restore-backup`, `import`); a device's own settings but Reminders on this device are left out
-  of a page, since a browser backs up by download or to a folder of its own.
+  of a page, since a browser backs up by download or to a folder of its own. The worker says
+  what a browser can do as the app starts (`Abilities`: files yes, the core's backup folder no,
+  no About of its own), so About is the last page: its `lines` each a paragraph to read, an
+  address in one a link (`Linked`).
   The forms are drawn from the app's: the details, the block form, quick add, Settings, a
   proposal, pairing's words.
 - **Each screen's own actions are the core's buttons** (`ViewModel::screen_actions`,

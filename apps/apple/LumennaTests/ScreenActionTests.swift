@@ -96,5 +96,9 @@ final class ScreenActionTests: XCTestCase {
         XCTAssertEqual(listed, core.app.view.settings?.pages.map(\.id))
         XCTAssertFalse(listed.contains("general"), "an iPhone keeps nothing running and follows its own clock: \(listed)")
         XCTAssertTrue(listed.contains("export"))
+        let about = core.app.view.settings?.pages.first { $0.id == "about" }
+        XCTAssertEqual(about?.lines, LumennaApp.settingsPages(ownClock: true, sentence: false).first { $0.id == "about" }?.lines,
+                       "an iPhone has no About of its own, so About is a page of the core's lines")
+        XCTAssertTrue(about?.lines.contains { $0.contains("https://") } ?? false, "with the website to open")
     }
 }

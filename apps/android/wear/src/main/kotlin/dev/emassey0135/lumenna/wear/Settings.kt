@@ -47,9 +47,9 @@ fun SettingsScreen(core: Core, navigator: Navigator) {
     val view by core.app.view.collectAsState()
     WearList {
         item { Heading(commandTitle("settings")) }
-        // The core's pages, but Export and Import: a watch has nowhere to save a file or pick one,
-        // which the core does not know, so it lists the page here too.
-        view?.settings?.pages.orEmpty().filter { it.id != "export" }.forEach { page ->
+        // The core's pages, as many as this watch has something on: no Export and Import, since
+        // it said it saves and picks no file (`Abilities`), and About, since it has none of its own.
+        view?.settings?.pages.orEmpty().forEach { page ->
             item {
                 Button(
                     onClick = {
@@ -80,7 +80,7 @@ fun appSettings(core: Core): List<SettingView> {
 }
 
 /**
- * One of the core's pages of settings (Planning, Backups, General), as the phone shows it:
+ * One of the core's pages of settings (Planning, Backups, General, About), as the phone shows it:
  * each setting's name, options and what it does are the core's; applying it is the app's.
  * Backups' Back Up Now is into this watch's backups, beside the others; restoring one is the
  * phone's, which can pick a file.
@@ -96,6 +96,8 @@ fun SettingsPageScreen(core: Core, id: String) {
         page?.buttons.orEmpty().filter { it.id == "back-up" }.forEach { button ->
             item { Button(onClick = { core.backUpNow() }, modifier = Modifier.fillMaxWidth(), label = { Text(button.title) }) }
         }
+        // What the page has to read (About's name, version, website…), the core's words, a line each.
+        page?.lines.orEmpty().forEach { line -> item { Text(line, modifier = Modifier.fillMaxWidth()) } }
         page?.caption?.takeIf { it.isNotEmpty() }?.let { item { Text(it) } }
         if (id != "backups") return@WearList
         // What is done to the store as a whole, the core's (Erase everything deleted), beside the
