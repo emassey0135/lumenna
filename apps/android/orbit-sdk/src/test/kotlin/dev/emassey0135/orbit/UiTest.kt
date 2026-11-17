@@ -50,12 +50,12 @@ class UiTest {
 
     private val told = Told()
 
-    /** The time, as the stack reads it, and what waits on it: nothing runs until [wait]. */
+    /** The time, as the stack reads it, and what waits on it: nothing runs until [passTime]. */
     private var clock = 0L
     private val waiting = mutableListOf<() -> Unit>()
 
     /** Runs what was waiting, as the moment passes. */
-    private fun wait() {
+    private fun passTime() {
         val due = waiting.toList()
         waiting.clear()
         due.forEach { it() }
@@ -403,7 +403,7 @@ class UiTest {
         ui.announce("Saved.")
         ui.announce("Synced.")
         assertEquals("list Fruit 3 0 apple", told.calls.last())
-        wait()
+        passTime()
         assertEquals(listOf("say Saved.", "say Synced."), told.calls.takeLast(2))
     }
 
@@ -418,7 +418,7 @@ class UiTest {
         ui.list("Fruit", ::rows)
         told.calls.clear()
         ui.refused("Nothing to undo.")
-        wait()
+        passTime()
         assertEquals(listOf("sound ${OrbitReader.SOUND_ERROR}", "say Nothing to undo."), told.calls)
     }
 
@@ -426,7 +426,7 @@ class UiTest {
         ui.list("Fruit", ::rows)
         told.calls.clear()
         cell('z')
-        wait()
+        passTime()
         assertEquals(listOf("sound ${OrbitReader.SOUND_ERROR}", "say No row starts with z"), told.calls)
     }
 
@@ -434,7 +434,7 @@ class UiTest {
         ui.list("Fruit", ::rows)
         told.calls.clear()
         spaceWith('x')
-        wait()
+        passTime()
         assertEquals(listOf("sound ${OrbitReader.SOUND_ERROR}", "say Nothing on x"), told.calls)
     }
 
@@ -542,7 +542,7 @@ class UiTest {
         own.list("Fruit", ::rows, actions = { listOf(Action("Mix", 'x') { mixed = true }) })
         told.calls.clear()
         own.key(KeyEvent("SPACE_DOT1_DOT3_DOT4_DOT6", KeyEvent.CHORD, false), false)
-        wait()
+        passTime()
         assertEquals(listOf("sound ${OrbitReader.SOUND_ERROR}", "say Press it with dot 8"), told.calls)
         own.key(KeyEvent("DOT1_DOT3_DOT4_DOT6_DOT8", KeyEvent.CHORD, false), false)
         assertTrue(mixed)

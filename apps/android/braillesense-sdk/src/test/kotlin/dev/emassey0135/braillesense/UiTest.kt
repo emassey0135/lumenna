@@ -7,6 +7,7 @@ import dev.emassey0135.braillesense.output.Output
 import dev.emassey0135.braillesense.reading.DeviceReading
 import dev.emassey0135.braillesense.ui.Action
 import dev.emassey0135.braillesense.ui.BrailleSenseUi
+import dev.emassey0135.braillesense.ui.DeviceLetters
 import dev.emassey0135.braillesense.ui.Field
 import dev.emassey0135.braillesense.ui.FormValues
 import dev.emassey0135.braillesense.ui.Item
