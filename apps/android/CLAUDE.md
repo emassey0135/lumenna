@@ -457,6 +457,14 @@ Both SDKs' `ServiceLink`, `Claim` and `KeyDelivery` are the same:
 than Lumenna: what a device needs, a first activity, and the API. A change to an SDK's public API
 changes its README too.
 
+**Each SDK is a git submodule, a repository of its own** (github.com/emassey0135/orbit-sdk and
+braillesense-sdk, Apache-2.0, each with its own CI), checked out at a commit Lumenna names. A change
+to one is made in the submodule's checkout, on a branch of that repository, pushed and merged there
+(its CI runs its tests and builds its sample); Lumenna then moves to that commit (`git add
+apps/android/orbit-sdk`) in a commit of its own. A change that needs both at once goes to the SDK
+first. Lumenna's CI checks out the submodules for the Android jobs (`submodules: true`) and still
+runs both SDKs' JVM tests. A checkout made before the move needs `git submodule update --init`.
+
 ## The BrailleSense SDK
 
 `apps/android/braillesense-sdk/` (`:braillesense-sdk`, package `dev.emassey0135.braillesense`): an
@@ -505,9 +513,8 @@ start, the stack's API, testing), `docs/DEVICE.md` (what the devices do that an 
 keys each keeps, Satellite and `orbit.self_voicing`, package names, root, the reader's queue), and
 the KDoc. A change to its public API changes the README too. What is easy to get wrong here:
 
-- **It is a standalone Gradle build as well as Lumenna's module**, so it can be split into a
-  repository of its own (`git subtree split --prefix=apps/android/orbit-sdk`, the paths at its root
-  unchanged): its own `settings.gradle.kts` (the library at the root, `:sample` beside it), wrapper,
+- **It is a standalone Gradle build as well as Lumenna's module** (its own repository, a
+  submodule here): its own `settings.gradle.kts` (the library at the root, `:sample` beside it), wrapper,
   `gradle/libs.versions.toml` holding the same `libs` aliases its `build.gradle.kts` takes from
   Lumenna's catalog (`android-library`, `junit`), and `.github/workflows/ci.yml`. Lumenna's settings
   include it as `:orbit-sdk` and never read the nested settings. Dokka's version is written in the
