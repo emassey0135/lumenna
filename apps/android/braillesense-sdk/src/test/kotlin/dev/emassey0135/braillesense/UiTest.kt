@@ -40,7 +40,7 @@ class UiTest {
         DeviceReading(listOf(line.label, line.speech).filter { it.isNotEmpty() }.joinToString(": "), emptyList(), line.text, emptyList())
     }
 
-    private val ui = BrailleSenseUi(BrailleDisplay(out, Plain), Plain, clipboard, read)
+    private val ui = BrailleSenseUi(BrailleDisplay(out, Plain), Plain, clipboard, read, speechDelay = 0)
 
     private val last: String get() = said.last()
 
@@ -175,5 +175,67 @@ class UiTest {
         ui.press(Key.Escape)
         assertNull(chosen)
         assertEquals("Cancel. Apple", last)
+    }
+
+    @Test fun aRefreshThatLandsSaysTheRowWhereAPlainOneSaysNothing() {
+        ui.list("Fruit", { fruit })
+        val before = said.size
+        ui.refresh()
+        assertEquals(before, said.size)
+        ui.refresh(landed = true)
+        assertEquals(before + 1, said.size)
+        assertEquals("Apple", last)
+    }
+
+    @Test fun whatTheAppSaysAsAKeyRunsIsSaidWithTheLineAsOneThing() {
+        ui.list("Fruit", { listOf(Item("a", "Apple", open = { ui.announce("Eaten") })) })
+        ui.press(Key.Enter)
+        assertEquals("Eaten. Apple", last)
+    }
+
+    @Test fun spaceOnACheckBoxIsSaidOnceTheAppHasChangedIt() {
+        var ripe = false
+        ui.list("Fruit", { listOf(Item("a", if (ripe) "Apple, ripe" else "Apple", space = { ripe = !ripe })) })
+        val before = said.size
+        ui.press(Key.Space)
+        assertEquals("nothing said until the app shows the change", before, said.size)
+        ui.refresh()
+        assertEquals("Apple, ripe", last)
+    }
+
+    @Test fun aScreenThatNoLongerStandsClosesAtARefreshAndTheOneUnderIsSaid() {
+        var open = true
+        ui.list("Fruit", { fruit })
+        ui.push(object : dev.emassey0135.braillesense.ui.Screen() {
+            override val title = "Question"
+            override fun frame() = dev.emassey0135.braillesense.ui.ListFrame("q", "Question", emptyList(), null, "Asked", DeviceLetters, readings = read)
+            override fun stands() = open
+        })
+        open = false
+        ui.refresh()
+        assertEquals("Apple", last)
+        assertEquals(1, ui.screens.size)
+    }
+
+    @Test fun aScreenThatTakesEscapeItselfStays() {
+        var cancelled = 0
+        ui.list("Fruit", { fruit })
+        ui.push(object : dev.emassey0135.braillesense.ui.Screen() {
+            override val title = "Form"
+            override fun frame() = dev.emassey0135.braillesense.ui.ListFrame("f", "Form", emptyList(), null, "Empty", DeviceLetters, readings = read)
+            override fun back() = true.also { cancelled++ }
+        })
+        ui.press(Key.Escape)
+        assertEquals(1, cancelled)
+        assertEquals(2, ui.screens.size)
+    }
+
+    @Test fun spaceWithALetterRunsTheRowsCommandElseSaysNothingIsOnIt() {
+        val ran = mutableListOf<Char>()
+        ui.list("Fruit", { listOf(Item("a", "Apple", command = { letter -> (letter == 'e').also { if (it) ran += letter } })) })
+        ui.press(Key.SpaceLetter('e'))
+        assertEquals(listOf('e'), ran)
+        ui.press(Key.SpaceLetter('q'))
+        assertEquals("Nothing on q.", last)
     }
 }

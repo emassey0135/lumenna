@@ -47,6 +47,12 @@ abstract class Frame(
 
     /** The edit box's text was changed by its keys: what the frame does with it as it changes. */
     open fun edited() {}
+
+    /** Space or Enter with [letter], which the frame's own keys did not take: true if something in it ran. */
+    open fun pressLetter(letter: Char): Boolean = false
+
+    /** Whether [key] asks the app to change what the line says (a check box, folding): the line is said once the app has, not now. */
+    open fun changes(key: Key): Boolean = false
 }
 
 /** One row of a list. */
@@ -141,6 +147,15 @@ class ListFrame(
     override fun routed(at: Int) {
         // A list's lines are single rows; routing presses the row.
         current?.open?.invoke()
+    }
+
+    override fun pressLetter(letter: Char): Boolean = current?.command?.invoke(letter) == true
+
+    override fun changes(key: Key): Boolean = when (key) {
+        Key.Space -> !prompt && current?.space != null
+        Key.CharLeft -> current?.collapse != null
+        Key.CharRight -> current?.expand != null
+        else -> false
     }
 
     override fun key(key: Key): Boolean = when (key) {

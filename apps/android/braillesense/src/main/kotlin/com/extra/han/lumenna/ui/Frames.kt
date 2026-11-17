@@ -53,6 +53,8 @@ class FormFrame(
 
     override fun edited() = typed()
 
+    override fun pressLetter(letter: Char): Boolean = press(letter)
+
     /** The line in hand's text, as its box now holds it, handed to the controller where it changed. */
     fun typed() {
         val line = current?.takeIf(::isLine) ?: return

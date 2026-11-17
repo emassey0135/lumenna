@@ -1,9 +1,6 @@
 package com.extra.han.lumenna.ui
 
-import dev.emassey0135.braillesense.edit.BoxEditing
 import dev.emassey0135.braillesense.edit.Clipboard
-import dev.emassey0135.braillesense.edit.EditDisplay
-import dev.emassey0135.braillesense.edit.Edited
 import dev.emassey0135.braillesense.edit.TextBox
 import dev.emassey0135.braillesense.output.BrailleDisplay
 import dev.emassey0135.braillesense.reading.ControlRole
@@ -11,17 +8,18 @@ import dev.emassey0135.braillesense.reading.dialogTitle
 import dev.emassey0135.braillesense.braille.Echo
 import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.braillesense.braille.Translator
+import dev.emassey0135.braillesense.ui.BrailleSenseUi
 import dev.emassey0135.braillesense.ui.Frame
 import dev.emassey0135.braillesense.ui.LineFrame
 import dev.emassey0135.braillesense.ui.ListFrame
 import dev.emassey0135.braillesense.ui.Letters
 import dev.emassey0135.braillesense.ui.MenuEntry
-import dev.emassey0135.braillesense.ui.MenuFrame
-import dev.emassey0135.braillesense.ui.Messages
+import dev.emassey0135.braillesense.ui.MenuItem
 import dev.emassey0135.braillesense.ui.Readings
 import dev.emassey0135.braillesense.ui.Rendered
 import dev.emassey0135.braillesense.ui.Row
-import dev.emassey0135.braillesense.ui.show
+import dev.emassey0135.braillesense.ui.Screen
+import dev.emassey0135.braillesense.ui.UiWords
 import dev.emassey0135.lumenna.AppModel
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.SettingsPages
@@ -81,7 +79,7 @@ interface Host {
     fun deviceName(): String
 }
 
-/** A screen the person went to, on the way back from which Escape walks. */
+/** A page the person went to, on the way back from which Escape walks. */
 private sealed interface Page {
     /** The places, then what can be done from anywhere: the core's Home, where the app opens. */
     data object Home : Page
@@ -90,22 +88,25 @@ private sealed interface Page {
     data object Settings : Page
     data class SettingsPage(val id: String) : Page
     data object Devices : Page
-    data object Reminders : Page
     data object Due : Page
     data object Help : Page
 }
 
 /**
- * The screens, over the Crux app's view model: what is shown is the app's, this decides only how
- * it is laid out on a line at a time, and what the keys do to it. All on the main thread.
+ * The screens, over the Crux app's view model, on the BrailleSense SDK's screen stack
+ * ([BrailleSenseUi]): what is shown is the app's, this decides only how it is laid out on a line at
+ * a time. The stack takes the keys, the menus, the edit boxes, panning and routing, and decides
+ * when to speak; this follows the core's view each turn.
  *
- * Each turn the view is laid out afresh as frames; the frame in front is said and shown if it is
- * new or the app moved what is in hand (`landing`), and only put on the cells otherwise, so a
- * sync or a new minute never cuts off what is being read.
+ * Each page the person goes to is a [PageScreen], and what the app opens itself (a question, the
+ * block form, quick add, a proposal, a reminder list) one [OpenedScreen] over them, which goes as the
+ * app closes it. Each turn the screen in front is laid out afresh from the view; it is said when it
+ * is new or the app moved what is in hand (`landing`), and only put on the cells otherwise, so a
+ * sync or a new minute never cuts off what is being read. All on the main thread.
  */
 class Shell(
     private val core: Core,
-    private val out: BrailleDisplay,
+    out: BrailleDisplay,
     private val translator: Translator,
     private val host: Host,
     private val readings: Readings,
@@ -113,21 +114,29 @@ class Shell(
     clipboard: Clipboard,
     private val letters: Letters = BrailleLetters,
     /** How long a message stays on the cells: the device's Message Display Time. */
-    private val messageMillis: () -> Long = { 3000L },
+    messageMillis: () -> Long = { 3000L },
     /** Automatically Open Menus with Shortcut: whether a letter opens what it names or only goes to it. */
     private val opensOnLetter: () -> Boolean = { true },
-    private val echoSetting: () -> Echo = { Echo.of(1) },
+    echoSetting: () -> Echo = { Echo.of(1) },
 ) {
     private val app: AppModel get() = core.app
 
-    /** An edit box's own keys and what it says for them, as the device's own box. */
-    private val editing = BoxEditing(translator, clipboard, echoSetting)
-    private val pages = ArrayDeque<Page>(listOf(Page.Home))
+    private val ui = BrailleSenseUi(
+        out, translator, clipboard, readings,
+        echo = echoSetting, messageMillis = messageMillis, opensOnLetter = opensOnLetter, letters = letters,
+        words = UiWords(
+            cancel = appWords.cancel,
+            yes = appWords.yesNo.firstOrNull { it.id == "yes" }?.title ?: "Yes",
+            no = appWords.yesNo.firstOrNull { it.id == "no" }?.title ?: "No",
+            opensNothing = appWords.braille.opensNothing,
+            noActions = appWords.braille.noActions,
+            notFound = { noRowStartsWith(it.toString()) },
+            nothingOnLetter = { nothingOnLetter(it.toString()) },
+        ),
+    )
 
     /** Home asked for and not shown yet: until it is, the app's last place is no move of its own. */
     private var awaitingHome = true
-    private var menu: MenuFrame? = null
-    private var frame: Frame? = null
 
     /** Which side list each frame is, for those that are one. */
     private val sides = HashMap<String, Side>()
@@ -141,20 +150,31 @@ class Shell(
     private var handledForm = 0u
     private var lastLanding = 0u
     private var landedNow = false
-    private var lastId = ""
-    private var lastSpeech = ""
-    private val announcements = ArrayList<String>()
-    private var pendingRow: String? = null
 
-    /** The name of the screen just opened, until it is said with its line. */
-    private var pendingTitle: String? = null
-    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val saying = Runnable { flush() }
+    /** Every page is being closed at once (Home from the menu, a place gone to): none of them asks for Home again. */
+    private var leavingAll = false
 
     private var screen: ScreenView = app.screenView()
 
+    /** What is on the display, for the LCD and an HDMI screen: what a sighted helper reads. */
+    var drawn: (String) -> Unit = {}
+
+    /** The dialog shown and its control in hand, kept across turns while it stays open (the braille apps' shared controller). */
+    private var dialogController: DialogController? = null
+
+    /** Each line's value as the core last described it, to tell when the core changed it underneath. */
+    private val coreValues = HashMap<String, String>()
+
+    /** Whether the reminders due page has shown any, so that the last dealt with leaves it. */
+    private var dueShown = false
+
     init {
+        ui.onEmpty = { host.exit() }
+        ui.onExit = { host.exit() }
+        ui.onUnhandled = ::unhandled
+        ui.drawn = { drawn(it) }
         app.described = ::described
+        ui.push(PageScreen(Page.Home))
         send(ShellEvent.Home)
     }
 
@@ -163,12 +183,10 @@ class Shell(
     /** A turn's description, before its view: what the core refused that no sentence said. */
     private fun described(described: ScreenView) {
         screen = described
-        val refused = described.changes.filterIsInstance<ScreenChange.Refused>().filter { !it.said }
-        refused.forEach { announcements += it.reason }
+        described.changes.filterIsInstance<ScreenChange.Refused>().filter { !it.said }.forEach { ui.announce(it.reason) }
         // The last of a turn to arrive, with the view and lines in place: a list drawn sooner
         // would pair this view with the last turn's lines.
-        refresh(false)
-        if (refused.isNotEmpty()) schedule()
+        turn()
         // What the app said waits for the row in hand to land, which it has.
         core.release()
     }
@@ -185,81 +203,133 @@ class Shell(
     /** The braille table changed: every box is written again in the new one, its text kept, as the device's own are. */
     fun retable() {
         editors.values.forEach { it.recell() }
-        frame?.let { out.show(it.rendered) }
+        ui.redraw()
     }
 
     /** Something the app said: said with the next change, or at once if nothing moves. */
-    fun announce(text: String) {
-        announcements += text
-        schedule()
-    }
-
-    private fun schedule() {
-        handler.removeCallbacks(saying)
-        handler.postDelayed(saying, SPEECH_DELAY)
-    }
-
-    /** Says what the app said and then the line it left, as one thing. */
-    private fun flush() {
-        handler.removeCallbacks(saying)
-        val said = announcements.filter { it.isNotBlank() }.map { if (it.last() in ".?!") it else "$it." }
-        // A list that is only what was just said is not said twice.
-        val row = said.fold(pendingRow.orEmpty()) { left, sentence -> left.removeSuffix(sentence.trimEnd('.', ' ')).trimEnd() }
-        val parts = said + listOfNotNull(row.takeIf { it.isNotBlank() })
-        announcements.clear()
-        pendingRow = null
-        pendingTitle = null
-        if (parts.isNotEmpty()) out.say(parts.joinToString(" "))
-        // What changes say is for the cells too: someone reading braille alone hears none of it.
-        if (said.isNotEmpty()) showMessage(said.joinToString(" "))
-    }
-
-    /** A message on the cells for the device's own time, then the line under it again. */
-    private val messages = Messages(out, messageMillis, under = { frame?.rendered }, handler = handler)
-
-    private fun showMessage(text: String) = messages.show(text)
-
-    private fun clearMessage() = messages.clear()
+    fun announce(text: String) = ui.announce(text)
 
     /** What is on the screen for a sighted helper: the line in front. */
-    fun currentText(): String = frame?.rendered?.speech.orEmpty()
+    fun currentText(): String = ui.frame?.rendered?.speech.orEmpty()
 
     /** A reminder's notification opened on a task. */
     fun openTask(id: String) = openDetails(id)
 
     /** Comes to the front: says where the person is. */
-    fun front() {
-        lastId = ""
-        refresh(true)
-    }
+    fun front() = ui.front()
 
     /** The device's settings changed while in front: the line reads as they now say, unsaid. */
-    fun redraw() = refresh(false)
+    fun redraw() = ui.redraw()
 
-    private fun build(): Frame {
-        menu?.let { return it }
-        confirming?.let { return confirmation(it) }
-        val model = view ?: return Blank
-        // What the app has open on top, as the core describes it: a question, the block form, quick add.
+    /** A key, from the braille keys or the QWERTY keyboard: the stack's. */
+    fun press(key: Key) = ui.press(key)
+
+    // ── Following the view ─────────────────────────────────────────────────────────────────
+
+    /** The page in front, under anything the app or the stack has open over it. */
+    private val topPage: PageScreen? get() = ui.screens.lastOrNull { it is PageScreen } as PageScreen?
+
+    /**
+     * A turn of the app: Home left for a place it opened, what the app has open shown over the pages,
+     * what it closed gone, and the screen in front laid out again, said if the app moved what is in hand.
+     */
+    private fun turn() {
+        val model = view
+        val landed = model != null && model.landing != lastLanding
+        landedNow = landed
+        if (model != null) {
+            lastLanding = model.landing
+            follow(model)
+            if (opens(model) && ui.screens.none { it is OpenedScreen }) ui.push(OpenedScreen())
+        }
+        ui.refresh(landed)
+        // A dialog's controller and the text of its lines go with the dialog.
+        val owner = ui.screens.lastOrNull { it is LumennaScreen } as LumennaScreen?
+        if (owner !is FilterScreen && owner?.built !is FormFrame) closeDialog()
+    }
+
+    /**
+     * The app's own moves between Home and a place: a place Home opened (Enter, a letter, a
+     * command that goes to one) is shown, as a shell follows the app.
+     */
+    private fun follow(model: ViewModel) {
+        if (model.home != null) awaitingHome = false
+        if (topPage?.page == Page.Home && model.home == null && !awaitingHome && model.place != null) pushPage(Page.Listing)
+    }
+
+    /** Whether the app has something open of its own: a question, a form, quick add, a proposal, a reminder list. */
+    private fun opens(model: ViewModel): Boolean =
+        screen.dialog != null || model.asking?.let(::asksSomething) == true || model.proposal != null || model.reminders != null
+
+    /** A question that shows something: not one that asks nothing, nor a form with nothing to edit. */
+    private fun asksSomething(asked: dev.emassey0135.lumenna.app.Asking): Boolean = when (asked.question) {
+        is Question.Immediate -> false
+        is Question.Form -> asked.action != null
+        else -> true
+    }
+
+    /** What the app has open, as a frame: the core's dialog first, then a form asked for, a proposal, a reminder list. */
+    private fun opened(model: ViewModel): Frame? {
         screen.dialog?.let { return appDialog(it) }
         model.asking?.let { asked -> formAsked(asked)?.let { return it } }
-        model.proposal?.let { return proposal(model) }
-        model.reminders?.let { return reminders(model) }
-        return when (val page = pages.last()) {
-            Page.Home -> home(model)
-            Page.Listing -> listing(model)
-            is Page.Task -> task(model, page.id)
-            Page.Settings -> settings(model)
-            is Page.SettingsPage -> settingsPage(model, page.id)
-            Page.Devices -> devices(model)
-            Page.Reminders -> reminders(model)
-            Page.Due -> due(model)
-            Page.Help -> help()
+        if (model.proposal != null) return proposal(model)
+        if (model.reminders != null) return reminders(model)
+        return null
+    }
+
+    /** Back to Home, which the app shows again. */
+    private fun goHome() {
+        closeAllPages()
+        awaitingHome = true
+        send(ShellEvent.Home)
+    }
+
+    /** Everything over Home closed, none of it asking for Home again. */
+    private fun closeAllPages() {
+        leavingAll = true
+        try {
+            ui.screens.asReversed().forEach { if (!(it is PageScreen && it.page == Page.Home)) ui.close(it) }
+        } finally {
+            leavingAll = false
         }
     }
 
-    /** What a form held goes with it: the next one opened starts from its own values. */
-    private fun forgetClosed(@Suppress("UNUSED_PARAMETER") model: ViewModel?) {}
+    private fun pushPage(page: Page) {
+        when (page) {
+            // Settings already open stay as they are: opening them again empties the page for a turn.
+            Page.Settings, is Page.SettingsPage -> if (view?.settings == null) send(ShellEvent.Key("settings"))
+            Page.Devices -> {
+                // What pairing's sentences call this device, which finds others on its network.
+                send(ShellEvent.PairingAs(appWords.thisDevice, true))
+                send(ShellEvent.Devices(DevicesEvent.Show))
+                send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Open(host.deviceName()))))
+            }
+            else -> {}
+        }
+        ui.push(PageScreen(page))
+    }
+
+    /** A page left: what it held put away, settings closed when the last of them goes, Home asked for again. */
+    private fun leaving(page: Page, cancelled: Boolean) {
+        when (page) {
+            // Leaving the task's form throws away what was not saved, as its Cancel does.
+            is Page.Task -> if (!cancelled) send(ShellEvent.Details(DetailsEvent.Discard))
+            is Page.SettingsPage -> forget("setting:", "settings:${page.id}")
+            Page.Devices -> {
+                send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Cancel)))
+                forget("pairing-code", "devices")
+            }
+            else -> {}
+        }
+        val now = topPage?.page
+        if ((page is Page.Settings || page is Page.SettingsPage) && now !is Page.Settings && now !is Page.SettingsPage) {
+            send(ShellEvent.Settings(SettingsEvent.Close))
+        }
+        if (now == Page.Home && !leavingAll) {
+            awaitingHome = true
+            send(ShellEvent.Home)
+        }
+    }
 
     /** No dialog shown: its controller and the text of its lines go with it. */
     private fun closeDialog() {
@@ -278,324 +348,143 @@ class Shell(
         override val rendered = Rendered("")
     }
 
-    private fun refresh(moved: Boolean, fromKey: Boolean = false) {
-        val model = view
-        val landed = model != null && model.landing != lastLanding
-        landedNow = landed
-        if (model != null) lastLanding = model.landing
-        forgetClosed(model)
-        if (model != null) follow(model)
-        // The last reminder dealt with leaves nothing on its page.
-        if (pages.last() == Page.Due && dueShown && model?.due.isNullOrEmpty()) pages.removeLast()
-        val built = build()
-        if (built !is FormFrame && built.id != "filter") closeDialog()
-        frame = built
-        val rendered = built.rendered
-        if (fromKey) clearMessage()
-        if (!messages.up) out.show(rendered)
-        out.selecting(boxOf(built)?.selecting == true)
-        drawn(rendered.speech)
-        val fresh = built.id != lastId
-        lastId = built.id
+    // ── The screens ────────────────────────────────────────────────────────────────────────
+
+    /** A screen of this shell's: the menu bar is the core's, and a letter on a list the app holds is the app's. */
+    private abstract inner class LumennaScreen : Screen() {
+        override val title: String get() = ""
+
+        /** The frame last laid out. */
+        var built: Frame? = null
+
+        abstract fun layout(): Frame
+
+        override fun frame(): Frame = layout().also { built = it }
+
+        /** A list says its name, a dialog that it is one and what it opens with, a question's answers its prompt. */
+        override fun heading(frame: Frame): String = when (frame) {
+            is ListFrame -> frame.title
+            is FormFrame -> listOfNotNull(frame.title?.let { if (frame.prompt) it else dialogTitle(it) }, frame.preamble.ifEmpty { null }).joinToString(". ")
+            else -> ""
+        }
+
         // A side list shown is what the app acts on from now: until it is told, a letter pressed
         // here would run on the row in hand in the main list, which the person cannot see.
-        if (fresh && built is ListFrame) sides[built.id]?.let { side -> built.current?.let { held(it.key, side) } }
-        val firstContent = lastSpeech.isEmpty() && rendered.speech.isNotEmpty()
-        val reworded = awaitingChange && rendered.speech != lastSpeech
-        if (reworded) awaitingChange = false
-        if (moved || fresh || landed || firstContent || reworded) {
-            val title = when {
-                !fresh -> ""
-                built is ListFrame -> built.title
-                // A dialog says it is one and what it opens with; a question's answers are its prompt.
-                built is FormFrame -> listOfNotNull(built.title?.let { if (built.prompt) it else dialogTitle(it) }, built.preamble.ifEmpty { null }).joinToString(". ")
-                else -> ""
-            }
-            val row = rendered.speech
-            // A screen opened inside the key that chose it is drawn again by that key, its line
-            // perhaps moved on: its name, due to be said, stays until it is.
-            if (title.isNotBlank()) pendingTitle = title
-            val heading = title.ifBlank { pendingTitle.orEmpty() }
-            pendingRow = when {
-                heading.isBlank() -> row
-                heading.last() in ".?!" -> "$heading $row"
-                else -> "$heading. $row"
-            }
+        override fun shown(frame: Frame) {
+            if (frame is ListFrame) sides[frame.id]?.let { side -> frame.current?.let { held(it.key, side) } }
         }
-        lastSpeech = rendered.speech
-        if (fromKey) flush() else if (pendingRow != null) schedule()
+
+        override fun menu(): List<MenuItem<() -> Unit>> = menuBar()
+
+        override fun letter(letter: Char): Boolean {
+            if ((built as? ListFrame)?.appHeld != true) return false
+            send(ShellEvent.Letter(letter.toString()))
+            return true
+        }
     }
 
-    /** A key, from the braille keys or the QWERTY keyboard. */
-    fun press(key: Key) {
-        // The answer says what it did and nothing more: the box it returns to is not read again.
-        if (confirming != null && (key == Key.Escape || key == Key.Enter)) {
-            out.silence()
-            clearMessage()
-            return answerConfirmation(key == Key.Enter && (frame as? ListFrame)?.current?.key == "yes")
+    /** A page the person went to. */
+    private inner class PageScreen(val page: Page) : LumennaScreen() {
+        private var cancelled = false
+
+        override fun layout(): Frame {
+            val model = view ?: return Blank
+            return when (page) {
+                Page.Home -> home(model)
+                Page.Listing -> listing(model)
+                is Page.Task -> task(model, page.id)
+                Page.Settings -> settings(model)
+                is Page.SettingsPage -> settingsPage(model, page.id)
+                Page.Devices -> devices(model)
+                Page.Due -> due(model)
+                Page.Help -> help()
+            }
         }
+
+        // A form closes as its Cancel does (the task form's throws away what was not saved), and the page with it.
+        override fun back(): Boolean {
+            cancelled = (built as? FormFrame)?.controller?.cancel() == true
+            return false
+        }
+
+        // The last reminder dealt with leaves nothing on its page.
+        override fun stands(): Boolean = page != Page.Due || !(dueShown && view?.due.isNullOrEmpty())
+
+        override fun closed() = leaving(page, cancelled)
+    }
+
+    /** What the app has open of its own, over the pages, until the app closes it. */
+    private inner class OpenedScreen : LumennaScreen() {
+        override fun layout(): Frame {
+            val model = view ?: return Blank
+            return opened(model) ?: Rendering("")
+        }
+
+        override fun stands(): Boolean = view?.let(::opens) == true
+
+        // It goes as the app closes it: Escape asks the app to, as its Cancel would.
+        override fun back(): Boolean {
+            if ((built as? FormFrame)?.controller?.cancel() == true) return true
+            val model = view
+            when {
+                model?.asking != null -> send(ShellEvent.Cancel)
+                model?.line != null -> send(ShellEvent.Typing(Typing.Close))
+                model?.blockForm != null -> send(ShellEvent.Block(BlockEvent.Cancel))
+                model?.proposal != null -> send(ShellEvent.Proposal(ProposalEvent.Close))
+                model?.reminders != null -> send(ShellEvent.CloseReminders)
+                else -> return false
+            }
+            return true
+        }
+    }
+
+    /**
+     * The filter's line over the list shown (Space-F): Enter keeps the filter and goes back to the
+     * list; Escape leaves it cleared, still on the list.
+     */
+    private inner class FilterScreen : LumennaScreen() {
+        private val line = LineFrame(
+            FILTER, appWords.quickAdd.filter, editor(FILTER, view?.query.orEmpty()), appWords.quickAdd.filterHint, readings,
+            done = {
+                editors.remove(FILTER)
+                ui.close(this)
+            },
+            changed = { send(ShellEvent.Filter(it)) },
+        )
+
+        override fun layout(): Frame = line
+
+        override fun back(): Boolean {
+            editors.remove(FILTER)
+            send(ShellEvent.Filter(""))
+            return false
+        }
+
+        override fun letter(letter: Char): Boolean = false
+    }
+
+    // ── Keys the stack leaves ──────────────────────────────────────────────────────────────
+
+    /** What the stack leaves: the device's Help, Options and Find, and why Tab or Enter-I does nothing. */
+    private fun unhandled(key: Key) {
         when (key) {
-            Key.Silence -> return out.silence()
-            // Outside a line the dots are what they were: Space with them.
-            Key.SayCharacter, Key.SayWord -> if (frame?.let(::boxOf) == null) {
-                return press(Key.SpaceDots(if (key == Key.SayWord) SAY_WORD_DOTS else SAY_CHARACTER_DOTS))
-            }
-            // A multi-line box reads the cursor's line itself; anything else is read whole.
-            Key.Repeat -> if (frame?.let(::boxOf)?.multiLine != true) return run {
-                clearMessage()
-                frame?.rendered?.let { out.say(it.speech); out.show(it) }
-            }
-            Key.ScrollOn -> {
-                clearMessage()
-                if (!out.scrollOn() && frame !is FormFrame) step(Key.Down)
-                return
-            }
-            Key.ScrollBack -> {
-                clearMessage()
-                if (!out.scrollBack() && frame !is FormFrame) step(Key.Up)
-                return
-            }
-            is Key.Route -> {
-                clearMessage()
-                val at = out.routed(key.cell)
-                if (at >= 0) {
-                    val routed = frame
-                    routed?.routed(at)
-                    // In an edit box the cursor only moves, as in the device's own: nothing is said.
-                    refresh(routed == null || boxOf(routed) == null)
-                }
-                return
-            }
-            else -> {}
-        }
-        out.silence()
-        val current = frame ?: build()
-        boxOf(current)?.let { box -> if (edit(current, box, key)) return }
-        if (current.key(key)) {
-            if (changes(current, key)) {
-                clearMessage()
-                awaitingChange = true
-                refresh(false)
-            } else {
-                refresh(true, fromKey = true)
-            }
-            return
-        }
-        // What a frame leaves is the program's.
-        when (key) {
-            Key.Menu -> openMenu()
-            // Escape on the filter's line leaves the filter, cleared, and the list stays.
-            Key.Escape -> if (filtering) clearFilter() else back()
-            Key.Tab, Key.ShiftTab -> if (current is ListFrame) announce(appWords.braille.tabInAList)
-            Key.Exit -> host.exit()
+            Key.Tab, Key.ShiftTab -> if (ui.frame is ListFrame) announce(appWords.braille.tabInAList)
             Key.Help -> pushPage(Page.Help)
             Key.Options -> pushPage(Page.Settings)
             Key.Find -> startFiltering()
             Key.Context -> announce(appWords.braille.noActionsHere)
-            is Key.SpaceDots -> commandLetter(BrailleLetters.of(key.dots))
-            is Key.EnterDots -> commandLetter(BrailleLetters.of(key.dots))
-            is Key.SpaceLetter -> commandLetter(key.letter)
-            is Key.EnterLetter -> commandLetter(key.letter)
             else -> {}
         }
-    }
-
-    /**
-     * The app's own moves between Home and a place: a place Home opened (Enter, a letter, a
-     * command that goes to one) is shown, as a shell follows the app.
-     */
-    private fun follow(model: ViewModel) {
-        if (model.home != null) awaitingHome = false
-        if (pages.last() == Page.Home && model.home == null && !awaitingHome && model.place != null) pages.addLast(Page.Listing)
-    }
-
-    /** Back to Home, which the app shows again. */
-    private fun goHome() {
-        pages.clear()
-        pages.addLast(Page.Home)
-        awaitingHome = true
-        send(ShellEvent.Home)
-        refresh(true)
-    }
-
-    private fun step(key: Key) {
-        out.silence()
-        frame?.key(key)
-        refresh(true, fromKey = true)
-    }
-
-    /** A key that asks the app to change what the row says: said once the app has answered. */
-    private fun changes(frame: Frame, key: Key): Boolean {
-        return when {
-            frame is ListFrame -> (key == Key.Space && frame.current?.space != null) ||
-                (key == Key.CharLeft && frame.current?.collapse != null) || (key == Key.CharRight && frame.current?.expand != null)
-            else -> false
-        }
-    }
-
-    private var awaitingChange = false
-
-    private fun boxOf(frame: Frame): TextBox? = frame.editBox()
-
-    /**
-     * A key in an edit box, as the device's own box takes it (`BoxEditing`): what it changed is told
-     * to the form or line, the cells drawn again, and what the device says for it said. A key that
-     * is not the box's goes on to the frame.
-     */
-    private fun edit(frame: Frame, box: TextBox, key: Key): Boolean {
-        val display = object : EditDisplay {
-            override val width: Int get() = out.cellsWide()
-
-            override fun cursorLine(): IntRange? {
-                // The line as the display shows it at the cursor, not a message over it.
-                clearMessage()
-                out.show(frame.rendered)
-                return out.cursorLine()
-            }
-        }
-        when (val edited = editing.press(box, key, display)) {
-            Edited.NotTaken -> return false
-            is Edited.Taken -> told(frame, box, edited)
-            is Edited.Ask -> confirm(edited.question, yes = { told(frame, box, edited.answer(true)) }, no = { told(frame, box, edited.answer(false)) })
-        }
-        return true
-    }
-
-    private fun told(frame: Frame, box: TextBox, edited: Edited.Taken) {
-        if (edited.changed) {
-            frame.edited()
-        }
-        clearMessage()
-        refresh(false)
-        edited.said?.let(out::say)
-    }
-
-    /** A yes-or-no question of the shell's own over an edit box, as the device's prompt asks it. */
-    private class Confirming(val prompt: String, val returnTo: String, val yes: () -> Unit, val no: () -> Unit)
-
-    private var confirming: Confirming? = null
-
-    /** Asks [prompt], Yes first, and runs [yes] or [no] with the box it was asked over back in front. */
-    private fun confirm(prompt: String, yes: () -> Unit, no: () -> Unit) {
-        confirming = Confirming(prompt, lastId, yes, no)
-        clearMessage()
-        refresh(true, fromKey = true)
-    }
-
-    private fun confirmation(asked: Confirming): Frame {
-        val rows = appWords.yesNo.map { choice ->
-            Row(choice.id, choice.title, role = ControlRole.PROMPT_BUTTON, open = { answerConfirmation(choice.id == "yes") })
-        }
-        return list(CONFIRMING, asked.prompt, rows, null, "", hold = false, prompt = true)
-    }
-
-    private fun answerConfirmation(yes: Boolean) {
-        val asked = confirming ?: return
-        confirming = null
-        selected.remove(CONFIRMING)
-        // Back to the box as it was, not a new screen to announce.
-        lastId = asked.returnTo
-        if (yes) asked.yes() else asked.no()
-    }
-
-    private fun pushPage(page: Page) {
-        pages.addLast(page)
-        when (page) {
-            // Settings already open stay as they are: opening them again empties the page for a turn.
-            Page.Settings, is Page.SettingsPage -> if (view?.settings == null) send(ShellEvent.Key("settings"))
-            Page.Devices -> {
-                // What pairing's sentences call this device, which finds others on its network.
-                send(ShellEvent.PairingAs(appWords.thisDevice, true))
-                send(ShellEvent.Devices(DevicesEvent.Show))
-                send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Open(host.deviceName()))))
-            }
-            else -> {}
-        }
-        refresh(true)
-    }
-
-    private fun back() {
-        val model = view
-        // A dialog closes as its Cancel does (the task form's throws away what was not saved); one
-        // the app has open goes as the app closes it, one of this shell's pages with the page.
-        val cancelled = (frame as? FormFrame)?.controller?.cancel() == true
-        if (cancelled && pages.last() !is Page.Task) return
-        when {
-            cancelled -> {}
-            model?.asking != null -> send(ShellEvent.Cancel)
-            model?.line != null -> send(ShellEvent.Typing(Typing.Close))
-            model?.blockForm != null -> send(ShellEvent.Block(BlockEvent.Cancel))
-            model?.proposal != null -> send(ShellEvent.Proposal(ProposalEvent.Close))
-            model?.reminders != null -> send(ShellEvent.CloseReminders)
-            pages.size > 1 -> {
-                val left = pages.removeLast()
-                when (left) {
-                    // Leaving the task's form throws away what was not saved, as its Cancel does.
-                    is Page.Task -> if (!cancelled) send(ShellEvent.Details(DetailsEvent.Discard))
-                    is Page.SettingsPage -> forget("setting:", "settings:${left.id}")
-                    Page.Devices -> {
-                        send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Cancel)))
-                        forget("pairing-code", "devices")
-                    }
-                    else -> {}
-                }
-                if (left is Page.Settings || left is Page.SettingsPage) {
-                    if (pages.last() !is Page.Settings && pages.last() !is Page.SettingsPage) send(ShellEvent.Settings(SettingsEvent.Close))
-                }
-                if (pages.last() == Page.Home) {
-                    awaitingHome = true
-                    send(ShellEvent.Home)
-                }
-                refresh(true)
-            }
-            else -> announce(appWords.braille.atHome)
-        }
-    }
-
-    /** A letter pressed as a command: the core's on what it holds, else this screen's own. */
-    private fun commandLetter(letter: Char?) {
-        if (letter == null) return
-        val current = frame
-        val took = when {
-            current is FormFrame -> current.press(letter)
-            current is ListFrame && current.current?.command?.invoke(letter) == true -> true
-            current is ListFrame && current.appHeld -> return send(ShellEvent.Letter(letter.toString()))
-            else -> false
-        }
-        if (!took) announce(nothingOnLetter(letter.toString()))
     }
 
     private fun startFiltering() {
         val model = view ?: return
-        if (filtering) return
+        if (ui.top is FilterScreen) return
         // Only a list shown is filtered: not Home, a day, a form or a list of the shell's own.
-        if (pages.last() != Page.Listing || model.list == null || model.day != null || frame !is ListFrame) {
+        if (ui.top !== topPage || topPage?.page != Page.Listing || model.list == null || model.day != null || ui.frame !is ListFrame) {
             return announce(appWords.braille.noListToFilter)
         }
-        val key = "filter"
-        val line = editor(key, model.query)
-        frame = LineFrame("filter", appWords.quickAdd.filter, line, appWords.quickAdd.filterHint, readings, done = {
-            editors.remove(key)
-            filtering = false
-            refresh(true)
-        }, changed = { send(ShellEvent.Filter(it)) })
-        filtering = true
-        val rendered = frame!!.rendered
-        // Said here, so the turns that follow it are not a new screen to say again.
-        lastId = "filter"
-        lastSpeech = rendered.speech
-        out.show(rendered)
-        out.say(rendered.speech)
-    }
-
-    private var filtering = false
-
-    /** Leaves the filter's line, the filter cleared and the list as it was. */
-    private fun clearFilter() {
-        editors.remove("filter")
-        filtering = false
-        send(ShellEvent.Filter(""))
-        refresh(true)
+        ui.push(FilterScreen())
     }
 
     /** Where a place chosen is going, until the app shows it: its view is the last place's till then. */
@@ -605,9 +494,8 @@ class Shell(
     private fun goTo(id: String, place: Place) {
         goingTo = place
         send(ShellEvent.Key(id))
-        while (pages.size > 1) pages.removeLast()
-        pages.addLast(Page.Listing)
-        refresh(true)
+        closeAllPages()
+        pushPage(Page.Listing)
     }
 
     /**
@@ -617,33 +505,25 @@ class Shell(
      * the core's. What does not apply is left out, as the device's own menus hide theirs. A row's
      * own actions are Enter-I.
      */
-    private fun openMenu() {
-        val model = view ?: return
+    private fun menuBar(): List<MenuItem<() -> Unit>> {
+        val model = view ?: return emptyList()
         val states = model.commands.associateBy { it.id }
         val actions = model.screenActions.associateBy { it.id }
-        val place = model.place.takeIf { pages.last() == Page.Listing }
-        val groups = brailleMenuBar(place, pages.last() == Page.Home, true).mapNotNull { group ->
+        val page = topPage?.page
+        val place = model.place.takeIf { page == Page.Listing }
+        return brailleMenuBar(place, page == Page.Home, true).mapNotNull { group ->
             val children = group.items.filter { states[it.id]?.enabled != false && actions[it.id]?.enabled != false }.map { item ->
                 val letter = item.letter.singleOrNull()
-                MenuEntry(
+                MenuItem<() -> Unit>(
                     states[item.id]?.title?.ifEmpty { null } ?: actions[item.id]?.title ?: item.title,
-                    hotkey = letter?.takeIf { item.hotKey }?.let(BrailleLetters::press),
                     letter = letter,
+                    value = { runMenuCommand(item.id) },
+                    hotKey = letter?.takeIf { item.hotKey }?.let(BrailleLetters::press),
                     asks = item.asks,
-                ) { runMenuCommand(item.id) }
+                )
             }
-            if (children.isEmpty()) null else MenuEntry(group.title, children = children, letter = group.letter.singleOrNull())
+            if (children.isEmpty()) null else MenuItem(group.title, letter = group.letter.singleOrNull(), children = children)
         }
-        showMenu(groups)
-    }
-
-    private fun showMenu(entries: List<MenuEntry>) {
-        menu = MenuFrame(entries, letters, readings, opensOnLetter, notFound = { announce(nothingOnLetter(it.toString())) }, closed = { cancelled ->
-            menu = null
-            if (cancelled) announce(appWords.cancel)
-            refresh(true)
-        })
-        refresh(true, fromKey = true)
     }
 
     /**
@@ -689,8 +569,6 @@ class Shell(
         heading?.offered?.firstOrNull { it.kind == ActionKind.EXPAND }?.let { send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, key), it)) }
     }
 
-    private fun actionsMenu(row: Row) = showMenu(row.actions)
-
     private fun entries(on: ActingOn, offered: List<Offered>): List<MenuEntry> =
         offered.sortedByDescending { it.primary }.map { action ->
             val letter = actionLetter(action.kind)?.singleOrNull()
@@ -719,7 +597,7 @@ class Shell(
         return ListFrame(id, title, rows, chosen, empty, letters, moved = { row ->
             selected[id] = row.key
             if (hold && row.tag !== OWN_ROW) held(row.key, side)
-        }, openActions = ::actionsMenu,
+        }, openActions = { ui.menu(it.actions) },
             findInApp = if (mainList) ({ send(ShellEvent.FindLetter(it.toString())) }) else null,
             notFound = { announce(noRowStartsWith(it.toString())) },
             opensNothing = { announce(appWords.braille.opensNothing) },
@@ -735,8 +613,6 @@ class Shell(
 
     // ── Places ─────────────────────────────────────────────────────────────────────────────
 
-    /** What is on the display, for a sighted helper's screen. */
-    var drawn: (String) -> Unit = {}
 
     /** What is due, looked for while in front, as a desktop app looks. */
     fun look() {
@@ -788,7 +664,7 @@ class Shell(
         if (!opensOnLetter()) {
             selected["home"] = key
             if (place != null) held(key, Side.SIDEBAR)
-            refresh(true, fromKey = true)
+            ui.refresh(landed = true)
             return true
         }
         when {
@@ -802,7 +678,6 @@ class Shell(
     }
 
     private fun listing(model: ViewModel): Frame {
-        if (filtering) frame?.takeIf { it.id == "filter" }?.let { return it }
         // Until the app shows the place chosen, its view is the place left.
         goingTo?.let { if (model.place != it) return Rendering("") else goingTo = null }
         model.day?.let { return day(model, it) }
@@ -878,12 +753,6 @@ class Shell(
     }
 
     // ── Dialogs ────────────────────────────────────────────────────────────────────────────
-
-    /** The dialog shown and its control in hand, kept across turns while it stays open (the braille apps' shared controller). */
-    private var dialogController: DialogController? = null
-
-    /** Each line's value as the core last described it, to tell when the core changed it underneath. */
-    private val coreValues = HashMap<String, String>()
 
     /** A dialog the app has open. */
     private fun appDialog(shown: DialogShown): Frame = dialog(shown)
@@ -994,8 +863,6 @@ class Shell(
         return list("reminders", title, rows, model.remindersHeld.focus, "", side = Side.REMINDERS)
     }
 
-    /** Whether the reminders due page has shown any, so that the last dealt with leaves it. */
-    private var dueShown = false
 
     /** The reminders due, looked back for over the last day by the app's own clock as the list opens. */
     private fun openDue() {
@@ -1014,7 +881,7 @@ class Shell(
                     send(ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Press(due.id, button.id)))
                 }
             }
-            Row(due.id, due.text, open = if (buttons.isNotEmpty()) ({ showMenu(buttons) }) else null, actions = buttons,
+            Row(due.id, due.text, open = if (buttons.isNotEmpty()) ({ ui.menu(buttons) }) else null, actions = buttons,
                 delete = { send(ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Dismiss(due.id))) })
         }
         return list("due", appWords.remindersDue, rows, model.dueHeld.focus, appWords.braille.nothingDue, side = Side.DUE)
@@ -1134,22 +1001,13 @@ class Shell(
     }
 
     private companion object {
-        /** Dots 3-4-5-6, which begin a number. */
-        /** Space-2-5 and Space-3-6, the device's read word and read character, as dots. */
-        private const val SAY_WORD_DOTS = 0x12
-        private const val SAY_CHARACTER_DOTS = 0x24
-
         /** What a dialog's button leaves to this device: a file to pick, a backup, pairing. */
         private val SHELL_BUTTONS = setOf("import", "restore-backup", "back-up", "pair", "allow-notifications", "code", "join")
-
-        /** The shell's own yes-or-no question. */
-        private const val CONFIRMING = "confirming"
 
         /** A row's tag for one of the shell's own, which the app does not hold: Home's actions beside its places. */
         private val OWN_ROW = Any()
 
-        /** How long after a turn its speech waits, for what the app said to arrive with it. */
-        const val SPEECH_DELAY = 60L
-
+        /** The filter's line, and its text kept as it is typed. */
+        private const val FILTER = "filter"
     }
 }
