@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna.orbit
 
+import dev.emassey0135.lumenna.name
 import android.os.Handler
 import android.os.Looper
 import android.widget.TextView

@@ -1,5 +1,6 @@
 package dev.emassey0135.lumenna.orbit
 
+import dev.emassey0135.lumenna.name
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.actionLetter
