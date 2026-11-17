@@ -35,6 +35,58 @@ own. It has no published release yet: use it as a module of your own build.
 
 ## Getting started
 
+The quickest way is the screens layer, `OrbitUi` (package `dev.emassey0135.orbit.ui`): a stack of
+screens that takes the keys and tells Orbit's reader everything itself, with calls that ask and
+wait, as BTSpeak's `dialogs` do.
+
+```kotlin
+class MainActivity : ComponentActivity(), OrbitReader.Listener {
+    private val main = Handler(Looper.getMainLooper())
+    private lateinit var reader: OrbitReader
+    private lateinit var braille: BrailleInput
+    private lateinit var ui: OrbitUi
+    private val keys by lazy { KeyDelivery<Pair<KeyEvent, Boolean>>(reader.claim, { main.post(it) }) { (event, phone) -> ui.key(event, phone) } }
+    private val notes = mutableListOf<String>()
+
+    override fun onCreate(state: Bundle?) {
+        super.onCreate(state)
+        reader = OrbitReader(this, this)
+        reader.claim.guardCrashes()
+        braille = BrailleInput(this)
+        ui = OrbitUi(reader, braille, this)
+        ui.onEmpty = ::finish
+        ui.list("Notes", { notes.mapIndexed { at, note -> Item("$at", note, { ui.message(note) }, listOf(Action("Delete", 'd') { notes.removeAt(at); ui.refresh() })) } },
+            actions = { listOf(Action("New note", 'n') { newNote() }) })
+        reader.bind()
+        braille.bind()
+    }
+
+    private fun newNote() = ui.launch {
+        val text = ui.askLine("Note") ?: return@launch
+        if (ui.confirm("Keep \"$text\"?", default = true)) {
+            notes += text
+            ui.refresh()
+        }
+    }
+
+    override fun onResume() { super.onResume(); braille.follow(); reader.claim.resumed() }
+    override fun onPause() { reader.claim.paused(); super.onPause() }
+    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); reader.claim.windowFocus(hasFocus) }
+    override fun onDestroy() { reader.unbind(); braille.unbind(); super.onDestroy() }
+
+    // From Orbit, on binder threads.
+    override fun readerReady() {
+        main.post { reader.appOpened("Notes", ""); ui.readerReady() }
+    }
+    override fun key(event: KeyEvent, phoneKeypad: Boolean): Boolean = keys.deliver(event to phoneKeypad)
+    override fun settingsChanged() = braille.refresh()
+}
+```
+
+### Without the layer
+
+The pieces underneath are there for an app that draws its screens its own way:
+
 ```kotlin
 class MainActivity : ComponentActivity(), OrbitReader.Listener {
     private val main = Handler(Looper.getMainLooper())
@@ -77,11 +129,64 @@ answered "not taken", so it goes on to whatever has the keypad.
 
 ## The API
 
+### Screens: `OrbitUi`
+
+`OrbitUi` (package `dev.emassey0135.orbit.ui`) is a stack of screens over the pieces below. Give
+it `key` from `KeyDelivery` and `readerReady` from the listener, both on the main thread, and it
+does the rest: the screen on top takes each key, and each screen is told to Orbit's reader as
+Orbit's own apps tell theirs. Nothing is told before the reader is ready.
+
+| | |
+|---|---|
+| `OrbitUi(reader, braille, context, words, orbitWords, …)` | The stack. `reader` is any `Reader` (an `OrbitReader`, or a test's). `braille` and `context` are for typing in cells and the clipboard; leave them out in a test. `main`, `later`, `translator` and `editOutput` can be given too, for a test. |
+| `push(screen)`, `close(screen)`, `top` | A screen on top, told as newly shown; a screen taken off wherever it is, the one under it told again if it was on top. |
+| `refresh()` | The app's data changed. The screen on top reads its rows again, keeping the row in hand by its key, and says nothing unless that row moved, or the person reworded it by what they just did. A screen whose `stands()` is false now closes. |
+| `onEmpty` | Called when the last screen closes (Back from the first): finish the activity. |
+| `say(text)`, `message(text)`, `refuse()` | Speech after what is being said; Orbit's error tone. |
+| `phoneKeypad` | Whether the keys are the Player's, as the last key said. |
+| `launch { … }` | Runs a coroutine without any coroutine library, so the `suspend` calls below can be awaited in turn. |
+| `editBox(…)` | An `EditBox` for this device's keys, for a screen of your own. |
+
+What to show or ask. Each has a callback form and a `suspend` twin that returns the answer, and
+each answers exactly once: null (or false) when its screen is closed by Back, Escape or `close`.
+
+| | |
+|---|---|
+| `list(title, items, empty, actions)` | A list of `Item(key, text, open, actions, letter)`, read again from `items` at each `refresh`. Returns the `ListScreen`. `empty` is said once when it has no rows. |
+| `menu(items)` | A menu of `MenuItem`s (Orbit's own `OrbitMenu.Item`), submenus and all. Gives the value of the item chosen. |
+| `askLine(prompt, initial, hint, multiLine)` | An edit box as Orbit's. Select or Dot 8 confirms (Dot 8 starts a line in several lines). Its menu is OK and Cancel. |
+| `confirm(question, default)` | A dialog with Yes and No buttons, `default` in hand first. Cancelling is No. |
+| `choose(title, options, selected)` | A list of options. Select picks the one in hand. |
+| `form(title, fields)` | A dialog of `Field.Line`, `Field.Choice`, `Field.Check` and `Field.Text`, then OK and Cancel. Gives `FormValues` (`text(key)`, `choice(key)`, `checked(key)`) at OK. |
+
+The keys, as Orbit's own apps have them:
+
+- **Lists** move with `OrbitList`: Up and Down stop at the ends, Tab and Shift-Tab go round. Select,
+  Dot 8 and Right open the row. On the Speak a letter alone moves to the next row starting with it,
+  and Space with a row's letter opens it.
+- **Back**: Left, Escape (Space with E or Z), Dot 7 and the Player's Back close the screen. In a line
+  they are the line's: Escape cancels it, Dot 7 and the Player's Back delete, and Back held cancels.
+- **The menu key** (Space with M, the Player's Menu) opens one menu: the row in hand's actions, then
+  the screen's own. Orbit has one menu key for both. A letter alone is an access key. Choosing
+  closes the menu without saying the screen again; dismissing it says the screen again.
+- **Letters with Space**: Space with a letter runs the action of that letter, the row's first. Orbit
+  keeps Space with A, B, C, E, G, L, M, T and Z for itself, so Dot 8 with the letter does the same.
+- **Dialogs** on the Speak are Orbit's: Tab and Shift-Tab between controls, each told in its role,
+  and each key doing what `OrbitDialog.does` says. Select in a line of one presses OK.
+- **On the Player**, which has no Tab and no letters, a digit opens that row and holding star finds
+  by letter with T9 (`ListFinder`), in lists and menus alike. A form's controls are the rows of a
+  list: a line or a choice opens a screen of its own, a check turns over, OK and Cancel are rows.
+  Lines are typed with multi-tap T9. Back's press closes a screen, and its release goes no further.
+
+Your own screen subclasses `Screen` (a title, `actions()`, `inHandActions()`, `tellShown()`,
+`tellMoved()`, `refresh(tell)`, `key(key)`, `stands()`, `closed()`), or `ListScreen` for a list.
+
 ### Talking to Orbit
 
 | | |
 |---|---|
 | `OrbitReader` | Orbit's screen reader. The app describes its screen and Orbit voices it: `appOpened`, `focusList`, `itemChanged`, `dialog`/`dialogClosed`, `contextMenu`/`menuOpened`/`focusMenu`/`contextMenuClosed`, `focusEdit`, `focusControl`, `focusCheck`, `focusChoice`, `focusText`, `characterTyped`, `editChanged`. It can also `speak`, `speakQueued`, `stop`, play Orbit's `sound`s (`SOUND_ERROR`…) and `vibrate`. `Listener` hears that the reader is ready, the keys, and settings changing. `claim` holds the keypad only while the app is in front. |
+| `Reader` | What `OrbitReader` tells and reads, as an interface, so what is built over it can be tested with a reader that records. |
 | `Claim`, `KeyDelivery` | Holding the keypad while resumed and focused, and moving a key from the binder thread to the app's. |
 | `ServiceLink` | One bound service, each call made in order on one worker thread, and bound again when the service dies. |
 | `DebugKeys` | Keys pressed over `adb shell am broadcast`, in a debuggable build. Nothing else can press the keypad remotely. |
@@ -97,6 +202,9 @@ from its user guide:
 - **Dots:** `Dot7` and `Dot8` on their own. Dots alone are a `Cell`, Space with dots is a `Chord`,
   and Dot 8 with dots is `Enter`.
 
+`BrailleLetters` gives the letter a cell makes, a to z by their six dots, whatever table the person
+types in, since a key's letter is a command's.
+
 The Player gives `Digit`, `Star`, `Pound`, `Back` and `Menu`, each with a held form. Pressing and
 releasing a held key counts once.
 
@@ -104,7 +212,7 @@ releasing a held key counts once.
 
 | | |
 |---|---|
-| `EditBox` | An edit box like Orbit's fields: Speak cells translated a word at a time in the person's table, the Player's multi-tap T9, moving by character, word and line, and the Editor's selection and clipboard. It reports to the reader through an `Output`; `ReaderEditOutput` is the ready-made one, using the system clipboard. `CellBuffer` and `T9Input` sit underneath it. |
+| `EditBox` | An edit box like Orbit's fields: Speak cells translated a word at a time in the person's table, the Player's multi-tap T9, moving by character, word and line, and the Editor's selection and clipboard. It reports to the reader through an `Output`; `ReaderEditOutput` is the ready-made one, using the system clipboard (its braille input and context may be left out, as in a test). `CellBuffer` and `T9Input` sit underneath it. |
 | `OrbitMenu` | A menu like those in Orbit's Editor and File Manager: one list of items and submenus. Up and Down wrap round, Right or Select open a submenu, Left goes back, a letter is an access key, and choosing closes the menu. `OrbitReader.focusMenu(menu)` tells Orbit about the item in hand. Orbit has one menu key, so a row's actions and the screen's commands share one menu. |
 | `OrbitList` | How a list moves: Up and Down stop at the ends, Tab and Shift-Tab wrap round, and Space with L or dots 4 5 6 go to the ends. `target(key, index, size)` gives the row to move to. Tell the reader with `focusList` and `itemChanged`. |
 | `ListFinder` | The Player's way of finding a row. A digit opens that row; 1 then 2 typed quickly is the twelfth, and 0 alone the tenth. Holding star switches to finding by letter with T9. `ListFinder.next` finds the next row by first letter, for the Speak's cells or T9's letters. |
@@ -131,7 +239,8 @@ Orbit's own build, so an app sounds like the device. Pass your own for another l
 ```
 
 The JVM tests cover the key decoder, the claim, the cell buffer, the edit box, T9, the menu, the
-list moves, the finder, the dialog keys, the cell names and reading the settings.
+list moves, the finder, the dialog keys, the cell names, reading the settings, and the screens
+layer (`UiTest`, over a reader that records what it is told).
 
 ## Licence
 

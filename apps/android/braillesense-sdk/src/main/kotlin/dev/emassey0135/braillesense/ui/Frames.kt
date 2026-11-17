@@ -38,6 +38,15 @@ abstract class Frame(
 
     /** A routing key over a character of [Rendered.braille] (-1 past its end): `BrailleDisplay.routed`. */
     open fun routed(at: Int) {}
+
+    /** The edit box in hand, whose keys (`BoxEditing`) come ahead of the frame's; null for none. */
+    open fun editBox(): TextBox? = null
+
+    /** Every edit box it holds, the one in hand among them: read again when the braille table changes. */
+    open fun editBoxes(): List<TextBox> = listOfNotNull(editBox())
+
+    /** The edit box's text was changed by its keys: what the frame does with it as it changes. */
+    open fun edited() {}
 }
 
 /** One row of a list. */
@@ -193,6 +202,10 @@ class LineFrame(
     fun touched() {
         changed(box.text)
     }
+
+    override fun editBox(): TextBox = box
+
+    override fun edited() = touched()
 
     override val rendered: Rendered
         get() {
