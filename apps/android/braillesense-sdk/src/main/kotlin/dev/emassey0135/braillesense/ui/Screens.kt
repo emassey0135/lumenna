@@ -11,11 +11,33 @@ abstract class Screen {
     /** What is said ahead of its line as it comes to the front: its title, unless it says otherwise. */
     open val heading: String get() = title
 
-    /** The frame it shows now, built again as the stack is [BrailleSenseUi.refresh]ed. */
+    /** What is said ahead of [frame]'s line as it is first shown: [heading], unless the frame calls for more. */
+    open fun heading(frame: Frame): String = heading
+
+    /**
+     * The frame it shows now, built again as the stack is [BrailleSenseUi.refresh]ed. A frame of
+     * another [Frame.id] than the last is a new thing in front, said with its heading.
+     */
     abstract fun frame(): Frame
+
+    /** A frame of a new [Frame.id] was shown: the app may need to know what is in front (a list beside its main one). */
+    open fun shown(frame: Frame) {}
 
     /** Space-M or F2: the screen's own commands, as the device's one menu of a screen. Empty for none. */
     open fun menu(): List<MenuItem<() -> Unit>> = emptyList()
+
+    /**
+     * Escape, which the frame did not take: true if the screen dealt with it itself (sent its
+     * cancel, and stays until the app closes it); false closes it, and closing the last screen
+     * leaves the app.
+     */
+    open fun back(): Boolean = false
+
+    /** Space or Enter with [letter], which nothing in front took: true if the screen ran it. */
+    open fun letter(letter: Char): Boolean = false
+
+    /** Whether it still stands: one that does not is closed at the next [BrailleSenseUi.refresh] (the app closed what it shows). */
+    open fun stands(): Boolean = true
 
     /** It left the stack, closed by Escape, by an answer, or by the app: called once. */
     open fun closed() {}
@@ -33,6 +55,23 @@ class Item(
     val letter: Char? = null,
     /** Said and shown after the text, ahead of its number. */
     val detail: String = "",
+    /** What the cells show, where it is not what is said. */
+    val braille: String = text,
+    /** What a first letter finds it by. */
+    val finding: String = text,
+    /** Space on it: a check box's change. Said once the app has changed it ([BrailleSenseUi.refresh]). */
+    val space: (() -> Unit)? = null,
+    /** Space-D on it. */
+    val delete: (() -> Unit)? = null,
+    /** Space-3 and Space-6: its folding. Said once the app has folded it. */
+    val collapse: (() -> Unit)? = null,
+    val expand: (() -> Unit)? = null,
+    /** Space or Enter with a letter on it: its command; true if taken. */
+    val command: ((Char) -> Boolean)? = null,
+    /** What the device calls it. */
+    val role: dev.emassey0135.braillesense.reading.ControlRole = dev.emassey0135.braillesense.reading.ControlRole.LIST_ITEM,
+    /** Whether it opens a dialog, which the device marks. */
+    val asks: Boolean = false,
 )
 
 /** Something a row or a screen can do, with the letter that runs it from its menu. */
@@ -97,6 +136,12 @@ data class UiWords(
     val empty: String = "No items",
     /** A key that does nothing where it was pressed. */
     val nothingHere: String = "Not available",
+    /** Enter on a row that opens nothing. */
+    val opensNothing: String = "Not available",
+    /** Enter-I on a row with no actions. */
+    val noActions: String = "No actions",
     /** A letter no row or item starts with. */
-    val notFound: String = "Not found",
+    val notFound: (Char) -> String = { "Nothing starts with $it" },
+    /** Space or Enter with a letter that runs nothing here. */
+    val nothingOnLetter: (Char) -> String = { "Nothing on $it" },
 )

@@ -89,14 +89,14 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
         reader.bind()
         // A word half typed is shown again in the new table.
-        braille.changed = { ui.redraw(Why.Turn) }
+        braille.changed = { ui.refresh() }
         // Root refused: typing goes on in the table last read, and the person is told why it may not match.
         braille.failed = { ui.say(ui.orbitWords.rootFailed.replace("%s", it.reason)) }
         braille.bind()
         ui.push(HomeScreen())
         reminderTapped(intent)
         app.described = ui::turned
-        lifecycleScope.launch { core.announcements.collect { ui.say(it) } }
+        lifecycleScope.launch { core.announcements.collect { ui.announce(it) } }
         lifecycleScope.launch { app.files.collect { saveFile(it) } }
     }
 

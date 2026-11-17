@@ -22,15 +22,21 @@ import kotlin.coroutines.suspendCoroutine
  * A stack of screens that takes the keys and does the saying and showing itself, so an app is
  * written as a BTSpeak app is with BTSpeak's dialogs: `list` a screen of rows, `menu`, `askLine`,
  * `confirm`, `choose` and `form` ask and give the answer back (to a callback, or from a `suspend`
- * call), and `message` says something on the voice and the cells.
+ * call), and `announce` says what the app did.
  *
  * What is common to every screen is here, as the device's own apps have it: Space-R repeats the
  * line, the scroll keys pan (and move on at the end), a routing key routes, an edit box's keys are
- * the device's box's (`BoxEditing`, its "Delete selected text?" asked as a prompt), Space-M or F2
- * opens the screen's menu, Escape closes the screen in front (an ask closed so answers nothing), and
- * Exit leaves the app. A screen newly in front is said with its heading; a [refresh] after the app's
- * data changed shows the line again and says nothing, the row in hand kept by its key, so a change
- * underneath never talks over the person. Everything runs on the main thread.
+ * the device's box's (`BoxEditing`, its "Delete selected text?" asked as a prompt), Space or Enter
+ * with a letter runs what has it, Space-M or F2 opens the screen's menu, Escape goes back (the
+ * screen's own [Screen.back], else closing it; the last closed leaves the app), and Exit leaves.
+ *
+ * What is said follows what is shown, so nothing talks over the person unasked. A frame newly in
+ * front is said with its heading; a screen returned to, by its line. After the app's data changes,
+ * [refresh] shows the line again and says it only where the app moved what is in hand (`landed`) or
+ * the line changed after the person asked it to (a check box, folding). What the app [announce]s
+ * is said with the line that follows it, as one thing, and kept on the cells for the Message
+ * Display Time. A key's line is said at once; one the app shows of itself waits [speechDelay] for
+ * what it says to come with it. Everything runs on the main thread.
  */
 class BrailleSenseUi(
     private val display: BrailleDisplay,
@@ -46,7 +52,9 @@ class BrailleSenseUi(
     private val letters: Letters = DeviceLetters,
     private val words: UiWords = UiWords(),
     editWords: EditWords = EditWords.ENGLISH,
-    handler: Handler = Handler(Looper.getMainLooper()),
+    private val handler: Handler = Handler(Looper.getMainLooper()),
+    /** How long a line the app shows of itself waits for what it says; 0 says at once (a test). */
+    private val speechDelay: Long = SPEECH_DELAY,
 ) {
     private val editing = BoxEditing(translator, clipboard, echo, editWords)
     private val stack = ArrayList<Screen>()
@@ -58,30 +66,52 @@ class BrailleSenseUi(
     /** Counts what is shown, so a key that opened or closed a screen does not say the old one after. */
     private var shown = 0
 
+    /** The frame last shown and what it said, which tell a new frame and a reworded line. */
+    private var lastId = ""
+    private var lastSpeech = ""
+
+    /** A key asked the app to change the line: said once it has. */
+    private var awaitingChange = false
+
+    /** Inside a key: what it shows is said when it is done, at once. */
+    private var inKey = false
+
+    /** What the app said, to go with the next line said. */
+    private val announcements = ArrayList<String>()
+
+    /** The line to say, and the heading of a screen just opened, until they are said. */
+    private var pendingLine: String? = null
+    private var pendingHeading: String? = null
+    private val saying = Runnable { flush() }
+
     /** The last screen closed: leave the app (`finish`). */
     var onEmpty: () -> Unit = {}
 
     /** Exit (Space-Z): leave the app, as the device's own apps do. */
     var onExit: () -> Unit = { onEmpty() }
 
-    /** A key no screen took and the layer has nothing for (Help, Options, Find…): the app's. */
+    /** A key no screen took and the stack has nothing for (Help, Options, Find…): the app's. */
     var onUnhandled: (Key) -> Unit = {}
 
-    /** The line in front, for a sighted helper's screen. */
+    /** The line in front, for the device's LCD and an HDMI screen: what a sighted helper reads. */
     var drawn: (String) -> Unit = {}
 
     /** The screen in front. */
     val top: Screen? get() = stack.lastOrNull()
 
-    private val frame: Frame? get() = top?.let { frames[it] }
+    /** The frame in front. */
+    val frame: Frame? get() = top?.let { frames[it] }
+
+    /** The screens, bottom first. */
+    val screens: List<Screen> get() = stack.toList()
 
     /** Puts [screen] in front, and says it with its heading. */
     fun push(screen: Screen) {
         stack += screen
-        show(newly = true)
+        show(moved = true)
     }
 
-    /** Takes [screen] off the stack wherever it is; the row in hand of the one now in front is said again. */
+    /** Takes [screen] off the stack wherever it is; the line of the one now in front is said again. */
     fun close(screen: Screen) = close(screen, said = true, prefix = "")
 
     private fun close(screen: Screen, said: Boolean, prefix: String) {
@@ -91,22 +121,43 @@ class BrailleSenseUi(
         screen.closed()
         when {
             stack.isEmpty() -> onEmpty()
-            // Back where the person was: its row, not its heading, as the device returns from a dialog.
-            wasTop -> show(newly = false, said = said, prefix = prefix)
+            wasTop -> {
+                if (prefix.isNotBlank()) announcements += prefix
+                // Back where the person was: its line, not its heading, as the device returns from a dialog.
+                show(moved = said, returning = true, silent = !said)
+            }
         }
     }
 
-    /** The app's data changed: the screen in front is built again and shown, nothing said. */
-    fun refresh() {
+    /**
+     * The app's data changed: what no longer [Screen.stands] closes, and the screen in front is
+     * built again and shown. Its line is said only if [landed] (the app moved what is in hand),
+     * if it is a new frame, or if a key asked for the change that it now shows.
+     */
+    fun refresh(landed: Boolean = false) {
+        val gone = stack.filter { !it.stands() }
+        val wasTop = top
+        gone.forEach { screen ->
+            stack.remove(screen)
+            frames.remove(screen)
+            screen.closed()
+        }
+        if (stack.isEmpty()) {
+            if (gone.isNotEmpty()) onEmpty()
+            return
+        }
         top?.let { frames.remove(it) }
-        show(newly = false, said = false)
+        show(moved = false, landed = landed, returning = top !== wasTop)
     }
 
-    /** Back in front (the session's `onTaken`): says where the person is. */
-    fun front() = show(newly = true)
+    /** Back in front (the session's `onTaken`): says where the person is, heading and all. */
+    fun front() {
+        lastId = ""
+        show(moved = true)
+    }
 
     /** The person's settings changed while in front: the line shown as they now say, unsaid. */
-    fun redraw() = show(newly = false, said = false)
+    fun redraw() = show(moved = false)
 
     /** Before the settings are read again: every open box's text read in the table in force. */
     fun settle() = frames.values.forEach { frame -> frame.editBoxes().forEach { it.settle() } }
@@ -117,26 +168,70 @@ class BrailleSenseUi(
         frame?.let { display.show(it.rendered) }
     }
 
-    /** Says [text]. */
+    /** Says [text] at once, cutting off what was being said. */
     fun say(text: String) = display.say(text)
 
-    /** Says [text] and keeps it on the cells for the Message Display Time, then the line again. */
-    fun message(text: String) {
-        display.say(text)
-        messages.show(text)
+    /**
+     * What the app did, said with the line that follows it as one thing (or by itself if nothing
+     * follows) and kept on the cells for the Message Display Time: someone reading braille alone
+     * hears none of what is said.
+     */
+    fun announce(text: String) {
+        announcements += text
+        if (inKey) return
+        schedule()
     }
 
-    /** Shows the screen in front; [said] says its line, after its heading if [newly] in front and after [prefix]. */
-    private fun show(newly: Boolean, said: Boolean = true, prefix: String = "") {
+    /** [announce]. */
+    fun message(text: String) = announce(text)
+
+    private fun schedule() {
+        handler.removeCallbacks(saying)
+        if (speechDelay <= 0) flush() else handler.postDelayed(saying, speechDelay)
+    }
+
+    /** Says what the app said and then the line it left, as one thing. */
+    private fun flush() {
+        handler.removeCallbacks(saying)
+        val said = announcements.filter { it.isNotBlank() }.map { if (it.last() in ".?!") it else "$it." }
+        // A line that is only what was just said is not said twice.
+        val line = said.fold(pendingLine.orEmpty()) { left, sentence -> left.removeSuffix(sentence.trimEnd('.', ' ')).trimEnd() }
+        val parts = said + listOfNotNull(line.takeIf { it.isNotBlank() })
+        announcements.clear()
+        pendingLine = null
+        pendingHeading = null
+        if (parts.isNotEmpty()) display.say(parts.joinToString(" "))
+        if (said.isNotEmpty()) messages.show(said.joinToString(" "))
+    }
+
+    /**
+     * Shows the screen in front. Its line is said if [moved], if it is a frame newly in front (with
+     * its heading, unless [returning] to it), if [landed], if it is the first line with words, or
+     * if it changed as a key asked; never if [silent].
+     */
+    private fun show(moved: Boolean, landed: Boolean = false, returning: Boolean = false, silent: Boolean = false) {
         val screen = top ?: return
         val shownFrame = frames.getOrPut(screen) { screen.frame() }
         shown++
         val rendered = shownFrame.rendered
+        if (inKey) messages.clear()
         if (!messages.up) display.show(rendered)
         display.selecting(shownFrame.editBox()?.selecting == true)
         drawn(rendered.speech)
-        if (!said) return
-        display.say(listOf(prefix, if (newly) screen.heading else "", rendered.speech).fold("", ::sentences))
+        val fresh = shownFrame.id != lastId
+        lastId = shownFrame.id
+        if (fresh) screen.shown(shownFrame)
+        val firstWords = lastSpeech.isEmpty() && rendered.speech.isNotEmpty()
+        val reworded = awaitingChange && rendered.speech != lastSpeech
+        if (reworded) awaitingChange = false
+        if (!silent && (moved || fresh || landed || firstWords || reworded)) {
+            val heading = if (fresh && !returning) screen.heading(shownFrame) else ""
+            // A screen opened inside the key that chose it may be drawn again before it is said: its heading waits.
+            if (heading.isNotBlank()) pendingHeading = heading
+            pendingLine = sentences(heading.ifBlank { pendingHeading.orEmpty() }, rendered.speech)
+        }
+        lastSpeech = rendered.speech
+        if (!inKey && pendingLine != null) schedule()
     }
 
     /** [next] after [said], as sentences. */
@@ -149,20 +244,30 @@ class BrailleSenseUi(
 
     // ── Keys ─────────────────────────────────────────────────────────────────────────────
 
-    /** A key from either keyboard: the session's `onKey`. */
+    /** A key from either keyboard: the session's `onKey`. What it shows is said as it is done. */
     fun press(key: Key) {
+        inKey = true
+        try {
+            take(key)
+        } finally {
+            inKey = false
+        }
+        if (pendingLine != null || announcements.isNotEmpty()) flush()
+    }
+
+    private fun take(key: Key) {
         val current = frame ?: return
         when (key) {
             Key.Silence -> return display.silence()
             // Outside a box the device's read word and read character are what Space with their dots is.
             Key.SayCharacter, Key.SayWord -> if (current.editBox() == null) {
-                return press(Key.SpaceDots(if (key == Key.SayWord) SAY_WORD_DOTS else SAY_CHARACTER_DOTS))
+                return take(Key.SpaceDots(if (key == Key.SayWord) SAY_WORD_DOTS else SAY_CHARACTER_DOTS))
             }
             // A multi-line box reads the cursor's line itself; anything else is read whole.
             Key.Repeat -> if (current.editBox()?.multiLine != true) {
                 messages.clear()
                 val rendered = current.rendered
-                display.say(rendered.speech)
+                pendingLine = rendered.speech
                 display.show(rendered)
                 return
             }
@@ -183,7 +288,7 @@ class BrailleSenseUi(
                     val before = shown
                     current.routed(at)
                     // In an edit box the cursor only moves, as in the device's own: nothing is said.
-                    if (shown == before) show(newly = false, said = current.editBox() == null)
+                    if (shown == before) show(moved = current.editBox() == null)
                 }
                 return
             }
@@ -192,22 +297,45 @@ class BrailleSenseUi(
         display.silence()
         current.editBox()?.let { box -> if (edit(current, box, key)) return }
         val before = shown
+        val changing = current.changes(key)
         if (current.key(key)) {
             messages.clear()
-            if (shown == before) show(newly = false)
+            if (changing) {
+                // Said once the app has made the change, when the line reads otherwise.
+                awaitingChange = true
+                if (shown == before) show(moved = false)
+            } else if (shown == before) {
+                show(moved = true)
+            }
             return
         }
         when (key) {
             Key.Menu -> openMenu()
-            Key.Escape -> top?.let { close(it) }
+            Key.Escape -> back()
             Key.Exit -> onExit()
+            is Key.SpaceDots -> letter(letters.letter(Key.Cell(key.dots)))
+            is Key.EnterDots -> letter(letters.letter(Key.Cell(key.dots)))
+            is Key.SpaceLetter -> letter(key.letter.lowercaseChar())
+            is Key.EnterLetter -> letter(key.letter.lowercaseChar())
             else -> onUnhandled(key)
         }
     }
 
+    private fun back() {
+        val screen = top ?: return
+        if (!screen.back()) close(screen)
+    }
+
+    /** Space or Enter with a letter: the frame's, else the screen's, else nothing is on it. */
+    private fun letter(letter: Char?) {
+        if (letter == null) return
+        if (frame?.pressLetter(letter) == true || top?.letter(letter) == true) return
+        announce(words.nothingOnLetter(letter))
+    }
+
     private fun step(key: Key) {
         frame?.key(key)
-        show(newly = false)
+        show(moved = true)
     }
 
     private fun edit(current: Frame, box: TextBox, key: Key): Boolean {
@@ -232,13 +360,14 @@ class BrailleSenseUi(
     private fun told(current: Frame, edited: Edited.Taken) {
         if (edited.changed) current.edited()
         messages.clear()
-        show(newly = false, said = false)
-        edited.said?.let(display::say)
+        // The box's line on the cells, said only as the box says it.
+        show(moved = false, silent = true)
+        edited.said?.let { if (inKey) pendingLine = it else display.say(it) }
     }
 
     private fun openMenu() {
         val items = top?.menu().orEmpty()
-        if (items.isEmpty()) return say(words.nothingHere)
+        if (items.isEmpty()) return announce(words.nothingHere)
         menu(items) { run -> run?.invoke() }
     }
 
@@ -250,7 +379,11 @@ class BrailleSenseUi(
         items: () -> List<Item>,
         empty: String = words.empty,
         actions: () -> List<Action> = { emptyList() },
-    ): ListScreen = ListScreen(title, items, empty, actions).also(::push)
+        /** The person moved to a row. */
+        moved: (Item) -> Unit = {},
+        /** A first letter, for a list whose rows the app finds itself; null finds here by [Item.finding]. */
+        find: ((Char) -> Unit)? = null,
+    ): ListScreen = ListScreen(title, items, empty, actions, moved, find).also(::push)
 
     /** The device's menu of [items]: [chosen] gets the value of the one chosen, or null if it closed unchosen. */
     fun <T> menu(items: List<MenuItem<T>>, chosen: (T?) -> Unit) {
@@ -260,6 +393,13 @@ class BrailleSenseUi(
     }
 
     suspend fun <T> menu(items: List<MenuItem<T>>): T? = suspendCoroutine { done -> menu(items) { done.resume(it) } }
+
+    /** The device's menu of [entries] as they are, each running its own: a row's actions. */
+    fun menu(entries: List<MenuEntry>) {
+        val screen = MenuScreen<Unit> {}
+        screen.entries = entries
+        push(screen)
+    }
 
     /** A line to type: [answered] gets its text at Enter, or null at Escape. Several lines are a form of one field. */
     fun askLine(prompt: String, initial: String = "", hint: String = "", multiLine: Boolean = false, answered: (String?) -> Unit) {
@@ -319,47 +459,79 @@ class BrailleSenseUi(
         private val items: () -> List<Item>,
         private val empty: String,
         private val actions: () -> List<Action>,
+        private val moved: (Item) -> Unit,
+        private val find: ((Char) -> Unit)?,
     ) : Screen() {
         private var selected: String? = null
 
         override fun frame(): Frame {
             val shownItems = items()
+            val byKey = shownItems.associateBy { it.key }
             val rows = shownItems.map { item ->
                 Row(
-                    item.key, item.text, finding = item.text, open = item.open, letter = item.letter, detail = item.detail,
+                    item.key, item.text, braille = item.braille, finding = item.finding, open = item.open, space = item.space,
                     actions = item.actions.map { MenuEntry(it.name, letter = it.letter, asks = it.asks, run = it.run) },
+                    command = item.command, delete = item.delete, role = item.role, detail = item.detail, letter = item.letter,
+                    collapse = item.collapse, expand = item.expand, asks = item.asks,
                 )
             }
             return ListFrame(
                 "list:${System.identityHashCode(this)}", title, rows, selected, empty, letters,
-                moved = { selected = it.key },
-                openActions = { row -> push(MenuScreen<Unit> {}.also { it.entries = row.actions }) },
-                notFound = { say(words.notFound) },
+                moved = { row ->
+                    selected = row.key
+                    byKey[row.key]?.let(moved)
+                },
+                openActions = { row -> menu(row.actions) },
+                findInApp = find,
+                notFound = { announce(words.notFound(it)) },
                 readings = readings,
                 byLetter = { letter -> shownItems.firstOrNull { it.letter == letter }?.open?.let { it(); true } ?: false },
-                opensNothing = { say(words.nothingHere) },
-                noActions = { say(words.nothingHere) },
+                opensNothing = { announce(words.opensNothing) },
+                noActions = { announce(words.noActions) },
             ).also { frame -> frame.current?.let { selected = it.key } }
         }
 
         override fun menu(): List<MenuItem<() -> Unit>> = actions().map { MenuItem(it.name, it.letter, value = it.run, asks = it.asks) }
+
+        override fun heading(frame: Frame): String = title
     }
 
-    /** A menu, as the device's own: closing it unchosen says Cancel. */
-    private inner class MenuScreen<T>(chosen: (T?) -> Unit) : Asking<T>(chosen) {
+    /**
+     * A menu, as the device's own. The frame closes it before running what was chosen, so what that
+     * opens is in front: closed by a choice it says nothing more, and the choice's [entry] answers;
+     * left unchosen it says Cancel ahead of the line under it, and answers null.
+     */
+    private inner class MenuScreen<T>(private val chosen: (T?) -> Unit) : Screen() {
         var entries: List<MenuEntry> = emptyList()
         override val title: String get() = ""
         private var menuFrame: MenuFrame? = null
+        private var answered = false
+        private var choosing = false
+
+        private fun answer(value: T?) {
+            if (answered) return
+            answered = true
+            chosen(value)
+        }
 
         fun entry(item: MenuItem<T>): MenuEntry = MenuEntry(
             item.name, children = item.children.map(::entry), hotkey = item.hotKey, letter = item.letter, asks = item.asks,
-            run = { finish(item.value, said = false) },
+            run = { answer(item.value) },
         )
 
-        override fun frame(): Frame = menuFrame ?: MenuFrame(entries, letters, readings, opensOnLetter, notFound = { say(words.notFound) }, closed = { cancelled ->
-            // Chosen, the item's run finishes it; left unchosen, the device says Cancel ahead of the line.
-            if (cancelled) finish(null, prefix = words.cancel)
+        override fun frame(): Frame = menuFrame ?: MenuFrame(entries, letters, readings, opensOnLetter, notFound = { announce(words.notFound(it)) }, closed = { cancelled ->
+            if (cancelled) {
+                close(this, said = true, prefix = words.cancel)
+                answer(null)
+            } else {
+                choosing = true
+                close(this, said = false, prefix = "")
+            }
         }).also { menuFrame = it }
+
+        override fun closed() {
+            if (!choosing) answer(null)
+        }
     }
 
     /** A line to type, as the device's edit box, taken at Enter. */
@@ -395,6 +567,8 @@ class BrailleSenseUi(
             }
             return ListFrame("prompt:${System.identityHashCode(this)}", title, rows, selected, "", letters, moved = { selected = it.key }, readings = readings, prompt = true)
         }
+
+        override fun back(): Boolean = true.also { finish(false, said = !quiet) }
     }
 
     /** One of [options], picked with Enter. */
@@ -405,7 +579,7 @@ class BrailleSenseUi(
             val rows = options.mapIndexed { at, option -> Row(at.toString(), option, open = { finish(at) }) }
             return ListFrame(
                 "choice:${System.identityHashCode(this)}", title, rows, selected, words.empty, letters,
-                moved = { selected = it.key }, notFound = { say(words.notFound) }, readings = readings,
+                moved = { selected = it.key }, notFound = { announce(words.notFound(it)) }, readings = readings,
             )
         }
     }
@@ -422,6 +596,9 @@ class BrailleSenseUi(
     }
 
     companion object {
+        /** How long a line the app shows of itself waits for what it says to arrive with it. */
+        const val SPEECH_DELAY = 60L
+
         /** Space-2-5 and Space-3-6, the device's read word and read character, as dots. */
         private const val SAY_WORD_DOTS = 0x12
         private const val SAY_CHARACTER_DOTS = 0x24

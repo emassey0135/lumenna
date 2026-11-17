@@ -1,5 +1,7 @@
 package dev.emassey0135.orbit.ui
 
+import dev.emassey0135.orbit.BrailleLetters
+import dev.emassey0135.orbit.Key
 import dev.emassey0135.orbit.OrbitMenu
 
 /** One row of a list. */
@@ -14,6 +16,12 @@ class Item(
     val actions: List<Action> = emptyList(),
     /** A letter that opens it from the list, pressed with Space (or Dot 8) on the Speak. */
     val letter: Char? = null,
+    /** Whether the rows under it show, for a row that folds; null for one that does not. */
+    val expanded: Boolean? = null,
+    /** Folds it open (true, Right) or shut (false, Left); a row with none goes on to Right's open and Left's back. */
+    val fold: ((open: Boolean) -> Unit)? = null,
+    /** Its name alone, without what the line says after it: what a menu of its actions is named for. */
+    val title: String? = null,
 )
 
 /** Something the menu key offers, for the row in hand or for the screen. */
@@ -26,6 +34,15 @@ class Action(
 
 /** An item or submenu of a menu: Orbit's own ([OrbitMenu.Item]), a submenu when it has children. */
 typealias MenuItem<T> = OrbitMenu.Item<T>
+
+/**
+ * A screen's own menu tree for the menu key ([Screen.menuBar]): submenus of items, each running what
+ * it holds, and the hot keys (Space or Dot 8 with a letter) that run an item from anywhere in it.
+ */
+class MenuBar(
+    val items: List<MenuItem<() -> Unit>>,
+    val hotKeys: Map<Char, () -> Unit> = emptyMap(),
+)
 
 /** One control of a [OrbitUi.form], by the [key] its value is read back with. */
 sealed class Field(val key: String, val label: String) {
@@ -60,8 +77,9 @@ class FormValues internal constructor(
 
 /**
  * What the layer itself says or names, in English by default: the buttons of its dialogs, what an
- * empty list says, finding by letter on the Player, and a check box's state where it is a row.
- * Pass your own for another language.
+ * empty list says, finding by letter on the Player, a check box's state where it is a row, and what
+ * a letter that reaches nothing says. Pass your own for another language; a word with a part is a
+ * function of it.
  */
 data class UiWords(
     val ok: String = "OK",
@@ -76,4 +94,41 @@ data class UiWords(
     /** A check box's state, said in its row on the Player, where a form is a list. */
     val checked: String = "checked",
     val notChecked: String = "not checked",
+    /** A letter alone that no row of the list starts with. */
+    val noRowStartsWith: (letter: String) -> String = { "No row starts with $it" },
+    /** Space or Dot 8 with a letter that nothing here has. */
+    val nothingOnLetter: (letter: String) -> String = { "Nothing on $it" },
 )
+
+/**
+ * Which letter a key presses: a cell alone moves by first letter or is a menu's access key, and
+ * Space or Dot 8 with a letter runs that letter's row or action. By default a letter is its six
+ * dots ([BrailleLetters]) and either key presses it; an app with rules of its own (which letters
+ * Orbit keeps with Space, so they take Dot 8) gives its own.
+ */
+open class Letters {
+    /** What Space or Dot 8 with a letter came to. */
+    sealed interface Pressed {
+        /** The letter, lowercase, to run. */
+        data class Letter(val letter: Char) : Pressed
+
+        /** A letter this key does not press: the error tone, then [said], where there is something to say. */
+        data class Refused(val said: String?) : Pressed
+
+        /** No letter at all: the key is no one's. */
+        data object None : Pressed
+    }
+
+    /** The letter [dots] make, lowercase; null for a cell that is none. */
+    open fun of(dots: Int): Char? = BrailleLetters.letter(dots)
+
+    /** What [key] (Space or Dot 8 with dots) presses. */
+    open fun pressed(key: Key): Pressed {
+        val dots = when (key) {
+            is Key.Chord -> key.dots
+            is Key.Enter -> key.dots
+            else -> return Pressed.None
+        }
+        return of(dots)?.let { Pressed.Letter(it) } ?: Pressed.None
+    }
+}
