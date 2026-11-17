@@ -14,9 +14,9 @@ import java.nio.charset.StandardCharsets
  * own data, so another app's files are read through init's root, `/proc/1/root`. Ported from the
  * Satellite launcher (`RootQuery`, Apache-2.0, the same author's).
  */
-object Root {
+public object Root {
     /** Runs [command] as root, off the main thread: what it printed, or why it could not. */
-    fun run(command: String): Result<String> {
+    public fun run(command: String): Result<String> {
         var process: Process? = null
         return try {
             process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
@@ -31,10 +31,10 @@ object Root {
     }
 
     /** Another app's file, by its path under /data, as root sees it. */
-    fun dataPath(path: String): String = "/proc/1/root$path"
+    public fun dataPath(path: String): String = "/proc/1/root$path"
 
     /** The `value=` field of a single-row content query from [from] on; null if there is none. */
-    fun valueField(output: String, from: Int): String? {
+    public fun valueField(output: String, from: Int): String? {
         val at = output.indexOf("value=", from)
         if (at < 0) return null
         var end = output.indexOf(", type=", at)
@@ -45,4 +45,4 @@ object Root {
 }
 
 /** Root was refused, or what was asked of it failed: [reason] as `su` or the command said it. */
-class RootFailure(val reason: String) : Exception(reason)
+public class RootFailure(public val reason: String) : Exception(reason)

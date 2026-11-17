@@ -19,7 +19,7 @@ internal class MenuScreen<T>(
     private val hot: Map<Char, T> = emptyMap(),
     private val chosen: (T?) -> Unit,
 ) : Screen() {
-    private val menu = OrbitMenu(items)
+    private val menu = OrbitMenu(items.map { it.orbit() })
     private var picked = false
     private var choice: T? = null
     private var finder: ListFinder? = null
@@ -82,7 +82,7 @@ internal class MenuScreen<T>(
         if (hot.containsKey(letter)) return act(Outcome.Chosen(hot.getValue(letter)))
         val outcome = menu.accessKey(letter)
         if (outcome != Outcome.Refused) return act(outcome)
-        ui.refused(ui.words.nothingOnLetter(letter.toString()))
+        ui.refused(ui.words.nothingOnLetter(letter))
     }
 
     private fun act(outcome: Outcome<T>) {

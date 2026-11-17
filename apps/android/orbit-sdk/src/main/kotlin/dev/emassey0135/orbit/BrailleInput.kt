@@ -30,28 +30,28 @@ import com.orbit.liblouisservice.ILiblouisServiceInterface
  * are not the word's. What cannot be read is [failed], once until a read succeeds again, and what
  * was read last stays.
  */
-class BrailleInput(context: Context) {
+public class BrailleInput(context: Context) {
     private val context = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
 
     /** The table read is another one now: what is shown is drawn again. On the main thread. */
-    var changed: () -> Unit = {}
+    public var changed: () -> Unit = {}
 
     /** Orbit's settings could not be read (root refused, most likely). On the main thread. */
-    var failed: (RootFailure) -> Unit = {}
+    public var failed: (RootFailure) -> Unit = {}
 
     @Volatile
-    var input = OrbitSettings.BrailleInput(OrbitSettings.DEFAULT_TABLE, OrbitSettings.SelectionMode.CONTRACTED)
+    public var input: OrbitSettings.BrailleInput = OrbitSettings.BrailleInput(OrbitSettings.DEFAULT_TABLE, OrbitSettings.SelectionMode.CONTRACTED)
         private set
 
     /** Whether the person types contracted braille, by Orbit's selection mode. */
-    val contracted: Boolean get() = input.mode == OrbitSettings.SelectionMode.CONTRACTED
+    public val contracted: Boolean get() = input.mode == OrbitSettings.SelectionMode.CONTRACTED
 
     /** Whether the person types computer braille, where dot 8 with a cell is typed. */
-    val computer: Boolean get() = input.mode == OrbitSettings.SelectionMode.COMPUTER
+    public val computer: Boolean get() = input.mode == OrbitSettings.SelectionMode.COMPUTER
 
     @Volatile
-    var typingEcho = OrbitSettings.TypingEcho.CHARACTERS
+    public var typingEcho: OrbitSettings.TypingEcho = OrbitSettings.TypingEcho.CHARACTERS
         private set
 
     /** What the liblouis service last said it holds. */
@@ -69,24 +69,27 @@ class BrailleInput(context: Context) {
     )
 
     /** Whether this device has the service: the Speak does, the Player does not. */
-    val available: Boolean
+    public val available: Boolean
         get() = runCatching {
             context.packageManager.getPackageInfo(PACKAGE, 0)
             true
         }.getOrDefault(false)
 
-    fun bind() {
+    /** Reaches the liblouis service and reads Orbit's settings; nothing on the Player. */
+    public fun bind() {
         if (!available) return
         link.bind()
         refresh()
     }
 
-    fun unbind() = link.unbind()
+    /** Lets the liblouis service go. */
+    public fun unbind(): Unit = link.unbind()
 
-    val isReady: Boolean get() = link.isBound
+    /** Whether the liblouis service is reached. */
+    public val isReady: Boolean get() = link.isBound
 
     /** Reads the settings again if the liblouis service holds another table than it last did. */
-    fun follow() {
+    public fun follow() {
         if (!available) return
         Thread({
             readEcho()
@@ -98,7 +101,7 @@ class BrailleInput(context: Context) {
     }
 
     /** Reads the settings again, as Orbit said one changed ([OrbitReader.Listener.settingsChanged]). */
-    fun refresh() {
+    public fun refresh() {
         if (!available) return
         Thread({
             readEcho()
@@ -107,7 +110,7 @@ class BrailleInput(context: Context) {
     }
 
     /** Translates [cells] in the person's table at liblouis [mode]; null when it cannot say. */
-    fun translate(cells: List<Int>, mode: Int): String? =
+    public fun translate(cells: List<Int>, mode: Int): String? =
         link.ask(null) { service ->
             val text = buildString { for (cell in cells) append((0x8000 or (cell and 0xFF)).toChar()) }
             service.translateBrailleToText(text, mode, input.table)?.toString()

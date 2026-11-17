@@ -38,8 +38,7 @@ import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.orbit.BrailleInput
 import dev.emassey0135.orbit.EditBox
 import dev.emassey0135.orbit.Key
-import dev.emassey0135.orbit.KeyEvent
-import dev.emassey0135.orbit.OrbitReader
+import dev.emassey0135.orbit.session.OrbitSession
 import dev.emassey0135.orbit.OrbitWords
 import dev.emassey0135.orbit.Reader
 import dev.emassey0135.orbit.ui.Action
@@ -87,7 +86,7 @@ private fun Row.item(host: Ui): Item {
         val wanted = if (open) ActionKind.EXPAND else ActionKind.COLLAPSE
         offered.firstOrNull { it.kind == wanted }?.let { host.send(ShellEvent.ActOn(on, it)) }
     }
-    return Item(key, text, open, actions, letter?.singleOrNull(), expanded, fold, title)
+    return Item(key, text, open, actions, letter?.singleOrNull(), expanded = expanded, fold = fold, title = title)
 }
 
 /**
@@ -311,30 +310,33 @@ class HelperText(private val base: Reader, private val view: TextView) : Reader 
 class Ui(
     val app: AppModel,
     val core: Core,
-    reader: OrbitReader,
-    val braille: BrailleInput,
+    session: OrbitSession,
     textView: TextView,
     private val finish: () -> Unit,
 ) {
     private val main = Handler(Looper.getMainLooper())
 
+    /** The Speak's braille input, the session's. */
+    val braille: BrailleInput = session.braille
+
     /** What the device says in its own words: its fields' echo, T9's modes. */
     val orbitWords = OrbitWords()
 
-    /** The screens, the keys, and what Orbit is told. */
-    val stack = OrbitUi(
-        HelperText(reader, textView), braille, textView.context,
+    /** The screens, the keys, and what Orbit is told, wired into the session. */
+    val stack = OrbitUi.on(
+        session,
+        reader = HelperText(session.reader, textView),
+        orbitWords = orbitWords,
+        letters = CoreLetters,
         words = UiWords(
             ok = appWords.save,
             cancel = appWords.cancel,
             empty = appWords.nothingHere,
             lettersOn = appWords.orbit.lettersOn,
             lettersOff = appWords.orbit.lettersOff,
-            noRowStartsWith = { noRowStartsWith(it) },
-            nothingOnLetter = { nothingOnLetter(it) },
+            noRowStartsWith = { noRowStartsWith(it.toString()) },
+            nothingOnLetter = { nothingOnLetter(it.toString()) },
         ),
-        orbitWords = orbitWords,
-        letters = CoreLetters,
     )
 
     init {
@@ -413,15 +415,6 @@ class Ui(
     fun later(milliseconds: Long, run: () -> Unit) {
         main.postDelayed(Runnable { run() }, milliseconds)
     }
-
-    /** Orbit is ready, for the first time or after it came back: the screen is described anew. */
-    fun readerReady() = stack.readerReady()
-
-    /** The braille table changed: a word half typed is shown again in it. */
-    fun refresh() = stack.refresh()
-
-    /** A key from Orbit, on the main thread, in order. */
-    fun key(event: KeyEvent, phoneKeypad: Boolean) = stack.key(event, phoneKeypad)
 
     // ---- following the app -------------------------------------------------------------------
 

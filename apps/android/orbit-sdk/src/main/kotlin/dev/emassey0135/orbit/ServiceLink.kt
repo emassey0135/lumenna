@@ -16,11 +16,11 @@ import java.util.concurrent.Executors
  * Order matters: a service's own order of arrival is the order things are said in, and a call
  * made from the main thread can jump one made from the app's thread a moment before. The service
  * can die under the app whenever the vendor updates it, and Android then never binds it again
- * ([onBindingDied]), so the link does.
+ * (`onBindingDied`), so the link does.
  *
  * Each of Orbit's services the SDK reaches is one: the screen reader and the liblouis service.
  */
-class ServiceLink<S : IInterface>(
+internal class ServiceLink<S : IInterface>(
     context: Context,
     private val intent: Intent,
     private val asInterface: (IBinder) -> S,
@@ -69,21 +69,21 @@ class ServiceLink<S : IInterface>(
         }
     }
 
-    fun bind() {
+    public fun bind() {
         if (!context.bindService(intent, connection, Context.BIND_AUTO_CREATE)) {
             Log.e(TAG, "could not bind ${intent.component}")
         }
     }
 
-    fun unbind() {
+    public fun unbind() {
         runCatching { context.unbindService(connection) }
         service = null
     }
 
-    val isBound: Boolean get() = service != null
+    public val isBound: Boolean get() = service != null
 
     /** Runs [block] on the worker if the service is up; a failure is logged and goes no further. */
-    fun call(what: String, block: (S) -> Unit) {
+    public fun call(what: String, block: (S) -> Unit) {
         worker.execute {
             val s = service ?: return@execute
             try {
@@ -101,7 +101,7 @@ class ServiceLink<S : IInterface>(
      * Runs [block] now, on the caller's thread: for giving up the device as the app leaves, which
      * cannot wait behind what is queued. A failure is logged and goes no further.
      */
-    fun now(what: String, block: (S) -> Unit) {
+    public fun now(what: String, block: (S) -> Unit) {
         val s = service ?: return
         try {
             block(s)
@@ -113,7 +113,7 @@ class ServiceLink<S : IInterface>(
     }
 
     /** What [block] answers, asked on the worker and waited for; [fallback] if it cannot say. */
-    fun <T> ask(fallback: T, block: (S) -> T): T {
+    public fun <T> ask(fallback: T, block: (S) -> T): T {
         val answer = java.util.concurrent.FutureTask {
             val s = service
             if (s == null) fallback else try {

@@ -1,23 +1,27 @@
 # Orbit SDK (unofficial)
 
 An unofficial Android library for apps that speak for themselves on Orbit Research's Android
-devices, the **Orbit Speak** (braille keys) and the **Orbit Player** (a phone keypad). With it an
-app hears the keypad, tells Orbit's own screen reader what is on its screen so that Orbit voices it
-in the person's voice and verbosity, and gives the person edit boxes, lists, menus and dialogs that
-work the way Orbit's own apps do.
+devices: the **Orbit Speak**, with braille keys, and the **Orbit Player**, with a phone keypad.
+Neither has a screen. With this library an app hears the keypad, tells Orbit's own screen reader
+what is on its screen so that Orbit voices it in the person's own voice and verbosity, and gives
+the person lists, menus, edit boxes and dialogs that work the way Orbit's own apps do.
 
-It was worked out by trying the devices and reading their user guides. Orbit Research did not write
-it and does not support it. Nothing in it is copied from Orbit's APKs. The T9 input and the
-Player's list finding are ported from the Satellite launcher (Apache-2.0, by the same author).
+You write an app as a stack of screens, much as a BTSpeak app is written with BTSpeak's `dialogs`:
+show a list, ask for a line, a yes or no, a choice or a form, and get the answer back in a callback
+or from a `suspend` call. The stack takes the keys and does all the telling.
 
-It lives in Lumenna's repository for now, as the Gradle module `:orbit-sdk` (package
-`dev.emassey0135.orbit`). It depends on nothing but Android, so it can move to a repository of its
-own. It has no published release yet: use it as a module of your own build.
+Orbit Research did not write this library and does not support it. It was worked out from how the
+devices behave, their user guides, and study of how their own apps use the device's services.
+Nothing in it is copied from Orbit's apps. The T9 input and the Player's list finding are ported
+from the Satellite launcher (Apache-2.0, by the same author).
+
+The library depends on nothing but Android. The BrailleSense SDK, for the HIMS BrailleSense 7, has
+the same screen stack under the same names, so an app's screens can be written once for both.
 
 ## What a device needs
 
-- **Satellite** (its launcher and hook). Orbit sends the keypad to an app only when the app says it
-  speaks for itself. Satellite's hook does that for any app whose manifest has:
+- **Satellite**, its launcher and hook. Orbit sends the keypad to an app only when the app speaks
+  for itself, and Satellite's hook does that for an app whose manifest says so:
 
   ```xml
   <application …>
@@ -25,248 +29,251 @@ own. It has no published release yet: use it as a module of your own build.
   </application>
   ```
 
+  Satellite's launcher then lists the app beside Orbit's own.
+- **A package name Orbit routes keys to**: not starting with `com.orbit.`, and not containing
+  `inputmethod`.
 - **Root**, for reading Orbit's settings (the braille table, the selection mode, the typing echo).
-  Orbit's settings provider only answers apps signed by Orbit, and the screen reader keeps its
-  settings in its own data, so `OrbitSettings` reads them through `su`, as Orbit's own SDK does.
-  Magisk ships on every Speak and Player. If root is refused, `BrailleInput.failed` says so once,
-  and typing goes on in the table last read.
-- Android 11 (minSdk 30), arm64. Your package should not start with `com.orbit.` or contain
-  `inputmethod`, which Orbit's key routing reads otherwise.
+  Magisk ships on every Speak and Player. If root is refused, the person is told once and typing
+  goes on in the table last read.
+- Android 11 (the library's minSdk is 30), arm64.
 
-## Getting started
+[docs/DEVICE.md](docs/DEVICE.md) has what the devices do that an app must fit: the keys each keeps
+for itself, how the screen reader takes what it is told, what it says on its own.
 
-The quickest way is the screens layer, `OrbitUi` (package `dev.emassey0135.orbit.ui`): a stack of
-screens that takes the keys and tells Orbit's reader everything itself, with calls that ask and
-wait, as BTSpeak's `dialogs` do.
+## Adding it to your build
+
+There is no published release yet. Add the library to your project as a module:
+
+1. Put this repository in your project, as a git submodule for example:
+
+   ```
+   git submodule add https://github.com/emassey0135/orbit-sdk.git orbit-sdk
+   ```
+
+2. Include it in your `settings.gradle.kts`:
+
+   ```kotlin
+   include(":orbit-sdk")
+   ```
+
+3. Depend on it from your app's `build.gradle.kts`:
+
+   ```kotlin
+   dependencies {
+       implementation(project(":orbit-sdk"))
+   }
+   ```
+
+Its `build.gradle.kts` uses two aliases from your version catalog, `libs.plugins.android.library`
+and `libs.junit`, as this repository's own `gradle/libs.versions.toml` defines them. Add them to
+yours if it lacks them. Gradle reads only your project's settings file, so this repository's
+`settings.gradle.kts` is ignored there.
+
+To build the library on its own instead, run `./gradlew assembleRelease` here; the AAR is in
+`build/outputs/aar/`.
+
+## Quick start
+
+[`sample/`](sample/src/main/kotlin/dev/emassey0135/orbit/sample/MainActivity.kt) is a complete app:
+a list of notes to add, edit, pin and delete. Its heart is this:
 
 ```kotlin
-class MainActivity : ComponentActivity(), OrbitReader.Listener {
-    private val main = Handler(Looper.getMainLooper())
-    private lateinit var reader: OrbitReader
-    private lateinit var braille: BrailleInput
+class MainActivity : Activity() {
+    private lateinit var session: OrbitSession
     private lateinit var ui: OrbitUi
-    private val keys by lazy { KeyDelivery<Pair<KeyEvent, Boolean>>(reader.claim, { main.post(it) }) { (event, phone) -> ui.key(event, phone) } }
-    private val notes = mutableListOf<String>()
+    private val notes = mutableListOf("Buy milk", "Call the bank")
 
-    override fun onCreate(state: Bundle?) {
-        super.onCreate(state)
-        reader = OrbitReader(this, this)
-        reader.claim.guardCrashes()
-        braille = BrailleInput(this)
-        ui = OrbitUi(reader, braille, this)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        session = OrbitSession(this, "Notes")
+        ui = OrbitUi.on(session)
         ui.onEmpty = ::finish
-        ui.list("Notes", { notes.mapIndexed { at, note -> Item("$at", note, { ui.message(note) }, listOf(Action("Delete", 'd') { notes.removeAt(at); ui.refresh() })) } },
-            actions = { listOf(Action("New note", 'n') { newNote() }) })
-        reader.bind()
-        braille.bind()
+        ui.list(
+            "Notes",
+            items = { notes.map { note -> Item(note, note, open = { edit(note) }, delete = { delete(note) }) } },
+            empty = "No notes",
+            actions = { listOf(Action("New note", 'n') { newNote() }) },
+        )
+        session.created()
     }
 
     private fun newNote() = ui.launch {
-        val text = ui.askLine("Note") ?: return@launch
-        if (ui.confirm("Keep \"$text\"?", default = true)) {
-            notes += text
+        val text = ui.askLine("New note") ?: return@launch
+        notes += text
+        ui.land(text)
+    }
+
+    private fun edit(note: String) = ui.launch {
+        val text = ui.askLine("Note", initial = note) ?: return@launch
+        notes[notes.indexOf(note)] = text
+        ui.refresh()
+    }
+
+    private fun delete(note: String) = ui.launch {
+        if (ui.confirm("Delete $note?")) {
+            notes.remove(note)
             ui.refresh()
+            ui.announce("Deleted")
         }
     }
 
-    override fun onResume() { super.onResume(); braille.follow(); reader.claim.resumed() }
-    override fun onPause() { reader.claim.paused(); super.onPause() }
-    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); reader.claim.windowFocus(hasFocus) }
-    override fun onDestroy() { reader.unbind(); braille.unbind(); super.onDestroy() }
-
-    // From Orbit, on binder threads.
-    override fun readerReady() {
-        main.post { reader.appOpened("Notes", ""); ui.readerReady() }
-    }
-    override fun key(event: KeyEvent, phoneKeypad: Boolean): Boolean = keys.deliver(event to phoneKeypad)
-    override fun settingsChanged() = braille.refresh()
+    override fun onResume() { super.onResume(); session.resumed() }
+    override fun onPause() { session.paused(); super.onPause() }   // first thing
+    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); session.windowFocus(hasFocus) }
+    override fun onDestroy() { session.destroyed(); super.onDestroy() }
 }
 ```
 
-### Without the layer
+`OrbitSession` is the device for one activity: Orbit's screen reader, the Speak's braille input,
+and the keypad, which is the app's only while the activity is resumed, its window has focus and
+the reader is up. `OrbitUi.on(session)` builds the stack and wires it in. Nothing is said before
+Orbit's reader is ready; the stack tells the screen on top then.
 
-The pieces underneath are there for an app that draws its screens its own way:
+`ui.launch` runs the `suspend` asks in turn without a coroutine library. With one, call them from
+`lifecycleScope.launch` instead; every call is on the main thread.
 
-```kotlin
-class MainActivity : ComponentActivity(), OrbitReader.Listener {
-    private val main = Handler(Looper.getMainLooper())
-    private lateinit var reader: OrbitReader
-    private lateinit var braille: BrailleInput
-    private val decoder = KeyDecoder()
-    private val keys by lazy { KeyDelivery<Pair<KeyEvent, Boolean>>(reader.claim, { main.post(it) }) { (event, phone) -> pressed(event, phone) } }
+## The screen stack
 
-    override fun onCreate(state: Bundle?) {
-        super.onCreate(state)
-        reader = OrbitReader(this, this)
-        reader.claim.guardCrashes()   // a crash gives the keypad back
-        braille = BrailleInput(this)  // the Speak's liblouis service; unavailable on the Player
-        reader.bind()
-        braille.bind()
-    }
+`OrbitUi` (package `dev.emassey0135.orbit.ui`). The screen on top takes each key; the stack does
+what it leaves, and tells Orbit's reader what is shown, as Orbit's own apps tell it.
 
-    override fun onResume() { super.onResume(); braille.follow(); reader.claim.resumed() }
-    override fun onPause() { reader.claim.paused(); super.onPause() }
-    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); reader.claim.windowFocus(hasFocus) }
-    override fun onDestroy() { reader.unbind(); braille.unbind(); super.onDestroy() }
+### Showing and asking
 
-    // From Orbit, on binder threads.
-    override fun readerReady() {
-        main.post { reader.appOpened("My App", ""); describe() }
-    }
-    override fun key(event: KeyEvent, phoneKeypad: Boolean): Boolean = keys.deliver(event to phoneKeypad)
-    override fun settingsChanged() = braille.refresh()
-
-    private fun pressed(event: KeyEvent, phoneKeypad: Boolean) {
-        when (val key = decoder.decode(event)) { /* … */ }
-    }
-}
-```
-
-Nothing reaches Orbit before `readerReady`. Orbit calls it at once if it is already up, and
-speech sent before it is dropped. The keypad is the app's only while the activity is resumed, its
-window has focus and the reader is up (`reader.claim`). A key that arrives at any other moment is
-answered "not taken", so it goes on to whatever has the keypad.
-
-## The API
-
-### Screens: `OrbitUi`
-
-`OrbitUi` (package `dev.emassey0135.orbit.ui`) is a stack of screens over the pieces below. Give
-it `key` from `KeyDelivery` and `readerReady` from the listener, both on the main thread, and it
-does the rest: the screen on top takes each key, and each screen is told to Orbit's reader as
-Orbit's own apps tell theirs. Nothing is told before the reader is ready.
+Each ask has a callback form and a `suspend` twin, and answers exactly once: null (false for
+`confirm`) when its screen is closed by Back or Escape. It answers after its screen has closed, so
+what the app does next is told after the screen under it.
 
 | | |
 |---|---|
-| `OrbitUi(reader, braille, context, words, orbitWords, letters, …)` | The stack. `reader` is any `Reader` (an `OrbitReader`, or a test's); the stack's own `reader` wraps it, noting when a description went to Orbit. `braille` and `context` are for typing in cells and the clipboard; leave them out in a test. `letters` is which key presses a letter (below). `main`, `later`, `translator`, `editOutput`, `delay` and `now` can be given too, for a test. |
-| `push(screen)`, `close(screen)`, `top`, `screens` | A screen on top, told as newly shown; a screen taken off wherever it is, the one under it told again if it was on top. |
-| `insert(screen, above)`, `replace(old, screen)` | A screen put just above another, or in another's place (that one closes), told only where it is on top: for an app that follows where its data went (a place renamed or deleted). |
-| `batch { … }` | Pushes and closes that tell nothing until the block ends; then only the screen on top is told, if it has not been. |
-| `refresh()` | The app's data changed. Screens whose `stands()` is false close; the screen on top reads its rows again, keeping the row in hand by its key (or where the app holds it, `inHand()`), and says nothing unless that row moved, or the person reworded it by what they just did. |
-| `land(key)` | The app moved what is in hand itself (to `key`, else where it holds it): a refresh that tells the row in hand, unless it is the row just told, as it was told. |
-| `announce(text)` | What the app says of a change, after what was just told. Speech jumps Orbit's queue of descriptions, so it waits a moment behind one, in order. |
-| `refused(sentence)` | Orbit's error tone, then why (announced), where there is something to say. |
-| `onEmpty` | Called when the last screen closes (Back, Escape or Left from the first): finish the activity. |
-| `say(text)`, `message(text)`, `refuse()` | Speech after what is being said, at once; Orbit's error tone. |
-| `back(screen)` | Back from a screen, as its key does: the screen's own `back()`, else it closes. |
-| `phoneKeypad` | Whether the keys are the Player's, as the last key said. |
-| `launch { … }` | Runs a coroutine without any coroutine library, so the `suspend` calls below can be awaited in turn. |
-| `editBox(…)`, `afterTelling { … }` | An `EditBox` for this device's keys (completions on Down where `completing` says), for a screen of your own; something to say after what was just told (a field's hint). |
+| `list(title, items, empty, actions, moved, find)` | A list of `Item`s, read again from `items` at each `refresh`. `empty` is said when it has no rows; `actions` is the screen's own menu, after the row's; `moved` hears the person move; `find` takes a letter alone, for an app that finds rows by a rule of its own. Returns the `ListScreen`. |
+| `menu(items)` | A menu of `MenuItem`s, submenus and all. Gives the `value` of the item chosen. |
+| `askLine(prompt, initial, hint, multiLine)` | An edit box as Orbit's own. Gives its text when confirmed. |
+| `confirm(question, default)` | A dialog of Yes and No, `default` in hand first. |
+| `choose(title, options, selected)` | A list of options. Gives the place of the one picked. |
+| `form(title, fields)` | A dialog of `Field.Line`, `Field.Choice`, `Field.Check` and `Field.Text`, then OK and Cancel. Gives `FormValues` at OK (`text(key)`, `choice(key)`, `checked(key)`). |
 
-What to show or ask. Each has a callback form and a `suspend` twin that returns the answer, and
-each answers exactly once: null (or false) when its screen is closed by Back, Escape or `close`.
+### When the app's data changes
 
 | | |
 |---|---|
-| `list(title, items, empty, actions)` | A list of `Item(key, text, open, actions, letter, expanded, fold, title)`, read again from `items` at each `refresh`. Returns the `ListScreen`. `empty` is said once when it has no rows. A row with `expanded` and `fold` folds: Right unfolds it, Left folds it. `title` is its name alone, for a menu named for it. |
-| `menu(items)` | A menu of `MenuItem`s (Orbit's own `OrbitMenu.Item`), submenus and all. Gives the value of the item chosen. |
-| `askLine(prompt, initial, hint, multiLine)` | An edit box as Orbit's. Select or Dot 8 confirms (Dot 8 starts a line in several lines). Its menu is OK and Cancel. |
-| `confirm(question, default)` | A dialog with Yes and No buttons, `default` in hand first. Cancelling is No. |
-| `choose(title, options, selected)` | A list of options. Select picks the one in hand. |
-| `form(title, fields)` | A dialog of `Field.Line`, `Field.Choice`, `Field.Check` and `Field.Text`, then OK and Cancel. Gives `FormValues` (`text(key)`, `choice(key)`, `checked(key)`) at OK. |
+| `refresh()` | Read the screen on top again. The row in hand stays on the same row, found by its key, and nothing is said unless that row moved, or the person's own action reworded it (a check box ticked). A screen whose `stands()` is false closes. |
+| `land(key)` | The app moved what is in hand itself, to `key`: a refresh that tells the row, unless it was just told. |
+| `announce(text)`, `message(text)` | What the app says of a change. Orbit's speech jumps the queue of what it is told, so this waits a moment behind what was just told, in order. |
+| `refused(text)` | Orbit's error tone, then why. |
+| `batch { … }` | Push and close several screens; only the one left on top is told, as the block ends. |
+| `push`, `close`, `top`, `screens`, `insert`, `replace` | The stack itself: a screen of your own on top, one taken off, one put above another or in another's place. |
+| `onEmpty` | Called when the last screen closes: finish the activity. |
 
-The keys, as Orbit's own apps have them:
+### The rows
 
-- **Lists** move with `OrbitList`: Up and Down stop at the ends, Tab and Shift-Tab go round. Select
-  and Dot 8 open the row; Right unfolds a row that folds, else opens it. On the Speak a letter alone
-  moves to the next row starting with it ("No row starts with x" where none does), and Space with a
-  row's letter opens it.
+`Item(key, text, open, actions, letter, detail, expanded, fold, toggle, delete, title)`, all but
+the first two optional:
+
+| | |
+|---|---|
+| `key`, `text` | What names the row across a refresh, and what Orbit says of it. |
+| `open` | Select, Dot 8 and Right. |
+| `actions` | Its own `Action`s, first on the menu key's menu while it is in hand. |
+| `letter` | Space (or Dot 8) with it opens the row from anywhere in the list. |
+| `detail` | Said after the text, with a comma: its state, its count. |
+| `expanded`, `fold` | A row that folds: Right unfolds it, Left folds it. |
+| `toggle` | Select on a row with no `open`: a check box's change, said once the app has made it. |
+| `delete` | Space with D deletes it. |
+| `title` | Its name alone, for the menu of its actions. |
+
+`Action(name, letter, asks, run)` is something the menu key offers; `asks` (it opens a dialog) is
+the BrailleSense's mark and changes nothing on Orbit. `MenuItem(name, letter, children, value)` is
+an item of `menu`.
+
+### The keys, as Orbit's own apps have them
+
+- **Lists**: Up and Down stop at the ends; Tab and Shift-Tab go round; Space with L or with dots
+  4 5 6 go to the first or last row. A letter alone moves to the next row starting with it.
 - **Back**: Left (on a row that does not fold), Escape (Space with E or Z), Dot 7 and the Player's
-  Back close the screen, unless its `back()` takes it. In a line they are the line's: Escape cancels
-  it, Dot 7 and the Player's Back delete, and Back held cancels. Left never leaves a dialog.
-- **The menu key** (Space with M, the Player's Menu) opens one menu: the screen's own `menuBar()`
-  where it has one (submenus, with hot keys that run from anywhere in it), else the row in hand's
-  actions then the screen's own. Orbit has one menu key for both. A letter alone is an access key;
-  Space or Dot 8 with one is a hot key, else the access key. Choosing closes the menu without saying
-  the screen again; dismissing it says the screen again.
-- **Letters with Space**: Space with a letter goes to the screen's `letter()` first, then runs the
-  action of that letter, the row's first, else says there is nothing on it. Orbit keeps Space with A,
-  B, C, E, G, L, M, T and Z for itself, so Dot 8 with the letter does the same.
-- **Dialogs** on the Speak are Orbit's: Tab and Shift-Tab between controls, each told in its role,
-  and each key doing what `OrbitDialog.does` says. Select in a line of one presses OK.
-- **On the Player**, which has no Tab and no letters, a digit opens that row and holding star finds
-  by letter with T9 (`ListFinder`), in lists and menus alike. A form's controls are the rows of a
-  list: a line or a choice opens a screen of its own, a check turns over, OK and Cancel are rows.
-  Lines are typed with multi-tap T9. Back's press closes a screen, and its release goes no further.
+  Back close the screen, unless the screen takes it (`Screen.back`). Back from the last screen
+  calls `onEmpty`.
+- **The menu key** (Space with M, the Player's Menu) opens one menu: the row in hand's actions,
+  then the screen's. Orbit has one menu key for both. A screen may give a menu bar of its own
+  instead (`Screen.menuBar`), with hot keys that run from anywhere in it.
+- **Letters with Space**: Space with a letter runs the action of that letter, the row's first,
+  else says nothing is on it. Orbit keeps Space with some letters for itself (see
+  [DEVICE.md](docs/DEVICE.md)); Dot 8 with the letter does the same, and an app's own `Letters`
+  can refuse Space for those letters and say to use Dot 8.
+- **Dialogs** on the Speak are Orbit's: Tab and Shift-Tab between controls, each told in its role;
+  Up and Down change a combo box or check box; Select presses.
+- **On the Player**, which has no Tab and no letters, a digit opens that row and holding star
+  finds by letter with T9, in lists and menus alike. A form's controls are the rows of a list.
+  Lines are typed with multi-tap T9.
 
-Your own screen subclasses `Screen`, or `ListScreen` for a list:
+### Screens of your own
 
-| | |
-|---|---|
-| `title`, `loaded` | Its name; whether what it shows has arrived (not told until it has, so nothing says a list is empty on the way). |
-| `tellShown()`, `tellMoved()`, `refresh(tell)`, `land(key)` | What Orbit is told: newly shown, after a move, after the app's data changed (only what moved), and where the app moved what is in hand. |
-| `actions()`, `inHandActions()`, `menuBar()` | What the menu key offers. A `MenuBar(items, hotKeys)` is a menu tree of `MenuItem<() -> Unit>`. |
-| `key(key)`, `back()`, `letter(letter)` | Keys first; Back, Escape, Left and Dot 7 not taken; Space or Dot 8 with a letter, before any action of it. True takes it. |
-| `onTop()`, `stands()`, `closed()` | It came to the top (pushed, or what was over it closed); whether it still stands at the next `refresh`; it left the stack. |
-| `ListScreen`: `items()`, `inHand()`, `moved(item)`, `findLetter(letter)`, `hold(key)`, `expect()` | Its rows; the row the app holds in hand, followed each time the rows are read; the person's own move, for an app that follows it; a letter alone, for an app that finds rows itself; a row put in hand; a row the person may have reworded, read again at the next refresh. |
+Subclass `Screen`, or `ListScreen` for a list. A screen says what it is (`tellShown`) and what moved
+(`tellMoved`, `refresh`, `land`), may take keys first (`key`), Back (`back`) and Space with a letter
+(`letter`), names its menu (`actions`, `inHandActions`, `menuBar`), says when what it shows has
+arrived (`loaded`), and whether it still stands (`stands`). `ListScreen` adds the row the app holds
+in hand (`inHand`), the person's moves (`moved`) and finding by letter (`findLetter`).
 
-**Letters** (`Letters`): which letter a cell makes (`of(dots)`, a to z by default) and what Space or
-Dot 8 with dots presses (`pressed(key)`: a `Letter`, `Refused` with why, or `None`). An app whose
-platform keeps some letters with Space gives its own, refusing those with Space and saying to press
-them with Dot 8. **Words** (`UiWords`) are the layer's few, in English by default; those with a part
-are functions of it (`noRowStartsWith(letter)`, `nothingOnLetter(letter)`).
+`UiWords` holds the few words the stack says itself, in English by default; pass your own for
+another language. `Letters` says which key presses a letter.
 
-### Talking to Orbit
+### The same shape as the BrailleSense SDK
 
-| | |
-|---|---|
-| `OrbitReader` | Orbit's screen reader. The app describes its screen and Orbit voices it: `appOpened`, `focusList`, `itemChanged`, `dialog`/`dialogClosed`, `contextMenu`/`menuOpened`/`focusMenu`/`contextMenuClosed`, `focusEdit`, `focusControl`, `focusCheck`, `focusChoice`, `focusText`, `characterTyped`, `editChanged`. It can also `speak`, `speakQueued`, `stop`, play Orbit's `sound`s (`SOUND_ERROR`…) and `vibrate`. `Listener` hears that the reader is ready, the keys, and settings changing. `claim` holds the keypad only while the app is in front. |
-| `Reader` | What `OrbitReader` tells and reads, as an interface, so what is built over it can be tested with a reader that records. |
-| `Claim`, `KeyDelivery` | Holding the keypad while resumed and focused, and moving a key from the binder thread to the app's. |
-| `ServiceLink` | One bound service, each call made in order on one worker thread, and bound again when the service dies. |
-| `DebugKeys` | Keys pressed over `adb shell am broadcast`, in a debuggable build. Nothing else can press the keypad remotely. |
+`BrailleSenseUi` in the BrailleSense SDK has the same members under the same names: `list`, `menu`,
+`askLine`, `confirm`, `choose`, `form`, `refresh`, `land`, `announce`, `message`, `refused`,
+`batch`, `launch`, `onEmpty`, and `Item`, `Action`, `MenuItem`, `Field`, `FormValues` and `UiWords`'
+common words. An app's screen code compiles against either by changing its imports; the session
+and the activity's wiring are each device's own.
 
-### Keys
+## Below the stack
 
-`KeyDecoder.decode(KeyEvent)` turns the keypad callback into a `Key`. The Speak's keys are named
-from its user guide:
-
-- **Moving:** Space with dots 1 or 4 is `Up` or `Down`. Space with dots 4 5 or 1 2 is `Tab` or
-  `BackTab`. Space with L or dots 4 5 6 is `First` or `Last`.
-- **Escape and the menu:** Space with E or Z is `Escape`. Space with M is `Menu`.
-- **Dots:** `Dot7` and `Dot8` on their own. Dots alone are a `Cell`, Space with dots is a `Chord`,
-  and Dot 8 with dots is `Enter`.
-
-`BrailleLetters` gives the letter a cell makes, a to z by their six dots, whatever table the person
-types in, since a key's letter is a command's.
-
-The Player gives `Digit`, `Star`, `Pound`, `Back` and `Menu`, each with a held form. Pressing and
-releasing a held key counts once.
-
-### Widgets, as Orbit's own apps have them
+For an app that draws its screens its own way.
 
 | | |
 |---|---|
-| `EditBox` | An edit box like Orbit's fields: Speak cells translated a word at a time in the person's table, the Player's multi-tap T9, moving by character, word and line, and the Editor's selection and clipboard. It reports to the reader through an `Output`; `ReaderEditOutput` is the ready-made one, using the system clipboard (its braille input and context may be left out, as in a test). `CellBuffer` and `T9Input` sit underneath it. |
-| `OrbitMenu` | A menu like those in Orbit's Editor and File Manager: one list of items and submenus. Up and Down wrap round, Right or Select open a submenu, Left goes back, a letter is an access key, and choosing closes the menu. `OrbitReader.focusMenu(menu)` tells Orbit about the item in hand. Orbit has one menu key, so a row's actions and the screen's commands share one menu. |
-| `OrbitList` | How a list moves: Up and Down stop at the ends, Tab and Shift-Tab wrap round, and Space with L or dots 4 5 6 go to the ends. `target(key, index, size)` gives the row to move to. Tell the reader with `focusList` and `itemChanged`. |
-| `ListFinder` | The Player's way of finding a row. A digit opens that row; 1 then 2 typed quickly is the twelfth, and 0 alone the tenth. Holding star switches to finding by letter with T9. `ListFinder.next` finds the next row by first letter, for the Speak's cells or T9's letters. |
-| `OrbitDialog` | What a key does in a dialog, as in the Editor's Save As. Tab and Shift-Tab move between controls. Up and Down change a combo box or a list box, or toggle a check box. Select presses. Space with E or Z, or Dot 7, cancels. Left and Right never leave. Tell the reader about each control in its role (see the class's documentation). |
+| `OrbitReader` | Orbit's screen reader. An app describes its screen and Orbit voices it: `appOpened`, `focusList`, `itemChanged`, `dialog`, `menuOpened`/`focusMenu`/`contextMenuClosed`, `focusEdit`, `focusControl`, `focusCheck`, `focusChoice`, `focusText`, `characterTyped`, `editChanged`. It also speaks, plays Orbit's sounds and vibrates. `Reader` is the same as an interface, so what is built over it can be tested with one that records. |
+| `Claim`, `KeyDelivery` | Holding the keypad only while the activity is in front, and moving a key from the binder thread to the app's. |
+| `KeyDecoder`, `Key` | The keypad callback as a key: the Speak's chords named by its user guide, the Player's digits, star, pound, Back and Menu. `BrailleLetters` gives a cell's letter. |
+| `EditBox` | An edit box like Orbit's fields: cells translated a word at a time in the person's table on the Speak, multi-tap T9 on the Player, moving by character, word and line, and the Editor's selection and clipboard. It tells the reader through an `Output`; `ReaderEditOutput` is the ready-made one. `CellBuffer` and `T9Input` are underneath. |
+| `OrbitMenu` | A menu like those of Orbit's Editor and File Manager: one list of items and submenus, Up and Down round a level, Right and Select into a submenu, Left back out, a letter an access key. |
+| `OrbitList`, `ListFinder` | How a list moves, and the Player's finding of a row by number or by letter. |
+| `OrbitDialog` | What a key does in a dialog, as in the Editor's Save As. |
+| `BrailleInput`, `OrbitSettings`, `Root` | The Speak's liblouis service in the person's table and selection mode, and Orbit's settings read through root. |
+| `OrbitWords`, `CellNames` | What the device says in its own words: the fields' echo, the Editor's selection, T9's modes. English by default. |
+| `DebugKeys` | Orbit's keys pressed over adb, in a debuggable build. |
 
-### Braille input and settings
+## Testing
 
-| | |
-|---|---|
-| `BrailleInput` | The Speak's liblouis service, in the person's table and selection mode (contracted, uncontracted or computer braille), with their typing echo. Call `follow` as a line is reached and as the app comes back. Orbit's G chord changes the table without telling other apps, so the service is asked which table it holds. `changed` and `failed` report what happened. `available` is false on the Player. |
-| `OrbitSettings`, `Root` | Orbit's settings read through root, and the root helpers. A refusal is a `RootFailure`, never a default taken in silence. |
-
-### Words
-
-`OrbitWords` holds what the device says: a field's echo of cells and deletions, the Editor's
-selection and clipboard, T9's modes, and what a root failure says. `CellNames` holds the names of
-cells with no letters (the capital sign, the number sign…). Both default to the stock English of
-Orbit's own build, so an app sounds like the device. Pass your own for another language.
-
-## Tests
+The JVM tests run without a device:
 
 ```
-./gradlew :orbit-sdk:testDebugUnitTest
+./gradlew testDebugUnitTest
 ```
 
-The JVM tests cover the key decoder, the claim, the cell buffer, the edit box, T9, the menu, the
-list moves, the finder, the dialog keys, the cell names, reading the settings, and the screens
-layer (`UiTest`, over a reader that records what it is told).
+Build an `OrbitUi` over a `Reader` that records what it is told, and press keys with `ui.key`, as
+[`src/test/kotlin/dev/emassey0135/orbit/UiTest.kt`](src/test/kotlin/dev/emassey0135/orbit/UiTest.kt)
+does. `delay` and `now` can be given too, so what waits behind a description runs when the test
+says.
+
+On a device, nothing can press Orbit's keypad over adb, so name a broadcast for `OrbitSession`'s
+`debugKeys` and a debuggable build takes keys from it:
+
+```
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell am broadcast -a <your action> --es name DOWN --ei action 0 --ez long false --ez phone false
+```
+
+Wake the device first, or the window has no focus and the keypad is not the app's. What Orbit said
+is in its log: `adb shell setprop log.tag D`, then look for `olympus_SpeechManager`'s
+`sequence items` in `adb logcat`.
+
+## API reference
+
+```
+./gradlew dokkaGenerate
+```
+
+writes it to `build/dokka/html`. CI keeps it with each build.
 
 ## Licence
 
-AGPL-3.0-or-later, as the rest of Lumenna, while it lives here.
+Apache License 2.0: see [LICENSE](LICENSE) and [NOTICE](NOTICE).

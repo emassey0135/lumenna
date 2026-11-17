@@ -6,57 +6,73 @@ package dev.emassey0135.orbit
  * (`dev.emassey0135.orbit.ui`, [ReaderEditOutput]) can be tested with a reader that records.
  * Each call is described on [OrbitReader].
  */
-interface Reader {
+public interface Reader {
     /** The person's T9 commit timeout in milliseconds, or Orbit's default. */
-    val characterCommitTimeout: Int
+    public val characterCommitTimeout: Int
 
     /** The person's T9 commit feedback: 1 sound, 2 speak, 3 vibrate, 4 sound and speak, 5 vibrate and speak. */
-    val characterCommitFeedback: Int
+    public val characterCommitFeedback: Int
 
     /** Says [text], cutting off what was being said. */
-    fun speak(text: String)
+    public fun speak(text: String)
 
     /** Says [text] after what is being said. */
-    fun speakQueued(text: String)
+    public fun speakQueued(text: String)
 
-    fun stop()
+    /** Stops what is being said. */
+    public fun stop()
 
     /** One of Orbit's sounds ([OrbitReader.SOUND_ERROR]…). */
-    fun sound(id: Int)
+    public fun sound(id: Int)
 
-    fun vibrate(milliseconds: Long)
+    /** Vibrates for [milliseconds]. */
+    public fun vibrate(milliseconds: Long)
 
-    fun focusList(name: String, count: Int, selected: Int, item: String)
+    /** A list named [name] reached, [count] rows, the row [selected] (from 0) in hand reading [item]. */
+    public fun focusList(name: String, count: Int, selected: Int, item: String)
 
-    fun itemChanged(name: String, count: Int, selected: Int, item: String)
+    /** The row in hand of the list [name] moved to [selected], reading [item]. */
+    public fun itemChanged(name: String, count: Int, selected: Int, item: String)
 
-    fun dialog(name: String, message: String, focused: String)
+    /** A dialog named [name] opened, [message] said with it and [focused] in hand. */
+    public fun dialog(name: String, message: String, focused: String)
 
-    fun dialogClosed()
+    /** The dialog open closed. */
+    public fun dialogClosed()
 
-    fun menuOpened()
+    /** A menu opened, unnamed: Orbit says its own "Context menu". */
+    public fun menuOpened()
 
-    fun focusMenu(item: String, subMenu: Boolean, accessKey: Char?, position: Int, total: Int)
+    /** An item of the menu open in hand: [item], whether it is a [subMenu], its [accessKey], and its place. */
+    public fun focusMenu(item: String, subMenu: Boolean, accessKey: Char?, position: Int, total: Int)
 
     /** [focusMenu] for the item [menu] has in hand. */
-    fun focusMenu(menu: OrbitMenu<*>) {
+    public fun focusMenu(menu: OrbitMenu<*>) {
         val item = menu.current ?: return
         focusMenu(item.name, item.isSubMenu, item.accessKey, menu.index + 1, menu.items.size)
     }
 
-    fun contextMenuClosed(dismissed: Boolean = false)
+    /** The menu open closed: [dismissed] unchosen. */
+    public fun contextMenuClosed(dismissed: Boolean = false)
 
-    fun focusEdit(name: String, content: String, cursor: Int, line: String = content, multiline: Boolean = false)
+    /** An edit box named [name] in hand, holding [content] with the caret at [cursor] on [line]. */
+    public fun focusEdit(name: String, content: String, cursor: Int, line: String = content, multiline: Boolean = false)
 
-    fun focusControl(name: String, role: Int)
+    /** A control named [name] of [role] (the OrbitReader roles) in hand. */
+    public fun focusControl(name: String, role: Int)
 
-    fun focusText(content: String)
+    /** A line to read, [content], in hand. */
+    public fun focusText(content: String)
 
-    fun focusCheck(name: String, checked: Boolean)
+    /** A check box named [name] in hand, [checked] or not. */
+    public fun focusCheck(name: String, checked: Boolean)
 
-    fun focusChoice(name: String, role: Int, count: Int, selected: Int, item: String)
+    /** A combo box or list box named [name] in hand, [item] chosen of [count]. */
+    public fun focusChoice(name: String, role: Int, count: Int, selected: Int, item: String)
 
-    fun characterTyped(character: String, fieldName: String, capital: Boolean, resolvedWord: String?)
+    /** A [character] typed in [fieldName]; Orbit echoes it by the person's settings. */
+    public fun characterTyped(character: String, fieldName: String, capital: Boolean, resolvedWord: String?)
 
-    fun editChanged(fieldName: String, content: String, cursor: Int, changeType: String)
+    /** The edit box [fieldName] changed to [content], by [changeType]. */
+    public fun editChanged(fieldName: String, content: String, cursor: Int, changeType: String)
 }

@@ -7,7 +7,7 @@ package dev.emassey0135.orbit
  * which Orbit's fields leave to the screen reader. They are the device's, not an app's, so an app
  * says them as they are; one with words of its own passes its own [OrbitWords]. Each `%s` is filled in.
  */
-data class OrbitWords(
+public data class OrbitWords(
     /** A cell that makes no character yet, `%s` its dots: "dot 1 2 6". */
     val dots: String = "dot %s",
     /** What was deleted, `%s` it: "h deleted", "dot 6 deleted". */
@@ -41,7 +41,7 @@ data class OrbitWords(
     val cellNames: CellNames = CellNames(),
 ) {
     /** What T9's [mode] is called. */
-    fun mode(mode: T9Input.Mode): String = when (mode) {
+    public fun mode(mode: T9Input.Mode): String = when (mode) {
         T9Input.Mode.LOWERCASE -> lowercase
         T9Input.Mode.UPPERCASE -> uppercase
         T9Input.Mode.DIGITS -> digits
@@ -55,7 +55,7 @@ data class OrbitWords(
  * Orbit. In contracted braille a cell here is said by its name before anything it would make;
  * otherwise only when it makes nothing yet, as the capital sign does.
  */
-data class CellNames(
+public data class CellNames(
     val names: Map<Int, String> = mapOf(
         0b00_0010 to "dot 2",
         0b00_0110 to "low b",
@@ -75,7 +75,7 @@ data class CellNames(
     val capitalWordSign: String = "capital word sign",
 ) {
     /** What the device's fields call cell [at] of [word] by itself, if it is one they name. */
-    fun name(word: List<Int>, at: Int): String? {
+    public fun name(word: List<Int>, at: Int): String? {
         val cell = word.getOrNull(at) ?: return null
         if (cell == CAPITAL_SIGN && at > 0 && word[at - 1] == CAPITAL_SIGN) return capitalWordSign
         return names[cell]

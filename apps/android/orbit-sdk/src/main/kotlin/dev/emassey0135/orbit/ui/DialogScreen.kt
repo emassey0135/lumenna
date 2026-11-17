@@ -39,9 +39,8 @@ internal sealed class Control(val key: String, val label: String) {
 /**
  * A dialog as Orbit's own are, the Editor's Save As: on the Speak, told as a dialog, then each
  * control reached in its role, Tab and Shift-Tab going round them and each key doing what
- * [OrbitDialog.does] says. The Player has no Tab, so there its controls are the rows of a list, as
- * Lumenna's dialogs are: a line or a choice opens a screen of its own, a check turns over, a button
- * presses. Which the person has is the last key's, so the same dialog serves both.
+ * [OrbitDialog.does] says. The Player has no Tab, so there its controls are the rows of a list: a
+ * line or a choice opens a screen of its own, a check turns over, a button presses. Which the person has is the last key's, so the same dialog serves both.
  *
  * Select in a line of one presses [default]; Escape, Dot 7 off a line and Back close it. [closing]
  * is called once as it closes, whatever closed it.
@@ -116,7 +115,7 @@ internal class DialogScreen(
     override fun tellShown() {
         if (ui.phoneKeypad) {
             rebuild()
-            if (!announced) reader.dialog(title, "", current?.text.orEmpty())
+            if (!announced) reader.dialog(title, "", current?.line.orEmpty())
             announced = true
             tellMoved()
         } else {

@@ -17,6 +17,7 @@ import dev.emassey0135.orbit.OrbitWords
 import dev.emassey0135.orbit.Reader
 import dev.emassey0135.orbit.ReaderEditOutput
 import dev.emassey0135.orbit.T9Input
+import dev.emassey0135.orbit.session.OrbitSession
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.resume
@@ -44,19 +45,19 @@ import kotlin.coroutines.suspendCoroutine
  * Everything runs on the main thread: hand [key] what [dev.emassey0135.orbit.KeyDelivery] delivers,
  * and [readerReady] what [OrbitReader.Listener.readerReady] says, posted there.
  */
-class OrbitUi(
+public class OrbitUi(
     /** Orbit's screen reader: an [OrbitReader], or a test's. */
     reader: Reader,
     /** The Speak's braille input; none where nothing is typed in cells (a test). */
-    val braille: BrailleInput? = null,
+    public val braille: BrailleInput? = null,
     /** For the system's clipboard in edit boxes; none leaves copying and pasting doing nothing. */
     context: Context? = null,
     /** What the layer says in words of its own. */
-    val words: UiWords = UiWords(),
+    public val words: UiWords = UiWords(),
     /** What the device says in its own words: its fields' echo, T9's modes. */
-    val orbitWords: OrbitWords = OrbitWords(),
+    public val orbitWords: OrbitWords = OrbitWords(),
     /** Which letter a key presses: by default its six dots, with Space or Dot 8 alike. */
-    val letters: Letters = Letters(),
+    public val letters: Letters = Letters(),
     /** The main thread's handler: for the Player's numbers. */
     private val main: Handler = Handler(Looper.getMainLooper()),
     /** When T9 takes a letter: one pending call, on [main] unless a test gives its own. */
@@ -71,7 +72,7 @@ class OrbitUi(
     private val now: () -> Long = { SystemClock.uptimeMillis() },
 ) {
     /** What every screen tells Orbit through: [reader] itself, noting when a description went to it. */
-    val reader: Reader = Telling(reader)
+    public val reader: Reader = Telling(reader)
 
     private val output: EditBox.Output = editOutput ?: ReaderEditOutput(this.reader, braille, context, orbitWords)
 
@@ -97,22 +98,22 @@ class OrbitUi(
     private var announceWaiting = false
 
     /** Called when the last screen closes (Back from the first): the app finishes. */
-    var onEmpty: () -> Unit = {}
+    public var onEmpty: () -> Unit = {}
 
     /**
      * Whether the keys are the Player's phone keypad, as the last key said. Before any key, a device
      * with no braille translator is taken for the Player; with no [braille] at all, the Speak.
      */
-    var phoneKeypad: Boolean = braille?.available == false
+    public var phoneKeypad: Boolean = braille?.available == false
 
     /** The screen shown. */
-    val top: Screen? get() = stack.lastOrNull()
+    public val top: Screen? get() = stack.lastOrNull()
 
     /** The screens open, from the first to the one shown. */
-    val screens: List<Screen> get() = stack.toList()
+    public val screens: List<Screen> get() = stack.toList()
 
     /** Puts [screen] on top and tells the reader of it. */
-    fun push(screen: Screen) {
+    public fun push(screen: Screen) {
         require(stack.none { it === screen }) { "The screen is open already" }
         screen.ui = this
         stack.add(screen)
@@ -122,7 +123,7 @@ class OrbitUi(
     }
 
     /** Puts [screen] just above [above], wherever that is: told if it is then on top. */
-    fun insert(screen: Screen, above: Screen) {
+    public fun insert(screen: Screen, above: Screen) {
         require(stack.none { it === screen }) { "The screen is open already" }
         val at = stack.indexOfFirst { it === above }
         require(at >= 0) { "The screen to go above is not open" }
@@ -137,7 +138,7 @@ class OrbitUi(
      * Puts [screen] in [old]'s place, as the app moves from what [old] showed to what [screen]
      * shows: [old] closes, and [screen] is told if it is on top.
      */
-    fun replace(old: Screen, screen: Screen) {
+    public fun replace(old: Screen, screen: Screen) {
         require(stack.none { it === screen }) { "The screen is open already" }
         val at = stack.indexOfFirst { it === old }
         require(at >= 0) { "The screen to replace is not open" }
@@ -153,7 +154,7 @@ class OrbitUi(
      * Takes [screen] off wherever it is; if it was on top, the screen under it is told again as
      * newly shown. An ask closed so answers with nothing.
      */
-    fun close(screen: Screen) {
+    public fun close(screen: Screen) {
         if (remove(screen, quiet = false)) settle()
     }
 
@@ -200,7 +201,7 @@ class OrbitUi(
      * Does [block], which may push and close several screens, telling nothing until it ends: then
      * only the screen on top is told, if it has not been, so the person hears where they end up.
      */
-    fun batch(block: () -> Unit) {
+    public fun batch(block: () -> Unit) {
         batching++
         try {
             block()
@@ -214,14 +215,14 @@ class OrbitUi(
      * The app's data changed: screens that no longer [Screen.stands] close, and the screen on top
      * reads its rows again, the row in hand kept by its key, told only if it moved.
      */
-    fun refresh() = reread { screen, shown -> screen.refresh(shown) }
+    public fun refresh(): Unit = reread { screen, shown -> screen.refresh(shown) }
 
     /**
      * The app moved what is in hand itself, to [key] where it names one (else where the screen's
      * app holds it): a refresh that tells the screen on top what is in hand, unless that is what was
      * just told, as it was told.
      */
-    fun land(key: String? = null) = reread { screen, shown ->
+    public fun land(key: String? = null): Unit = reread { screen, shown ->
         if (shown) {
             screen.land(key)
         } else {
@@ -244,7 +245,7 @@ class OrbitUi(
     }
 
     /** Says [text] after what is being said, at once. */
-    fun say(text: String) {
+    public fun say(text: String) {
         if (text.isNotBlank()) reader.speakQueued(text)
     }
 
@@ -252,7 +253,7 @@ class OrbitUi(
      * Says what the app has to say (what a change did), after what was just told: speech goes ahead
      * of Orbit's queue of descriptions, so it waits a moment behind one, in the order announced.
      */
-    fun announce(text: String) {
+    public fun announce(text: String) {
         if (text.isBlank()) return
         announcing.addLast(text)
         if (announceWaiting) return
@@ -270,19 +271,19 @@ class OrbitUi(
     }
 
     /** Orbit's error tone. */
-    fun refuse() = reader.sound(OrbitReader.SOUND_ERROR)
+    public fun refuse(): Unit = reader.sound(OrbitReader.SOUND_ERROR)
 
     /** Orbit's error tone, then why, where there is something to say, after what was told. */
-    fun refused(sentence: String?) {
+    public fun refused(sentence: String?) {
         refuse()
         if (sentence != null) announce(sentence)
     }
 
-    /** A message, said: nothing waits for it. */
-    fun message(text: String) = say(text)
+    /** [announce]: what the app has to say, after what was just told. */
+    public fun message(text: String): Unit = announce(text)
 
     /** Orbit's reader is ready, for the first time or again: the screen on top is told anew. */
-    fun readerReady() {
+    public fun readerReady() {
         ready = true
         told = null
         tellTop()
@@ -291,7 +292,7 @@ class OrbitUi(
     // ---- keys ------------------------------------------------------------------------------
 
     /** A key from Orbit's keypad, on the main thread, in order. */
-    fun key(event: KeyEvent, phoneKeypad: Boolean) {
+    public fun key(event: KeyEvent, phoneKeypad: Boolean) {
         this.phoneKeypad = phoneKeypad
         val key = decoder.decode(event)
         if (key == Key.None) return
@@ -317,7 +318,7 @@ class OrbitUi(
     }
 
     /** Back from [screen]: its own if it takes it, else it closes, and from the first the app ends. */
-    fun back(screen: Screen) {
+    public fun back(screen: Screen) {
         if (!screen.back()) close(screen)
     }
 
@@ -331,7 +332,7 @@ class OrbitUi(
         }
         val actions = screen.inHandActions() + screen.actions()
         if (actions.isEmpty()) return refuse()
-        val items = actions.map { OrbitMenu.Item<Action>(it.name, it.letter?.lowercaseChar(), value = it) }
+        val items = actions.map { MenuItem(it.name, it.letter, value = it, asks = it.asks) }
         push(MenuScreen(items) { action -> if (action != null) acted(screen, action.run) })
     }
 
@@ -339,7 +340,7 @@ class OrbitUi(
     private fun runLetter(screen: Screen, letter: Char) {
         if (screen.letter(letter)) return
         val action = (screen.inHandActions() + screen.actions()).firstOrNull { it.letter?.lowercaseChar() == letter }
-        if (action == null) return refused(words.nothingOnLetter(letter.toString()))
+        if (action == null) return refused(words.nothingOnLetter(letter))
         acted(screen, action.run)
     }
 
@@ -351,16 +352,35 @@ class OrbitUi(
 
     // ---- what to ask -----------------------------------------------------------------------
 
-    /** A list of [items], read again at each [refresh], pushed. */
-    fun list(
+    /**
+     * A list of [items], read again at each [refresh], pushed. [empty] is said when it has no rows;
+     * [actions] are the screen's own on the menu key, after the row in hand's. [moved] hears the
+     * person move to a row themselves; [find] takes a letter alone, for an app that finds rows by
+     * a rule of its own (none finds the next row whose text starts with it).
+     */
+    public fun list(
         title: String,
         items: () -> List<Item>,
         empty: String = words.empty,
         actions: () -> List<Action> = { emptyList() },
-    ): ListScreen = ListScreen(title, items, empty, actions).also(::push)
+        moved: (Item) -> Unit = {},
+        find: ((Char) -> Unit)? = null,
+    ): ListScreen {
+        val heard = moved
+        val finding = find
+        return object : ListScreen(title, items, empty, actions) {
+            override fun moved(item: Item) = heard(item)
+
+            override fun findLetter(letter: Char): Boolean {
+                val found = finding ?: return false
+                found(letter)
+                return true
+            }
+        }.also(::push)
+    }
 
     /** A menu of [items] and submenus; [chosen] gets the value of the item chosen, or null. */
-    fun <T> menu(items: List<MenuItem<T>>, chosen: (T?) -> Unit) {
+    public fun <T> menu(items: List<MenuItem<T>>, chosen: (T?) -> Unit) {
         if (items.isEmpty()) {
             refuse()
             chosen(null)
@@ -370,18 +390,18 @@ class OrbitUi(
     }
 
     /** [menu], waited for. */
-    suspend fun <T> menu(items: List<MenuItem<T>>): T? = suspendCoroutine { done -> menu(items) { done.resume(it) } }
+    public suspend fun <T> menu(items: List<MenuItem<T>>): T? = suspendCoroutine { done -> menu(items) { done.resume(it) } }
 
     /** A line typed; [answered] gets it as confirmed, or null. */
-    fun askLine(prompt: String, initial: String = "", hint: String = "", multiLine: Boolean = false, answered: (String?) -> Unit) =
+    public fun askLine(prompt: String, initial: String = "", hint: String = "", multiLine: Boolean = false, answered: (String?) -> Unit): Unit =
         push(LineScreen(prompt, initial, hint, multiLine, answered))
 
     /** [askLine], waited for. */
-    suspend fun askLine(prompt: String, initial: String = "", hint: String = "", multiLine: Boolean = false): String? =
+    public suspend fun askLine(prompt: String, initial: String = "", hint: String = "", multiLine: Boolean = false): String? =
         suspendCoroutine { done -> askLine(prompt, initial, hint, multiLine) { done.resume(it) } }
 
     /** Yes or No, [default] in hand first; [answered] gets false for No and for a dialog closed. */
-    fun confirm(question: String, default: Boolean = false, answered: (Boolean) -> Unit) {
+    public fun confirm(question: String, default: Boolean = false, answered: (Boolean) -> Unit) {
         var answer = false
         lateinit var screen: DialogScreen
         val yes = Control.Button(BUTTON + "yes", words.yes) {
@@ -394,19 +414,19 @@ class OrbitUi(
     }
 
     /** [confirm], waited for. */
-    suspend fun confirm(question: String, default: Boolean = false): Boolean =
+    public suspend fun confirm(question: String, default: Boolean = false): Boolean =
         suspendCoroutine { done -> confirm(question, default) { done.resume(it) } }
 
     /** One of [options], [selected] in hand first; [chosen] gets its place, or null. */
-    fun choose(title: String, options: List<String>, selected: Int = 0, chosen: (Int?) -> Unit) =
+    public fun choose(title: String, options: List<String>, selected: Int = 0, chosen: (Int?) -> Unit): Unit =
         push(ChoiceScreen(title, options, selected, words.empty, chosen))
 
     /** [choose], waited for. */
-    suspend fun choose(title: String, options: List<String>, selected: Int = 0): Int? =
+    public suspend fun choose(title: String, options: List<String>, selected: Int = 0): Int? =
         suspendCoroutine { done -> choose(title, options, selected) { done.resume(it) } }
 
     /** A form of [fields], then OK and Cancel; [done] gets what it holds at OK, or null. */
-    fun form(title: String, fields: List<Field>, done: (FormValues?) -> Unit) {
+    public fun form(title: String, fields: List<Field>, done: (FormValues?) -> Unit) {
         var values: FormValues? = null
         lateinit var screen: DialogScreen
         val ok = Control.Button(BUTTON + "ok", words.ok) {
@@ -420,21 +440,21 @@ class OrbitUi(
     }
 
     /** [form], waited for. */
-    suspend fun form(title: String, fields: List<Field>): FormValues? =
+    public suspend fun form(title: String, fields: List<Field>): FormValues? =
         suspendCoroutine { done -> form(title, fields) { done.resume(it) } }
 
     /**
      * Runs [block] at once on this thread, for an app with no coroutine library: each ask in it
      * waits for its answer, and it goes on on the main thread as the answer comes.
      */
-    fun launch(block: suspend () -> Unit) {
+    public fun launch(block: suspend () -> Unit) {
         block.startCoroutine(Continuation(EmptyCoroutineContext) { it.getOrThrow() })
     }
 
     // ---- for screens -----------------------------------------------------------------------
 
     /** An edit box as Orbit's own, for this device's keys as the last key said them, told through [reader]. */
-    fun editBox(
+    public fun editBox(
         name: String,
         initial: String,
         multiLine: Boolean,
@@ -470,7 +490,7 @@ class OrbitUi(
     )
 
     /** [run] once what was just told has reached Orbit's queue: speech jumps it, so a hint waits a moment. */
-    fun afterTelling(run: () -> Unit) = delay(SETTLE_MS, run)
+    public fun afterTelling(run: () -> Unit): Unit = delay(SETTLE_MS, run)
 
     /** The reader the app gave, noting each description sent through it, which what is announced waits behind. */
     private inner class Telling(private val base: Reader) : Reader by base {
@@ -534,12 +554,34 @@ class OrbitUi(
         }
     }
 
-    private companion object {
+    /** Making the stack over a session. */
+    public companion object {
         /** How long what is said waits behind a description, which goes through Orbit's queue. */
-        const val SETTLE_MS = 400L
+        private const val SETTLE_MS = 400L
 
         /** Before a dialog's own buttons' keys, so a field's key cannot be the same. */
-        const val BUTTON = "\u0000button:"
+        private const val BUTTON = "\u0000button:"
+
+        /**
+         * The stack over [session], wired into it: the session's keys come here, Orbit's reader
+         * being ready tells the screen on top, a new braille table shows a line again, and Orbit's
+         * settings unread (root refused) are said once in [orbitWords]. [reader] is what the stack
+         * tells Orbit through: the session's, or one that wraps it (to show what is told, say).
+         */
+        public fun on(
+            session: OrbitSession,
+            words: UiWords = UiWords(),
+            letters: Letters = Letters(),
+            orbitWords: OrbitWords = OrbitWords(),
+            reader: Reader = session.reader,
+        ): OrbitUi {
+            val ui = OrbitUi(reader, session.braille, session.context, words, orbitWords, letters)
+            session.onKey = ui::key
+            session.onReady = ui::readerReady
+            session.onTableChanged = ui::refresh
+            session.onRootFailed = { ui.say(orbitWords.rootFailed.replace("%s", it.reason)) }
+            return ui
+        }
     }
 }
 

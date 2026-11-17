@@ -16,32 +16,36 @@ package dev.emassey0135.orbit
  *
  * Pure, so a JVM test holds it; how it is told to the screen reader is [OrbitReader.focusMenu].
  */
-class OrbitMenu<T>(root: List<Item<T>>) {
+public class OrbitMenu<T>(root: List<Item<T>>) {
     /** One entry: a submenu when it has [children], else an item whose [value] is chosen. */
-    class Item<T>(
-        val name: String,
+    public class Item<T>(
+        /** What Orbit says of it. */
+        public val name: String,
         /** The letter that selects it in its level, lowercase; none for one no letter reaches. */
-        val accessKey: Char? = null,
-        val children: List<Item<T>> = emptyList(),
-        val value: T? = null,
+        public val accessKey: Char? = null,
+        /** Its items, for a submenu. */
+        public val children: List<Item<T>> = emptyList(),
+        /** What choosing it gives. */
+        public val value: T? = null,
     ) {
-        val isSubMenu: Boolean get() = children.isNotEmpty()
+        /** Whether it opens a level of its own. */
+        public val isSubMenu: Boolean get() = children.isNotEmpty()
     }
 
     /** What a key did to the menu. */
-    sealed interface Outcome<out T> {
+    public sealed interface Outcome<out T> {
         /** The item in hand moved within its level, or stayed where a key moves nothing. */
-        data object Moved : Outcome<Nothing>
+        public data object Moved : Outcome<Nothing>
         /** A submenu opened, on its first item. */
-        data object Opened : Outcome<Nothing>
+        public data object Opened : Outcome<Nothing>
         /** Back up a level, on the submenu left. */
-        data object Back : Outcome<Nothing>
+        public data object Back : Outcome<Nothing>
         /** Left at the top: the menu closes with nothing chosen. */
-        data object Closed : Outcome<Nothing>
+        public data object Closed : Outcome<Nothing>
         /** An item chosen: the menu closes and it runs. */
-        data class Chosen<T>(val value: T) : Outcome<T>
+        public data class Chosen<T>(val value: T) : Outcome<T>
         /** A key that reaches nothing here (a letter no item has): Orbit's error tone. */
-        data object Refused : Outcome<Nothing>
+        public data object Refused : Outcome<Nothing>
     }
 
     private class Level<T>(val items: List<Item<T>>, var index: Int)
@@ -50,27 +54,31 @@ class OrbitMenu<T>(root: List<Item<T>>) {
     private val level: Level<T> get() = levels.last()
 
     /** The items of the level shown. */
-    val items: List<Item<T>> get() = level.items
+    public val items: List<Item<T>> get() = level.items
 
     /** Where the item in hand is in its level, from 0. */
-    val index: Int get() = level.index
+    public val index: Int get() = level.index
 
     /** The item in hand; none in a menu with nothing in it. */
-    val current: Item<T>? get() = level.items.getOrNull(level.index)
+    public val current: Item<T>? get() = level.items.getOrNull(level.index)
 
     /** How many submenus deep the level shown is: 0 at the top. */
-    val depth: Int get() = levels.size - 1
+    public val depth: Int get() = levels.size - 1
 
-    fun up(): Outcome<T> = moveBy(-1)
+    /** Up or Shift-Tab: the item before, round from the first to the last. */
+    public fun up(): Outcome<T> = moveBy(-1)
 
-    fun down(): Outcome<T> = moveBy(1)
+    /** Down or Tab: the next item, round from the last to the first. */
+    public fun down(): Outcome<T> = moveBy(1)
 
-    fun first(): Outcome<T> = moveTo(0)
+    /** The first item of the level. */
+    public fun first(): Outcome<T> = moveTo(0)
 
-    fun last(): Outcome<T> = moveTo(level.items.size - 1)
+    /** The last item of the level. */
+    public fun last(): Outcome<T> = moveTo(level.items.size - 1)
 
     /** Moves to [at] in the level shown, as a list's own finding does. */
-    fun moveTo(at: Int): Outcome<T> {
+    public fun moveTo(at: Int): Outcome<T> {
         if (level.items.isNotEmpty()) level.index = at.coerceIn(0, level.items.size - 1)
         return Outcome.Moved
     }
@@ -81,20 +89,23 @@ class OrbitMenu<T>(root: List<Item<T>>) {
         return Outcome.Moved
     }
 
-    fun right(): Outcome<T> {
+    /** Right: opens a submenu on its first item; on an item, nothing. */
+    public fun right(): Outcome<T> {
         val item = current ?: return Outcome.Refused
         if (!item.isSubMenu) return Outcome.Moved
         levels.addLast(Level(item.children, 0))
         return Outcome.Opened
     }
 
-    fun left(): Outcome<T> {
+    /** Left: back up a level, onto the submenu left; at the top, closes the menu. */
+    public fun left(): Outcome<T> {
         if (levels.size == 1) return Outcome.Closed
         levels.removeLast()
         return Outcome.Back
     }
 
-    fun select(): Outcome<T> {
+    /** Select: opens a submenu, or chooses an item. */
+    public fun select(): Outcome<T> {
         val item = current ?: return Outcome.Refused
         if (item.isSubMenu) return right()
         val value = item.value ?: return Outcome.Refused
@@ -102,7 +113,7 @@ class OrbitMenu<T>(root: List<Item<T>>) {
     }
 
     /** A letter alone, [letter] lowercase: the item of that access key, else [Outcome.Refused]. */
-    fun accessKey(letter: Char): Outcome<T> {
+    public fun accessKey(letter: Char): Outcome<T> {
         val matching = level.items.indices.filter { level.items[it].accessKey == letter }
         return when (matching.size) {
             0 -> Outcome.Refused

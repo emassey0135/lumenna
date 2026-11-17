@@ -15,51 +15,51 @@ package dev.emassey0135.orbit
  * check box with `focusCheck`, a button with `focusControl` ([OrbitReader.ROLE_BUTTON]), and a line
  * to read with `focusText`.
  */
-object OrbitDialog {
+public object OrbitDialog {
     /** A dialog's control, as Orbit's reader names it. */
-    enum class Control { EDIT, COMBO_BOX, LIST_BOX, CHECK_BOX, BUTTON, TEXT }
+    public enum class Control { EDIT, COMBO_BOX, LIST_BOX, CHECK_BOX, BUTTON, TEXT }
 
     /** What a key does to the dialog and the control in hand. */
-    sealed interface Does {
+    public sealed interface Does {
         /** Tab: on to the next control. */
-        data object Next : Does
+        public data object Next : Does
 
         /** Shift-Tab: back to the one before. */
-        data object Previous : Does
+        public data object Previous : Does
 
         /** Cancel the dialog. */
-        data object Cancel : Does
+        public data object Cancel : Does
 
         /** Press the button, or pick the option in hand. */
-        data object Press : Does
+        public data object Press : Does
 
         /** Turn the check box over. */
-        data object Toggle : Does
+        public data object Toggle : Does
 
         /** Move the choice [by] options. */
-        data class Step(val by: Int) : Does
+        public data class Step(val by: Int) : Does
 
         /** The choice's first option. */
-        data object First : Does
+        public data object First : Does
 
         /** The choice's last option. */
-        data object Last : Does
+        public data object Last : Does
 
         /** The next option starting with the letter of these [dots]. */
-        data class Find(val dots: Int) : Does
+        public data class Find(val dots: Int) : Does
 
         /** The edit box's own key: hand it to its [EditBox]. */
-        data object Edit : Does
+        public data object Edit : Does
 
         /** A key the dialog takes and does nothing with, so nothing else does either. */
-        data object Nothing : Does
+        public data object Nothing : Does
 
         /** Not the dialog's: the menu key, and what the control does not know. */
-        data object NotTaken : Does
+        public data object NotTaken : Does
     }
 
     /** What [key] does with [control] in hand. */
-    fun does(key: Key, control: Control): Does {
+    public fun does(key: Key, control: Control): Does {
         when (key) {
             Key.Tab -> return Does.Next
             Key.BackTab -> return Does.Previous

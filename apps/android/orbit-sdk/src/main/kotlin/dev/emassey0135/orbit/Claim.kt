@@ -16,7 +16,7 @@ import android.util.Log
  * With [needsService] the claim also waits for [serviceUp], since none can be made before a
  * service is there; a service that went has forgotten the claim, so nothing is released to it.
  */
-class Claim(
+public class Claim(
     private val take: () -> Unit,
     private val release: () -> Unit,
     private val needsService: Boolean = false,
@@ -26,27 +26,29 @@ class Claim(
     private var up = false
 
     /** Whether the keys and display are held now. Readable from a key's binder thread. */
-    @Volatile var holding = false
+    @Volatile public var holding: Boolean = false
         private set
 
-    @Synchronized fun resumed() {
+    /** From `onResume`. */
+    @Synchronized public fun resumed() {
         resumed = true
         settle()
     }
 
     /** Call before anything else leaving does. */
-    @Synchronized fun paused() {
+    @Synchronized public fun paused() {
         resumed = false
         settle()
     }
 
-    @Synchronized fun windowFocus(focused: Boolean) {
+    /** From `onWindowFocusChanged`: something drawn over the app takes the window's focus, and the keys with it. */
+    @Synchronized public fun windowFocus(focused: Boolean) {
         this.focused = focused
         settle()
     }
 
     /** The service came up, or went. */
-    @Synchronized fun serviceUp(up: Boolean) {
+    @Synchronized public fun serviceUp(up: Boolean) {
         this.up = up
         if (!up) holding = false
         settle()
@@ -71,7 +73,7 @@ class Claim(
      * A crash must not leave the device held, so one releases it before the process goes. A
      * native crash skips this; the service then sees the binders it was given die.
      */
-    fun guardCrashes() {
+    public fun guardCrashes() {
         val crashed = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             holding = false
@@ -90,13 +92,13 @@ class Claim(
  * is taken only while [claim] holds, and looked at again when it runs, since the app may have left
  * while it waited: what is not taken goes on to the device.
  */
-class KeyDelivery<K : Any>(
+public class KeyDelivery<K : Any>(
     private val claim: Claim,
     private val post: (() -> Unit) -> Unit,
     private val handle: (K) -> Unit,
 ) {
     /** Whether the key was taken: answered to the service that asked. */
-    fun deliver(key: K?): Boolean {
+    public fun deliver(key: K?): Boolean {
         if (key == null || !claim.holding) return false
         post { if (claim.holding) handle(key) }
         return true

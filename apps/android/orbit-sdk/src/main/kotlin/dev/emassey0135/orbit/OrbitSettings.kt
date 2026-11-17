@@ -4,31 +4,35 @@ package dev.emassey0135.orbit
  * The settings of Orbit's that change how an app reads and types, each read through [Root] as Orbit's
  * own apps read them. Off the main thread.
  */
-object OrbitSettings {
+public object OrbitSettings {
     /** How the person types: Orbit's selection mode and the input table it names. */
-    data class BrailleInput(
+    public data class BrailleInput(
         /** The liblouis table file, as the liblouis service takes it: "en-ueb-g2.ctb". */
         val table: String,
         val mode: SelectionMode,
     )
 
     /** Orbit's braille selection mode, which the screen reader's G chord changes. */
-    enum class SelectionMode { CONTRACTED, UNCONTRACTED, COMPUTER }
+    public enum class SelectionMode { CONTRACTED, UNCONTRACTED, COMPUTER }
 
     /** What the screen reader echoes as the person types, its `typing_echo`. */
-    enum class TypingEcho(val value: Int) {
+    public enum class TypingEcho(public val value: Int) {
         OFF(0), CHARACTERS(1), WORDS(2), BOTH(3);
 
-        val characters: Boolean get() = this == CHARACTERS || this == BOTH
-        val words: Boolean get() = this == WORDS || this == BOTH
+        /** Whether characters are echoed. */
+        public val characters: Boolean get() = this == CHARACTERS || this == BOTH
+        /** Whether words are echoed. */
+        public val words: Boolean get() = this == WORDS || this == BOTH
 
-        companion object {
-            fun of(value: Int): TypingEcho = entries.firstOrNull { it.value == value } ?: CHARACTERS
+        /** Reading a stored value. */
+        public companion object {
+            /** The echo stored as [value]; characters where it is not one. */
+            public fun of(value: Int): TypingEcho = entries.firstOrNull { it.value == value } ?: CHARACTERS
         }
     }
 
     /** The person's selection mode and its input table, from Orbit's settings provider. */
-    fun brailleInput(): Result<BrailleInput> = Root.run(
+    public fun brailleInput(): Result<BrailleInput> = Root.run(
         KEYS.joinToString("") { "echo @@$it; content query --uri $SETTINGS$it; " },
     ).map { output ->
         val values = parseMarked(output)
@@ -48,14 +52,14 @@ object OrbitSettings {
     }
 
     /** The screen reader's typing echo, from its own settings file. */
-    fun typingEcho(): Result<TypingEcho> = Root.run("cat ${Root.dataPath(READER_SETTINGS)}").mapCatching { output ->
+    public fun typingEcho(): Result<TypingEcho> = Root.run("cat ${Root.dataPath(READER_SETTINGS)}").mapCatching { output ->
         val value = Regex("name=\"typing_echo\" value=\"(\\d+)\"").find(output)?.groupValues?.get(1)?.toIntOrNull()
             ?: throw RootFailure("no typing_echo in the screen reader's settings")
         TypingEcho.of(value)
     }
 
     /** The table Orbit's English build starts with. */
-    const val DEFAULT_TABLE = "en-ueb-g2.ctb"
+    public const val DEFAULT_TABLE: String = "en-ueb-g2.ctb"
 
     private const val SETTINGS = "content://com.orbit.settings.provider/preferences/"
     // Another app's data, read through root at Root.dataPath: never this app's own files.

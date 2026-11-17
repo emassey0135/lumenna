@@ -1,63 +1,78 @@
 package dev.emassey0135.orbit
 
 /** A key decoded from Orbit's keypad callback, whichever device it came from. */
-sealed interface Key {
-    data object Up : Key
-    data object Down : Key
+public sealed interface Key {
+    /** Up: the arrow, or Space with dot 1 on the Speak. */
+    public data object Up : Key
+    /** Down: the arrow, or Space with dot 4 on the Speak. */
+    public data object Down : Key
     /** Up held. */
-    data object First : Key
+    public data object First : Key
     /** Down held. */
-    data object Last : Key
-    data object Left : Key
-    data object Right : Key
+    public data object Last : Key
+    /** The left arrow. */
+    public data object Left : Key
+    /** The right arrow. */
+    public data object Right : Key
     /** OK or Select pressed. */
-    data object Select : Key
+    public data object Select : Key
     /** OK held. */
-    data object SelectHeld : Key
+    public data object SelectHeld : Key
 
     /** The Speak's dot 7 alone. */
-    data object Dot7 : Key
+    public data object Dot7 : Key
     /** The Speak's dot 8 alone. */
-    data object Dot8 : Key
+    public data object Dot8 : Key
     /** The Speak's Space alone. */
-    data object Space : Key
+    public data object Space : Key
     /** Dot keys without Space: a braille cell, as a bit per dot (1 is dot 1). */
-    data class Cell(val dots: Int) : Key
+    public data class Cell(val dots: Int) : Key
     /** Space with dots: a command chord, those the decoder has not named. */
-    data class Chord(val dots: Int) : Key
+    public data class Chord(val dots: Int) : Key
     /** Dot 8 (Enter) with dots, the rest of them: Orbit's apps' commands. */
-    data class Enter(val dots: Int) : Key
+    public data class Enter(val dots: Int) : Key
     /** Space with dots 4 and 5: the next control of a dialog. */
-    data object Tab : Key
+    public data object Tab : Key
     /** Space with dots 1 and 2: the control before. */
-    data object BackTab : Key
+    public data object BackTab : Key
     /** Space with E or Z: back, whatever the row. */
-    data object Escape : Key
+    public data object Escape : Key
 
     /** The Player's digit, tapped: the release of a press that was not held. */
-    data class Digit(val digit: Int) : Key
-    data class DigitHeld(val digit: Int) : Key
-    data object Star : Key
-    data object StarHeld : Key
-    data object Pound : Key
-    data object PoundHeld : Key
+    public data class Digit(val digit: Int) : Key
+    /** The Player's digit, held. */
+    public data class DigitHeld(val digit: Int) : Key
+    /** The Player's star, tapped. */
+    public data object Star : Key
+    /** The Player's star, held: finding by letter, or the mode in a line. */
+    public data object StarHeld : Key
+    /** The Player's pound, tapped. */
+    public data object Pound : Key
+    /** The Player's pound, held. */
+    public data object PoundHeld : Key
     /** The Player's Back pressed. */
-    data object Back : Key
+    public data object Back : Key
     /** The Player's Back let go: [held] after a long press. */
-    data class BackReleased(val held: Boolean) : Key
+    public data class BackReleased(val held: Boolean) : Key
     /** The Player's Menu. */
-    data object Menu : Key
+    public data object Menu : Key
 
-    data object None : Key
+    /** A key the decoder does not know, or the release of one that already acted: nothing. */
+    public data object None : Key
 }
 
 /** What the keypad callback gives: Bundle's `keyName`, `action` and `isLongPress`. */
-data class KeyEvent(val name: String, val action: Int, val longPress: Boolean) {
-    companion object {
-        const val PRESS = 0
-        const val RELEASE = 1
-        const val REPEAT = 2
-        const val CHORD = 3
+public data class KeyEvent(val name: String, val action: Int, val longPress: Boolean) {
+    /** The keypad callback's actions. */
+    public companion object {
+        /** A key went down. */
+        public const val PRESS: Int = 0
+        /** A key came up: a tap, where it was not held. */
+        public const val RELEASE: Int = 1
+        /** A key held, repeating. */
+        public const val REPEAT: Int = 2
+        /** A chord of the Speak's keys, pressed together. */
+        public const val CHORD: Int = 3
     }
 }
 
@@ -72,11 +87,12 @@ data class KeyEvent(val name: String, val action: Int, val longPress: Boolean) {
  * an edit box), which a table of commands must leave free.
  * Keeps a held phone key's release from counting too.
  */
-class KeyDecoder {
+public class KeyDecoder {
     /** A Player key that has acted while held, its release ignored. */
     private var heldKey: String? = null
 
-    fun decode(event: KeyEvent): Key {
+    /** What [event] means, or [Key.None]. */
+    public fun decode(event: KeyEvent): Key {
         val name = event.name
         if (isPhoneKey(name)) return phoneKey(event)
         return when (event.action) {
@@ -147,14 +163,15 @@ class KeyDecoder {
         }
     }
 
-    companion object {
+    /** The chords the decoder names. */
+    public companion object {
         private fun bits(vararg dots: Int): Int = dots.fold(0) { all, dot -> all or (1 shl (dot - 1)) }
 
         private fun isPhoneKey(name: String): Boolean =
             name.length == 1 && (name[0].isDigit() || name == "*" || name == "#")
 
         /** The dots of a name like `DOT1_DOT5`, a bit per dot; null for anything else. */
-        fun dots(name: String): Int? {
+        public fun dots(name: String): Int? {
             var dots = 0
             for (token in name.split('_')) {
                 if (token.length != 4 || !token.startsWith("DOT")) return null

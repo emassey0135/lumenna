@@ -8,7 +8,7 @@ import android.content.Context
  * An [EditBox] told to Orbit's screen reader as its own edit fields tell it, with the system's
  * clipboard: what an app needs for an edit box that behaves as Orbit's.
  */
-class ReaderEditOutput(
+public class ReaderEditOutput(
     private val reader: Reader,
     /** The Speak's braille input; none on the Player, where nothing is typed in cells. */
     private val braille: BrailleInput?,
@@ -18,17 +18,17 @@ class ReaderEditOutput(
 ) : EditBox.Output {
     private val clipboard = context?.getSystemService(ClipboardManager::class.java)
 
-    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) =
+    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean): Unit =
         reader.focusEdit(name, content, cursor, line, multiline)
 
-    override fun syncEdit(name: String, content: String, cursor: Int) = reader.editChanged(name, content, cursor, "field_opened")
+    override fun syncEdit(name: String, content: String, cursor: Int): Unit = reader.editChanged(name, content, cursor, "field_opened")
 
     /**
      * Sent as its name, the character itself left empty: the reader then says it by the person's
      * character echo but keeps it out of the word it echoes, which would otherwise be made of the
      * characters a contracted word's cells echoed. A space goes as itself, which ends no word now.
      */
-    override fun typed(character: Char) = if (character == ' ') {
+    override fun typed(character: Char): Unit = if (character == ' ') {
         reader.characterTyped(" ", " ", false, null)
     } else {
         reader.characterTyped("", character.toString(), character.isUpperCase(), null)
@@ -52,10 +52,10 @@ class ReaderEditOutput(
         clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
     }.getOrNull()
 
-    override fun say(text: String) = reader.speak(text)
-    override fun candidate(character: Char, field: String) = reader.characterTyped(character.toString(), field, false, null)
-    override fun edited(name: String, content: String, cursor: Int, change: String) = reader.editChanged(name, content, cursor, change)
-    override fun playError() = reader.sound(OrbitReader.SOUND_ERROR)
+    override fun say(text: String): Unit = reader.speak(text)
+    override fun candidate(character: Char, field: String): Unit = reader.characterTyped(character.toString(), field, false, null)
+    override fun edited(name: String, content: String, cursor: Int, change: String): Unit = reader.editChanged(name, content, cursor, change)
+    override fun playError(): Unit = reader.sound(OrbitReader.SOUND_ERROR)
 
     override fun commitFeedback(character: Char, mode: Int) {
         if (mode == 1 || mode == 4) reader.sound(OrbitReader.SOUND_COMMIT)
@@ -63,6 +63,6 @@ class ReaderEditOutput(
         if (mode == 2 || mode == 4 || mode == 5) reader.speakQueued(character.toString())
     }
 
-    override fun modeChanged(name: String, content: String, cursor: Int, mode: String) =
+    override fun modeChanged(name: String, content: String, cursor: Int, mode: String): Unit =
         reader.editChanged(name, content, cursor, "t9_mode_changed:$mode")
 }

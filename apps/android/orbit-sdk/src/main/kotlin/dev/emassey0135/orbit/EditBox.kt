@@ -16,8 +16,9 @@ package dev.emassey0135.orbit
  * computer braille, where dot 8 with a cell types it), and Space with dots 1 2 7 reads it, over
  * the system clipboard.
  */
-class EditBox(
-    val name: String,
+public class EditBox(
+    /** What Orbit names the field. */
+    public val name: String,
     initial: String,
     private val phoneKeypad: Boolean,
     private val output: Output,
@@ -35,35 +36,40 @@ class EditBox(
     private val complete: () -> Unit = {},
 ) {
     /** What the reader is told. Calls go in the order they happen. */
-    interface Output {
-        fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean)
-        fun syncEdit(name: String, content: String, cursor: Int)
+    public interface Output {
+        /** The field reached: Orbit says it, its content and where the caret is. */
+        public fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean)
+        /** The field's content and caret, told again without saying them. */
+        public fun syncEdit(name: String, content: String, cursor: Int)
         /** The Speak's cell echo: the character it made, said by the person's character echo. */
-        fun typed(character: Char)
+        public fun typed(character: Char)
         /**
          * A word committed, as it reads in print: said if the person's echo says words, and whether
          * it was. The space after a word said is not echoed too, since the reader would stop the word for it.
          */
-        fun word(word: String): Boolean
+        public fun word(word: String): Boolean
         /** Whether the person types contracted braille now. */
-        val contracted: Boolean
+        public val contracted: Boolean
         /** Whether the person types computer braille now, where dot 8 with a cell types it. */
-        val computer: Boolean
+        public val computer: Boolean
         /** Puts [text] on the system clipboard. */
-        fun copy(text: String)
+        public fun copy(text: String)
         /** The system clipboard's text, or null for none. */
-        fun paste(): String?
+        public fun paste(): String?
         /** Said as it is, cutting off what was being said: Satellite's echo of dots and deletions. */
-        fun say(text: String)
+        public fun say(text: String)
         /** A T9 candidate offered. */
-        fun candidate(character: Char, field: String)
-        fun edited(name: String, content: String, cursor: Int, change: String)
-        fun playError()
+        public fun candidate(character: Char, field: String)
+        /** The content changed by [change] (Orbit's change types), which Orbit says as its own fields do. */
+        public fun edited(name: String, content: String, cursor: Int, change: String)
+        /** Orbit's error tone. */
+        public fun playError()
         /** Feedback on a commit timeout: sound, speech, vibration by the person's setting. */
-        fun commitFeedback(character: Char, mode: Int)
-        fun modeChanged(name: String, content: String, cursor: Int, mode: String)
+        public fun commitFeedback(character: Char, mode: Int)
+        /** T9's mode changed to [mode], said by Orbit with the field. */
+        public fun modeChanged(name: String, content: String, cursor: Int, mode: String)
         /** The words the echo is said in: the device's own. */
-        val words: OrbitWords
+        public val words: OrbitWords
     }
 
     private val buffer = CellBuffer(translate).apply { set(initial) }
@@ -71,7 +77,7 @@ class EditBox(
     private var open = true
 
     /** The text as shown, with a word in progress or a T9 candidate in place. */
-    fun display(): String {
+    public fun display(): String {
         val pending = t9.candidate
         val text = buffer.display()
         if (pending == null) return text
@@ -80,14 +86,14 @@ class EditBox(
     }
 
     /** Opens the field: Orbit says it and its text, and takes its copy to diff from. */
-    fun focus() {
+    public fun focus() {
         val text = buffer.display()
         output.focusEdit(name, text, buffer.caret, if (multiline) buffer.line() else text, multiline)
         output.syncEdit(name, text, buffer.caret)
     }
 
     /** Puts the line back as [text] after a completion chose it, the caret at [caret]. */
-    fun replace(text: String, caret: Int) {
+    public fun replace(text: String, caret: Int) {
         t9.cancel()
         buffer.set(text)
         repeat(text.length - caret) { buffer.moveCharacter(-1) }
@@ -96,16 +102,16 @@ class EditBox(
     }
 
     /** The line as it stands, what is being typed taken in: for leaving it for another control. */
-    fun text(): String {
+    public fun text(): String {
         t9.commitNow()
         return buffer.confirmed()
     }
 
     /** Finishes the line as its own Select does: for a Confirm button beside it. */
-    fun finish() = confirm()
+    public fun finish(): Unit = confirm()
 
     /** Handles a key; false if it is none of this field's. */
-    fun key(key: Key): Boolean = if (phoneKeypad) phoneKey(key) else brailleKey(key)
+    public fun key(key: Key): Boolean = if (phoneKeypad) phoneKey(key) else brailleKey(key)
 
     private fun brailleKey(key: Key): Boolean {
         when (key) {

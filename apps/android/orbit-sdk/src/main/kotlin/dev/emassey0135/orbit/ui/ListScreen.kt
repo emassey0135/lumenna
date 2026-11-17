@@ -17,22 +17,22 @@ import dev.emassey0135.orbit.OrbitList
  * row in hand kept by its [Item.key], or put where the app holds it ([inHand]). Subclass it for a
  * list of your own; [items], [tellShown], [inHand], [moved] and [findLetter] are open.
  */
-open class ListScreen(
+public open class ListScreen(
     override val title: String,
     items: () -> List<Item>,
     /** What the list says with no rows. */
-    open val empty: String,
+    public open val empty: String,
     actions: () -> List<Action> = { emptyList() },
 ) : Screen() {
     private val source = items
     private val own = actions
 
     /** The rows as last read. */
-    var rows: List<Item> = emptyList()
+    public var rows: List<Item> = emptyList()
         private set
 
     /** Where the row in hand is, from 0. */
-    var index: Int = 0
+    public var index: Int = 0
         private set
 
     private var heldKey: String? = null
@@ -47,7 +47,7 @@ open class ListScreen(
     private var finder: ListFinder? = null
 
     /** The row in hand. */
-    val current: Item? get() = rows.getOrNull(index)
+    public val current: Item? get() = rows.getOrNull(index)
 
     /** The rows as they are now. */
     protected open fun items(): List<Item> = source()
@@ -56,13 +56,13 @@ open class ListScreen(
      * The row the app holds in hand, for an app that keeps one of its own: followed each time the
      * rows are read, ahead of the row the person last stood on. None leaves the person's.
      */
-    open fun inHand(): String? = null
+    public open fun inHand(): String? = null
 
     /** The person moved to [item] themselves (a key, a letter, a number): for an app that follows the row in hand. */
-    open fun moved(item: Item) {}
+    public open fun moved(item: Item) {}
 
     /** A letter alone, for an app that finds a row by it itself: true if it took it. */
-    open fun findLetter(letter: Char): Boolean = false
+    public open fun findLetter(letter: Char): Boolean = false
 
     override fun actions(): List<Action> = own()
 
@@ -72,12 +72,12 @@ open class ListScreen(
      * What the person does next may reword the row in hand (a check, a fold, a save): the next
      * refresh reads it again if it does. Opening a row, running an action and folding say so already.
      */
-    fun expect() {
+    public fun expect() {
         expecting = true
     }
 
     /** Puts the row of [key] in hand, told as a move while the list is shown. */
-    fun hold(key: String) {
+    public fun hold(key: String) {
         heldKey = key
         if (!attached || !ui.isShown(this)) return
         val at = rows.indexOfFirst { it.key == key }
@@ -98,18 +98,18 @@ open class ListScreen(
         rebuild()
         expecting = false
         remember()
-        reader.focusList(title, rows.size, index, current?.text.orEmpty())
+        reader.focusList(title, rows.size, index, current?.line.orEmpty())
         // Said once: a heading that says the list is empty already needs no repeat.
         if (rows.isEmpty() && empty !in title) ui.say(empty)
     }
 
     override fun tellMoved() {
         remember()
-        reader.itemChanged(title, rows.size, index, current?.text.orEmpty())
+        reader.itemChanged(title, rows.size, index, current?.line.orEmpty())
     }
 
     private fun remember() {
-        said = current?.text
+        said = current?.line
         saidKey = current?.key
     }
 
@@ -123,7 +123,7 @@ open class ListScreen(
         when {
             rows.isEmpty() -> if (!wasEmpty) emptied()
             current?.key != before -> tellMoved()
-            acted && current?.text != said -> tellMoved()
+            acted && current?.line != said -> tellMoved()
         }
     }
 
@@ -134,7 +134,7 @@ open class ListScreen(
         when {
             rows.isEmpty() -> if (!wasEmpty) emptied()
             // Landing on the row just said, as it was said, says nothing more.
-            current?.key == saidKey && current?.text == said -> {}
+            current?.key == saidKey && current?.line == said -> {}
             else -> tellMoved()
         }
     }
@@ -174,7 +174,7 @@ open class ListScreen(
                 true
             }
             is Key.Chord, is Key.Enter -> when (val pressed = ui.letters.pressed(key)) {
-                is Letters.Pressed.Letter -> openLettered(pressed.letter)
+                is Letters.Pressed.Letter -> openLettered(pressed.letter) || deleted(pressed.letter)
                 is Letters.Pressed.Refused -> {
                     ui.refused(pressed.said)
                     true
@@ -194,11 +194,21 @@ open class ListScreen(
         tellMoved()
     }
 
+    /** Select: the row's open, else its toggle (said once the app has changed it), else the error tone. */
     private fun open() {
         val row = current ?: return ui.refuse()
-        val opening = row.open ?: return ui.refuse()
+        val opening = row.open ?: row.toggle ?: return ui.refuse()
         expecting = true
         opening()
+    }
+
+    /** Space (or Dot 8) with D on a row that deletes: deleted, and the list read again once the app has it. */
+    private fun deleted(letter: Char): Boolean {
+        if (letter != DELETE) return false
+        val deleting = current?.delete ?: return false
+        expecting = true
+        deleting()
+        return true
     }
 
     /** Right or Left on a row that folds the other way: folded, and read again once the app has it. */
@@ -216,7 +226,7 @@ open class ListScreen(
     private fun find(letter: String) {
         val at = ListFinder.next(rows.map(Item::text), index, letter)
         if (at == null) {
-            ui.refused(ui.words.noRowStartsWith(letter))
+            letter.firstOrNull()?.let { ui.refused(ui.words.noRowStartsWith(it.lowercaseChar())) } ?: ui.refuse()
             return
         }
         if (at == index) tellMoved() else moveTo(at, byPerson = true)
@@ -247,4 +257,12 @@ open class ListScreen(
             }
         },
     ).also { finder = it }
+
+    private companion object {
+        /**
+         * The letter whose press (Space with it, or Dot 8 where the app's letters keep Space) deletes
+         * the row in hand. Orbit's lists have no delete key of their own, so it is D, for Delete.
+         */
+        const val DELETE = 'd'
+    }
 }

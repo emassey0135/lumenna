@@ -12,28 +12,31 @@ import java.util.Locale
  * passes with no further tap. Star switches mode (lowercase, uppercase, digits, symbols); pound
  * would switch keyboard layout, of which only English exists.
  */
-class T9Input(private val host: Host, private val later: Later) {
+public class T9Input(private val host: Host, private val later: Later) {
     /** What the edit field does with T9's output. */
-    interface Host {
+    public interface Host {
         /** Where the caret is. */
-        fun caret(): Int
-        fun timeoutMs(): Long
+        public fun caret(): Int
+        /** How long a tap waits before its character is committed. */
+        public fun timeoutMs(): Long
         /** A new candidate character was offered. */
-        fun candidate(character: Char)
+        public fun candidate(character: Char)
         /** Insert [character] at [position]; [feedback] when the commit timeout did it. */
-        fun commit(character: Char, position: Int, feedback: Boolean)
+        public fun commit(character: Char, position: Int, feedback: Boolean)
         /** Star changed the mode: named by [OrbitWords.mode]. */
-        fun modeChanged(mode: Mode)
+        public fun modeChanged(mode: Mode)
     }
 
     /** One pending call after a delay, replaced by the next. */
-    interface Later {
-        fun after(milliseconds: Long, run: () -> Unit)
-        fun cancel()
+    public interface Later {
+        /** Runs [run] after [milliseconds], in place of what was waiting. */
+        public fun after(milliseconds: Long, run: () -> Unit)
+        /** Drops what was waiting. */
+        public fun cancel()
     }
 
     /** In the order star goes through them. */
-    enum class Mode { LOWERCASE, UPPERCASE, DIGITS, SYMBOLS }
+    public enum class Mode { LOWERCASE, UPPERCASE, DIGITS, SYMBOLS }
 
     private var mode = Mode.LOWERCASE
     private var key = -1
@@ -41,14 +44,16 @@ class T9Input(private val host: Host, private val later: Later) {
     private var pending: Char? = null
     private var pendingPosition = -1
 
-    val hasPending: Boolean get() = pending != null
+    /** Whether a character is offered and not yet committed. */
+    public val hasPending: Boolean get() = pending != null
 
     /** The candidate and where it goes, for showing the text with it in place. */
-    val candidate: Char? get() = pending
-    val candidatePosition: Int get() = pendingPosition
+    public val candidate: Char? get() = pending
+    /** Where [candidate] goes. */
+    public val candidatePosition: Int get() = pendingPosition
 
     /** A tap (release) of digit [digit]. */
-    fun tap(digit: Int) {
+    public fun tap(digit: Int) {
         val digits = mode == Mode.DIGITS
         val differentKey = key != -1 && key != digit
         // In digits mode each key has one character, so a repeated key types it again.
@@ -70,7 +75,7 @@ class T9Input(private val host: Host, private val later: Later) {
     }
 
     /** Star: next mode. */
-    fun nextMode() {
+    public fun nextMode() {
         if (pending != null) commit(false)
         val modes = Mode.entries
         mode = modes[(mode.ordinal + 1) % modes.size]
@@ -78,17 +83,17 @@ class T9Input(private val host: Host, private val later: Later) {
     }
 
     /** Pound: next keyboard layout. Only English exists, so this just commits any candidate. */
-    fun nextLayout() {
+    public fun nextLayout() {
         if (pending != null) commit(false)
     }
 
     /** Puts the candidate into the text now, with no feedback, as any edit or move does first. */
-    fun commitNow() {
+    public fun commitNow() {
         if (pending != null) commit(false)
     }
 
     /** Drops any candidate without inserting it: the field is closing. */
-    fun cancel() {
+    public fun cancel() {
         reset()
         pendingPosition = -1
     }

@@ -1,0 +1,11 @@
+Orbit SDK (unofficial)
+Copyright 2026 Elijah Massey
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The multi-tap T9 input (T9Input) and the Orbit Player's finding of a list's rows (ListFinder) are
+ported from the Satellite launcher, by the same author, also under the Apache License, Version 2.0.
+
+Orbit Research did not write this library and does not support it. Nothing in it is copied from
+Orbit Research's own applications; its interfaces to the device's services were written afresh,
+from how the devices behave, their user guides, and study of how their own apps use them.

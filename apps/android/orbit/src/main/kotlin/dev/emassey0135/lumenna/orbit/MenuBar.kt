@@ -12,7 +12,7 @@ import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.app.sidebarKey
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.SettingsPages
-import dev.emassey0135.orbit.OrbitMenu
+import dev.emassey0135.orbit.ui.MenuItem
 
 /** What an item of the menu bar runs: the row's action, handed back as it is offered, or a command. */
 sealed interface BarChoice {
@@ -35,7 +35,7 @@ fun menuBarItems(
     withPress: (String, String?) -> String,
     hot: MutableMap<Char, () -> Unit>,
     run: (BarChoice) -> Unit,
-): List<OrbitMenu.Item<() -> Unit>> {
+): List<MenuItem<() -> Unit>> {
     val states = view.commands.associateBy { it.id }
     val actions = view.screenActions.associateBy { it.id }
     return bar.mapNotNull { menu ->
@@ -50,9 +50,9 @@ fun menuBarItems(
             val hotLetter = item.letter.takeIf { item.hotKey && it.isNotEmpty() }
             val running: () -> Unit = { run(choice) }
             hotLetter?.singleOrNull()?.let { hot.putIfAbsent(it, running) }
-            OrbitMenu.Item(withPress(title, hotLetter), item.letter.singleOrNull(), value = running)
+            MenuItem(withPress(title, hotLetter), item.letter.singleOrNull(), value = running)
         }
-        if (children.isEmpty()) null else OrbitMenu.Item(menu.title, menu.letter.singleOrNull(), children)
+        if (children.isEmpty()) null else MenuItem(menu.title, menu.letter.singleOrNull(), children)
     }
 }
 

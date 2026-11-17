@@ -13,35 +13,36 @@ package dev.emassey0135.orbit
  * character at the caret as it ends, or the whole text. Typing, deleting or moving clears a
  * finished one.
  */
-class CellBuffer(private val translate: Translator) {
+public class CellBuffer(private val translate: Translator) {
     /** Orbit's liblouis service, in the person's table; null when it cannot say. */
-    fun interface Translator {
-        fun translate(cells: List<Int>, mode: Int): String?
+    public fun interface Translator {
+        /** What [cells] make at liblouis [mode] ([MODE_LIVE], [MODE_COMMIT]); null when it cannot say. */
+        public fun translate(cells: List<Int>, mode: Int): String?
     }
 
     private val text = StringBuilder()
     private val word = mutableListOf<Int>()
 
     /** The caret's place in the committed text; the word being typed goes in at [wordStart]. */
-    var caret = 0
+    public var caret: Int = 0
         private set
     private var wordStart = 0
 
     /** The text with the word being typed shown at its insertion point. */
-    fun display(): String {
+    public fun display(): String {
         if (word.isEmpty()) return text.toString()
         val live = translate.translate(word, MODE_LIVE).orEmpty()
         return text.substring(0, wordStart) + live + text.substring(wordStart)
     }
 
     /** The text as it stands, the word being typed committed: what is sent. */
-    fun confirmed(): String {
+    public fun confirmed(): String {
         flush()
         return text.toString()
     }
 
     /** Starts from [initial], the caret at its end. */
-    fun set(initial: String) {
+    public fun set(initial: String) {
         text.setLength(0)
         text.append(initial)
         word.clear()
@@ -50,7 +51,7 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** Adds [cell], typed at the caret: the word's cells so far, and what they make so far. */
-    fun type(cell: Int): Typed {
+    public fun type(cell: Int): Typed {
         clearSelection()
         if (word.isEmpty()) wordStart = caret
         word.add(cell)
@@ -58,14 +59,14 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** Inserts [character] at [position], the caret after it: T9's commit. */
-    fun insert(character: Char, position: Int) {
+    public fun insert(character: Char, position: Int) {
         val at = position.coerceIn(0, text.length)
         text.insert(at, character)
         caret = at + 1
     }
 
     /** Pastes [pasted] at the caret, over the selection if there is one, the caret after it. */
-    fun paste(pasted: String) {
+    public fun paste(pasted: String) {
         flush()
         extended = false
         selected()?.let { deleteSelection() }
@@ -75,7 +76,7 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** Commits the word being typed, if any. */
-    fun flush() {
+    public fun flush() {
         if (word.isEmpty()) return
         val done = translate.translate(word, MODE_COMMIT).orEmpty()
         text.insert(wordStart, done)
@@ -87,7 +88,7 @@ class CellBuffer(private val translate: Translator) {
      * Space: the word committed as Orbit's fields commit it, its cells and the blank after them
      * translated together, then a space after it. The word as it reads in print, or "" for none.
      */
-    fun space(): String {
+    public fun space(): String {
         clearSelection()
         if (word.isEmpty()) {
             text.insert(caret, ' ')
@@ -103,7 +104,7 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** A new line in a field of several: the word committed, then the line ended. */
-    fun newLine() {
+    public fun newLine() {
         clearSelection()
         flush()
         text.insert(caret, '\n')
@@ -111,13 +112,13 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** The line the caret is on, without its end. */
-    fun line(): String {
+    public fun line(): String {
         flush()
         return text.substring(lineStart(caret), lineEnd(caret))
     }
 
     /** The caret to the line before or after, at the same column or the line's end; the line, or null at an end. */
-    fun moveLine(delta: Int): String? {
+    public fun moveLine(delta: Int): String? {
         flush()
         clearSelection()
         val start = lineStart(caret)
@@ -135,7 +136,7 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** The caret to the start or end of its line; the line. */
-    fun moveLineEdge(start: Boolean): String {
+    public fun moveLineEdge(start: Boolean): String {
         flush()
         clearSelection()
         caret = if (start) lineStart(caret) else lineEnd(caret)
@@ -147,7 +148,7 @@ class CellBuffer(private val translate: Translator) {
     private fun lineEnd(position: Int): Int = text.indexOf("\n", position).let { if (it < 0) text.length else it }
 
     /** What deleting took: a cell off the word, a character off the text, or nothing at the start. */
-    fun backspace(): Deleted {
+    public fun backspace(): Deleted {
         clearSelection()
         if (word.isNotEmpty()) {
             val cell = word.removeAt(word.size - 1)
@@ -161,7 +162,7 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** Moves the caret by a character; the character reached, or null at an end. */
-    fun moveCharacter(delta: Int): Char? {
+    public fun moveCharacter(delta: Int): Char? {
         flush()
         clearSelection()
         return if (delta < 0) {
@@ -176,7 +177,7 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** Moves the caret by a word; the word reached, or null at an end. */
-    fun moveWord(delta: Int): String? {
+    public fun moveWord(delta: Int): String? {
         flush()
         clearSelection()
         var position = caret
@@ -193,7 +194,7 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** The caret to the start or the end; the word there, or null at the end of the text. */
-    fun moveEdge(start: Boolean): String? {
+    public fun moveEdge(start: Boolean): String? {
         flush()
         clearSelection()
         caret = if (start) 0 else text.length
@@ -206,11 +207,11 @@ class CellBuffer(private val translate: Translator) {
     private var selectionEnd = -1
 
     /** Whether selection mode is on: the selection's start is held, its end not yet chosen. */
-    var extended = false
+    public var extended: Boolean = false
         private set
 
     /** Everything selected. */
-    fun selectAll() {
+    public fun selectAll() {
         flush()
         extended = false
         selectionStart = 0
@@ -218,7 +219,7 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** Selection mode on, from the caret; or off, to the character at the caret. Whether it is on now. */
-    fun toggleSelection(): Boolean {
+    public fun toggleSelection(): Boolean {
         flush()
         if (!extended) {
             extended = true
@@ -232,17 +233,17 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** Whether something is selected, without committing the word being typed. */
-    val hasSelection: Boolean get() = selectionStart >= 0 && selectionEnd >= 0 && selectionStart != selectionEnd
+    public val hasSelection: Boolean get() = selectionStart >= 0 && selectionEnd >= 0 && selectionStart != selectionEnd
 
     /** What is selected, or null for nothing. */
-    fun selected(): String? {
+    public fun selected(): String? {
         flush()
         if (selectionStart < 0 || selectionEnd < 0 || selectionStart == selectionEnd) return null
         return text.substring(minOf(selectionStart, selectionEnd), maxOf(selectionStart, selectionEnd))
     }
 
     /** Takes the selection out of the text, the caret where it began. */
-    fun deleteSelection() {
+    public fun deleteSelection() {
         if (selected() == null) return
         val from = minOf(selectionStart, selectionEnd)
         text.delete(from, maxOf(selectionStart, selectionEnd))
@@ -265,22 +266,29 @@ class CellBuffer(private val translate: Translator) {
     }
 
     /** A cell typed: the [cells] of its word so far, it [at] the last, and what they make so far ([live]). */
-    data class Typed(val cells: List<Int>, val at: Int, val live: String)
+    public data class Typed(val cells: List<Int>, val at: Int, val live: String)
 
-    sealed interface Deleted {
-        data object Nothing : Deleted
-        data class Cell(val cell: Int, val translated: String) : Deleted
-        data class Character(val character: Char) : Deleted
+    /** What Dot 7 took, for its echo. */
+    public sealed interface Deleted {
+        /** Nothing: the line was empty before the caret. */
+        public data object Nothing : Deleted
+        /** A [cell] of the word not yet committed, and what it alone makes ([translated]). */
+        public data class Cell(val cell: Int, val translated: String) : Deleted
+        /** A committed [character]. */
+        public data class Character(val character: Char) : Deleted
     }
 
-    companion object {
-        const val MODE_LIVE = 388
-        const val MODE_COMMIT = 132
+    /** liblouis' modes, and reading a cell's dots aloud. */
+    public companion object {
+        /** liblouis' mode for a cell's echo as it is typed: what the word makes so far. */
+        public const val MODE_LIVE: Int = 388
+        /** liblouis' mode for a word committed at Space. */
+        public const val MODE_COMMIT: Int = 132
         /** The blank cell Space types, ending the word. */
-        const val BLANK = 0
+        public const val BLANK: Int = 0
 
         /** "1 2 5", the dots of [cell] as read aloud. */
-        fun dotNumbers(cell: Int): String =
+        public fun dotNumbers(cell: Int): String =
             (1..8).filter { cell and (1 shl (it - 1)) != 0 }.joinToString(" ")
     }
 }

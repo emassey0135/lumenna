@@ -11,39 +11,39 @@ import android.os.Looper
  * the Speak a cell is a letter already: the app finds it the same way ([next] where it has no
  * rule of its own).
  */
-class ListFinder(private val host: Host, later: T9Input.Later, private val main: Handler = Handler(Looper.getMainLooper())) {
+public class ListFinder(private val host: Host, later: T9Input.Later, private val main: Handler = Handler(Looper.getMainLooper())) {
     /** The list being found in, and what is said. */
-    interface Host {
+    public interface Host {
         /** How many rows the list has now. */
-        val count: Int
+        public val count: Int
 
         /** How long T9 waits before a letter is taken: `OrbitReader.characterCommitTimeout`. */
-        val commitMs: Long
+        public val commitMs: Long
 
         /** A letter (or a held digit) was typed: move to the next row starting with it. */
-        fun find(letter: String)
+        public fun find(letter: String)
 
         /** A number was typed: open the row at [index], from 0. */
-        fun open(index: Int)
+        public fun open(index: Int)
 
         /** What was typed names no row: the error tone. */
-        fun refuse()
+        public fun refuse()
 
         /** Says [text]: a T9 candidate. */
-        fun speak(text: String)
+        public fun speak(text: String)
 
         /** Star changed T9's mode: say it ([OrbitWords.mode]). */
-        fun modeChanged(mode: T9Input.Mode)
+        public fun modeChanged(mode: T9Input.Mode)
 
         /** Holding star turned finding by letter [on] or off: say so. */
-        fun lettersChanged(on: Boolean)
+        public fun lettersChanged(on: Boolean)
     }
 
     private var number = 0
     private val openNumber = Runnable { openNumber() }
 
     /** Whether the Player's digits type letters (T9) rather than open rows. */
-    var letters = false
+    public var letters: Boolean = false
         private set
 
     private val t9 = T9Input(object : T9Input.Host {
@@ -55,14 +55,14 @@ class ListFinder(private val host: Host, later: T9Input.Later, private val main:
     }, later)
 
     /** Forgets what was typed, as any key that is not finding's does. */
-    fun reset() {
+    public fun reset() {
         number = 0
         main.removeCallbacks(openNumber)
         t9.cancel()
     }
 
     /** A Player key: true if it was finding's, the rest going on to the list's keys. */
-    fun phoneKey(key: Key): Boolean {
+    public fun phoneKey(key: Key): Boolean {
         when (key) {
             Key.StarHeld -> {
                 reset()
@@ -103,12 +103,13 @@ class ListFinder(private val host: Host, later: T9Input.Later, private val main:
         if (at in 1..host.count) host.open(at - 1)
     }
 
-    companion object {
+    /** Its timing, and finding a row by first letter. */
+    public companion object {
         /** How long a number waits for its next digit. */
-        const val TYPING_MS = 1000L
+        public const val TYPING_MS: Long = 1000L
 
         /** Where the next of [lines] starting with [letter] is, after [from], wrapping round; null for none. */
-        fun next(lines: List<String>, from: Int, letter: String): Int? {
+        public fun next(lines: List<String>, from: Int, letter: String): Int? {
             if (lines.isEmpty() || letter.isEmpty()) return null
             return (1..lines.size).map { Math.floorMod(from + it, lines.size) }
                 .firstOrNull { lines[it].trimStart().startsWith(letter, ignoreCase = true) }

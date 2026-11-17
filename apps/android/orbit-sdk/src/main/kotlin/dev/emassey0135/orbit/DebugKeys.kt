@@ -19,7 +19,7 @@ import android.content.pm.ApplicationInfo
  * and 1 for up, `long` a long press, and `phone` the Player's phone keypad. Wake a sleeping device
  * first (`input keyevent KEYCODE_WAKEUP`), or the window has no focus and nothing is claimed.
  */
-class DebugKeys(
+public class DebugKeys(
     private val context: Context,
     /** The broadcast's action: the app's own, so two apps do not take each other's keys. */
     private val action: String,
@@ -38,17 +38,17 @@ class DebugKeys(
     private var listening = false
 
     /** Whether this build takes keys over adb: only a debuggable one. */
-    val debuggable: Boolean get() = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+    public val debuggable: Boolean get() = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
 
     /** Starts listening, in a debuggable build. */
-    fun start() {
+    public fun start() {
         if (listening || !debuggable) return
         context.registerReceiver(receiver, IntentFilter(action))
         listening = true
     }
 
     /** Stops listening. */
-    fun stop() {
+    public fun stop() {
         if (!listening) return
         context.unregisterReceiver(receiver)
         listening = false

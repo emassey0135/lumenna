@@ -23,16 +23,17 @@ import com.orbit.screenreader.IUARTKeypadCallback
  *
  * Never #44 (`canSpeakLanguage`), which the Player lacks: the AIDL here stops before it.
  */
-class OrbitReader(context: Context, private val listener: Listener) : Reader {
-    interface Listener {
+public class OrbitReader(context: Context, private val listener: Listener) : Reader {
+    /** What Orbit tells the app, each on a binder thread. */
+    public interface Listener {
         /** Orbit said it is ready, on a binder thread: the screen is described now. */
-        fun readerReady()
+        public fun readerReady()
 
         /** A key, on a binder thread: whether it was taken. */
-        fun key(event: KeyEvent, phoneKeypad: Boolean): Boolean
+        public fun key(event: KeyEvent, phoneKeypad: Boolean): Boolean
 
         /** An Orbit setting changed (the braille input table); read what depends on it again. */
-        fun settingsChanged()
+        public fun settingsChanged()
     }
 
     private val packageName = context.packageName
@@ -44,7 +45,7 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     private var phoneKeypad = false
 
     /** Whether the keys come from the Player's phone keypad rather than braille keys. */
-    val isPhoneKeypad: Boolean get() = phoneKeypad
+    public val isPhoneKeypad: Boolean get() = phoneKeypad
 
     private val sdk = object : IOlympusSDKCallback.Stub() {
         override fun onScreenReaderReady() {
@@ -92,7 +93,7 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     )
 
     /** Taken while the window has focus: see [Claim]. */
-    val claim: Claim = Claim(
+    public val claim: Claim = Claim(
         take = { link.call("notifyAppForeground") { it.notifyAppForeground(packageName) } },
         release = { link.now("notifyAppBackground") { it.notifyAppBackground(packageName) } },
         needsService = true,
@@ -110,34 +111,38 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     /** The person's T9 commit feedback: 1 sound, 2 speak, 3 vibrate, 4 sound and speak, 5 vibrate and speak. */
     override val characterCommitFeedback: Int get() = commitFeedback
 
-    fun bind() = link.bind()
+    /** Reaches Orbit's screen reader; [Listener.readerReady] follows once it is ready. */
+    public fun bind(): Unit = link.bind()
 
-    fun unbind() {
+    /** Gives the keypad back and lets the reader go. */
+    public fun unbind() {
         link.now("unregisterKeypadCallback") { it.unregisterKeypadCallback(packageName) }
         link.now("unregisterSettingsCallback") { it.unregisterSettingsCallback(settings) }
         link.unbind()
     }
 
-    val isReady: Boolean get() = ready
+    /** Whether Orbit's reader has said it is ready: nothing told before then is said. */
+    public val isReady: Boolean get() = ready
 
     private fun tell(what: String, block: (IScreenReaderService) -> Unit) {
         if (ready) link.call(what, block)
     }
 
-    override fun speak(text: String) = tell("speakText") {
+    override fun speak(text: String): Unit = tell("speakText") {
         it.stopSpeaking()
         it.speakText(text)
     }
 
-    override fun speakQueued(text: String) = tell("speakText") { it.speakText(text) }
+    override fun speakQueued(text: String): Unit = tell("speakText") { it.speakText(text) }
 
-    override fun stop() = tell("stopSpeaking") { it.stopSpeaking() }
+    override fun stop(): Unit = tell("stopSpeaking") { it.stopSpeaking() }
 
-    override fun sound(id: Int) = tell("playSound") { it.playSound(id) }
+    override fun sound(id: Int): Unit = tell("playSound") { it.playSound(id) }
 
-    override fun vibrate(milliseconds: Long) = tell("vibrate") { it.vibrate(milliseconds) }
+    override fun vibrate(milliseconds: Long): Unit = tell("vibrate") { it.vibrate(milliseconds) }
 
-    fun appOpened(name: String, focused: String) {
+    /** The app [name] opened, [focused] what is in hand: Orbit says the app's name. */
+    public fun appOpened(name: String, focused: String) {
         val bundle = Bundle().apply {
             putString("appName", name)
             putString("focusedElement", focused)
@@ -146,10 +151,10 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     }
 
     /** Lists are said as list boxes (role 5), the name the list's, the selected the row in hand. */
-    override fun focusList(name: String, count: Int, selected: Int, item: String) =
+    override fun focusList(name: String, count: Int, selected: Int, item: String): Unit =
         tell("onFocusChanged") { it.onFocusChanged(listBundle(name, count, selected, item)) }
 
-    override fun itemChanged(name: String, count: Int, selected: Int, item: String) =
+    override fun itemChanged(name: String, count: Int, selected: Int, item: String): Unit =
         tell("onItemChanged") { it.onItemChanged(listBundle(name, count, selected, item)) }
 
     private fun listBundle(name: String, count: Int, selected: Int, item: String, role: Int = ROLE_LIST_BOX): Bundle =
@@ -161,7 +166,7 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
             if (count > 0) putString("selectedItem", item)
         }
 
-    override fun dialog(name: String, message: String, focused: String) = tell("onDialogOpened") {
+    override fun dialog(name: String, message: String, focused: String): Unit = tell("onDialogOpened") {
         it.onDialogOpened(Bundle().apply {
             putString("name", name)
             putString("message", message)
@@ -169,16 +174,17 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
         })
     }
 
-    override fun dialogClosed() = tell("onDialogClosed") { it.onDialogClosed(Bundle()) }
+    override fun dialogClosed(): Unit = tell("onDialogClosed") { it.onDialogClosed(Bundle()) }
 
-    fun contextMenu(name: String, instructions: String) = tell("onContextMenuOpened") {
+    /** A context menu named [name], [instructions] said after it; [menuOpened] leaves the naming to Orbit. */
+    public fun contextMenu(name: String, instructions: String): Unit = tell("onContextMenuOpened") {
         it.onContextMenuOpened(Bundle().apply {
             putString("name", name)
             putString("instructions", instructions)
         })
     }
 
-    override fun contextMenuClosed(dismissed: Boolean) = tell("onContextMenuClosed") {
+    override fun contextMenuClosed(dismissed: Boolean): Unit = tell("onContextMenuClosed") {
         it.onContextMenuClosed(Bundle().apply { putBoolean("dismissed", dismissed) })
     }
 
@@ -186,14 +192,14 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
      * A menu of Orbit's own kind ([OrbitMenu]) opened, as its apps open theirs: no name, so Orbit
      * says its own "Context menu" in the person's language.
      */
-    override fun menuOpened() = tell("onContextMenuOpened") { it.onContextMenuOpened(Bundle()) }
+    override fun menuOpened(): Unit = tell("onContextMenuOpened") { it.onContextMenuOpened(Bundle()) }
 
     /**
      * The item in hand of a menu (role 8), as Orbit's apps tell each move of theirs: Orbit says
      * its name, "Sub-menu" for a submenu, its access key where the person has Orbit say them, and
      * its place ("2 of 7") where they have it say that.
      */
-    override fun focusMenu(item: String, subMenu: Boolean, accessKey: Char?, position: Int, total: Int) = tell("onFocusChanged") {
+    override fun focusMenu(item: String, subMenu: Boolean, accessKey: Char?, position: Int, total: Int): Unit = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", item)
             putInt("roleId", ROLE_MENU)
@@ -207,7 +213,7 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     }
 
     /** An edit box (role 6), so Orbit says the field and its review commands read its text. */
-    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) = tell("onFocusChanged") {
+    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean): Unit = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", name)
             putInt("roleId", ROLE_EDIT_BOX)
@@ -221,7 +227,7 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     }
 
     /** A button (role 1): Orbit says its name and what it is. */
-    override fun focusControl(name: String, role: Int) = tell("onFocusChanged") {
+    override fun focusControl(name: String, role: Int): Unit = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", name)
             putInt("roleId", role)
@@ -229,7 +235,7 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     }
 
     /** A read-only line (role 7): Orbit reads its content, which is all there is of it. */
-    override fun focusText(content: String) = tell("onFocusChanged") {
+    override fun focusText(content: String): Unit = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", "")
             putInt("roleId", ROLE_TEXT_BOX)
@@ -239,7 +245,7 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     }
 
     /** A check box (role 2) and whether it is checked. */
-    override fun focusCheck(name: String, checked: Boolean) = tell("onFocusChanged") {
+    override fun focusCheck(name: String, checked: Boolean): Unit = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", name)
             putInt("roleId", ROLE_CHECK_BOX)
@@ -249,11 +255,11 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     }
 
     /** A combo box (role 4) or a list inside a dialog, by [role], and what is chosen. */
-    override fun focusChoice(name: String, role: Int, count: Int, selected: Int, item: String) =
+    override fun focusChoice(name: String, role: Int, count: Int, selected: Int, item: String): Unit =
         tell("onFocusChanged") { it.onFocusChanged(listBundle(name, count, selected, item, role)) }
 
     /** A character typed, echoed as Orbit's edit fields do. */
-    override fun characterTyped(character: String, fieldName: String, capital: Boolean, resolvedWord: String?) = tell("onCharacterTyped") {
+    override fun characterTyped(character: String, fieldName: String, capital: Boolean, resolvedWord: String?): Unit = tell("onCharacterTyped") {
         it.onCharacterTyped(Bundle().apply {
             putString("character", character)
             putString("characterName", fieldName)
@@ -263,7 +269,7 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
     }
 
     /** An edit box's new content; Orbit says what changed by [changeType], as its own fields do. */
-    override fun editChanged(fieldName: String, content: String, cursor: Int, changeType: String) = tell("onEditBoxContentChanged") {
+    override fun editChanged(fieldName: String, content: String, cursor: Int, changeType: String): Unit = tell("onEditBoxContentChanged") {
         it.onEditBoxContentChanged(Bundle().apply {
             putString("widgetName", fieldName)
             putString("content", content)
@@ -272,15 +278,25 @@ class OrbitReader(context: Context, private val listener: Listener) : Reader {
         })
     }
 
-    companion object {
-        const val ROLE_BUTTON = 1
-        const val ROLE_CHECK_BOX = 2
-        const val ROLE_COMBO_BOX = 4
-        const val ROLE_LIST_BOX = 5
-        const val ROLE_EDIT_BOX = 6
-        const val ROLE_TEXT_BOX = 7
-        const val ROLE_MENU = 8
-        const val SOUND_ERROR = 1
-        const val SOUND_COMMIT = 9
+    /** Orbit's roles of what is focused, and its sounds. */
+    public companion object {
+        /** A button. */
+        public const val ROLE_BUTTON: Int = 1
+        /** A check box. */
+        public const val ROLE_CHECK_BOX: Int = 2
+        /** A combo box. */
+        public const val ROLE_COMBO_BOX: Int = 4
+        /** A list box. */
+        public const val ROLE_LIST_BOX: Int = 5
+        /** An edit box. */
+        public const val ROLE_EDIT_BOX: Int = 6
+        /** A read-only line. */
+        public const val ROLE_TEXT_BOX: Int = 7
+        /** An item of a menu. */
+        public const val ROLE_MENU: Int = 8
+        /** Orbit's error tone. */
+        public const val SOUND_ERROR: Int = 1
+        /** Orbit's sound of a T9 character committed. */
+        public const val SOUND_COMMIT: Int = 9
     }
 }

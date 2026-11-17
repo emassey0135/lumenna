@@ -616,4 +616,65 @@ class UiTest {
         }
         assertEquals(listOf("list Colours 1 0 red"), told.calls)
     }
+
+    @Test fun aRowsDetailIsToldAfterItsTextAndAFirstLetterFindsItByItsTextAlone() {
+        ui.list("Fruit", { fruit.map { Item(it, it, detail = "ripe") } })
+        cell('c')
+        assertEquals(listOf("list Fruit 3 0 apple, ripe", "item Fruit 3 2 cherry, ripe"), told.calls)
+    }
+
+    @Test fun selectOnARowThatOpensNothingTogglesItAndItIsReadAgainOnceTheAppHasChangedIt() {
+        var checked = false
+        ui.list("Settings", { listOf(Item("sound", "Sound", detail = if (checked) "checked" else "not checked", toggle = { checked = !checked })) })
+        told.calls.clear()
+        select()
+        assertTrue(checked)
+        assertEquals("nothing told until the app shows the change", emptyList<String>(), told.calls)
+        ui.refresh()
+        assertEquals(listOf("item Settings 1 0 Sound, checked"), told.calls)
+    }
+
+    @Test fun spaceWithDDeletesTheRowInHandAndTheListGoesOnFromWhereItWas() {
+        ui.list("Fruit", { fruit.map { name -> Item(name, name, delete = { fruit.remove(name) }) } })
+        down()
+        told.calls.clear()
+        spaceWith('d')
+        assertEquals(listOf("apple", "cherry"), fruit)
+        ui.refresh()
+        assertEquals(listOf("item Fruit 2 1 cherry"), told.calls)
+    }
+
+    @Test fun aListHearsThePersonMoveAndTakesAFirstLetterItFindsItself() {
+        val heard = mutableListOf<String>()
+        val found = mutableListOf<Char>()
+        ui.list("Fruit", ::rows, moved = { heard += it.key }, find = { found += it })
+        down()
+        cell('c')
+        assertEquals(listOf("banana"), heard)
+        assertEquals(listOf('c'), found)
+    }
+
+    @Test fun landingTellsTheRowTheAppMovedTo() {
+        ui.list("Fruit", ::rows)
+        told.calls.clear()
+        ui.land("cherry")
+        assertEquals(listOf("item Fruit 3 2 cherry"), told.calls)
+        told.calls.clear()
+        ui.land("cherry")
+        assertEquals("the row just told is not told again", emptyList<String>(), told.calls)
+    }
+
+    @Test fun aMessageIsAnnouncedAfterWhatWasJustTold() {
+        ui.list("Fruit", ::rows)
+        ui.message("Saved")
+        assertEquals("waits behind the list just told", listOf("list Fruit 3 0 apple"), told.calls)
+        passTime()
+        assertEquals("say Saved", told.calls.last())
+    }
+
+    @Test fun anUnknownKeyOfAFormsValuesIsRefusedRatherThanReadAsEmpty() {
+        val values = FormValues(mapOf("name" to "fig"), emptyMap(), emptyMap())
+        assertEquals("fig", values.text("name"))
+        assertTrue(runCatching { values.text("nmae") }.isFailure)
+    }
 }

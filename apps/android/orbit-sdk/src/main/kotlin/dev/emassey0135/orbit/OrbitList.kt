@@ -7,9 +7,9 @@ package dev.emassey0135.orbit
  * the last row to the first. A letter is [ListFinder]'s, a menu [OrbitMenu]'s, which goes round
  * with Up and Down as Orbit's menus do.
  */
-object OrbitList {
+public object OrbitList {
     /** Where [key] takes a list of [size] rows from the row at [index]; null for a key that does not move it. */
-    fun target(key: Key, index: Int, size: Int): Int? {
+    public fun target(key: Key, index: Int, size: Int): Int? {
         if (size <= 0) return null
         return when (key) {
             Key.Up -> (index - 1).coerceIn(0, size - 1)
