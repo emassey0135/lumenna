@@ -130,7 +130,7 @@ class Shell(
             no = appWords.yesNo.firstOrNull { it.id == "no" }?.title ?: "No",
             opensNothing = appWords.braille.opensNothing,
             noActions = appWords.braille.noActions,
-            notFound = { noRowStartsWith(it.toString()) },
+            noRowStartsWith = { noRowStartsWith(it.toString()) },
             nothingOnLetter = { nothingOnLetter(it.toString()) },
         ),
     )
@@ -242,7 +242,7 @@ class Shell(
             follow(model)
             if (opens(model) && ui.screens.none { it is OpenedScreen }) ui.push(OpenedScreen())
         }
-        ui.refresh(landed)
+        if (landed) ui.land() else ui.refresh()
         // A dialog's controller and the text of its lines go with the dialog.
         val owner = ui.screens.lastOrNull { it is LumennaScreen } as LumennaScreen?
         if (owner !is FilterScreen && owner?.built !is FormFrame) closeDialog()
@@ -664,7 +664,7 @@ class Shell(
         if (!opensOnLetter()) {
             selected["home"] = key
             if (place != null) held(key, Side.SIDEBAR)
-            ui.refresh(landed = true)
+            ui.land()
             return true
         }
         when {

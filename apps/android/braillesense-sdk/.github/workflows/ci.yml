@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test, build and document
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      # The runner has the Android SDK already; liblouis is built for the device by build-louis.sh
+      # with the NDK's clang.
+      - name: The platform and the NDK
+        run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          # The platform's licence is asked for even when the others are accepted.
+          yes | sdkmanager --licenses > /dev/null
+          yes | sdkmanager "ndk;30.0.16248370" "platforms;android-37.0" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+      - name: Test on the JVM
+        run: ./gradlew --no-daemon test
+      - name: Build the library and the sample
+        run: ./gradlew --no-daemon assembleRelease :sample:assembleDebug
+      - name: Write the API documentation
+        run: ./gradlew --no-daemon dokkaGenerate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: braillesense-sdk
+          path: |
+            build/outputs/aar/*.aar
+            sample/build/outputs/apk/debug/*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-documentation
+          path: build/dokka/html

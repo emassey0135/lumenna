@@ -15,10 +15,10 @@ import dev.emassey0135.braillesense.reading.DeviceLine
  * presses a button, and Space or Enter with a button's letter presses it from anywhere. Each
  * control is read in the device's role, with its label, its value and, for a combo box, "2/5".
  */
-class DialogFrame(
+public class DialogFrame(
     id: String,
     /** The dialog's name, said with "dialog" as it opens. */
-    val title: String,
+    public val title: String,
     fields: List<Field>,
     translator: Translator,
     private val words: UiWords,
@@ -85,7 +85,7 @@ class DialogFrame(
     }
 
     /** What the form holds now. */
-    fun values(): FormValues {
+    public fun values(): FormValues {
         val texts = HashMap<String, String>()
         val choices = HashMap<String, Int>()
         val checks = HashMap<String, Boolean>()
@@ -108,7 +108,7 @@ class DialogFrame(
     }
 
     /** Escape: as its Cancel. */
-    fun cancel() = finish(false)
+    public fun cancel(): Unit = finish(false)
 
     override fun routed(at: Int) {
         when (val control = current) {

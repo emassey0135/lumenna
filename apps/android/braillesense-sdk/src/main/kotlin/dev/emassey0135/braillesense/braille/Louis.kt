@@ -4,44 +4,48 @@ import android.content.Context
 import java.io.File
 
 /** Text in cells, with what maps between them. */
-class Translated(
+public class Translated(
     /** A byte per cell, bit 0 dot 1. */
-    val cells: ByteArray,
+    public val cells: ByteArray,
     /** For each UTF-16 unit of the text, its cell. */
-    val cellOf: IntArray,
+    public val cellOf: IntArray,
     /** For each cell, the unit it came from. */
-    val textAt: IntArray,
+    public val textAt: IntArray,
 )
 
 /** Braille translation in the person's table, as the display and the edit box need it; tests give their own. */
-interface Translator {
-    fun translate(text: String, cursor: Int = -1): Translated
+public interface Translator {
+    /** [text] in the person's table, the cursor at [cursor] in it carried into the cells (-1 for none). */
+    public fun translate(text: String, cursor: Int = -1): Translated
 
     /** [text] cell for cell, as Braille ASCII: the device's role symbols, signs and hot keys. */
-    fun computer(text: String): ByteArray
+    public fun computer(text: String): ByteArray
 
     /** The text [cells] (a byte per cell) read back in the person's table, or null if refused. */
-    fun back(cells: ByteArray): String?
+    public fun back(cells: ByteArray): String?
 }
 
 /**
- * liblouis through its own small JNI, in the person's table ([table]), which `BrailleSettings`
+ * liblouis through its own small JNI, in the person's table ([translator]), which `BrailleSettings`
  * reads from the device. Tables live in the app's files, copied once from the assets.
  */
-object Louis {
+public object Louis {
     init {
         System.loadLibrary("braillesense-louis")
     }
 
-    @JvmStatic external fun setDataPath(path: String)
-    @JvmStatic external fun translate(tables: String, text: String, cursor: Int): Array<Any>?
-    @JvmStatic external fun backTranslate(tables: String, cells: ByteArray): String?
+    /** liblouis' own call: where its tables are. The SDK calls it as it installs them. */
+    @JvmStatic public external fun setDataPath(path: String)
+    /** liblouis' own forward translation of [text] in [tables]: the cells and the cursor's place, or null if refused. [translator] is the way to use it. */
+    @JvmStatic public external fun translate(tables: String, text: String, cursor: Int): Array<Any>?
+    /** liblouis' own back-translation of [cells] in [tables], or null if refused. */
+    @JvmStatic public external fun backTranslate(tables: String, cells: ByteArray): String?
 
     private val installed = java.util.concurrent.CountDownLatch(1)
     private const val COMPUTER_TABLE = "en-us-comp8.ctb"
 
     /** Copies the tables out of the assets, once per version: liblouis reads them as files. */
-    fun install(context: Context, version: String) {
+    public fun install(context: Context, version: String) {
         try {
             copyTables(context, version)
         } finally {
@@ -68,7 +72,7 @@ object Louis {
     }
 
     /** A translator in the table [table] gives at the moment of each call, so a change of settings takes hold. */
-    fun translator(table: () -> String): Translator = object : Translator {
+    public fun translator(table: () -> String): Translator = object : Translator {
         override fun translate(text: String, cursor: Int): Translated = synchronized(Louis) {
             // The tables are copied out once, off the main thread; only the first line waits.
             installed.await()

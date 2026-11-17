@@ -15,7 +15,11 @@ import dev.emassey0135.braillesense.output.BrailleDisplay
 import dev.emassey0135.braillesense.reading.ControlRole
 import dev.emassey0135.braillesense.reading.dialogTitle
 import dev.emassey0135.braillesense.session.BrailleSenseSession
+import dev.emassey0135.braillesense.edit.SystemClipboard
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.resume
+import kotlin.coroutines.startCoroutine
 import kotlin.coroutines.suspendCoroutine
 
 /**
@@ -38,7 +42,7 @@ import kotlin.coroutines.suspendCoroutine
  * Display Time. A key's line is said at once; one the app shows of itself waits [speechDelay] for
  * what it says to come with it. Everything runs on the main thread.
  */
-class BrailleSenseUi(
+public class BrailleSenseUi(
     private val display: BrailleDisplay,
     private val translator: Translator,
     clipboard: Clipboard,
@@ -84,35 +88,40 @@ class BrailleSenseUi(
     private var pendingHeading: String? = null
     private val saying = Runnable { flush() }
 
+    /** Inside [batch]: what is shown waits for it to end, and whether anything asked to be said, and what was open as it began. */
+    private var batching = 0
+    private var batchSays = false
+    private var batchBefore: List<Screen> = emptyList()
+
     /** The last screen closed: leave the app (`finish`). */
-    var onEmpty: () -> Unit = {}
+    public var onEmpty: () -> Unit = {}
 
     /** Exit (Space-Z): leave the app, as the device's own apps do. */
-    var onExit: () -> Unit = { onEmpty() }
+    public var onExit: () -> Unit = { onEmpty() }
 
     /** A key no screen took and the stack has nothing for (Help, Options, Find…): the app's. */
-    var onUnhandled: (Key) -> Unit = {}
+    public var onUnhandled: (Key) -> Unit = {}
 
     /** The line in front, for the device's LCD and an HDMI screen: what a sighted helper reads. */
-    var drawn: (String) -> Unit = {}
+    public var drawn: (String) -> Unit = {}
 
     /** The screen in front. */
-    val top: Screen? get() = stack.lastOrNull()
+    public val top: Screen? get() = stack.lastOrNull()
 
     /** The frame in front. */
-    val frame: Frame? get() = top?.let { frames[it] }
+    public val frame: Frame? get() = top?.let { frames[it] }
 
     /** The screens, bottom first. */
-    val screens: List<Screen> get() = stack.toList()
+    public val screens: List<Screen> get() = stack.toList()
 
     /** Puts [screen] in front, and says it with its heading. */
-    fun push(screen: Screen) {
+    public fun push(screen: Screen) {
         stack += screen
         show(moved = true)
     }
 
     /** Takes [screen] off the stack wherever it is; the line of the one now in front is said again. */
-    fun close(screen: Screen) = close(screen, said = true, prefix = "")
+    public fun close(screen: Screen): Unit = close(screen, said = true, prefix = "")
 
     private fun close(screen: Screen, said: Boolean, prefix: String) {
         val wasTop = top === screen
@@ -131,10 +140,43 @@ class BrailleSenseUi(
 
     /**
      * The app's data changed: what no longer [Screen.stands] closes, and the screen in front is
-     * built again and shown. Its line is said only if [landed] (the app moved what is in hand),
-     * if it is a new frame, or if a key asked for the change that it now shows.
+     * built again and shown, the row in hand kept by its key. Its line is said only if it is a new
+     * frame, or if a key asked for the change that it now shows (a check box, folding): a sync or a
+     * new minute never cuts off what is being read.
      */
-    fun refresh(landed: Boolean = false) {
+    public fun refresh(): Unit = reread(landed = false)
+
+    /**
+     * The app moved what is in hand itself (a row it made, a row it went to): a refresh that says
+     * the line in front. [key], where given, is put in hand on the list in front first.
+     */
+    public fun land(key: String? = null) {
+        if (key != null) (top as? ListScreen)?.hold(key)
+        reread(landed = true)
+    }
+
+    /**
+     * Does [block], which may push and close several screens, saying nothing until it ends: then
+     * only the screen in front is said, so the person hears where they end up.
+     */
+    public fun batch(block: () -> Unit) {
+        if (batching == 0) {
+            batchBefore = stack.toList()
+            batchSays = false
+        }
+        batching++
+        try {
+            block()
+        } finally {
+            batching--
+            if (batching == 0) {
+                val now = top
+                if (now != null) show(moved = batchSays, returning = now in batchBefore && now !== batchBefore.lastOrNull())
+            }
+        }
+    }
+
+    private fun reread(landed: Boolean) {
         val gone = stack.filter { !it.stands() }
         val wasTop = top
         gone.forEach { screen ->
@@ -151,39 +193,56 @@ class BrailleSenseUi(
     }
 
     /** Back in front (the session's `onTaken`): says where the person is, heading and all. */
-    fun front() {
+    public fun front() {
         lastId = ""
         show(moved = true)
     }
 
     /** The person's settings changed while in front: the line shown as they now say, unsaid. */
-    fun redraw() = show(moved = false)
+    public fun redraw(): Unit = show(moved = false)
 
     /** Before the settings are read again: every open box's text read in the table in force. */
-    fun settle() = frames.values.forEach { frame -> frame.editBoxes().forEach { it.settle() } }
+    public fun settle(): Unit = frames.values.forEach { frame -> frame.editBoxes().forEach { it.settle() } }
 
     /** The braille table changed: every open box written again in the new one, its text kept. */
-    fun retable() {
+    public fun retable() {
         frames.values.forEach { frame -> frame.editBoxes().forEach { it.recell() } }
         frame?.let { display.show(it.rendered) }
     }
 
     /** Says [text] at once, cutting off what was being said. */
-    fun say(text: String) = display.say(text)
+    public fun say(text: String): Unit = display.say(text)
 
     /**
      * What the app did, said with the line that follows it as one thing (or by itself if nothing
      * follows) and kept on the cells for the Message Display Time: someone reading braille alone
      * hears none of what is said.
      */
-    fun announce(text: String) {
+    public fun announce(text: String) {
         announcements += text
         if (inKey) return
         schedule()
     }
 
     /** [announce]. */
-    fun message(text: String) = announce(text)
+    public fun message(text: String): Unit = announce(text)
+
+    /**
+     * Something the person asked for that cannot be done here, and why ([text], where there is
+     * something to say), announced. The device's own apps sound no tone through the output service
+     * an app can reach, so nothing else marks it.
+     */
+    public fun refused(text: String?) {
+        if (text != null) announce(text)
+    }
+
+    /**
+     * Runs [block] at once on this thread, for an app with no coroutine library: each ask in it
+     * waits for its answer, and it goes on on the main thread as the answer comes.
+     */
+    public fun launch(block: suspend () -> Unit) {
+        block.startCoroutine(Continuation(EmptyCoroutineContext) { it.getOrThrow() })
+    }
 
     private fun schedule() {
         handler.removeCallbacks(saying)
@@ -210,6 +269,11 @@ class BrailleSenseUi(
      * if it changed as a key asked; never if [silent].
      */
     private fun show(moved: Boolean, landed: Boolean = false, returning: Boolean = false, silent: Boolean = false) {
+        if (batching > 0) {
+            // Said once the batch ends, where the person ends up.
+            if (!silent && (moved || landed)) batchSays = true
+            return
+        }
         val screen = top ?: return
         val shownFrame = frames.getOrPut(screen) { screen.frame() }
         shown++
@@ -229,6 +293,9 @@ class BrailleSenseUi(
             // A screen opened inside the key that chose it may be drawn again before it is said: its heading waits.
             if (heading.isNotBlank()) pendingHeading = heading
             pendingLine = sentences(heading.ifBlank { pendingHeading.orEmpty() }, rendered.speech)
+        } else if (!silent && pendingLine != null) {
+            // A line waiting to be said is said as it now reads: the app changed it before it was.
+            pendingLine = sentences(pendingHeading.orEmpty(), rendered.speech)
         }
         lastSpeech = rendered.speech
         if (!inKey && pendingLine != null) schedule()
@@ -245,7 +312,7 @@ class BrailleSenseUi(
     // ── Keys ─────────────────────────────────────────────────────────────────────────────
 
     /** A key from either keyboard: the session's `onKey`. What it shows is said as it is done. */
-    fun press(key: Key) {
+    public fun press(key: Key) {
         inKey = true
         try {
             take(key)
@@ -374,7 +441,7 @@ class BrailleSenseUi(
     // ── Asks ─────────────────────────────────────────────────────────────────────────────
 
     /** A screen of rows, read again from [items] at each [refresh]; Space-M is [actions]. */
-    fun list(
+    public fun list(
         title: String,
         items: () -> List<Item>,
         empty: String = words.empty,
@@ -386,48 +453,53 @@ class BrailleSenseUi(
     ): ListScreen = ListScreen(title, items, empty, actions, moved, find).also(::push)
 
     /** The device's menu of [items]: [chosen] gets the value of the one chosen, or null if it closed unchosen. */
-    fun <T> menu(items: List<MenuItem<T>>, chosen: (T?) -> Unit) {
+    public fun <T> menu(items: List<MenuItem<T>>, chosen: (T?) -> Unit) {
         val screen = MenuScreen(chosen)
         screen.entries = items.map { screen.entry(it) }
         push(screen)
     }
 
-    suspend fun <T> menu(items: List<MenuItem<T>>): T? = suspendCoroutine { done -> menu(items) { done.resume(it) } }
+    /** [menu], waited for: the value chosen, or null. */
+    public suspend fun <T> menu(items: List<MenuItem<T>>): T? = suspendCoroutine { done -> menu(items) { done.resume(it) } }
 
     /** The device's menu of [entries] as they are, each running its own: a row's actions. */
-    fun menu(entries: List<MenuEntry>) {
+    public fun menu(entries: List<MenuEntry>) {
         val screen = MenuScreen<Unit> {}
         screen.entries = entries
         push(screen)
     }
 
     /** A line to type: [answered] gets its text at Enter, or null at Escape. Several lines are a form of one field. */
-    fun askLine(prompt: String, initial: String = "", hint: String = "", multiLine: Boolean = false, answered: (String?) -> Unit) {
+    public fun askLine(prompt: String, initial: String = "", hint: String = "", multiLine: Boolean = false, answered: (String?) -> Unit) {
         if (multiLine) return form(prompt, listOf(Field.Line(LINE, prompt, initial, hint, true))) { answered(it?.text(LINE)) }
         push(LineScreen(prompt, initial, hint, answered))
     }
 
-    suspend fun askLine(prompt: String, initial: String = "", hint: String = "", multiLine: Boolean = false): String? =
+    /** [askLine], waited for: the text, or null. */
+    public suspend fun askLine(prompt: String, initial: String = "", hint: String = "", multiLine: Boolean = false): String? =
         suspendCoroutine { done -> askLine(prompt, initial, hint, multiLine) { done.resume(it) } }
 
     /** A question of Yes and No as the device's prompt asks one: Escape is No. */
-    fun confirm(question: String, default: Boolean = false, answered: (Boolean) -> Unit) =
+    public fun confirm(question: String, default: Boolean = false, answered: (Boolean) -> Unit): Unit =
         push(PromptScreen(question, default, quiet = false) { answered(it == true) })
 
-    suspend fun confirm(question: String, default: Boolean = false): Boolean =
+    /** [confirm], waited for: true for Yes. */
+    public suspend fun confirm(question: String, default: Boolean = false): Boolean =
         suspendCoroutine { done -> confirm(question, default) { done.resume(it) } }
 
     /** A list of [options] to pick one of with Enter: [chosen] gets its place, or null at Escape. */
-    fun choose(title: String, options: List<String>, selected: Int = 0, chosen: (Int?) -> Unit) =
+    public fun choose(title: String, options: List<String>, selected: Int = 0, chosen: (Int?) -> Unit): Unit =
         push(ChoiceScreen(title, options, selected, chosen))
 
-    suspend fun choose(title: String, options: List<String>, selected: Int = 0): Int? =
+    /** [choose], waited for: the option's place, or null. */
+    public suspend fun choose(title: String, options: List<String>, selected: Int = 0): Int? =
         suspendCoroutine { done -> choose(title, options, selected) { done.resume(it) } }
 
     /** A form of [fields] with OK and Cancel: [done] gets what it holds at OK, or null at Cancel or Escape. */
-    fun form(title: String, fields: List<Field>, done: (FormValues?) -> Unit) = push(FormScreen(title, fields, done))
+    public fun form(title: String, fields: List<Field>, done: (FormValues?) -> Unit): Unit = push(FormScreen(title, fields, done))
 
-    suspend fun form(title: String, fields: List<Field>): FormValues? = suspendCoroutine { done -> form(title, fields) { done.resume(it) } }
+    /** [form], waited for: what it held at OK, or null. */
+    public suspend fun form(title: String, fields: List<Field>): FormValues? = suspendCoroutine { done -> form(title, fields) { done.resume(it) } }
 
     // ── The screens ──────────────────────────────────────────────────────────────────────
 
@@ -454,7 +526,7 @@ class BrailleSenseUi(
     }
 
     /** A list of rows, read again from [items] at each refresh. */
-    inner class ListScreen internal constructor(
+    public inner class ListScreen internal constructor(
         override val title: String,
         private val items: () -> List<Item>,
         private val empty: String,
@@ -464,15 +536,23 @@ class BrailleSenseUi(
     ) : Screen() {
         private var selected: String? = null
 
+        /** Puts the row of [key] in hand, shown at the next refresh ([land] does both). */
+        public fun hold(key: String) {
+            selected = key
+        }
+
         override fun frame(): Frame {
             val shownItems = items()
             val byKey = shownItems.associateBy { it.key }
             val rows = shownItems.map { item ->
+                val fold = item.fold
                 Row(
-                    item.key, item.text, braille = item.braille, finding = item.finding, open = item.open, space = item.space,
+                    item.key, item.text, braille = item.braille, finding = item.finding, open = item.open, space = item.toggle,
                     actions = item.actions.map { MenuEntry(it.name, letter = it.letter, asks = it.asks, run = it.run) },
                     command = item.command, delete = item.delete, role = item.role, detail = item.detail, letter = item.letter,
-                    collapse = item.collapse, expand = item.expand, asks = item.asks,
+                    collapse = if (fold != null && item.expanded == true) ({ fold(false) }) else null,
+                    expand = if (fold != null && item.expanded == false) ({ fold(true) }) else null,
+                    asks = item.asks,
                 )
             }
             return ListFrame(
@@ -483,7 +563,7 @@ class BrailleSenseUi(
                 },
                 openActions = { row -> menu(row.actions) },
                 findInApp = find,
-                notFound = { announce(words.notFound(it)) },
+                notFound = { announce(words.noRowStartsWith(it)) },
                 readings = readings,
                 byLetter = { letter -> shownItems.firstOrNull { it.letter == letter }?.open?.let { it(); true } ?: false },
                 opensNothing = { announce(words.opensNothing) },
@@ -519,7 +599,7 @@ class BrailleSenseUi(
             run = { answer(item.value) },
         )
 
-        override fun frame(): Frame = menuFrame ?: MenuFrame(entries, letters, readings, opensOnLetter, notFound = { announce(words.notFound(it)) }, closed = { cancelled ->
+        override fun frame(): Frame = menuFrame ?: MenuFrame(entries, letters, readings, opensOnLetter, notFound = { announce(words.noRowStartsWith(it)) }, closed = { cancelled ->
             if (cancelled) {
                 close(this, said = true, prefix = words.cancel)
                 answer(null)
@@ -579,7 +659,7 @@ class BrailleSenseUi(
             val rows = options.mapIndexed { at, option -> Row(at.toString(), option, open = { finish(at) }) }
             return ListFrame(
                 "choice:${System.identityHashCode(this)}", title, rows, selected, words.empty, letters,
-                moved = { selected = it.key }, notFound = { announce(words.notFound(it)) }, readings = readings,
+                moved = { selected = it.key }, notFound = { announce(words.noRowStartsWith(it)) }, readings = readings,
             )
         }
     }
@@ -595,9 +675,10 @@ class BrailleSenseUi(
         override fun frame(): Frame = dialog
     }
 
-    companion object {
+    /** The layer over a session, and its timing. */
+    public companion object {
         /** How long a line the app shows of itself waits for what it says to arrive with it. */
-        const val SPEECH_DELAY = 60L
+        public const val SPEECH_DELAY: Long = 60L
 
         /** Space-2-5 and Space-3-6, the device's read word and read character, as dots. */
         private const val SAY_WORD_DOTS = 0x12
@@ -608,9 +689,15 @@ class BrailleSenseUi(
 
         /**
          * The layer over [session], which it is wired into: the session's keys come here, and coming
-         * to the front, the settings changing and the table changing are handled.
+         * to the front, the settings changing and the table changing are handled. Edit boxes copy to
+         * and paste from [clipboard], by default the system's, labelled with the app's name.
          */
-        fun on(session: BrailleSenseSession, clipboard: Clipboard, words: UiWords = UiWords(), letters: Letters = DeviceLetters): BrailleSenseUi {
+        public fun on(
+            session: BrailleSenseSession,
+            words: UiWords = UiWords(),
+            letters: Letters = DeviceLetters,
+            clipboard: Clipboard = SystemClipboard(session.context, session.context.applicationInfo.loadLabel(session.context.packageManager)),
+        ): BrailleSenseUi {
             val settings = session.settings
             val ui = BrailleSenseUi(
                 session.display, session.translator, clipboard, SettingsReadings(settings),

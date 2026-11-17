@@ -4,38 +4,54 @@ package dev.emassey0135.braillesense.input
  * The composed chord `han_brailleinput` delivers, a key per bit, and what it means. The device's
  * own manual (chapter 2.4, "General Commands and Navigation") names every command here.
  */
-object Chords {
-    const val DOT1 = 0x1000
-    const val DOT2 = 0x0800
-    const val DOT3 = 0x0400
-    const val DOT4 = 0x4000
-    const val DOT5 = 0x8000
-    const val DOT6 = 0x10000
+public object Chords {
+    /** The braille keys' dots in a chord. */
+    public const val DOT1: Int = 0x1000
+    /** Dot 2. */
+    public const val DOT2: Int = 0x0800
+    /** Dot 3. */
+    public const val DOT3: Int = 0x0400
+    /** Dot 4. */
+    public const val DOT4: Int = 0x4000
+    /** Dot 5. */
+    public const val DOT5: Int = 0x8000
+    /** Dot 6. */
+    public const val DOT6: Int = 0x10000
     /** Shares its bit with Backspace. */
-    const val DOT7 = 0x0200
+    public const val DOT7: Int = 0x0200
     /** Shares its bit with Enter. */
-    const val DOT8 = 0x20000
-    const val SPACE = 0x2000
-    const val BACKSPACE = DOT7
-    const val ENTER = DOT8
+    public const val DOT8: Int = 0x20000
+    /** The Space bar. */
+    public const val SPACE: Int = 0x2000
+    /** Backspace, which is dot 7. */
+    public const val BACKSPACE: Int = DOT7
+    /** Enter, which is dot 8. */
+    public const val ENTER: Int = DOT8
     /** The upper advance keys, which double as Control and Alt beside the Space bar. */
-    const val CONTROL = 0x04000000
-    const val ALT = 0x08000000
+    public const val CONTROL: Int = 0x04000000
+    /** The upper advance key that is Alt. */
+    public const val ALT: Int = 0x08000000
     /** The four function keys. */
-    const val F1 = 0x00040000
-    const val F2 = 0x00080000
-    const val F3 = 0x00100000
-    const val F4 = 0x00200000
+    public const val F1: Int = 0x00040000
+    /** F2, the menu key. */
+    public const val F2: Int = 0x00080000
+    /** F3, Tab. */
+    public const val F3: Int = 0x00100000
+    /** F4, Escape. */
+    public const val F4: Int = 0x00200000
     private const val FUNCTION_KEYS = F1 or F2 or F3 or F4
 
     /** The scroll keys beside the display, and the codes of holding one down. */
-    const val SCROLL_UP = 0x00400000
-    const val SCROLL_DOWN = 0x00800000
-    const val SCROLL_UP_LONG = 0x01000000
-    const val SCROLL_DOWN_LONG = 0x02000000
+    public const val SCROLL_UP: Int = 0x00400000
+    /** The scroll key down. */
+    public const val SCROLL_DOWN: Int = 0x00800000
+    /** Holding the scroll key up. */
+    public const val SCROLL_UP_LONG: Int = 0x01000000
+    /** Holding the scroll key down. */
+    public const val SCROLL_DOWN_LONG: Int = 0x02000000
 
     /** Routing keys, as key codes: the first over cell 0. The second range is other models'. */
-    const val ROUTE_FIRST = 272
+    public const val ROUTE_FIRST: Int = 272
     private const val ROUTE_LAST = 303
     private const val ROUTE_FIRST_LARGE = 352
     private const val ROUTE_LAST_LARGE = 391
@@ -43,7 +59,7 @@ object Chords {
     private const val SIX = DOT1 or DOT2 or DOT3 or DOT4 or DOT5 or DOT6
 
     /** The dots of a chord as a cell's bits, bit 0 dot 1. Dots 7 and 8 only when [eight]. */
-    fun dots(chord: Int, eight: Boolean = false): Int {
+    public fun dots(chord: Int, eight: Boolean = false): Int {
         var dots = 0
         if (chord and DOT1 != 0) dots = dots or 0x01
         if (chord and DOT2 != 0) dots = dots or 0x02
@@ -59,7 +75,7 @@ object Chords {
     }
 
     /** The letter a to z of six dots (bit 0 dot 1), or null for what is none. */
-    fun letter(dots: Int): Char? {
+    public fun letter(dots: Int): Char? {
         val at = dev.emassey0135.braillesense.reading.LETTER_DOTS.indexOfFirst { named -> named.fold(0) { bits, dot -> bits or (1 shl (dot - '1')) } == dots }
         return if (at < 0) null else 'a' + at
     }
@@ -114,7 +130,7 @@ object Chords {
      * field of [data] ("67 0 512"); injected for testing, the chord is the first field and
      * [value] ("7424 0 0"). A code of -1 is a key; others are the service's own news.
      */
-    fun decode(code: Int, value: Int, data: String?, eightDot: Boolean, doubleTapRoutes: Boolean = false): Key? {
+    public fun decode(code: Int, value: Int, data: String?, eightDot: Boolean, doubleTapRoutes: Boolean = false): Key? {
         touched(code, value, data, doubleTapRoutes)?.let { return it }
         if (code != -1) return null
         val parts = data.orEmpty().trim().split(' ').filter { it.isNotEmpty() }
@@ -153,7 +169,7 @@ object Chords {
     }
 
     /** The chord alone, without the key code that may come with it. */
-    fun fromChord(chord: Int, eightDot: Boolean = false): Key? {
+    public fun fromChord(chord: Int, eightDot: Boolean = false): Key? {
         if (chord in ROUTE_FIRST..ROUTE_LAST) return Key.Route(chord - ROUTE_FIRST)
         if (chord in ROUTE_FIRST_LARGE..ROUTE_LAST_LARGE) return Key.Route(chord - ROUTE_FIRST_LARGE)
         if (chord and FUNCTION_KEYS != 0) return functionKeys(chord)

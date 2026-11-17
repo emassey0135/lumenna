@@ -1,0 +1,11 @@
+# The aliases are those of the app builds the SDK is also a module of, so its build file reads the
+# same in either.
+[versions]
+agp = "9.4.1"
+
+[libraries]
+junit = { group = "junit", name = "junit", version = "4.13.2" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }

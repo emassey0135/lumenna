@@ -3,11 +3,12 @@ package dev.emassey0135.braillesense.edit
 import dev.emassey0135.braillesense.braille.Translator
 
 /** A line as it reads on the cells. */
-class ShownLine(val cells: ByteArray, val cursor: Int)
+public class ShownLine(public val cells: ByteArray, public val cursor: Int)
 
 /** One cell of a line, [at] in the cells of its [word]: how it is said depends on its neighbours. */
-class CellInWord(val word: ByteArray, val at: Int) {
-    val cell: Byte get() = word[at]
+public class CellInWord(public val word: ByteArray, public val at: Int) {
+    /** The cell itself, a dot pattern. */
+    public val cell: Byte get() = word[at]
 }
 
 /**
@@ -19,7 +20,7 @@ class CellInWord(val word: ByteArray, val at: Int) {
  *
  * The QWERTY keyboard types text, so its word is held as text and shown as its translation.
  */
-class LineEditor(initial: String, private val translator: Translator) {
+public class LineEditor(initial: String, private val translator: Translator) {
     private class Word(var cells: ByteArray, var text: String?)
 
     /** One blank cell between each and the next. */
@@ -35,7 +36,7 @@ class LineEditor(initial: String, private val translator: Translator) {
     }
 
     /** The caret, as a cell of the line. */
-    var caret: Int = length
+    public var caret: Int = length
         private set
 
     private val length: Int get() = words.sumOf { it.cells.size } + words.size - 1
@@ -59,7 +60,7 @@ class LineEditor(initial: String, private val translator: Translator) {
         word.text ?: (if (word.cells.isEmpty()) "" else translator.back(word.cells).orEmpty()).also { word.text = it }
 
     /** The line as text: read back, for what has changed, in the person's table. */
-    val text: String get() = words.joinToString(" ", transform = ::textOf)
+    public val text: String get() = words.joinToString(" ", transform = ::textOf)
 
     /** The word the caret is in, and how far into it. */
     private fun place(at: Int = caret): Pair<Int, Int> {
@@ -79,7 +80,7 @@ class LineEditor(initial: String, private val translator: Translator) {
         }
 
     /** A cell typed at the caret. */
-    fun cell(dots: Int) {
+    public fun cell(dots: Int) {
         val (index, offset) = place()
         val word = words[index]
         word.cells = word.cells.copyOfRange(0, offset) + dots.toByte() + word.cells.copyOfRange(offset, word.cells.size)
@@ -88,7 +89,7 @@ class LineEditor(initial: String, private val translator: Translator) {
     }
 
     /** A character from the QWERTY keyboard: a word's text is known, so its cells follow from it. */
-    fun type(typed: String) {
+    public fun type(typed: String) {
         typed.forEach { char ->
             if (char == ' ') return@forEach space()
             val (index, offset) = place()
@@ -105,9 +106,11 @@ class LineEditor(initial: String, private val translator: Translator) {
     /** The word Space just ended, once; null where it ended none. */
     private var finished: String? = null
 
-    fun takeFinished(): String? = finished.also { finished = null }
+    /** The word Space just ended, once, for the echo to say; null where it ended none. */
+    public fun takeFinished(): String? = finished.also { finished = null }
 
-    fun space() {
+    /** Space: the word at the caret splits there. */
+    public fun space() {
         val (index, offset) = place()
         val word = words[index]
         val left = Word(word.cells.copyOfRange(0, offset), if (offset == word.cells.size) word.text else if (offset == 0) "" else null)
@@ -121,7 +124,8 @@ class LineEditor(initial: String, private val translator: Translator) {
     /** What Backspace or Delete just removed, once, in the word it was in: a [BLANK] for a space, null for nothing. */
     private var removed: CellInWord? = null
 
-    fun takeRemoved(): CellInWord? = removed.also { removed = null }
+    /** What Backspace or Delete just removed, once, for the echo to say. */
+    public fun takeRemoved(): CellInWord? = removed.also { removed = null }
 
     private fun removeAt(at: Int): Boolean {
         val (index, offset) = place(at)
@@ -145,17 +149,17 @@ class LineEditor(initial: String, private val translator: Translator) {
     }
 
     /** Takes the cell before the caret. */
-    fun backspace() {
+    public fun backspace() {
         if (caret > 0 && removeAt(caret - 1)) caret--
     }
 
     /** Takes the cell at the caret. */
-    fun delete() {
+    public fun delete() {
         removeAt(caret)
     }
 
     /** Takes the cells from [from] up to [to], the caret where they were. */
-    fun removeRange(from: Int, to: Int) {
+    public fun removeRange(from: Int, to: Int) {
         val start = from.coerceIn(0, length)
         repeat((to.coerceAtMost(length) - start).coerceAtLeast(0)) { removeAt(start) }
         removed = null
@@ -163,9 +167,11 @@ class LineEditor(initial: String, private val translator: Translator) {
     }
 
     /** What Backspace-2-5 took: a word, by its text, or a space by itself. */
-    sealed interface WordRemoved {
-        data class Word(val text: String) : WordRemoved
-        data object Space : WordRemoved
+    public sealed interface WordRemoved {
+        /** A word, by its text. */
+        public data class Word(val text: String) : WordRemoved
+        /** A space by itself. */
+        public data object Space : WordRemoved
     }
 
     /**
@@ -173,7 +179,7 @@ class LineEditor(initial: String, private val translator: Translator) {
      * just left, at the end of the line) and the spaces after it, the caret where it began; a space
      * the caret is on, between words, by itself. Null on an empty line.
      */
-    fun deleteWord(): WordRemoved? {
+    public fun deleteWord(): WordRemoved? {
         if (length == 0) return null
         val line = flat
         var at = caret
@@ -196,23 +202,28 @@ class LineEditor(initial: String, private val translator: Translator) {
         return WordRemoved.Word(text)
     }
 
-    fun left() {
+    /** The caret a cell back. */
+    public fun left() {
         if (caret > 0) caret--
     }
 
-    fun right() {
+    /** The caret a cell on. */
+    public fun right() {
         if (caret < length) caret++
     }
 
-    fun start() {
+    /** The caret to the line's start. */
+    public fun start() {
         caret = 0
     }
 
-    fun end() {
+    /** The caret to the line's end. */
+    public fun end() {
         caret = length
     }
 
-    fun wordLeft() {
+    /** The caret to the start of the word before it. */
+    public fun wordLeft() {
         val line = flat
         var at = caret
         while (at > 0 && line[at - 1] == BLANK) at--
@@ -220,7 +231,8 @@ class LineEditor(initial: String, private val translator: Translator) {
         caret = at
     }
 
-    fun wordRight() {
+    /** The caret to the start of the next word. */
+    public fun wordRight() {
         val line = flat
         var at = caret
         while (at < line.size && line[at] != BLANK) at++
@@ -229,12 +241,12 @@ class LineEditor(initial: String, private val translator: Translator) {
     }
 
     /** Puts the caret on the cell of the line under a routing key. */
-    fun route(cell: Int) {
+    public fun route(cell: Int) {
         caret = cell.coerceIn(0, length)
     }
 
     /** The cell at [at] in the line with the word it is in, for saying it: a [BLANK] for a space, null past the end. */
-    fun cellAt(at: Int): CellInWord? {
+    public fun cellAt(at: Int): CellInWord? {
         if (at < 0 || at >= length) return null
         val (index, offset) = place(at)
         val word = words[index]
@@ -242,22 +254,22 @@ class LineEditor(initial: String, private val translator: Translator) {
     }
 
     /** The cell at the caret: null at the end of the line. */
-    fun cellAtCaret(): CellInWord? = cellAt(caret)
+    public fun cellAtCaret(): CellInWord? = cellAt(caret)
 
     /** The cell just typed, before the caret. */
-    fun cellBeforeCaret(): CellInWord? = cellAt(caret - 1)
+    public fun cellBeforeCaret(): CellInWord? = cellAt(caret - 1)
 
     /** The text of the word the caret is in, or that it has just left at its end. */
-    fun wordAtCaret(): String = textOf(words[place().first])
+    public fun wordAtCaret(): String = textOf(words[place().first])
 
     /** The line as cells, exactly as typed. */
-    fun shown(): ShownLine = ShownLine(flat, caret)
+    public fun shown(): ShownLine = ShownLine(flat, caret)
 
     /** How many cells the line has. */
-    val size: Int get() = length
+    public val size: Int get() = length
 
     /** Cuts the line at the caret: what follows becomes a line of its own, returned with its caret at its start. */
-    fun split(): LineEditor {
+    public fun split(): LineEditor {
         val (index, offset) = place()
         val word = words[index]
         val left = Word(word.cells.copyOfRange(0, offset), if (offset == word.cells.size) word.text else if (offset == 0) "" else null)
@@ -275,7 +287,7 @@ class LineEditor(initial: String, private val translator: Translator) {
     }
 
     /** Joins [next] onto the end of this line, as one word where they meet, the caret at the join. */
-    fun append(next: LineEditor) {
+    public fun append(next: LineEditor) {
         val at = length
         val last = words.last()
         val first = next.words.first()
@@ -290,7 +302,7 @@ class LineEditor(initial: String, private val translator: Translator) {
     }
 
     /** The text of the cells from [from] up to [to]: a whole word as its text, part of one read back alone. */
-    fun textBetween(from: Int, to: Int): String {
+    public fun textBetween(from: Int, to: Int): String {
         val text = StringBuilder()
         var at = 0
         words.forEachIndexed { index, word ->
@@ -308,19 +320,20 @@ class LineEditor(initial: String, private val translator: Translator) {
     }
 
     /** Reads every word as text in the table in force now: before the table changes under it. */
-    fun settle() {
+    public fun settle() {
         words.forEach { textOf(it) }
     }
 
     /** Writes every word again in the table now in force, from its text, the caret kept in its word. */
-    fun recell() {
+    public fun recell() {
         val (index, offset) = place()
         words.forEach { it.cells = cellsOf(it.text.orEmpty()) }
         caret = startOf(index) + minOf(offset, words[index].cells.size)
     }
 
-    companion object {
+    /** The cells it holds. */
+    public companion object {
         /** A space. */
-        const val BLANK: Byte = 0
+        public const val BLANK: Byte = 0
     }
 }

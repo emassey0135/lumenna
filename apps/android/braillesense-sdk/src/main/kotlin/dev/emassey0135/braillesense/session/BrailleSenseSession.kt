@@ -1,6 +1,7 @@
 package dev.emassey0135.braillesense.session
 
 import android.app.Activity
+import android.content.Context
 import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
@@ -27,7 +28,7 @@ import dev.emassey0135.braillesense.output.HanOutputClient
  * `onDestroy`. The keys reach an app only when its package is `com.extra.han.*`: the device's
  * screen reader yields them to such a package by its name alone.
  */
-class BrailleSenseSession(
+public class BrailleSenseSession(
     activity: Activity,
     /** The app's version: liblouis' tables are copied out of the APK again only when it changes. */
     private val version: String,
@@ -35,46 +36,47 @@ class BrailleSenseSession(
     trace: Boolean = false,
     tag: String = "BrailleSenseOutput",
 ) {
-    private val context = activity.applicationContext
+    /** The application's context, which the session's services are reached through. */
+    public val context: Context = activity.applicationContext
     private val main = Handler(Looper.getMainLooper())
 
     /** The person's Global Options, read again as the app comes to the front and as they change. */
-    val settings = BrailleSettings(context)
+    public val settings: BrailleSettings = BrailleSettings(context)
 
     /** Speech and the cells, through the device's output service. */
-    val output = HanOutputClient(context, trace = trace, tag = tag)
+    public val output: HanOutputClient = HanOutputClient(context, trace = trace, tag = tag)
 
     /** liblouis in the person's table and grade, as [settings] last read them. */
-    val translator: Translator = Louis.translator { settings.tables }
+    public val translator: Translator = Louis.translator { settings.tables }
 
     /** What says, shows a line in the person's table, pans and routes. */
-    val display = BrailleDisplay(output, translator)
+    public val display: BrailleDisplay = BrailleDisplay(output, translator)
 
     private val keyboard = QwertyKeyboard()
 
     /** A key from either keyboard, on the main thread, while the device is the app's. */
-    var onKey: (Key) -> Unit = {}
+    public var onKey: (Key) -> Unit = {}
 
     /** The device became the app's: say where the person is. */
-    var onTaken: () -> Unit = {}
+    public var onTaken: () -> Unit = {}
 
     /** The device is about to go back: stop anything that would write to it. */
-    var onReleased: () -> Unit = {}
+    public var onReleased: () -> Unit = {}
 
     /**
      * Global Options are about to be read again: read every edit box's text in the table in force
      * now (`TextBox.settle`), since the table may change.
      */
-    var beforeSettings: () -> Unit = {}
+    public var beforeSettings: () -> Unit = {}
 
     /** The braille table changed: write every edit box again in the new one (`TextBox.recell`), and show the line again. */
-    var onTableChanged: () -> Unit = {}
+    public var onTableChanged: () -> Unit = {}
 
     /** Global Options changed while the app was in front (some have a hot key that works there): draw the line again. */
-    var onSettingsChanged: () -> Unit = {}
+    public var onSettingsChanged: () -> Unit = {}
 
     /** Whether the keys and display are the app's: resumed and focused, and nothing drawn over it. */
-    val claim: Claim = Claim(
+    public val claim: Claim = Claim(
         take = {
             readSettings()
             output.claim()
@@ -102,7 +104,7 @@ class BrailleSenseSession(
     }
 
     /** Whether the device is the app's now. */
-    val holding: Boolean get() = claim.holding
+    public val holding: Boolean get() = claim.holding
 
     private fun readSettings() {
         val before = settings.tables
@@ -112,7 +114,7 @@ class BrailleSenseSession(
     }
 
     /** From `onCreate`: reads the settings, follows them, reaches the output service and installs liblouis' tables. */
-    fun created() {
+    public fun created() {
         claim.guardCrashes()
         settings.refresh()
         context.contentResolver.registerContentObserver(BrailleSettings.URI, true, changed)
@@ -121,19 +123,19 @@ class BrailleSenseSession(
     }
 
     /** From `onResume`. */
-    fun resumed() = claim.resumed()
+    public fun resumed(): Unit = claim.resumed()
 
     /** First thing in `onPause`: whatever else leaving does, the device is the next app's. */
-    fun paused() = claim.paused()
+    public fun paused(): Unit = claim.paused()
 
     /**
      * From `onWindowFocusChanged`: what is drawn over the app without pausing it (the task list, the
      * global options, an alert) takes the window's focus and nothing else, and the keys go with it.
      */
-    fun windowFocus(hasFocus: Boolean) = claim.windowFocus(hasFocus)
+    public fun windowFocus(hasFocus: Boolean): Unit = claim.windowFocus(hasFocus)
 
     /** From `onDestroy`. */
-    fun destroyed() {
+    public fun destroyed() {
         context.contentResolver.unregisterContentObserver(changed)
         input.release()
         output.disconnect()
@@ -145,7 +147,7 @@ class BrailleSenseSession(
      * no device behind them and the chord as their scan code: those are not typing, and are
      * swallowed. False for what the activity should hand to `super`.
      */
-    fun keyEvent(event: KeyEvent): Boolean {
+    public fun keyEvent(event: KeyEvent): Boolean {
         if (!claim.holding) return false
         if (event.deviceId == -1 && event.scanCode != 0) return true
         val key = when (event.action) {

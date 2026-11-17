@@ -5,7 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 
 /** Android's clipboard, which the device's own boxes copy to and paste from, as plain text labelled [label]. */
-class SystemClipboard(private val context: Context, private val label: CharSequence) : Clipboard {
+public class SystemClipboard(private val context: Context, private val label: CharSequence) : Clipboard {
     private val manager: ClipboardManager? get() = context.getSystemService(ClipboardManager::class.java)
 
     override fun text(): String? = runCatching {

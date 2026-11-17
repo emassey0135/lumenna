@@ -12,31 +12,33 @@ import dev.emassey0135.braillesense.reading.RolePlace
  * follow the table they set in Global Options, and how a line reads follows the device's
  * Control Information, Hot Key Information, Announce Shortcut Keys and Index Reporting.
  */
-class BrailleSettings(private val context: Context) {
-    @Volatile var tables: String = BrailleTables.tables(BrailleTables.UEB, 2, false)
+public class BrailleSettings(private val context: Context) {
+    /** The liblouis tables of the person's braille code and grade, as `BrailleTables.tables` names them. */
+    @Volatile public var tables: String = BrailleTables.tables(BrailleTables.UEB, 2, false)
         private set
 
-    @Volatile var eightDot: Boolean = false
+    /** Whether the person types and reads eight-dot braille. */
+    @Volatile public var eightDot: Boolean = false
         private set
 
     /** How long a message stays on the cells: the device's Message Display Time. */
-    @Volatile var messageMillis: Long = 3_000L
+    @Volatile public var messageMillis: Long = 3_000L
         private set
 
     /** What the person's settings say a line carries. */
-    @Volatile var lines: LineSettings = lineSettings(2, 2, 1, 1, 1, false)
+    @Volatile public var lines: LineSettings = lineSettings(2, 2, 1, 1, 1, false)
         private set
 
     /** Keyboard Echo: what is said as a line is typed. */
-    @Volatile var echo: Echo = Echo.of(1)
+    @Volatile public var echo: Echo = Echo.of(1)
         private set
 
     /** Double-Tap to Route Cursor, in Gesture Options: whether a double tap on a cell routes to it. */
-    @Volatile var doubleTapRoutes: Boolean = false
+    @Volatile public var doubleTapRoutes: Boolean = false
         private set
 
     /** Automatically Open Menus with Shortcut: whether a letter opens an item or only goes to it. */
-    @Volatile var opensOnLetter: Boolean = true
+    @Volatile public var opensOnLetter: Boolean = true
         private set
 
     /**
@@ -50,11 +52,11 @@ class BrailleSettings(private val context: Context) {
     }
 
     /** The device's signs in the person's braille code. */
-    @Volatile var signs: BrailleSigns = BrailleTables.signs(BrailleTables.UEB, 2)
+    @Volatile public var signs: BrailleSigns = BrailleTables.signs(BrailleTables.UEB, 2)
         private set
 
     /** Reads the settings again; what cannot be read is left as it was. */
-    fun refresh() {
+    public fun refresh() {
         runCatching {
             val code = read("BrailleCode")?.toIntOrNull() ?: BrailleTables.UEB
             val grade = read("ViewInputGrade")?.toIntOrNull() ?: 2
@@ -77,8 +79,10 @@ class BrailleSettings(private val context: Context) {
         }
     }
 
-    companion object {
-        val URI: Uri = Uri.parse("content://com.selvashc.settingsprovider/braille_settings")
+    /** Where the settings live. */
+    public companion object {
+        /** The device's settings provider: Global Options, one row of name and value each. */
+        public val URI: Uri = Uri.parse("content://com.selvashc.settingsprovider/braille_settings")
     }
 
     private fun read(name: String): String? = context.contentResolver.query(
@@ -91,9 +95,11 @@ class BrailleSettings(private val context: Context) {
  * also takes 4 as 1 and 5 as 2. [grade] is the braille typed: 0 computer, 1 uncontracted, 2
  * contracted, which is how a cell by itself is said.
  */
-data class Echo(val characters: Boolean, val words: Boolean, val space: Boolean, val grade: Int = 2) {
-    companion object {
-        fun of(setting: Int, grade: Int = 2) = Echo(
+public data class Echo(public val characters: Boolean, public val words: Boolean, public val space: Boolean, public val grade: Int = 2) {
+    /** Reading the stored setting. */
+    public companion object {
+        /** The echo of a stored Keyboard Echo [setting], for the braille [grade] typed. */
+        public fun of(setting: Int, grade: Int = 2): Echo = Echo(
             characters = setting in setOf(1, 2, 4, 5),
             words = setting in setOf(1, 3, 4),
             space = setting != 0,
@@ -124,9 +130,11 @@ private fun lineSettings(braille: Int, voice: Int, shortcut: Int, hotKey: Int, i
 )
 
 /** The device's braille codes, as liblouis tables. */
-object BrailleTables {
-    const val US = 0
-    const val UEB = 1
+public object BrailleTables {
+    /** The device's US braille code (EBAE), `BrailleCode` 0. */
+    public const val US: Int = 0
+    /** Unified English Braille, `BrailleCode` 1. */
+    public const val UEB: Int = 1
     private val BY_GRADE: Map<Int, List<String>> = mapOf(
         // Each code's tables: grade 0 (computer), grade 1 and grade 2. A code the device has and
         // no table here falls to UEB at the same grade: better than nothing, and the person can
@@ -164,7 +172,7 @@ object BrailleTables {
     )
 
     /** The brackets of a shortcut letter and the signs of a dialog and a submenu, as Braille ASCII. */
-    fun signs(code: Int, grade: Int): BrailleSigns {
+    public fun signs(code: Int, grade: Int): BrailleSigns {
         val (open, close) = when {
             grade == 0 -> "(" to ")"
             code == UEB -> "\"<" to "\">"
@@ -175,7 +183,7 @@ object BrailleTables {
     }
 
     /** The table list for braille code [code] at [grade] (0 computer, 1, 2); computer braille in eight-dot mode. */
-    fun tables(code: Int, grade: Int, eightDot: Boolean): String {
+    public fun tables(code: Int, grade: Int, eightDot: Boolean): String {
         val set = BY_GRADE[code] ?: BY_GRADE.getValue(UEB)
         val at = if (eightDot) 0 else grade.coerceIn(0, 2)
         return set[at]

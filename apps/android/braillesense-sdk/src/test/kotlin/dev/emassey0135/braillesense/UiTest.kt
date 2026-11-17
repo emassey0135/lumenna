@@ -16,6 +16,7 @@ import dev.emassey0135.braillesense.ui.Readings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -178,14 +179,84 @@ class UiTest {
         assertEquals("Cancel. Apple", last)
     }
 
-    @Test fun aRefreshThatLandsSaysTheRowWhereAPlainOneSaysNothing() {
+    @Test fun landingSaysTheRowWhereAPlainRefreshSaysNothing() {
         ui.list("Fruit", { fruit })
         val before = said.size
         ui.refresh()
         assertEquals(before, said.size)
-        ui.refresh(landed = true)
+        ui.land()
         assertEquals(before + 1, said.size)
         assertEquals("Apple", last)
+    }
+
+    @Test fun landingOnAKeyPutsThatRowInHandAndSaysIt() {
+        ui.list("Fruit", { fruit })
+        ui.land("c")
+        assertEquals("Cherry", last)
+        ui.press(Key.Up)
+        assertEquals("Banana", last)
+    }
+
+    @Test fun aRowDeletedAfterAQuestionIsNotSaidTheRowInItsPlaceIs() {
+        ui.list("Fruit", { fruit })
+        ui.launch {
+            if (ui.confirm("Delete Apple?")) {
+                fruit.removeAt(0)
+                ui.announce("Deleted")
+                ui.refresh()
+            }
+        }
+        ui.press(Key.Space)
+        ui.press(Key.Enter)
+        assertEquals("Deleted. Banana", last)
+    }
+
+    @Test fun aRefusalIsSaidWithTheLineThatFollowsIt() {
+        ui.list("Fruit", { listOf(Item("a", "Apple", open = { ui.refused("Not ripe") })) })
+        ui.press(Key.Enter)
+        assertEquals("Not ripe. Apple", last)
+    }
+
+    @Test fun aBatchSaysOnlyWhereThePersonEndsUp() {
+        ui.list("Fruit", { fruit })
+        val before = said.size
+        ui.batch {
+            ui.list("More", { listOf(Item("m", "Mango")) })
+            ui.list("Most", { listOf(Item("p", "Papaya")) })
+        }
+        assertEquals(before + 1, said.size)
+        assertEquals("Most. Papaya", last)
+    }
+
+    @Test fun anAskInLaunchWaitsForItsAnswer() {
+        ui.list("Fruit", { fruit })
+        var answer: String? = null
+        ui.launch { answer = ui.askLine("Name") }
+        type("fig")
+        assertNull(answer)
+        ui.press(Key.Enter)
+        assertEquals("fig", answer)
+    }
+
+    @Test fun space6UnfoldsAFoldedRowAndSpace3FoldsAnUnfoldedOne() {
+        var open = false
+        val folds = mutableListOf<Boolean>()
+        ui.list("Fruit", { listOf(Item("a", if (open) "Apples, expanded" else "Apples, collapsed", expanded = open, fold = { folds += it; open = it })) })
+        ui.press(Key.CharLeft)
+        assertEquals("a folded row folds no further", emptyList<Boolean>(), folds)
+        ui.press(Key.CharRight)
+        ui.refresh()
+        assertEquals("Apples, expanded", last)
+        ui.press(Key.CharLeft)
+        assertEquals(listOf(true, false), folds)
+    }
+
+    @Test fun aFormAskedForAKeyNoFieldHasThrows() {
+        val values = FormValues(mapOf("name" to "fig"), emptyMap(), emptyMap())
+        assertEquals("fig", values.text("name"))
+        assertThrows(IllegalArgumentException::class.java) { values.text("size") }
+        assertThrows(IllegalArgumentException::class.java) { values.choice("name") }
+        assertThrows(IllegalArgumentException::class.java) { values.checked("ripe") }
     }
 
     @Test fun whatTheAppSaysAsAKeyRunsIsSaidWithTheLineAsOneThing() {
@@ -194,9 +265,9 @@ class UiTest {
         assertEquals("Eaten. Apple", last)
     }
 
-    @Test fun spaceOnACheckBoxIsSaidOnceTheAppHasChangedIt() {
+    @Test fun spaceTogglesACheckBoxSaidOnceTheAppHasChangedIt() {
         var ripe = false
-        ui.list("Fruit", { listOf(Item("a", if (ripe) "Apple, ripe" else "Apple", space = { ripe = !ripe })) })
+        ui.list("Fruit", { listOf(Item("a", if (ripe) "Apple, ripe" else "Apple", toggle = { ripe = !ripe })) })
         val before = said.size
         ui.press(Key.Space)
         assertEquals("nothing said until the app shows the change", before, said.size)

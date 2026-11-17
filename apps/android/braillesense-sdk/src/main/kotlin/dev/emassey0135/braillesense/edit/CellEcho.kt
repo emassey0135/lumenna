@@ -5,7 +5,7 @@ package dev.emassey0135.braillesense.edit
  * typed, taken away or read at the caret (the vendor's `HimsEditSoundFunc` table and
  * `HanEditTextUtil.getChangeToMessage`). The words are the device's English ones.
  */
-object CellEcho {
+public object CellEcho {
     /** Braille ASCII by dots, dot 1 being bit 0: the cell of each of the 64 six-dot patterns. */
     private const val BRAILLE_ASCII = " A1B'K2L@CIF/MSP\"E3H9O6R^DJG>NTQ,*5<-U8V.%[\$+X!&;:4\\0Z7(_?W]#Y)="
 
@@ -47,7 +47,7 @@ object CellEcho {
      * it is that punctuation wherever it is. A cell with dot 7 or 8 is said by its six dots, or by
      * those two alone.
      */
-    fun cell(word: ByteArray, at: Int, contracted: Boolean): String {
+    public fun cell(word: ByteArray, at: Int, contracted: Boolean): String {
         val dots = word.getOrNull(at)?.toInt()?.and(0xff) ?: return ""
         val six = dots and 0x3f
         if (six == 0) {
@@ -82,7 +82,7 @@ object CellEcho {
      * One character by itself, as in computer braille, where a cell is the character it stands for:
      * a punctuation mark by its name ("comma"), a space as "space", anything else as itself.
      */
-    fun character(character: String): String {
+    public fun character(character: String): String {
         val one = character.singleOrNull() ?: return character
         if (one == ' ') return "space"
         return PUNCTUATION_NAMES[one] ?: character

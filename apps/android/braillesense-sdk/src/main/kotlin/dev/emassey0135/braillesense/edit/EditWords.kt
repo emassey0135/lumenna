@@ -5,44 +5,46 @@ package dev.emassey0135.braillesense.edit
  * `COMMON_EDIT_*` and `COMMON_MSG_*` strings), so that an app's boxes sound like the device's.
  * [ENGLISH] is the device's English, in sentence case, which costs no capital signs on the cells.
  */
-data class EditWords(
+public data class EditWords(
     /** A new line typed with Enter. */
-    val enter: String,
+    public val enter: String,
     /** Backspace over a new line, back onto the line before. */
-    val previousLine: String,
+    public val previousLine: String,
     /** A line with nothing on it, moved to or read. */
-    val blank: String,
+    public val blank: String,
     /** A space, typed or taken away. */
-    val space: String,
+    public val space: String,
     /** A selection started at the cursor. */
-    val startSelection: String,
+    public val startSelection: String,
     /** Everything selected. */
-    val selectAll: String,
+    public val selectAll: String,
     /** A selection left with Escape. */
-    val selectionCanceled: String,
+    public val selectionCanceled: String,
     /** The selection copied to the clipboard. */
-    val copied: String,
+    public val copied: String,
     /** The selection cut to the clipboard. */
-    val cut: String,
+    public val cut: String,
     /** The clipboard pasted at the cursor. */
-    val pasted: String,
+    public val pasted: String,
     /** The selection added to what the clipboard holds. */
-    val appended: String,
+    public val appended: String,
     /** The clipboard emptied. */
-    val clipboardCleared: String,
+    public val clipboardCleared: String,
     /** A selection, a line or a paragraph taken away. */
-    val deleted: String,
+    public val deleted: String,
     /** Copy, cut or read with nothing selected. */
-    val nothingSelected: String,
+    public val nothingSelected: String,
     /** Paste with nothing on the clipboard. */
-    val clipboardEmpty: String,
+    public val clipboardEmpty: String,
     /** Backspace-2-5 at the end of a line of a multi-line box, joining the next one on. */
-    val newParagraph: String,
+    public val newParagraph: String,
     /** Asked before Backspace or Space-D takes a selection. */
-    val deleteSelected: String,
+    public val deleteSelected: String,
 ) {
-    companion object {
-        val ENGLISH = EditWords(
+    /** The device's own words. */
+    public companion object {
+        /** The stock box's English, as the device says it. */
+        public val ENGLISH: EditWords = EditWords(
             enter = "Enter",
             previousLine = "previous line",
             blank = "blank",

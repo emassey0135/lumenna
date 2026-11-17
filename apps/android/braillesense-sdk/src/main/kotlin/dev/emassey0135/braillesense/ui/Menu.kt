@@ -4,16 +4,19 @@ import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.braillesense.reading.ControlRole
 
 /** One item of a menu: a submenu when it has [children]. */
-class MenuEntry(
-    val title: String,
-    val children: List<MenuEntry> = emptyList(),
+public class MenuEntry(
+    /** What it is called. */
+    public val title: String,
+    /** Its items, for a submenu. */
+    public val children: List<MenuEntry> = emptyList(),
     /** The hotkey shown after the name, as the device's own menus do. */
-    val hotkey: String? = null,
+    public val hotkey: String? = null,
     /** Its letter where the core gives one; else the first of its name not taken, if there is one. */
-    val letter: Char? = null,
+    public val letter: Char? = null,
     /** Whether it opens a dialog, which the device's menus mark. */
-    val asks: Boolean = false,
-    val run: () -> Unit = {},
+    public val asks: Boolean = false,
+    /** What choosing it does, for an item. */
+    public val run: () -> Unit = {},
 )
 
 /**
@@ -25,7 +28,7 @@ class MenuEntry(
  * menu key or Exit closes it all. A hot key an item shows runs it while the menu is open too, as
  * it does from the screen under the menu.
  */
-class MenuFrame(
+public class MenuFrame(
     private val top: List<MenuEntry>,
     private val letters: Letters,
     private val readings: Readings,
@@ -33,7 +36,7 @@ class MenuFrame(
     private val opensOnLetter: () -> Boolean = { true },
     /** Says that nothing here is on the letter. */
     private val notFound: (Char) -> Unit = {},
-    /** The menu has closed: [cancelled] when it was left without choosing. */
+    /** The menu has closed: `cancelled` when it was left without choosing. */
     private val closed: (cancelled: Boolean) -> Unit,
 ) : Frame("menu") {
     private class Level(val entries: List<MenuEntry>, var index: Int = 0)
@@ -91,6 +94,8 @@ class MenuFrame(
                 is Key.EnterDots -> letters.letter(Key.Cell(key.dots))?.let { "Enter-$it" }
                 is Key.SpaceLetter -> "Space-${key.letter.lowercaseChar()}"
                 is Key.EnterLetter -> "Enter-${key.letter.lowercaseChar()}"
+                // Not reached: the branch above takes these four alone (an older Kotlin cannot tell).
+                else -> null
             }
             val item = press?.let { hotKeyed(top, it) }
             if (item != null) {
