@@ -435,7 +435,7 @@ class Shell(
 
     private var awaitingChange = false
 
-    private fun boxOf(frame: Frame): TextBox? = (frame as? LineFrame)?.box ?: (frame as? FormFrame)?.box()
+    private fun boxOf(frame: Frame): TextBox? = frame.editBox()
 
     /**
      * A key in an edit box, as the device's own box takes it (`BoxEditing`): what it changed is told
@@ -463,8 +463,7 @@ class Shell(
 
     private fun told(frame: Frame, box: TextBox, edited: Edited.Taken) {
         if (edited.changed) {
-            (frame as? FormFrame)?.typed()
-            (frame as? LineFrame)?.touched()
+            frame.edited()
         }
         clearMessage()
         refresh(false)

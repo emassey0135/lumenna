@@ -23,7 +23,7 @@ import com.orbit.screenreader.IUARTKeypadCallback
  *
  * Never #44 (`canSpeakLanguage`), which the Player lacks: the AIDL here stops before it.
  */
-class OrbitReader(context: Context, private val listener: Listener) {
+class OrbitReader(context: Context, private val listener: Listener) : Reader {
     interface Listener {
         /** Orbit said it is ready, on a binder thread: the screen is described now. */
         fun readerReady()
@@ -105,10 +105,10 @@ class OrbitReader(context: Context, private val listener: Listener) {
     private var commitFeedback = 1
 
     /** The person's T9 commit timeout in milliseconds, or Orbit's default. */
-    val characterCommitTimeout: Int get() = commitTimeout.takeIf { it > 0 } ?: 500
+    override val characterCommitTimeout: Int get() = commitTimeout.takeIf { it > 0 } ?: 500
 
     /** The person's T9 commit feedback: 1 sound, 2 speak, 3 vibrate, 4 sound and speak, 5 vibrate and speak. */
-    val characterCommitFeedback: Int get() = commitFeedback
+    override val characterCommitFeedback: Int get() = commitFeedback
 
     fun bind() = link.bind()
 
@@ -124,18 +124,18 @@ class OrbitReader(context: Context, private val listener: Listener) {
         if (ready) link.call(what, block)
     }
 
-    fun speak(text: String) = tell("speakText") {
+    override fun speak(text: String) = tell("speakText") {
         it.stopSpeaking()
         it.speakText(text)
     }
 
-    fun speakQueued(text: String) = tell("speakText") { it.speakText(text) }
+    override fun speakQueued(text: String) = tell("speakText") { it.speakText(text) }
 
-    fun stop() = tell("stopSpeaking") { it.stopSpeaking() }
+    override fun stop() = tell("stopSpeaking") { it.stopSpeaking() }
 
-    fun sound(id: Int) = tell("playSound") { it.playSound(id) }
+    override fun sound(id: Int) = tell("playSound") { it.playSound(id) }
 
-    fun vibrate(milliseconds: Long) = tell("vibrate") { it.vibrate(milliseconds) }
+    override fun vibrate(milliseconds: Long) = tell("vibrate") { it.vibrate(milliseconds) }
 
     fun appOpened(name: String, focused: String) {
         val bundle = Bundle().apply {
@@ -146,10 +146,10 @@ class OrbitReader(context: Context, private val listener: Listener) {
     }
 
     /** Lists are said as list boxes (role 5), the name the list's, the selected the row in hand. */
-    fun focusList(name: String, count: Int, selected: Int, item: String) =
+    override fun focusList(name: String, count: Int, selected: Int, item: String) =
         tell("onFocusChanged") { it.onFocusChanged(listBundle(name, count, selected, item)) }
 
-    fun itemChanged(name: String, count: Int, selected: Int, item: String) =
+    override fun itemChanged(name: String, count: Int, selected: Int, item: String) =
         tell("onItemChanged") { it.onItemChanged(listBundle(name, count, selected, item)) }
 
     private fun listBundle(name: String, count: Int, selected: Int, item: String, role: Int = ROLE_LIST_BOX): Bundle =
@@ -161,7 +161,7 @@ class OrbitReader(context: Context, private val listener: Listener) {
             if (count > 0) putString("selectedItem", item)
         }
 
-    fun dialog(name: String, message: String, focused: String) = tell("onDialogOpened") {
+    override fun dialog(name: String, message: String, focused: String) = tell("onDialogOpened") {
         it.onDialogOpened(Bundle().apply {
             putString("name", name)
             putString("message", message)
@@ -169,7 +169,7 @@ class OrbitReader(context: Context, private val listener: Listener) {
         })
     }
 
-    fun dialogClosed() = tell("onDialogClosed") { it.onDialogClosed(Bundle()) }
+    override fun dialogClosed() = tell("onDialogClosed") { it.onDialogClosed(Bundle()) }
 
     fun contextMenu(name: String, instructions: String) = tell("onContextMenuOpened") {
         it.onContextMenuOpened(Bundle().apply {
@@ -178,7 +178,7 @@ class OrbitReader(context: Context, private val listener: Listener) {
         })
     }
 
-    fun contextMenuClosed(dismissed: Boolean = false) = tell("onContextMenuClosed") {
+    override fun contextMenuClosed(dismissed: Boolean) = tell("onContextMenuClosed") {
         it.onContextMenuClosed(Bundle().apply { putBoolean("dismissed", dismissed) })
     }
 
@@ -186,14 +186,14 @@ class OrbitReader(context: Context, private val listener: Listener) {
      * A menu of Orbit's own kind ([OrbitMenu]) opened, as its apps open theirs: no name, so Orbit
      * says its own "Context menu" in the person's language.
      */
-    fun menuOpened() = tell("onContextMenuOpened") { it.onContextMenuOpened(Bundle()) }
+    override fun menuOpened() = tell("onContextMenuOpened") { it.onContextMenuOpened(Bundle()) }
 
     /**
      * The item in hand of a menu (role 8), as Orbit's apps tell each move of theirs: Orbit says
      * its name, "Sub-menu" for a submenu, its access key where the person has Orbit say them, and
      * its place ("2 of 7") where they have it say that.
      */
-    fun focusMenu(item: String, subMenu: Boolean, accessKey: Char?, position: Int, total: Int) = tell("onFocusChanged") {
+    override fun focusMenu(item: String, subMenu: Boolean, accessKey: Char?, position: Int, total: Int) = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", item)
             putInt("roleId", ROLE_MENU)
@@ -206,14 +206,8 @@ class OrbitReader(context: Context, private val listener: Listener) {
         })
     }
 
-    /** [focusMenu] for the item [menu] has in hand. */
-    fun focusMenu(menu: OrbitMenu<*>) {
-        val item = menu.current ?: return
-        focusMenu(item.name, item.isSubMenu, item.accessKey, menu.index + 1, menu.items.size)
-    }
-
     /** An edit box (role 6), so Orbit says the field and its review commands read its text. */
-    fun focusEdit(name: String, content: String, cursor: Int, line: String = content, multiline: Boolean = false) = tell("onFocusChanged") {
+    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", name)
             putInt("roleId", ROLE_EDIT_BOX)
@@ -227,7 +221,7 @@ class OrbitReader(context: Context, private val listener: Listener) {
     }
 
     /** A button (role 1): Orbit says its name and what it is. */
-    fun focusControl(name: String, role: Int) = tell("onFocusChanged") {
+    override fun focusControl(name: String, role: Int) = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", name)
             putInt("roleId", role)
@@ -235,7 +229,7 @@ class OrbitReader(context: Context, private val listener: Listener) {
     }
 
     /** A read-only line (role 7): Orbit reads its content, which is all there is of it. */
-    fun focusText(content: String) = tell("onFocusChanged") {
+    override fun focusText(content: String) = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", "")
             putInt("roleId", ROLE_TEXT_BOX)
@@ -245,7 +239,7 @@ class OrbitReader(context: Context, private val listener: Listener) {
     }
 
     /** A check box (role 2) and whether it is checked. */
-    fun focusCheck(name: String, checked: Boolean) = tell("onFocusChanged") {
+    override fun focusCheck(name: String, checked: Boolean) = tell("onFocusChanged") {
         it.onFocusChanged(Bundle().apply {
             putString("name", name)
             putInt("roleId", ROLE_CHECK_BOX)
@@ -255,11 +249,11 @@ class OrbitReader(context: Context, private val listener: Listener) {
     }
 
     /** A combo box (role 4) or a list inside a dialog, by [role], and what is chosen. */
-    fun focusChoice(name: String, role: Int, count: Int, selected: Int, item: String) =
+    override fun focusChoice(name: String, role: Int, count: Int, selected: Int, item: String) =
         tell("onFocusChanged") { it.onFocusChanged(listBundle(name, count, selected, item, role)) }
 
     /** A character typed, echoed as Orbit's edit fields do. */
-    fun characterTyped(character: String, fieldName: String, capital: Boolean, resolvedWord: String?) = tell("onCharacterTyped") {
+    override fun characterTyped(character: String, fieldName: String, capital: Boolean, resolvedWord: String?) = tell("onCharacterTyped") {
         it.onCharacterTyped(Bundle().apply {
             putString("character", character)
             putString("characterName", fieldName)
@@ -269,7 +263,7 @@ class OrbitReader(context: Context, private val listener: Listener) {
     }
 
     /** An edit box's new content; Orbit says what changed by [changeType], as its own fields do. */
-    fun editChanged(fieldName: String, content: String, cursor: Int, changeType: String) = tell("onEditBoxContentChanged") {
+    override fun editChanged(fieldName: String, content: String, cursor: Int, changeType: String) = tell("onEditBoxContentChanged") {
         it.onEditBoxContentChanged(Bundle().apply {
             putString("widgetName", fieldName)
             putString("content", content)

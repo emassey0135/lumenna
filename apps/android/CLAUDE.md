@@ -469,8 +469,9 @@ changes its README too.
 - **`edit`**: `TextBox` (lines of `LineEditor`, in cells as typed), `BoxEditing.press(box, key, display)`, the stock box's keys and what it says for each as an `Edited` (`NotTaken`, `Taken(changed, said)`, or `Ask(question, answer)` for "Delete selected text?", which the app asks its own way), `EditWords.ENGLISH`, `CellEcho` (a cell or a character by itself), `Clipboard` and `SystemClipboard`.
 - **`ui`**: the device's own lists, menus and lines as `Frame`s, each taking its keys and giving what to say and show (`Rendered`, put on the cells by `BrailleDisplay.show(Rendered)`): `ListFrame` of `Row`s, `MenuFrame` of `MenuEntry`s and `LineFrame` over a `TextBox`, read through `Readings` (`SettingsReadings`, `line`). Their letters are a `Letters`: `DeviceLetters` the device's way, an app's own where it has rules of its own (Lumenna's `BrailleLetters`, the core's). `Messages` keeps a message on the cells for the Message Display Time, then puts the line back. A `Row`'s `tag` is the app's, never looked at.
 - **`session`**: `BrailleSenseSession`, an activity's wiring (the settings read and followed, the output service, liblouis installed and in the person's table, both keyboards as `Key`s on the main thread, all held by its `Claim` only while in front), and `Claim` and `KeyDelivery` themselves.
+- **`BrailleSenseUi`, the screen stack** (`ui`, over the frames): an app written as a BTSpeak app is with BTSpeak's `dialogs`. `list` a screen of `Item`s read again at each `refresh` (the row in hand kept by key, nothing said), and the asks `menu`, `askLine`, `confirm`, `choose` and `form` (`Field`s, then OK and Cancel, in a `DialogFrame`), each answering a callback once or returning from a `suspend` twin (the stdlib's `suspendCoroutine`, so the SDK still needs nothing but Android). An ask answers after its screen has closed, so what the app does next is said after the screen under it; closed by Escape it answers null (No for `confirm`). What every screen shares is the stack's: Space-R, panning on to the next row, routing (silent in a box), the box's keys ahead of the frame (`Frame.editBox`, `Frame.edited`) with "Delete selected text?" as a prompt, Space-M the screen's `menu`, Escape closing the screen in front, Exit `onExit`. A screen newly in front is said with its `heading`, one returned to by its row alone, a menu left unchosen with Cancel first. `BrailleSenseUi.on(session, clipboard)` wires it into a session. Its own few words are `UiWords`. Lumenna's BrailleSense app stays on its own `Shell`, whose speech follows the core's turns (`landing`, what the app said joined with the row), but its `FormFrame` gives its box through the same `editBox` and `edited`.
 - **liblouis** is built by the module (`build-louis.sh`, `native/louis.c`, `libbraillesense-louis.so`), its tables in the module's assets; an app's APK merges both.
-- Tests: `./gradlew :braillesense-sdk:testDebugUnitTest` (chords, the claim, panning, the cell echo, reading a line, the edit box, the lists, menus and letters), on the JVM.
+- Tests: `./gradlew :braillesense-sdk:testDebugUnitTest` (chords, the claim, panning, the cell echo, reading a line, the edit box, the lists, menus and letters, the screen stack and its asks), on the JVM.
 
 ## The BrailleSense app
 
@@ -632,6 +633,19 @@ everything about Orbit itself; Lumenna's app is over it. JVM tests:
   `DialogScreen.key` maps the core's `ControlType` onto it and does each to the dialog controller.
 - **`DebugKeys`** takes Orbit's keys over an adb broadcast in a debuggable build, the app naming
   the broadcast's action.
+- **`OrbitUi`, the screen stack** (`ui`): the BrailleSense SDK's `BrailleSenseUi` in Orbit's
+  terms, so an app is written as a BTSpeak app is. `list` a screen of `Item`s read again at each
+  `refresh` (the row in hand kept by key; told only if what is in hand moved, or reads otherwise
+  after the person acted on it), and the asks `menu` (`MenuItem` is `OrbitMenu.Item`), `askLine`
+  (an `EditBox`), `confirm`, `choose` and `form` (an Orbit dialog of `Field`s then OK and Cancel; on
+  the Player its controls are rows), each answering a callback once or from a `suspend` twin, and
+  `launch` to run those without a coroutine library. The stack takes what a screen leaves: Left,
+  Back, Escape and Dot 7 close it, the one menu key opens the row in hand's actions then the
+  screen's, Space or Dot 8 with a letter runs that letter's row or action, anything else the error
+  tone. It talks to Orbit through `Reader`, which `OrbitReader` implements, so the tests record
+  what is told; `BrailleLetters` is the a-z dot table it finds letters by. A screen that no longer
+  `stands()` closes at the next `refresh`, as a BTSpeak menu's `exit_condition`. Lumenna's Orbit
+  app stays on its own `Ui`, whose screens follow the core's turns.
 
 
 ## The Orbit app

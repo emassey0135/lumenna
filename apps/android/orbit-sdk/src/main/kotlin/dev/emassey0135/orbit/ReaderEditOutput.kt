@@ -9,12 +9,14 @@ import android.content.Context
  * clipboard: what an app needs for an edit box that behaves as Orbit's.
  */
 class ReaderEditOutput(
-    private val reader: OrbitReader,
-    private val braille: BrailleInput,
-    context: Context,
+    private val reader: Reader,
+    /** The Speak's braille input; none on the Player, where nothing is typed in cells. */
+    private val braille: BrailleInput?,
+    /** For the system's clipboard; none leaves copying and pasting doing nothing, as in a test. */
+    context: Context?,
     override val words: OrbitWords = OrbitWords(),
 ) : EditBox.Output {
-    private val clipboard = context.getSystemService(ClipboardManager::class.java)
+    private val clipboard = context?.getSystemService(ClipboardManager::class.java)
 
     override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) =
         reader.focusEdit(name, content, cursor, line, multiline)
@@ -34,13 +36,13 @@ class ReaderEditOutput(
 
     /** Said as the reader says an echo, stopping what was being said. */
     override fun word(word: String): Boolean {
-        if (!braille.typingEcho.words) return false
+        if (braille?.typingEcho?.words != true) return false
         reader.speak(word)
         return true
     }
 
-    override val contracted: Boolean get() = braille.contracted
-    override val computer: Boolean get() = braille.computer
+    override val contracted: Boolean get() = braille?.contracted == true
+    override val computer: Boolean get() = braille?.computer == true
 
     override fun copy(text: String) {
         clipboard?.setPrimaryClip(ClipData.newPlainText("text", text))

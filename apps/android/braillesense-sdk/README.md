@@ -29,6 +29,85 @@ of its own. It has no published release yet: use it as a module of your own buil
 activity is resumed and focused, reads the person's Global Options and follows changes to them,
 installs liblouis' tables, and turns both keyboards into `Key`s.
 
+`BrailleSenseUi` is the easiest way to write an app. It is a stack of screens that takes the keys
+and does all the speaking and showing, much as BTSpeak's `dialogs` module does. You open a list,
+and ask with a menu, a line, a yes-or-no question, a choice or a form. Each ask gives its answer
+to a callback, or from a `suspend` call.
+
+```kotlin
+class MainActivity : ComponentActivity() {
+    private val device by lazy { BrailleSenseSession(this, BuildConfig.VERSION_NAME) }
+    private lateinit var ui: BrailleSenseUi
+    private val fruit = mutableListOf("Apple", "Banana")
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        ui = BrailleSenseUi.on(device, SystemClipboard(this, "My app"))
+        ui.onEmpty = ::finish
+        device.created()
+        ui.list("Fruit", items = {
+            fruit.mapIndexed { at, name ->
+                Item(name, name, open = { ui.message(name) }, actions = listOf(Action("Delete", 'd') { remove(at) }))
+            }
+        }, actions = { listOf(Action("Add", 'a') { add() }) })
+    }
+
+    private fun add() = lifecycleScope.launch {
+        val name = ui.askLine("Name") ?: return@launch
+        val size = ui.choose("Size", listOf("Small", "Large")) ?: return@launch
+        fruit += "$name, ${if (size == 0) "small" else "large"}"
+        ui.refresh()
+    }
+
+    private fun remove(at: Int) = lifecycleScope.launch {
+        if (ui.confirm("Delete ${fruit[at]}?")) {
+            fruit.removeAt(at)
+            ui.refresh()
+        }
+    }
+
+    override fun onResume() { super.onResume(); device.resumed() }
+    override fun onPause() { device.paused(); super.onPause() }   // first thing
+    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); device.windowFocus(hasFocus) }
+    override fun onDestroy() { device.destroyed(); super.onDestroy() }
+    override fun dispatchKeyEvent(event: KeyEvent) = device.keyEvent(event) || super.dispatchKeyEvent(event)
+}
+```
+
+This is what the stack does for every screen, as the device's own apps do:
+
+- **Coming to a screen:** a screen newly in front is said with its heading: a list's title, or a
+  form's title with "dialog".
+- **Refreshing:** `ui.refresh()` after your data changes shows the line again and says nothing. The
+  row in hand stays on the same row, found by its key.
+- **Repeating and panning:** Space-R repeats the line. The scroll keys pan, and move on to the next
+  row at the end of a line.
+- **Routing:** a routing key routes; in an edit box it only moves the cursor.
+- **Edit boxes:** an edit box takes the stock box's keys. When there is a selection, Backspace asks
+  "Delete selected text?" as a prompt.
+- **Menus:** Space-M or F2 opens the screen's menu, and Enter-I a row's actions.
+- **Leaving:** Escape closes the screen in front. An ask closed that way answers null, or No for a
+  question. Exit (Space-Z) calls `onExit`, which by default closes the app.
+
+The asks:
+
+| | |
+|---|---|
+| `list(title, items, empty, actions)` | A screen of `Item`s, each with its key, text, Enter (`open`), its actions (`Action`s, Enter-I) and a letter that runs it. `items` is read again at each `refresh`. `actions` is the screen's Space-M menu. |
+| `menu(items)` | The device's menu of `MenuItem`s: submenus, letters, hot keys, the dialog sign. Gives the chosen item's `value`. Closed unchosen, it says Cancel and gives null. |
+| `askLine(prompt, initial, hint, multiLine)` | An edit box. Gives its text at Enter, or null at Escape. Several lines are a form of one field with OK and Cancel. |
+| `confirm(question, default)` | Yes and No as the device's prompt buttons; Space and Backspace step between them. Escape is No. |
+| `choose(title, options, selected)` | A list to pick one of with Enter. Gives its place, or null. |
+| `form(title, fields)` | A dialog of `Field.Line`, `Field.Choice`, `Field.Check` and `Field.Text`, then OK and Cancel. Tab and Shift-Tab move between controls, and each control is read in its role. Gives `FormValues` at OK, or null. |
+| `message(text)` | Says it and keeps it on the cells for the Message Display Time. |
+
+`UiWords` holds the few words the stack says itself (OK, Cancel, Yes, No…), in the device's
+English; pass your own for another language. A screen of your own subclasses `Screen` and gives its
+`frame()`.
+
+Below the stack, an app can work the frames and the display itself. Here is the same activity
+without it:
+
 ```kotlin
 class MainActivity : ComponentActivity() {
     private val device by lazy { BrailleSenseSession(this, BuildConfig.VERSION_NAME) }
@@ -113,16 +192,18 @@ reads it. Each `ControlRole` has a spoken word and a symbol on the cells (`mn`, 
 `cb`…). It also adds the shortcut letter, the hot key, the sign for a submenu or a dialog, and
 "3/12". Where the role goes in speech and on the cells follows the person's settings.
 
-### `ui`: lists, menus and lines, as the device's own
+### `ui`: the screen stack, and the device's lists, menus, lines and dialogs
 
 | | |
 |---|---|
+| `BrailleSenseUi`, `Screen` | The screen stack and its asks (above). `BrailleSenseUi.on(session, clipboard)` wires it into a session. |
 | `Frame`, `Rendered` | One thing on the display that takes its keys. `rendered` is what to say and show; `BrailleDisplay.show(Rendered)` puts it on the cells. |
 | `ListFrame`, `Row` | A list. Space-1 and Space-4 move and stop at the ends; Space-1-2-3 and Space-4-5-6 go to them; Space-1-2-6 and Space-3-4-5 move by 32. A letter finds the next row. Enter or a routing key opens a row, Space-3 and Space-6 fold it, Space-D deletes it, and Enter-I or the Application key opens its actions. A row's number is read with it. A question's answers become prompt buttons that Space and Backspace step through. |
 | `MenuFrame`, `MenuEntry` | The device's menus, read as `mn File (f) 3o` and said "File (f) pulldown Menu". Space-1 and Space-4 wrap round. Enter opens or runs. An item's letter jumps to it and runs it, or only jumps, as the person's setting has it. Backspace or Escape goes up a level, and the menu key closes the menu. A hot key an item shows runs it from anywhere in the menu. |
 | `LineFrame` | A line being typed, with its prompt, whose keys are the edit box's (`BoxEditing`). |
 | `Letters`, `DeviceLetters` | A key's letter, finding by first letter, and each menu item's letter. `DeviceLetters` follows the device's own rules; pass your own `Letters` for other rules. |
 | `Readings`, `SettingsReadings`, `line` | How a frame's line is read: the device's reading in the person's settings, or a test's own. |
+| `DialogFrame`, `Field`, `FormValues` | A form's dialog of fields, then OK and Cancel, as `form` shows it. |
 | `Messages` | A message on the cells for the person's Message Display Time, then the line under it again. Someone reading braille alone hears none of what is said, so what an app says about a change belongs on the cells too. |
 
 ### `edit`: the device's edit box
@@ -141,7 +222,7 @@ reads it. Each `ControlRole` has a spoken word and a symbol on the cells (`mn`, 
 ```
 
 The JVM tests cover the chords, the claim, panning, the cell echo, reading a line, the edit box,
-the lists and menus, and the device's letters.
+the lists and menus, the device's letters, and the screen stack and its asks.
 
 ## Licence
 

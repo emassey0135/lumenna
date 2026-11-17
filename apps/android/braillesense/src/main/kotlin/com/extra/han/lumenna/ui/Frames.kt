@@ -49,6 +49,10 @@ class FormFrame(
     /** The box of the line in hand, if a line is in hand. */
     fun box(): TextBox? = current?.takeIf(::isLine)?.let(boxOf)
 
+    override fun editBox(): TextBox? = box()
+
+    override fun edited() = typed()
+
     /** The line in hand's text, as its box now holds it, handed to the controller where it changed. */
     fun typed() {
         val line = current?.takeIf(::isLine) ?: return
