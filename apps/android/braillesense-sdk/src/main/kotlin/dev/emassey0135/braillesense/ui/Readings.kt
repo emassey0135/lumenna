@@ -1,4 +1,4 @@
-package com.extra.han.lumenna.ui
+package dev.emassey0135.braillesense.ui
 
 import dev.emassey0135.braillesense.braille.BrailleSettings
 import dev.emassey0135.braillesense.output.BrailleDisplay
@@ -8,11 +8,12 @@ import dev.emassey0135.braillesense.reading.DeviceLine
 import dev.emassey0135.braillesense.reading.DeviceReading
 import dev.emassey0135.braillesense.reading.deviceReading
 
-/** How the device reads a line in the person's settings; the JVM tests give their own. */
+/** How the device reads a line ([deviceReading]): [SettingsReadings] in the person's own settings, or a test's own. */
 fun interface Readings {
     fun read(line: DeviceLine): DeviceReading
 }
 
+/** The device's reading in the person's Global Options, as [BrailleSettings] last read them. */
 class SettingsReadings(private val settings: BrailleSettings) : Readings {
     override fun read(line: DeviceLine): DeviceReading = deviceReading(line, settings.lines, settings.signs)
 }

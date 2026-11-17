@@ -1,4 +1,4 @@
-package com.extra.han.lumenna.ui
+package dev.emassey0135.braillesense.ui
 
 import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.braillesense.reading.ControlRole

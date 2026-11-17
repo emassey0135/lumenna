@@ -40,6 +40,7 @@ import dev.emassey0135.orbit.EditBox
 import dev.emassey0135.orbit.Key
 import dev.emassey0135.orbit.KeyDecoder
 import dev.emassey0135.orbit.KeyEvent
+import dev.emassey0135.orbit.OrbitList
 import dev.emassey0135.orbit.OrbitMenu
 import dev.emassey0135.orbit.OrbitReader
 import dev.emassey0135.orbit.OrbitWords
@@ -437,35 +438,21 @@ class Ui(
 
     private fun move(key: Key, screen: Screen, phoneKeypad: Boolean) {
         val rows = screen.rows()
+        // Up, Down, the ends, Tab and Shift-Tab: as Orbit's lists move.
+        OrbitList.target(key, screen.index, rows.size)?.let { return moveTo(screen, rows, it) }
         when (key) {
-            Key.Up -> moveBy(screen, rows, -1)
-            Key.Down -> moveBy(screen, rows, 1)
-            Key.First -> moveTo(screen, rows, 0)
-            Key.Last -> moveTo(screen, rows, rows.size - 1)
+            Key.Up, Key.Down, Key.First, Key.Last, Key.Tab, Key.BackTab -> {}
             // Left folds a row open, else goes back out of a list, never a dialog; Right opens a
             // folded row, else opens it.
             Key.Left -> if (!foldRow(screen, rows, false) && screen !is DialogScreen) back()
             Key.Right -> if (!foldRow(screen, rows, true)) open(screen, rows)
             Key.Select, Key.Dot8 -> open(screen, rows)
             Key.Dot7, Key.Back, Key.Escape -> back()
-            Key.Tab -> moveRound(screen, rows, 1)
-            Key.BackTab -> moveRound(screen, rows, -1)
             Key.Menu -> if (screen.showsScreenActions) menuBar(screen, rows) else menu(screen, rows)
             is Key.Chord -> spaceLetter(key.dots, screen, rows)
             is Key.Enter -> brailleLetter(key.dots.toUByte())?.let { runLetter(it, screen, rows) } ?: refuse()
             else -> {}
         }
-    }
-
-    private fun moveBy(screen: Screen, rows: List<Row>, delta: Int) {
-        if (rows.isEmpty()) return
-        moveTo(screen, rows, (screen.index + delta).coerceIn(0, rows.size - 1))
-    }
-
-    /** Tab in a list: on to the next row, round from the last to the first. */
-    private fun moveRound(screen: Screen, rows: List<Row>, delta: Int) {
-        if (rows.isEmpty()) return
-        moveTo(screen, rows, (screen.index + delta + rows.size) % rows.size)
     }
 
     private fun moveTo(screen: Screen, rows: List<Row>, to: Int) {

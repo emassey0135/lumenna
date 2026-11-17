@@ -3,10 +3,10 @@ plugins {
 }
 
 // What the braille apps' Kotlin really shares: the dialog controller over the core's description of
-// a form (both apps), and for the BrailleSense a vendor service's ordered worker, holding the keys
-// and display only while in front, and handing a decoded key to the app (the Orbit SDK keeps its
-// own). Their device code stays in each module. What the three braille apps share beyond Kotlin is
-// the core's (`lumenna_app`).
+// a form, which the Orbit app and the BrailleSense app both work with their device's keys. What is
+// the device's own (holding the keys while in front, its services, its lists, menus and dialogs'
+// keys) is each device's SDK's. What the three braille apps share beyond Kotlin is the core's
+// (`lumenna_app`).
 android {
     namespace = "dev.emassey0135.lumenna.braille"
     compileSdk = 37

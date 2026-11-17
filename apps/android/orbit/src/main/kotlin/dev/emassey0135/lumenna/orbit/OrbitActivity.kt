@@ -24,6 +24,7 @@ import dev.emassey0135.lumenna.app.ThisDevice
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.thisDevice
 import dev.emassey0135.orbit.BrailleInput
+import dev.emassey0135.orbit.DebugKeys
 import dev.emassey0135.orbit.KeyDelivery
 import dev.emassey0135.orbit.KeyEvent
 import dev.emassey0135.orbit.OrbitReader
@@ -123,24 +124,16 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         reader.claim.windowFocus(hasFocus)
     }
 
-    // Debug builds take keys over adb too: `am broadcast -a <DEBUG_KEY> --es name DOWN --ei action 0
-    // --ez long false --ez phone false`, since nothing else can press the Orbit keypad remotely.
-    private val debugKeys = object : android.content.BroadcastReceiver() {
-        override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
-            key(KeyEvent(intent.getStringExtra("name").orEmpty(), intent.getIntExtra("action", 0), intent.getBooleanExtra("long", false)), intent.getBooleanExtra("phone", false))
-        }
-    }
+    // Debug builds take keys over adb too (the SDK's `DebugKeys`): `am broadcast -a <DEBUG_KEY> --es
+    // name DOWN --ei action 0 --ez long false --ez phone false`.
+    private val debugKeys by lazy { DebugKeys(this, DEBUG_KEY) { event, phone -> key(event, phone) } }
 
     private fun takeDebugKeys() {
-        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
-            BuildConfigDebug.on = true
-            registerReceiver(debugKeys, android.content.IntentFilter(DEBUG_KEY))
-        }
+        if (debugKeys.debuggable) BuildConfigDebug.on = true
+        debugKeys.start()
     }
 
-    private fun stopDebugKeys() {
-        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) unregisterReceiver(debugKeys)
-    }
+    private fun stopDebugKeys() = debugKeys.stop()
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
