@@ -7,18 +7,21 @@ import dev.emassey0135.braillesense.reading.BraillePart
 import dev.emassey0135.braillesense.reading.ControlRole
 
 /** What a frame shows and says now. */
-data class Rendered(
-    val speech: String,
-    val braille: String = speech,
+public data class Rendered(
+    /** What is said. */
+    public val speech: String,
+    /** What the cells show, in the person's table. */
+    public val braille: String = speech,
     /** Where the display's cursor belongs, in [braille]'s text: -1 for none. */
-    val cursor: Int = -1,
+    public val cursor: Int = -1,
     /** Cells ready made, for a line being typed in the person's own contractions. */
-    val cells: ByteArray? = null,
-    val cellCursor: Int = -1,
+    public val cells: ByteArray? = null,
+    /** Where the cursor is in [cells]. */
+    public val cellCursor: Int = -1,
     /** What goes on the cells ahead of [braille]: the role, a label. */
-    val before: List<BraillePart> = emptyList(),
+    public val before: List<BraillePart> = emptyList(),
     /** What follows it: a shortcut letter, a sign, the role. */
-    val after: List<BraillePart> = emptyList(),
+    public val after: List<BraillePart> = emptyList(),
 )
 
 /**
@@ -28,62 +31,69 @@ data class Rendered(
  * returns whether it took the key, and [rendered] is what to say and show, which
  * `BrailleDisplay.show(Rendered)` puts on the cells.
  */
-abstract class Frame(
+public abstract class Frame(
     /** What it is, so the app can tell a new frame from the same one drawn again. */
-    val id: String,
+    public val id: String,
 ) {
-    abstract fun key(key: Key): Boolean
+    /** [key], pressed while it is in front: true if it took it. */
+    public abstract fun key(key: Key): Boolean
 
-    abstract val rendered: Rendered
+    /** What it says and shows now. */
+    public abstract val rendered: Rendered
 
     /** A routing key over a character of [Rendered.braille] (-1 past its end): `BrailleDisplay.routed`. */
-    open fun routed(at: Int) {}
+    public open fun routed(at: Int) {}
 
     /** The edit box in hand, whose keys (`BoxEditing`) come ahead of the frame's; null for none. */
-    open fun editBox(): TextBox? = null
+    public open fun editBox(): TextBox? = null
 
     /** Every edit box it holds, the one in hand among them: read again when the braille table changes. */
-    open fun editBoxes(): List<TextBox> = listOfNotNull(editBox())
+    public open fun editBoxes(): List<TextBox> = listOfNotNull(editBox())
 
     /** The edit box's text was changed by its keys: what the frame does with it as it changes. */
-    open fun edited() {}
+    public open fun edited() {}
 
     /** Space or Enter with [letter], which the frame's own keys did not take: true if something in it ran. */
-    open fun pressLetter(letter: Char): Boolean = false
+    public open fun pressLetter(letter: Char): Boolean = false
 
     /** Whether [key] asks the app to change what the line says (a check box, folding): the line is said once the app has, not now. */
-    open fun changes(key: Key): Boolean = false
+    public open fun changes(key: Key): Boolean = false
 }
 
 /** One row of a list. */
-class Row(
-    val key: String,
-    val speech: String,
-    val braille: String = speech,
+public class Row(
+    /** What names it across a redraw. */
+    public val key: String,
+    /** What is said of it. */
+    public val speech: String,
+    /** What the cells show of it. */
+    public val braille: String = speech,
     /** The letter it is found by: its first, in its title. */
-    val finding: String = speech,
-    val open: (() -> Unit)? = null,
+    public val finding: String = speech,
+    /** Enter or a routing key on it. */
+    public val open: (() -> Unit)? = null,
     /** Space on the row: a check box's change. */
-    val space: (() -> Unit)? = null,
+    public val space: (() -> Unit)? = null,
     /** What its menu of actions offers. */
-    val actions: List<MenuEntry> = emptyList(),
+    public val actions: List<MenuEntry> = emptyList(),
     /** Space or Enter with a letter on the row: its command, for the app to run. True if taken. */
-    val command: ((Char) -> Boolean)? = null,
+    public val command: ((Char) -> Boolean)? = null,
     /** Delete on the row. */
-    val delete: (() -> Unit)? = null,
+    public val delete: (() -> Unit)? = null,
     /** What the device calls it. */
-    val role: ControlRole = ControlRole.LIST_ITEM,
+    public val role: ControlRole = ControlRole.LIST_ITEM,
     /** What follows its letter, said and shown; empty for none. */
-    val detail: String = "",
+    public val detail: String = "",
     /** The letter that runs it, shown as the device shows a shortcut key. */
-    val letter: Char? = null,
+    public val letter: Char? = null,
     /** Space-3 and Space-6: its folding. */
-    val collapse: (() -> Unit)? = null,
-    val expand: (() -> Unit)? = null,
+    public val collapse: (() -> Unit)? = null,
+    /** Space-6: unfolds it. */
+    public val expand: (() -> Unit)? = null,
     /** Whether it opens a dialog, which the device marks. */
-    val asks: Boolean = false,
+    public val asks: Boolean = false,
     /** Whatever the app keeps with the row; the list never looks at it. */
-    val tag: Any? = null,
+    public val tag: Any? = null,
 )
 
 /**
@@ -94,9 +104,10 @@ class Row(
  * survives a redraw when the app gives its key again as [selected]. A row's number is read with it,
  * as the device's own lists do where Index Reporting is on.
  */
-class ListFrame(
+public class ListFrame(
     id: String,
-    val title: String,
+    /** What the list is called. */
+    public val title: String,
     private val rows: List<Row>,
     selected: String?,
     private val empty: String,
@@ -109,7 +120,7 @@ class ListFrame(
     /** Says that no row starts with the letter. */
     private val notFound: (Char) -> Unit = {},
     /** Whether the app acts on this list's rows by their keys: the frame only carries it, for the app's own letters. */
-    val appHeld: Boolean = false,
+    public val appHeld: Boolean = false,
     private val readings: Readings,
     /** A letter that is a shortcut here, tried before first-letter moving; true if taken. */
     private val byLetter: ((Char) -> Boolean)? = null,
@@ -122,10 +133,11 @@ class ListFrame(
 ) : Frame(id) {
     private var index = rows.indexOfFirst { it.key == selected }.takeIf { it >= 0 } ?: 0
 
-    val current: Row? get() = rows.getOrNull(index)
+    /** The row in hand; null in an empty list. */
+    public val current: Row? get() = rows.getOrNull(index)
 
     /** The current row's place, as a shell announces it. */
-    val position: Pair<Int, Int> get() = (index + 1) to rows.size
+    public val position: Pair<Int, Int> get() = (index + 1) to rows.size
 
     override val rendered: Rendered
         get() = current?.let { row ->
@@ -192,7 +204,7 @@ class ListFrame(
         if (at != null) moveTo(at) else notFound(letter)
     }
 
-    companion object {
+    private companion object {
         /** How far Space-1-2-6 and Space-3-4-5 go in a list: "32/40-item group" on this device. */
         private const val GROUP = 32
     }
@@ -202,25 +214,27 @@ class ListFrame(
  * A line of text the person types, with its prompt, and what Enter does with it. Its other keys
  * are the box's (`BoxEditing`, which the shell runs ahead of the frame).
  */
-class LineFrame(
+public class LineFrame(
     id: String,
     private val prompt: String,
-    val box: TextBox,
+    /** The line's edit box. */
+    public val box: TextBox,
     private val hint: String = "",
     private val readings: Readings,
     private val done: (String) -> Unit,
     private val changed: (String) -> Unit = {},
 ) : Frame(id) {
-    val editor: LineEditor get() = box.line
+    /** The box's one line. */
+    public val editor: LineEditor get() = box.line
 
     /** The text changed from outside the keys (a paste, a cut): told as a key's change is. */
-    fun touched() {
+    public fun touched() {
         changed(box.text)
     }
 
     override fun editBox(): TextBox = box
 
-    override fun edited() = touched()
+    override fun edited(): Unit = touched()
 
     override val rendered: Rendered
         get() {

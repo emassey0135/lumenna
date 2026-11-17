@@ -6,36 +6,36 @@ import dev.emassey0135.braillesense.input.Chords
 import dev.emassey0135.braillesense.input.Key
 
 /** Text the person copies and pastes: the system's clipboard ([SystemClipboard]), or an app's own. */
-interface Clipboard {
+public interface Clipboard {
     /** What it holds as text; null for nothing. */
-    fun text(): String?
+    public fun text(): String?
 
     /** Puts [text] on it, or empties it with null. */
-    fun set(text: String?)
+    public fun set(text: String?)
 }
 
 /** What the display shows of a box, which Backspace-1-4 and Enter-U go by. */
-interface EditDisplay {
+public interface EditDisplay {
     /** How many cells the display has. */
-    val width: Int
+    public val width: Int
 
     /**
      * The cells of the cursor's line on the display line that holds the cursor, as the device's
      * Backspace-1-4 takes them, with the box's line shown as it is now; null where it is not known.
      */
-    fun cursorLine(): IntRange?
+    public fun cursorLine(): IntRange?
 }
 
 /** What a key did in a box, for the app to draw and say. */
-sealed interface Edited {
+public sealed interface Edited {
     /** Not the box's: Tab, Enter in a box of one line, a command of the app's. */
-    data object NotTaken : Edited
+    public data object NotTaken : Edited
 
     /** The box took it. [changed]: its text is not what it was. [said]: what the device says, if anything. */
-    data class Taken(val changed: Boolean = false, val said: String? = null) : Edited
+    public data class Taken(val changed: Boolean = false, val said: String? = null) : Edited
 
     /** The device asks first ([question], Yes or No); the app asks it its own way, then calls [answer]. */
-    class Ask(val question: String, val answer: (yes: Boolean) -> Taken) : Edited
+    public class Ask(public val question: String, public val answer: (yes: Boolean) -> Taken) : Edited
 }
 
 /**
@@ -46,14 +46,15 @@ sealed interface Edited {
  * Backspace-2-5, Backspace-1-4, Backspace-1-3-4-6). Control with a letter on the QWERTY keyboard is
  * Enter with it. Tab, Enter in a single-line box and routing are the app's.
  */
-class BoxEditing(
+public class BoxEditing(
     private val translator: Translator,
     private val clipboard: Clipboard,
     /** The person's Keyboard Echo and the grade they type, read at each key. */
     private val echo: () -> Echo,
     private val words: EditWords = EditWords.ENGLISH,
 ) {
-    fun press(box: TextBox, key: Key, display: EditDisplay): Edited {
+    /** What [key] does to [box], as the device's own edit box takes it: [Edited.NotTaken] for a key that is not the box's, which the frame then takes. */
+    public fun press(box: TextBox, key: Key, display: EditDisplay): Edited {
         command(box, key, display)?.let { return it }
         return keys(box, key)
     }

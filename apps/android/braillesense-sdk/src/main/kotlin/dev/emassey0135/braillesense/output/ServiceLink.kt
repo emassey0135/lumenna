@@ -16,7 +16,7 @@ import java.util.concurrent.Executors
  * Order matters: a service's own order of arrival is the order things are said in, and a call
  * made from the main thread can jump one made from the app's thread a moment before. The service
  * can die under the app whenever the vendor updates it, and Android then never binds it again
- * ([onBindingDied]), so the link does.
+ * (`onBindingDied`), so the link does.
  *
  * The Orbit SDK keeps a copy of its own: each SDK stands alone, depending on nothing but Android.
  */

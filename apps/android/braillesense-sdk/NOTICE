@@ -1,0 +1,19 @@
+BrailleSense SDK (unofficial)
+Copyright 2026 Elijah Massey
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This SDK is not made, endorsed or supported by HIMS or Selvas Healthcare. It was worked out from
+the BrailleSense 7, its manual and its built-in apps; none of their code is included. The service
+interfaces in src/main/aidl are written to the device's own interface descriptors so an app can
+reach the device's services.
+
+liblouis
+--------
+The SDK builds liblouis (https://liblouis.io), downloaded from its release tarball by
+build-louis.sh, into a separate shared library, libbraillesense-louis.so, which the SDK loads at run
+time. liblouis is licensed under the GNU Lesser General Public License, version 2.1 or later; it is
+not covered by the Apache License. Its braille tables, copied into the APK's assets, are under their
+own licences as stated in each table file (most under the LGPL 2.1 or later). An app that ships the
+SDK ships liblouis as that separate library and must meet the LGPL's terms for it, such as
+offering its source and allowing it to be replaced.

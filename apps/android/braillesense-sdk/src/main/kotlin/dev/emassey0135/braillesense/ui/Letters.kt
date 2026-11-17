@@ -8,15 +8,15 @@ import dev.emassey0135.braillesense.input.Key
  * the letter each item of a menu shows. [DeviceLetters] is the device's own way; an app with rules
  * of its own (Lumenna's come from its core) gives its own.
  */
-interface Letters {
+public interface Letters {
     /** A cell or a QWERTY letter as the letter it stands for, by its dots, never the person's table. */
-    fun letter(key: Key): Char?
+    public fun letter(key: Key): Char?
 
     /** Where the next of [lines] starting with [letter] is, after [from], wrapping round; null for none. */
-    fun find(lines: List<String>, from: Int, letter: Char): Int?
+    public fun find(lines: List<String>, from: Int, letter: Char): Int?
 
     /** The letter each of a menu's items shows, given its title and the letter it asks for; null for one left with none. */
-    fun shortcuts(items: List<Pair<String, Char?>>): List<Char?>
+    public fun shortcuts(items: List<Pair<String, Char?>>): List<Char?>
 }
 
 /**
@@ -25,7 +25,7 @@ interface Letters {
  * before it took it, else takes the first letter of its title not yet taken, as the device's menus
  * mark theirs.
  */
-object DeviceLetters : Letters {
+public object DeviceLetters : Letters {
     override fun letter(key: Key): Char? = when (key) {
         is Key.Cell -> Chords.letter(key.dots and 0x3F).takeIf { key.dots and 0xC0 == 0 }
         is Key.Typed -> key.text.lowercase().singleOrNull()?.takeIf { it.isLetterOrDigit() }

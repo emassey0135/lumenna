@@ -20,7 +20,7 @@ private const val TAG = "BrailleSenseInput"
  * only while claimed. If the process dies its callback binder dies with it, and the service stops
  * calling it.
  */
-class HanInputClient(private val context: Context, private val keys: (Int, Int, String?) -> Boolean) {
+public class HanInputClient(private val context: Context, private val keys: (Int, Int, String?) -> Boolean) {
     private var service: IHanBrailleInputService? = null
 
     /** Whether the keys are ours: only between [claim] and [release]. */
@@ -33,7 +33,7 @@ class HanInputClient(private val context: Context, private val keys: (Int, Int, 
     }
 
     /** Takes the keys; does nothing if they are held already. */
-    fun claim() {
+    public fun claim() {
         if (claimed) return
         val binder = runCatching {
             (context.getSystemService("han_brailleinput") as? IInterface)?.asBinder()
@@ -56,7 +56,7 @@ class HanInputClient(private val context: Context, private val keys: (Int, Int, 
      * Gives the keys back, safe to call at any time and any number of times. The flag goes first,
      * so that even if unregistering fails every chord is answered "not taken".
      */
-    fun release() {
+    public fun release() {
         claimed = false
         val held = service
         service = null

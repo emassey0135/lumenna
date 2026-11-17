@@ -10,13 +10,19 @@ import dev.emassey0135.braillesense.reading.BraillePart
  * it, -1 for none), or an edit box's own [cells] with the cursor at [cellCursor]; between what
  * goes [before] it (a role, a label) and [after] it (a letter, a sign, a role).
  */
-class DisplayLine(
-    val text: String,
-    val cursor: Int = -1,
-    val cells: ByteArray? = null,
-    val cellCursor: Int = -1,
-    val before: List<BraillePart> = emptyList(),
-    val after: List<BraillePart> = emptyList(),
+public class DisplayLine(
+    /** Its text, in the person's table. */
+    public val text: String,
+    /** Where the cursor is in [text]; -1 for none. */
+    public val cursor: Int = -1,
+    /** An edit box's own cells, shown in place of [text]. */
+    public val cells: ByteArray? = null,
+    /** Where the cursor is in [cells]. */
+    public val cellCursor: Int = -1,
+    /** What goes ahead of it: a role, a label. */
+    public val before: List<BraillePart> = emptyList(),
+    /** What follows it: a letter, a sign, a role. */
+    public val after: List<BraillePart> = emptyList(),
 )
 
 /**
@@ -24,7 +30,7 @@ class DisplayLine(
  * the display as its Word Wrap does. An app hands it what to say and show; what the service wants
  * is here.
  */
-class BrailleDisplay(private val out: Output, private val translator: Translator) {
+public class BrailleDisplay(private val out: Output, private val translator: Translator) {
     private var cells: Cells? = null
     private var width = 0
 
@@ -44,21 +50,23 @@ class BrailleDisplay(private val out: Output, private val translator: Translator
     }
 
     /** How many cells the display has: 40 until the service says. */
-    fun cellsWide(): Int {
+    public fun cellsWide(): Int {
         display()
         return width
     }
 
-    fun say(text: String) {
+    /** Says [text] in the person's own voice, cutting off what was being said. */
+    public fun say(text: String) {
         if (text.isNotBlank()) out.say(text)
     }
 
-    fun silence() = out.silence()
+    /** Stops speech. */
+    public fun silence(): Unit = out.silence()
 
     private var selecting = false
 
     /** Shows a selection under way, as the device's edit box does, by its cursor. */
-    fun selecting(on: Boolean) {
+    public fun selecting(on: Boolean) {
         if (on == selecting) return
         selecting = on
         out.selecting(on)
@@ -70,7 +78,7 @@ class BrailleDisplay(private val out: Output, private val translator: Translator
         }
 
     /** Puts [line] on the display, no speech. */
-    fun show(line: DisplayLine) {
+    public fun show(line: DisplayLine) {
         val display = display()
         val before = cellsOf(line.before)
         val after = cellsOf(line.after)
@@ -97,17 +105,17 @@ class BrailleDisplay(private val out: Output, private val translator: Translator
     }
 
     /** Pans on; false when the line ended here. */
-    fun scrollOn(): Boolean = display().let { d -> d.forward().also { if (it) push(d) } }
+    public fun scrollOn(): Boolean = display().let { d -> d.forward().also { if (it) push(d) } }
 
     /** Pans back; false at the start of the line. */
-    fun scrollBack(): Boolean = display().let { d -> d.back().also { if (it) push(d) } }
+    public fun scrollBack(): Boolean = display().let { d -> d.back().also { if (it) push(d) } }
 
     /**
      * The cells of an edit box's text on the display line that holds its cursor, as the device's
      * Backspace-1-4 takes them: the label and role beside it are not the text's. Null where the line
      * shown is no edit box's.
      */
-    fun cursorLine(): IntRange? {
+    public fun cursorLine(): IntRange? {
         val window = display().cursorWindow() ?: return null
         val length = textEnd - textStart
         val from = (window.first - textStart).coerceIn(0, length)
@@ -116,5 +124,5 @@ class BrailleDisplay(private val out: Output, private val translator: Translator
     }
 
     /** Which cell of the line's text a routing key over [cell] is: -1 past its end or over a label. */
-    fun routed(cell: Int): Int = display().routed(cell).let { if (it < textStart) -1 else it - textStart }
+    public fun routed(cell: Int): Int = display().routed(cell).let { if (it < textStart) -1 else it - textStart }
 }

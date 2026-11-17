@@ -11,33 +11,33 @@ import dev.emassey0135.braillesense.han.IHanOutputService
 /**
  * What the screens send out: speech and cells. A seam so the tests can read what was said.
  */
-interface Output {
+public interface Output {
     /** Says [text] now, after stopping whatever is being said. */
-    fun say(text: String)
+    public fun say(text: String)
 
     /** Stops speech. */
-    fun silence()
+    public fun silence()
 
     /** Puts [cells] on the display, the cursor at [cursor] (-1 for none). */
-    fun cells(cells: ByteArray, cursor: Int)
+    public fun cells(cells: ByteArray, cursor: Int)
 
     /** How many cells the display has, once known: the layout of panning waits on it. */
-    val width: Int
+    public val width: Int
 
     /**
      * The cursor as the device's edit box shows a selection under way: its selection shape,
      * blinking, while [selecting], and the plain cursor again after. The extent is not drawn.
      */
-    fun selecting(selecting: Boolean) {}
+    public fun selecting(selecting: Boolean) {}
 }
 
 /**
  * `IHanOutputService`, bound by explicit intent, every call on one ordered worker, so a slow
  * service never holds the key that asked for it and what is said arrives in order. Rebound when
- * the service dies: on an update, or after the screen reader's. [register]ed with a token of ours
+ * the service dies: on an update, or after the screen reader's. `register`ed with a token of ours
  * for the service to watch, so a process that dies does not leave it holding a client.
  */
-class HanOutputClient(
+public class HanOutputClient(
     context: Context,
     /** Whether what is said and shown is logged at info level, under [tag]: for a debug build. */
     private val trace: Boolean = false,
@@ -94,16 +94,18 @@ class HanOutputClient(
         Log.i(tag, "display is $width cells, $lines lines")
     }
 
-    fun connect() = link.bind()
+    /** Binds the device's output service, from `onCreate`. */
+    public fun connect(): Unit = link.bind()
 
-    fun disconnect() {
+    /** Unbinds it, from `onDestroy`. */
+    public fun disconnect() {
         release()
         link.now("unregister") { it.unregister(token) }
         link.unbind()
     }
 
     /** Takes the display and speech while the app is in front; the screen reader yields them. */
-    fun claim() {
+    public fun claim() {
         claimed = true
         link.call("claim") { take(it) }
     }
@@ -117,7 +119,7 @@ class HanOutputClient(
      * and every HIMS app checks it before it speaks or writes a cell, so turning it off here would
      * silence the launcher and leave our last line on the display. The next app simply writes.
      */
-    fun release() = synchronized(claim) {
+    public fun release(): Unit = synchronized(claim) {
         claimed = false
         link.now("stopTTS") { it.stopTTS() }
     }
@@ -133,7 +135,7 @@ class HanOutputClient(
         }
     }
 
-    override fun silence() = whileClaimed("silence") { it.stopTTS() }
+    override fun silence(): Unit = whileClaimed("silence") { it.stopTTS() }
 
     override fun cells(cells: ByteArray, cursor: Int) {
         val copy = cells.copyOf()

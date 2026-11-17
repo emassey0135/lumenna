@@ -10,9 +10,9 @@ import android.view.KeyEvent
  * Alt-Backspace the word, Control-Backspace the line and Alt-Delete the paragraph, and Control-Insert
  * and Control-Delete add to and clear the clipboard, by the command summary's QWERTY table.
  */
-object Qwerty {
+public object Qwerty {
     /** A key press as a [Key], or null where it means nothing here. [char] is the key's character. */
-    fun decode(keyCode: Int, meta: Int, char: Int): Key? {
+    public fun decode(keyCode: Int, meta: Int, char: Int): Key? {
         val shift = meta and KeyEvent.META_SHIFT_ON != 0
         val ctrl = meta and KeyEvent.META_CTRL_ON != 0
         val alt = meta and KeyEvent.META_ALT_ON != 0
@@ -73,11 +73,11 @@ object Qwerty {
  * menus (`Key.Menu`), as on a computer, where the device's own F2 is Windows-Alt; Alt held with
  * another key is that key's Alt form (Alt-Backspace, Alt-Delete), so it opens nothing.
  */
-class QwertyKeyboard {
+public class QwertyKeyboard {
     private var altAlone = false
 
     /** A key pressed; null where it means nothing here (Alt, until it is let go). */
-    fun down(keyCode: Int, meta: Int, char: Int): Key? {
+    public fun down(keyCode: Int, meta: Int, char: Int): Key? {
         if (isAlt(keyCode)) {
             altAlone = true
             return null
@@ -87,7 +87,7 @@ class QwertyKeyboard {
     }
 
     /** A key let go: the menus for Alt alone, else nothing. */
-    fun up(keyCode: Int): Key? {
+    public fun up(keyCode: Int): Key? {
         val alone = isAlt(keyCode) && altAlone
         altAlone = false
         return if (alone) Key.Menu else null

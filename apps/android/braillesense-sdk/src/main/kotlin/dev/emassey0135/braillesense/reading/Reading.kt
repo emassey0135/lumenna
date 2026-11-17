@@ -7,11 +7,11 @@ package dev.emassey0135.braillesense.reading
  * shortcut letter in the code's brackets, a hot key, a row's place among several, and the sign of
  * what pressing it opens. The words are the device's own, in English.
  */
-enum class ControlRole(
+public enum class ControlRole(
     /** What the voice calls it. */
-    val spoken: String,
+    public val spoken: String,
     /** Its symbol on the cells, shown as Braille ASCII. */
-    val symbol: String,
+    public val symbol: String,
 ) {
     /** Opens a submenu. */
     MENU("Menu", "mn"),
@@ -38,87 +38,89 @@ enum class ControlRole(
 }
 
 /** Where a role goes on its line: Control Information, one setting for the cells and one for the voice. */
-enum class RolePlace { OFF, BEFORE, AFTER }
+public enum class RolePlace { OFF, BEFORE, AFTER }
 
 /** What the person's Global Options say a line carries. */
-data class LineSettings(
+public data class LineSettings(
     /** Where the voice says the role. */
-    val voiceRole: RolePlace,
+    public val voiceRole: RolePlace,
     /** Where the cells show it. */
-    val brailleRole: RolePlace,
+    public val brailleRole: RolePlace,
     /** Whether the voice says a shortcut letter. */
-    val voiceLetter: Boolean,
+    public val voiceLetter: Boolean,
     /** Whether the cells show it. */
-    val brailleLetter: Boolean,
+    public val brailleLetter: Boolean,
     /** Whether the voice says a hot key. */
-    val voiceHotKey: Boolean,
+    public val voiceHotKey: Boolean,
     /** Whether it says it as dots rather than a letter. */
-    val voiceHotKeyDots: Boolean,
+    public val voiceHotKeyDots: Boolean,
     /** Whether the cells show it. */
-    val brailleHotKey: Boolean,
+    public val brailleHotKey: Boolean,
     /** Whether a place among several is given: "2/5". */
-    val index: Boolean,
+    public val index: Boolean,
 )
 
 /** The cells of the device's own signs in its braille code, as Braille ASCII. */
-data class BrailleSigns(
+public data class BrailleSigns(
     /** What opens a shortcut letter. */
-    val open: String,
+    public val open: String,
     /** What closes it. */
-    val close: String,
+    public val close: String,
     /** What ends an item that opens a dialog. */
-    val dialog: String,
+    public val dialog: String,
     /** What ends an item that opens a submenu. */
-    val pullDown: String,
+    public val pullDown: String,
 )
 
 /** One line to read. */
-data class DeviceLine(
-    val role: ControlRole,
+public data class DeviceLine(
+    /** What the control is. */
+    public val role: ControlRole,
     /** What it is for, ahead of its value; empty for none. */
-    val label: String = "",
+    public val label: String = "",
     /** Its text as said. */
-    val speech: String,
+    public val speech: String,
     /** Its text as shown. */
-    val text: String = speech,
+    public val text: String = speech,
     /** What follows the letter, said and shown; empty for none. */
-    val detail: String = "",
+    public val detail: String = "",
     /** Its shortcut letter. */
-    val letter: String? = null,
+    public val letter: String? = null,
     /** What runs it from anywhere: "Enter-n". */
-    val hotKey: String? = null,
+    public val hotKey: String? = null,
     /** Whether it opens a dialog. */
-    val asks: Boolean = false,
+    public val asks: Boolean = false,
     /** Which of [count] it is, from 1, for a row or a control that is one of several. */
-    val position: Int = 0,
+    public val position: Int = 0,
     /** How many there are; 0 for a line that is not one of several. */
-    val count: Int = 0,
+    public val count: Int = 0,
 )
 
 /** A stretch of the cells beside a line's text. */
-data class BraillePart(
-    val text: String,
+public data class BraillePart(
+    /** What it shows. */
+    public val text: String,
     /** Whether it is Braille ASCII, shown cell for cell, rather than text in the person's table. */
-    val computer: Boolean,
+    public val computer: Boolean,
 )
 
 /** A line as the device reads it. */
-data class DeviceReading(
+public data class DeviceReading(
     /** What is said. */
-    val speech: String,
+    public val speech: String,
     /** What the cells show ahead of [body]. */
-    val before: List<BraillePart>,
+    public val before: List<BraillePart>,
     /** The text, in the person's table; an edit box puts its own cells here. */
-    val body: String,
+    public val body: String,
     /** What the cells show after it. */
-    val after: List<BraillePart>,
+    public val after: List<BraillePart>,
 )
 
 /**
  * A line in the device's own order: the role where the settings put it, the name, the shortcut
  * letter in brackets, a hot key, and the sign of what pressing it opens.
  */
-fun deviceReading(line: DeviceLine, settings: LineSettings, signs: BrailleSigns): DeviceReading {
+public fun deviceReading(line: DeviceLine, settings: LineSettings, signs: BrailleSigns): DeviceReading {
     val index = if (settings.index && line.count > 0) "${line.position}/${line.count}" else null
 
     val speech = StringBuilder()
@@ -163,7 +165,7 @@ fun deviceReading(line: DeviceLine, settings: LineSettings, signs: BrailleSigns)
 }
 
 /** What opening a dialog says: its title and that it is one. */
-fun dialogTitle(title: String): String = "$title dialog"
+public fun dialogTitle(title: String): String = "$title dialog"
 
 /** A hot key named by its letter, as dots: "Enter-n" is "Enter-dots 1-3-4-5", "Space-a" "Space-dot 1". */
 internal fun hotKeyDots(key: String): String {

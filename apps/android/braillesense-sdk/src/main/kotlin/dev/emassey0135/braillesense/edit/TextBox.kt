@@ -4,7 +4,7 @@ import dev.emassey0135.braillesense.output.Cells
 import dev.emassey0135.braillesense.braille.Translator
 
 /** Where in a box: which line, and which cell of it. */
-data class Spot(val row: Int, val cell: Int) : Comparable<Spot> {
+public data class Spot(val row: Int, val cell: Int) : Comparable<Spot> {
     override fun compareTo(other: Spot): Int = compareValuesBy(this, other, Spot::row, Spot::cell)
 }
 
@@ -17,24 +17,24 @@ data class Spot(val row: Int, val cell: Int) : Comparable<Spot> {
  * A selection is the device's: started at the cursor (Enter-B) and running to wherever the cursor
  * goes, or the whole box (Enter-A). Typing ends it; Backspace takes what it holds.
  */
-class TextBox(initial: String, private val translator: Translator, val multiLine: Boolean = false) {
+public class TextBox(initial: String, private val translator: Translator, public val multiLine: Boolean = false) {
     private val lines = ArrayList<LineEditor>().apply {
         val texts = if (multiLine) initial.split('\n') else listOf(initial.replace('\n', ' '))
         texts.forEach { add(LineEditor(it, translator)) }
     }
 
     /** The line the cursor is on. */
-    var row: Int = lines.lastIndex
+    public var row: Int = lines.lastIndex
         private set
 
     /** The line the cursor is on, whose cells the display shows. */
-    val line: LineEditor get() = lines[row]
+    public val line: LineEditor get() = lines[row]
 
     /** How many lines it has. */
-    val count: Int get() = lines.size
+    public val count: Int get() = lines.size
 
     /** The whole text, its lines joined by new lines. */
-    val text: String get() = lines.joinToString("\n") { it.text }
+    public val text: String get() = lines.joinToString("\n") { it.text }
 
     private val here: Spot get() = Spot(row, line.caret)
 
@@ -45,17 +45,18 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     private var all = false
 
     /** Whether something is selected. */
-    val selecting: Boolean get() = all || anchor != null
+    public val selecting: Boolean get() = all || anchor != null
 
     // ── Lines ─────────────────────────────────────────────────────────────────────────────────
 
     /** The word Enter just finished, once: the device's echo says it, as Space does. */
     private var finished: String? = null
 
-    fun takeFinished(): String? = finished.also { finished = null }
+    /** The word Enter just finished, once, for the echo to say. */
+    public fun takeFinished(): String? = finished.also { finished = null }
 
     /** Enter: the line splits at the cursor, which goes to the start of the new one. */
-    fun newLine() {
+    public fun newLine() {
         val before = line.cellBeforeCaret()
         finished = if (before != null && before.cell != LineEditor.BLANK) line.wordAtCaret().takeIf { it.isNotEmpty() } else null
         lines.add(row + 1, line.split())
@@ -65,10 +66,11 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     /** Whether Backspace just joined a line onto the one before, once: the device says "previous line". */
     private var joined = false
 
-    fun takeJoined(): Boolean = joined.also { joined = false }
+    /** Whether Backspace just joined a line onto the one before, once. */
+    public fun takeJoined(): Boolean = joined.also { joined = false }
 
     /** Backspace: a cell, or at a line's start the line break, joining it to the line before. True when it joined. */
-    fun backspace(): Boolean {
+    public fun backspace(): Boolean {
         if (line.caret == 0 && row > 0) {
             val next = lines.removeAt(row)
             row--
@@ -81,7 +83,7 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     }
 
     /** Delete: the cell at the cursor, or at a line's end the break, joining the next line on. */
-    fun delete(): Boolean {
+    public fun delete(): Boolean {
         if (line.caret == line.size && row < lines.lastIndex) {
             line.append(lines.removeAt(row + 1))
             return true
@@ -91,10 +93,13 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     }
 
     /** What Backspace-2-5 took: a word or a space, or at a line's end the break to the next. */
-    sealed interface WordRemoved {
-        data class Word(val text: String) : WordRemoved
-        data object Space : WordRemoved
-        data object LineBreak : WordRemoved
+    public sealed interface WordRemoved {
+        /** A word, by its text. */
+        public data class Word(val text: String) : WordRemoved
+        /** A space by itself. */
+        public data object Space : WordRemoved
+        /** The break between two lines. */
+        public data object LineBreak : WordRemoved
     }
 
     /**
@@ -102,7 +107,7 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
      * it. At the end of a line with another after it, the break, joining the next line on, which the
      * device calls "new paragraph". Null where there is nothing to take.
      */
-    fun deleteWord(): WordRemoved? {
+    public fun deleteWord(): WordRemoved? {
         cancelSelection()
         if (line.caret == line.size && row < lines.lastIndex) {
             line.append(lines.removeAt(row + 1))
@@ -120,7 +125,7 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
      * cursor. A line left empty in a multi-line box goes too, the next taking its place, or at the
      * end the cursor going back to the end of the line before. False where there is nothing to take.
      */
-    fun deleteLine(from: Int, to: Int): Boolean {
+    public fun deleteLine(from: Int, to: Int): Boolean {
         cancelSelection()
         if (line.size == 0 && lines.size == 1) return false
         if (line.size > 0) line.removeRange(from, to)
@@ -137,7 +142,7 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     }
 
     /** Backspace-1-3-4-6: the cursor's whole line, the cursor at the start of the one after. False where there is nothing. */
-    fun deleteParagraph(): Boolean {
+    public fun deleteParagraph(): Boolean {
         cancelSelection()
         if (lines.size == 1) {
             if (line.size == 0) return false
@@ -159,18 +164,20 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
         return true
     }
 
-    fun up(): Boolean = toRow(row - 1)
+    /** Space-1 in a box of several lines: the line before, the cursor as far along as it allows. False at the first. */
+    public fun up(): Boolean = toRow(row - 1)
 
-    fun down(): Boolean = toRow(row + 1)
+    /** Space-4 in a box of several lines: the next line. False at the last. */
+    public fun down(): Boolean = toRow(row + 1)
 
     /** The start of the first line. */
-    fun top() {
+    public fun top() {
         row = 0
         line.start()
     }
 
     /** The end of the last line. */
-    fun bottom() {
+    public fun bottom() {
         row = lines.lastIndex
         line.end()
     }
@@ -178,18 +185,19 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     // ── The selection ─────────────────────────────────────────────────────────────────────────
 
     /** Enter-B: a selection from the cursor, to wherever it goes. */
-    fun startSelection() {
+    public fun startSelection() {
         all = false
         anchor = here
     }
 
     /** Enter-A. */
-    fun selectAll() {
+    public fun selectAll() {
         anchor = null
         all = true
     }
 
-    fun cancelSelection() {
+    /** Escape in a selection: it ends, the text untouched. */
+    public fun cancelSelection() {
         anchor = null
         all = false
     }
@@ -200,7 +208,7 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     }
 
     /** What the selection holds, as text; null with nothing selected. */
-    fun selected(): String? {
+    public fun selected(): String? {
         val (from, to) = range() ?: return null
         if (from.row == to.row) return lines[from.row].textBetween(from.cell, to.cell)
         return (from.row..to.row).joinToString("\n") { index ->
@@ -218,7 +226,7 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
      * whole, one across lines from where it begins to the end of that line as a display of [width]
      * cells breaks it. Null with nothing selected.
      */
-    fun selectionStart(width: Int): String? {
+    public fun selectionStart(width: Int): String? {
         val (from, to) = range() ?: return null
         val first = lines[from.row]
         if (from.row == to.row) return first.textBetween(from.cell, to.cell)
@@ -227,7 +235,7 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     }
 
     /** Takes away what is selected, the cursor where it began; false with nothing selected. */
-    fun deleteSelected(): Boolean {
+    public fun deleteSelected(): Boolean {
         val (from, to) = range() ?: return false
         cancelSelection()
         row = to.row
@@ -239,7 +247,7 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     }
 
     /** Puts [pasted] in at the cursor, a new line where it has one and the box takes them. */
-    fun insert(pasted: String) {
+    public fun insert(pasted: String) {
         cancelSelection()
         val parts = if (multiLine) pasted.replace("\r\n", "\n").split('\n') else listOf(pasted.replace(Regex("[\r\n]+"), " "))
         parts.forEachIndexed { index, part ->
@@ -252,8 +260,8 @@ class TextBox(initial: String, private val translator: Translator, val multiLine
     // ── The table ─────────────────────────────────────────────────────────────────────────────
 
     /** Reads every line as text in the table in force, before it changes. */
-    fun settle() = lines.forEach { it.settle() }
+    public fun settle(): Unit = lines.forEach { it.settle() }
 
     /** Writes every line again in the table now in force: the text stays, its cells follow the table. */
-    fun recell() = lines.forEach { it.recell() }
+    public fun recell(): Unit = lines.forEach { it.recell() }
 }

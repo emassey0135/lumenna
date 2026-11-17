@@ -6,67 +6,89 @@ package dev.emassey0135.braillesense.input
  * every screen handles one vocabulary. Named after what the device's manual says the key does
  * (chapter 2.4), not after the key.
  */
-sealed interface Key {
-    data object Up : Key
-    data object Down : Key
-    data object First : Key
-    data object Last : Key
-    data object PageUp : Key
-    data object PageDown : Key
-    data object LineStart : Key
-    data object LineEnd : Key
-    data object CharLeft : Key
-    data object CharRight : Key
-    data object WordLeft : Key
-    data object WordRight : Key
-    data object Enter : Key
-    data object Escape : Key
-    data object Exit : Key
-    data object Tab : Key
-    data object ShiftTab : Key
+public sealed interface Key {
+    /** Space-1, or the up arrow: the row before. */
+    public data object Up : Key
+    /** Space-4, or the down arrow: the next row. */
+    public data object Down : Key
+    /** Space-1-2-3, Control-Home: the first row. */
+    public data object First : Key
+    /** Space-4-5-6, Control-End: the last row. */
+    public data object Last : Key
+    /** Space-1-2-6, F1 with F2, Page Up: a page back. */
+    public data object PageUp : Key
+    /** Space-3-4-5, F3 with F4, Page Down: a page on. */
+    public data object PageDown : Key
+    /** Space-1-3, Home: the line's start. */
+    public data object LineStart : Key
+    /** Space-4-6, End: the line's end. */
+    public data object LineEnd : Key
+    /** Space-3, the left arrow: a character back, or folding a row. */
+    public data object CharLeft : Key
+    /** Space-6, the right arrow: a character on, or unfolding a row. */
+    public data object CharRight : Key
+    /** Space-2, Control-Left: a word back. */
+    public data object WordLeft : Key
+    /** Space-5, Control-Right: a word on. */
+    public data object WordRight : Key
+    /** Enter: opens, runs, confirms. */
+    public data object Enter : Key
+    /** Space-E, F4, Escape: back. */
+    public data object Escape : Key
+    /** Space-Z: leaves the program. */
+    public data object Exit : Key
+    /** Space-4-5, F3, Tab: the next control of a dialog. */
+    public data object Tab : Key
+    /** Space-1-2, Space-F3, Shift-Tab: the control before. */
+    public data object ShiftTab : Key
     /** Opens the program's menus: Space-M or F2, Alt on the QWERTY keyboard. */
-    data object Menu : Key
+    public data object Menu : Key
     /** Opens the row's own menu of actions: Enter-I, the device's "actions menu", or the Menu key. */
-    data object Context : Key
-    data object Help : Key
+    public data object Context : Key
+    /** Space-H: the program's help. */
+    public data object Help : Key
     /** Says and shows the current item again: Space-R or Space-C. */
-    data object Repeat : Key
+    public data object Repeat : Key
     /** Says the character at the cursor in a line: Space-3-6, as the device's edit boxes have it. */
-    data object SayCharacter : Key
+    public data object SayCharacter : Key
     /** Says the word at the cursor in a line: Space-2-5. */
-    data object SayWord : Key
-    data object Find : Key
-    data object Options : Key
-    data object Delete : Key
+    public data object SayWord : Key
+    /** Space-F, Control-F: find. */
+    public data object Find : Key
+    /** Space-O: the program's options. */
+    public data object Options : Key
+    /** Space-D, Delete: the character or row at the cursor. */
+    public data object Delete : Key
     /** Deletes the word at the cursor in a line: Backspace-2-5, Alt-Backspace. */
-    data object DeleteWord : Key
+    public data object DeleteWord : Key
     /** Deletes the line shown at the cursor: Backspace-1-4 (C), Control-Backspace. */
-    data object DeleteLine : Key
+    public data object DeleteLine : Key
     /** Deletes the paragraph at the cursor: Backspace-1-3-4-6 or Backspace-2-3-5-6, Alt-Delete. */
-    data object DeleteParagraph : Key
+    public data object DeleteParagraph : Key
     /** Stops speech: Space-7-8. */
-    data object Silence : Key
+    public data object Silence : Key
     /** Space by itself: a check box or combo box's change, a space when typing. */
-    data object Space : Key
-    data object Backspace : Key
+    public data object Space : Key
+    /** Backspace by itself: the cell before the cursor. */
+    public data object Backspace : Key
     /** Pans the display back, or moves to the previous item at its start. */
-    data object ScrollBack : Key
+    public data object ScrollBack : Key
     /** Pans the display on, or moves to the next item at its end. */
-    data object ScrollOn : Key
+    public data object ScrollOn : Key
     /** A routing key, or a touched cell and a front Cursor button, over [cell] from the left of the display. */
-    data class Route(val cell: Int) : Key
+    public data class Route(val cell: Int) : Key
     /** Space with these dots (bit 0 is dot 1): the letter's command, where it is not one above. */
-    data class SpaceDots(val dots: Int) : Key
+    public data class SpaceDots(val dots: Int) : Key
     /** Enter with these dots: the device's hotkey form. */
-    data class EnterDots(val dots: Int) : Key
+    public data class EnterDots(val dots: Int) : Key
     /** Backspace with these dots. */
-    data class BackspaceDots(val dots: Int) : Key
+    public data class BackspaceDots(val dots: Int) : Key
     /** A cell by itself: a first letter in a list, typed in a line (bit 0 is dot 1). */
-    data class Cell(val dots: Int) : Key
+    public data class Cell(val dots: Int) : Key
     /** A character from the QWERTY keyboard, typed in a line or a first letter in a list. */
-    data class Typed(val text: String) : Key
+    public data class Typed(val text: String) : Key
     /** Ctrl-Shift with a letter on the QWERTY keyboard: the same as Space with it. */
-    data class SpaceLetter(val letter: Char) : Key
+    public data class SpaceLetter(val letter: Char) : Key
     /** Control with a letter on the QWERTY keyboard: the same as Enter with it. */
-    data class EnterLetter(val letter: Char) : Key
+    public data class EnterLetter(val letter: Char) : Key
 }

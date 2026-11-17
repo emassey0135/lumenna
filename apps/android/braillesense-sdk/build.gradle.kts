@@ -9,6 +9,25 @@ import javax.inject.Inject
 
 plugins {
     alias(libs.plugins.android.library)
+    // Named by its version here rather than from a catalog, so the build reads the same whether it
+    // is a repository of its own or a module of an app's build.
+    id("org.jetbrains.dokka") version "2.3.0"
+}
+
+// What other apps build against is declared, never public by accident.
+kotlin {
+    explicitApi()
+}
+
+dokka {
+    moduleName.set("BrailleSense SDK")
+    dokkaSourceSets.configureEach {
+        includes.from("docs/module.md")
+        sourceLink {
+            localDirectory.set(file("src/main/kotlin"))
+            remoteUrl("https://github.com/emassey0135/braillesense-sdk/blob/main/src/main/kotlin")
+        }
+    }
 }
 
 /**
