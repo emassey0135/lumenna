@@ -4,6 +4,9 @@ import dev.emassey0135.orbit.ui.Action
 import dev.emassey0135.orbit.ui.Field
 import dev.emassey0135.orbit.ui.FormValues
 import dev.emassey0135.orbit.ui.Item
+import dev.emassey0135.orbit.ui.Letters
+import dev.emassey0135.orbit.ui.ListScreen
+import dev.emassey0135.orbit.ui.MenuBar
 import dev.emassey0135.orbit.ui.MenuItem
 import dev.emassey0135.orbit.ui.OrbitUi
 import org.junit.Assert.assertEquals
@@ -47,11 +50,26 @@ class UiTest {
 
     private val told = Told()
 
+    /** The time, as the stack reads it, and what waits on it: nothing runs until [wait]. */
+    private var clock = 0L
+    private val waiting = mutableListOf<() -> Unit>()
+
+    /** Runs what was waiting, as the moment passes. */
+    private fun wait() {
+        val due = waiting.toList()
+        waiting.clear()
+        due.forEach { it() }
+    }
+
     /** Cells made into their letters, so typing needs no liblouis. */
-    private val ui = OrbitUi(
-        told, later = Manual(),
+    private fun stack(letters: Letters = Letters()) = OrbitUi(
+        told, later = Manual(), letters = letters,
         translator = CellBuffer.Translator { cells, _ -> cells.joinToString("") { BrailleLetters.letter(it)?.toString().orEmpty() } },
+        delay = { _, run -> waiting += run },
+        now = { clock },
     ).apply { readerReady() }
+
+    private val ui = stack()
 
     private fun press(name: String) = ui.key(KeyEvent(name, KeyEvent.PRESS, false), false)
     private fun chord(name: String) = ui.key(KeyEvent(name, KeyEvent.CHORD, false), false)
@@ -352,5 +370,250 @@ class UiTest {
         told.calls.clear()
         release("SPACE")
         assertEquals(listOf("sound ${OrbitReader.SOUND_ERROR}"), told.calls)
+    }
+
+    // ---- what an app whose data changes underneath it needs ------------------------------
+
+    @Test fun aLandingTellsTheRowTheAppMovedToButNotTheRowJustToldAgain() {
+        ui.list("Fruit", ::rows)
+        told.calls.clear()
+        ui.land("cherry")
+        assertEquals(listOf("item Fruit 3 2 cherry"), told.calls)
+        ui.land("cherry")
+        assertEquals(1, told.calls.size)
+        ui.refresh()
+        assertEquals("a plain refresh says nothing", 1, told.calls.size)
+    }
+
+    @Test fun aListFollowsTheRowTheAppHoldsAndTellsItOnlyWhenItMoved() {
+        var held = "apple"
+        ui.push(object : ListScreen("Fruit", { rows() }, "Empty") {
+            override fun inHand(): String = held
+        })
+        told.calls.clear()
+        held = "banana"
+        ui.refresh()
+        assertEquals(listOf("item Fruit 3 1 banana"), told.calls)
+        ui.refresh()
+        assertEquals(1, told.calls.size)
+    }
+
+    @Test fun whatIsAnnouncedWaitsBehindWhatWasJustToldAndKeepsItsOrder() {
+        ui.list("Fruit", ::rows)
+        ui.announce("Saved.")
+        ui.announce("Synced.")
+        assertEquals("list Fruit 3 0 apple", told.calls.last())
+        wait()
+        assertEquals(listOf("say Saved.", "say Synced."), told.calls.takeLast(2))
+    }
+
+    @Test fun whatIsAnnouncedLongAfterAnythingWasToldIsSaidAtOnce() {
+        ui.list("Fruit", ::rows)
+        clock = 1_000
+        ui.announce("Synced.")
+        assertEquals("say Synced.", told.calls.last())
+    }
+
+    @Test fun aRefusalIsTheErrorToneThenWhy() {
+        ui.list("Fruit", ::rows)
+        told.calls.clear()
+        ui.refused("Nothing to undo.")
+        wait()
+        assertEquals(listOf("sound ${OrbitReader.SOUND_ERROR}", "say Nothing to undo."), told.calls)
+    }
+
+    @Test fun aLetterNoRowStartsWithSaysSoInTheStacksWords() {
+        ui.list("Fruit", ::rows)
+        told.calls.clear()
+        cell('z')
+        wait()
+        assertEquals(listOf("sound ${OrbitReader.SOUND_ERROR}", "say No row starts with z"), told.calls)
+    }
+
+    @Test fun spaceWithALetterNothingHasSaysSoInTheStacksWords() {
+        ui.list("Fruit", ::rows)
+        told.calls.clear()
+        spaceWith('x')
+        wait()
+        assertEquals(listOf("sound ${OrbitReader.SOUND_ERROR}", "say Nothing on x"), told.calls)
+    }
+
+    @Test fun rightUnfoldsAFoldedRowLeftFoldsItAndLeftOnARowThatDoesNotFoldGoesBack() {
+        var unfolded = false
+        val folds = mutableListOf<Boolean>()
+        var ended = false
+        ui.onEmpty = { ended = true }
+        ui.list("Projects", {
+            listOf(
+                Item("work", if (unfolded) "Work, expanded" else "Work, collapsed", expanded = unfolded, fold = {
+                    folds += it
+                    unfolded = it
+                }),
+                Item("home", "Home"),
+            )
+        })
+        told.calls.clear()
+        press("RIGHT")
+        ui.refresh()
+        assertEquals(listOf(true), folds)
+        assertEquals("read again as it now reads", listOf("item Projects 2 0 Work, expanded"), told.calls)
+        press("LEFT")
+        assertEquals(listOf(true, false), folds)
+        down()
+        press("LEFT")
+        assertTrue(ended)
+    }
+
+    @Test fun thePersonsOwnMovesAreHandedToTheAppAndSoAreFirstLettersWhereItFindsThem() {
+        val moves = mutableListOf<String>()
+        val letters = mutableListOf<Char>()
+        ui.push(object : ListScreen("Fruit", { rows() }, "Empty") {
+            override fun moved(item: Item) {
+                moves += item.key
+            }
+
+            override fun findLetter(letter: Char): Boolean {
+                letters += letter
+                return true
+            }
+        })
+        down()
+        cell('c')
+        assertEquals(listOf("banana"), moves)
+        assertEquals(listOf('c'), letters)
+    }
+
+    @Test fun spaceWithALetterGoesToTheScreenBeforeAnyAction() {
+        val taken = mutableListOf<Char>()
+        var mixed = false
+        ui.push(object : ListScreen("Fruit", { rows() }, "Empty", { listOf(Action("Mix", 'x') { mixed = true }) }) {
+            override fun letter(letter: Char): Boolean {
+                taken += letter
+                return letter == 'x'
+            }
+        })
+        spaceWith('x')
+        assertEquals(listOf('x'), taken)
+        assertEquals(false, mixed)
+    }
+
+    @Test fun aScreenHearsItCameToTheTopAsItOpensAndAsWhatWasOverItCloses() {
+        var times = 0
+        ui.push(object : ListScreen("Fruit", { rows() }, "Empty") {
+            override fun onTop() {
+                times++
+            }
+        })
+        ui.list("Colours", { listOf(Item("red", "red")) })
+        escape()
+        assertEquals(2, times)
+    }
+
+    @Test fun aScreensOwnMenuTreeOpensOnTheMenuKeyAndItsHotKeysRunFromAnywhereInIt() {
+        val ran = mutableListOf<String>()
+        val delete: () -> Unit = { ran += "delete" }
+        val quit: () -> Unit = { ran += "quit" }
+        ui.push(object : ListScreen("Fruit", { rows() }, "Empty") {
+            override fun menuBar(): MenuBar = MenuBar(
+                listOf(
+                    MenuItem("Apple", 'a', listOf(MenuItem("Delete", 'd', value = delete))),
+                    MenuItem("File", 'f', listOf(MenuItem("Quit", 'q', value = quit))),
+                ),
+                mapOf('q' to quit),
+            )
+        })
+        told.calls.clear()
+        menuKey()
+        assertEquals(listOf("menu", "menu item Apple 1 of 2 submenu"), told.calls)
+        press("RIGHT")
+        assertEquals("menu item Delete 1 of 1", told.calls.last())
+        spaceWith('q')
+        assertEquals(listOf("quit"), ran)
+        assertEquals("menu chosen", told.calls.last())
+    }
+
+    @Test fun anAppsOwnLetterRuleDecidesWhichKeyPressesALetter() {
+        val dot8Only = object : Letters() {
+            override fun pressed(key: Key): Letters.Pressed =
+                if (key is Key.Chord) Letters.Pressed.Refused("Press it with dot 8") else super.pressed(key)
+        }
+        val own = stack(dot8Only)
+        var mixed = false
+        own.list("Fruit", ::rows, actions = { listOf(Action("Mix", 'x') { mixed = true }) })
+        told.calls.clear()
+        own.key(KeyEvent("SPACE_DOT1_DOT3_DOT4_DOT6", KeyEvent.CHORD, false), false)
+        wait()
+        assertEquals(listOf("sound ${OrbitReader.SOUND_ERROR}", "say Press it with dot 8"), told.calls)
+        own.key(KeyEvent("DOT1_DOT3_DOT4_DOT6_DOT8", KeyEvent.CHORD, false), false)
+        assertTrue(mixed)
+    }
+
+    @Test fun aScreenThatTakesBackItselfStaysAndBackOnTheFirstScreenEndsTheAppOnThePlayerToo() {
+        var ended = false
+        ui.onEmpty = { ended = true }
+        ui.list("Fruit", ::rows)
+        var backs = 0
+        ui.push(object : ListScreen("Form", { emptyList() }, "Empty") {
+            override fun back(): Boolean {
+                backs++
+                return true
+            }
+        })
+        escape()
+        assertEquals(1, backs)
+        assertEquals("Form", ui.top?.title)
+        ui.close(ui.top!!)
+        phone("BACK", KeyEvent.PRESS)
+        assertTrue(ended)
+    }
+
+    @Test fun aScreenThatNoLongerStandsClosesAtTheRefreshAndTheOneUnderIsTold() {
+        var standing = true
+        ui.list("Fruit", ::rows)
+        ui.push(object : ListScreen("Question", { listOf(Item("yes", "Yes")) }, "Empty") {
+            override fun stands(): Boolean = standing
+        })
+        told.calls.clear()
+        standing = false
+        ui.refresh()
+        assertEquals(listOf("list Fruit 3 0 apple"), told.calls)
+    }
+
+    @Test fun aScreenIsToldOnlyOnceWhatItShowsHasArrived() {
+        var arrived = false
+        ui.push(object : ListScreen("Fruit", { rows() }, "Empty") {
+            override val loaded: Boolean get() = arrived
+        })
+        assertEquals(emptyList<String>(), told.calls)
+        arrived = true
+        ui.refresh()
+        assertEquals(listOf("list Fruit 3 0 apple"), told.calls)
+    }
+
+    @Test fun aScreenPutInAnothersPlaceClosesItAndIsToldWhereItIsOnTop() {
+        val gone = mutableListOf<String>()
+        val first = ui.list("Fruit", ::rows)
+        val old = object : ListScreen("Colours", { listOf(Item("red", "red")) }, "Empty") {
+            override fun closed() {
+                gone += title
+            }
+        }
+        ui.push(old)
+        told.calls.clear()
+        ui.replace(old, ListScreen("Shapes", { listOf(Item("round", "round")) }, "Empty"))
+        assertEquals(listOf("Colours"), gone)
+        assertEquals(listOf("list Shapes 1 0 round"), told.calls)
+        told.calls.clear()
+        ui.insert(ListScreen("Sizes", { listOf(Item("big", "big")) }, "Empty"), above = first)
+        assertEquals("not on top, so nothing is told", emptyList<String>(), told.calls)
+        assertEquals(listOf("Fruit", "Sizes", "Shapes"), ui.screens.map { it.title })
+    }
+
+    @Test fun aBatchTellsOnlyTheScreenOnTopAsItEnds() {
+        ui.batch {
+            ui.list("Fruit", ::rows)
+            ui.list("Colours", { listOf(Item("red", "red")) })
+        }
+        assertEquals(listOf("list Colours 1 0 red"), told.calls)
     }
 }

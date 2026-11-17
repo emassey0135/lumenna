@@ -8,18 +8,11 @@ import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.app.SidebarGroup
 import dev.emassey0135.lumenna.app.SidebarKind
-import dev.emassey0135.lumenna.app.SpeakLetter
 import dev.emassey0135.lumenna.app.ViewModel
-import dev.emassey0135.lumenna.app.brailleLetter
-import dev.emassey0135.lumenna.app.nothingOnLetter
 import dev.emassey0135.lumenna.app.sidebarKey
-import dev.emassey0135.lumenna.app.speakLetter
-import dev.emassey0135.lumenna.app.speakPressInstead
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.SettingsPages
-import dev.emassey0135.orbit.Key
 import dev.emassey0135.orbit.OrbitMenu
-import dev.emassey0135.orbit.OrbitMenu.Outcome
 
 /** What an item of the menu bar runs: the row's action, handed back as it is offered, or a command. */
 sealed interface BarChoice {
@@ -28,19 +21,21 @@ sealed interface BarChoice {
 }
 
 /**
- * The core's menu bar (`braille_menu_bar_on_row`) as Orbit's own menus are: its menus a list of
- * submenus, the row in hand's actions first, then the screen's own, then File, Edit, View, Task,
- * Day and Help. What does not apply now (`ViewModel.commands`, `screen_actions`) is left out, as
- * Orbit's menus leave theirs; a menu left empty is too. An item's name is the core's, and a hot
- * key's press is said after it on the Speak. [hot] is what each hot key runs, from the whole bar.
+ * The core's menu bar (`braille_menu_bar_on_row`) as Orbit's own menus are, for the SDK's stack to
+ * open on the menu key ([dev.emassey0135.orbit.ui.MenuBar]): its menus a list of submenus, the row in
+ * hand's actions first, then the screen's own, then File, Edit, View, Task, Day and Help. What does
+ * not apply now (`ViewModel.commands`, `screen_actions`) is left out, as Orbit's menus leave theirs;
+ * a menu left empty is too. An item's name is the core's, and a hot key's press is said after it on
+ * the Speak. [hot] is what each hot key runs, from the whole bar; [run] runs a choice.
  */
 fun menuBarItems(
     bar: List<LetteredMenu>,
     view: ViewModel,
     on: ActingOn?,
     withPress: (String, String?) -> String,
-    hot: MutableMap<String, BarChoice>,
-): List<OrbitMenu.Item<BarChoice>> {
+    hot: MutableMap<Char, () -> Unit>,
+    run: (BarChoice) -> Unit,
+): List<OrbitMenu.Item<() -> Unit>> {
     val states = view.commands.associateBy { it.id }
     val actions = view.screenActions.associateBy { it.id }
     return bar.mapNotNull { menu ->
@@ -53,108 +48,11 @@ fun menuBarItems(
             }
             val title = if (action != null) item.title else states[item.id]?.title?.ifEmpty { null } ?: actions[item.id]?.title ?: item.title
             val hotLetter = item.letter.takeIf { item.hotKey && it.isNotEmpty() }
-            if (hotLetter != null) hot.putIfAbsent(hotLetter, choice)
-            OrbitMenu.Item(withPress(title, hotLetter), item.letter.singleOrNull(), value = choice)
+            val running: () -> Unit = { run(choice) }
+            hotLetter?.singleOrNull()?.let { hot.putIfAbsent(it, running) }
+            OrbitMenu.Item(withPress(title, hotLetter), item.letter.singleOrNull(), value = running)
         }
         if (children.isEmpty()) null else OrbitMenu.Item(menu.title, menu.letter.singleOrNull(), children)
-    }
-}
-
-/**
- * The menu bar open (Space with M on the Speak, Menu on the Player), moving as Orbit's Editor's
- * menu does ([OrbitMenu]) and told to Orbit's reader as its own: the menu opened, then each item
- * as a menu's (role 8), a submenu said as one. A letter alone is an item's access key in the level
- * shown; Space with a letter (or Dot 8 with one the Speak keeps) is a hot key from anywhere in the
- * bar, as from the screen under it. Escape, Back and the menu key close it; Left closes it from
- * the top. A choice closes it and runs, the screen under it not said again.
- */
-class MenuBarScreen(
-    private val menu: OrbitMenu<BarChoice>,
-    private val hot: Map<String, BarChoice>,
-) : Screen() {
-    private var chose = false
-
-    override val title: String get() = appWords.braille.actionsMenu
-
-    override fun rows(): List<Row> = menu.items.mapIndexed { index, item ->
-        Row("${menu.depth}:$index", item.name, {
-            menu.moveTo(index)
-            act(menu.select())
-        }, title = item.name)
-    }
-
-    /** The Player's digits and T9 letters move here as in any list ([FirstLetters]). */
-    override fun moved(row: Row) {
-        row.key.substringAfter(':').toIntOrNull()?.let(menu::moveTo)
-    }
-
-    /** What the reader is told: the menu opened as it first shows, then the item in hand. */
-    fun draw(newlyShown: Boolean, why: Why, textView: android.widget.TextView) {
-        index = menu.index
-        selectedKey = "${menu.depth}:${menu.index}"
-        textView.text = buildString {
-            append(title).append("\n\n").append(menu.current?.name.orEmpty())
-            if (menu.current?.isSubMenu == true) append(" …")
-            append("\n\n").append(menu.index + 1).append(" of ").append(menu.items.size)
-        }
-        val item = menu.current?.let { ReaderCall.FocusMenu(it.name, it.isSubMenu, it.accessKey, menu.index + 1, menu.items.size) }
-        describeMenu(newlyShown, why, item).forEach(ui.reader::perform)
-    }
-
-    override fun key(key: Key): Boolean {
-        val outcome = when (key) {
-            Key.Up, Key.BackTab -> menu.up()
-            Key.Down, Key.Tab -> menu.down()
-            Key.First -> menu.first()
-            Key.Last -> menu.last()
-            Key.Right -> menu.right()
-            Key.Left, Key.Dot7 -> menu.left()
-            Key.Select, Key.Dot8 -> menu.select()
-            Key.Escape, Key.Back, Key.Menu -> Outcome.Closed
-            is Key.BackReleased -> return true
-            is Key.Cell -> brailleLetter(key.dots.toUByte())?.singleOrNull()?.let(menu::accessKey) ?: Outcome.Refused
-            is Key.Chord -> {
-                val letter = brailleLetter(key.dots.toUByte())
-                if (letter != null && speakLetter(letter) != SpeakLetter.SPACE) {
-                    ui.refuse()
-                    ui.say(speakPressInstead(letter))
-                    return true
-                }
-                hotKey(letter) ?: return true
-            }
-            is Key.Enter -> hotKey(brailleLetter(key.dots.toUByte())) ?: return true
-            else -> return false
-        }
-        act(outcome)
-        return true
-    }
-
-    /** A hot key's choice; none once a letter that runs nothing has been refused in the core's words. */
-    private fun hotKey(letter: String?): Outcome<BarChoice>? {
-        letter ?: return Outcome.Refused
-        val choice = hot[letter]
-        if (choice == null) {
-            ui.refuse()
-            ui.say(nothingOnLetter(letter))
-            return null
-        }
-        return Outcome.Chosen(choice)
-    }
-
-    private fun act(outcome: Outcome<BarChoice>) {
-        when (outcome) {
-            Outcome.Moved, Outcome.Opened, Outcome.Back -> ui.redraw(Why.Moved)
-            Outcome.Closed -> ui.remove(this)
-            Outcome.Refused -> ui.refuse()
-            is Outcome.Chosen -> {
-                chose = true
-                ui.closeMenu(this) { ui.runBarChoice(outcome.value) }
-            }
-        }
-    }
-
-    override fun leaving() {
-        ui.reader.contextMenuClosed(dismissed = !chose)
     }
 }
 

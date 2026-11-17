@@ -138,21 +138,27 @@ Orbit's own apps tell theirs. Nothing is told before the reader is ready.
 
 | | |
 |---|---|
-| `OrbitUi(reader, braille, context, words, orbitWords, …)` | The stack. `reader` is any `Reader` (an `OrbitReader`, or a test's). `braille` and `context` are for typing in cells and the clipboard; leave them out in a test. `main`, `later`, `translator` and `editOutput` can be given too, for a test. |
-| `push(screen)`, `close(screen)`, `top` | A screen on top, told as newly shown; a screen taken off wherever it is, the one under it told again if it was on top. |
-| `refresh()` | The app's data changed. The screen on top reads its rows again, keeping the row in hand by its key, and says nothing unless that row moved, or the person reworded it by what they just did. A screen whose `stands()` is false now closes. |
-| `onEmpty` | Called when the last screen closes (Back from the first): finish the activity. |
-| `say(text)`, `message(text)`, `refuse()` | Speech after what is being said; Orbit's error tone. |
+| `OrbitUi(reader, braille, context, words, orbitWords, letters, …)` | The stack. `reader` is any `Reader` (an `OrbitReader`, or a test's); the stack's own `reader` wraps it, noting when a description went to Orbit. `braille` and `context` are for typing in cells and the clipboard; leave them out in a test. `letters` is which key presses a letter (below). `main`, `later`, `translator`, `editOutput`, `delay` and `now` can be given too, for a test. |
+| `push(screen)`, `close(screen)`, `top`, `screens` | A screen on top, told as newly shown; a screen taken off wherever it is, the one under it told again if it was on top. |
+| `insert(screen, above)`, `replace(old, screen)` | A screen put just above another, or in another's place (that one closes), told only where it is on top: for an app that follows where its data went (a place renamed or deleted). |
+| `batch { … }` | Pushes and closes that tell nothing until the block ends; then only the screen on top is told, if it has not been. |
+| `refresh()` | The app's data changed. Screens whose `stands()` is false close; the screen on top reads its rows again, keeping the row in hand by its key (or where the app holds it, `inHand()`), and says nothing unless that row moved, or the person reworded it by what they just did. |
+| `land(key)` | The app moved what is in hand itself (to `key`, else where it holds it): a refresh that tells the row in hand, unless it is the row just told, as it was told. |
+| `announce(text)` | What the app says of a change, after what was just told. Speech jumps Orbit's queue of descriptions, so it waits a moment behind one, in order. |
+| `refused(sentence)` | Orbit's error tone, then why (announced), where there is something to say. |
+| `onEmpty` | Called when the last screen closes (Back, Escape or Left from the first): finish the activity. |
+| `say(text)`, `message(text)`, `refuse()` | Speech after what is being said, at once; Orbit's error tone. |
+| `back(screen)` | Back from a screen, as its key does: the screen's own `back()`, else it closes. |
 | `phoneKeypad` | Whether the keys are the Player's, as the last key said. |
 | `launch { … }` | Runs a coroutine without any coroutine library, so the `suspend` calls below can be awaited in turn. |
-| `editBox(…)` | An `EditBox` for this device's keys, for a screen of your own. |
+| `editBox(…)`, `afterTelling { … }` | An `EditBox` for this device's keys (completions on Down where `completing` says), for a screen of your own; something to say after what was just told (a field's hint). |
 
 What to show or ask. Each has a callback form and a `suspend` twin that returns the answer, and
 each answers exactly once: null (or false) when its screen is closed by Back, Escape or `close`.
 
 | | |
 |---|---|
-| `list(title, items, empty, actions)` | A list of `Item(key, text, open, actions, letter)`, read again from `items` at each `refresh`. Returns the `ListScreen`. `empty` is said once when it has no rows. |
+| `list(title, items, empty, actions)` | A list of `Item(key, text, open, actions, letter, expanded, fold, title)`, read again from `items` at each `refresh`. Returns the `ListScreen`. `empty` is said once when it has no rows. A row with `expanded` and `fold` folds: Right unfolds it, Left folds it. `title` is its name alone, for a menu named for it. |
 | `menu(items)` | A menu of `MenuItem`s (Orbit's own `OrbitMenu.Item`), submenus and all. Gives the value of the item chosen. |
 | `askLine(prompt, initial, hint, multiLine)` | An edit box as Orbit's. Select or Dot 8 confirms (Dot 8 starts a line in several lines). Its menu is OK and Cancel. |
 | `confirm(question, default)` | A dialog with Yes and No buttons, `default` in hand first. Cancelling is No. |
@@ -161,16 +167,21 @@ each answers exactly once: null (or false) when its screen is closed by Back, Es
 
 The keys, as Orbit's own apps have them:
 
-- **Lists** move with `OrbitList`: Up and Down stop at the ends, Tab and Shift-Tab go round. Select,
-  Dot 8 and Right open the row. On the Speak a letter alone moves to the next row starting with it,
-  and Space with a row's letter opens it.
-- **Back**: Left, Escape (Space with E or Z), Dot 7 and the Player's Back close the screen. In a line
-  they are the line's: Escape cancels it, Dot 7 and the Player's Back delete, and Back held cancels.
-- **The menu key** (Space with M, the Player's Menu) opens one menu: the row in hand's actions, then
-  the screen's own. Orbit has one menu key for both. A letter alone is an access key. Choosing
-  closes the menu without saying the screen again; dismissing it says the screen again.
-- **Letters with Space**: Space with a letter runs the action of that letter, the row's first. Orbit
-  keeps Space with A, B, C, E, G, L, M, T and Z for itself, so Dot 8 with the letter does the same.
+- **Lists** move with `OrbitList`: Up and Down stop at the ends, Tab and Shift-Tab go round. Select
+  and Dot 8 open the row; Right unfolds a row that folds, else opens it. On the Speak a letter alone
+  moves to the next row starting with it ("No row starts with x" where none does), and Space with a
+  row's letter opens it.
+- **Back**: Left (on a row that does not fold), Escape (Space with E or Z), Dot 7 and the Player's
+  Back close the screen, unless its `back()` takes it. In a line they are the line's: Escape cancels
+  it, Dot 7 and the Player's Back delete, and Back held cancels. Left never leaves a dialog.
+- **The menu key** (Space with M, the Player's Menu) opens one menu: the screen's own `menuBar()`
+  where it has one (submenus, with hot keys that run from anywhere in it), else the row in hand's
+  actions then the screen's own. Orbit has one menu key for both. A letter alone is an access key;
+  Space or Dot 8 with one is a hot key, else the access key. Choosing closes the menu without saying
+  the screen again; dismissing it says the screen again.
+- **Letters with Space**: Space with a letter goes to the screen's `letter()` first, then runs the
+  action of that letter, the row's first, else says there is nothing on it. Orbit keeps Space with A,
+  B, C, E, G, L, M, T and Z for itself, so Dot 8 with the letter does the same.
 - **Dialogs** on the Speak are Orbit's: Tab and Shift-Tab between controls, each told in its role,
   and each key doing what `OrbitDialog.does` says. Select in a line of one presses OK.
 - **On the Player**, which has no Tab and no letters, a digit opens that row and holding star finds
@@ -178,8 +189,22 @@ The keys, as Orbit's own apps have them:
   list: a line or a choice opens a screen of its own, a check turns over, OK and Cancel are rows.
   Lines are typed with multi-tap T9. Back's press closes a screen, and its release goes no further.
 
-Your own screen subclasses `Screen` (a title, `actions()`, `inHandActions()`, `tellShown()`,
-`tellMoved()`, `refresh(tell)`, `key(key)`, `stands()`, `closed()`), or `ListScreen` for a list.
+Your own screen subclasses `Screen`, or `ListScreen` for a list:
+
+| | |
+|---|---|
+| `title`, `loaded` | Its name; whether what it shows has arrived (not told until it has, so nothing says a list is empty on the way). |
+| `tellShown()`, `tellMoved()`, `refresh(tell)`, `land(key)` | What Orbit is told: newly shown, after a move, after the app's data changed (only what moved), and where the app moved what is in hand. |
+| `actions()`, `inHandActions()`, `menuBar()` | What the menu key offers. A `MenuBar(items, hotKeys)` is a menu tree of `MenuItem<() -> Unit>`. |
+| `key(key)`, `back()`, `letter(letter)` | Keys first; Back, Escape, Left and Dot 7 not taken; Space or Dot 8 with a letter, before any action of it. True takes it. |
+| `onTop()`, `stands()`, `closed()` | It came to the top (pushed, or what was over it closed); whether it still stands at the next `refresh`; it left the stack. |
+| `ListScreen`: `items()`, `inHand()`, `moved(item)`, `findLetter(letter)`, `hold(key)`, `expect()` | Its rows; the row the app holds in hand, followed each time the rows are read; the person's own move, for an app that follows it; a letter alone, for an app that finds rows itself; a row put in hand; a row the person may have reworded, read again at the next refresh. |
+
+**Letters** (`Letters`): which letter a cell makes (`of(dots)`, a to z by default) and what Space or
+Dot 8 with dots presses (`pressed(key)`: a `Letter`, `Refused` with why, or `None`). An app whose
+platform keeps some letters with Space gives its own, refusing those with Space and saying to press
+them with Dot 8. **Words** (`UiWords`) are the layer's few, in English by default; those with a part
+are functions of it (`noRowStartsWith(letter)`, `nothingOnLetter(letter)`).
 
 ### Talking to Orbit
 

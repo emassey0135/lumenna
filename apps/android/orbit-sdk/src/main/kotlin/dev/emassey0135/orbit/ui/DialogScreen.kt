@@ -1,6 +1,5 @@
 package dev.emassey0135.orbit.ui
 
-import dev.emassey0135.orbit.BrailleLetters
 import dev.emassey0135.orbit.EditBox
 import dev.emassey0135.orbit.Key
 import dev.emassey0135.orbit.ListFinder
@@ -131,6 +130,10 @@ internal class DialogScreen(
         if (ui.phoneKeypad) super.refresh(tell)
     }
 
+    override fun land(key: String?) {
+        if (ui.phoneKeypad) super.land(key)
+    }
+
     private fun tellControl() {
         when (val control = controls.getOrNull(focus) ?: return) {
             is Control.Edit -> {
@@ -152,7 +155,8 @@ internal class DialogScreen(
     // ---- the Speak: the controls in place ------------------------------------------------
 
     override fun key(key: Key): Boolean {
-        if (ui.phoneKeypad) return super.key(key)
+        // Left never leaves a dialog, on the Player either, whose Back does.
+        if (ui.phoneKeypad) return key == Key.Left || super.key(key)
         val control = controls.getOrNull(focus) ?: return false
         when (val does = OrbitDialog.does(key, kindOf(control))) {
             OrbitDialog.Does.Next -> moveFocus(1)
@@ -200,7 +204,7 @@ internal class DialogScreen(
     }
 
     private fun find(combo: Control.Combo, dots: Int) {
-        val letter = BrailleLetters.letter(dots)?.toString() ?: return ui.refuse()
+        val letter = ui.letters.of(dots)?.toString() ?: return ui.refuse()
         val at = ListFinder.next(combo.field.options, combo.selected, letter) ?: return ui.refuse()
         choose(combo, at)
     }

@@ -20,7 +20,7 @@ import dev.emassey0135.orbit.OrbitReader
 
 /**
  * A form or dialog the core describes (`DialogShown`: a question, the task form, the block form,
- * quick add, a settings page), worked by the braille apps' [DialogController].
+ * quick add, a settings page), worked by the braille apps' [DialogController], on the SDK's stack.
  *
  * On the Speak it is Orbit's own dialog: Tab and Shift-Tab move between controls, each active as
  * soon as it is reached, as in the Editor's Save As; a line types at once (the SDK's [EditBox]), Up
@@ -30,9 +30,9 @@ import dev.emassey0135.orbit.OrbitReader
  * own; where the dialog is a line ([lineFills]: quick add, a question's line) the line is the whole
  * screen and Menu lists the dialog's buttons.
  */
-abstract class DialogScreen : ListScreen() {
+abstract class DialogScreen : AppList() {
     /** Whether this device's keys work the controls in place. */
-    val inPlace: Boolean get() = !ui.phoneKeypad
+    val inPlace: Boolean get() = !host.phoneKeypad
 
     /** The core's description of this dialog now; null until it has arrived. */
     abstract fun shown(): DialogShown?
@@ -41,7 +41,7 @@ abstract class DialogScreen : ListScreen() {
     open val lineFills: Boolean get() = false
 
     /** A button of the dialog that is this app's own to do: a file to pick, pairing. */
-    protected open fun shell(control: ControlShown) = ui.refuse()
+    protected open fun shell(control: ControlShown) = host.refuse()
 
     /** An event the dialog sends, as it goes: for a screen that follows what its buttons do. */
     protected open fun sending(event: ShellEvent) {}
@@ -59,7 +59,7 @@ abstract class DialogScreen : ListScreen() {
             controller?.update(now) ?: run {
                 controller = DialogController(now, send = { event ->
                     sending(event)
-                    ui.send(event)
+                    host.send(event)
                 }, shell = ::shell)
             }
             return controller
@@ -83,7 +83,7 @@ abstract class DialogScreen : ListScreen() {
     /** Escape, Back, or Dot 7 off a line: what the dialog sends unanswered, then gone. */
     protected open fun cancelDialog() {
         dialog?.cancel()
-        ui.remove(this)
+        host.remove(this)
     }
 
     // ---- what it shows -------------------------------------------------------------------
@@ -121,14 +121,14 @@ abstract class DialogScreen : ListScreen() {
     /** The Player's rows for a control: a line or a choice opens a screen, a list is its options. */
     private fun playerRows(controller: DialogController, at: Int, control: ControlShown): List<Row> = when (control.kind) {
         ControlType.LINE, ControlType.LINES -> listOf(Row(control.key, textOf(control), {
-            ui.push(FieldEditScreen(control.label, controller.text(control), control.hint, control.kind == ControlType.LINES) { text ->
+            host.push(FieldEditScreen(control.label, controller.text(control), control.hint, control.kind == ControlType.LINES) { text ->
                 controller.moveTo(at)
                 controller.type(text)
                 controller.commit()
             })
         }, offered, on))
         ControlType.CHOICE -> listOf(Row(control.key, textOf(control), {
-            ui.push(ChoiceScreen(control.label, control.options.map { it.title }, controller.selected(control) ?: 0) { option ->
+            host.push(ChoiceScreen(control.label, control.options.map { it.title }, controller.selected(control) ?: 0) { option ->
                 controller.moveTo(at)
                 controller.choose(option)
             })
@@ -168,15 +168,14 @@ abstract class DialogScreen : ListScreen() {
             if (control.kind != ControlType.TEXT || !(control.key == "refusal" || control.key == "refused" || control.key.startsWith("problem:"))) continue
             if (refusals[control.key] == control.value) continue
             refusals[control.key] = control.value
-            ui.refuse()
-            ui.say(control.value)
+            host.stack.refused(control.value)
         }
         refusals.keys.retainAll(controls.map { it.key }.toSet())
     }
 
     // ---- the lines ----------------------------------------------------------------------
 
-    private class Editing(val editor: EditBox, val from: String)
+    private class Editing(val editor: EditBox, val from: String, val phone: Boolean)
 
     private val editors = HashMap<String, Editing>()
 
@@ -189,19 +188,22 @@ abstract class DialogScreen : ListScreen() {
     private fun ControlShown.isLine() = kind == ControlType.LINE || kind == ControlType.LINES
 
     /** The text being typed and the caret, for completion. */
-    protected var current = ""
+    protected var typing = ""
     protected var cursor = 0
 
-    /** The editor of [control], made anew only when the core changed its line underneath. */
+    /**
+     * The editor of [control], made anew only when the core changed its line underneath, or the
+     * keys turned out to be the other device's.
+     */
     protected fun editorFor(control: ControlShown): EditBox {
         val controller = dialog
         val text = controller?.text(control) ?: control.value
         val editing = editors[control.key]
-        if (editing != null && (text == editing.from || text == editing.editor.display())) return editing.editor
-        val editor = ui.editor(
+        if (editing != null && editing.phone == host.phoneKeypad && (text == editing.from || text == editing.editor.display())) return editing.editor
+        val editor = host.editor(
             control.label, text,
             changed = { typed, caret ->
-                current = typed
+                typing = typed
                 cursor = caret
                 controller?.let { c ->
                     c.controls.indexOfFirst { it.key == control.key }.takeIf { it >= 0 && it != c.index }?.let(c::moveTo)
@@ -214,9 +216,9 @@ abstract class DialogScreen : ListScreen() {
             complete = { openCompletions(control) },
             multiline = control.kind == ControlType.LINES,
         )
-        current = text
+        typing = text
         cursor = text.length
-        editors[control.key] = Editing(editor, text)
+        editors[control.key] = Editing(editor, text, host.phoneKeypad)
         return editor
     }
 
@@ -227,48 +229,51 @@ abstract class DialogScreen : ListScreen() {
         if (!controller.press()) controller.commit()
     }
 
-    /** The Player's line, as shown: the text with what is being typed in place. */
-    fun display(): String = line()?.let { editorFor(it).display() }.orEmpty()
-
     /** On the Player, where the line is the whole screen: Orbit says it and its hint. */
-    fun describe() {
+    private fun describeLine() {
         val line = line() ?: return
         dialog?.let { c -> c.controls.indexOfFirst { it.key == line.key }.takeIf { it >= 0 && it != c.index }?.let(c::moveTo) }
-        ui.braille.follow()
+        host.braille.follow()
         editorFor(line).focus()
         // After the field's name: what Orbit is told goes through its event queue, speech does not.
-        if (line.hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { if (ui.top === this) ui.reader.speakQueued(line.hint) }
+        if (line.hint.isNotEmpty()) host.stack.afterTelling { if (host.top === this) reader.speakQueued(line.hint) }
     }
 
     /** What could go at the caret in the line's own syntax. */
     private fun candidates(control: ControlShown): List<Candidate> {
         val syntax = control.syntax ?: return emptyList()
-        return runCatching { ui.app.complete(current, TextOffsets.bytes(cursor, current), syntax).candidates }.getOrDefault(emptyList())
+        return runCatching { host.app.complete(typing, TextOffsets.bytes(cursor, typing), syntax).candidates }.getOrDefault(emptyList())
     }
 
     private fun openCompletions(control: ControlShown) {
         val syntax = control.syntax ?: return
-        val completions = runCatching { ui.app.complete(current, TextOffsets.bytes(cursor, current), syntax) }.getOrNull() ?: return
-        val start = TextOffsets.utf16(completions.start, current)
-        val end = TextOffsets.utf16(completions.end, current)
-        ui.push(CompletionScreen(completions.candidates.map { candidate ->
+        val completions = runCatching { host.app.complete(typing, TextOffsets.bytes(cursor, typing), syntax) }.getOrNull() ?: return
+        val start = TextOffsets.utf16(completions.start, typing)
+        val end = TextOffsets.utf16(completions.end, typing)
+        host.push(CompletionScreen(completions.candidates.map { candidate ->
             candidateLine(candidate) to {
-                val text = current.substring(0, start) + candidate.text + current.substring(end)
-                current = text
+                val text = typing.substring(0, start) + candidate.text + typing.substring(end)
+                typing = text
                 cursor = start + candidate.text.length
                 editorFor(control).replace(text, cursor)
-                ui.pop()
+                host.pop()
             }
         }))
     }
 
+    /** Whether the Player shows the dialog's line as the whole screen. */
+    private val lineShown: Boolean get() = !inPlace && lineFills && line() != null
+
     // ---- the keys -----------------------------------------------------------------------
 
     override fun key(key: Key): Boolean {
-        if (ui.top === this && !loaded(ui.view)) return true
+        if (!loaded) return true
         val controller = dialog ?: return true
         if (!inPlace) {
-            if (!lineFills) return false
+            if (!lineFills || line() == null) {
+                // Left never leaves a dialog, on the Player either, whose Back does.
+                return key == Key.Left || super.key(key)
+            }
             val line = line() ?: return false
             // The Player's Menu is the line's menu (its buttons); every other key is the line's.
             if (key == Key.Menu) return false
@@ -291,9 +296,9 @@ abstract class DialogScreen : ListScreen() {
             OrbitDialog.Does.Cancel -> cancelDialog()
             OrbitDialog.Does.NotTaken -> return false
             OrbitDialog.Does.Nothing -> {}
-            OrbitDialog.Does.Edit -> editorFor(control).key(key)
+            OrbitDialog.Does.Edit -> return editorFor(control).key(key)
             OrbitDialog.Does.Press -> controller.press()
-            OrbitDialog.Does.Toggle -> controller.toggle()?.let { ui.reader.focusCheck(control.label, it) }
+            OrbitDialog.Does.Toggle -> controller.toggle()?.let { reader.focusCheck(control.label, it) }
             is OrbitDialog.Does.Step, OrbitDialog.Does.First, OrbitDialog.Does.Last, is OrbitDialog.Does.Find -> choose(controller, control, does)
         }
         return true
@@ -311,8 +316,7 @@ abstract class DialogScreen : ListScreen() {
 
     private fun moveFocus(move: () -> ControlShown?): Boolean {
         move() ?: return true
-        selectedKey = dialog?.control?.key
-        ui.redraw(Why.Moved)
+        tellControl()
         return true
     }
 
@@ -327,47 +331,84 @@ abstract class DialogScreen : ListScreen() {
             else -> return
         }
         if (to == null) {
-            ui.refuse()
+            host.refuse()
             return
         }
-        ui.reader.itemChanged(control.label, control.options.size, to, control.options.getOrNull(to)?.title.orEmpty())
+        reader.itemChanged(control.label, control.options.size, to, control.options.getOrNull(to)?.title.orEmpty())
     }
 
     // ---- what Orbit is told -------------------------------------------------------------
 
-    private var told = false
+    private var announced = false
 
-    /** The dialog is told once, as it opens, then the control in hand whenever it is reached. */
-    fun describeControl(newlyShown: Boolean, why: Why, moved: Boolean) {
+    /** The control last told, so a turn that moved the control in hand tells it and one that did not says nothing. */
+    private var toldControl: String? = null
+
+    /**
+     * Newly shown. On the Speak the dialog is told once, as it opens, then the control in hand
+     * whenever it is reached. On the Player its whole-screen line is said as a field; otherwise it
+     * is a list, as a question opens as a dialog first.
+     */
+    override fun tellShown() {
+        if (inPlace) {
+            dialog?.let { sayRefusals(it.controls) }
+            if (!announced) {
+                announced = true
+                reader.dialog(title, "", "")
+            }
+            tellControl()
+            return
+        }
+        if (lineShown) {
+            sayRefusalsNow()
+            describeLine()
+            return
+        }
+        super.tellShown()
+    }
+
+    private fun sayRefusalsNow() {
+        dialog?.let { sayRefusals(it.controls) }
+    }
+
+    override fun refresh(tell: Boolean) {
+        if (inPlace) {
+            sayRefusalsNow()
+            if (tell && dialog?.control?.key != toldControl) tellControl()
+            return
+        }
+        // The whole-screen line is said as it opens, its typing echoed as it goes.
+        if (lineShown) return sayRefusalsNow()
+        super.refresh(tell)
+    }
+
+    override fun land(key: String?) = refresh(true)
+
+    /** The control in hand, told to Orbit in its role. */
+    private fun tellControl() {
         val controller = dialog ?: return
         val control = controller.control ?: return
-        if (!told) {
-            told = true
-            ui.reader.dialog(title, "", "")
-        }
-        if (!newlyShown && why != Why.Moved && why != Why.Entered && !moved) return
+        toldControl = control.key
         when (control.kind) {
             ControlType.LINE, ControlType.LINES -> {
-                ui.braille.follow()
+                host.braille.follow()
                 editorFor(control).focus()
-                if (control.hint.isNotEmpty()) ui.later(HINT_AFTER_MS) { if (ui.top === this) ui.reader.speakQueued(control.hint) }
+                if (control.hint.isNotEmpty()) host.stack.afterTelling { if (host.top === this && toldControl == control.key) reader.speakQueued(control.hint) }
             }
             ControlType.CHOICE, ControlType.LIST -> {
                 val at = controller.selected(control) ?: 0
-                ui.reader.focusChoice(
+                reader.focusChoice(
                     control.label, if (control.kind == ControlType.LIST) OrbitReader.ROLE_LIST_BOX else OrbitReader.ROLE_COMBO_BOX,
                     control.options.size, at, control.options.getOrNull(at)?.title.orEmpty(),
                 )
             }
-            ControlType.CHECK -> ui.reader.focusCheck(control.label, controller.checked(control))
-            ControlType.BUTTON -> ui.reader.focusControl(ui.withLetter(textOf(control), control.letter.ifEmpty { null }), OrbitReader.ROLE_BUTTON)
-            ControlType.TEXT -> ui.reader.focusText(control.value)
+            ControlType.CHECK -> reader.focusCheck(control.label, controller.checked(control))
+            ControlType.BUTTON -> reader.focusControl(host.withLetter(textOf(control), control.letter.ifEmpty { null }), OrbitReader.ROLE_BUTTON)
+            ControlType.TEXT -> reader.focusText(control.value)
         }
     }
 
     companion object {
-        const val HINT_AFTER_MS = 400L
-
         /** A dialog of this app's own: one line, then Confirm and Cancel, each this app's to do. */
         fun ownLine(id: String, title: String, label: String, value: String, hint: String, confirm: String, multiline: Boolean = false): DialogShown =
             DialogShown(
@@ -408,14 +449,14 @@ open class LineScreen(
             "confirm" -> {
                 val text = line()?.let { dialog?.text(it) }.orEmpty()
                 done(text)
-                ui.remove(this)
+                host.remove(this)
             }
-            "cancel" -> ui.remove(this)
+            "cancel" -> host.remove(this)
         }
     }
 
     /** Escape leaves it: nothing of the app's is open to cancel. */
-    override fun cancelDialog() = ui.remove(this)
+    override fun cancelDialog() = host.remove(this)
 
     override fun lineFinished(control: ControlShown, text: String) {
         dialog?.type(text)
@@ -431,18 +472,20 @@ class FieldEditScreen(name: String, value: String, hint: String, multiline: Bool
 class ChoiceScreen(
     private val name: String,
     private val options: List<String>,
-    private val current: Int,
+    selected: Int,
     private val chosen: (Int) -> Unit,
-) : Screen() {
-    override val title: String get() = name
-    override fun resumed() {
-        index = current.coerceIn(0, (options.size - 1).coerceAtLeast(0))
+) : AppList() {
+    init {
+        hold(selected.coerceIn(0, (options.size - 1).coerceAtLeast(0)).toString())
     }
+
+    override val title: String get() = name
+
     override fun rows(): List<Row> = options.mapIndexed { at, option ->
         // Chosen first, so the form shows what was chosen as it comes back.
         Row(at.toString(), option, {
             chosen(at)
-            ui.remove(this)
+            host.remove(this)
         })
     }
 }
