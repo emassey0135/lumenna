@@ -3,6 +3,7 @@ package dev.emassey0135.lumenna.orbit
 import dev.emassey0135.lumenna.SettingsPages
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.BlockEvent
+import dev.emassey0135.lumenna.app.ControlSends
 import dev.emassey0135.lumenna.app.ControlShown
 import dev.emassey0135.lumenna.app.DialogShown
 import dev.emassey0135.lumenna.app.Offered
@@ -131,14 +132,16 @@ class PageScreen(private val page: SettingsPage) : DialogScreen() {
         return false
     }
 
-    /** What the core leaves to this app: a file to pick, a backup into the folder, pairing. */
+    /** What the core leaves to this app: a file to pick, a backup into the folder, pairing, a folder. */
     override fun shell(control: ControlShown) {
         when (control.key) {
             "back-up" -> host.core.backUpNow()
             "restore-backup", "import" -> host.pickImport()
             "pair" -> host.push(DevicesScreen())
-            // A folder is chosen with a file picker Orbit's keys cannot work.
-            else -> host.refuse()
+            // A folder setting (`backup-dir`): chosen in Orbit's File Manager, starting where it is.
+            else -> (control.sends as? ControlSends.Shell)?.takeIf { control.key.startsWith("setting:") }
+                ?.let { host.chooseFolder(it.field0, control.value) }
+                ?: host.refuse()
         }
     }
 }

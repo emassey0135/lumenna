@@ -611,11 +611,17 @@ class Ui(
         multiline: Boolean = false,
     ): EditBox = stack.editBox(name, initial, multiline, confirmed, cancelled, changed, completing, complete)
 
-    /** Choosing a file to import or restore: Android's own picker. */
+    /** Choosing a file to import or restore, in Orbit's File Manager. */
     fun pickImport() = chooseFile()
 
-    /** Set by the activity: opens Android's file picker, then the file goes to the app. */
+    /** Set by the activity: opens Orbit's File Manager, then the file goes to the app. */
     var chooseFile: () -> Unit = {}
+
+    /**
+     * Set by the activity: the folder setting [key], now [current], chosen in Orbit's File Manager
+     * and set to the folder chosen.
+     */
+    var chooseFolder: (key: String, current: String) -> Unit = { _, _ -> refuse() }
 }
 
 /** Verbose logging for debug builds. */
