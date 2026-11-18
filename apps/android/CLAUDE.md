@@ -473,10 +473,13 @@ apps can use it, and a Gradle build of its own as well as Lumenna's module (its 
 `sample/` its README's quick start). **Read its own notes before changing it**
 (`braillesense-sdk/CLAUDE.md`): its API, explicit API mode with KDoc on everything public, and
 everything found on the device. Its README is for an app that uses it, and `docs/DEVICE.md` the
-device for a developer without one. Its screen stack, `BrailleSenseUi`, has the Orbit SDK's
-`OrbitUi`'s common API (`list`, the asks, `refresh`, `land`, `announce`, `refused`, `batch`,
-`launch`, `Item`, `Action`, `MenuItem`, `Field`, `FormValues`, the common `UiWords`): a change to
-one is a change to both. What the device says is in its own words there, not in the core (the
+device for a developer without one. **Each SDK is its own device's, for any app**: everything in it
+follows the device's own widgets, or their conventions where the SDK draws its own, extending them
+only in keeping with them (folding, which neither device's own apps have), and nothing in it may do
+nothing on its device or be there only to match the other SDK. The two use the same names where the
+devices agree (`BrailleSenseUi` and `OrbitUi`: `list`, the asks, `refresh`, `land`, `announce`,
+`batch`, `launch`, `Item`, `Action`, `MenuItem`, `Field`, `FormValues`) and are never kept in step
+otherwise. What the device says is in its own words there, not in the core (the
 root's exception for a device SDK's words). Tests: `./gradlew :braillesense-sdk:testDebugUnitTest`,
 on the JVM.
 
@@ -523,17 +526,17 @@ the KDoc. A change to its public API changes the README too. What is easy to get
 - **Explicit API mode** (`kotlin { explicitApi() }`): every declaration says `public` or `internal`,
   and every public one has KDoc (`ServiceLink` is internal). `./gradlew dokkaGenerate`, run inside
   the directory, writes the reference to `build/dokka/html`.
-- **The screen stack's shape is the BrailleSense SDK's**: `OrbitUi.on(session, words, letters)`,
-  `list(title, items, empty, actions, moved, find)`, `menu`, `askLine`, `confirm`, `choose`, `form`
-  (each a callback and a `suspend` twin), `refresh`, `land(key)`, `announce`/`message`, `refused`,
-  `batch`, `launch`, `onEmpty`; `Item(key, text, open, actions, letter, detail, expanded, fold,
-  toggle, delete, title)`, `Action(name, letter, asks, run)`, `MenuItem(name, letter, children,
-  value, asks)`, `Field`, `FormValues` (public constructor, an unknown key throws) and `UiWords`'
-  common words (`noRowStartsWith` and `nothingOnLetter` take a `Char`), so an app's screens compile
-  against either by their imports. Change one, change the other. On Orbit `detail` is told after
-  the text with a comma (`Item.line`), `toggle` is Select on a row with no `open`, `delete` is Space
-  with D (Dot 8 with D where the app's `Letters` keep Space), and `asks` changes nothing, since
-  Orbit's menus mark no dialog. `MenuItem` is the SDK's own, made `OrbitMenu.Item` inside.
+- **The screen stack follows Orbit's own apps** (the rule above, under the BrailleSense SDK):
+  `OrbitUi.on(session, words, letters)`, `list(title, items, empty, actions, moved, find)`, `menu`,
+  `askLine`, `confirm`, `choose`, `form` (each a callback and a `suspend` twin), `refresh`,
+  `land(key)`, `announce`, `refused` (Orbit's error tone), `batch`, `launch`, `onEmpty`; `Item(key,
+  text, open, actions, letter, detail, expanded, fold, toggle, delete, title)`, `Action(name, letter,
+  run)`, `MenuItem(name, letter, children, value)`, `Field`, `FormValues` (public constructor, an
+  unknown key throws) and `UiWords`. `detail` is told after the text with a comma (`Item.line`),
+  `toggle` is Select on a row with no `open`, `delete` is Space with D as the Alarm Clock deletes an
+  alarm (Dot 8 with D, as the File Manager deletes, where the app's `Letters` keep Space), folding is
+  Right and Left as Orbit's menus open and close a submenu, and `title` names the menu of a row's
+  actions. `MenuItem` is the SDK's own, made `OrbitMenu.Item` inside.
 - **`OrbitSession`** (`session`) is the device for one activity, as `BrailleSenseSession` is, its
   lifecycle methods named the same (`created`, `resumed`, `paused`, `windowFocus`, `destroyed`):
   the `OrbitReader` (the session is its `Listener`), `BrailleInput`, the reader's `Claim`, keys
