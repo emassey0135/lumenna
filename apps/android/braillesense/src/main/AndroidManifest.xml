@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Syncing with paired devices over Iroh. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -11,6 +12,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Files chosen in the device's File Manager, which answers with a path alone and grants
+         nothing: reading one Lumenna did not make, or writing outside the shared folders, needs
+         all-files access, as the device's own Notepad holds. The person allows it under Settings
+         the first time they choose a file. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
 
     <application
         android:name=".BrailleSenseApplication"

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
@@ -13,6 +14,7 @@ import android.view.KeyEvent
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.lifecycle.lifecycleScope
 import com.extra.han.lumenna.ui.Host
 import com.extra.han.lumenna.ui.Shell
@@ -188,33 +190,69 @@ class MainActivity : ComponentActivity(), Host {
     // ---- files: chosen in the device's own File Manager (the SDK's `FilePicker`), which reads itself
     // on the cells and in speech; Android's picker only where it cannot be started.
 
-    /** Asks the File Manager for [request], then hands what was chosen to [then]; false where it cannot be asked. */
-    private fun pick(request: FileRequest, then: (PickedFile) -> Unit): Boolean {
-        picking = then
-        val started = runCatching { FilePicker.launch(request) { picker.launch(it) } }.getOrDefault(false)
-        if (!started) picking = null
-        return started
+    /**
+     * Asks the File Manager for [request], then hands what was chosen to [then], or runs [otherwise]
+     * where it cannot be asked. The File Manager answers with a path alone, so the first time a file
+     * is chosen without all-files access, Android's screen for it comes first; the pick goes on
+     * once the person is back, whatever they chose there.
+     */
+    private fun pick(request: FileRequest, otherwise: () -> Unit = {}, then: (PickedFile) -> Unit) {
+        withFileAccess {
+            picking = then
+            val started = runCatching { FilePicker.launch(request) { picker.launch(it) } }.getOrDefault(false)
+            if (!started) {
+                picking = null
+                otherwise()
+            }
+        }
+    }
+
+    // What waits for the person to come back from Android's all-files access screen.
+    private var afterAccess: (() -> Unit)? = null
+    private val access = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        afterAccess?.also { afterAccess = null }?.invoke()
+    }
+
+    /** Runs [then], first sending the person to allow all-files access if they never were. */
+    private fun withFileAccess(then: () -> Unit) {
+        // Before Android 11 there is no such access to give; every BrailleSense 7 has Android 15.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return then()
+        askAccess(then)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun askAccess(then: () -> Unit) {
+        val asked = getSharedPreferences(FILES, MODE_PRIVATE)
+        if (Environment.isExternalStorageManager() || asked.getBoolean(ASKED_ACCESS, false)) return then()
+        asked.edit().putBoolean(ASKED_ACCESS, true).apply()
+        afterAccess = then
+        val shown = runCatching {
+            access.launch(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
+        }.isSuccess
+        if (!shown) {
+            afterAccess = null
+            then()
+        }
     }
 
     /** Each file the app makes is saved where the person chooses, written off the main thread. */
     private fun saveFile(file: SaveFile) {
-        val chosen = pick(FileRequest(PickKind.SAVE_FILE, suggestedName = file.name, startIn = folder)) { to ->
-            lifecycleScope.launch(Dispatchers.IO) { runCatching { to.openOutput(this@MainActivity).use { it.write(file.bytes) } } }
-        }
-        if (!chosen) {
+        val elsewhere = {
             saving = file
             save.launch(file.name)
+        }
+        pick(FileRequest(PickKind.SAVE_FILE, suggestedName = file.name, startIn = folder), elsewhere) { to ->
+            lifecycleScope.launch(Dispatchers.IO) { runCatching { to.openOutput(this@MainActivity).use { it.write(file.bytes) } } }
         }
     }
 
     override fun importFile() {
-        val chosen = pick(FileRequest(PickKind.OPEN_FILE, startIn = folder)) { file ->
+        pick(FileRequest(PickKind.OPEN_FILE, startIn = folder), { open.launch(arrayOf("*/*")) }) { file ->
             lifecycleScope.launch(Dispatchers.IO) {
                 val bytes = runCatching { file.openInput(this@MainActivity).use { it.readBytes() } }.getOrNull() ?: return@launch
                 core.getOrNull()?.app?.send(ShellEvent.Settings(SettingsEvent.Import(file.name, bytes)))
             }
         }
-        if (!chosen) open.launch(arrayOf("*/*"))
     }
 
     override fun chooseFolder(key: String, current: String) {
@@ -237,5 +275,9 @@ class MainActivity : ComponentActivity(), Host {
 
     companion object {
         const val PLATFORM = "android"
+
+        // Where it is kept that the person was sent to allow all-files access once.
+        private const val FILES = "files"
+        private const val ASKED_ACCESS = "asked-all-files-access"
     }
 }
