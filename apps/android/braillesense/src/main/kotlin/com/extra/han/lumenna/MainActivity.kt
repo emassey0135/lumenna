@@ -242,14 +242,14 @@ class MainActivity : ComponentActivity(), Host {
             save.launch(file.name)
         }
         pick(FileRequest(PickKind.SAVE_FILE, suggestedName = file.name, startIn = folder), elsewhere) { to ->
-            lifecycleScope.launch(Dispatchers.IO) { runCatching { to.openOutput(this@MainActivity).use { it.write(file.bytes) } } }
+            lifecycleScope.launch(Dispatchers.IO) { runCatching { to.openOutput().use { it.write(file.bytes) } } }
         }
     }
 
     override fun importFile() {
         pick(FileRequest(PickKind.OPEN_FILE, startIn = folder), { open.launch(arrayOf("*/*")) }) { file ->
             lifecycleScope.launch(Dispatchers.IO) {
-                val bytes = runCatching { file.openInput(this@MainActivity).use { it.readBytes() } }.getOrNull() ?: return@launch
+                val bytes = runCatching { file.openInput().use { it.readBytes() } }.getOrNull() ?: return@launch
                 core.getOrNull()?.app?.send(ShellEvent.Settings(SettingsEvent.Import(file.name, bytes)))
             }
         }
