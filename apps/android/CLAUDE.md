@@ -457,61 +457,36 @@ Both SDKs' `ServiceLink`, `Claim` and `KeyDelivery` are the same:
 than Lumenna: what a device needs, a first activity, and the API. A change to an SDK's public API
 changes its README too.
 
+**Each SDK is a git submodule, a repository of its own** (github.com/emassey0135/orbit-sdk and
+braillesense-sdk, Apache-2.0, each with its own CI), checked out at a commit Lumenna names. A change
+to one is made in the submodule's checkout, on a branch of that repository, pushed and merged there
+(its CI runs its tests and builds its sample); Lumenna then moves to that commit (`git add
+apps/android/orbit-sdk`) in a commit of its own. A change that needs both at once goes to the SDK
+first. Lumenna's CI checks out the submodules for the Android jobs (`submodules: true`) and still
+runs both SDKs' JVM tests. A checkout made before the move needs `git submodule update --init`.
+
 ## The BrailleSense SDK
 
-`apps/android/braillesense-sdk/` (`:braillesense-sdk`, package `dev.emassey0135.braillesense`): an unofficial SDK for the HIMS BrailleSense 7, the device itself, found by reading the device, its manual and its built-in apps. It depends on nothing of Lumenna's (not `:shared`, `:braille` or the core's bindings), so it can move to a repository of its own and any app can use it; its `ServiceLink` (internal), `Claim` and `KeyDelivery` are copies of the Orbit SDK's. What the device says is in its own words, here and not in the core (the root's exception for a device SDK's words). The device facts below under the BrailleSense app are the SDK's unless they name the app. Its public API:
-
-- **`han`**: the AIDL under the vendor's descriptors (`IHanOutputService`, `IHanBrailleInputService` and their callbacks, the `HanOutput` parcel).
-- **`input`**: `Key`, what a press means on any screen; `Chords.decode` (a `han_brailleinput` response, routing gestures included) and `Chords.fromChord`, `Chords.letter(dots)`; `Qwerty.decode` (a key event of the snap-on keyboard); `HanInputClient` (registers for the braille keys while in front).
-- **`output`**: `Output` and `HanOutputClient` (speech and raw cells through the output service; `trace` and `tag` log what is sent); `BrailleDisplay`, which says, shows a `DisplayLine` in the person's table between its `BraillePart`s, pans (`scrollOn`, `scrollBack`), routes (`routed`), shows a selection by its cursor (`selecting`) and tells the cursor's display line (`cursorLine`); `Cells`, the panning itself.
-- **`braille`**: `BrailleSettings` (Global Options from the settings provider: tables, eight-dot, Message Display Time, `LineSettings`, `BrailleSigns`, Keyboard Echo as `Echo`, double-tap routing, Automatically Open Menus with Shortcut), `BrailleTables`, `Louis` and its `Translator`.
-- **`reading`**: `deviceReading(DeviceLine, LineSettings, BrailleSigns)`, a control as the device reads it (`ControlRole` with its spoken word and symbol, `RolePlace`, `DeviceReading`), and `dialogTitle`.
-- **`edit`**: `TextBox` (lines of `LineEditor`, in cells as typed), `BoxEditing.press(box, key, display)`, the stock box's keys and what it says for each as an `Edited` (`NotTaken`, `Taken(changed, said)`, or `Ask(question, answer)` for "Delete selected text?", which the app asks its own way), `EditWords.ENGLISH`, `CellEcho` (a cell or a character by itself), `Clipboard` and `SystemClipboard`.
-- **`ui`**: the device's own lists, menus and lines as `Frame`s, each taking its keys and giving what to say and show (`Rendered`, put on the cells by `BrailleDisplay.show(Rendered)`): `ListFrame` of `Row`s, `MenuFrame` of `MenuEntry`s and `LineFrame` over a `TextBox`, read through `Readings` (`SettingsReadings`, `line`). Their letters are a `Letters`: `DeviceLetters` the device's way, an app's own where it has rules of its own (Lumenna's `BrailleLetters`, the core's). `Messages` keeps a message on the cells for the Message Display Time, then puts the line back. A `Row`'s `tag` is the app's, never looked at.
-- **`session`**: `BrailleSenseSession`, an activity's wiring (the settings read and followed, the output service, liblouis installed and in the person's table, both keyboards as `Key`s on the main thread, all held by its `Claim` only while in front), and `Claim` and `KeyDelivery` themselves.
-- **`BrailleSenseUi`, the screen stack** (`ui`, over the frames): an app written as a BTSpeak app is with BTSpeak's `dialogs`. `list` a screen of `Item`s read again at each `refresh` (the row in hand kept by key, nothing said), and the asks `menu`, `askLine`, `confirm`, `choose` and `form` (`Field`s, then OK and Cancel, in a `DialogFrame`), each answering a callback once or returning from a `suspend` twin (the stdlib's `suspendCoroutine`, so the SDK still needs nothing but Android). An ask answers after its screen has closed, so what the app does next is said after the screen under it; closed by Escape it answers null (No for `confirm`). What every screen shares is the stack's: Space-R, panning on to the next row, routing (silent in a box), the box's keys ahead of the frame (`Frame.editBox`, `Frame.edited`) with "Delete selected text?" as a prompt, Space-M the screen's `menu`, Escape closing the screen in front, Exit `onExit`. A screen newly in front is said with its `heading`, one returned to by its row alone, a menu left unchosen with Cancel first. `BrailleSenseUi.on(session, clipboard)` wires it into a session. Its own few words are `UiWords`. What is said follows what is shown: a frame of a new `Frame.id` is said with its `heading` (a screen returned to by its line alone), `refresh(landed = true)` says the row the app moved to, a key a frame marks as asking for a change (`Frame.changes`: a check box, folding) is said once the line reads otherwise, and what the app `announce`s is joined with the line that follows it after `speechDelay` (said at once inside a key) and kept on the cells. A screen may take Escape itself (`Screen.back`), a letter nothing took (`Screen.letter`, after `Frame.pressLetter`), and close itself at a refresh (`Screen.stands`); `Screen.shown` hears a new frame in front. Lumenna's BrailleSense app is drawn on it.
-- **liblouis** is built by the module (`build-louis.sh`, `native/louis.c`, `libbraillesense-louis.so`), its tables in the module's assets; an app's APK merges both.
-- Tests: `./gradlew :braillesense-sdk:testDebugUnitTest` (chords, the claim, panning, the cell echo, reading a line, the edit box, the lists, menus and letters, the screen stack and its asks), on the JVM.
+`apps/android/braillesense-sdk/` (`:braillesense-sdk`, package `dev.emassey0135.braillesense`): an
+unofficial SDK for the HIMS BrailleSense 7, Apache-2.0, depending on nothing of Lumenna's so other
+apps can use it, and a Gradle build of its own as well as Lumenna's module (its root the library,
+`sample/` its README's quick start). **Read its own notes before changing it**
+(`braillesense-sdk/CLAUDE.md`): its API, explicit API mode with KDoc on everything public, and
+everything found on the device. Its README is for an app that uses it, and `docs/DEVICE.md` the
+device for a developer without one. Its screen stack, `BrailleSenseUi`, has the Orbit SDK's
+`OrbitUi`'s common API (`list`, the asks, `refresh`, `land`, `announce`, `refused`, `batch`,
+`launch`, `Item`, `Action`, `MenuItem`, `Field`, `FormValues`, the common `UiWords`): a change to
+one is a change to both. What the device says is in its own words there, not in the core (the
+root's exception for a device SDK's words). Tests: `./gradlew :braillesense-sdk:testDebugUnitTest`,
+on the JVM.
 
 ## The BrailleSense app
 
 `apps/android/braillesense/`: Kotlin over `shared`, the Crux app's Kotlin and the BrailleSense SDK, drawn on the device's own speech and cells, for the HIMS BrailleSense 7 (Android 15). Package `com.extra.han.lumenna`, the one Android ID that is not `package_id`: the device's launcher lists `com.extra.han.*` in its Programs menu and its screen reader yields the braille keys to such a package by its name alone (a test in `records` says so). Arm64 only. No Compose in its screens: what is shown on the LCD is the line in front, for a sighted helper.
 
-- **The keys and the display are the app's only while it is resumed and its window has focus** (the SDK's `BrailleSenseSession` and its `Claim`, tested there). Something drawn over it (the F1-F4 task list, the global options, an alert) takes only the window's focus, without a pause, and the keys have to go then too. Giving back comes first in `onPause`, is safe to repeat, and carries on past a failure; a chord that arrives late is answered "not taken", since "taken" leaves the person with a keyboard that does nothing. Nothing is said or put on the cells while away (a turn can still arrive then). The release is made on the caller's thread rather than queued, so nothing of ours lands after the next app has started to write.
-- **`setActiveOutputService` is one switch for the whole device, never an app's claim.** The service keeps a single flag and every HIMS app's `HanDevice.isActiveDevice()` checks it before it speaks or writes a cell; the vendor's own code only turns it off for a moment inside one call. Turning it off on leaving silences the launcher and every other app, and leaves our last line on the display: what looked like keys doing nothing after Home. Never send `false`. The app sends `true` as it comes to the front, which also repairs a device left off. What an app shows is simply overwritten by the next app's first write.
-- **Speech and cells are the app's own**, through `IHanOutputService` (the SDK's `HanOutputClient`, on its own copy of `ServiceLink`; the app logs what it sends as `LumennaOutput` in a debug build). `displayRawBraille` shows a window of cells. Speech is `displayAndPlayTTS` in mode 1 with an empty `braille` field, as measured on the device: mode 1 plays in the person's own voice settings and stays silent with the voice off, a new line cuts off the last, and cells written straight after do not stop it; mode 2 is taken (returns 0) and never sounds; a null `braille` is refused (-1). Modes 0 and 3 also sounded when tried, but only 1 has been listened to. No callback is needed.
-- **The AIDL is in our own package with the vendor's descriptors** (the SDK's `src/main/aidl/dev/emassey0135/braillesense/han`, `@Descriptor`): the device's framework holds its own `com.jawon.han.*` classes, which shadow a bundled copy of the same name (the boot class path wins) and are hidden-API blocked for an app, so a copy in the vendor's own package does not link. `HanOutput` is ours likewise: its parcel is written field for field, the class name never travels. The transaction order is the service's and must not change.
-- **The cells take dots**: `displayBraille` and `HanOutput.braille` are Braille ASCII (BANA), letter for letter, so nothing the app sends in text reaches the person's table. Every line goes through liblouis (the SDK's `braille/Louis.kt`, `native/louis.c`, built by its `build-louis.sh` with the NDK's clang, the release's tarball checked by hash; the tables in the APK's assets, copied to files once) into dot patterns in the person's table and grade, read from the device's settings provider (the SDK's `braille/BrailleSettings.kt`, `content://com.selvashc.settingsprovider/braille_settings`, in `<queries>`). The table for each `BrailleCode` is `BrailleTables`.
-- **Panning is the app's** (the SDK's `output/Cells.kt`, tested): windows break at spaces as the device's Word Wrap does. The display's width is measured once from the service: a long word wrapped and its line count read back (40 cells on the unit tried; the model H732B is sold as 32, so a real 32-cell one needs checking).
-- **The braille keys are `han_brailleinput`'s callback** (the SDK's `input/HanInputClient.kt`): `getSystemService("han_brailleinput")` returns a proxy, only usable as `IInterface` (its class is the framework's), so the binder goes through our stubs. Registered on resume, unregistered on pause. A press arrives as `onResponse(-1, keycode, "keycode meta chord")`, the chord in the third field; injected from the shell (`service call han_brailleinput 1 i32 <chord> i32 0 i32 0`) the chord is the value and the first field. Returning `true` keeps it from the window; a chord left as `false` arrives as a key event with no device and the chord as scan code, which `BrailleSenseSession.keyEvent` swallows. The SDK's `Chords` decodes (tested): Space with dots is the manual's command, Enter with dots a hotkey, dots alone a cell.
-- **Typing is the app's own, not the device's input method**: for a package that counts as self-voicing, the screen reader that turns chords into text for the input method steps aside, so a focused field gets raw key events (Braille ASCII). Lumenna reaches the device only through its AIDL interfaces; the decompiled SDK is a reference, never code it ships. The stock edit box lives inside HIMS's own apps, and no AIDL interface offers one, so the SDK edits cells itself: its `edit/LineEditor.kt` holds a line as the stock edit box does (`BrailleInfo.braillePara`): **in cells as typed, the caret a cell**, so Backspace and Delete take one cell, a routing key lands on the cell under it, and the line shows what was typed. It is read as text only when asked, a word at a time in the person's table, and a word not touched keeps the text it came with, so an edit never rewords the rest of a field through a translation there and back. Text already in a field starts as its translation. The QWERTY keyboard types text, so that word's cells follow its text.
-- **Keyboard Echo** (`KeyboardEcho`: 0 off, 1 characters and words, 2 characters, 3 words; the stock edit box takes 4 as 1 and 5 as 2): a typed cell is said in 1 and 2, the finished word at Space in 1 and 3, "Space" in 2 or where Space ended no word. What Backspace takes is said whatever the setting, as in the stock edit box. Moving by a character says the cell at the caret, by a word the word. **A cell by itself is said as the stock edit box says it** (`HimsEditSoundFunc`'s table, the SDK's `CellEcho.cell`: the BrailleSense's convention alone, since a BTSpeak's echo is its own libraries' translation and the Orbit Speak edits contracted braille its own way), never back-translated alone: by its letters inside a word, never the whole word it stands for alone (dots 3-4 are "s t", even first in a word, never "still"; 2-3-4-6 "the"), and a cell with no letters by its dots (the capital sign "dot six", 4-6 "four six"). After a number sign a to j are digits until something else; in contracted braille a lower cell ending its word is its punctuation ("period"), uncontracted wherever it is; in computer braille a cell is its character, and a punctuation mark by itself is said by its name (`getChangeToMessage`'s table, `CellEcho.character`: "comma", "period", "back slash"). The words are the device's English ones.
-- **Home, End, Top and Bottom say the word they land in**, in any box: Space-1-3 and Space-4-6 (Home, End) as the stock box's `onMoveTopOfCurrentLine` and `onMoveBottomOfCurrentLine` do (`getCurrentTextWord`), nothing where the cursor was there already. The stock box's Space-1-2-3 and Space-4-5-6 (`onMoveFirst`, `onMoveLast`, also Control-Home and Control-End) read the whole first or last paragraph instead; the user asked for the four to say one thing, so Top and Bottom say the word too. The stock Home and End go to the ends of the display line, not of the paragraph; Lumenna's go to the paragraph's.
-- **Reading at the caret** is the stock edit box's (`BrailleRead.onBrailleKey`): Space-3-6 the character at the cursor (the last one at the line's end), Space-2-5 the word, Space-C the line (as Space-R). Outside a line, those two chords are what Space with their dots is.
-- **The BrailleSense 7 has no routing keys**: its display is touch-sensitive, and a cell touched with either front Cursor button pressed routes there (again for each cell as the finger slides with the button held). It comes on `han_brailleinput`'s callback with the keys, as a gesture: code -7, the cell in the integer, counted from 1. With Gestures on and Double-Tap to Route Cursor (`GestureDoubleTapCursor`) set, a one-finger double tap, or one held, routes too: code -5, the kind in the integer (2, or 17 held) and the cell in the string. The id the SDK matches is `-100 × code + value` (`BrailleGestureType`: 700 smart cursor, 5xx taps and swipes). Lumenna takes only the routing; every other gesture is left to the device. Routing in an edit box only moves the cursor and says nothing, as the device's own does.
-- **An edit box is the SDK's `TextBox`, its keys `BoxEditing`** (the shell runs it ahead of the frame, tells a form or line what changed, and says what it returns): a `LineEditor` per line, the cells shown being the cursor's line. A single-line box takes a new line pasted as a space; a multi-line one (a `FieldKind::Lines` field, the task's and block's Notes) reads as the stock's multi-line box (`meb`, "multi line edit box", `ControlRole::MultiLineEditBox`). In it Enter starts a new line and says the word it finished where the echo says words, else "Enter"; Backspace at a line's start joins it to the line before and says "previous line"; Space-1 and Space-4 go up and down a line, the cursor as far along as the line allows, saying the line they land on ("blank" for none), and Space-1-2-3 and Space-4-5-6 to the top and bottom; Space-C says the cursor's line. Tab (F3, Space-4-5) and Shift-Tab leave it: the stock box hands Tab to the system's focus, so nothing traps the person there. Space-2-3 and Space-5-6 (paragraphs, which the stock box tells apart from wrapped lines) are not taken: a line here is a paragraph.
-- **Selection and the clipboard are the stock box's** (`BrailleEdit.onBrailleKey`): Enter-B starts a selection at the cursor, running to wherever the cursor goes; Enter-A selects everything; Enter-C copies, Enter-X cuts, Enter-P adds to the clipboard, Enter-V pastes at the cursor, Enter-D clears the clipboard, Backspace-1-2 reads the selection, Enter-U its first line (a selection within one line whole, one across lines from its start to the end of that line as the display breaks it). Control with the letter on the QWERTY keyboard is the same, and Control-Insert and Control-Delete add to and clear the clipboard. The clipboard is the system's. With a selection, Backspace or Space-D asks "Delete selected text?" with Yes and No as prompt buttons, as the stock box's `PromptDialog` does (`Edited.Ask`, asked as a question of the shell's own, `Shell.confirm`), then says "Delete complete.", or on No the line again; Escape leaves it ("Selection canceled."), and typing ends it. What each says is the stock's words (the SDK's `EditWords`). The stock box shows a selection by its cursor, not its extent: cursor type 2, blinking (`brailleCursorType`, `brailleCursorBlinkOn`), and type 0 still after; so does Lumenna (`Output.selecting`). In a box these Enter-letters are the box's, ahead of a dialog's buttons, which Space with the letter still presses.
-- **Deleting is the stock box's** (`BrailleEdit.onBrailleKey`, the manual's "Delete current…"; on the QWERTY keyboard by the command summary's table): Space-D (Delete) takes the character at the cursor and says it as Backspace's is said, or at a line's end in a multi-line box the break, joining the next line on, silently, as the device's says nothing for it. Backspace-2-5 (Alt-Backspace) takes the word at the cursor and the spaces after it and says the word; a space between words goes by itself ("Space"; the device sends a bare space to its voice), and at the end of a line with another after it, the break ("new paragraph"). Backspace-1-4, C (Control-Backspace), takes the line the display shows at the cursor (`BrailleDisplay.cursorLine`: the window holding the cursor, less the label and role beside the text), a line left empty in a multi-line box going too. Backspace-1-3-4-6, X, and Backspace-2-3-5-6 (Alt-Delete) take the cursor's whole line: the manual and the command summary's general section give the first, the stock code and the summary's word processor the second, so both are taken. The last two say "Delete complete." Any of the three ends a selection, as the device's do; nothing to take is silence, where the device beeps.
-- **A new braille table rewrites every box** (the G chord, or Global Options while away): before the settings are read again each box's words are read as text in the table they were typed in (`TextBox.settle`), and after, if the table changed, written again in the new one (`recell`), as the device's own boxes follow it.
-- **The QWERTY keyboard is ordinary key events** (the SDK's `Qwerty`, and `QwertyKeyboard` for Alt), its keys by the manual's table (Alt pressed and let go alone is the menus, as F2, Windows-Alt, is on the braille keys; Alt with another key is that key's own, so Alt-Backspace deletes a word and opens nothing; Control Enter's hotkeys, Control-Shift Space's commands, the Application key a row's menu).
-- **How the device reads a control** (found in its SDK and built-in apps; the words are the stock strings, English, and what is composed is the SDK's `deviceReading`, tested there, the device's words and order):
-  - Each control has a role, a word for the voice and a symbol for the cells: Menu `mn` (a submenu: the voice says "Menu"), menu item `mi`, list item `li`, edit box `eb` (also multi line edit box `meb`, computer edit box `ce`, edit combo box `ecb`), combo box `cb`, check box checked `schb`, check box unchecked `uchb`, radio button `rb`, button `bt`, prompt button `pb`, static box `st`, link `ln`. Symbols are shown as computer braille, cell for cell, never in the person's contractions.
-  - Where the role goes is the person's: **Control Information** (`ControlInformation`, for the cells) and **Voice Control Information** (`VoiceControlInformation`), each 0 off, 1 before, 2 after, default 2. Read with the rest of `BrailleSettings`. The unit tried has 1 for the cells and 2 for the voice: `mi New (n)`, said "New (n) menu item".
-  - A menu item's order: name, shortcut letter in brackets, hot key, then the sign of what it opens. Spoken, a submenu adds "pulldown" and an item that opens a dialog "dialog", ahead of the role: "File (f) pulldown Menu", "Rename (r) dialog menu item". On the cells a submenu ends in ` 3o` (dots 2-5, 1-3-5, and `:o` in some codes) and a dialog in `"""` (three dot-5 cells), both Braille ASCII, the role's symbol where the setting puts it: `mn File (f) 3o`, `mi Rename (r) """`. The brackets are the code's: UEB `"<` and `">`, US `7` and `7`, grade 0 and the rest `(` and `)`. **Announce Shortcut Keys** (0 off, 1 on, 2 the cells alone) and **Hot Key Information** (0 off, 1 letters, 2 dot patterns, 3 the cells alone; 0 on the unit tried) say what is shown.
-  - In a dialog: the title is said with "dialog" as it opens ("Find dialog"); a control's text is its label, then its value, then "2/5" when **Index Reporting** is on and it is one of several; an edit box's label is shown too (`eb Title: Buy milk`). Space and Backspace change a combo box, a check box or a prompt button. **Tab (Space-4-5, F3) and Shift-Tab (Space-1-2, Space-F3) are all that move between controls**: the dialog swallows the arrow keys, so Space-1 and Space-4 move only within a control that is itself a list. Backspace or Escape (Space-E, F4) in a submenu goes up a level and at the top closes it, saying Cancel; the menu key (Space-M, F2) closes it all.
-  - Nothing in the SDK, the manual or the built-in apps folds a row, so Lumenna's are Space-3 (Collapse) and Space-6 (Expand), which only an edit box uses otherwise (a character left and right); they run the row's action.
-  - **The four keys long read as scroll keys are the function keys**: F1 to F4 are `0x40000`, `0x80000`, `0x100000`, `0x200000` in the chord, with Space held for Space-F3 (Shift-Tab). F2 is the menu, F3 Tab, F4 Escape, F1 with F2 Page Up, F3 with F4 Page Down; F1, F1-F4, F2-F3 and either with a letter are the system's and are not taken. The real scroll keys are `0x400000` (up) and `0x800000` (down), holding them `0x1000000` and `0x2000000`. Routing keys, on models that have them, are `272` to `303`, or `352` on.
-  - A row of a list says its number on every move, on the cells and in the voice, after its text and ahead of its role (`Buy milk 3/12 list item`), while **Index Reporting** is on: the device's own lists append it the same way.
-  - **Global Options are one set of values for the whole device, and nothing applies them for an app.** They live in `content://com.selvashc.settingsprovider/braille_settings` as name and value. The stock widgets (`HanMenuListView`, `HanListView`, `HanEditText`, `HanSpinner`, `HanButton`, `HanCheckBox`) read them through `HanOption`, cached by `HanApplication` and kept current by a content observer on that URI, so an app built from them follows the settings for nothing. An app that draws its own cells has to read and apply each one: `BrailleSettings` does, on coming to the front and on the provider's change notices (some have a hot key that works while the app is in front). They mean, by the values the options list stores:
-    - `ControlInformation`: 0 off, 1 before, 2 after. Only models for France, Italy, Denmark and Japan offer After (the `.lang` file in `/mnt/selvas`); elsewhere the list is Off and Before, and a stored or default 2 reads as Before, as the stock controls treat it.
-    - `VoiceControlInformation`: 0 off, 1 before, 2 after, on every model. Default 2.
-    - `AnnounceShortcutKeys`: 0 off, 1 on, 2 braille only (the voice drops the letter and the cells keep it). Default 1.
-    - `HotKeyInformation`: 0 off, 1 letters, 2 dot patterns, 3 braille only (default 1). Spoken, 2 gives a letter's hot key as its dots ("Enter-dots 1-3-4-5", "Space-dot 1"). On the cells a hot key is the short form with its letter in 1, 2 and 3 alike (`ent-n`, `sp-x`), as the SDK's `buildHotKeyBrl` does.
-    - `SupportShortCut` ("Automatically Open Menus with Shortcut"): 1 a letter opens or runs its item, 0 it only goes to it. Default 1. Of the stock code only the launcher's home menu reads it; the SDK's menus always run. Lumenna applies it to its menus and Home.
-    - `IndexReporting`: 1 on, 0 off. Default 1. Each list's adapter reads it itself.
-  - **One menu per screen, and the key for it is Space-M or F2.** In File Manager, Email and the Media Player that menu is a menu bar (top-level groups, each a submenu); in the To-Do List, the Address Manager and the launcher it is a flat list of commands. Of those six, read in full, none uses both and none has a context menu: no `onCreateContextMenu`, and a row's actions are items of that one menu acting on the focused row, with hot keys. The menu's contents change with the screen, so File Manager has one for a folder's list, one for Favorites, one for a disk. The only separate "item's actions" keys the manual names are on the Android side: Enter-I for an app's Actions Menu in the App Manager, and the QWERTY keyboard's Application key (FN-Slash), "Application / Context Menu". In a native app Enter-I is that app's own hot key, usually Insert or Information.
+- **What the device does is the SDK's, written down there**: holding the keys and display only while in front, never sending `setActiveOutputService(false)`, the AIDL under the vendor's descriptors, the cells taking Braille ASCII and liblouis in the person's table, panning, the keys and the touch cursor, Global Options and what each means, how a control is read, one menu per screen, and the stock edit box (cells as typed, Keyboard Echo, moving, selection, deleting, a new table) are in `braillesense-sdk/CLAUDE.md` and `docs/DEVICE.md`. Lumenna applies `SupportShortCut` to its menus and Home, and its Home, End, Top and Bottom say the word they land in (the user asked for the four to say one thing).
 - **The app opens on Home** (`ShellEvent.Home`, `ViewModel::home`, `HomeView`), the core's screen for a device without a sidebar: the places, folded as the sidebar is, each with its letter (`HomePlace`), then Home's own actions as rows of their own (Reminders Due while any are due, New Task, Undo, Redo, What Should I Work On?, Sync Now, Settings, Key Help, About), each with its letter. Its row in hand is the sidebar's. Enter is `Key("open")`: a place opens, a heading folds; Space-3 and Space-6 fold too. A letter, with Space or Enter or alone, opens its place or runs its action (only goes to it, where Automatically Open Menus with Shortcut is off), a place's own action letters first; alone it otherwise moves by first letter. **The shell follows the app off Home** (`Shell.follow`): once Home is shown, a place it opens (a letter, Enter, What Should I Work On?) is pushed as the list shown, and going back from a place sends `Home` again. Projects, Labels and Saved Filters from the menu bar are Home, on that heading, unfolded. Escape on Home closes the app, as Exit does: Home is the bottom of the stack.
-- **Menus are the device's** (the SDK's `MenuFrame`), read as above; Space-1 and Space-4 move and wrap, Space-1-2-3 and Space-4-5-6 go to the ends, Enter opens or runs, an item's letter jumps to it and runs it, and **a hot key an item shows runs it while the menu is open too**, from any level. **Space-M or F2 is the core's braille menu bar** (`braille_menu_bar`), drawn as it comes: first the screen's own menu (`braille::SCREEN_MENU`, named for the screen, "Tasks", "Today", a project's name, "Home", where the bar opens), holding the screen's actions with their letters as hot keys, then the shared `keys::MENUS` with letters, which hold every one of the screen's own actions too (`ViewModel::screen_actions`; Home's on Home), each with its letter as a real hot key; each name and whether it applies from `ViewModel::commands` and `screen_actions`, so what does not apply is left out, as the device's own menus hide theirs. A screen action the shell runs itself (`ScreenAction::shell`: the filter, Key Help, About, Reminders Due) is the shell's; Settings and the pages the menu opens are the shell's pages; every other command is `Key(id)`, sync and back-up included, from the menu, Home, a settings page's button and the devices page alike. **Enter-I and the Application key are the row's actions** (`offered`, with `action_letter`), the same source as every other context menu.
+- **Menus are the device's** (the SDK's `MenuFrame`, read as the device reads a menu); Space-1 and Space-4 move and wrap, Space-1-2-3 and Space-4-5-6 go to the ends, Enter opens or runs, an item's letter jumps to it and runs it, and **a hot key an item shows runs it while the menu is open too**, from any level. **Space-M or F2 is the core's braille menu bar** (`braille_menu_bar`), drawn as it comes: first the screen's own menu (`braille::SCREEN_MENU`, named for the screen, "Tasks", "Today", a project's name, "Home", where the bar opens), holding the screen's actions with their letters as hot keys, then the shared `keys::MENUS` with letters, which hold every one of the screen's own actions too (`ViewModel::screen_actions`; Home's on Home), each with its letter as a real hot key; each name and whether it applies from `ViewModel::commands` and `screen_actions`, so what does not apply is left out, as the device's own menus hide theirs. A screen action the shell runs itself (`ScreenAction::shell`: the filter, Key Help, About, Reminders Due) is the shell's; Settings and the pages the menu opens are the shell's pages; every other command is `Key(id)`, sync and back-up included, from the menu, Home, a settings page's button and the devices page alike. **Enter-I and the Application key are the row's actions** (`offered`, with `action_letter`), the same source as every other context menu.
 - **Enter on a row is `Key("open")`**, on every list the app holds (a task's details through the app's form question, a block's form, a reminder, a day's row; on the day's heading it is refused in the core's words, its actions being Enter-I and the Day menu), never a choice made here. A reminder due is the exception: its buttons are its actions, which Enter shows as Enter-I does.
 - **Reminders due** look back over the last day as their list opens (`DueEvent::LookBack`), and a button is handed back by its id (`DueEvent::Press`); the page leaves once the last is dealt with, and says so when there are none.
 - **Settings pages are the core's, unfiltered** (`SettingsView::pages`: only those with something on them here).
@@ -519,7 +494,7 @@ changes its README too.
 - **A dialog's buttons have letters**, pressed with Space or Enter: the core's where it gives one (a task's actions, a settings page's buttons), else the first free one of its name (`menu_shortcuts`), so Save has one beside the task's own. Leaving the task's form with Escape throws away what was not saved (`DetailsEvent::Discard`), as its Cancel does elsewhere.
 - **The filter** (Space-F, Control-F, or the screen's Filter) is a line over the list shown, and only there: anywhere else it says there is no list to filter. Enter keeps the filter and goes back to the list; Escape leaves it cleared, still on the list.
 - **A press that does nothing says why**, in `BrailleWords`' words: Tab in a list, a row's actions asked for on a dialog or a menu, a letter with nothing on it.
-- **Every screen is a screen on the SDK's stack** (`ui/Shell.kt` over `BrailleSenseUi`), which takes the keys, the menus, the edit boxes, panning, routing, messages and when to speak; the shell follows the core's view. Each page the person goes to is a `PageScreen` (Home at the bottom, a place, a task's form, Settings and a settings page, Devices, Reminders Due, Key Help) whose `back` and `closed` put away what it held (Discard, Settings Close, pairing cancelled, `Home` sent again on reaching Home); what the app opens itself (`ScreenView::dialog`, a form asked for, a proposal, a reminder list) is one `OpenedScreen` over them, pushed as the view has it, whose Escape asks the app to close it, and which goes when the view no longer has it (`stands`); the filter is a `FilterScreen`. Each turn is `refresh(landed)`, `landed` when `ViewModel::landing` rose. Frames are laid out afresh from the view: the SDK's `ListFrame`, `MenuFrame` and `LineFrame`, and this app's `FormFrame` over the dialog controller. The row in hand is kept per frame, by key; a frame is said when it is new or the app moved what is in hand, and only put on the cells otherwise, so a sync or a minute never cuts off reading.
+- **Every screen is a screen on the SDK's stack** (`ui/Shell.kt` over `BrailleSenseUi`), which takes the keys, the menus, the edit boxes, panning, routing, messages and when to speak; the shell follows the core's view. Each page the person goes to is a `PageScreen` (Home at the bottom, a place, a task's form, Settings and a settings page, Devices, Reminders Due, Key Help) whose `back` and `closed` put away what it held (Discard, Settings Close, pairing cancelled, `Home` sent again on reaching Home); what the app opens itself (`ScreenView::dialog`, a form asked for, a proposal, a reminder list) is one `OpenedScreen` over them, pushed as the view has it, whose Escape asks the app to close it, and which goes when the view no longer has it (`stands`); the filter is a `FilterScreen`. Each turn is the stack's `land()` when `ViewModel::landing` rose, else its `refresh()`. Frames are laid out afresh from the view: the SDK's `ListFrame`, `MenuFrame` and `LineFrame`, and this app's `FormFrame` over the dialog controller. The row in hand is kept per frame, by key; a frame is said when it is new or the app moved what is in hand, and only put on the cells otherwise, so a sync or a minute never cuts off reading.
 - **The letters are the core's** (`braille_letter`, `ShellEvent.Letter`, `action_letter` and its kin); how one is pressed is the core's too (`braillesense_letter`, `braillesense_press`): Space with the letter is its command, except where Space with those dots is already something on every screen: A, B, K and L (Up, Shift-Tab, the line's start, the first row) and C, D, E, F, H, M, O, R and Z (the device's Repeat, the manual's Delete, Escape, Find, Help, Menu, Options, Repeat and Exit), which Enter with the letter reaches, as the device's own hotkeys are. A menu shows each item's core letter and the press for it. `,`, `.` and `/` have no dots: Move Up, Move Down and the filter are the row's menu and Space-F.
 - **A letter alone moves by first letter**: `ShellEvent.FindLetter` in a list the app holds as its main one (its `landing` rises, so the row is said), the core's `first_letter` in a list drawn here (a side list, a pick, a menu's own list); none found is said in the core's words.
 - **What is said comes from the core's description** (`Turn.described`, handed to `AppModel.described` on the main thread before the view moves): a question's prompt, buttons, choices and what was typed are its; a row arrived at or read again (Space-R) says its place ("3 of 12"), a person's own move does not, so moving stays quick. A refusal no sentence said is spoken from `changes`.
@@ -530,133 +505,54 @@ changes its README too.
 ## The Orbit SDK
 
 `apps/android/orbit-sdk/`: an unofficial SDK for Orbit Research's devices, package
-`dev.emassey0135.orbit`, a library depending on nothing but Android (not `:shared`, not the core,
-not `:braille`), so that Satellite can use it and it can move to a repository of its own. It is
-everything about Orbit itself; Lumenna's app is over it. JVM tests:
-`./gradlew :orbit-sdk:testDebugUnitTest`.
+`dev.emassey0135.orbit`, Apache-2.0 (`LICENSE`, `NOTICE`), depending on nothing but Android (not
+`:shared`, not the core, not `:braille`), so that Satellite and other apps can use it. It is
+everything about Orbit itself; Lumenna's app is over it. **Its own docs are for an app other than
+Lumenna and hold the detail**: `README.md` (what a device needs, adding it to a build, the quick
+start, the stack's API, testing), `docs/DEVICE.md` (what the devices do that an app must fit: the
+keys each keeps, Satellite and `orbit.self_voicing`, package names, root, the reader's queue), and
+the KDoc. A change to its public API changes the README too. What is easy to get wrong here:
 
+- **It is a standalone Gradle build as well as Lumenna's module** (its own repository, a
+  submodule here): its own `settings.gradle.kts` (the library at the root, `:sample` beside it), wrapper,
+  `gradle/libs.versions.toml` holding the same `libs` aliases its `build.gradle.kts` takes from
+  Lumenna's catalog (`android-library`, `junit`), and `.github/workflows/ci.yml`. Lumenna's settings
+  include it as `:orbit-sdk` and never read the nested settings. Dokka's version is written in the
+  build file, not a catalog, for the same reason. `sample/` is the README's quick start, compiled;
+  Lumenna's build does not include it.
+- **Explicit API mode** (`kotlin { explicitApi() }`): every declaration says `public` or `internal`,
+  and every public one has KDoc (`ServiceLink` is internal). `./gradlew dokkaGenerate`, run inside
+  the directory, writes the reference to `build/dokka/html`.
+- **The screen stack's shape is the BrailleSense SDK's**: `OrbitUi.on(session, words, letters)`,
+  `list(title, items, empty, actions, moved, find)`, `menu`, `askLine`, `confirm`, `choose`, `form`
+  (each a callback and a `suspend` twin), `refresh`, `land(key)`, `announce`/`message`, `refused`,
+  `batch`, `launch`, `onEmpty`; `Item(key, text, open, actions, letter, detail, expanded, fold,
+  toggle, delete, title)`, `Action(name, letter, asks, run)`, `MenuItem(name, letter, children,
+  value, asks)`, `Field`, `FormValues` (public constructor, an unknown key throws) and `UiWords`'
+  common words (`noRowStartsWith` and `nothingOnLetter` take a `Char`), so an app's screens compile
+  against either by their imports. Change one, change the other. On Orbit `detail` is told after
+  the text with a comma (`Item.line`), `toggle` is Select on a row with no `open`, `delete` is Space
+  with D (Dot 8 with D where the app's `Letters` keep Space), and `asks` changes nothing, since
+  Orbit's menus mark no dialog. `MenuItem` is the SDK's own, made `OrbitMenu.Item` inside.
+- **`OrbitSession`** (`session`) is the device for one activity, as `BrailleSenseSession` is, its
+  lifecycle methods named the same (`created`, `resumed`, `paused`, `windowFocus`, `destroyed`):
+  the `OrbitReader` (the session is its `Listener`), `BrailleInput`, the reader's `Claim`, keys
+  delivered to the main thread (`onKey`), `onReady` after `appOpened`, `onSettingsChanged`,
+  `onTableChanged`, `onRootFailed`, and `DebugKeys` on a broadcast the app names, in a debuggable
+  build only (`takesDebugKeys`). `OrbitUi.on` wires the stack into it; a `reader` given there wraps
+  the session's (Lumenna's `HelperText`).
 - **Everything Orbit is reached through is the clean-room AIDL** (`src/main/aidl`), the screen
-  reader's in its order and never #44 (`canSpeakLanguage`), which the Player lacks: it stops before
-  it. Each service is the SDK's own `ServiceLink` (one ordered worker, bound again when Android's
-  `onBindingDied` says so), the keypad a `Claim` (held only while resumed, focused and the reader up)
-  with `KeyDelivery` from the binder thread, the same as the BrailleSense SDK's copies, so the SDK
-  needs nothing of Lumenna's. Copy nothing from Orbit's own APKs: port only the Satellite launcher's code
-  (Apache-2.0, the same author's).
-- **`OrbitReader` is the screen reader**: an app describes its screen (`focusList`, `itemChanged`,
-  `dialog`, `contextMenu`, `menuOpened` and `focusMenu`, `focusEdit`, `focusControl`, `focusCheck`,
-  `focusChoice`) and Orbit voices it in the person's own voice and verbosity. Nothing is sent before `onScreenReaderReady`, which
-  Orbit calls at once when it is ready already; speech sent earlier is dropped. Its `Listener` hears
-  readiness, keys (whether from the Player's phone keypad) and settings changing. Orbit routes the
-  keypad to an app only when it speaks for itself: Satellite's hook does so for a manifest with
-  `orbit.self_voicing`.
-- **`KeyDecoder`** turns the keypad callback's bundle into a `Key`: arrows and OK pressed and held,
-  the Speak's dots, Space chords named by its user guide (Up, Down, Tab, Shift-Tab, the ends,
-  Escape, the menu), Dot 8 with dots (`Enter`), and the Player's digits, star, pound, Back and Menu,
-  a held key's release not counted twice.
-- **What Orbit keeps is read through root** (`Root`, `OrbitSettings`), as Orbit's own SDK reads it:
-  its settings provider wants Orbit's signature, and the screen reader's settings are in its own
-  data. Magisk ships on every Speak and Player. `su` from an app keeps the app's mount namespace,
-  whose /data has only the app's own data, so another app's file is read at `/proc/1/root/data/…`
-  (`Root.dataPath`). A refusal or failure is a `RootFailure`, never a default taken in silence:
-  `BrailleInput.failed` reports it once until a read succeeds.
-- **`BrailleInput` is the Speak's braille input**: the liblouis service translating in the person's
-  table (each cell `0x8000 | dots`), and Orbit's selection mode, table and the screen reader's
-  `typing_echo`. The G chord changes the table in Orbit's settings and tells no app but Orbit's own
-  (watching the provider needs Orbit's signature, and the reader's settings callback is only for its
-  own settings); the settings app hands the new table to the liblouis service, though, so `follow`
-  asks the service which table it holds (its transaction 5, called by number) as a line is reached
-  and as the app comes back, and a change reads the settings again and calls `changed`. The Player
-  has no service: `available` is false there.
-- **`EditBox` is an edit box as Orbit's own are** (with `CellBuffer` and `T9Input`), told to the
-  reader through an `Output` (`ReaderEditOutput`, with the system's clipboard). The Speak's cell
-  buffer goes through the liblouis service a word at a time, mode 388 for each cell's echo and 132 at
-  Space; the Player's multi-tap T9 is ported from Satellite's `T9Input`. In contracted braille a cell
-  the device names (`CellNames`: the capital sign, the capital word sign, the number sign, the lower
-  cells, its EditBox's table; never the BrailleSense's `cell_echo`) says its name, else the last
-  character its word now makes; otherwise the character, else its name; else "dot" and its numbers.
-  Dots 3 6 are "hyphen", where the device's table says "greek sign" (dots 4 6 in UEB). Dot 7 with a
-  selection deletes it unasked, as the Editor's does, and tells the reader `selection_deleted`,
-  which says so in its own words. Otherwise Dot 7 says what it took: a cell of the word not yet
-  committed by its name, what it alone makes, or its dots; a committed character by itself ("space",
-  "new line"); "blank" at the start. At Space the word's cells and a blank cell are translated
-  together, as Orbit's fields commit a word, and the word is said in print. The screen reader takes
-  no word from an app (`onCharacterTyped`'s `resolvedWord` is ignored): it echoes a word made of the
-  characters it was told, which for a contracted word are its cells' echoes. So a cell's character
-  goes as its `characterName` with the character empty, which the reader says by the person's
-  character echo but keeps out of its word, and the word is said by the edit box when the reader's
-  typing echo says words. The space after a word said is not echoed, since the reader stops speech
-  for every echo.
-- **The edit box's keys are Orbit's fields'**: Select or dot 8 confirms, dot 7 deletes, Left and
-  Right and Space with dots 3 and 6 move a character, Space with dots 2 and 5 a word, Space with
-  dots 1 3 and 4 6 to the line's start and end, Space with L and dots 4 5 6 to the text's (a move,
-  `cursor_moved`, no tone), Space with E or Z cancels. Up and Down in a field of one line go to its
-  ends with the error tone and the boundary whether the caret moved or not, as Orbit's do. Space
-  with all six dots is not the field's: Orbit's has no such chord. The Editor's selection and
-  clipboard are every field's: dots 1 2 8 start and end a selection (to the character at the
-  caret), dots 1 8 select all, dots 1 4 8 copy, 1 3 4 6 8 cut, 1 2 3 6 8 paste, each with Space too in
-  computer braille, where dot 8 with a cell types it; Space with dots 1 2 7 reads the selection.
-  Moves go to Orbit as edit-box changes, so it says them by the person's own settings. A field of
-  several lines is an edit box Orbit calls multiline: dot 8 starts a line, Up and Down move by line
-  (`line_navigation`, Orbit saying the line). On the Player digits are multi-tap, a held digit types
-  itself, star the mode (named by `OrbitWords.mode`, in the order Satellite's T9 has: Orbit's own
-  puts symbols before digits), Left and Right move, Up and Down go to the ends, Back deletes, held
-  cancels, and OK confirms.
-- **`OrbitMenu` is a menu as Orbit's own apps have one** (pure, JVM-tested), found in its Editor's
-  and File Manager's (the user guide's "Editor Menu" and "File Manager Menu", and the `Menu` and
-  `ContextMenuKeyProcessor` of Orbit's own SDK inside its APKs): one menu key, the Speak's Space
-  with M (code 3405) and the Player's Menu (1018), opens the focused item's menu or else the
-  screen's, never both, so Orbit has no separate key for a row's actions. Its menus are one list of
-  items and submenus (File, Edit, Read…), not a bar across the screen: Up and Down (and Tab) go round
-  a level, Right or Select opens a submenu on its first item, Right on an item does nothing, Left
-  goes back up onto the submenu and closes the menu from the top, a letter alone is an item's access
-  key (the only one selected as Select would, several gone round), and choosing closes it. Orbit's
-  reader is told as its apps tell it: `onContextMenuOpened` with no name (Orbit says its own
-  "Context menu"), then each item moved to as `onFocusChanged` of a menu (role 8: `selectedItem`,
-  `isSubMenu`, said "Sub-menu", `accessKey`, said where the person has Orbit say them, and its
-  place), and `onContextMenuClosed` with `dismissed`. Escape and the Player's Back close it
-  (Orbit's cancel keys).
-- **The device's words are the SDK's** (`OrbitWords`, `CellNames`): its fields' echo, its Editor's
-  selection and clipboard, T9's modes, what a root failure says. They are the stock strings of
-  Orbit's English build (Satellite's for the echo of dots and deletions, which Orbit leaves to its
-  reader), the one exception to the root's "a shell writes no sentence": they are the device's, and
-  another app on it says the same. An app passes its own `OrbitWords` for other words.
-- **A list moves as Orbit's do** (`OrbitList.target`, pure): Up and Down stop at the ends, Tab and
-  Shift-Tab go round, Space with L and dots 4 5 6 go to the ends; Lumenna's `Ui.move` takes its
-  moves from it. **The Player finds a row** with `ListFinder` (ported from Satellite's): a digit
-  opens that row, 1 and 2 quickly the twelfth, 0 alone the tenth, and holding star finds by letter
-  with T9, the letter handed to the app (`Host.find`, Lumenna's the core's `first_letter`;
-  `ListFinder.next` where an app has no rule of its own).
-- **A dialog's keys are `OrbitDialog.does(key, control)`** (pure): Tab and Shift-Tab between
-  controls, an edit box's own keys, Up and Down changing a combo box or list box (a cell finds an
-  option) or toggling a check box, Select or Dot 8 pressing, Space with E or Z and Dot 7 off a line
-  cancelling, Left and Right taken and doing nothing, the menu key the app's. Lumenna's
-  `DialogScreen.key` maps the core's `ControlType` onto it and does each to the dialog controller.
-- **`DebugKeys`** takes Orbit's keys over an adb broadcast in a debuggable build, the app naming
-  the broadcast's action.
-- **`OrbitUi`, the screen stack** (`ui`): the BrailleSense SDK's `BrailleSenseUi` in Orbit's
-  terms, so an app is written as a BTSpeak app is. `list` a screen of `Item`s read again at each
-  `refresh` (the row in hand kept by key; told only if what is in hand moved, or reads otherwise
-  after the person acted on it), and the asks `menu` (`MenuItem` is `OrbitMenu.Item`), `askLine`
-  (an `EditBox`), `confirm`, `choose` and `form` (an Orbit dialog of `Field`s then OK and Cancel; on
-  the Player its controls are rows), each answering a callback once or from a `suspend` twin, and
-  `launch` to run those without a coroutine library. The stack takes what a screen leaves: Left,
-  Back, Escape and Dot 7 close it, the one menu key opens the row in hand's actions then the
-  screen's, Space or Dot 8 with a letter runs that letter's row or action, anything else the error
-  tone. It talks to Orbit through `Reader`, which `OrbitReader` implements, so the tests record
-  what is told; `BrailleLetters` is the a-z dot table it finds letters by. A screen that no longer
-  `stands()` closes at the next `refresh`, as a BTSpeak menu's `exit_condition`. For an app whose
-  data changes underneath it: `land(key)` is a refresh that tells the row in hand (unless it is the
-  row just told), `announce` says the app's sentences in order a moment behind a description (since
-  `speakText` jumps Orbit's event queue), `refused` sounds the error tone and says why, `batch { }`
-  tells only the screen on top as it ends, and `insert`, `replace` and `back` follow where the app
-  went. A `Screen` may take Back itself (`back`), a letter (`letter`), say when it has `loaded`, and
-  give its own menu bar (`menuBar()`, a `MenuBar` of submenus and hot keys) in place of the flat
-  row-then-screen menu; a `ListScreen` reports a move (`moved`), finds a first letter itself
-  (`findLetter`), and an `Item` folds (`expanded`, `fold`: Right unfolds or opens, Left folds or
-  goes back) and names its menu (`title`). Which key presses a letter is a `Letters` the app may
-  replace (`pressed(key)`: a letter, or refused with why), and `UiWords`' refusals are functions of
-  the letter. Lumenna's Orbit app is drawn on it.
-
+  reader's in its order and never #44 (`canSpeakLanguage`), which the Player lacks. Copy nothing
+  from Orbit's own APKs: port only the Satellite launcher's code (Apache-2.0, the same author's).
+- **The device's words are the SDK's** (`OrbitWords`, `CellNames`): the stock strings of Orbit's
+  English build (Satellite's for the echo of dots and deletions), the root's exception to "a shell
+  writes no sentence". The stack's own few (`UiWords`) are English defaults an app replaces.
+- **`announce` waits behind a description** (400 ms, `SETTLE_MS`): `speakText` jumps Orbit's queue
+  of descriptions, so a sentence sent at once is said before the list it follows.
+- How each piece works (`EditBox` and its echo, `OrbitMenu`, `OrbitList`, `ListFinder`,
+  `OrbitDialog`, `BrailleInput` and the G chord, root) is in its KDoc and `docs/DEVICE.md`.
+- JVM tests: `./gradlew :orbit-sdk:testDebugUnitTest`, or `./gradlew testDebugUnitTest` inside the
+  directory. The stack's (`UiTest`) run over a `Reader` that records what it is told.
 
 ## The Orbit app
 
@@ -668,6 +564,11 @@ device. Its identifier is the phone's `package_id` (never on the same device): n
 holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, run by CI and
 `release.yml`, checks what Satellite reads of an APK.
 
+- **The activity is the SDK's `OrbitSession`** (`OrbitActivity`): it hands the session its
+  lifecycle and nothing else of Orbit's; the store not opening still binds the reader, so Orbit
+  says the app and the message shown. `Ui` builds the stack with `OrbitUi.on(session, …)`, its
+  reader wrapped in `HelperText`, which wires the keys, the reader's readiness, a new braille table
+  and a root refusal.
 - **What is told to Orbit's reader, and when, is the SDK's stack** (`OrbitUi`, which `Ui` hosts,
   built with the core's letter rule, `CoreLetters`, and the core's words): a list is
   `onFocusChanged` of a list box, a move `onItemChanged`, a question `onDialogOpened` then its first
@@ -731,11 +632,9 @@ holding no "inputmethod", which Orbit's routing would misread. `check-apk.sh`, r
   Sync Now are `Key(id)` wherever they are offered.
 - **Back throws a form away, never saves it**, on both devices: the task form's Back is its Cancel
   (`DetailsEvent::Discard`), and it saves only by its Save.
-- **Trying it**: nothing can press Orbit's keypad over adb, so a debug build takes keys over a
-  broadcast (the SDK's `DebugKeys`, on `DEBUG_KEY`: `am broadcast --es name DOWN --ei action 0 --ez long false --ez phone
-  false`). What Orbit said is in its log (`setprop log.tag D`, then `olympus_SpeechManager`'s
-  `sequence items`). Wake a sleeping device first (`input keyevent KEYCODE_WAKEUP`), or the window
-  has no focus and nothing is claimed. The real keys, by hand, are still to be tried.
+- **Trying it**: a debug build takes keys over the broadcast `OrbitSession` is given, `DEBUG_KEY`
+  (the SDK's `DebugKeys`; the SDK's `docs/DEVICE.md` has the command, waking the device, and
+  reading what Orbit said from its log). The real keys, by hand, are still to be tried.
 
 ## CI
 

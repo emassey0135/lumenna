@@ -1,0 +1,6 @@
+[submodule "apps/android/orbit-sdk"]
+	path = apps/android/orbit-sdk
+	url = https://github.com/emassey0135/orbit-sdk.git
+[submodule "apps/android/braillesense-sdk"]
+	path = apps/android/braillesense-sdk
+	url = https://github.com/emassey0135/braillesense-sdk.git

@@ -3,8 +3,6 @@ package dev.emassey0135.lumenna.orbit
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.TypedValue
 import android.view.Gravity
@@ -23,25 +21,18 @@ import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.ThisDevice
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.thisDevice
-import dev.emassey0135.orbit.BrailleInput
-import dev.emassey0135.orbit.DebugKeys
-import dev.emassey0135.orbit.KeyDelivery
-import dev.emassey0135.orbit.KeyEvent
-import dev.emassey0135.orbit.OrbitReader
+import dev.emassey0135.orbit.session.OrbitSession
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
  * The one activity: a text view showing the current line, for a sighted helper, while Orbit's
- * screen reader voices the screens described to it and the keypad comes in through
- * [OrbitReader]. Everything the person does goes to the app ([Ui]).
+ * screen reader voices the screens described to it and the keypad comes in through the SDK's
+ * [OrbitSession]. Everything the person does goes to the app ([Ui]).
  */
-class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
-    private val main = Handler(Looper.getMainLooper())
-    private lateinit var reader: OrbitReader
-    private lateinit var braille: BrailleInput
+class OrbitActivity : ComponentActivity() {
+    private lateinit var session: OrbitSession
     private lateinit var view: TextView
     private var ui: Ui? = null
     private var front: Front? = null
@@ -61,8 +52,11 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        takeDebugKeys()
         thisDevice = ThisDevice.DEVICE
+        // Debug builds take keys over adb too (the SDK's `DebugKeys`): `am broadcast -a <DEBUG_KEY>
+        // --es name DOWN --ei action 0 --ez long false --ez phone false`.
+        session = OrbitSession(this, appWords.metadata.name, debugKeys = DEBUG_KEY)
+        if (session.takesDebugKeys) BuildConfigDebug.on = true
         view = TextView(this).apply {
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
@@ -71,28 +65,20 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
             setPadding(32, 32, 32, 32)
         }
         setContentView(view)
-        reader = OrbitReader(this, this)
-        reader.claim.guardCrashes()
-        braille = BrailleInput(this)
         val core = (application as CoreHolder).core.getOrNull()
         if (core == null) {
             view.text = appWords.storeNotOpen
-            reader.bind()
+            session.created()
             return
         }
         this.core = core
         val app = core.app
-        val ui = Ui(app, core, reader, braille, view, ::finish)
+        val ui = Ui(app, core, session, view, ::finish)
         ui.chooseFile = { openDocument.launch(arrayOf("*/*")) }
         this.ui = ui
         front = Front(this, core, "android").also { it.created() }
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
-        reader.bind()
-        // A word half typed is shown again in the new table.
-        braille.changed = { ui.refresh() }
-        // Root refused: typing goes on in the table last read, and the person is told why it may not match.
-        braille.failed = { ui.say(ui.orbitWords.rootFailed.replace("%s", it.reason)) }
-        braille.bind()
+        session.created()
         ui.push(HomeScreen())
         reminderTapped(intent)
         app.described = ui::turned
@@ -107,33 +93,21 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
         // Back in front: what came due meanwhile is offered on Home. The first time, Home looks itself.
         if (resumedOnce) ui?.lookBack()
         resumedOnce = true
-        braille.follow()
         Clock.update(this)
         front?.resumed()
-        reader.claim.resumed()
+        session.resumed()
     }
 
     override fun onPause() {
-        reader.claim.paused()
+        session.paused()
         front?.paused()
         super.onPause()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        reader.claim.windowFocus(hasFocus)
+        session.windowFocus(hasFocus)
     }
-
-    // Debug builds take keys over adb too (the SDK's `DebugKeys`): `am broadcast -a <DEBUG_KEY> --es
-    // name DOWN --ei action 0 --ez long false --ez phone false`.
-    private val debugKeys by lazy { DebugKeys(this, DEBUG_KEY) { event, phone -> key(event, phone) } }
-
-    private fun takeDebugKeys() {
-        if (debugKeys.debuggable) BuildConfigDebug.on = true
-        debugKeys.start()
-    }
-
-    private fun stopDebugKeys() = debugKeys.stop()
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
@@ -147,35 +121,14 @@ class OrbitActivity : ComponentActivity(), OrbitReader.Listener {
     }
 
     override fun onDestroy() {
-        stopDebugKeys()
         core?.app?.described = null
-        reader.unbind()
-        braille.unbind()
+        session.destroyed()
         super.onDestroy()
     }
 
     @Deprecated("Orbit's keys are the keypad's; the back key arrives there")
     override fun onBackPressed() {
         ui?.back() ?: super.onBackPressed()
-    }
-
-    // ---- what Orbit tells this app, on binder threads ------------------------------------
-
-    override fun readerReady() {
-        main.post {
-            reader.appOpened(appWords.metadata.name, "")
-            ui?.readerReady()
-        }
-    }
-
-    private val keys: KeyDelivery<Pair<KeyEvent, Boolean>> by lazy {
-        KeyDelivery(reader.claim, { main.post(it) }) { (event, phoneKeypad) -> ui?.key(event, phoneKeypad) }
-    }
-
-    override fun key(event: KeyEvent, phoneKeypad: Boolean): Boolean = keys.deliver(event to phoneKeypad)
-
-    override fun settingsChanged() {
-        braille.refresh()
     }
 
     private companion object {

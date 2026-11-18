@@ -56,7 +56,9 @@ apps/android/   Jetpack Compose over the Crux app's Kotlin bindings: the phone (
                 which draw no Compose and speak for themselves, what those two share (braille/: the
                 dialog controller among it), and what every app shares (shared/); and the unofficial
                 Orbit and BrailleSense SDKs (orbit-sdk/, braillesense-sdk/), each the device itself,
-                depending on nothing of Lumenna's.
+                depending on nothing of Lumenna's: git submodules, each its own repository under
+                Apache-2.0 (github.com/emassey0135/orbit-sdk, …/braillesense-sdk). Clone with
+                `--recurse-submodules`, or `git submodule update --init` in a checkout made before.
 apps/apple/     the iOS, macOS and watchOS apps over the Crux app's Swift bindings, Shared/
                 between them.
 apps/windows/   the Win32 app, over the Crux app (crates/ffi, linked as Rust).
