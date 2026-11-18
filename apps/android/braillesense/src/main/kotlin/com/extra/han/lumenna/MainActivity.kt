@@ -17,6 +17,10 @@ import androidx.lifecycle.lifecycleScope
 import com.extra.han.lumenna.ui.Host
 import com.extra.han.lumenna.ui.Shell
 import dev.emassey0135.braillesense.edit.SystemClipboard
+import dev.emassey0135.braillesense.files.FilePicker
+import dev.emassey0135.braillesense.files.FileRequest
+import dev.emassey0135.braillesense.files.PickKind
+import dev.emassey0135.braillesense.files.PickedFile
 import dev.emassey0135.braillesense.session.BrailleSenseSession
 import dev.emassey0135.braillesense.ui.SettingsReadings
 import dev.emassey0135.lumenna.Clock
@@ -53,6 +57,18 @@ class MainActivity : ComponentActivity(), Host {
     /** Coming to the front and leaving it, as far as syncing and the store are concerned. */
     private val syncing by lazy { core.getOrNull()?.let { Front(this, it, PLATFORM) } }
 
+    // What a file chosen in the File Manager goes to, and the folder the last one was in.
+    private var picking: ((PickedFile) -> Unit)? = null
+    private var folder: String? = null
+    private val picker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val then = picking
+        picking = null
+        val file = FilePicker.picked(result.resultCode, result.data) ?: return@registerForActivityResult
+        folder = file.parent
+        then?.invoke(file)
+    }
+
+    // Android's own picker, only where the File Manager cannot be started.
     private var saving: SaveFile? = null
 
     private val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
@@ -113,10 +129,7 @@ class MainActivity : ComponentActivity(), Host {
         syncing?.created()
         shown.drawn = { screen.text = it }
         lifecycleScope.launch { opened.announcements.collect { shown.announce(it) } }
-        lifecycleScope.launch { opened.app.files.collect { file ->
-            saving = file
-            save.launch(file.name)
-        } }
+        lifecycleScope.launch { opened.app.files.collect(::saveFile) }
         handle(intent)
     }
 
@@ -172,7 +185,43 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun exit() = finishAffinity()
 
-    override fun importFile() = open.launch(arrayOf("*/*"))
+    // ---- files: chosen in the device's own File Manager (the SDK's `FilePicker`), which reads itself
+    // on the cells and in speech; Android's picker only where it cannot be started.
+
+    /** Asks the File Manager for [request], then hands what was chosen to [then]; false where it cannot be asked. */
+    private fun pick(request: FileRequest, then: (PickedFile) -> Unit): Boolean {
+        picking = then
+        val started = runCatching { FilePicker.launch(request) { picker.launch(it) } }.getOrDefault(false)
+        if (!started) picking = null
+        return started
+    }
+
+    /** Each file the app makes is saved where the person chooses, written off the main thread. */
+    private fun saveFile(file: SaveFile) {
+        val chosen = pick(FileRequest(PickKind.SAVE_FILE, suggestedName = file.name, startIn = folder)) { to ->
+            lifecycleScope.launch(Dispatchers.IO) { runCatching { to.openOutput(this@MainActivity).use { it.write(file.bytes) } } }
+        }
+        if (!chosen) {
+            saving = file
+            save.launch(file.name)
+        }
+    }
+
+    override fun importFile() {
+        val chosen = pick(FileRequest(PickKind.OPEN_FILE, startIn = folder)) { file ->
+            lifecycleScope.launch(Dispatchers.IO) {
+                val bytes = runCatching { file.openInput(this@MainActivity).use { it.readBytes() } }.getOrNull() ?: return@launch
+                core.getOrNull()?.app?.send(ShellEvent.Settings(SettingsEvent.Import(file.name, bytes)))
+            }
+        }
+        if (!chosen) open.launch(arrayOf("*/*"))
+    }
+
+    override fun chooseFolder(key: String, current: String) {
+        pick(FileRequest(PickKind.OPEN_FOLDER, startIn = current.ifEmpty { folder })) { chosen ->
+            core.getOrNull()?.app?.send(ShellEvent.Settings(SettingsEvent.Set(key, chosen.path)))
+        }
+    }
 
     override fun requestNotifications() {
         if (Build.VERSION.SDK_INT >= 33) {

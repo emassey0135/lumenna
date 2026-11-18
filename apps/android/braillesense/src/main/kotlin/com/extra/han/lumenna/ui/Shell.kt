@@ -74,6 +74,9 @@ interface Host {
     fun exit()
 
     fun importFile()
+
+    /** The folder setting [key], now [current], chosen in the device's File Manager and set to the folder chosen. */
+    fun chooseFolder(key: String, current: String)
     fun requestNotifications()
     fun openNotificationSettings()
     fun deviceName(): String
@@ -763,11 +766,10 @@ class Shell(
      * typed or chosen until the core has it, and presses, through the core's `control_event`.
      * Each control is read in the device's role; a line or several is the SDK's edit box, its text
      * kept by the dialog. A button has the core's letter, else the first free one of its name
-     * (`menu_shortcuts`). [shell] does what a button leaves to this device. A folder to choose has
-     * no control: there are none to choose here.
+     * (`menu_shortcuts`). [shell] does what a button leaves to this device: a file or a folder to
+     * choose in the File Manager, a backup, pairing.
      */
-    private fun dialog(described: DialogShown, shell: (String) -> Unit = {}): Frame {
-        val shown = withoutFolders(described)
+    private fun dialog(shown: DialogShown, shell: (String) -> Unit = {}): Frame {
         // The same dialog goes on where it was; one that held only lines to read (its controls still
         // arriving) starts again on the core's focus once it has more.
         val controller = dialogController?.takeIf { it.dialog.id == shown.id && it.controls.any { c -> c.kind != ControlType.TEXT } }?.also { it.update(shown) }
@@ -792,15 +794,6 @@ class Shell(
             editor(key, controller.text(control), multiLine = control.kind == ControlType.LINES)
         }
         return FormFrame(controller, letters, readings, boxOf, letterOf = { lettered[it.key] }, prompt = prompt)
-    }
-
-    /** [shown] less its folder settings, which this device has nowhere to choose, its focus kept on its control. */
-    private fun withoutFolders(shown: DialogShown): DialogShown {
-        val folder = { control: ControlShown -> (control.sends as? ControlSends.Shell)?.field0?.let { it !in SHELL_BUTTONS } == true }
-        if (shown.controls.none(folder)) return shown
-        val focused = shown.controls.getOrNull(shown.focus.toInt())
-        val controls = shown.controls.filterNot(folder)
-        return shown.copy(controls = controls, focus = controls.indexOf(focused).coerceAtLeast(0).toUInt())
     }
 
     /** A control of this shell's own, for a page the core does not describe as a dialog. */
@@ -913,7 +906,9 @@ class Shell(
                 "back-up" -> send(ShellEvent.Key("back-up"))
                 "pair" -> pushPage(Page.Devices)
                 "allow-notifications" -> host.requestNotifications()
-                else -> host.importFile()
+                "import", "restore-backup" -> host.importFile()
+                // A folder setting (`backup-dir`): chosen in the File Manager, starting where it is.
+                else -> core.controls.firstOrNull { it.key == "setting:$what" }?.let { host.chooseFolder(what, it.value) }
             }
         }
     }
@@ -1001,9 +996,6 @@ class Shell(
     }
 
     private companion object {
-        /** What a dialog's button leaves to this device: a file to pick, a backup, pairing. */
-        private val SHELL_BUTTONS = setOf("import", "restore-backup", "back-up", "pair", "allow-notifications", "code", "join")
-
         /** A row's tag for one of the shell's own, which the app does not hold: Home's actions beside its places. */
         private val OWN_ROW = Any()
 

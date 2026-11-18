@@ -1,14 +1,16 @@
 package dev.emassey0135.lumenna.orbit
 
 import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
-import android.provider.OpenableColumns
 import android.util.TypedValue
 import android.view.Gravity
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import dev.emassey0135.orbit.files.FilePicker
+import dev.emassey0135.orbit.files.FileRequest
+import dev.emassey0135.orbit.files.PickKind
+import dev.emassey0135.orbit.files.PickedFile
 import androidx.lifecycle.lifecycleScope
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.Clock
@@ -38,16 +40,15 @@ class OrbitActivity : ComponentActivity() {
     private var front: Front? = null
     private var core: Core? = null
 
-    private var saving: SaveFile? = null
-    private val createDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
-        val file = saving ?: return@registerForActivityResult
-        saving = null
-        if (uri == null) return@registerForActivityResult
-        val resolver = contentResolver
-        lifecycleScope.launch(Dispatchers.IO) { runCatching { resolver.openOutputStream(uri)?.use { it.write(file.bytes) } } }
-    }
-    private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) importFrom(uri)
+    // What a file chosen in Orbit's File Manager goes to, and the folder the last one was in.
+    private var picking: ((PickedFile) -> Unit)? = null
+    private var folder: String? = null
+    private val picker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val then = picking
+        picking = null
+        val file = FilePicker.picked(result.resultCode, result.data) ?: return@registerForActivityResult
+        folder = file.parent
+        then?.invoke(file)
     }
 
     override fun onCreate(state: Bundle?) {
@@ -74,7 +75,8 @@ class OrbitActivity : ComponentActivity() {
         this.core = core
         val app = core.app
         val ui = Ui(app, core, session, view, ::finish)
-        ui.chooseFile = { openDocument.launch(arrayOf("*/*")) }
+        ui.chooseFile = { pick(FileRequest(PickKind.OPEN_FILE, startIn = folder), ::importFrom) }
+        ui.chooseFolder = { key, current -> chooseFolder(key, current) }
         this.ui = ui
         front = Front(this, core, "android").also { it.created() }
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
@@ -136,23 +138,43 @@ class OrbitActivity : ComponentActivity() {
     }
 
     // ---- files ----------------------------------------------------------------------------
+    //
+    // Chosen in Orbit's own File Manager (the SDK's `FilePicker`), which the keypad works and which
+    // reads itself: Android's own picker is one Orbit's screen reader clicks through by itself. The
+    // File Manager grants the file it answers with, so no storage permission is needed.
 
-    private fun saveFile(file: SaveFile) {
-        saving = file
-        createDocument.launch(file.name)
+    /** Asks the File Manager for [request], then hands what was chosen to [then]; refused where it cannot be asked. */
+    private fun pick(request: FileRequest, then: (PickedFile) -> Unit) {
+        picking = then
+        val started = runCatching { FilePicker.launch(request) { picker.launch(it) } }.getOrDefault(false)
+        if (!started) {
+            picking = null
+            ui?.refuse()
+        }
     }
 
-    private fun importFrom(uri: Uri) {
-        val resolver = contentResolver
+    /** Each file the app makes is saved where the person chooses, written off the main thread. */
+    private fun saveFile(file: SaveFile) {
+        pick(FileRequest(PickKind.SAVE_FILE, suggestedName = file.name, startIn = folder)) { chosen ->
+            val context = applicationContext
+            lifecycleScope.launch(Dispatchers.IO) { runCatching { chosen.openOutput(context).use { it.write(file.bytes) } } }
+        }
+    }
+
+    private fun importFrom(file: PickedFile) {
+        val context = applicationContext
         lifecycleScope.launch(Dispatchers.IO) {
-            val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
-            }.orEmpty()
-            val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
-                ?: return@launch
+            val bytes = runCatching { file.openInput(context).use { it.readBytes() } }.getOrNull() ?: return@launch
             withContext(Dispatchers.Main) {
-                ui?.send(ShellEvent.Settings(SettingsEvent.Import(name, bytes)))
+                ui?.send(ShellEvent.Settings(SettingsEvent.Import(file.name, bytes)))
             }
+        }
+    }
+
+    /** A folder setting set to the folder chosen, starting where it is now. */
+    private fun chooseFolder(key: String, current: String) {
+        pick(FileRequest(PickKind.OPEN_FOLDER, startIn = current.ifEmpty { folder })) { chosen ->
+            ui?.send(ShellEvent.Settings(SettingsEvent.Set(key, chosen.path)))
         }
     }
 }
