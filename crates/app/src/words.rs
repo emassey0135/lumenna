@@ -40,6 +40,9 @@ pub enum ThisDevice {
     Phone,
     /// A watch.
     Watch,
+    /// A HumanWare braille reader with other makers' apps on it: the NLS eReader, the Mantis Q40 and
+    /// their kin.
+    BrailleReader,
     /// A web browser.
     Browser,
     /// Anything else: a BTSpeak.
@@ -59,6 +62,7 @@ impl ThisDevice {
             Self::IPad => "this iPad",
             Self::Phone => "this phone",
             Self::Watch => "this watch",
+            Self::BrailleReader => "this braille reader",
             Self::Browser => "this browser",
             Self::Device => "this device",
         }
@@ -75,6 +79,7 @@ impl ThisDevice {
             Self::IPad => "iPad",
             Self::Phone => "Phone",
             Self::Watch => "Watch",
+            Self::BrailleReader => "Braille reader",
             Self::Browser => "Web browser",
             Self::Device => "Device",
         }

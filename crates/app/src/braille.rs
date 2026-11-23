@@ -457,6 +457,40 @@ const SPEAK_ENTER: &str = "abcelmtz";
 /// reading on from the caret). What G names is a menu away.
 const SPEAK_NEITHER: &str = "g";
 
+/// How a letter is pressed on a HumanWare braille reader with other makers' apps on it (the
+/// NLS eReader, the Mantis Q40, the Chameleon 20, the BrailleOne, the Brailliant BI 20X and 40X).
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReaderLetter {
+    /// Space with it.
+    Space,
+    /// Enter with it, as the readers' own commands are pressed (Enter with T, the time).
+    Enter,
+    /// Neither reaches the app: what it names is a menu away.
+    Neither,
+}
+
+/// Space with these is the firmware's on a list of some reader, so a letter is pressed with Enter
+/// there: A (the line before), G, H (the eReader's menu key, the others' global shortcuts), M (the
+/// eReader's main menu, the others' menu key) and O (the Brailliants').
+const READER_ENTER: &str = "aghmo";
+
+/// The firmware's with Space and with Enter both (E is Exit, and Enter with it or with L is the
+/// eReader's own), so what they name is a menu away.
+const READER_NEITHER: &str = "el";
+
+/// How `letter` is pressed on a HumanWare braille reader. A reader with no braille
+/// keys (the Mantis Q40, a QWERTY keyboard) reaches every command from the menus instead.
+#[must_use]
+pub fn reader_letter(letter: &str) -> ReaderLetter {
+    match letter.chars().next().filter(|first| first.is_ascii_lowercase() && letter.len() == 1) {
+        None => ReaderLetter::Neither,
+        Some(first) if READER_NEITHER.contains(first) => ReaderLetter::Neither,
+        Some(first) if READER_ENTER.contains(first) => ReaderLetter::Enter,
+        Some(_) => ReaderLetter::Space,
+    }
+}
+
 /// How a letter is pressed on the HIMS BrailleSense.
 #[boltffi::data]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -743,6 +777,16 @@ mod tests {
         assert_eq!(speak_press("u").as_deref(), Some("space u"));
         assert_eq!(speak_press("c").as_deref(), Some("dot 8 c"));
         assert_eq!(speak_press("g"), None);
+    }
+
+    #[test]
+    fn a_reader_presses_a_letter_its_firmware_keeps_space_for_with_enter() {
+        assert_eq!(reader_letter("r"), ReaderLetter::Space);
+        assert_eq!(reader_letter("h"), ReaderLetter::Enter, "Space with H is the eReader's menu key");
+        assert_eq!(reader_letter("m"), ReaderLetter::Enter, "Space with M is the others' menu key");
+        assert_eq!(reader_letter("e"), ReaderLetter::Neither, "Space with E is Exit, and Enter with E the eReader's");
+        assert_eq!(reader_letter("l"), ReaderLetter::Neither);
+        assert_eq!(reader_letter(","), ReaderLetter::Neither);
     }
 
     #[test]
