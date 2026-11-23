@@ -448,6 +448,9 @@ pub struct BrailleWords {
     pub no_list_to_filter: String,
     /// A row's actions asked for where there is no row: a dialog, a menu.
     pub no_actions_here: String,
+    /// A reminder shown over whatever is in front, by a device whose notifications ask two answers: the
+    /// one that opens Lumenna at it, for every other action. "Open Lumenna".
+    pub open_reminder: String,
 }
 
 /// A command and its name (`ShellWords::commands`).
@@ -902,6 +905,7 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
             tab_in_a_list: "Tab moves between a dialog's controls; this is a list.".to_owned(),
             no_list_to_filter: "There is no list here to filter.".to_owned(),
             no_actions_here: "Nothing here has actions of its own.".to_owned(),
+            open_reminder: c("Open Lumenna"),
         },
         yes_no: lumenna_records::fields::yes_no(),
 
