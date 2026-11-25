@@ -877,7 +877,8 @@ class Menus(unittest.TestCase):
         self.assertIn("Work", titles)
         self.assertNotIn("Reports", titles)
         work = next(row for row in menus.home_rows(self.session) if row.title == "Work")
-        self.assertTrue(work.said().endswith("collapsed"), work.said())
+        # Folding after the line, then the level where it changes (`line_with_state`).
+        self.assertIn(", collapsed", work.said())
 
     def test_a_subproject_on_home_says_its_level_where_it_changes(self):
         self.call("project.add", name="Work")
@@ -886,10 +887,12 @@ class Menus(unittest.TestCase):
         self.store.caught_up()
         self.session.send(L.ShellEventHome())
         said = {row.title: row.said() for row in menus.home_rows(self.session)}
-        self.assertTrue(said["Inbox"].startswith("level 2, Inbox"), said)
-        self.assertTrue(said["Reports"].startswith("level 3, Reports"), said)
-        self.assertTrue(said["Home"].startswith("level 2, Home"), said)
+        # The level after the line, so a row is still found by its first letter (`line_with_state`).
+        self.assertTrue(said["Inbox"].startswith("Inbox") and said["Inbox"].endswith(", level 2"), said)
+        self.assertTrue(said["Reports"].startswith("Reports") and said["Reports"].endswith(", level 3"), said)
+        self.assertTrue(said["Home"].startswith("Home") and said["Home"].endswith(", level 2"), said)
         self.assertTrue(said["Today"].startswith("Today"), said)
+        self.assertNotIn("level", said["Today"], said)
         self.assertTrue(said["Work"].endswith("expanded"), said)
 
     def test_enter_on_a_sitting_edits_its_task_as_every_apps_open_does(self):

@@ -35,8 +35,9 @@ def named(action) -> str:
 
 
 def prompt(*parts: str) -> str:
-    """Parts of a question as one prompt, each sentence ended once."""
-    return ". ".join(part.strip().rstrip(".") for part in parts if part and part.strip())
+    """Parts of a question as one prompt, each sentence ended once, as the core joins them
+    (`prompt_of`): a refusal before what is asked, a title before what it says."""
+    return L.prompt_of([part for part in parts if part])
 
 
 def joined(*said: str) -> str:
@@ -113,14 +114,11 @@ def ask(session: Session, asking, row=None) -> str:
     """Asks the app's open question with the device's dialogs, drawn from the app's own
     description of it (`ScreenView::dialog`, `forms.ask`), and sends what the person did as the
     app says it is sent; what the app said. A refused answer stays in the question, the app's
-    sentence first. A task's form asked for (Edit details) is the task form, for the row's own
-    task: its details shown, the app describes the question as that form."""
+    sentence first. A task's form asked for (Enter, Edit details) is the task form, for the row's
+    own task: the app shows its details as it asks, and describes the question as that form."""
     import forms  # here: forms imports session, as this module does
 
     dialog = forms.opened(session)
-    if dialog is None and isinstance(asking.question, L.QuestionForm) and asking.action is not None:
-        session.send(L.ShellEventDetails(L.DetailsEventShow(asking.action.target)))
-        dialog = forms.opened(session)
     if dialog is None or not dialog.id.startswith("question:"):
         session.send(L.ShellEventCancel())
         return L.cannot_ask_here(named(asking.action)) if asking.action else ""
@@ -183,23 +181,33 @@ def leave(session: Session) -> str:
 def bar_commands(session: Session) -> dict:
     """What this app runs itself of the menu bar's commands, by id: those the core marks the
     shell's among a screen's own actions (`tasks.own_commands`), and of the shared menus' what the
-    core leaves to a platform (`keys::Runs::Shell`): a settings page opened, a backup's file picked,
-    leaving the app. Every other command runs as the app runs it (`Event::Key`)."""
+    core leaves to a platform (`keys::Runs::Shell`): a backup's file picked, leaving the app. A
+    settings page the command opens is the core's (`settings_page_of`, `bar_command`). Every other
+    command runs as the app runs it (`Event::Key`)."""
     import preferences  # here: preferences imports this module
     import tasks
 
-    def devices(session: Session) -> str:
-        with preferences.opened(session):
-            return preferences.devices(session)
-
     return {
         **tasks.own_commands(session),
-        "devices": devices,
-        "export-import": lambda session: preferences.setting_page(session, "export"),
+        # The Backups page's own button, run straight: the file to restore is picked at once.
         "restore-backup": preferences.restore,
         "close-window": leave,
         "quit": leave,
     }
+
+
+def bar_command(session: Session, command: str):
+    """What this app runs itself for the menu bar's `command`, a function of the session: one of
+    `bar_commands`, else the settings page the core says it opens (`settings_page_of`: Devices,
+    Export and import); None for one the app runs."""
+    own = bar_commands(session).get(command)
+    if own is not None:
+        return own
+    if L.settings_page_of(command) is not None:
+        import preferences  # here: preferences imports this module
+
+        return lambda session: preferences.page_from_menu(session, command)
+    return None
 
 
 #: The menu bar's commands that open a heading of Home's (`HomePlace::letter`): Home is shown and
@@ -216,7 +224,7 @@ def run_from_bar(session: Session, picked, row, place, home: bool) -> str:
     if picked is None:
         return ""
     command, letter_of = picked
-    own = bar_commands(session).get(command)
+    own = bar_command(session, command)
     if own is not None:
         said = own(session)
     elif command in HEADINGS:

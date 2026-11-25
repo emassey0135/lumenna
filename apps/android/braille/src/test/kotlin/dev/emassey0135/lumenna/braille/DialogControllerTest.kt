@@ -38,7 +38,7 @@ class DialogControllerTest {
 
     private fun controller(vararg controls: ControlShown, id: String = "form", focus: Int = 0, cancel: List<ShellEvent> = listOf(ShellEvent.Key("cancelled"))) =
         DialogController(
-            DialogShown(id, "Form", controls.toList(), focus.toUInt(), cancel),
+            DialogShown(id, "Form", "Form", controls.toList(), focus.toUInt(), cancel),
             send = { sent += (it as ShellEvent.Key).field0 },
             shell = { shelled += it.key },
             events = ::events,
@@ -154,13 +154,13 @@ class DialogControllerTest {
         form.next()
         assertTrue(form.update(dialog(ControlShown_text("refusal", "Too long"), title, save)))
         assertEquals("the control in hand kept by its key", "save", form.control?.key)
-        assertFalse(form.update(DialogShown("other", "Other", listOf(title, save), 0u, emptyList())))
+        assertFalse(form.update(DialogShown("other", "Other", "Other", listOf(title, save), 0u, emptyList())))
         assertEquals("title", form.control?.key)
     }
 
     // ---- building the core's records by hand ----
 
-    private fun dialog(vararg controls: ControlShown) = DialogShown("form", "Form", controls.toList(), 0u, listOf(ShellEvent.Key("cancelled")))
+    private fun dialog(vararg controls: ControlShown) = DialogShown("form", "Form", "Form", controls.toList(), 0u, listOf(ShellEvent.Key("cancelled")))
 
     private fun control(key: String, kind: ControlType, sends: ControlSends, value: String = "") = ControlShown(
         key = key, kind = kind, label = key, value = value, hint = "", example = "", options = emptyList(), selected = null,

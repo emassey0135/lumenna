@@ -12,7 +12,6 @@ import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.Lines
 import dev.emassey0135.lumenna.app.Offered
-import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.ListShown
 import dev.emassey0135.lumenna.app.QuestionShown
 import dev.emassey0135.lumenna.app.ScreenChange
@@ -506,14 +505,12 @@ class Ui(
         v.asking?.let { asking ->
             // Open already, under something it opened (its completions).
             if (stack.screens.any { (it as? AskingScreen)?.number == asking.number } && stack.top !is AskingScreen) return
+            // Every question is its dialog, a task's form asked for among them: the app shows that
+            // task's details as it asks.
             val open = stack.top as? AskingScreen
             if (open == null || open.number != asking.number) {
-                if (asking.question is Question.Form) {
-                    formAsked(asking)
-                } else {
-                    if (open is Screen) stack.close(open)
-                    push(QuestionScreen(asking))
-                }
+                if (open is Screen) stack.close(open)
+                push(QuestionScreen(asking))
             }
             return
         }
@@ -538,20 +535,6 @@ class Ui(
 
     /** Settings were left here, and the app has not yet said they are closed. */
     var settingsClosed = false
-
-    private var formAskedFor = 0u
-
-    private fun formAsked(asking: dev.emassey0135.lumenna.app.Asking) {
-        // A question is asked once; a turn arriving before the Cancel lands must not ask again.
-        if (asking.number == formAskedFor) return
-        formAskedFor = asking.number
-        val action = asking.action
-        send(ShellEvent.Cancel)
-        action?.target?.let { target ->
-            // The form a task asks for is its details, the row it was asked on.
-            push(DetailsScreen(target))
-        }
-    }
 
     // ---- what a key opens ---------------------------------------------------------------------
 

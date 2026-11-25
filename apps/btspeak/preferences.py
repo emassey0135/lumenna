@@ -98,11 +98,23 @@ def settings(session: Session) -> str:
 
 
 def open_page(session: Session, page_id: str) -> str:
-    """One of the core's pages: Devices and sync is a screen of its own, its devices a list; the
-    rest are the app's description of the page (`App::settings_page_on`), a row per control."""
-    if page_id == "devices":
+    """One of the core's pages: Devices and sync (the page the core marks `devices`) is a screen
+    of its own, its devices a list; the rest are the app's description of the page
+    (`App::settings_page_on`), a row per control."""
+    page = page_of(session, page_id)
+    if page is not None and page.devices:
         return devices(session)
     return setting_page(session, page_id)
+
+
+def page_from_menu(session: Session, command: str) -> str:
+    """The settings page a command of the menu bar opens (`settings_page_of`: Devices, Export and
+    import), settings open while it is shown and put away after if opened for it."""
+    page_id = L.settings_page_of(command)
+    if page_id is None:
+        return ""
+    with opened(session):
+        return open_page(session, page_id)
 
 
 def page_dialog(session: Session, page_id: str):
@@ -281,9 +293,10 @@ def device_rows(session: Session) -> list[Row]:
 
 
 def devices_page(session: Session):
-    """The core's Devices and sync page, whether or not settings are open."""
-    return page_of(session, "devices") or next(
-        page for page in L.settings_pages(False, True) if page.id == "devices"
+    """The core's Devices and sync page (the one it marks `devices`), whether or not settings
+    are open."""
+    return next((page for page in pages(session) if page.devices), None) or next(
+        page for page in L.settings_pages(False, True) if page.devices
     )
 
 
@@ -364,7 +377,7 @@ def pair(session: Session) -> str:
     time.
     """
     words = pairing_words(session)
-    how = choose({"wait": words.wait, "code": words.join}, f"{words.title}. {words.intro_sentence}")
+    how = choose({"wait": words.wait, "code": words.join}, words.heading)
     if how is None:
         return ""
     code = None
@@ -396,15 +409,15 @@ def pairing_screen(session: Session) -> str:
         return session.send(L.ShellEventDevices(L.DevicesEventPair(event)))
 
     def status() -> str:
+        # Where pairing stands, the core's one line: what went wrong, else waiting, opening,
+        # connecting.
         pairing = pairing_view(session)
-        if pairing is None:
-            return ""
-        if pairing.problem:
-            return pairing.problem
-        if pairing.mine:
-            # Enter on the line shows the code alone, to read a character at a time.
-            return sentences(words.waiting, pairing.mine_line or pairing.mine)
-        return words.opening if pairing.waiting else words.connecting
+        return pairing.status if pairing is not None else ""
+
+    def code_line() -> str:
+        # The code to give the other device, a row of its own under the status while waiting.
+        pairing = pairing_view(session)
+        return (pairing.mine_line or pairing.mine or "") if pairing is not None else ""
 
     def read_code() -> str:
         pairing = pairing_view(session)
@@ -442,7 +455,8 @@ def pairing_screen(session: Session) -> str:
             # Paired: what the app said of it is what is said after the screen.
             return said or session.wait_said(0)
         if pairing.words:
-            matched = dialogs.request_confirmation(sentences(words.match_title, pairing.matching or ""), default=False)
+            # The question about the words, the core's one line: its title, then the words.
+            matched = dialogs.request_confirmation(pairing.question or "", default=False)
             send(L.PairEventConfirm(bool(matched)))
             continue
         if not pairing.running and not pairing.problem:
@@ -452,6 +466,8 @@ def pairing_screen(session: Session) -> str:
         session.settle()
         menu = [
             dialogs.DynamicMenuItem(title=lambda *_: status(), action=read_code),
+            # Enter on the code shows it alone, to read a character at a time.
+            *([dialogs.DynamicMenuItem(title=lambda *_: code_line(), action=read_code)] if pairing.mine else []),
             *([dialogs.DynamicMenuItem(title=words.copy_code, action=copy_code)] if pairing.mine else []),
             *([dialogs.DynamicMenuItem(title=words.join, action=code_instead)] if pairing.waiting and pairing.running else []),
             dialogs.DynamicMenuItem(title=core.words().cancel, action=cancel),

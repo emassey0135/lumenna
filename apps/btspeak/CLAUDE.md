@@ -39,9 +39,10 @@ test with a newer one (`PYTHON=…`).
   (`on_AppMenu`), as the device's file manager opens a menu of its own. What is picked runs on the
   row under the cursor (`actions.run_from_bar`): as the app runs it (`Key(id)`, the row put in
   hand), a heading of Home's by its letter there, and what the core leaves to a platform here
-  (`actions.bar_commands`: the screen actions it marks `shell`, Sync now's wait, Devices and
-  pairing, Export and import, Restore from a backup, Close window and Quit). The bar's items carry
-  no `shell` of their own yet, so that list is this app's. A command that takes the app to another
+  (`actions.bar_command`: the screen actions it marks `shell`, Sync now's wait, the settings page a
+  command opens, the core's `settings_page_of` (Devices, Export and import), Restore from a backup,
+  run straight as the Backups page's button, Close window and Quit). The bar's items carry no
+  `shell` of their own yet, so the rest of that list is this app's. A command that takes the app to another
   place or Home (View's places, What should I work on?) closes every screen
   (`session.moved_on`) and Home's loop shows where the app now is; Quit closes them all
   (`session.leaving`). Unlike the editor, no chord jumps straight to one menu: the dialogs pass the
@@ -83,7 +84,8 @@ test with a newer one (`PYTHON=…`).
   them twice).
 - **Every question and form is the core's dialog, drawn with the device's** (`forms.py`, over
   `lumenna_app::dialog`): a question, the block form and quick add are `ScreenView::dialog`, the
-  task form a question's (Enter or Edit details shows the task, and the question becomes its form),
+  task form a question's (Enter or Edit details: the app shows the task as it asks, and the question
+  is its form, so nothing is sent here first),
   a settings page `App::settings_page_on`. `forms.ask` picks the device's dialog by the controls (a
   list, a line, one button, several), `forms.form` asks a form's lines, choices and checks with
   `request_form`, and a settings page is a menu of its controls. What the person did goes to
@@ -91,9 +93,10 @@ test with a newer one (`PYTHON=…`).
   its key (they are the core's `field:…`, `setting:…`). A form sends only the fields the person
   changed, then presses its default button: a block's kind brings its own settings unless they
   were changed too. A refusal is the dialog's `refusal` line, said before it is asked again. The
-  prompt is `QuestionShown::prompt`; a pairing code is sent as typed, spaces and all. Two things are
-  still this app's: a project choice says its level after it (`Lines::projects`), and a check
-  setting's states are its setting's own options ("On", "Off"), neither of which the controls
+  prompt is `QuestionShown::prompt`, a refusal before it joined by the core (`prompt_of`); a pairing
+  code is sent as typed, spaces and all. A project choice's options carry their level where it
+  changes (`lines::with_level`), so they are drawn as they come. One thing is still this app's: a
+  check setting's states are its setting's own options ("On", "Off"), which the controls do not
   carry yet.
 - **The Export and import page lists the store's own actions** (`SettingsView.offered`, Erase
   everything deleted) as rows after its buttons, with no shortcut, each handed back as `ActOn` with
@@ -108,7 +111,9 @@ test with a newer one (`PYTHON=…`).
   (`session._menu`, a `DynamicMenuDialog` subclass, as the device's file manager does) with the
   summary short.
 - **Depth is never indentation**: it says nothing in speech. The app says the level only where
-  it *changes*, against the previous *visible* row, so folding keeps it right. The projects,
+  it *changes*, against the previous *visible* row, so folding keeps it right. A row's line, its
+  folding and its level are joined by the core (`line_with_state`, in `rows.Row`), the level last
+  so a row is still found by its first letter. The projects,
   labels and filters screens each list one heading's places, so their level counts from there:
   folding is the app's (`hidden`, `expanded`), the levels the core's `levels` of their depths
   under the heading, as a project pick's are of its choices'.

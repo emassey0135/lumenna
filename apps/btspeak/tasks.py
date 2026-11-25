@@ -163,18 +163,10 @@ def show(session: Session, row) -> str:
 
 def task_details(details, about=()) -> str:
     """Everything about one task, as lines to pan through: its title, each field of the task
-    form that holds something, named as the form names it and said as the form offers it, then
-    what the core says about it besides (`about`, the details' `lines`: its state, a rule it
-    repeats by, what it waits for, its history), each its label then what it says."""
-    task = details.task
-    lines = [task.title]
-    for field in details.form:
-        value = str(getattr(details.fields, field.key, "") or "")
-        if field.key == "title" or not value:
-            continue
-        options = details.projects if field.key == "project" else field.options
-        named = {option.id: option.title for option in options}
-        lines.append(f"{field.label}: {named.get(value, value)}")
+    form that holds something, as the core reads it (`DetailsView.field_lines`: "Priority:
+    High"), then what the core says about it besides (`about`, the details' `lines`: its state,
+    a rule it repeats by, what it waits for, its history), each its label then what it says."""
+    lines = [details.task.title, *details.field_lines]
     lines.extend(line.text for line in about)
     dialogs.view_lines(lines, wrap=True)
     return ""

@@ -42,9 +42,15 @@ class FormFrame(
     /** The control in hand. */
     val current: ControlShown? get() = controller.control
 
-    /** The lines to read ahead of where it opens (a message, why saving was refused), said as it opens. */
-    val preamble: String
-        get() = controller.controls.take(controller.dialog.focus.toInt()).filter { it.kind == ControlType.TEXT }.joinToString(". ") { it.value }
+    /**
+     * The lines to read ahead of its first control that takes anything (a message, why saving was
+     * refused), said after its title as it opens, joined as the core joins a prompt.
+     */
+    val leading: List<String>
+        get() = controller.controls.takeWhile { it.kind == ControlType.TEXT }.map { it.value }
+
+    /** What a question of answers alone says as it opens: its title and [leading] as one prompt, the core's (`DialogShown.prompt`). */
+    val said: String get() = controller.dialog.prompt
 
     /** The box of the line in hand, if a line is in hand. */
     fun box(): TextBox? = current?.takeIf(::isLine)?.let(boxOf)

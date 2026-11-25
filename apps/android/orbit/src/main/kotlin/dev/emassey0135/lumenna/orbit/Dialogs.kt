@@ -354,7 +354,9 @@ abstract class DialogScreen : AppList() {
             dialog?.let { sayRefusals(it.controls) }
             if (!announced) {
                 announced = true
-                reader.dialog(title, "", "")
+                // Its prompt: the title, then the lines ahead of the control it opens on (a
+                // question's message), which Tab passes over as it goes on from there.
+                reader.dialog(shown()?.prompt?.ifEmpty { null } ?: title, "", "")
             }
             tellControl()
             return
@@ -412,13 +414,17 @@ abstract class DialogScreen : AppList() {
         /** A dialog of this app's own: one line, then Confirm and Cancel, each this app's to do. */
         fun ownLine(id: String, title: String, label: String, value: String, hint: String, confirm: String, multiline: Boolean = false): DialogShown =
             DialogShown(
-                id, title,
-                listOf(
+                id = id,
+                title = title,
+                // Nothing to read ahead of its line: its prompt is its title.
+                prompt = title,
+                controls = listOf(
                     own("line", if (multiline) ControlType.LINES else ControlType.LINE, label, value, hint),
                     own("confirm", ControlType.BUTTON, confirm).copy(default = true),
                     own("cancel", ControlType.BUTTON, appWords.cancel).copy(cancel = true),
                 ),
-                0u, emptyList(),
+                focus = 0u,
+                cancel = emptyList(),
             )
 
         private fun own(key: String, kind: ControlType, label: String, value: String = "", hint: String = "") = ControlShown(

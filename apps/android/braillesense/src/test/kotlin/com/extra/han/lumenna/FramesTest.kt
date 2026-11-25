@@ -94,8 +94,9 @@ class FramesTest {
     private fun choice(key: String, vararg options: Pair<String, String>, kind: ControlType = ControlType.CHOICE, sends: ControlSends = ControlSends.TaskField(key)) =
         control(key, kind, sends = sends).copy(options = options.map { (id, title) -> option(id, title) }, selected = 0u)
 
-    private fun form(vararg controls: ControlShown, focus: Int = 0, id: String = "form", boxes: Map<String, TextBox> = emptyMap(), prompt: Boolean = false): FormFrame {
-        val controller = DialogController(DialogShown(id, "Form", controls.toList(), focus.toUInt(), emptyList()), { sent += (it as ShellEvent.Key).field0 }, events = ::events)
+    /** [said] is the dialog's prompt, which the core joins (`DialogShown.prompt`): given here as the core would. */
+    private fun form(vararg controls: ControlShown, focus: Int = 0, id: String = "form", boxes: Map<String, TextBox> = emptyMap(), prompt: Boolean = false, said: String = "Form"): FormFrame {
+        val controller = DialogController(DialogShown(id = id, title = "Form", prompt = said, controls = controls.toList(), focus = focus.toUInt(), cancel = emptyList()), { sent += (it as ShellEvent.Key).field0 }, events = ::events)
         val made = HashMap(boxes)
         return FormFrame(controller, BY_LETTER, READ, boxOf = { made.getOrPut(it.key) { TextBox(controller.text(it), Plain, it.kind == ControlType.LINES) } },
             letterOf = { it.letter.singleOrNull() }, prompt = prompt)
@@ -190,8 +191,10 @@ class FramesTest {
     }
 
     @Test fun aQuestionsAnswersAreSteppedWithSpaceAndBackspace() {
-        val frame = form(control("message", ControlType.TEXT, value = "It cannot be undone."), button("cancel"), button("yes"), focus = 1, id = "question:2", prompt = true)
-        assertEquals("the message is said as it opens", "It cannot be undone.", frame.preamble)
+        val frame = form(control("message", ControlType.TEXT, value = "It cannot be undone."), button("cancel"), button("yes"), focus = 1, id = "question:2", prompt = true,
+            said = "Delete it? It cannot be undone")
+        assertEquals("the core's prompt is said as it opens", "Delete it? It cannot be undone", frame.said)
+        assertEquals("the lines ahead of the first answer", listOf("It cannot be undone."), frame.leading)
         assertEquals("cancel", frame.current?.key)
         frame.key(Key.Space)
         assertEquals("yes", frame.current?.key)

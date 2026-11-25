@@ -9,6 +9,7 @@ import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.app.SidebarGroup
 import dev.emassey0135.lumenna.app.SidebarKind
 import dev.emassey0135.lumenna.app.ViewModel
+import dev.emassey0135.lumenna.app.settingsPageOf
 import dev.emassey0135.lumenna.app.sidebarKey
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.SettingsPages
@@ -81,11 +82,9 @@ fun Ui.runMenuCommand(id: String) {
         "projects" -> openGroup(SidebarGroup.PROJECTS)
         "labels" -> openGroup(SidebarGroup.LABELS)
         "filters" -> openGroup(SidebarGroup.FILTERS)
-        "devices" -> push(DevicesScreen())
-        "export-import" -> openSettingsPage("export")
-        "restore-backup" -> openSettingsPage("backups")
         "close-window", "quit" -> quit()
-        else -> send(ShellEvent.Key(id))
+        // A command that opens a settings page (Devices, Export and Import, Restore from a Backup) is the core's to name.
+        else -> settingsPageOf(id)?.let { openSettingsPage(it) } ?: send(ShellEvent.Key(id))
     }
 }
 
@@ -98,9 +97,13 @@ private fun Ui.openGroup(group: SidebarGroup) {
         ?.let { send(ShellEvent.ActOn(ActingOn.Held(Side.SIDEBAR, key), it)) }
 }
 
-/** A settings page the menu bar names, over Settings. */
+/** A settings page the menu bar names, over Settings; the devices page is the devices screen. */
 private fun Ui.openSettingsPage(id: String) {
     val page = SettingsPages.of(id) ?: return refuse()
+    if (page.devices) {
+        push(DevicesScreen())
+        return
+    }
     push(SettingsScreen())
     push(PageScreen(page))
 }
