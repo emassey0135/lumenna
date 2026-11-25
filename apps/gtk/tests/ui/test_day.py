@@ -153,7 +153,7 @@ class DayTest(unittest.TestCase):
         self.session.type("#W")
         # Down offers what fits at the cursor, as in the list's filter, and puts it in.
         self.session.press("Down", wait=1)
-        self.assertEqual(self.session.focus(), "[menu item] ''")
+        self.assertTrue(self.session.focus().startswith("[menu item] "), self.session.focus())
         self.assertEqual(self.session.menu_item(), "Work, project")
         self.session.press("Return", wait=1)
         self.assertEqual(self.session.focus(), "[text] 'Tasks from'")

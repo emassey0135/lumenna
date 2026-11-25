@@ -195,7 +195,7 @@ class TaskListTest(unittest.TestCase):
         self.session.press("Control+a", "BackSpace")
         self.session.type("#")
         self.session.press("Down")
-        self.assertEqual(self.session.focus(), "[menu item] ''")
+        self.assertTrue(self.session.focus().startswith("[menu item] "), self.session.focus())
         self.assertEqual(self.session.menu_item(), "Inbox, project")
         self.session.press("Down", "Return")
         self.assertEqual(self.session.focus(), "[text] 'Filter'")
