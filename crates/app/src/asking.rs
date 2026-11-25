@@ -429,6 +429,8 @@ impl Lumenna {
                     model.home = home;
                 }
                 if let Some(saving) = saving {
+                    // The task's form a question asked for is answered once its save is made.
+                    close_form_for(model, &saving.task);
                     model.saved_details(saving);
                 }
                 if let (Some(key), Some(settings)) = (&setting, &mut model.settings) {
@@ -474,8 +476,12 @@ impl Lumenna {
                     form.refusal = Some(error.message().to_owned());
                     return render();
                 }
-                // A refused answer stays in its question, with the reason.
-                if question && let Some(open) = &mut model.open {
+                // A refused answer stays in its question, with the reason: a task's form asked for
+                // by one too, refused as it saves.
+                let form_asked = saving.as_ref().is_some_and(|saving| {
+                    model.open.as_ref().and_then(Open::action).is_some_and(|action| action.question == Question::Form && action.target == saving.task)
+                });
+                if (question || form_asked) && let Some(open) = &mut model.open {
                     open.refusal = Some(error.message().to_owned());
                     open.writing = None;
                     return render();
@@ -573,4 +579,13 @@ pub(crate) fn refuse(kind: ActionKind, actions: &[Action], model: &Screen) -> Co
     let subject = actions.first().map_or(if heading { Subject::Day } else { Subject::Task }, |a| a.subject);
     let this_device = model.acting == Some(crate::Side::Devices) && model.holds_this_device();
     refused(not_offered(kind, subject, this_device))
+}
+
+/// Closes the question that asked for `task`'s form, if one is open: its save is made, or there
+/// was nothing to save.
+pub(crate) fn close_form_for(model: &mut Screen, task: &str) {
+    let asked = model.open.as_ref().and_then(Open::action).is_some_and(|action| action.question == Question::Form && action.subject == Subject::Task && action.target == task);
+    if asked {
+        model.open = None;
+    }
 }

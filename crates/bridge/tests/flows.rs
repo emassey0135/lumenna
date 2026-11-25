@@ -2838,6 +2838,25 @@ fn enter_on_a_task_is_its_form_whatever_task_the_details_showed() {
 }
 
 #[test]
+fn a_refused_save_leaves_the_task_form_open_and_a_saved_one_closes_it() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Key("open".to_owned()));
+    let dialog = open_dialog(&app);
+    work(&mut app, &control(&dialog, "field:due"), "not a date at all", ControlMove::Set);
+    work(&mut app, &control(&dialog, "save"), "", ControlMove::Pressed);
+    assert!(app.view().asking.is_some(), "refused: the form stays, with why");
+    let dialog = open_dialog(&app);
+    assert_eq!(dialog.controls[0].key, "refusal", "{dialog:?}");
+    assert!(dialog.prompt.contains(&dialog.controls[0].value), "{dialog:?}");
+    work(&mut app, &control(&dialog, "field:due"), "", ControlMove::Set);
+    work(&mut app, &control(&dialog, "field:title"), "Buy oat milk", ControlMove::Set);
+    work(&mut app, &control(&dialog, "save"), "", ControlMove::Pressed);
+    assert!(app.view().asking.is_none(), "saved: the question is answered");
+    assert_eq!(app.titles(), ["Buy oat milk"]);
+}
+
+#[test]
 fn a_settings_page_is_its_settings_as_controls_each_applied_as_it_changes() {
     let mut app = App::new();
     app.send(Event::Settings(SettingsEvent::Open));

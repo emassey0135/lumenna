@@ -286,16 +286,17 @@ pub fn question(asking: &Asking, view: &ViewModel, lines: &Lines) -> Option<Dial
             if !shown {
                 return None;
             }
-            let mut form = task_form(view, lines)?;
-            form.id = id;
-            // Saving it or closing it closes the question as well as the form.
-            for control in form.controls.iter_mut().filter(|control| control.cancel || control.default) {
+            let form = task_form(view, lines)?;
+            // Closing it closes the question as well as the form; saving it closes the question once
+            // the save is made (`asking`), so a refused save leaves the form open, its reason
+            // (the question's refusal) first.
+            controls.extend(form.controls);
+            for control in controls.iter_mut().filter(|control| control.cancel) {
                 if let ControlSends::Press(events) = &mut control.sends {
                     events.push(ShellEvent::Cancel);
                 }
             }
-            form.cancel.push(ShellEvent::Cancel);
-            return Some(form);
+            return Some(dialog(id, form.title, controls));
         }
         Question::Confirm { title, message, yes } => {
             if !message.is_empty() {
