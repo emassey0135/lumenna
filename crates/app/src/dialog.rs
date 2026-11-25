@@ -24,6 +24,11 @@ pub struct DialogShown {
     pub id: String,
     /// What it is called, said as it opens.
     pub title: String,
+    /// Its title and the lines to read ahead of its first control that takes anything (a
+    /// refusal, a question's message), as one prompt: for a device whose dialogs ask with a
+    /// prompt and put no line to read above their controls. Those lines are still among
+    /// `controls`, for a shell that draws them.
+    pub prompt: String,
     /// Its controls, in tab order.
     pub controls: Vec<ControlShown>,
     /// Which control it opens on, by position: the first that takes anything.
@@ -224,7 +229,11 @@ fn dialog(id: String, title: String, controls: Vec<ControlShown>) -> DialogShown
         ControlSends::Press(events) => events.clone(),
         _ => Vec::new(),
     });
-    DialogShown { id, title, focus: first_taking(&controls), controls, cancel }
+    let leading: Vec<&str> = std::iter::once(title.as_str())
+        .chain(controls.iter().take_while(|control| control.kind == ControlType::Text).map(|control| control.value.as_str()))
+        .collect();
+    let prompt = crate::screen::prompt(&leading);
+    DialogShown { id, title, prompt, focus: first_taking(&controls), controls, cancel }
 }
 
 fn cancel_word() -> String {
@@ -259,7 +268,7 @@ fn field_control(field: &FormField, value: String, options: &[Choice], checked: 
 
 /// A question open, as a dialog: its message, its line or its choices, then its buttons in the
 /// order the screen's description gives them. A task's form asked for (`Question::Form`) is the
-/// task form, once the details show that task; any other form is the shell's own.
+/// task form, the app showing that task's details as it asks; any other form is the shell's own.
 #[must_use]
 pub fn question(asking: &Asking, view: &ViewModel, lines: &Lines) -> Option<DialogShown> {
     let id = format!("question:{}", asking.number);
@@ -356,7 +365,15 @@ pub fn task_form(view: &ViewModel, lines: &Lines) -> Option<DialogShown> {
         .map(|field| {
             let value = crate::details::get(fields, &field.key);
             let options = if field.key == "project" { &details.projects } else { &field.options };
-            field_control(field, value, options, false, ControlSends::TaskField(field.key.clone()))
+            let mut control = field_control(field, value, options, false, ControlSends::TaskField(field.key.clone()));
+            // A project offered says its level after it where the level changes, as a list that
+            // reads one line per row says it; what the field holds stays its name.
+            if field.key == "project" && lines.projects.len() == control.options.len() {
+                for (option, line) in control.options.iter_mut().zip(&lines.projects) {
+                    option.title = crate::lines::with_level(line);
+                }
+            }
+            control
         })
         .collect();
     let said: Vec<String> = if lines.details.len() == details.lines.len() {
@@ -557,6 +574,18 @@ pub fn open(view: &ViewModel, lines: &Lines) -> Option<DialogShown> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dialog_s_prompt_is_its_title_then_the_lines_before_its_first_control() {
+        let controls = vec![
+            ControlShown::text("refusal", "That name is taken."),
+            ControlShown::text("message", "Its tasks go with it."),
+            ControlShown::button("yes", "Delete", ControlSends::Answer),
+            ControlShown::text("after", "Not in the prompt"),
+        ];
+        let shown = dialog("question:1".to_owned(), "Delete Work?".to_owned(), controls);
+        assert_eq!(shown.prompt, "Delete Work? That name is taken. Its tasks go with it");
+    }
 
     #[test]
     fn a_line_set_in_quick_add_puts_the_cursor_at_its_end_and_a_pick_needs_a_choice() {

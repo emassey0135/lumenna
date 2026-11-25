@@ -525,6 +525,68 @@ pub fn braillesense_press(letter: &str) -> Option<String> {
     }
 }
 
+/// A letter's press on a HumanWare braille reader as a key help names it: "Space-c", "Enter-a";
+/// none for one that reaches no app (`ReaderLetter::Neither`).
+#[must_use]
+pub fn reader_press(letter: &str) -> Option<String> {
+    match reader_letter(letter) {
+        ReaderLetter::Space => Some(format!("Space-{letter}")),
+        ReaderLetter::Enter => Some(format!("Enter-{letter}")),
+        ReaderLetter::Neither => None,
+    }
+}
+
+/// A braille device whose key help lists the screen's own commands by the keys that press them.
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyDevice {
+    /// A HumanWare braille reader (`reader_press`).
+    Reader,
+    /// The HIMS BrailleSense (`braillesense_press`).
+    BrailleSense,
+    /// The Orbit Speak (`speak_press`).
+    OrbitSpeak,
+}
+
+/// The keys that press `letter` on `device`, as its key help names them.
+#[must_use]
+pub fn press_on(device: KeyDevice, letter: &str) -> Option<String> {
+    match device {
+        KeyDevice::Reader => reader_press(letter),
+        KeyDevice::BrailleSense => braillesense_press(letter),
+        KeyDevice::OrbitSpeak => speak_press(letter),
+    }
+}
+
+/// The commands of the screen shown (`ViewModel::screen_actions`, Home's on Home) as `device`'s
+/// key help lists them, each by the keys that press its letter there; one with no press there is
+/// a menu away and left out. On a reader, Delete's chord follows (Space-D, as on HumanWare's
+/// other braille devices), which no letter of the core's names.
+#[must_use]
+pub fn screen_keys(device: KeyDevice, actions: &[crate::ScreenAction]) -> Vec<crate::words::DeviceKey> {
+    let mut keys: Vec<crate::words::DeviceKey> = actions
+        .iter()
+        .filter_map(|action| {
+            let keys = press_on(device, &action.letter)?;
+            // The readers and the BrailleSense name a key "Enter-C"; the Speak says "dot 8 c".
+            let keys = if device == KeyDevice::OrbitSpeak { keys } else { capital_letter(&keys) };
+            Some(crate::words::DeviceKey::new(keys, action.title.clone()))
+        })
+        .collect();
+    if device == KeyDevice::Reader {
+        keys.push(crate::words::DeviceKey::new("Space-D".to_owned(), "Delete the row".to_owned()));
+    }
+    keys
+}
+
+/// A press's letter in capitals, as key helps name keys: "Enter-c" becomes "Enter-C".
+fn capital_letter(press: &str) -> String {
+    match press.rsplit_once('-') {
+        Some((held, letter)) if letter.len() == 1 => format!("{held}-{}", letter.to_uppercase()),
+        _ => press.to_owned(),
+    }
+}
+
 /// The letters the BrailleSense presses with Enter, as its key help names them: "A, B, C … and Z".
 #[must_use]
 pub fn braillesense_enter_letters() -> String {
@@ -765,6 +827,28 @@ impl Lumenna {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn screen_action(id: &str, title: &str, letter: &str) -> crate::ScreenAction {
+        crate::ScreenAction { id: id.to_owned(), title: title.to_owned(), letter: letter.to_owned(), asks: false, shell: false, enabled: true }
+    }
+
+    #[test]
+    fn a_key_help_names_each_command_by_the_keys_that_press_it_there() {
+        let actions = [screen_action("new-task", "New task", "n"), screen_action("filter", "Filter", "f"), screen_action("go-to-day", "Go to day", "g")];
+        let reader: Vec<String> = screen_keys(KeyDevice::Reader, &actions).into_iter().map(|key| key.line).collect();
+        assert_eq!(reader, ["Space-N: New task", "Space-F: Filter", "Enter-G: Go to day", "Space-D: Delete the row"]);
+        let sense: Vec<String> = screen_keys(KeyDevice::BrailleSense, &actions).into_iter().map(|key| key.line).collect();
+        assert_eq!(sense[0], "Space-N: New task");
+        assert_eq!(sense[1], "Enter-F: Filter");
+        let speak: Vec<String> = screen_keys(KeyDevice::OrbitSpeak, &actions).into_iter().map(|key| key.keys).collect();
+        assert!(speak.iter().all(|keys| keys.starts_with("space ") || keys.starts_with("dot 8 ")), "{speak:?}");
+    }
+
+    #[test]
+    fn a_reader_letter_that_reaches_no_app_has_no_press() {
+        assert_eq!(reader_press("e"), None);
+        assert_eq!(reader_press("a").as_deref(), Some("Enter-a"));
+    }
 
     #[test]
     fn the_speak_presses_a_letter_it_keeps_space_for_with_dot_8() {

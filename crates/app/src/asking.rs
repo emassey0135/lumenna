@@ -234,6 +234,11 @@ impl Lumenna {
                 }
             }
             Question::Form | Question::Confirm { .. } | Question::Text { .. } | Question::Choose { .. } => {
+                // A task's form is its details' (`dialog::question`): they show the task as it is
+                // asked for, so no shell has to show it first.
+                if action.question == Question::Form && action.subject == Subject::Task && matches!(action.kind, ActionKind::Edit | ActionKind::EditTask) {
+                    model.details.shown = Some(action.target.clone());
+                }
                 model.open = Some(Open::new(Purpose::Action(action)));
                 render()
             }

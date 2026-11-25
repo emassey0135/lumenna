@@ -196,3 +196,44 @@ pub fn with_level(line: &Line) -> String {
         _ => line.text.clone(),
     }
 }
+
+/// A row's line said whole with its folding and its level after it, where it has them, for a
+/// list that reads one line per row and shows neither: "Website, project, collapsed, level 2".
+/// `expanded` is the row's own (`RowView::expanded`, `SidebarEntry::expanded`): none for a row
+/// that does not fold.
+#[must_use]
+pub fn with_state(line: &Line, expanded: Option<bool>) -> String {
+    joined(&line.text, line, expanded)
+}
+
+/// [`with_state`] less the line's first part: what a list that shows a row's title apart says
+/// after it. Empty for a row with nothing more to say.
+#[must_use]
+pub fn detail_with_state(line: &Line, expanded: Option<bool>) -> String {
+    joined(&line.detail, line, expanded)
+}
+
+fn joined(first: &str, line: &Line, expanded: Option<bool>) -> String {
+    let fold = expanded.map(lumenna_records::words::fold_state);
+    let level = line.level.as_deref();
+    std::iter::once(first)
+        .chain(fold.as_deref())
+        .chain(level)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_row_says_its_folding_then_its_level_after_its_line() {
+        let line = Line { level: Some("level 2".to_owned()), ..Line::of("Website".to_owned(), vec!["project".to_owned()]) };
+        assert_eq!(with_state(&line, Some(false)), "Website, project, collapsed, level 2");
+        assert_eq!(detail_with_state(&line, Some(false)), "project, collapsed, level 2");
+        assert_eq!(with_state(&Line::of("Buy milk".to_owned(), Vec::new()), None), "Buy milk");
+        assert_eq!(detail_with_state(&Line::of("Buy milk".to_owned(), Vec::new()), None), "");
+    }
+}

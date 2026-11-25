@@ -1274,6 +1274,17 @@ pub struct DeviceKey {
     pub keys: String,
     /** What they do: "Open the menus". */
     pub what: String,
+    /** The two as one line of a key help: "Space-M or F2: Open the menus". */
+    pub line: String,
+}
+
+impl DeviceKey {
+    /// `keys` and what they do, with their line.
+    #[must_use]
+    pub fn new(keys: String, what: String) -> Self {
+        let line = format!("{keys}: {what}");
+        Self { keys, what, line }
+    }
 }
 
 /// The BrailleSense's keys, for its key help: the device's own conventions (its manual's Common
@@ -1281,7 +1292,7 @@ pub struct DeviceKey {
 /// them, which is why they sit here with their meaning, not as separate words.
 #[must_use]
 pub fn braillesense_keys() -> Vec<DeviceKey> {
-    let row = |keys: &str, what: &str| DeviceKey { keys: keys.to_owned(), what: what.to_owned() };
+    let row = |keys: &str, what: &str| DeviceKey::new(keys.to_owned(), what.to_owned());
     // A command's press is the device's for the core's letter: "Enter-a", "Space-u".
     let press = |id: &str| {
         crate::braille::command_letter(id).and_then(crate::braille::braillesense_press).map(|press| {

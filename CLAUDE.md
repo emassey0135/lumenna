@@ -139,7 +139,9 @@ crosses the FFI.
   controls from them, never from a table of its own. **Which page a setting is on is the
   core's** (`settings_pages`, also `SettingsView::pages`): the pages in order with their titles,
   descriptions, captions and buttons, every setting on exactly one, so a new setting reaches
-  every settings screen. A shell matches no key and keeps no page table. **Which pages a device
+  every settings screen. A shell matches no key and keeps no page table: the page that is the
+  devices screen says so (`SettingsPage::devices`), and the page a menu command opens is
+  `keys::settings_page_of` (`settings_page_of`). **Which pages a device
   lists is the core's too**: `SettingsView::pages` holds only those with something on them here
   (a page's `keys` are the settings this device lists; General goes where the shell keeps nothing
   running and has its own clock), so a shell lists them all and filters none. What a shell can
@@ -180,10 +182,15 @@ crosses the FFI.
   into a line either**: a setting's row is `SettingView::line` ("Clock, 24-hour"), pairing's
   title and intro `PairingWords::heading`, a proposal's title and announcement
   `ProposalView::heading`, a change's line and what its check box says as it changes
-  `ChangeView::line` and `toggled`, the task's fields read rather than edited
+  `ChangeView::line` and `toggled`, and with its reason `ChangeView::read`, what does not fit
+  `ProposalView::unfit_lines`, where pairing stands and its question about the words
+  `PairingView::status` and `question`, the task's fields read rather than edited
   `DetailsView::field_lines` ("Priority: High"), parts of a prompt (a refusal before what is
   asked) `screen::prompt` (`prompt_of`), a line with its level after it `lines::with_level`
-  (`line_with_level`), and About's lines `ShellWords::about_lines`. A shell drawing a dialog's
+  (`line_with_level`), with its folding too `lines::with_state` and `detail_with_state`, a
+  dialog's title and the lines before its controls `DialogShown::prompt`, a key help's line
+  `DeviceKey::line` and the screen's commands by their keys `braille::screen_keys`, and About's
+  lines `ShellWords::about_lines`. A shell drawing a dialog's
   controls (`lumenna_app::dialog`) takes them apart instead: a label and a value, a refusal as a
   line of its own.
 - **What Lumenna is is said once** (`[workspace.metadata.lumenna]` in the workspace's
@@ -341,7 +348,8 @@ directly (8805659 is the last commit before the move). How the app works inside 
   row of every platform**, never a choice per place: a task's details, a block's form, free
   time's new block, a cancelled day back, a trashed task restored, a device renamed; on a place in
   the sidebar or on Home, the place opened (a heading folded). On a task, Enter runs its Edit
-  Details, which asks for the task's form (`Question::Form`): every shell opens its task form for
+  Details, which asks for the task's form (`Question::Form`), the app showing that task's details
+  as it asks: every shell opens its task form for
   it, as for any action asking that, `ScreenView::dialog` describing it to one that speaks for
   itself. What Enter does on a row, for a screen reader to name its default action (TalkBack's
   double tap), is `keys::runs_on("open", offered)` (`key_runs_on` over the FFI). The menu bar and the tray's menu

@@ -629,6 +629,10 @@ pub struct SettingsPage {
     /// Empty on every other page.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<String>,
+    /// Whether it is the paired devices and pairing (`DevicesView`), which a shell shows as its
+    /// devices screen rather than as a page of settings: it has none.
+    #[serde(default)]
+    pub devices: bool,
 }
 
 /// Every settings page, in order. `own_clock` leaves out the `clock` setting, for a shell that
@@ -647,6 +651,7 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
         keys: members,
         buttons,
         lines: Vec::new(),
+        devices: id == "devices",
     };
     vec![
         page("general", "General", "On this device: running in the background, the clock", "These settings are this device's alone.", keys(&[crate::background::KEY, "clock"]), Vec::new()),

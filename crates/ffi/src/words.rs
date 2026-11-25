@@ -12,7 +12,8 @@ use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::{LetteredMenu, MenuShortcut, SenseLetter, SpeakLetter};
+use lumenna_app::braille::{KeyDevice, LetteredMenu, MenuShortcut, SenseLetter, SpeakLetter};
+use lumenna_app::ScreenAction;
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
 use lumenna_records::{ActionKind, Candidate, Offered};
@@ -549,6 +550,33 @@ pub fn prompt_of(parts: Vec<String>) -> String {
 #[export]
 pub fn line_with_level(line: Line) -> String {
     lumenna_app::lines::with_level(&line)
+}
+
+/// A row's line said whole with its folding and its level after it, where it has them
+/// (`expanded`: none for a row that does not fold), for a list that reads one line a row.
+#[export]
+pub fn line_with_state(line: Line, expanded: Option<bool>) -> String {
+    lumenna_app::lines::with_state(&line, expanded)
+}
+
+/// [`line_with_state`] less the line's first part, for a list that shows a row's title apart.
+#[export]
+pub fn detail_with_state(line: Line, expanded: Option<bool>) -> String {
+    lumenna_app::lines::detail_with_state(&line, expanded)
+}
+
+/// The commands of the screen shown (`screen_actions`, Home's on Home) as `device`'s key help
+/// lists them, each by the keys that press its letter there.
+#[export]
+pub fn screen_keys(device: KeyDevice, actions: Vec<ScreenAction>) -> Vec<w::DeviceKey> {
+    lumenna_app::braille::screen_keys(device, &actions)
+}
+
+/// The settings page a command of the menu bar opens (`devices`, `export-import`,
+/// `restore-backup`), by its id; none for any other.
+#[export]
+pub fn settings_page_of(command: String) -> Option<String> {
+    lumenna_app::keys::settings_page_of(&command).map(str::to_owned)
 }
 
 /// Where a phone and a watch put the places, from the sidebar as the view gives it: a phone's

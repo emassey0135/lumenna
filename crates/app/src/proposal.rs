@@ -168,6 +168,10 @@ pub struct ChangeView {
     /// What a check box says as it changes: what a change is called, then its state: "Change,
     /// not checked".
     pub toggled: String,
+    /// Its line, then why where it says: the whole row for a list that reads one line per row
+    /// and has nowhere else to put the reason. "Write report at 9:00 AM, checked. Suggested
+    /// because overdue."
+    pub read: String,
 }
 
 /// A proposal's screen as shown.
@@ -188,6 +192,9 @@ pub struct ProposalView {
     pub changes: Vec<ChangeView>,
     /// What does not fit anywhere.
     pub unfit: Vec<String>,
+    /// Each of [`unfit`](Self::unfit) as a row of its own, said with what it is: "Does not fit:
+    /// Laundry".
+    pub unfit_lines: Vec<String>,
     /// Other ways to replan, each its sentence.
     pub others: Vec<String>,
     /// Why the last apply was refused.
@@ -211,7 +218,7 @@ pub fn view(screen: &Sheet) -> ProposalView {
         None => (String::new(), Vec::new(), Vec::new(), Vec::new()),
         Some(p @ Proposal::Replan(r)) => (
             p.spoken(),
-            r.changes.iter().enumerate().map(|(at, c)| ChangeView { sentence: c.sentence.clone(), reason: None, checked: checked(at), state: lumenna_records::words::checked(checked(at)), line: String::new(), toggled: String::new() }).collect(),
+            r.changes.iter().enumerate().map(|(at, c)| ChangeView { sentence: c.sentence.clone(), reason: None, checked: checked(at), state: lumenna_records::words::checked(checked(at)), line: String::new(), toggled: String::new(), read: String::new() }).collect(),
             r.unplaceable.clone(),
             r.alternatives.iter().map(|a| a.sentence.clone()).collect(),
         ),
@@ -220,7 +227,7 @@ pub fn view(screen: &Sheet) -> ProposalView {
             d.sittings
                 .iter()
                 .enumerate()
-                .map(|(at, s)| ChangeView { sentence: s.sentence.clone(), reason: s.reason.clone(), checked: checked(at), state: lumenna_records::words::checked(checked(at)), line: String::new(), toggled: String::new() })
+                .map(|(at, s)| ChangeView { sentence: s.sentence.clone(), reason: s.reason.clone(), checked: checked(at), state: lumenna_records::words::checked(checked(at)), line: String::new(), toggled: String::new(), read: String::new() })
                 .collect(),
             d.unfit.clone(),
             Vec::new(),
@@ -234,6 +241,7 @@ pub fn view(screen: &Sheet) -> ProposalView {
         announcement,
         changes,
         unfit,
+        unfit_lines: Vec::new(),
         others,
         refusal: screen.refusal.clone(),
         shown: screen.shown,
@@ -381,5 +389,10 @@ pub(crate) fn compose(view: &mut ProposalView) {
     for change in &mut view.changes {
         change.line = format!("{}, {}", change.sentence, change.state);
         change.toggled = format!("{}, {}", view.words.item, change.state);
+        change.read = match change.reason.as_deref().map(str::trim).filter(|reason| !reason.is_empty()) {
+            Some(reason) => format!("{}. {reason}", change.line),
+            None => change.line.clone(),
+        };
     }
+    view.unfit_lines = view.unfit.iter().map(|line| format!("{}: {line}", view.words.unfit)).collect();
 }
