@@ -20,7 +20,7 @@ from BTSpeak import dialogs
 
 import core
 from core import native, refused
-from session import Command, Session, choose, sentences
+from session import Command, Session, choose
 
 L = native()
 K = L.ActionKind
@@ -41,8 +41,9 @@ def prompt(*parts: str) -> str:
 
 
 def joined(*said: str) -> str:
-    """What several steps said, as one thing to say."""
-    return sentences(*said)
+    """What several steps said, as one thing to say: each its own sentence ended once, as the
+    core joins them (`said_together`)."""
+    return L.said_together([part for part in said if part])
 
 
 def held(row):

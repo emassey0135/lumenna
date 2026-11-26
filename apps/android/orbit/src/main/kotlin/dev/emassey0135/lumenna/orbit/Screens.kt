@@ -148,7 +148,7 @@ class PlaceScreen(override val place: Place, private val name: String) : AppList
 }
 
 /** Typing a filter over the list, which the app narrows as it is confirmed: a line of this app's own. */
-class FilterScreen(@Suppress("unused") private val place: Place) : DialogScreen() {
+class FilterScreen(@Suppress("unused") private val place: Place) : CoreDialog() {
     private val own by lazy {
         val words = appWords.quickAdd
         ownLine("filter", words.filter, words.filter, host.view.query, words.filterHint, words.filter)
@@ -237,7 +237,7 @@ fun heading(list: ListShown?, name: String): String = list?.heading?.ifEmpty { n
  * (`Question::Form`), the app showing that task's details as it asks, whose Save and Cancel close
  * the question too. On the Player a question that is one line is the whole screen.
  */
-class QuestionScreen(private val asking: Asking) : DialogScreen(), AskingScreen {
+class QuestionScreen(private val asking: Asking) : CoreDialog(), AskingScreen {
     override val number: UInt get() = asking.number
 
     override fun shown(): DialogShown? = host.screenView.dialog?.takeIf { it.id == "question:$number" }
@@ -277,7 +277,7 @@ class CompletionScreen(private val options: List<Pair<String, () -> Unit>>) : Ap
 }
 
 /** Quick add: the core's dialog while its line is open, with completion and its refusals. */
-class QuickAddScreen : DialogScreen() {
+class QuickAddScreen : CoreDialog() {
     private var seen = false
 
     override fun shown(): DialogShown? = host.screenView.dialog?.takeIf { it.id == "quick-add" }

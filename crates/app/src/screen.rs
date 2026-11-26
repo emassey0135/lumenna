@@ -198,14 +198,40 @@ fn shown_row(key: &str, shown: &[(String, Line, Vec<Offered>)]) -> Option<RowSho
     })
 }
 
-fn list(name: String, side: Option<Side>, readback: String, empty: String, focus: Option<&str>, shown: &[(String, Line, Vec<Offered>)]) -> ListShown {
-    let heading = if readback.is_empty() {
-        name.clone()
-    } else if name.is_empty() || readback.starts_with(&name) {
-        readback.clone()
+/// A list's name with what it says of itself, as one heading (`ListShown::heading`): "Tasks, 3
+/// tasks"; the readback alone where it begins with the name already (the day's), the name alone
+/// where it says nothing. Also for a list a shell names itself over a place the app names
+/// otherwise (BTSpeak's "Query", a filter typed over the tasks), so no shell joins the two.
+#[must_use]
+pub fn heading(name: &str, readback: &str) -> String {
+    if readback.is_empty() {
+        name.to_owned()
+    } else if name.is_empty() || readback.starts_with(name) {
+        readback.to_owned()
     } else {
         format!("{name}, {readback}")
-    };
+    }
+}
+
+/// Several things said in a row, as one thing to say: each its own sentence, ended once. A part
+/// ending in its own full stop, question or exclamation mark keeps it; one that ends in none gets a
+/// full stop, but a part said alone is said as it came. Unlike `prompt`, the last keeps its full
+/// stop, since each is a sentence the app said whole and none is a title before what it asks.
+#[must_use]
+pub fn said_together(parts: &[&str]) -> String {
+    let parts: Vec<&str> = parts.iter().map(|part| part.trim()).filter(|part| !part.is_empty()).collect();
+    if let [only] = parts.as_slice() {
+        return (*only).to_owned();
+    }
+    parts
+        .iter()
+        .map(|part| if part.ends_with(['.', '?', '!']) { (*part).to_owned() } else { format!("{part}.") })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn list(name: String, side: Option<Side>, readback: String, empty: String, focus: Option<&str>, shown: &[(String, Line, Vec<Offered>)]) -> ListShown {
+    let heading = heading(&name, &readback);
     ListShown {
         name,
         side,
@@ -423,11 +449,26 @@ pub fn screen_view(before: Option<&ViewModel>, view: &ViewModel, lines: &Lines, 
 
 #[cfg(test)]
 mod tests {
-    use super::prompt;
+    use super::{heading, prompt, said_together};
 
     #[test]
     fn a_prompts_parts_are_each_a_sentence_ended_once() {
         assert_eq!(prompt(&["Erase lose me permanently?", "It cannot be undone."]), "Erase lose me permanently? It cannot be undone");
         assert_eq!(prompt(&["Go to day.", "A date, such as Friday", "", "Day"]), "Go to day. A date, such as Friday. Day");
+    }
+
+    #[test]
+    fn several_things_said_are_each_a_sentence_ended_once_the_last_keeping_its_full_stop() {
+        assert_eq!(said_together(&["Marked done", " ", "Undo with Control-Z."]), "Marked done. Undo with Control-Z.");
+        assert_eq!(said_together(&["Erase it permanently?", "Syncing"]), "Erase it permanently? Syncing.");
+        assert_eq!(said_together(&["", " Syncing "]), "Syncing");
+        assert_eq!(said_together(&[]), "");
+    }
+
+    #[test]
+    fn a_lists_heading_is_its_name_then_what_it_says_of_itself() {
+        assert_eq!(heading("Query", "Tasks with priority 1. 3 tasks."), "Query, Tasks with priority 1. 3 tasks.");
+        assert_eq!(heading("Query", ""), "Query");
+        assert_eq!(heading("Today", "Today. 2 blocks."), "Today. 2 blocks.");
     }
 }

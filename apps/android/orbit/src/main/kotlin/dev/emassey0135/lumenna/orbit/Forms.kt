@@ -25,10 +25,10 @@ import dev.emassey0135.lumenna.appWords
  * a reminder's notification, where no question asks for it; a task's Edit (Enter on a task) is the
  * question's own dialog ([QuestionScreen]), the app showing the task as it asks.
  */
-class DetailsScreen(private val id: String) : DialogScreen() {
+class DetailsScreen(private val id: String) : CoreDialog() {
     override fun shown(): DialogShown? = host.app.taskForm()?.takeIf { host.view.details?.task?.id == id }
 
-    override fun openedAs(): Opened = Opened.List
+    override val toldAsDialog: Boolean get() = false
 
     override fun resumed() {
         host.send(ShellEvent.Details(DetailsEvent.Show(id)))
@@ -69,10 +69,10 @@ class DetailsScreen(private val id: String) : DialogScreen() {
 }
 
 /** The block form, the core's while it is open: its fields, Save (or Add) and Cancel. */
-class BlockFormScreen : DialogScreen() {
+class BlockFormScreen : CoreDialog() {
     override fun shown(): DialogShown? = host.screenView.dialog?.takeIf { it.id == "block" }
 
-    override fun openedAs(): Opened = Opened.List
+    override val toldAsDialog: Boolean get() = false
 
     override fun stands(view: ViewModel): Boolean = view.blockForm != null
 
@@ -117,12 +117,12 @@ class SettingsScreen : AppList() {
  * as it changes, the page's caption, its buttons and the store's own actions. A page has nothing to
  * cancel: Escape leaves it.
  */
-class PageScreen(private val page: SettingsPage) : DialogScreen() {
+class PageScreen(private val page: SettingsPage) : CoreDialog() {
     override fun shown(): DialogShown? = host.app.settingsPage(page.id)
 
     override val title: String get() = shown()?.title?.ifEmpty { null } ?: page.title
 
-    override fun openedAs(): Opened = Opened.List
+    override val toldAsDialog: Boolean get() = false
 
     override fun cancelDialog() {
         dialog?.commit()
@@ -177,10 +177,10 @@ class DevicesScreen : AppList() {
             add(Row("sync", titleOf("sync-now"), { host.send(ShellEvent.Key("sync-now")) }, letter = buttonLetter("sync-now")))
             add(Row("wait", view.words.wait, { pair(null) }, letter = buttonLetter("pair")))
             add(Row("join", view.words.join, {
-                host.push(FieldEditScreen(view.words.theirCode, "", view.words.intro) { code ->
+                host.stack.askLine(view.words.theirCode, "", view.words.intro) { code ->
                     // As typed, spaces and all: the core reads the code.
-                    pair(code)
-                })
+                    if (code != null) pair(code)
+                }
             }))
         }
     }

@@ -26,6 +26,7 @@ btspeak_stub.install()
 
 from harness import LUM, Store, connect  # noqa: E402
 from actions import L  # noqa: E402
+import core  # noqa: E402
 import day  # noqa: E402
 import menus  # noqa: E402
 import preferences  # noqa: E402
@@ -725,6 +726,14 @@ class Menus(unittest.TestCase):
         self.assertIsInstance(listed, L.ShownList)
         self.assertEqual(script.titles[0], listed.field_0.heading)
         self.assertTrue(script.titles[0].startswith("Tasks, "), script.titles)
+
+    def test_a_filter_typed_over_the_tasks_is_headed_by_its_own_name_then_what_it_found(self):
+        self.call("task.add", text="write the chapter p1")
+        self.call("task.add", text="water the plants")
+        script = self.run_script([("input", "p1"), ("back",)], lambda: tasks.query_tasks(self.session))
+        name = core.words().query
+        self.assertTrue(script.titles[0].startswith(f"{name}, "), script.titles)
+        self.assertIn("1 ", script.titles[0])
 
     def test_going_to_a_day_and_a_new_filter_ask_in_the_cores_words(self):
         script = self.run_script(
