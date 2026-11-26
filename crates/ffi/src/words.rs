@@ -12,11 +12,11 @@ use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
-use lumenna_app::braille::{KeyDevice, LetteredMenu, MenuShortcut, SenseLetter, SpeakLetter};
-use lumenna_app::ScreenAction;
+use lumenna_app::braille::{LetteredMenu, MenuShortcut};
+use lumenna_app::key_help::{KeyDevice, LetterPress};
 use lumenna_records::fields::SettingsPage;
 use lumenna_records::words::PhoneSync;
-use lumenna_records::{ActionKind, Candidate, Offered};
+use lumenna_records::{ActionKind, Candidate, Completions, Offered};
 
 /// `text` in sentence case: for a platform whose convention it is, and for braille.
 #[export]
@@ -123,12 +123,6 @@ pub fn fold_state(expanded: bool) -> String {
 #[export]
 pub fn level_words(depth: u32) -> String {
     lumenna_records::words::level(depth)
-}
-
-/// The BrailleSense's keys, for its key help.
-#[export]
-pub fn braillesense_keys() -> Vec<w::DeviceKey> {
-    w::braillesense_keys()
 }
 
 /// The letter each of a menu's items shows, empty for one with none.
@@ -439,22 +433,25 @@ pub fn braille_letter(dots: u8) -> Option<String> {
     lumenna_app::braille::braille_letter(dots).map(|letter| letter.to_string())
 }
 
-/// How `letter` is pressed on the Orbit Speak: Space with it, Dot 8 with it, or neither.
+/// How `letter`'s command is pressed on `device`: alone, with Space, with Enter, or not at all.
 #[export]
-pub fn speak_letter(letter: String) -> SpeakLetter {
-    lumenna_app::braille::speak_letter(&letter)
+pub fn letter_press(device: KeyDevice, letter: String) -> LetterPress {
+    lumenna_app::key_help::letter_press(device, &letter)
 }
 
-/// How a letter's press is said after what it runs on the Orbit Speak, none for one with no press.
+/// The keys that press `letter`'s command on `device`, as the device names keys ("Space+U" on a
+/// reader, "Enter-C" on the BrailleSense, "dot 8 c" on the Speak, "u" on a BTSpeak), for a menu to
+/// show beside its item; none where no key reaches the app.
 #[export]
-pub fn speak_press(letter: String) -> Option<String> {
-    lumenna_app::braille::speak_press(&letter)
+pub fn press_name(device: KeyDevice, letter: String) -> Option<String> {
+    lumenna_app::key_help::press_name(device, &letter)
 }
 
-/// Space with a letter that takes Dot 8 on the Orbit Speak, refused: which to press.
+/// What `device` says when Space with `letter` reaches the app though Enter presses its command
+/// there; none for a letter pressed otherwise.
 #[export]
-pub fn speak_press_instead(letter: String) -> String {
-    lumenna_app::braille::speak_press_instead(&letter)
+pub fn press_instead(device: KeyDevice, letter: String) -> Option<String> {
+    lumenna_app::key_help::press_instead(device, &letter)
 }
 
 /// Where the next line starting with `letter` is, from the line after `from` on, wrapping round
@@ -510,18 +507,18 @@ pub fn nothing_on_letter(letter: String) -> String {
     lumenna_records::words::nothing_on_letter(&letter)
 }
 
-/// How `letter` is pressed on the HIMS BrailleSense: Space with it, or Enter with it where Space
-/// with those dots is the device's own; none for a character with no dots.
+/// Whether `text`, entered whole, ends in a name begun and not finished, which `found` (the
+/// completion at its end) would finish: a device whose line cannot complete as it is typed offers
+/// `found` once the line is entered.
 #[export]
-pub fn braillesense_letter(letter: String) -> Option<SenseLetter> {
-    lumenna_app::braille::braillesense_letter(&letter)
+pub fn ends_unfinished(text: String, found: Completions) -> bool {
+    lumenna_app::typing::ends_unfinished(&text, &found)
 }
 
-/// A letter's press on the BrailleSense as the device names a key ("Space-u", "Enter-c"), for a
-/// menu to show beside its item; none for a character with no dots.
+/// `text` with `choice` put in over `start..end` (UTF-8 byte offsets, a completion's span).
 #[export]
-pub fn braillesense_press(letter: String) -> Option<String> {
-    lumenna_app::braille::braillesense_press(&letter)
+pub fn put_in(text: String, start: u32, end: u32, choice: String) -> String {
+    lumenna_app::typing::splice(&lumenna_app::typing::Line { text, cursor: 0 }, start, end, &choice).text
 }
 
 /// What doing `how` to a dialog's control that sends `sends`, holding `value`, sends, in order
@@ -563,13 +560,6 @@ pub fn line_with_state(line: Line, expanded: Option<bool>) -> String {
 #[export]
 pub fn detail_with_state(line: Line, expanded: Option<bool>) -> String {
     lumenna_app::lines::detail_with_state(&line, expanded)
-}
-
-/// The commands of the screen shown (`screen_actions`, Home's on Home) as `device`'s key help
-/// lists them, each by the keys that press its letter there.
-#[export]
-pub fn screen_keys(device: KeyDevice, actions: Vec<ScreenAction>) -> Vec<w::DeviceKey> {
-    lumenna_app::braille::screen_keys(device, &actions)
 }
 
 /// The settings page a command of the menu bar opens (`devices`, `export-import`,

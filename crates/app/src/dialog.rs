@@ -142,6 +142,13 @@ pub struct ControlShown {
     pub cancel: bool,
     /// What it sends.
     pub sends: ControlSends,
+    /// What it says as a row of a list that reads a line each: its label and what it holds, a
+    /// check by its state's word (the setting's own, "On", else "Yes" or "No"); a line to read,
+    /// its text; a button, its label. "Clock, 24-hour".
+    pub line: String,
+    /// Each of `options` as a row says it: its title, then why it is offered where it says
+    /// ("Write the report. Suggested because overdue by 2 days").
+    pub option_lines: Vec<String>,
 }
 
 impl ControlShown {
@@ -163,6 +170,8 @@ impl ControlShown {
             default: false,
             cancel: false,
             sends,
+            line: String::new(),
+            option_lines: Vec::new(),
         }
     }
 
@@ -233,7 +242,38 @@ fn dialog(id: String, title: String, controls: Vec<ControlShown>) -> DialogShown
         .chain(controls.iter().take_while(|control| control.kind == ControlType::Text).map(|control| control.value.as_str()))
         .collect();
     let prompt = crate::screen::prompt(&leading);
+    let controls: Vec<ControlShown> = controls.into_iter().map(read).collect();
     DialogShown { id, title, prompt, focus: first_taking(&controls), controls, cancel }
+}
+
+/// `control` with what it says as a row, where its builder has not said already.
+fn read(mut control: ControlShown) -> ControlShown {
+    if control.line.is_empty() {
+        let value = match control.kind {
+            ControlType::Check => check_word(control.checked, &[]),
+            ControlType::Text => String::new(),
+            _ => control.value.clone(),
+        };
+        control.line = match control.kind {
+            ControlType::Text => control.value.clone(),
+            _ if value.is_empty() => control.label.clone(),
+            _ if control.label.is_empty() => value,
+            _ => format!("{}, {value}", control.label),
+        };
+    }
+    control.option_lines = control.options.iter().map(|option| crate::screen::prompt(&[option.title.as_str(), option.reason.as_deref().unwrap_or_default()])).collect();
+    control
+}
+
+/// What a check says of its state: `named`'s option of id `true` or `false` where it has them
+/// (a setting's "On" and "Off"), else "Yes" or "No".
+fn check_word(checked: bool, named: &[Choice]) -> String {
+    let id = if checked { "true" } else { "false" };
+    if let Some(option) = named.iter().find(|option| option.id == id) {
+        return option.title.clone();
+    }
+    let id = if checked { "yes" } else { "no" };
+    lumenna_records::fields::yes_no().into_iter().find(|choice| choice.id == id).map(|choice| choice.title).unwrap_or_default()
 }
 
 fn cancel_word() -> String {
@@ -482,7 +522,11 @@ pub fn settings_page(view: &ViewModel, page: &str) -> Option<DialogShown> {
         let sends = ControlSends::Setting(setting.key.clone());
         let id = format!("setting:{}", setting.key);
         controls.push(match setting.kind {
-            SettingKind::Toggle => ControlShown { checked: setting.value == "true", hint: setting.hint.clone(), ..ControlShown::new(id, ControlType::Check, setting.title.clone(), sends) },
+            SettingKind::Toggle => {
+                let checked = setting.value == "true";
+                let line = format!("{}, {}", setting.title, check_word(checked, &setting.options));
+                ControlShown { checked, hint: setting.hint.clone(), line, ..ControlShown::new(id, ControlType::Check, setting.title.clone(), sends) }
+            }
             SettingKind::Folder => ControlShown {
                 value: setting.value.clone(),
                 hint: setting.hint.clone(),
@@ -586,6 +630,23 @@ mod tests {
         ];
         let shown = dialog("question:1".to_owned(), "Delete Work?".to_owned(), controls);
         assert_eq!(shown.prompt, "Delete Work? That name is taken. Its tasks go with it");
+    }
+
+    #[test]
+    fn a_control_reads_as_a_row_its_label_then_what_it_holds_and_a_choice_with_why() {
+        let reason = Choice { id: "a".to_owned(), title: "Write the report".to_owned(), reason: Some("Suggested because overdue".to_owned()), ..Choice::default() };
+        let controls = vec![
+            ControlShown::text("caption", "These sync."),
+            ControlShown { value: "Inbox".to_owned(), ..ControlShown::new("field:project", ControlType::Choice, "Project", ControlSends::Nothing) },
+            ControlShown { checked: true, ..ControlShown::new("field:all-day", ControlType::Check, "All day", ControlSends::Nothing) },
+            ControlShown { options: vec![reason], ..ControlShown::new("choices", ControlType::List, "What now?", ControlSends::Pick) },
+            ControlShown::button("yes", "Start", ControlSends::Pick),
+        ];
+        let shown = dialog("question:2".to_owned(), "What now?".to_owned(), controls);
+        let lines: Vec<&str> = shown.controls.iter().map(|control| control.line.as_str()).collect();
+        assert_eq!(lines, ["These sync.", "Project, Inbox", "All day, Yes", "What now?", "Start"]);
+        assert_eq!(shown.controls[3].option_lines, ["Write the report. Suggested because overdue"]);
+        assert_eq!(check_word(false, &[Choice { id: "false".to_owned(), title: "Off".to_owned(), ..Choice::default() }]), "Off");
     }
 
     #[test]

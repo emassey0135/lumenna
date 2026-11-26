@@ -47,6 +47,7 @@ pub(crate) fn in_sentence_case(view: &mut ViewModel) {
         if let Some(pairing) = &mut devices.pairing {
             pairing.compose(&words, &words.intro_sentence);
         }
+        devices.pairing_status = devices.pairing.as_ref().map_or_else(|| words.intro_sentence.clone(), |pairing| pairing.status.clone());
     }
     if let Some(proposal) = &mut view.proposal {
         let words = &mut proposal.words;

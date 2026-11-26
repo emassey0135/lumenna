@@ -343,6 +343,16 @@ mod tests {
     }
 
     #[test]
+    fn a_settings_page_reads_as_its_title_then_its_description_and_heads_its_settings_with_its_caption() {
+        let pages = settings_pages(false, true);
+        let general = pages.iter().find(|page| page.id == "general").expect("General");
+        assert_eq!(general.line, "General. On this device: running in the background, the clock.");
+        assert_eq!(general.heading, "General. These settings are this device's alone.");
+        let devices = pages.iter().find(|page| page.id == "devices").expect("Devices");
+        assert_eq!(devices.heading, "Devices and sync", "no caption, the title alone");
+    }
+
+    #[test]
     fn every_task_field_and_block_field_has_a_form_field() {
         let task = serde_json::to_value(crate::TaskFields::default()).unwrap();
         let named: Vec<String> = task_form().into_iter().map(|f| f.key).collect();
@@ -633,6 +643,14 @@ pub struct SettingsPage {
     /// devices screen rather than as a page of settings: it has none.
     #[serde(default)]
     pub devices: bool,
+    /// Its title then its description, as one row of a list of pages that reads a line each:
+    /// "Planning. The day, the week, completing subtasks, announcements".
+    #[serde(default)]
+    pub line: String,
+    /// Its title then its caption, as one heading over its settings for a device whose screens
+    /// say their heading as they open: "General. These settings are this device's alone."
+    #[serde(default)]
+    pub heading: String,
 }
 
 /// Every settings page, in order. `own_clock` leaves out the `clock` setting, for a shell that
@@ -652,6 +670,8 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
         buttons,
         lines: Vec::new(),
         devices: id == "devices",
+        line: sentences(&[&c(title), description]),
+        heading: sentences(&[&c(title), caption]),
     };
     vec![
         page("general", "General", "On this device: running in the background, the clock", "These settings are this device's alone.", keys(&[crate::background::KEY, "clock"]), Vec::new()),
@@ -704,6 +724,15 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
             ..page("about", "About", "Version, website, where to report a problem, licence", "", Vec::new(), Vec::new())
         },
     ]
+}
+
+/// Parts said as one: each its own sentence, ended once ("Planning. The day, the week").
+fn sentences(parts: &[&str]) -> String {
+    let parts: Vec<&str> = parts.iter().map(|part| part.trim()).filter(|part| !part.is_empty()).collect();
+    if parts.len() == 1 {
+        return parts[0].to_owned();
+    }
+    parts.iter().map(|part| if part.ends_with(['.', '?', '!']) { (*part).to_owned() } else { format!("{part}.") }).collect::<Vec<_>>().join(" ")
 }
 
 /// What the Export and Import page says under its buttons.

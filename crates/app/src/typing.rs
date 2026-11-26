@@ -74,6 +74,16 @@ pub fn splice(line: &Line, start: u32, end: u32, text: &str) -> Line {
     Line { text: out, cursor }
 }
 
+/// Whether `text`, entered whole, ends in a name begun and not finished (`#wo`, when the project
+/// is Work or Workshop), so a device whose line cannot complete as it is typed offers what would
+/// finish it once the line is entered: `found` (the completion at the line's end) has something to
+/// put in, over text that is not empty and is none of its candidates already.
+#[must_use]
+pub fn ends_unfinished(text: &str, found: &Completions) -> bool {
+    let partial = text.get(found.start as usize..found.end as usize).unwrap_or_default().to_lowercase();
+    !partial.is_empty() && !found.candidates.is_empty() && !found.candidates.iter().any(|candidate| candidate.text.to_lowercase() == partial)
+}
+
 impl Lumenna {
     pub(crate) fn typing(&self, event: Typing, model: &mut Screen) -> Command<Effect, Event> {
         match event {
@@ -99,5 +109,24 @@ impl Lumenna {
             Typing::Close => model.line = None,
         }
         render()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lumenna_records::types::Candidate;
+
+    fn found(start: u32, end: u32, candidates: &[&str]) -> Completions {
+        let candidates = candidates.iter().map(|text| Candidate { text: (*text).to_owned(), kind: "project".to_owned(), label: String::new() }).collect();
+        Completions { announcement: String::new(), notices: Vec::new(), start, end, candidates }
+    }
+
+    #[test]
+    fn a_line_ends_unfinished_only_in_a_name_begun_that_something_would_finish() {
+        assert!(ends_unfinished("call #wo", &found(5, 8, &["#Work", "#Workshop"])));
+        assert!(!ends_unfinished("call #work", &found(5, 10, &["#Work", "#Workshop"])), "a name already whole");
+        assert!(!ends_unfinished("call ", &found(5, 5, &["#Work"])), "nothing begun");
+        assert!(!ends_unfinished("call #zz", &found(5, 8, &[])), "nothing would finish it");
     }
 }

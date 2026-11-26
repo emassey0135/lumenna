@@ -184,13 +184,18 @@ crosses the FFI.
   `ProposalView::heading`, a change's line and what its check box says as it changes
   `ChangeView::line` and `toggled`, and with its reason `ChangeView::read`, what does not fit
   `ProposalView::unfit_lines`, where pairing stands and its question about the words
-  `PairingView::status` and `question`, the task's fields read rather than edited
+  `PairingView::status` and `question` (and with none open `DevicesView::pairing_status`), a
+  settings page's title with its description `SettingsPage::line` and with its caption `heading`,
+  a dialog's control as a row reads it `ControlShown::line` ("Clock, 24-hour", a check by its
+  state's word) and a choice with why it is offered `option_lines`, the task's fields read rather than edited
   `DetailsView::field_lines` ("Priority: High"), parts of a prompt (a refusal before what is
   asked) `screen::prompt` (`prompt_of`), a line with its level after it `lines::with_level`
   (`line_with_level`), with its folding too `lines::with_state` and `detail_with_state`, a
   dialog's title and the lines before its controls `DialogShown::prompt`, a key help's line
-  `DeviceKey::line` and the screen's commands by their keys `braille::screen_keys`, and About's
-  lines `ShellWords::about_lines`. A shell drawing a dialog's
+  `DeviceKey::line`, and About's lines `ShellWords::about_lines`, which a device with no About
+  page of its own shows as a list of lines, never one sentence. Whether a line entered whole
+  ends in a name begun, for a device whose line cannot complete as it is typed, is
+  `typing::ends_unfinished` (and `put_in` the completion chosen). A shell drawing a dialog's
   controls (`lumenna_app::dialog`) takes them apart instead: a label and a value, a refusal as a
   line of its own.
 - **What Lumenna is is said once** (`[workspace.metadata.lumenna]` in the workspace's
@@ -376,13 +381,21 @@ directly (8805659 is the last commit before the move). How the app works inside 
   row has several), else the reminder list's, the day's or the screen's own (on Home its places'
   and its actions' first), else says why; a letter of an action that is the shell's own
   (`ScreenAction::shell`) the shell runs itself. First-letter moving is `Event::FindLetter`
-  (`first_letter` for a list a shell draws). How a letter is pressed is each app's own, mapped
-  onto those two: on a BTSpeak a plain letter is the command and a capital (Dot 7 with the
-  letter) moves by first letter, never Space with one; on the Orbit Speak and the BrailleSense,
-  Space with the letter is the command, Enter with it where the device keeps Space's while the
-  app is in front (`speak_letter`/`speak_press` on the Speak, whose Enter is dot 8;
-  `braillesense_letter`/`braillesense_press` on the BrailleSense, whose key help
-  `braillesense_keys` is built from the same rule), and the letter alone moves.
+  (`first_letter` for a list a shell draws). **Which key presses a letter is one rule, the
+  core's** (`lumenna_app::key_help`, by `KeyDevice`): on a BTSpeak a plain letter is the command
+  and a capital (Dot 7 with the letter) moves by first letter, never Space with one; on a
+  braille reader, the Orbit Speak and the BrailleSense, Space with the letter is the command,
+  Enter with it where the device keeps Space's while the app is in front (the Speak's Enter is
+  dot 8), and the letter alone moves; the Orbit Player presses none. `letter_press(device,
+  letter)` says which, `press_name` how the device names the keys ("Space+U" on a reader,
+  "Enter-C" on the BrailleSense, "dot 8 c" on the Speak, "u" on a BTSpeak) and `press_instead`
+  what to press where Space reaches the app but Enter is the command. **A braille device's key
+  help is one, made from that rule** (`key_help(device, view, words)`, `App::key_help_on` over
+  the FFI, `KeyHelp`: its sections and the same as lines): the device's own keys (how it moves,
+  opens, goes back, deletes and types, and how a row is found by letter, alone or as a capital),
+  Home's places, the screen's own commands and the actions the rows shown offer, each by the
+  keys that press its letter there; one whose letter has no press there is a menu away and left
+  out. No shell writes a key help.
   A device reporting dots turns them into a letter by `braille_letter`, the core's own a to z and
   never the person's table: dot 7 or 8 in a chord is no letter. Erase Permanently has no letter. How the BrailleSense reads a line (its role in
   speech and on the cells, where its settings put it, a shortcut letter, a sign for a dialog or a

@@ -1189,6 +1189,8 @@ fn pairing_shows_its_code_then_asks_about_the_words_and_ends_closed() {
     use lumenna_app::PairEvent;
     let mut app = App::new();
     app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    let devices = app.view().devices.unwrap();
+    assert_eq!(devices.pairing_status, devices.words.intro, "with none open, what pairing says before one starts");
     pair(&mut app, PairEvent::Open("Test browser".to_owned()));
     app.network();
     pair(&mut app, PairEvent::Wait);
@@ -1197,6 +1199,7 @@ fn pairing_shows_its_code_then_asks_about_the_words_and_ends_closed() {
     let id = *id;
     assert_eq!(name, "Test browser");
     let devices = app.view().devices.unwrap();
+    assert_eq!(devices.pairing_status, devices.words.opening, "the same line as the pairing's own");
     assert_eq!(devices.pairing.unwrap().status, devices.words.opening, "where it stands, the core's to say");
     app.answer_network(id, NetworkAnswer::Code("ab12".to_owned()));
     let devices = app.view().devices.unwrap();

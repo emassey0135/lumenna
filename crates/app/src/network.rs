@@ -186,6 +186,10 @@ pub struct DevicesView {
     /// The pairing screen, while open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pairing: Option<PairingView>,
+    /// Where pairing stands, for a page that shows it as a line: the pairing's `status` while one
+    /// is open, else what pairing says before one starts.
+    #[serde(default)]
+    pub pairing_status: String,
 }
 
 impl Pairing {

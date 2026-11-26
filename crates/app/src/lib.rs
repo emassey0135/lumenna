@@ -38,6 +38,7 @@ pub mod due;
 pub mod glance;
 pub mod host;
 pub mod hotkeys;
+pub mod key_help;
 pub mod list;
 mod model;
 pub mod network;

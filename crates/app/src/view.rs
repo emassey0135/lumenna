@@ -342,6 +342,7 @@ fn shown(model: &Screen) -> ViewModel {
         proposal_made: model.proposal_made,
         settings: model.settings.as_ref().map(|s| crate::settings::view(s, model.background, model.abilities, store.now.date(), model.style.is_some(), model.capitals == crate::Capitals::Sentence)),
         devices: model.devices.as_ref().map(|d| crate::DevicesView {
+            pairing_status: model.pairing.as_ref().map_or_else(|| model.pairing_words().intro, |pairing| pairing.view(&model.pairing_words()).status),
             pairing: model.pairing.as_ref().map(|pairing| pairing.view(&model.pairing_words())),
             words: model.pairing_words(),
             list: d.list.clone(),

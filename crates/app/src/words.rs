@@ -428,8 +428,8 @@ pub struct BrailleWords {
     pub actions_menu: String,
     /// A key help's name: "Key help".
     pub key_help: String,
-    /// Its heading over the commands pressed with Space: "Space with a letter".
-    pub with_space: String,
+    /// Its heading over what the rows shown offer: "A row's actions".
+    pub row_actions: String,
     /// Its heading over first-letter moving: "A letter by itself".
     pub letter_alone: String,
     /// What first-letter moving does, said under that heading.
@@ -473,8 +473,7 @@ pub struct KindTitle {
     pub title: String,
 }
 
-/// What the Orbit devices' app says of its own keys: the Speak's braille keys and the Player's
-/// phone keypad, which no other shell has.
+/// What the Orbit Player's app says of finding by letter, which no other shell has.
 #[data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OrbitWords {
@@ -482,12 +481,6 @@ pub struct OrbitWords {
     pub letters_on: String,
     /// Holding star on the Player turned it off.
     pub letters_off: String,
-    /// The Speak's keys, a sentence each, for its key help.
-    pub speak_keys: Vec<String>,
-    /// Its key help's heading over the commands pressed with Dot 8: "Dot 8 with a letter".
-    pub with_dot_8: String,
-    /// The Player's keys, a sentence each, for its key help.
-    pub player_keys: Vec<String>,
 }
 
 /// What a shell that lists its own keys, asks in its own prompts and names its own buffers
@@ -739,39 +732,9 @@ pub const ACTION_KINDS: &[ActionKind] = {
 /// The Orbit app's words: its key help and the Player's finding by letter. What the device
 /// itself says (its fields' echo, its Editor's selection) is the Orbit SDK's.
 fn orbit_words() -> OrbitWords {
-    let lines = |keys: &[&str]| keys.iter().map(|key| (*key).to_owned()).collect();
     OrbitWords {
         letters_on: "Finding by letter on".to_owned(),
         letters_off: "Finding by letter off".to_owned(),
-        speak_keys: lines(&[
-            "Up and Down, or Space with dot 1 and Space with dot 4, move through a list. Held, they go to its ends.",
-            "Space with L goes to the top of a list, and Space with dots 4 5 6 to its bottom.",
-            "Right, OK or dot 8 opens the row. Right opens a folded row first.",
-            "Left or dot 7 goes back out of a list. Left folds an open row first, and never leaves a dialog.",
-            "Space with E or Space with Z always goes back.",
-            "Space with M opens the menu: the row's actions first, then the screen's, then File, Edit, View, Task, Day and Help. Space with M elsewhere lists what can be done there.",
-            "In the menu, Up and Down move, Right or dot 8 opens a submenu, and Left goes back up one, closing the menu from the top. Space with E or Z closes it.",
-            "In the menu, a letter alone chooses the item of that letter, and Space with an item's letter runs it from anywhere in the menu, as from the screen.",
-            "In a dialog, Space with dots 4 5 moves to the next control, and Space with dots 1 2 to the one before.",
-            "Up and Down change a combo box or a check box. OK or dot 8 presses a button or confirms the dialog.",
-            "While typing, Space ends a word, dot 7 deletes, and OK or dot 8 finishes.",
-            "While typing, Space with Z cancels, and Down offers what could come next.",
-            "While typing, dots 1 2 8 start a selection where the cursor is and, pressed again, end it at the cursor. Dots 1 8 select everything.",
-            "While typing, dots 1 4 8 copy what is selected, dots 1 3 4 6 8 cut it, and dots 1 2 3 6 8 paste. In computer braille, press Space with each of these too.",
-            "While typing, Space with dots 1 2 7 reads what is selected.",
-        ]),
-        with_dot_8: "Dot 8 with a letter".to_owned(),
-        player_keys: lines(&[
-            "Up and Down move through the list. Held, they go to its ends.",
-            "OK opens the row. Right opens a folded row first, and Left folds an open one or goes back out of a list, never a dialog.",
-            "Menu opens the menu: the row's actions first, then the screen's, then File, Edit, View, Task, Day and Help. Menu elsewhere lists what can be done there.",
-            "In the menu, Up and Down move, Right or OK opens a submenu, Left goes back up one, closing the menu from the top, and Back closes it. A digit chooses that item.",
-            "Back goes back.",
-            "A digit opens that row: 2 the second, 1 then 2 the twelfth, 0 the tenth.",
-            "Holding star finds rows by letter instead, typed as on a phone.",
-            "While typing, tap a digit for its letters, star changes capitals and digits, and OK finishes.",
-            "While typing, Back deletes, and held cancels.",
-        ]),
     }
 }
 
@@ -895,7 +858,7 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
             main_menu: c("Main Menu"),
             actions_menu: c("Actions"),
             key_help: c("Key Help"),
-            with_space: c("Space with a Letter"),
+            row_actions: c("A Row's Actions"),
             letter_alone: c("A Letter by Itself"),
             finds_a_row: "Moves to the next row starting with that letter.".to_owned(),
             moving: c("Moving and Opening"),
@@ -1287,55 +1250,3 @@ impl DeviceKey {
     }
 }
 
-/// The BrailleSense's keys, for its key help: the device's own conventions (its manual's Common
-/// Commands), and how each of this app's screens takes them. Keys are named as its manual names
-/// them, which is why they sit here with their meaning, not as separate words.
-#[must_use]
-pub fn braillesense_keys() -> Vec<DeviceKey> {
-    let row = |keys: &str, what: &str| DeviceKey::new(keys.to_owned(), what.to_owned());
-    // A command's press is the device's for the core's letter: "Enter-a", "Space-u".
-    let press = |id: &str| {
-        crate::braille::command_letter(id).and_then(crate::braille::braillesense_press).map(|press| {
-            let (held, letter) = press.split_once('-').unwrap_or((&press, ""));
-            format!("{held}-{}", letter.to_uppercase())
-        })
-        .unwrap_or_default()
-    };
-    vec![
-        row("Space-1 or the Up scroll key", "Previous row or option, or back through a long line"),
-        row("Space-4 or the Down scroll key", "Next row or option, or on through a long line"),
-        row("Space-1-2-3, Space-4-5-6", "First and last row"),
-        row("Space-1-2-6, Space-3-4-5", "Previous and next page of 32 rows"),
-        row("A letter by itself", "The next row beginning with it"),
-        row("Enter", "Open the row, press the button"),
-        row("Space-M or F2", "The menu bar"),
-        row("Enter-I, or the Application key", "The row's own actions"),
-        row("Space-3, Space-6", "Collapse and expand the row"),
-        row("Space-E or F4", "Close, go back, or up one level of a menu"),
-        row("Space-Z", "Exit Lumenna"),
-        row("Space-4-5 or F3, Space-1-2 or Space-F3", "Next and previous control in a dialog"),
-        row("Space", "Change a check box, a combo box, a prompt button, or mark a task done"),
-        row("Space with a letter", "The row's command of that letter, or the screen's"),
-        row(
-            "Enter with a letter",
-            &format!("The same, for {}, which Space keeps for moving and the device", crate::braille::braillesense_enter_letters()),
-        ),
-        row(&press("new-task"), "New task"),
-        row(&format!("{}, {}", press("undo"), press("redo")), "Undo and redo"),
-        row("Space-F", "Filter the list"),
-        row("Space-D", "Delete the row"),
-        row("Space-H, or F1 on the QWERTY keyboard", "These keys"),
-        row("Space-O", "Settings"),
-        row("Space-R or Space-C", "Say the row again"),
-        row("Space-3-6, Space-2-5", "In a line of text, say the character and the word at the cursor"),
-        row("Enter-B, Enter-A", "In a line of text, start a selection at the cursor, or select everything"),
-        row("Enter-C, Enter-X, Enter-V", "Copy, cut and paste"),
-        row("Enter-P, Enter-D", "Add the selection to the clipboard, clear the clipboard"),
-        row("Backspace-1-2, Enter-U", "Read the selection, and the first line of it"),
-        row("Space-D, Backspace-2-5", "In a line of text, delete the character or the word at the cursor"),
-        row("Backspace-1-4, Backspace-1-3-4-6", "Delete the line shown at the cursor, or the whole paragraph"),
-        row("Enter in a multi-line box", "A new line; Tab leaves the box"),
-        row("Space-1, Space-4 in a multi-line box", "The line above and below"),
-        row("A cell touched and a front Cursor button", "Move the cursor in a line of text to that cell"),
-    ]
-}
