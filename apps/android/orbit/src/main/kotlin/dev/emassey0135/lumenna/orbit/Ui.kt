@@ -36,12 +36,12 @@ import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.commandTitle
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.orbit.BrailleInput
-import dev.emassey0135.orbit.EditBox
 import dev.emassey0135.orbit.Key
 import dev.emassey0135.orbit.session.OrbitSession
 import dev.emassey0135.orbit.OrbitWords
 import dev.emassey0135.orbit.Reader
 import dev.emassey0135.orbit.ui.Action
+import dev.emassey0135.orbit.ui.HelperText
 import dev.emassey0135.orbit.ui.Item
 import dev.emassey0135.orbit.ui.Letters
 import dev.emassey0135.orbit.ui.ListScreen
@@ -75,13 +75,28 @@ class Command(val text: String, val letter: String? = null, val run: () -> Unit)
 /** Whose list a screen shows: the app's main one, one beside it, or none of the app's. */
 enum class Lands { MAIN, SIDE, NONE }
 
-/** [row] as the SDK's list has it: its actions in the core's words and letters, and its folding. */
-private fun Row.item(host: Ui): Item {
-    val on = on
-    val actions = if (on == null) emptyList() else offered.filter { it.kind != ActionKind.EXPAND && it.kind != ActionKind.COLLAPSE }.map { action ->
+/** One of this app's screens, a list ([AppList]) or a dialog ([CoreDialog]), as [Ui] knows it. */
+interface AppScreen {
+    /** This app's side of the screens: the view, and where what the person does is sent. */
+    var host: Ui
+
+    /** Which of the app's lists this screen shows, if one: what a letter and a landing are. */
+    val lands: Lands get() = Lands.NONE
+}
+
+/** [offered] as the SDK's actions, in the core's words and letters, each run on [on]; none without it. */
+fun offeredActions(host: Ui, offered: List<Offered>, on: ActingOn?): List<Action> {
+    if (on == null) return emptyList()
+    return offered.filter { it.kind != ActionKind.EXPAND && it.kind != ActionKind.COLLAPSE }.map { action ->
         val letter = actionLetter(action.kind)
         Action(host.withLetter(action.name, letter), letter?.singleOrNull()) { host.send(ShellEvent.ActOn(on, action)) }
     }
+}
+
+/** [row] as the SDK's list has it: its actions in the core's words and letters, and its folding. */
+private fun Row.item(host: Ui): Item {
+    val on = on
+    val actions = offeredActions(host, offered, on)
     val fold: ((Boolean) -> Unit)? = if (expanded == null || on == null) null else { open ->
         val wanted = if (open) ActionKind.EXPAND else ActionKind.COLLAPSE
         offered.firstOrNull { it.kind == wanted }?.let { host.send(ShellEvent.ActOn(on, it)) }
@@ -95,17 +110,15 @@ private fun Row.item(host: Ui): Item {
  * doing anything. The stack decides what is told when; a screen says what it shows ([rows]), what
  * the app holds in hand there ([inHand]), and what it sends as the person moves and acts.
  */
-abstract class AppList : ListScreen("", { emptyList() }, "") {
-    /** This app's side of the screens: the view, and where what the person does is sent. */
-    lateinit var host: Ui
+abstract class AppList : ListScreen("", { emptyList() }, ""), AppScreen {
+    override lateinit var host: Ui
 
     abstract override val title: String
 
     /** What an empty list says, in the core's words. */
     override val empty: String get() = appWords.nothingHere
 
-    /** Which of the app's lists this screen shows, if one: what a letter and a landing are. */
-    open val lands: Lands get() = Lands.NONE
+    override val lands: Lands get() = Lands.NONE
 
     /** Whether the core's screen actions are this screen's (a place, Home): its menu is the menu bar. */
     open val showsScreenActions: Boolean get() = false
@@ -242,65 +255,6 @@ object CoreLetters : Letters() {
     }
 }
 
-/** What Orbit is told, shown on the screen too, for a sighted helper: the line in hand and its place. */
-class HelperText(private val base: Reader, private val view: TextView) : Reader by base {
-    private fun show(vararg parts: String) {
-        view.text = parts.filter { it.isNotEmpty() }.joinToString("\n\n")
-    }
-
-    private fun place(count: Int, selected: Int): String = if (count > 0) "${selected + 1} of $count" else ""
-
-    override fun focusList(name: String, count: Int, selected: Int, item: String) {
-        base.focusList(name, count, selected, item)
-        show(name, item, place(count, selected))
-    }
-
-    override fun itemChanged(name: String, count: Int, selected: Int, item: String) {
-        base.itemChanged(name, count, selected, item)
-        show(name, item, place(count, selected))
-    }
-
-    override fun dialog(name: String, message: String, focused: String) {
-        base.dialog(name, message, focused)
-        show(name, focused)
-    }
-
-    override fun focusMenu(item: String, subMenu: Boolean, accessKey: Char?, position: Int, total: Int) {
-        base.focusMenu(item, subMenu, accessKey, position, total)
-        show(appWords.braille.actionsMenu, if (subMenu) "$item …" else item, place(total, position - 1))
-    }
-
-    override fun focusEdit(name: String, content: String, cursor: Int, line: String, multiline: Boolean) {
-        base.focusEdit(name, content, cursor, line, multiline)
-        show(name, content)
-    }
-
-    override fun editChanged(fieldName: String, content: String, cursor: Int, changeType: String) {
-        base.editChanged(fieldName, content, cursor, changeType)
-        show(fieldName, content)
-    }
-
-    override fun focusControl(name: String, role: Int) {
-        base.focusControl(name, role)
-        show(name)
-    }
-
-    override fun focusText(content: String) {
-        base.focusText(content)
-        show(content)
-    }
-
-    override fun focusCheck(name: String, checked: Boolean) {
-        base.focusCheck(name, checked)
-        show(name, checked.toString())
-    }
-
-    override fun focusChoice(name: String, role: Int, count: Int, selected: Int, item: String) {
-        base.focusChoice(name, role, count, selected, item)
-        show(name, item, place(count, selected))
-    }
-}
-
 /**
  * This app's side of the screens, over the SDK's stack ([stack]), which takes the keys, keeps the
  * screens and tells Orbit's reader what is shown when. What is in hand, what a key runs and what a
@@ -325,7 +279,7 @@ class Ui(
     /** The screens, the keys, and what Orbit is told, wired into the session. */
     val stack = OrbitUi.on(
         session,
-        reader = HelperText(session.reader, textView),
+        reader = HelperText(session.reader, orbitWords) { textView.text = it },
         orbitWords = orbitWords,
         letters = CoreLetters,
         words = UiWords(
@@ -369,7 +323,7 @@ class Ui(
 
     /** This app's screens know it before the stack shows them. */
     private fun adopt(screen: Screen): Screen {
-        (screen as? AppList)?.host = this
+        (screen as? AppScreen)?.host = this
         return screen
     }
 
@@ -433,7 +387,7 @@ class Ui(
         landing = view.landing
         stack.batch { follow() }
         // A list behind the screen on top landing says nothing: it isn't what is shown.
-        val landed = when ((stack.top as? AppList)?.lands) {
+        val landed = when ((stack.top as? AppScreen)?.lands) {
             Lands.MAIN -> moved
             Lands.SIDE -> landedSide
             else -> false
@@ -582,18 +536,6 @@ class Ui(
             else -> refuse()
         }
     }
-
-    /** An edit box as Orbit's own, for this device's keys as the last key said them. */
-    fun editor(
-        name: String,
-        initial: String,
-        changed: (String, Int) -> Unit,
-        confirmed: (String) -> Unit,
-        cancelled: () -> Unit,
-        completing: (() -> Boolean)? = null,
-        complete: () -> Unit = {},
-        multiline: Boolean = false,
-    ): EditBox = stack.editBox(name, initial, multiline, confirmed, cancelled, changed, completing, complete)
 
     /** Choosing a file to import or restore, in Orbit's File Manager. */
     fun pickImport() = chooseFile()
