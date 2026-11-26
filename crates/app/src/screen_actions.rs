@@ -243,15 +243,6 @@ mod tests {
         }
     }
 
-    /// The settings page a command opens, where it is a page rather than a button.
-    fn page_of(id: &str) -> Option<&'static str> {
-        match id {
-            "devices" => Some("devices"),
-            "export-import" => Some("export"),
-            _ => None,
-        }
-    }
-
     #[test]
     fn every_command_of_the_menu_bar_is_reachable_without_one() {
         let pages = lumenna_records::fields::settings_pages(false, false);
@@ -266,7 +257,7 @@ mod tests {
             let on_a_heading = heading_of(id).is_some_and(|group| {
                 lumenna_records::actions::heading(group).iter().any(|action| action.kind == lumenna_records::ActionKind::New)
             });
-            let in_settings = pages.iter().any(|page| page.buttons.iter().any(|button| button.id == id) || Some(page.id.as_str()) == page_of(id));
+            let in_settings = pages.iter().any(|page| page.buttons.iter().any(|button| button.id == id) || Some(page.id.as_str()) == crate::keys::settings_page_of(id));
             if !(on_home || on_a_place || on_a_row || on_a_heading || in_settings) {
                 unreached.push(id);
             }

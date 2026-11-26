@@ -628,14 +628,23 @@ def ask(prompt: str, default: str = "") -> str | None:
     return text.strip()
 
 
-def heading(title: str, readback: str, shown: bool) -> str:
+def heading(session: Session, title: str, readback: str, shown: bool) -> str:
     """A list's heading: its title, then what the list says of itself (the core's readback:
     the query understood, the count, its notices), unless nothing is listed, which the empty
-    list says instead, once."""
-    return ", ".join(part for part in (title, readback if shown else "") if part)
+    list says instead, once. Where the app describes the same list (`ListShown`, named `title`),
+    it is the core's heading (`ListShown::heading`)."""
+    if not shown:
+        return title
+    described = getattr(session.described(), "shown", None)
+    if isinstance(described, native().ShownList) and described.field_0.name == title:
+        return described.field_0.heading
+    # A list this screen names itself (a filter typed over the tasks, "Results"), which the app
+    # names as its place: joined as the core joins a list's heading.
+    return ", ".join(part for part in (title, readback) if part)
 
 
 def empty_then(said, then: str = ""):
     """What an empty list says: the list's own words (`said()`, the core's readback), then
-    what this screen adds, such as the key that adds one."""
-    return lambda: sentences(said(), then)
+    what this screen adds, such as the key that adds one, joined as the core joins parts of a
+    prompt (`prompt_of`)."""
+    return lambda: native().prompt_of([part for part in (said(), then) if part])

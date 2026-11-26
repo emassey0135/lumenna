@@ -37,6 +37,7 @@ use lumenna_host::{Lumenna, Reach};
 use lumenna_app::lines::{Lines, lines};
 use lumenna_app::dialog::DialogShown;
 use lumenna_app::screen::ScreenView;
+use lumenna_app::key_help::{KeyDevice, KeyHelp};
 use lumenna_app::speech::{self, Clock, Spoken};
 use lumenna_records::assistant::{AssistantEntity, AssistantOperation};
 use lumenna_records::automation::{AutomationField, AutomationGiven, AutomationOutput, AutomationWords};
@@ -208,6 +209,14 @@ impl App {
     /// while settings are open there; none otherwise, or for a page this device does not list.
     pub fn settings_page_on(&self, screen: u32, page: String) -> Option<DialogShown> {
         lumenna_app::dialog::settings_page(&self.view_on(screen), &page)
+    }
+
+    /// `device`'s key help over what screen `screen` shows (`key_help::key_help`), in sentence
+    /// case where `sentence`: its own keys, Home's places, the screen's commands and what the rows
+    /// shown offer, each by the keys that press it there.
+    pub fn key_help_on(&self, screen: u32, device: KeyDevice, sentence: bool) -> KeyHelp {
+        let capitals = if sentence { lumenna_app::Capitals::Sentence } else { lumenna_app::Capitals::Title };
+        lumenna_app::key_help::key_help(device, &self.view_on(screen), capitals)
     }
 
     /// What a widget, complication or tile shows for the next `hours` (at most two days),

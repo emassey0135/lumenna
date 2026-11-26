@@ -12,7 +12,6 @@ import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.Lines
 import dev.emassey0135.lumenna.app.Offered
-import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.ListShown
 import dev.emassey0135.lumenna.app.QuestionShown
 import dev.emassey0135.lumenna.app.ScreenChange
@@ -28,10 +27,11 @@ import dev.emassey0135.lumenna.app.brailleMenuBarOnRow
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.noRowStartsWith
 import dev.emassey0135.lumenna.app.nothingOnLetter
-import dev.emassey0135.lumenna.app.SpeakLetter
-import dev.emassey0135.lumenna.app.speakLetter
-import dev.emassey0135.lumenna.app.speakPress
-import dev.emassey0135.lumenna.app.speakPressInstead
+import dev.emassey0135.lumenna.app.KeyDevice
+import dev.emassey0135.lumenna.app.LetterPress
+import dev.emassey0135.lumenna.app.letterPress
+import dev.emassey0135.lumenna.app.pressInstead
+import dev.emassey0135.lumenna.app.withPress
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.commandTitle
 import dev.emassey0135.lumenna.appWords
@@ -221,9 +221,9 @@ abstract class AppList : ListScreen("", { emptyList() }, "") {
 }
 
 /**
- * Which key presses a letter, by the core (`speak_letter`): Space with it, or Dot 8 with it where
- * the Speak keeps Space with those dots, Space with such a letter saying so (`speak_press_instead`).
- * A letter is the core's `braille_letter`, a to z, none with dot 7 or 8.
+ * Which key presses a letter, by the core (`letter_press` for the Speak): Space with it, or Dot 8
+ * with it where the Speak keeps Space with those dots, Space with such a letter saying so
+ * (`press_instead`). A letter is the core's `braille_letter`, a to z, none with dot 7 or 8.
  */
 object CoreLetters : Letters() {
     override fun of(dots: Int): Char? = brailleLetter(dots.toUByte())?.singleOrNull()
@@ -233,8 +233,8 @@ object CoreLetters : Letters() {
             val letter = brailleLetter(key.dots.toUByte())
             when {
                 letter == null -> Letters.Pressed.Refused(null)
-                speakLetter(letter) == SpeakLetter.SPACE -> letter.singleOrNull()?.let { Letters.Pressed.Letter(it) } ?: Letters.Pressed.Refused(null)
-                else -> Letters.Pressed.Refused(speakPressInstead(letter))
+                letterPress(KeyDevice.ORBIT_SPEAK, letter) == LetterPress.SPACE -> letter.singleOrNull()?.let { Letters.Pressed.Letter(it) } ?: Letters.Pressed.Refused(null)
+                else -> Letters.Pressed.Refused(pressInstead(KeyDevice.ORBIT_SPEAK, letter))
             }
         }
         is Key.Enter -> of(key.dots)?.let { Letters.Pressed.Letter(it) } ?: Letters.Pressed.Refused(null)
@@ -506,14 +506,12 @@ class Ui(
         v.asking?.let { asking ->
             // Open already, under something it opened (its completions).
             if (stack.screens.any { (it as? AskingScreen)?.number == asking.number } && stack.top !is AskingScreen) return
+            // Every question is its dialog, a task's form asked for among them: the app shows that
+            // task's details as it asks.
             val open = stack.top as? AskingScreen
             if (open == null || open.number != asking.number) {
-                if (asking.question is Question.Form) {
-                    formAsked(asking)
-                } else {
-                    if (open is Screen) stack.close(open)
-                    push(QuestionScreen(asking))
-                }
+                if (open is Screen) stack.close(open)
+                push(QuestionScreen(asking))
             }
             return
         }
@@ -538,20 +536,6 @@ class Ui(
 
     /** Settings were left here, and the app has not yet said they are closed. */
     var settingsClosed = false
-
-    private var formAskedFor = 0u
-
-    private fun formAsked(asking: dev.emassey0135.lumenna.app.Asking) {
-        // A question is asked once; a turn arriving before the Cancel lands must not ask again.
-        if (asking.number == formAskedFor) return
-        formAskedFor = asking.number
-        val action = asking.action
-        send(ShellEvent.Cancel)
-        action?.target?.let { target ->
-            // The form a task asks for is its details, the row it was asked on.
-            push(DetailsScreen(target))
-        }
-    }
 
     // ---- what a key opens ---------------------------------------------------------------------
 
@@ -594,7 +578,7 @@ class Ui(
             "filter" -> view.place?.let { push(FilterScreen(it)) } ?: refuse()
             "keyboard-help" -> push(KeyHelpScreen())
             "reminders-due" -> push(DueScreen())
-            "about" -> appWords.metadata.let { say("${it.name} ${it.version}. ${it.description}") }
+            "about" -> push(AboutScreen())
             else -> refuse()
         }
     }
@@ -629,10 +613,10 @@ object BuildConfigDebug {
     @Volatile var on = false
 }
 
-/** [text], with the chord that also runs it said after it on the Speak. */
+/** [text], with the chord that also runs it said after it on the Speak, as the core joins them (`with_press`). */
 fun Ui.withLetter(text: String, letter: String?): String {
-    val press = letter?.takeUnless { phoneKeypad }?.let(::speakPress) ?: return text
-    return "$text, $press"
+    if (letter == null || phoneKeypad) return text
+    return withPress(KeyDevice.ORBIT_SPEAK, text, letter)
 }
 
 /** A menu command's name in sentence case, by its id in the core's table. */

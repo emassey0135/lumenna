@@ -67,7 +67,13 @@ import dev.emassey0135.lumenna.app.Side
 import dev.emassey0135.lumenna.app.SidebarKind
 import dev.emassey0135.lumenna.app.Typing
 import dev.emassey0135.lumenna.app.ViewModel
-import dev.emassey0135.lumenna.app.foldState
+import dev.emassey0135.lumenna.app.KeyDevice
+import dev.emassey0135.lumenna.app.Line
+import dev.emassey0135.lumenna.app.Syntax
+import dev.emassey0135.lumenna.app.detailWithState
+import dev.emassey0135.lumenna.app.lineWithState
+import dev.emassey0135.lumenna.app.promptOf
+import dev.emassey0135.lumenna.app.settingsPageOf
 
 /** What only the activity can do. */
 interface Host {
@@ -93,6 +99,7 @@ private sealed interface Page {
     data object Devices : Page
     data object Due : Page
     data object Help : Page
+    data object About : Page
 }
 
 /**
@@ -150,7 +157,6 @@ class Shell(
     /** Text being typed, kept across redraws, by what it is for. */
     private val editors = HashMap<String, TextBox>()
 
-    private var handledForm = 0u
     private var lastLanding = 0u
     private var landedNow = false
 
@@ -367,7 +373,9 @@ class Shell(
         /** A list says its name, a dialog that it is one and what it opens with, a question's answers its prompt. */
         override fun heading(frame: Frame): String = when (frame) {
             is ListFrame -> frame.title
-            is FormFrame -> listOfNotNull(frame.title?.let { if (frame.prompt) it else dialogTitle(it) }, frame.preamble.ifEmpty { null }).joinToString(". ")
+            // A question of answers alone says the core's prompt; any other dialog its title as the device
+            // names a dialog, then the lines ahead of its first control, joined as the core joins a prompt.
+            is FormFrame -> if (frame.prompt) frame.said else promptOf(listOfNotNull(frame.title?.let(::dialogTitle)) + frame.leading)
             else -> ""
         }
 
@@ -401,6 +409,7 @@ class Shell(
                 Page.Devices -> devices(model)
                 Page.Due -> due(model)
                 Page.Help -> help()
+                Page.About -> about()
             }
         }
 
@@ -455,7 +464,24 @@ class Shell(
             changed = { send(ShellEvent.Filter(it)) },
         )
 
-        override fun layout(): Frame = line
+        /** The line, with completion in the filter language on Space-4, which its box of one line leaves. */
+        private val completes = object : Frame(FILTER) {
+            override fun key(key: Key): Boolean {
+                if (key != Key.Down) return line.key(key)
+                completing.ask(line.box, Syntax.FILTER) { _, _ -> line.touched() }
+                return true
+            }
+
+            override val rendered: Rendered get() = line.rendered
+
+            override fun routed(at: Int) = line.routed(at)
+
+            override fun editBox(): TextBox = line.box
+
+            override fun edited() = line.edited()
+        }
+
+        override fun layout(): Frame = completes
 
         override fun back(): Boolean {
             editors.remove(FILTER)
@@ -534,6 +560,8 @@ class Shell(
      * help, About, the reminders due, a heading's places on Home), else the app's, as `Key(id)`.
      */
     private fun runMenuCommand(id: String) {
+        // A command that opens a settings page (Devices, Export and Import, Restore from a Backup) opens the core's page for it.
+        settingsPageOf(id)?.let { page -> return openSettingsPage(page) }
         when (id) {
             "projects" -> openGroupFromAnywhere(SidebarGroup.PROJECTS)
             "labels" -> openGroupFromAnywhere(SidebarGroup.LABELS)
@@ -541,12 +569,9 @@ class Shell(
             "reminders-due" -> openDue()
             "filter" -> startFiltering()
             "keyboard-help" -> pushPage(Page.Help)
-            "about" -> appWords.metadata.let { announce("${it.name} ${it.version}. ${it.description}") }
+            "about" -> pushPage(Page.About)
             "home" -> goHome()
             "settings" -> pushPage(Page.Settings)
-            "devices" -> pushPage(Page.Devices)
-            "export-import" -> pushPage(Page.SettingsPage("export"))
-            "restore-backup" -> pushPage(Page.SettingsPage("backups"))
             "close-window", "quit" -> host.exit()
             "go-today" -> goTo(id, Place.Today)
             "go-tasks" -> goTo(id, Place.Tasks)
@@ -555,6 +580,11 @@ class Shell(
             "go-history" -> goTo(id, Place.History)
             else -> send(ShellEvent.Key(id))
         }
+    }
+
+    /** A settings page by its id: the devices page as the devices screen, any other as a page of settings. */
+    private fun openSettingsPage(id: String) {
+        pushPage(if (SettingsPages.of(id)?.devices == true) Page.Devices else Page.SettingsPage(id))
     }
 
     /** One of a screen's own actions, or Home's: the shell's own run here, every other as `Key(id)`. */
@@ -642,7 +672,8 @@ class Shell(
                 entry.key,
                 entry.title,
                 finding = entry.title,
-                detail = listOfNotNull(entry.detail.ifEmpty { null }, entry.expanded?.let(::foldState), entry.level).joinToString(", "),
+                // What follows the name, its folding and its level after it, as the core joins them.
+                detail = detailWithState(Line(entry.title, entry.detail, entry.text, entry.text, entry.level), entry.expanded),
                 letter = place.letter.singleOrNull(),
                 open = { held(entry.key, Side.SIDEBAR); send(ShellEvent.Key("open")) },
                 actions = entries(on, entry.offered),
@@ -690,10 +721,9 @@ class Shell(
             val task = item.row
             val offered = list.offeredOf(item)
             val on = ActingOn.Row(task.id)
-            val state = listOfNotNull(item.row.expanded?.let(::foldState), item.level, line?.detail?.ifEmpty { null })
             Row(
                 task.id,
-                (listOf(line?.title ?: task.title) + state).joinToString(", "),
+                line?.let { lineWithState(it, item.row.expanded) } ?: task.title,
                 braille = line?.braille?.ifEmpty { null } ?: line?.text ?: task.title,
                 finding = task.title,
                 open = { held(task.id, null); send(ShellEvent.Key("open")) },
@@ -729,11 +759,10 @@ class Shell(
             val heading = item.kind == DayKind.SUMMARY
             val on = if (heading) ActingOn.Day else ActingOn.Row(item.key)
             val offered = if (heading) day.offered else item.offered
-            val state = listOfNotNull(item.expanded?.let(::foldState), item.level)
             val actions = entries(on, offered)
             Row(
                 item.key,
-                (listOf(line?.text.orEmpty()) + state).joinToString(", "),
+                line?.let { lineWithState(it, item.expanded) }.orEmpty(),
                 braille = line?.braille?.ifEmpty { null } ?: line?.text.orEmpty(),
                 finding = line?.title.orEmpty(),
                 open = { held(item.key, null); send(ShellEvent.Key("open")) },
@@ -793,32 +822,50 @@ class Shell(
             }
             editor(key, controller.text(control), multiLine = control.kind == ControlType.LINES)
         }
-        return FormFrame(controller, letters, readings, boxOf, letterOf = { lettered[it.key] }, prompt = prompt)
+        return FormFrame(controller, letters, readings, boxOf, letterOf = { lettered[it.key] }, prompt = prompt, completing = completing)
+    }
+
+    /**
+     * Completion in a line with a syntax (Space-4): the core's candidates, as the device's own list
+     * headed by the core's announcement, the line said again as it reads once one is put in.
+     */
+    private val completing by lazy {
+        Completing(
+            complete = { text, cursor, syntax -> runCatching { app.complete(text, cursor, syntax) }.getOrNull() },
+            offer = { title, lines, chosen ->
+                ui.choose(title, lines) { at ->
+                    chosen(at)
+                    // The line under the list, said as it closed, is said as it now reads.
+                    ui.redraw()
+                }
+            },
+            say = ::announce,
+            showCompletions = { appWords.quickAdd.showCompletions },
+            nothingToComplete = { appWords.quickAdd.nothingToComplete },
+        )
     }
 
     /** A control of this shell's own, for a page the core does not describe as a dialog. */
     private fun control(key: String, kind: ControlType, label: String = "", value: String = "", sends: ControlSends = ControlSends.Nothing, default: Boolean = false) =
-        ControlShown(key, kind, label, value, "", "", emptyList(), null, false, null, null, "", false, default, false, sends)
+        // Read here in the device's roles, label and value apart: its line as a row is never asked for.
+        ControlShown(key, kind, label, value, "", "", emptyList(), null, false, null, null, "", false, default, false, sends, "", emptyList())
 
     private fun text(key: String, value: String) = control(key, ControlType.TEXT, value = value)
 
     private fun pressing(key: String, label: String, vararg events: ShellEvent) = control(key, ControlType.BUTTON, label, sends = ControlSends.Press(events.toList()))
 
     /**
-     * A question asking for the task's form before the details show that task: they are asked
-     * to, once, and the form arrives as the question's dialog. An immediate question is none.
+     * A question whose dialog has not come yet: nothing to show until it does. A task's form asked
+     * for (`Question.Form`) comes as the question's dialog, the app showing that task's details
+     * itself as it asks. An immediate question, or a form with no row asking, is none.
      */
-    private fun formAsked(asked: dev.emassey0135.lumenna.app.Asking): Frame? {
-        if (asked.question !is Question.Form) return if (asked.question is Question.Immediate) null else Rendering("")
-        val action = asked.action ?: return null
-        if (handledForm != asked.number && action.subject == dev.emassey0135.lumenna.app.Subject.TASK) {
-            handledForm = asked.number
-            send(ShellEvent.Details(DetailsEvent.Show(action.target)))
-        }
-        return Rendering("")
+    private fun formAsked(asked: dev.emassey0135.lumenna.app.Asking): Frame? = when {
+        asked.question is Question.Immediate -> null
+        asked.question is Question.Form && asked.action == null -> null
+        else -> Rendering("")
     }
 
-    // ── Proposals ─────    // ── Proposals ──────────────────────────────────────────────────────────────────────────
+    // ── Proposals ──────────────────────────────────────────────────────────────────────────
 
     private fun proposal(model: ViewModel): Frame {
         val proposal = model.proposal!!
@@ -827,15 +874,14 @@ class Shell(
         proposal.refusal?.let { rows += Row("refusal", it) }
         if (proposal.ready && proposal.changes.isEmpty()) rows += Row("nothing", words.nothing)
         proposal.changes.forEachIndexed { index, change ->
-            val text = listOfNotNull(change.state, change.sentence, change.reason).joinToString(", ")
-            rows += Row("change$index", text, finding = change.sentence, open = { send(ShellEvent.Proposal(ProposalEvent.Check(index.toUInt(), !change.checked))) },
+            rows += Row("change$index", change.read, finding = change.sentence, open = { send(ShellEvent.Proposal(ProposalEvent.Check(index.toUInt(), !change.checked))) },
                 space = { send(ShellEvent.Proposal(ProposalEvent.Check(index.toUInt(), !change.checked))) })
         }
-        proposal.unfit.forEachIndexed { index, line -> rows += Row("unfit$index", "${words.unfit}: $line") }
+        proposal.unfitLines.forEachIndexed { index, line -> rows += Row("unfit$index", line) }
         proposal.others.forEachIndexed { index, other ->
             rows += Row("other$index", other, open = { send(ShellEvent.Proposal(ProposalEvent.Take(index.toUInt()))) })
         }
-        if (proposal.changes.isNotEmpty()) rows += Row("apply", words.apply, role = ControlRole.BUTTON, open = { send(ShellEvent.Proposal(ProposalEvent.Apply)) })
+        if (proposal.changes.isNotEmpty()) rows += Row("apply", proposal.applyLine, role = ControlRole.BUTTON, open = { send(ShellEvent.Proposal(ProposalEvent.Apply)) })
         rows += Row("close", words.cancel, role = ControlRole.BUTTON, open = { send(ShellEvent.Proposal(ProposalEvent.Close)) })
         return list("proposal", words.title, rows, null, "", hold = false)
     }
@@ -885,13 +931,14 @@ class Shell(
     private fun settings(model: ViewModel): Frame {
         val pages = model.settings?.pages.orEmpty()
         val open = { page: dev.emassey0135.lumenna.app.SettingsPage ->
-            pushPage(if (page.id == "devices") Page.Devices else Page.SettingsPage(page.id))
+            pushPage(if (page.devices) Page.Devices else Page.SettingsPage(page.id))
         }
         val byLetter = { pressed: Char ->
             pages.firstOrNull { pageLetter(it.id)?.singleOrNull() == pressed }?.let { open(it); true } ?: false
         }
         val rows = pages.map { page ->
-            Row(page.id, page.title, finding = page.title, detail = page.description, letter = pageLetter(page.id)?.singleOrNull(),
+            // Its title and what is on it, as the core reads a page as one row.
+            Row(page.id, page.line, finding = page.title, letter = pageLetter(page.id)?.singleOrNull(),
                 open = { open(page) }, command = byLetter)
         }
         return list("settings", commandTitle("settings"), rows, null, "", hold = false)
@@ -936,41 +983,41 @@ class Shell(
      * the core's records and words, so that it is worked as every other dialog is.
      */
     private fun devices(model: ViewModel): Frame {
-        val devices = model.devices ?: return Rendering(SettingsPages.of("devices")?.title.orEmpty())
-        val page = SettingsPages.of("devices")
+        val page = SettingsPages.all.firstOrNull { it.devices }
+        val devices = model.devices ?: return Rendering(page?.title.orEmpty())
         val worded = lines?.devices.orEmpty()
         val controls = mutableListOf<ControlShown>()
         devices.status.takeIf { it.isNotEmpty() }?.let { controls += text("status", it) }
         val syncing = page?.buttons?.firstOrNull { it.id == "sync-now" }?.title ?: commandTitle("sync-now")
         controls += pressing("sync", syncing, ShellEvent.Key("sync-now"))
+        // Each device as the core words it, then its actions as buttons by their own names.
         devices.list?.devices.orEmpty().forEachIndexed { index, device ->
-            val said = worded.getOrNull(index)?.text ?: device.name
             val on = ActingOn.Held(Side.DEVICES, device.nodeId)
-            device.offered.forEach { action -> controls += pressing("${device.nodeId}:${action.kind}", "$said: ${action.name}", ShellEvent.ActOn(on, action)) }
-            if (device.offered.isEmpty()) controls += text(device.nodeId, said)
+            controls += text(device.nodeId, worded.getOrNull(index)?.text ?: device.name)
+            device.offered.forEach { action -> controls += pressing("${device.nodeId}:${action.kind}", action.name, ShellEvent.ActOn(on, action)) }
         }
         val words = devices.words
         val pairing = devices.pairing
         val pair = { event: PairEvent -> ShellEvent.Devices(DevicesEvent.Pair(event)) }
         controls += text("pairing", words.title)
-        controls += text("pairing-status", pairing?.problem ?: when {
-            pairing?.mine != null -> words.waiting
-            pairing?.running == true -> words.connecting
-            else -> words.introSentence.ifEmpty { words.intro }
-        })
+        // Where pairing stands is the core's, what it says before one starts included.
+        controls += text("pairing-status", devices.pairingStatus)
         pairing?.mineLine?.let { controls += text("mine", it) }
         if (pairing?.running != true) controls += pressing("wait", words.wait, pair(PairEvent.Wait))
         if (pairing?.running != true || pairing.waiting) {
             controls += control("code", ControlType.LINE, words.theirCode, pairing?.theirs.orEmpty(), sends = ControlSends.Shell("code"))
             controls += control("join", ControlType.BUTTON, words.join, sends = ControlSends.Shell("join"), default = true)
         }
-        pairing?.words?.let { three ->
-            controls += text("match", "${words.matchTitle} ${pairing.matching ?: three.joinToString(", ")}")
+        pairing?.question?.let { question ->
+            controls += text("match", question)
             controls += pressing("match-yes", words.matchYes, pair(PairEvent.Confirm(true)))
             controls += pressing("match-no", words.matchNo, pair(PairEvent.Confirm(false)))
         }
         val focus = controls.indexOfFirst { it.kind != ControlType.TEXT }.coerceAtLeast(0)
-        val shown = DialogShown("devices", page?.title.orEmpty(), controls, focus.toUInt(), emptyList())
+        val title = page?.title.orEmpty()
+        // Its prompt as the core makes one: the title, then the lines before the first control that takes anything.
+        val prompt = promptOf(listOf(title) + controls.takeWhile { it.kind == ControlType.TEXT }.map { it.value })
+        val shown = DialogShown(id = "devices", title = title, prompt = prompt, controls = controls, focus = focus.toUInt(), cancel = emptyList())
         return dialog(shown) { what ->
             // The code typed is joined with as it stands: the core takes it as typed (`PairEvent::Code`).
             if (what == "join") {
@@ -983,16 +1030,29 @@ class Shell(
 
     // ── Help ─────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * The core's key help for this device over what is shown (`key_help_on`): the device's own keys,
+     * Home's places, the screen's commands and the rows' actions, each by the keys that press it
+     * here. Each section's heading is a row, then its keys, each found by what it does.
+     */
     private fun help(): Frame {
-        val device = dev.emassey0135.lumenna.app.braillesenseKeys().map { row ->
-            Row(row.keys, "${row.keys}: ${row.what}", finding = row.what)
+        val help = app.keyHelp(KeyDevice.BRAILLE_SENSE, true)
+        val rows = help.sections.flatMapIndexed { at, section ->
+            listOf(Row("section:$at", section.heading)) +
+                section.keys.mapIndexed { index, key -> Row("key:$at:$index", key.line, finding = key.what) }
         }
-        // What the screen under it adds, each by the letter that runs it.
-        val here = view?.screenActions.orEmpty().mapNotNull { action ->
-            val press = action.letter.singleOrNull()?.let(BrailleLetters::press) ?: return@mapNotNull null
-            Row("command:${action.id}", "$press: ${action.title}", finding = action.title)
-        }
-        return list("help", appWords.braille.keyHelp, device + here, null, "", hold = false)
+        return list("help", help.title, rows, null, "", hold = false)
+    }
+
+    // ── About ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * About, as lines to read: the core's (`about_lines`), a row each, as Key Help is a list, under
+     * the title of the core's About page.
+     */
+    private fun about(): Frame {
+        val rows = appWords.aboutLines.mapIndexed { index, line -> Row("about:$index", line) }
+        return list("about", SettingsPages.of("about")?.title.orEmpty(), rows, null, "", hold = false)
     }
 
     private companion object {

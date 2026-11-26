@@ -356,9 +356,11 @@ class Session:
         return describe(self.focused())
 
     def menu_item(self):
-        """The words of the popover menu item with focus: it has no name of its own, and Orca
-        reads the label it is labelled by."""
+        """The words of the popover menu item with focus: its own name since GTK 4.24.2, and
+        before that none, Orca reading the label it is labelled by."""
         item = self.focused()
+        if item and item.get_name():
+            return item.get_name()
         for relation in (item.get_relation_set() or []) if item else []:
             if relation.get_relation_type() == Atspi.RelationType.LABELLED_BY:
                 label = relation.get_target(0)

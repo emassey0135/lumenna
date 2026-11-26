@@ -97,7 +97,7 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
     def build():
         session.show(place, query)
         rows = list_rows(session)
-        state["heading"] = heading(title, readback(session), bool(rows))
+        state["heading"] = heading(session, title, readback(session), bool(rows))
         return items(rows, fold=lambda row, open_: actions.fold(session, row, open_))
 
     with screen("lumenna-tasks"):
@@ -163,18 +163,10 @@ def show(session: Session, row) -> str:
 
 def task_details(details, about=()) -> str:
     """Everything about one task, as lines to pan through: its title, each field of the task
-    form that holds something, named as the form names it and said as the form offers it, then
-    what the core says about it besides (`about`, the details' `lines`: its state, a rule it
-    repeats by, what it waits for, its history), each its label then what it says."""
-    task = details.task
-    lines = [task.title]
-    for field in details.form:
-        value = str(getattr(details.fields, field.key, "") or "")
-        if field.key == "title" or not value:
-            continue
-        options = details.projects if field.key == "project" else field.options
-        named = {option.id: option.title for option in options}
-        lines.append(f"{field.label}: {named.get(value, value)}")
+    form that holds something, as the core reads it (`DetailsView.field_lines`: "Priority:
+    High"), then what the core says about it besides (`about`, the details' `lines`: its state,
+    a rule it repeats by, what it waits for, its history), each its label then what it says."""
+    lines = [details.task.title, *details.field_lines]
     lines.extend(line.text for line in about)
     dialogs.view_lines(lines, wrap=True)
     return ""
@@ -229,11 +221,10 @@ def add_task(session: Session, prefix=None, refusal: str = "") -> str:
 
 
 def char_offset(text: str, byte_offset: int) -> int:
-    """A UTF-8 byte offset from the core, as an index into a Python string.
-
-    The core counts bytes, as Rust strings do, and Python counts code points. They agree only
-    until the first accented letter or dash; after that, slicing with the core's number would
-    splice the completion into the wrong place.
+    """A UTF-8 byte offset from the core, as an index into a Python string: where the cursor goes
+    after a completion is put in. The core counts bytes, as Rust strings do, and Python counts code
+    points; they agree only until the first accented letter or dash. Putting the choice in is the
+    core's (`put_in`), which takes the bytes as they are.
     """
     prefix = text.encode("utf-8")[:byte_offset]
     return len(prefix.decode("utf-8", errors="ignore"))
@@ -260,12 +251,12 @@ def completing_key(session: Session, syntax) -> dict:
             return core.words().quick_add.nothing_to_complete
         if not found.candidates:
             return found.announcement or core.words().quick_add.nothing_to_complete
-        start, end = char_offset(text, found.start), char_offset(text, found.end)
         choice = choose({c.text: L.candidate_line(c) for c in found.candidates},
                         found.announcement or core.words().quick_add.show_completions)
         if choice is None:
             return None
-        line = text[:start] + choice + text[end:]
+        line = L.put_in(text, found.start, found.end, choice)
+        start = char_offset(text, found.start)
         braille = getattr(dialogs, "braille", None)
         dialog.field = line if dialog.input_grade == 0 or braille is None else braille.translateText(line)
         dialog.selected = False
@@ -291,21 +282,16 @@ def assisted_input(session: Session, prompt: str, syntax, history_key: str | Non
         found = session.app.complete(text, len(text.encode("utf-8")), syntax)
     except Exception:  # noqa: BLE001 - a line that cannot be completed is still a line
         return text
-    start = char_offset(text, found.start)
-    end = char_offset(text, found.end)
-    partial = text[start:end]
-    candidates = found.candidates
-    if not partial or not candidates:
-        return text
-    if any(candidate.text.lower() == partial.lower() for candidate in candidates):
+    # Whether the line ends in a name begun that something would finish is the core's.
+    if not L.ends_unfinished(text, found):
         return text
     choice = choose(
-        {candidate.text: L.candidate_line(candidate) for candidate in candidates},
+        {candidate.text: L.candidate_line(candidate) for candidate in found.candidates},
         found.announcement or core.words().quick_add.show_completions,
     )
     if choice is None:
         return text
-    return text[:start] + choice + text[end:]
+    return L.put_in(text, found.start, found.end, choice)
 
 
 def failed(error: Exception) -> str:

@@ -128,7 +128,7 @@ def blocks(session: Session) -> str:
     def build():
         session.show(L.PlaceBlocks())
         rows = tasks.list_rows(session)
-        state["heading"] = heading(L.place_title(L.PlaceBlocks()), tasks.readback(session), bool(rows))
+        state["heading"] = heading(session, L.place_title(L.PlaceBlocks()), tasks.readback(session), bool(rows))
         return items(rows)
 
     with screen("lumenna-day"):

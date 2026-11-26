@@ -53,10 +53,7 @@ pub fn ask(app: &App) {
                 .choices
                 .iter()
                 .take(offered.choices.len())
-                .map(|line| match &line.level {
-                    Some(level) => format!("{}, {level}", line.text),
-                    None => line.text.clone(),
-                })
+                .map(lumenna_app::lines::with_level)
                 .collect();
             let reasons: Vec<String> = offered.choices.iter().map(|choice| choice.reason.clone().unwrap_or_default()).collect();
             // A colour pick's marks, beside each colour's name.

@@ -24,6 +24,11 @@ pub struct DialogShown {
     pub id: String,
     /// What it is called, said as it opens.
     pub title: String,
+    /// Its title and the lines to read ahead of its first control that takes anything (a
+    /// refusal, a question's message), as one prompt: for a device whose dialogs ask with a
+    /// prompt and put no line to read above their controls. Those lines are still among
+    /// `controls`, for a shell that draws them.
+    pub prompt: String,
     /// Its controls, in tab order.
     pub controls: Vec<ControlShown>,
     /// Which control it opens on, by position: the first that takes anything.
@@ -117,7 +122,8 @@ pub struct ControlShown {
     /// A placeholder showing an answer's shape. Empty for none.
     pub example: String,
     /// A choice's options or a list's, each its `id` (what is sent) and `title`; for a question's
-    /// line asking how long, the usual lengths.
+    /// line asking how long, the usual lengths; for a setting's check, the
+    /// words of its states, `true` and `false` ("On", "Off").
     pub options: Vec<Choice>,
     /// Which of `options` it holds, by position.
     pub selected: Option<u32>,
@@ -137,6 +143,13 @@ pub struct ControlShown {
     pub cancel: bool,
     /// What it sends.
     pub sends: ControlSends,
+    /// What it says as a row of a list that reads a line each: its label and what it holds, a
+    /// check by its state's word (the setting's own, "On", else "Yes" or "No"); a line to read,
+    /// its text; a button, its label. "Clock, 24-hour".
+    pub line: String,
+    /// Each of `options` as a row says it: its title, then why it is offered where it says
+    /// ("Write the report. Suggested because overdue by 2 days").
+    pub option_lines: Vec<String>,
 }
 
 impl ControlShown {
@@ -158,6 +171,8 @@ impl ControlShown {
             default: false,
             cancel: false,
             sends,
+            line: String::new(),
+            option_lines: Vec::new(),
         }
     }
 
@@ -224,7 +239,54 @@ fn dialog(id: String, title: String, controls: Vec<ControlShown>) -> DialogShown
         ControlSends::Press(events) => events.clone(),
         _ => Vec::new(),
     });
-    DialogShown { id, title, focus: first_taking(&controls), controls, cancel }
+    let leading: Vec<&str> = std::iter::once(title.as_str())
+        .chain(controls.iter().take_while(|control| control.kind == ControlType::Text).map(|control| control.value.as_str()))
+        .collect();
+    let prompt = crate::screen::prompt(&leading);
+    let controls: Vec<ControlShown> = controls.into_iter().map(read).collect();
+    DialogShown { id, title, prompt, focus: first_taking(&controls), controls, cancel }
+}
+
+/// `control` with what it says as a row, where its builder has not said already.
+fn read(mut control: ControlShown) -> ControlShown {
+    if control.line.is_empty() {
+        let holding = if control.kind == ControlType::Check { control.checked.to_string() } else { control.value.clone() };
+        control.line = line_holding(&control, &holding);
+    }
+    control.option_lines = control.options.iter().map(|option| crate::screen::prompt(&[option.title.as_str(), option.reason.as_deref().unwrap_or_default()])).collect();
+    control
+}
+
+/// What `control` says as a row while it holds `value`: a line's text, a choice's option (by its
+/// id or title), a check's `true` or `false`. For a shell that holds what the person did until
+/// the core's next description has it, so the row reads as it now stands; `ControlShown::line` is
+/// the same for what the core holds.
+#[must_use]
+pub fn line_holding(control: &ControlShown, value: &str) -> String {
+    let value = match control.kind {
+        ControlType::Text => return control.value.clone(),
+        ControlType::Check => check_word(value == "true", &control.options),
+        ControlType::Choice | ControlType::List => {
+            control.options.iter().find(|option| option.id == value || option.title == value).map_or_else(|| value.to_owned(), |option| option.title.clone())
+        }
+        ControlType::Line | ControlType::Lines | ControlType::Button => value.to_owned(),
+    };
+    match (control.label.is_empty(), value.is_empty()) {
+        (_, true) => control.label.clone(),
+        (true, false) => value,
+        (false, false) => format!("{}, {value}", control.label),
+    }
+}
+
+/// What a check says of its state: `named`'s option of id `true` or `false` where it has them
+/// (a setting's "On" and "Off"), else "Yes" or "No".
+fn check_word(checked: bool, named: &[Choice]) -> String {
+    let id = if checked { "true" } else { "false" };
+    if let Some(option) = named.iter().find(|option| option.id == id) {
+        return option.title.clone();
+    }
+    let id = if checked { "yes" } else { "no" };
+    lumenna_records::fields::yes_no().into_iter().find(|choice| choice.id == id).map(|choice| choice.title).unwrap_or_default()
 }
 
 fn cancel_word() -> String {
@@ -259,7 +321,7 @@ fn field_control(field: &FormField, value: String, options: &[Choice], checked: 
 
 /// A question open, as a dialog: its message, its line or its choices, then its buttons in the
 /// order the screen's description gives them. A task's form asked for (`Question::Form`) is the
-/// task form, once the details show that task; any other form is the shell's own.
+/// task form, the app showing that task's details as it asks; any other form is the shell's own.
 #[must_use]
 pub fn question(asking: &Asking, view: &ViewModel, lines: &Lines) -> Option<DialogShown> {
     let id = format!("question:{}", asking.number);
@@ -277,16 +339,17 @@ pub fn question(asking: &Asking, view: &ViewModel, lines: &Lines) -> Option<Dial
             if !shown {
                 return None;
             }
-            let mut form = task_form(view, lines)?;
-            form.id = id;
-            // Saving it or closing it closes the question as well as the form.
-            for control in form.controls.iter_mut().filter(|control| control.cancel || control.default) {
+            let form = task_form(view, lines)?;
+            // Closing it closes the question as well as the form; saving it closes the question once
+            // the save is made (`asking`), so a refused save leaves the form open, its reason
+            // (the question's refusal) first.
+            controls.extend(form.controls);
+            for control in controls.iter_mut().filter(|control| control.cancel) {
                 if let ControlSends::Press(events) = &mut control.sends {
                     events.push(ShellEvent::Cancel);
                 }
             }
-            form.cancel.push(ShellEvent::Cancel);
-            return Some(form);
+            return Some(dialog(id, form.title, controls));
         }
         Question::Confirm { title, message, yes } => {
             if !message.is_empty() {
@@ -356,7 +419,15 @@ pub fn task_form(view: &ViewModel, lines: &Lines) -> Option<DialogShown> {
         .map(|field| {
             let value = crate::details::get(fields, &field.key);
             let options = if field.key == "project" { &details.projects } else { &field.options };
-            field_control(field, value, options, false, ControlSends::TaskField(field.key.clone()))
+            let mut control = field_control(field, value, options, false, ControlSends::TaskField(field.key.clone()));
+            // A project offered says its level after it where the level changes, as a list that
+            // reads one line per row says it; what the field holds stays its name.
+            if field.key == "project" && lines.projects.len() == control.options.len() {
+                for (option, line) in control.options.iter_mut().zip(&lines.projects) {
+                    option.title = crate::lines::with_level(line);
+                }
+            }
+            control
         })
         .collect();
     let said: Vec<String> = if lines.details.len() == details.lines.len() {
@@ -464,7 +535,13 @@ pub fn settings_page(view: &ViewModel, page: &str) -> Option<DialogShown> {
         let sends = ControlSends::Setting(setting.key.clone());
         let id = format!("setting:{}", setting.key);
         controls.push(match setting.kind {
-            SettingKind::Toggle => ControlShown { checked: setting.value == "true", hint: setting.hint.clone(), ..ControlShown::new(id, ControlType::Check, setting.title.clone(), sends) },
+            // A check carries the setting's own words for its states ("On", "Off"), for its line.
+            SettingKind::Toggle => ControlShown {
+                checked: setting.value == "true",
+                hint: setting.hint.clone(),
+                options: setting.options.clone(),
+                ..ControlShown::new(id, ControlType::Check, setting.title.clone(), sends)
+            },
             SettingKind::Folder => ControlShown {
                 value: setting.value.clone(),
                 hint: setting.hint.clone(),
@@ -557,6 +634,35 @@ pub fn open(view: &ViewModel, lines: &Lines) -> Option<DialogShown> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dialog_s_prompt_is_its_title_then_the_lines_before_its_first_control() {
+        let controls = vec![
+            ControlShown::text("refusal", "That name is taken."),
+            ControlShown::text("message", "Its tasks go with it."),
+            ControlShown::button("yes", "Delete", ControlSends::Answer),
+            ControlShown::text("after", "Not in the prompt"),
+        ];
+        let shown = dialog("question:1".to_owned(), "Delete Work?".to_owned(), controls);
+        assert_eq!(shown.prompt, "Delete Work? That name is taken. Its tasks go with it");
+    }
+
+    #[test]
+    fn a_control_reads_as_a_row_its_label_then_what_it_holds_and_a_choice_with_why() {
+        let reason = Choice { id: "a".to_owned(), title: "Write the report".to_owned(), reason: Some("Suggested because overdue".to_owned()), ..Choice::default() };
+        let controls = vec![
+            ControlShown::text("caption", "These sync."),
+            ControlShown { value: "Inbox".to_owned(), ..ControlShown::new("field:project", ControlType::Choice, "Project", ControlSends::Nothing) },
+            ControlShown { checked: true, ..ControlShown::new("field:all-day", ControlType::Check, "All day", ControlSends::Nothing) },
+            ControlShown { options: vec![reason], ..ControlShown::new("choices", ControlType::List, "What now?", ControlSends::Pick) },
+            ControlShown::button("yes", "Start", ControlSends::Pick),
+        ];
+        let shown = dialog("question:2".to_owned(), "What now?".to_owned(), controls);
+        let lines: Vec<&str> = shown.controls.iter().map(|control| control.line.as_str()).collect();
+        assert_eq!(lines, ["These sync.", "Project, Inbox", "All day, Yes", "What now?", "Start"]);
+        assert_eq!(shown.controls[3].option_lines, ["Write the report. Suggested because overdue"]);
+        assert_eq!(check_word(false, &[Choice { id: "false".to_owned(), title: "Off".to_owned(), ..Choice::default() }]), "Off");
+    }
 
     #[test]
     fn a_line_set_in_quick_add_puts_the_cursor_at_its_end_and_a_pick_needs_a_choice() {

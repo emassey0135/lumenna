@@ -316,7 +316,7 @@ impl Detail {
         held |= controls::write_typed(self.estimate, &fields.estimate, still);
         held |= controls::write_typed(self.sittings, &fields.sittings, still);
         if *self.projects.borrow() != details.projects || self.chosen_project() != fields.project {
-            self.fill_projects(&details.projects, &fields.project);
+            self.fill_projects(&details.projects, &lines.projects, &fields.project);
         }
         held |= controls::write_typed(self.labels, &fields.labels, still);
         // An edit control's lines end in CR LF.
@@ -350,14 +350,15 @@ impl Detail {
         held
     }
 
-    /// The projects to choose from, in tree order, the task's own chosen. A subproject says
-    /// its level, which a drop-down list has no other way to; typing its first letters still
-    /// finds it. The app lists an archived project the task is in too, so it is not lost.
-    fn fill_projects(&self, projects: &[Choice], current: &str) {
+    /// The projects to choose from, in tree order, the task's own chosen, each the core's line with
+    /// its level where it changes (`lines::with_level`), which a drop-down list has no other way
+    /// to say; typing its first letters still finds it. The app lists an archived project the task
+    /// is in too, so it is not lost.
+    fn fill_projects(&self, projects: &[Choice], shown: &[lumenna_app::speech::Line], current: &str) {
         *self.projects.borrow_mut() = projects.to_vec();
         controls::send(self.project, CB_RESETCONTENT, 0, 0);
-        for project in projects {
-            let text = if project.depth > 0 { format!("{}, {}", project.title, lumenna_records::words::level(project.depth)) } else { project.title.clone() };
+        for (at, project) in projects.iter().enumerate() {
+            let text = shown.get(at).map_or_else(|| project.title.clone(), lumenna_app::lines::with_level);
             let text = HSTRING::from(text);
             controls::send(self.project, CB_ADDSTRING, 0, text.as_ptr() as isize);
         }

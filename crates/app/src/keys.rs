@@ -255,6 +255,19 @@ pub fn command_of(id: &str) -> Option<&'static Command> {
     COMMANDS.iter().find(|command| command.id == id)
 }
 
+/// The settings page a command of the menu bar opens, by its id (`SettingsPage::id`), for a
+/// shell that shows Lumenna's settings as pages of its own: Devices, Export and Import, Restore
+/// from a Backup (the Backups page, whose button it is).
+#[must_use]
+pub fn settings_page_of(id: &str) -> Option<&'static str> {
+    match id {
+        "devices" => Some("devices"),
+        "export-import" => Some("export"),
+        "restore-backup" => Some("backups"),
+        _ => None,
+    }
+}
+
 /// A separator between a menu's items.
 pub const SEPARATOR: &str = "";
 
@@ -470,6 +483,16 @@ pub fn grouped(sentence: bool) -> Vec<KeyGroup> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_command_that_opens_a_settings_page_names_a_page_there_is() {
+        let pages = lumenna_records::fields::settings_pages(false, false);
+        for id in ["devices", "export-import", "restore-backup"] {
+            let page = settings_page_of(id).unwrap_or_else(|| panic!("{id} opens no page"));
+            assert!(pages.iter().any(|p| p.id == page), "{id} opens {page}, which is no page");
+        }
+        assert!(pages.iter().filter(|page| page.devices).map(|page| page.id.as_str()).eq(["devices"]));
+    }
 
     #[test]
     fn no_key_erases_permanently_and_delete_deletes_from_the_trash() {

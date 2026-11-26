@@ -3,8 +3,12 @@ package com.extra.han.lumenna
 import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.braillesense.braille.Translated
 import dev.emassey0135.braillesense.braille.Translator
+import com.extra.han.lumenna.ui.Completing
 import com.extra.han.lumenna.ui.FormFrame
 import dev.emassey0135.braillesense.edit.TextBox
+import dev.emassey0135.lumenna.app.Candidate
+import dev.emassey0135.lumenna.app.Completions
+import dev.emassey0135.lumenna.app.Syntax
 import dev.emassey0135.braillesense.reading.DeviceReading
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -84,7 +88,7 @@ class FramesTest {
     }
 
     private fun control(key: String, kind: ControlType, label: String = key, value: String = "", sends: ControlSends = ControlSends.TaskField(key)) =
-        ControlShown(key, kind, label, value, "", "", emptyList(), null, false, null, null, "", false, false, false, sends)
+        ControlShown(key, kind, label, value, "", "", emptyList(), null, false, null, null, "", false, false, false, sends, "", emptyList())
 
     private fun option(id: String, title: String) = Choice(id, title, 0u, null, null, null, null, null, null)
 
@@ -94,11 +98,12 @@ class FramesTest {
     private fun choice(key: String, vararg options: Pair<String, String>, kind: ControlType = ControlType.CHOICE, sends: ControlSends = ControlSends.TaskField(key)) =
         control(key, kind, sends = sends).copy(options = options.map { (id, title) -> option(id, title) }, selected = 0u)
 
-    private fun form(vararg controls: ControlShown, focus: Int = 0, id: String = "form", boxes: Map<String, TextBox> = emptyMap(), prompt: Boolean = false): FormFrame {
-        val controller = DialogController(DialogShown(id, "Form", controls.toList(), focus.toUInt(), emptyList()), { sent += (it as ShellEvent.Key).field0 }, events = ::events)
+    /** [said] is the dialog's prompt, which the core joins (`DialogShown.prompt`): given here as the core would. */
+    private fun form(vararg controls: ControlShown, focus: Int = 0, id: String = "form", boxes: Map<String, TextBox> = emptyMap(), prompt: Boolean = false, said: String = "Form", completing: Completing? = null): FormFrame {
+        val controller = DialogController(DialogShown(id = id, title = "Form", prompt = said, controls = controls.toList(), focus = focus.toUInt(), cancel = emptyList()), { sent += (it as ShellEvent.Key).field0 }, events = ::events)
         val made = HashMap(boxes)
         return FormFrame(controller, BY_LETTER, READ, boxOf = { made.getOrPut(it.key) { TextBox(controller.text(it), Plain, it.kind == ControlType.LINES) } },
-            letterOf = { it.letter.singleOrNull() }, prompt = prompt)
+            letterOf = { it.letter.singleOrNull() }, prompt = prompt, completing = completing)
     }
 
     @Test fun aFormsButtonIsPressedByItsLetter() {
@@ -190,12 +195,96 @@ class FramesTest {
     }
 
     @Test fun aQuestionsAnswersAreSteppedWithSpaceAndBackspace() {
-        val frame = form(control("message", ControlType.TEXT, value = "It cannot be undone."), button("cancel"), button("yes"), focus = 1, id = "question:2", prompt = true)
-        assertEquals("the message is said as it opens", "It cannot be undone.", frame.preamble)
+        val frame = form(control("message", ControlType.TEXT, value = "It cannot be undone."), button("cancel"), button("yes"), focus = 1, id = "question:2", prompt = true,
+            said = "Delete it? It cannot be undone")
+        assertEquals("the core's prompt is said as it opens", "Delete it? It cannot be undone", frame.said)
+        assertEquals("the lines ahead of the first answer", listOf("It cannot be undone."), frame.leading)
         assertEquals("cancel", frame.current?.key)
         frame.key(Key.Space)
         assertEquals("yes", frame.current?.key)
         frame.key(Key.Space)
         assertEquals("wrapping round, never onto the message", "cancel", frame.current?.key)
+    }
+
+    @Test fun aListsOptionReadsAsTheCoreSaysItWithWhyItIsOffered() {
+        val picks = choice("choices", "a" to "Write the report", "b" to "Call Sam", kind = ControlType.LIST, sends = ControlSends.Pick)
+            .copy(optionLines = listOf("Write the report. Suggested because overdue", "Call Sam"))
+        val frame = form(picks, id = "question:3")
+        assertEquals("choices: Write the report. Suggested because overdue", frame.rendered.speech)
+    }
+
+    // ── Completion inside a line ──────────────────────────────────────────────────────────
+
+    /** What the core's `put_in` does: [choice] over the UTF-8 bytes from [start] to [end]. */
+    private fun splice(text: String, start: UInt, end: UInt, choice: String): String {
+        val bytes = text.encodeToByteArray()
+        return (bytes.copyOfRange(0, start.toInt()) + choice.encodeToByteArray() + bytes.copyOfRange(end.toInt(), bytes.size)).decodeToString()
+    }
+
+    private val asked = mutableListOf<Pair<String, UInt>>()
+    private val offered = mutableListOf<Pair<String, List<String>>>()
+    private val said = mutableListOf<String>()
+
+    /** Completion over [found], answering each offer with [choose]. */
+    private fun completing(found: Completions?, choose: Int?) = Completing(
+        complete = { text, cursor, _ -> asked += text to cursor; found },
+        offer = { title, lines, chosen -> offered += title to lines; chosen(choose) },
+        say = { said += it },
+        showCompletions = { "Show completions" },
+        nothingToComplete = { "Nothing to complete here." },
+        lineOf = { "${it.text}, ${it.kind}" },
+        splice = ::splice,
+    )
+
+    private val work = Completions("2 completions", emptyList(), 4u, 7u, listOf(Candidate("#Work", "project", "project Work"), Candidate("#Workshop", "project", "project Workshop")))
+
+    private fun quickAdd() = control("line", ControlType.LINE, "Task").copy(syntax = Syntax.QUICK_ADD)
+
+    @Test fun spaceFourInALineThatCompletesOffersTheCoresCandidatesAndPutsInTheOneChosen() {
+        val box = TextBox("Buy #wo tomorrow", Plain).apply { line.route(7) }
+        val frame = form(quickAdd(), boxes = mapOf("line" to box), completing = completing(work, 0))
+        assertTrue(frame.key(Key.Down))
+        assertEquals("asked at the cursor, in UTF-8 bytes", listOf("Buy #wo tomorrow" to 7u), asked)
+        assertEquals(listOf("2 completions" to listOf("#Work, project", "#Workshop, project")), offered)
+        assertEquals("Buy #Work tomorrow", box.text)
+        assertEquals("the cursor after what was put in", 9, box.line.caret)
+        assertEquals("sent as typed, so the core has it", listOf("line typed Buy #Work tomorrow"), sent)
+    }
+
+    @Test fun aCompletionIsNeverPutInByItselfEvenWithOneCandidate() {
+        val one = work.copy(candidates = work.candidates.take(1))
+        val box = TextBox("Buy #wo", Plain)
+        val frame = form(quickAdd(), boxes = mapOf("line" to box), completing = completing(one, null))
+        frame.key(Key.Down)
+        assertEquals("offered all the same", 1, offered.size)
+        assertEquals("left unchosen, the line is as it was", "Buy #wo", box.text)
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test fun nothingToCompleteSaysTheCoresAnnouncementElseItsWordsForNothing() {
+        val frame = form(quickAdd(), boxes = mapOf("line" to TextBox("Buy", Plain)), completing = completing(work.copy(announcement = "No completions", candidates = emptyList()), 0))
+        frame.key(Key.Down)
+        assertEquals(listOf("No completions"), said)
+        assertTrue(offered.isEmpty())
+        val unread = form(quickAdd(), boxes = mapOf("line" to TextBox("Buy", Plain)), completing = completing(null, 0))
+        unread.key(Key.Down)
+        assertEquals("Nothing to complete here.", said.last())
+    }
+
+    @Test fun aLineWithoutASyntaxLeavesSpaceFourToNothing() {
+        val frame = form(control("title", ControlType.LINE, "Title"), completing = completing(work, 0))
+        assertFalse(frame.key(Key.Down))
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test fun theCaretIsCountedByWordsBetweenCellsAndText() {
+        val cells = TextBox("ab cd", Plain).line.shown().cells
+        assertEquals(0, Completing.textCursor("ab cd", cells, 0))
+        assertEquals("inside a word, its end", 2, Completing.textCursor("ab cd", cells, 1))
+        assertEquals("after the space, the next word's start", 3, Completing.textCursor("ab cd", cells, 3))
+        assertEquals(5, Completing.textCursor("ab cd", cells, 5))
+        assertEquals(2, Completing.cellCursor("ab cd", 2, cells))
+        assertEquals(3, Completing.cellCursor("ab cd", 3, cells))
+        assertEquals(5, Completing.cellCursor("ab cd", 5, cells))
     }
 }

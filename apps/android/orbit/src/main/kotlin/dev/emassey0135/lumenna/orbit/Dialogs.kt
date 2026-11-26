@@ -11,6 +11,7 @@ import dev.emassey0135.lumenna.app.Offered
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.brailleLetter
 import dev.emassey0135.lumenna.app.candidateLine
+import dev.emassey0135.lumenna.app.lineHolding
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.braille.DialogController
 import dev.emassey0135.orbit.EditBox
@@ -88,18 +89,24 @@ abstract class DialogScreen : AppList() {
 
     // ---- what it shows -------------------------------------------------------------------
 
-    /** What a control says as a row, and beside its role: its label and value. */
+    /**
+     * What a control says as a row, and beside its role: the core's line for it (`ControlShown::line`).
+     * While this app holds what the core has not yet been told (a line typed, a choice or a check
+     * changed, until the next turn), and for a control of this app's own, which has no line of the
+     * core's, it is the core's line for what it holds now (`line_holding`).
+     */
     protected fun textOf(control: ControlShown): String {
         val controller = dialog
-        val value = when (control.kind) {
-            ControlType.LINE, ControlType.LINES -> (controller?.text(control) ?: control.value).ifEmpty { appWords.noneValue }
-            ControlType.CHOICE, ControlType.LIST ->
-                (controller?.selected(control) ?: control.selected?.toInt())?.let { control.options.getOrNull(it)?.title } ?: control.value.ifEmpty { appWords.noneValue }
-            ControlType.CHECK -> appWords.yesNo.firstOrNull { it.id == if (controller?.checked(control) ?: control.checked) "yes" else "no" }?.title.orEmpty()
-            ControlType.BUTTON -> control.value
-            ControlType.TEXT -> return control.value
-        }
-        return listOf(control.label, value).filter { it.isNotEmpty() }.joinToString(", ")
+        if (control.line.isNotEmpty() && (controller == null || !controller.holdsOwn(control))) return control.line
+        return lineHolding(control, controller?.value(control) ?: control.value)
+    }
+
+    /** Whether the controller holds for [control] something other than what the core described. */
+    private fun DialogController.holdsOwn(control: ControlShown): Boolean = when (control.kind) {
+        ControlType.LINE, ControlType.LINES -> text(control) != control.value
+        ControlType.CHOICE, ControlType.LIST -> selected(control) != control.selected?.toInt()
+        ControlType.CHECK -> checked(control) != control.checked
+        ControlType.BUTTON, ControlType.TEXT -> false
     }
 
     override fun rows(): List<Row> {
@@ -134,7 +141,7 @@ abstract class DialogScreen : AppList() {
             })
         }, offered, on))
         ControlType.LIST -> control.options.mapIndexed { option, choice ->
-            Row("${control.key}:${choice.id}", listOfNotNull(choice.title, choice.reason?.ifEmpty { null }).joinToString(". "), {
+            Row("${control.key}:${choice.id}", control.optionLines.getOrNull(option) ?: choice.title, {
                 controller.moveTo(at)
                 controller.choose(option)
                 controller.press()
@@ -354,7 +361,9 @@ abstract class DialogScreen : AppList() {
             dialog?.let { sayRefusals(it.controls) }
             if (!announced) {
                 announced = true
-                reader.dialog(title, "", "")
+                // Its prompt: the title, then the lines ahead of the control it opens on (a
+                // question's message), which Tab passes over as it goes on from there.
+                reader.dialog(shown()?.prompt?.ifEmpty { null } ?: title, "", "")
             }
             tellControl()
             return
@@ -412,19 +421,24 @@ abstract class DialogScreen : AppList() {
         /** A dialog of this app's own: one line, then Confirm and Cancel, each this app's to do. */
         fun ownLine(id: String, title: String, label: String, value: String, hint: String, confirm: String, multiline: Boolean = false): DialogShown =
             DialogShown(
-                id, title,
-                listOf(
+                id = id,
+                title = title,
+                // Nothing to read ahead of its line: its prompt is its title.
+                prompt = title,
+                controls = listOf(
                     own("line", if (multiline) ControlType.LINES else ControlType.LINE, label, value, hint),
                     own("confirm", ControlType.BUTTON, confirm).copy(default = true),
                     own("cancel", ControlType.BUTTON, appWords.cancel).copy(cancel = true),
                 ),
-                0u, emptyList(),
+                focus = 0u,
+                cancel = emptyList(),
             )
 
         private fun own(key: String, kind: ControlType, label: String, value: String = "", hint: String = "") = ControlShown(
             key = key, kind = kind, label = label, value = value, hint = hint, example = "", options = emptyList(), selected = null,
             checked = false, `field` = null, syntax = null, letter = "", asks = false, default = false, cancel = false,
-            sends = ControlSends.Shell(key),
+            // No line of the core's: a control of this app's own is read by `line_holding` (textOf).
+            sends = ControlSends.Shell(key), line = "", optionLines = emptyList(),
         )
     }
 }

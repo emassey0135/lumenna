@@ -43,11 +43,11 @@ def proposal_screen(session: Session) -> str:
 
     def toggle(index: int, checked: bool) -> str:
         send(L.ProposalEventCheck(index, not checked))
-        # Said as a check box says itself, by the core's name for a change and its state.
+        # Said as a check box says itself as it changes, the core's line (`ChangeView::toggled`).
         proposal = session.view().proposal
         if proposal is None or index >= len(proposal.changes):
             return ""
-        return f"{proposal.words.item}, {proposal.changes[index].state}"
+        return proposal.changes[index].toggled
 
     def apply(menu=None) -> str:
         made = send(L.ProposalEventApply())
@@ -74,8 +74,8 @@ def proposal_screen(session: Session) -> str:
         proposal = session.view().proposal
         if proposal is None or index >= len(proposal.changes):
             return ""
-        change = proposal.changes[index]
-        return f"{change.sentence}, {change.state}"
+        # The core's line: the change, then whether it is checked.
+        return proposal.changes[index].line
 
     def which():
         """What tells one proposal shown from the next: a new proposal, or a refusal."""
@@ -97,9 +97,8 @@ def proposal_screen(session: Session) -> str:
             ))
         if not proposal.changes:
             rows.append(dialogs.DynamicMenuItem(title=words.nothing, action=lambda: words.nothing))
-        if proposal.unfit:
-            rows.append(dialogs.DynamicMenuItem(title=words.unfit, action=lambda: ""))
-            rows.extend(dialogs.DynamicMenuItem(title=line, action=lambda: "") for line in proposal.unfit)
+        # What does not fit, each a row saying so ("Does not fit: Laundry"), the core's.
+        rows.extend(dialogs.DynamicMenuItem(title=line, action=lambda: "") for line in proposal.unfit_lines)
         if proposal.changes:
             # What becomes of a change left unchecked, beside the button that makes the rest.
             rows.append(dialogs.DynamicMenuItem(title=words.apply, action=apply, hint=words.hint))
@@ -129,7 +128,7 @@ def proposal_screen(session: Session) -> str:
         shown["count"] = proposal.shown
         choice = dialogs.dynamic_menu(
             build(proposal),
-            title=f"{proposal.words.title}. {proposal.announcement}",
+            title=proposal.heading,
             # Only a new proposal redraws it: checking a change rewords its row in place.
             exit_condition=lambda: which() != drawn,
             refresh_interval=REFRESH,

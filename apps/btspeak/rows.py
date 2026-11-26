@@ -2,12 +2,13 @@
 
 The app sends each row's line already worded in this device's clock (`Lines`), the level where
 it changes against the row shown before, and whether what is under a row is folded away; it
-folds, too, through each row's Expand and Collapse. This file only joins those for the menu.
+folds, too, through each row's Expand and Collapse. The core joins those into one line
+(`line_with_state`); this file only puts it in the menu.
 
 Speech and braille come from one string, but for a row whose line the app shows apart in
 braille (`Line.braille`: its states as short forms, "ovd rec", as the device's own mail list
 shows its statuses), which goes to the menu item's `braille_title`. The level is a compact
-marker in the line, said only where it changes, which is what a screen-reader tree view does:
+marker after the line, said only where it changes, which is what a screen-reader tree view does:
 depth is never indentation, which says nothing in speech.
 """
 
@@ -82,8 +83,9 @@ class Row:
         self.hint = hint
 
     def said(self) -> str:
-        """The line as read: the level where it changes, the line, and whether what is under
-        it is folded away — the one thing that cannot be found out without pressing a key."""
+        """The line as read, as the core joins it (`line_with_state`): the line, whether what is
+        under it is folded away — the one thing that cannot be found out without pressing a key —
+        and the level where it changes."""
         return self._with(self.line)
 
     def brailled(self) -> str:
@@ -91,10 +93,10 @@ class Row:
         return self._with(self.braille)
 
     def _with(self, line: str) -> str:
-        parts = [self.level or "", line]
-        if self.expanded is not None:
-            parts.append(native().fold_state(self.expanded))
-        return ", ".join(part for part in parts if part)
+        # The level is the core's, where it changes against the row shown before (a list item's
+        # or a sidebar entry's `level`); the core joins it with the line and the folding.
+        L = native()
+        return L.line_with_state(L.Line(self.title, "", line, line, self.level or None), self.expanded)
 
 
 def items(rows, on_select=None, fold=None) -> list:
@@ -103,8 +105,8 @@ def items(rows, on_select=None, fold=None) -> list:
     `fold(row, open)` runs the row's own Expand or Collapse, the app's: left and right are
     already bound to left-arrow/Dot7 and right-arrow/Dot8 on this device, so folding needs no
     key handling of its own, and `+` and `-` are offered as well, because that is what a tree
-    view is expected to answer to. First-letter navigation goes by the title alone, so a level
-    marker in front of it does not hide it.
+    view is expected to answer to. First-letter navigation goes by the title alone, as the level
+    marker comes after the line anyway.
     """
     made = []
     for row in rows:

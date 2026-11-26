@@ -146,6 +146,28 @@ pub struct PairingView {
     /// The question about the words, whole, while asked: what it says, then the words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub matching: Option<String>,
+    /// Where pairing stands, as one line: what went wrong, else waiting with the code shown,
+    /// opening, connecting, or what it says before anything starts.
+    pub status: String,
+    /// The question about the words as one line, its title then [`matching`](Self::matching),
+    /// for a list that reads it as a row of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<String>,
+}
+
+impl PairingView {
+    /// Its [`status`](Self::status) and [`question`](Self::question), in `words` as cased, `intro`
+    /// the words before anything starts as the screen says them.
+    pub(crate) fn compose(&mut self, words: &PairingWords, intro: &str) {
+        self.status = match &self.problem {
+            Some(problem) => problem.clone(),
+            None if self.mine.is_some() => words.waiting.clone(),
+            None if self.running && self.waiting => words.opening.clone(),
+            None if self.running => words.connecting.clone(),
+            None => intro.to_owned(),
+        };
+        self.question = self.matching.as_ref().map(|matching| format!("{} {matching}", words.match_title));
+    }
 }
 
 /// The Devices page as shown.
@@ -164,13 +186,17 @@ pub struct DevicesView {
     /// The pairing screen, while open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pairing: Option<PairingView>,
+    /// Where pairing stands, for a page that shows it as a line: the pairing's `status` while one
+    /// is open, else what pairing says before one starts.
+    #[serde(default)]
+    pub pairing_status: String,
 }
 
 impl Pairing {
     /// As shown.
     #[must_use]
     pub fn view(&self, words: &PairingWords) -> PairingView {
-        PairingView {
+        let mut view = PairingView {
             name: self.name.clone(),
             theirs: self.theirs.clone(),
             mine: self.mine.clone(),
@@ -180,7 +206,11 @@ impl Pairing {
             problem: self.problem.clone(),
             mine_line: self.mine.as_ref().map(|code| lumenna_records::fields::my_code_line(words, code)),
             matching: self.words.as_ref().map(|three| lumenna_records::fields::pairing_match(words, three)),
-        }
+            status: String::new(),
+            question: None,
+        };
+        view.compose(words, &words.intro);
+        view
     }
 }
 

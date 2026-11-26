@@ -102,6 +102,9 @@ class AppModel(
     /** Settings page [page], as its controls (`App::settings_page_on`), while settings are open. */
     fun settingsPage(page: String): dev.emassey0135.lumenna.app.DialogShown? = app.settingsPageOn(0u, page)
 
+    /** [device]'s key help over what is shown (`App::key_help_on`), in sentence case where [sentence]. */
+    fun keyHelp(device: dev.emassey0135.lumenna.app.KeyDevice, sentence: Boolean): dev.emassey0135.lumenna.app.KeyHelp = app.keyHelpOn(0u, device, sentence)
+
     private val quiet = MutableStateFlow(0u)
     private var opening = false
 

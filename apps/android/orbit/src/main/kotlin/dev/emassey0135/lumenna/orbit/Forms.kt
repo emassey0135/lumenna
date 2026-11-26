@@ -21,7 +21,9 @@ import dev.emassey0135.lumenna.appWords
 
 /**
  * The details of a task, as the core's task form (`App::task_form_on`): its fields, the lines of
- * its details, its own actions, Save and Cancel; the task's other actions a menu away.
+ * its details, its own actions, Save and Cancel; the task's other actions a menu away. Opened from
+ * a reminder's notification, where no question asks for it; a task's Edit (Enter on a task) is the
+ * question's own dialog ([QuestionScreen]), the app showing the task as it asks.
  */
 class DetailsScreen(private val id: String) : DialogScreen() {
     override fun shown(): DialogShown? = host.app.taskForm()?.takeIf { host.view.details?.task?.id == id }
@@ -103,8 +105,8 @@ class SettingsScreen : AppList() {
     override fun rows(): List<Row> {
         val view = host.view.settings ?: return emptyList()
         return view.pages.map { page ->
-                Row(page.id, listOf(page.title, page.description).filter { it.isNotEmpty() }.joinToString(". "), {
-                    host.push(if (page.id == "devices") DevicesScreen() else PageScreen(page))
+                Row(page.id, page.line, {
+                    host.push(if (page.devices) DevicesScreen() else PageScreen(page))
                 }, letter = pageLetter(page.id))
             }
     }
@@ -150,7 +152,7 @@ class PageScreen(private val page: SettingsPage) : DialogScreen() {
 class DevicesScreen : AppList() {
     override val lands: Lands get() = Lands.SIDE
 
-    override val title: String get() = SettingsPages.of("devices")?.title.orEmpty()
+    override val title: String get() = SettingsPages.all.firstOrNull { it.devices }?.title.orEmpty()
 
     override fun loaded(view: ViewModel): Boolean = view.devices != null
 
@@ -215,19 +217,19 @@ class PairingScreen : AppList() {
 
     override fun rows(): List<Row> {
         val view = host.view.devices ?: return emptyList()
-        val pairing = view.pairing ?: return listOf(Row("status", view.status))
+        val pairing = view.pairing ?: return listOf(Row("status", view.pairingStatus))
         answered = true
         val words = view.words
+        // Where pairing stands and the question about the words are the core's lines.
         return buildList {
-            pairing.problem?.let { add(Row("problem", it)) }
-            if (pairing.words != null) {
-                add(Row("match", listOf(words.matchMessage, pairing.matching.orEmpty()).filter { it.isNotEmpty() }.joinToString(". ")))
+            pairing.status.takeIf { it.isNotEmpty() }?.let { add(Row("status", it)) }
+            val question = pairing.question
+            if (question != null) {
+                add(Row("match", question))
                 add(Row("yes", words.matchYes, { confirm(true) }))
                 add(Row("no", words.matchNo, { confirm(false) }))
-            } else if (pairing.mine != null) {
-                add(Row("code", listOf(words.waiting, pairing.mineLine ?: pairing.mine.orEmpty()).joinToString(". ")))
             } else {
-                add(Row("status", if (pairing.waiting) words.opening else words.connecting))
+                pairing.mineLine?.let { add(Row("code", it)) }
             }
             add(Row("cancel", appWords.cancel, { host.pop() }))
         }

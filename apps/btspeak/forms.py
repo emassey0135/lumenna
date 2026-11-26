@@ -58,8 +58,9 @@ def buttons(dialog) -> list:
 
 
 def prompt(*parts: str) -> str:
-    """A refusal before what is asked, each sentence ended once."""
-    return ". ".join(part.strip().rstrip(".") for part in parts if part and part.strip())
+    """A refusal before what is asked, each sentence ended once, as the core joins them
+    (`prompt_of`)."""
+    return L.prompt_of([part for part in parts if part])
 
 
 def is_form(dialog) -> bool:
@@ -129,7 +130,7 @@ def _yes_no():
     return {choice.id: choice.title for choice in core.words().yes_no}
 
 
-def _field(session: Session, control) -> dialogs.InputField:
+def _field(control) -> dialogs.InputField:
     """One of a form's controls as the device's form takes it: a choice where it has options, a
     check as a yes or no, else a line, or several lines; named, and hinted, in the core's words."""
     key = control.key
@@ -137,16 +138,9 @@ def _field(session: Session, control) -> dialogs.InputField:
         return dialogs.InputField(key=key, prompt=control.label, field_type="choice", choices=_yes_no(),
                                   default_text="yes" if control.checked else "no")
     if control.kind == T.CHOICE:
+        # Each option as the core titles it: a project with its level after it where the level
+        # changes, so that a choice is still found by its first letter (`lines::with_level`).
         offered = {option.id: option.title for option in control.options}
-        if key == "field:project":
-            # Each project said with its level where it changes, after it so that a choice is
-            # still found by its first letter: the core's lines for the details' projects.
-            lines = session.lines().projects
-            if len(lines) == len(control.options):
-                offered = {
-                    option.id: ", ".join(part for part in (line.text, line.level or "") if part)
-                    for option, line in zip(control.options, lines)
-                }
         return dialogs.InputField(key=key, prompt=control.label, field_type="choice", choices=offered,
                                   default_text=selected_id(control))
     return dialogs.InputField(
@@ -182,7 +176,7 @@ def form(session: Session, dialog) -> str:
     if wrong:
         dialogs.show_message(wrong)
     fields = of_kind(dialog, T.LINE, T.LINES, T.CHOICE, T.CHECK)
-    answers = dialogs.request_form([_field(session, control) for control in fields])
+    answers = dialogs.request_form([_field(control) for control in fields])
     if answers is None:
         return cancel(session, dialog)
     for control in fields:

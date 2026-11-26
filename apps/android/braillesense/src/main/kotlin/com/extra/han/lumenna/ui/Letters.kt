@@ -3,10 +3,11 @@ package com.extra.han.lumenna.ui
 import dev.emassey0135.braillesense.input.Key
 import dev.emassey0135.braillesense.ui.Letters
 import dev.emassey0135.lumenna.app.brailleLetter
-import dev.emassey0135.lumenna.app.braillesensePress
 import dev.emassey0135.lumenna.app.firstLetter
+import dev.emassey0135.lumenna.app.KeyDevice
 import dev.emassey0135.lumenna.app.MenuShortcut
 import dev.emassey0135.lumenna.app.menuShortcuts
+import dev.emassey0135.lumenna.app.pressName
 
 /** The core's letters, as the SDK's frames ask for them: the JVM tests give their own. */
 object BrailleLetters : Letters {
@@ -25,8 +26,9 @@ object BrailleLetters : Letters {
         menuShortcuts(items.map { (title, letter) -> MenuShortcut(title, letter?.toString()) }).map { it.singleOrNull() }
 
     /**
-     * How a letter is pressed here, for a menu to show: the core's (`braillesense_press`), Space
-     * with it, or Enter where Space with those dots is already the device's on every screen.
+     * How a letter is pressed here, for a menu to show, as the device's manual names keys: the
+     * core's (`press_name`), Space with it ("Space-U"), or Enter ("Enter-C") where Space with those
+     * dots is already the device's on every screen.
      */
-    fun press(letter: Char): String? = braillesensePress(letter.toString())
+    fun press(letter: Char): String? = pressName(KeyDevice.BRAILLE_SENSE, letter.toString())
 }

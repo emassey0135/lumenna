@@ -6,14 +6,16 @@ import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.commandLetter
 import dev.emassey0135.lumenna.app.dueLetter
-import dev.emassey0135.lumenna.app.SpeakLetter
-import dev.emassey0135.lumenna.app.speakLetter
-import dev.emassey0135.lumenna.app.speakPress
 import dev.emassey0135.lumenna.app.ListShown
 import dev.emassey0135.lumenna.app.Asking
 import dev.emassey0135.lumenna.app.DueEvent
 import dev.emassey0135.lumenna.app.DialogShown
 import dev.emassey0135.lumenna.app.ControlShown
+import dev.emassey0135.lumenna.app.ControlType
+import dev.emassey0135.lumenna.app.KeyDevice
+import dev.emassey0135.lumenna.app.Line
+import dev.emassey0135.lumenna.app.Offered
+import dev.emassey0135.lumenna.app.Question
 import dev.emassey0135.lumenna.app.Place
 import dev.emassey0135.lumenna.app.ProposalEvent
 import dev.emassey0135.lumenna.app.ShellEvent
@@ -22,14 +24,10 @@ import dev.emassey0135.lumenna.app.Syntax
 import dev.emassey0135.lumenna.app.Typing
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.appWords
-import dev.emassey0135.lumenna.app.foldState
+import dev.emassey0135.lumenna.app.lineWithState
 import dev.emassey0135.lumenna.levelsOf
 import dev.emassey0135.lumenna.offeredOf
 import dev.emassey0135.orbit.ui.MenuItem
-
-/** The row a list shows: the core's line, then whether its children are folded, and its level. */
-fun rowText(text: String, expanded: Boolean?, level: String?): String =
-    listOfNotNull(text.ifEmpty { null }, expanded?.let(::foldState), level).joinToString(", ")
 
 /**
  * Home, the core's (`ViewModel.home`): the places as the sidebar has them, folded as it is, each
@@ -72,9 +70,17 @@ class HomeScreen : AppList() {
         val levels = levelsOf(shown.map { it.entry.depth })
         val places = shown.mapIndexed { index, place ->
             val entry = place.entry
+            // The entry's line with its press said after it; its folding and level joined by the core.
+            val line = Line(
+                title = entry.title,
+                detail = entry.detail,
+                text = host.withLetter(entry.text, place.letter.ifEmpty { null }),
+                braille = entry.text,
+                level = levels.getOrNull(index),
+            )
             Row(
                 entry.key,
-                rowText(host.withLetter(entry.text, place.letter.ifEmpty { null }), entry.expanded, levels.getOrNull(index)),
+                lineWithState(line, entry.expanded),
                 open = {
                     host.send(ShellEvent.Hold(Side.SIDEBAR, entry.key))
                     host.send(ShellEvent.Key("open"))
@@ -125,7 +131,7 @@ class PlaceScreen(override val place: Place, private val name: String) : AppList
             val key = item.row.id
             Row(
                 key,
-                rowText(line?.text ?: item.row.title, item.row.expanded, item.level),
+                line?.let { lineWithState(it, item.row.expanded) } ?: item.row.title,
                 open = {
                     host.send(ShellEvent.Focus(key))
                     host.send(ShellEvent.Key("open"))
@@ -195,7 +201,7 @@ class DayScreen : AppList(), ShowsPlace {
             val line = lines.getOrNull(index)
             Row(
                 key,
-                rowText(line?.text.orEmpty(), item.expanded, item.level),
+                line?.let { lineWithState(it, item.expanded) }.orEmpty(),
                 open = {
                     host.send(ShellEvent.Focus(key))
                     host.send(ShellEvent.Key("open"))
@@ -222,29 +228,33 @@ fun undoCommands(ui: Ui): List<Command> = listOf("undo", "redo").map { id ->
     Command(ui.withLetter(titleOf(id), letter), letter) { ui.send(ShellEvent.Key(id)) }
 }
 
-/** The heading of the list the core says is showing: its name, then what it says of itself. */
-fun heading(list: ListShown?, name: String): String {
-    list ?: return name
-    return when {
-        list.readback.isEmpty() -> list.name.ifEmpty { name }
-        // The day's readback is its heading, the day's name first.
-        list.readback.startsWith(list.name) -> list.readback
-        else -> "${list.name.ifEmpty { name }}, ${list.readback}"
-    }
-}
+/** The heading of the list the core says is showing (`ListShown::heading`), else [name]. */
+fun heading(list: ListShown?, name: String): String = list?.heading?.ifEmpty { null } ?: name
 
 /**
  * The core's question, as its dialog (`ScreenView::dialog`): a confirmation, a line, a pick or a
- * choice of answers, with its buttons in the core's words. On the Player a line is the whole screen.
+ * choice of answers, with its buttons in the core's words, or the task form a task's Edit asks for
+ * (`Question::Form`), the app showing that task's details as it asks, whose Save and Cancel close
+ * the question too. On the Player a question that is one line is the whole screen.
  */
 class QuestionScreen(private val asking: Asking) : DialogScreen(), AskingScreen {
     override val number: UInt get() = asking.number
 
     override fun shown(): DialogShown? = host.screenView.dialog?.takeIf { it.id == "question:$number" }
 
-    override val lineFills: Boolean get() = true
+    // A form has several lines, each a row of its own; a question asking for one line is that line.
+    override val lineFills: Boolean
+        get() = shown()?.controls?.count { it.kind == ControlType.LINE || it.kind == ControlType.LINES } == 1
+
+    // The task form asked for keeps the task's other actions a menu away, as the details do.
+    override val offered: List<Offered>
+        get() = if (asking.question is Question.Form) host.view.details?.task?.offered.orEmpty() else emptyList()
+    override val on: ActingOn? get() = if (asking.question is Question.Form) ActingOn.Details else null
 
     override fun stands(view: ViewModel): Boolean = view.asking?.number == number
+
+    /** Back is the dialog's cancel (the task form's Discard among it): what was typed is thrown away. */
+    override fun beforeBack(): Boolean = dialog?.cancel() ?: false
 
     override fun leaving() {
         if (host.view.asking?.number == number) host.send(ShellEvent.Cancel)
@@ -299,7 +309,7 @@ class RemindersScreen : AppList() {
     override val lands: Lands get() = Lands.SIDE
 
     override val title: String
-        get() = listOf(host.view.remindersTitle.orEmpty(), host.view.reminders?.announcement.orEmpty()).filter { it.isNotEmpty() }.joinToString(". ")
+        get() = host.view.remindersHeading.orEmpty()
 
     override fun stands(view: ViewModel): Boolean = view.reminders != null
 
@@ -372,37 +382,23 @@ class DueScreen : AppList() {
     }
 }
 
-/** The keys this device has and what they do: the core's sentences, and on the Speak its letters. */
+/**
+ * The keys this device has and what they do: the core's key help for the Speak or the Player
+ * (`App::key_help_on`), over what the screen beneath it shows, its headings and keys a line each.
+ */
 class KeyHelpScreen : AppList() {
-    override val title: String get() = appWords.braille.keyHelp
+    override val title: String get() = help().title
 
-    override fun rows(): List<Row> = lines().mapIndexed { index, text -> Row(index.toString(), text) }
+    override fun rows(): List<Row> = help().lines.mapIndexed { index, text -> Row(index.toString(), text) }
 
-    private fun lines(): List<String> = if (host.phoneKeypad) appWords.orbit.playerKeys else buildList {
-        val words = appWords.braille
-        add(words.moving)
-        addAll(appWords.orbit.speakKeys)
-        // A letter's actions, under the key that presses it.
-        val actions = appWords.actionTitles
-            .mapNotNull { title -> actionLetter(title.kind)?.let { it to title.title } }
-            .groupBy({ it.first }, { it.second })
-            .toSortedMap()
-        fun letters(key: SpeakLetter) = actions.filterKeys { speakLetter(it) == key }.map { (letter, titles) ->
-            "$letter, ${titles.distinct().joinToString(", ")}"
-        }
-        add(words.withSpace)
-        addAll(letters(SpeakLetter.SPACE))
-        add(appWords.orbit.withDot8)
-        addAll(letters(SpeakLetter.ENTER))
-        // Home's places and actions, under its name.
-        host.view.home?.let { home ->
-            add(home.title)
-            home.places.filter { it.letter.isNotEmpty() }.forEach { add("${speakPress(it.letter) ?: it.letter}, ${it.entry.title}") }
-            home.actions.filter { it.letter.isNotEmpty() }.forEach { add("${speakPress(it.letter) ?: it.letter}, ${it.title}") }
-        }
-        add(words.letterAlone)
-        add(words.findsARow)
-    }
+    private fun help() = host.app.keyHelp(if (host.phoneKeypad) KeyDevice.ORBIT_PLAYER else KeyDevice.ORBIT_SPEAK, true)
+}
+
+/** About: the core's lines (`ShellWords::about_lines`), a line each, as Key Help is a list. */
+class AboutScreen : AppList() {
+    override val title: String get() = titleOf("about")
+
+    override fun rows(): List<Row> = appWords.aboutLines.mapIndexed { index, text -> Row(index.toString(), text) }
 }
 
 /** Replan from Now and Plan the Day: the app proposes, and says so; the person checks what to take. */
@@ -423,16 +419,13 @@ class ProposalScreen : AppList() {
         return buildList {
             proposal.refusal?.let { add(Row("refusal", it)) }
             proposal.changes.forEachIndexed { index, change ->
-                add(Row("change-$index", listOfNotNull(change.sentence, change.state, change.reason).joinToString(", "), {
+                add(Row("change-$index", change.read, {
                     host.send(ShellEvent.Proposal(ProposalEvent.Check(index.toUInt(), !change.checked)))
                 }))
             }
             if (proposal.changes.isEmpty()) add(Row("nothing", words.nothing))
-            if (proposal.unfit.isNotEmpty()) {
-                add(Row("unfit", words.unfit))
-                proposal.unfit.forEachIndexed { index, line -> add(Row("unfit-$index", line)) }
-            }
-            if (proposal.changes.isNotEmpty()) add(Row("apply", listOf(words.apply, words.hint).joinToString(". "), { host.send(ShellEvent.Proposal(ProposalEvent.Apply)) }))
+            proposal.unfitLines.forEachIndexed { index, line -> add(Row("unfit-$index", line)) }
+            if (proposal.changes.isNotEmpty()) add(Row("apply", proposal.applyLine, { host.send(ShellEvent.Proposal(ProposalEvent.Apply)) }))
             if (proposal.others.isNotEmpty()) {
                 add(Row("others", words.others))
                 proposal.others.forEachIndexed { index, other ->

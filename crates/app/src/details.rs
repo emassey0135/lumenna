@@ -210,6 +210,7 @@ impl Lumenna {
                 match lumenna_records::task_edit(original, fields.clone()) {
                     None => {
                         model.details.drafts.remove(&task.id);
+                        crate::asking::close_form_for(model, &task.id);
                         render().and(say(lumenna_records::fields::nothing_changed()))
                     }
                     Some(edit) => {

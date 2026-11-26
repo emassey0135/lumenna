@@ -1189,6 +1189,8 @@ fn pairing_shows_its_code_then_asks_about_the_words_and_ends_closed() {
     use lumenna_app::PairEvent;
     let mut app = App::new();
     app.send(Event::Devices(lumenna_app::DevicesEvent::Show));
+    let devices = app.view().devices.unwrap();
+    assert_eq!(devices.pairing_status, devices.words.intro, "with none open, what pairing says before one starts");
     pair(&mut app, PairEvent::Open("Test browser".to_owned()));
     app.network();
     pair(&mut app, PairEvent::Wait);
@@ -1196,10 +1198,20 @@ fn pairing_shows_its_code_then_asks_about_the_words_and_ends_closed() {
     let [(id, NetworkRequest::Pair { code: None, name })] = &asked[..] else { panic!("{asked:?}") };
     let id = *id;
     assert_eq!(name, "Test browser");
+    let devices = app.view().devices.unwrap();
+    assert_eq!(devices.pairing_status, devices.words.opening, "the same line as the pairing's own");
+    assert_eq!(devices.pairing.unwrap().status, devices.words.opening, "where it stands, the core's to say");
     app.answer_network(id, NetworkAnswer::Code("ab12".to_owned()));
-    assert_eq!(app.view().devices.unwrap().pairing.unwrap().mine.as_deref(), Some("ab12"));
+    let devices = app.view().devices.unwrap();
+    let pairing = devices.pairing.unwrap();
+    assert_eq!(pairing.mine.as_deref(), Some("ab12"));
+    assert_eq!(pairing.status, devices.words.waiting);
     app.answer_network(id, NetworkAnswer::Words(vec!["adroitness".to_owned(), "tycoon".to_owned(), "village".to_owned()]));
-    assert_eq!(app.view().devices.unwrap().pairing.unwrap().words.map(|w| w.len()), Some(3));
+    let devices = app.view().devices.unwrap();
+    let pairing = devices.pairing.unwrap();
+    assert_eq!(pairing.words.map(|w| w.len()), Some(3));
+    let question = pairing.question.expect("the words asked about, as one line");
+    assert!(question.starts_with(&devices.words.match_title) && question.ends_with("adroitness, tycoon, village."), "{question}");
     pair(&mut app, PairEvent::Confirm(true));
     assert!(matches!(app.network()[..], [(_, NetworkRequest::Confirm(true))]));
     let shell = app.answer_network(id, NetworkAnswer::Paired(Ok("Paired with Kitchen Mac".to_owned())));
@@ -2814,6 +2826,37 @@ fn the_task_form_is_its_fields_then_save_and_cancel_and_comes_up_for_enter() {
     let cancel = control(&dialog, "cancel");
     work(&mut app, &cancel, "", ControlMove::Pressed);
     assert!(app.view().asking.is_none());
+}
+
+#[test]
+fn enter_on_a_task_is_its_form_whatever_task_the_details_showed() {
+    let mut app = App::new();
+    app.add("Write the report");
+    app.add("Buy milk");
+    app.send(Event::Details(DetailsEvent::Show(app.id_of("Write the report"))));
+    app.send(Event::Focus(app.id_of("Buy milk")));
+    app.send(Event::Key("open".to_owned()));
+    let dialog = open_dialog(&app);
+    assert_eq!(control(&dialog, "field:title").value, "Buy milk", "no shell shows the task first");
+}
+
+#[test]
+fn a_refused_save_leaves_the_task_form_open_and_a_saved_one_closes_it() {
+    let mut app = App::new();
+    app.add("Buy milk");
+    app.send(Event::Key("open".to_owned()));
+    let dialog = open_dialog(&app);
+    work(&mut app, &control(&dialog, "field:due"), "not a date at all", ControlMove::Set);
+    work(&mut app, &control(&dialog, "save"), "", ControlMove::Pressed);
+    assert!(app.view().asking.is_some(), "refused: the form stays, with why");
+    let dialog = open_dialog(&app);
+    assert_eq!(dialog.controls[0].key, "refusal", "{dialog:?}");
+    assert!(dialog.prompt.contains(&dialog.controls[0].value), "{dialog:?}");
+    work(&mut app, &control(&dialog, "field:due"), "", ControlMove::Set);
+    work(&mut app, &control(&dialog, "field:title"), "Buy oat milk", ControlMove::Set);
+    work(&mut app, &control(&dialog, "save"), "", ControlMove::Pressed);
+    assert!(app.view().asking.is_none(), "saved: the question is answered");
+    assert_eq!(app.titles(), ["Buy oat milk"]);
 }
 
 #[test]

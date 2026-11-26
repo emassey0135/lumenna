@@ -3,7 +3,7 @@
 //! and `Event::FindLetter`, and nothing here assumes which. (A BTSpeak's plain letter is the
 //! command and a capital, Dot 7 with the letter, moves by first letter; on the Orbit Speak and the
 //! BrailleSense, Space with the letter is the command and the letter alone moves, Enter (the
-//! Speak's Dot 8) with the letter where the device keeps Space with it: [`speak_letter`].) What a
+//! Speak's Dot 8) with the letter where the device keeps Space with it: [`crate::key_help::letter_press`].) What a
 //! shell shows beside a row's action, a settings page or a reminder's button is asked for here.
 //! Nothing a shell keeps.
 //!
@@ -435,134 +435,6 @@ fn command_title(id: &str, sentence: bool) -> String {
     if sentence { lumenna_records::fields::sentence_case(title.to_owned()) } else { title.to_owned() }
 }
 
-/// How a letter is pressed on the Orbit Speak.
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SpeakLetter {
-    /// Space with it.
-    Space,
-    /// Dot 8 (Enter) with it, as the Speak's own apps press their commands.
-    Enter,
-    /// Neither reaches the app: its row of a menu says no key.
-    Neither,
-}
-
-/// Space with these is the Speak's while Lumenna is in front, by Orbit's screen reader and its user
-/// guide: the screen reader keeps C (read the line) and T; on every screen A and B are Up and
-/// Shift-Tab, E and Z go back, L goes to the top and M opens the menu. What Orbit's own apps do
-/// with Space and a letter is theirs alone, in front only when they are.
-const SPEAK_ENTER: &str = "abcelmtz";
-
-/// Neither Space nor Dot 8 with G reaches an app: the screen reader keeps both (the input mode,
-/// reading on from the caret). What G names is a menu away.
-const SPEAK_NEITHER: &str = "g";
-
-/// How a letter is pressed on a HumanWare braille reader with other makers' apps on it (the
-/// NLS eReader, the Mantis Q40, the Chameleon 20, the BrailleOne, the Brailliant BI 20X and 40X).
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReaderLetter {
-    /// Space with it.
-    Space,
-    /// Enter with it, as the readers' own commands are pressed (Enter with T, the time).
-    Enter,
-    /// Neither reaches the app: what it names is a menu away.
-    Neither,
-}
-
-/// Space with these is the firmware's on a list of some reader, so a letter is pressed with Enter
-/// there: A (the line before), G, H (the eReader's menu key, the others' global shortcuts), M (the
-/// eReader's main menu, the others' menu key) and O (the Brailliants').
-const READER_ENTER: &str = "aghmo";
-
-/// The firmware's with Space and with Enter both (E is Exit, and Enter with it or with L is the
-/// eReader's own), so what they name is a menu away.
-const READER_NEITHER: &str = "el";
-
-/// How `letter` is pressed on a HumanWare braille reader. A reader with no braille
-/// keys (the Mantis Q40, a QWERTY keyboard) reaches every command from the menus instead.
-#[must_use]
-pub fn reader_letter(letter: &str) -> ReaderLetter {
-    match letter.chars().next().filter(|first| first.is_ascii_lowercase() && letter.len() == 1) {
-        None => ReaderLetter::Neither,
-        Some(first) if READER_NEITHER.contains(first) => ReaderLetter::Neither,
-        Some(first) if READER_ENTER.contains(first) => ReaderLetter::Enter,
-        Some(_) => ReaderLetter::Space,
-    }
-}
-
-/// How a letter is pressed on the HIMS BrailleSense.
-#[boltffi::data]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SenseLetter {
-    /// Space with it.
-    Space,
-    /// Enter with it, as the device's own hotkeys are pressed.
-    Enter,
-}
-
-/// Space with these is already a command on every screen of the BrailleSense, so a letter is
-/// pressed with Enter there: Space-1 is A (Up), Space-1-2 B (Shift-Tab), Space-1-3 K (the line's
-/// start), Space-1-2-3 L (the first row), and C, D, E, F, H, M, O, R and Z are the manual's own
-/// (Repeat, Delete, Escape, Find, Help, Menu, Options, Repeat, Exit).
-const SENSE_ENTER: &str = "abcdefhklmorz";
-
-/// How `letter` is pressed on the BrailleSense; none for one that is not a letter, which has no
-/// dots to press (`,`, `.`, `/`).
-#[must_use]
-pub fn braillesense_letter(letter: &str) -> Option<SenseLetter> {
-    let first = letter.chars().next().filter(|first| first.is_ascii_lowercase() && letter.len() == 1)?;
-    Some(if SENSE_ENTER.contains(first) { SenseLetter::Enter } else { SenseLetter::Space })
-}
-
-/// A letter's press on the BrailleSense as the device names a key, for a menu to show beside the
-/// item: "Space-u", "Enter-c"; none for one with no press.
-#[must_use]
-pub fn braillesense_press(letter: &str) -> Option<String> {
-    match braillesense_letter(letter)? {
-        SenseLetter::Space => Some(format!("Space-{letter}")),
-        SenseLetter::Enter => Some(format!("Enter-{letter}")),
-    }
-}
-
-/// The letters the BrailleSense presses with Enter, as its key help names them: "A, B, C … and Z".
-#[must_use]
-pub fn braillesense_enter_letters() -> String {
-    let letters: Vec<String> = SENSE_ENTER.chars().map(|c| c.to_ascii_uppercase().to_string()).collect();
-    match letters.split_last() {
-        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
-        _ => letters.concat(),
-    }
-}
-
-/// How `letter` is pressed on the Orbit Speak.
-#[must_use]
-pub fn speak_letter(letter: &str) -> SpeakLetter {
-    match letter.chars().next().filter(|first| first.is_ascii_lowercase() && letter.len() == 1) {
-        None => SpeakLetter::Neither,
-        Some(first) if SPEAK_NEITHER.contains(first) => SpeakLetter::Neither,
-        Some(first) if SPEAK_ENTER.contains(first) => SpeakLetter::Enter,
-        Some(_) => SpeakLetter::Space,
-    }
-}
-
-/// How a letter's press is said after what it runs on the Speak ("dot 8 c", "space u"), none for
-/// one with no press.
-#[must_use]
-pub fn speak_press(letter: &str) -> Option<String> {
-    match speak_letter(letter) {
-        SpeakLetter::Space => Some(format!("space {letter}")),
-        SpeakLetter::Enter => Some(format!("dot 8 {letter}")),
-        SpeakLetter::Neither => None,
-    }
-}
-
-/// Space with a letter that takes Dot 8 here, refused: which to press.
-#[must_use]
-pub fn speak_press_instead(letter: &str) -> String {
-    format!("Press dot 8 with {letter}.")
-}
-
 /// The dots of each letter from a to z, Grade 1 braille's: dots 1 to 6 only.
 const DOTS: [&[u8]; 26] = [
     &[1],
@@ -767,29 +639,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_speak_presses_a_letter_it_keeps_space_for_with_dot_8() {
-        assert_eq!(speak_letter("u"), SpeakLetter::Space);
-        assert_eq!(speak_letter("c"), SpeakLetter::Enter, "the screen reader keeps Space with C");
-        assert_eq!(speak_letter("m"), SpeakLetter::Enter);
-        assert_eq!(speak_letter("d"), SpeakLetter::Space, "the Editor's D is the Editor's alone");
-        assert_eq!(speak_letter("g"), SpeakLetter::Neither);
-        assert_eq!(speak_letter(","), SpeakLetter::Neither);
-        assert_eq!(speak_press("u").as_deref(), Some("space u"));
-        assert_eq!(speak_press("c").as_deref(), Some("dot 8 c"));
-        assert_eq!(speak_press("g"), None);
-    }
-
-    #[test]
-    fn a_reader_presses_a_letter_its_firmware_keeps_space_for_with_enter() {
-        assert_eq!(reader_letter("r"), ReaderLetter::Space);
-        assert_eq!(reader_letter("h"), ReaderLetter::Enter, "Space with H is the eReader's menu key");
-        assert_eq!(reader_letter("m"), ReaderLetter::Enter, "Space with M is the others' menu key");
-        assert_eq!(reader_letter("e"), ReaderLetter::Neither, "Space with E is Exit, and Enter with E the eReader's");
-        assert_eq!(reader_letter("l"), ReaderLetter::Neither);
-        assert_eq!(reader_letter(","), ReaderLetter::Neither);
-    }
-
-    #[test]
     fn each_letter_has_its_dots_and_a_chord_with_dot_7_or_8_is_no_letter() {
         let dots = |list: &[u8]| list.iter().fold(0u8, |bits, dot| bits | (1 << (dot - 1)));
         assert_eq!(braille_letter(dots(&[1])), Some('a'));
@@ -872,16 +721,13 @@ mod tests {
         }
     }
 
-#[test]    fn a_command_has_one_letter_wherever_it_is_a_button_too() {        for (id, letter) in BUTTON_LETTERS {            if let Some(command) = command_letter(id) {                assert_eq!(command, *letter, "{id} has two letters");            }        }    }
     #[test]
-    fn the_braillesense_presses_with_enter_what_space_already_does() {
-        assert_eq!(braillesense_letter("u"), Some(SenseLetter::Space));
-        assert_eq!(braillesense_letter("a"), Some(SenseLetter::Enter), "Space-1 is Up");
-        assert_eq!(braillesense_letter("m"), Some(SenseLetter::Enter), "Space-M is the menu");
-        assert_eq!(braillesense_letter("/"), None);
-        assert_eq!(braillesense_press("y").as_deref(), Some("Space-y"));
-        assert_eq!(braillesense_press("c").as_deref(), Some("Enter-c"));
-        assert_eq!(braillesense_enter_letters(), "A, B, C, D, E, F, H, K, L, M, O, R and Z");
+    fn a_command_has_one_letter_wherever_it_is_a_button_too() {
+        for (id, letter) in BUTTON_LETTERS {
+            if let Some(command) = command_letter(id) {
+                assert_eq!(command, *letter, "{id} has two letters");
+            }
+        }
     }
 
     fn shortcut(title: &str, letter: Option<&str>) -> MenuShortcut {
