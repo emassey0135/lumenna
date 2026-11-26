@@ -19,7 +19,8 @@ test with a newer one (`PYTHON=…`).
   committed to it.
 - **A shell and nothing else.** No date parsing, no computed states, no folding of its own:
   each screen sends what the person did (`Session.send`, which waits until the app is still and
-  says what it said) and draws `view()` with the core's `lines()`. Turns arrive on the app's
+  says what it said, several things joined by the core, `said_together`, as `actions.joined`
+  joins several steps') and draws `view()` with the core's `lines()`. Turns arrive on the app's
   thread (`core.py`) and queue; a menu wakes on them (`restless`), and what the app said that no
   action asked for is said as it settles. Seeing another process's writes is `tick`, every five
   seconds (`TICK`).
@@ -98,9 +99,10 @@ test with a newer one (`PYTHON=…`).
   changes (`lines::with_level`), so they are drawn as they come. A settings page's heading is
   `SettingsPage.heading` and each setting's row its control's `line` (a check by its state's word,
   the setting's own "On" or "Off"). A check setting is changed as a choice is, from its control's
-  `options` (its states' words, ids `true` and `false`). A row is drawn again from the core's next
-  description once `send` returns, so nothing here holds a value the core has not got
-  (`line_holding` is for a shell that does).
+  `options` (its states' words, ids `true` and `false`), as the device's own settings menus change
+  an on or off one (`Menus/settings-*.menu`, "Say Seconds, On", whose Enter runs `bin/change-setting`:
+  a `request_choice` of the values on the current one); `dialogs` has no check box. A row is drawn again from the core's next
+  description once `send` returns, so nothing here holds a value the core has not got.
 - **The Export and import page lists the store's own actions** (`SettingsView.offered`, Erase
   everything deleted) as rows after its buttons, with no shortcut, each handed back as `ActOn` with
   `ActingOnSettings` (`preferences.store_items`), the core's `offered_caption` its hint, which
@@ -120,10 +122,10 @@ test with a newer one (`PYTHON=…`).
   labels and filters screens each list one heading's places, so their level counts from there:
   folding is the app's (`hidden`, `expanded`), the levels the core's `levels` of their depths
   under the heading, as a project pick's are of its choices'.
-- **A list's heading is the core's** (`session.heading`): the described list's `heading`
-  (`ScreenView`'s `ListShown::heading`, its name then what it says of itself) where the app
-  describes the list shown under the same name (a filter typed over the tasks, which this screen
-  names itself while the app names it Tasks, is still joined here), its title alone while it is empty (the empty list
+- **A list's heading is the core's** (`session.heading`): its name then what it says of itself,
+  joined by the core as `ListShown::heading` is (`list_heading`), from the title this screen gives
+  it, since a filter typed over the tasks is named here by the core's `query` word ("Query") while
+  the app names its place Tasks; its title alone while it is empty (the empty list
   says the rest, `empty_then`, joined by `prompt_of`); a reminder list's is
   `ViewModel.reminders_heading`, and Reminders due's its name and what the look found, by
   `prompt_of`.

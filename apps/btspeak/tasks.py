@@ -97,7 +97,7 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
     def build():
         session.show(place, query)
         rows = list_rows(session)
-        state["heading"] = heading(session, title, readback(session), bool(rows))
+        state["heading"] = heading(title, readback(session), bool(rows))
         return items(rows, fold=lambda row, open_: actions.fold(session, row, open_))
 
     with screen("lumenna-tasks"):

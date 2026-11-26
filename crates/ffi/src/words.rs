@@ -8,7 +8,7 @@ use lumenna_app::Capitals;
 use lumenna_app::ShellEvent;
 use lumenna_app::arrangement::{Arrangement, WatchKind};
 use lumenna_app::speech::Line;
-use lumenna_app::dialog::{ControlMove, ControlSends, ControlShown};
+use lumenna_app::dialog::{ControlMove, ControlSends};
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
@@ -462,15 +462,6 @@ pub fn with_press(device: KeyDevice, text: String, letter: String) -> String {
     lumenna_app::key_help::with_press(device, &text, &letter)
 }
 
-/// What a dialog's `control` says as a row while it holds `value` (a line's text, a choice's
-/// option by id or title, a check's `true` or `false`): for a shell holding what the person did
-/// until the core's next description has it. `ControlShown::line` is the same for what the core
-/// holds.
-#[export]
-pub fn line_holding(control: ControlShown, value: String) -> String {
-    lumenna_app::dialog::line_holding(&control, &value)
-}
-
 /// Where the next line starting with `letter` is, from the line after `from` on, wrapping round
 /// and ending back at `from`; a line `hidden` says is folded away is passed. For a list a shell
 /// draws itself.
@@ -557,6 +548,20 @@ pub fn key_runs_on(id: String, offered: Vec<Offered>) -> Option<Offered> {
 #[export]
 pub fn prompt_of(parts: Vec<String>) -> String {
     lumenna_app::screen::prompt(&parts.iter().map(String::as_str).collect::<Vec<_>>())
+}
+
+/// Several things the app said in a row, as one thing to say: each its own sentence, ended once,
+/// the last keeping its full stop.
+#[export]
+pub fn said_together(parts: Vec<String>) -> String {
+    lumenna_app::screen::said_together(&parts.iter().map(String::as_str).collect::<Vec<_>>())
+}
+
+/// A list's name with what it says of itself, as one heading, joined as `ListShown::heading` is:
+/// for a list a shell names itself over a place the app names otherwise.
+#[export]
+pub fn list_heading(name: String, readback: String) -> String {
+    lumenna_app::screen::heading(&name, &readback)
 }
 
 /// A line said with its level after it, where it has one: a project in a pick, read one line a

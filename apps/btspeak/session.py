@@ -31,14 +31,6 @@ REFRESH = 1
 TICK = 5.0
 
 
-def sentences(*parts: str) -> str:
-    """What several things said, as one thing to say: each its own sentence, ended once."""
-    parts = [part.strip() for part in parts if part and part.strip()]
-    if len(parts) == 1:
-        return parts[0]
-    return " ".join(part if part.endswith((".", "?", "!")) else f"{part}." for part in parts)
-
-
 class Session:
     """The app, as every menu reaches it.
 
@@ -140,7 +132,7 @@ class Session:
         """What the app said after `mark`, taken off what is left to say."""
         said = self._unsaid[mark:]
         del self._unsaid[mark:]
-        return sentences(*said)
+        return self.lumenna.said_together([part for part in said if part])
 
     def send(self, *events) -> str:
         """Runs `events` through the app in order, and says what it said, as one sentence each."""
@@ -628,19 +620,16 @@ def ask(prompt: str, default: str = "") -> str | None:
     return text.strip()
 
 
-def heading(session: Session, title: str, readback: str, shown: bool) -> str:
+def heading(title: str, readback: str, shown: bool) -> str:
     """A list's heading: its title, then what the list says of itself (the core's readback:
     the query understood, the count, its notices), unless nothing is listed, which the empty
-    list says instead, once. Where the app describes the same list (`ListShown`, named `title`),
-    it is the core's heading (`ListShown::heading`)."""
+    list says instead, once. Joined by the core as it joins the list it describes
+    (`list_heading`, `ListShown::heading`): taken from the title this screen gives the list, since
+    a filter typed over the tasks is named here as the core's `query` word ("Query") while the app
+    names its place Tasks."""
     if not shown:
         return title
-    described = getattr(session.described(), "shown", None)
-    if isinstance(described, native().ShownList) and described.field_0.name == title:
-        return described.field_0.heading
-    # A list this screen names itself (a filter typed over the tasks, "Results"), which the app
-    # names as its place: joined as the core joins a list's heading.
-    return ", ".join(part for part in (title, readback) if part)
+    return native().list_heading(title, readback)
 
 
 def empty_then(said, then: str = ""):

@@ -258,11 +258,9 @@ fn read(mut control: ControlShown) -> ControlShown {
 }
 
 /// What `control` says as a row while it holds `value`: a line's text, a choice's option (by its
-/// id or title), a check's `true` or `false`. For a shell that holds what the person did until
-/// the core's next description has it, so the row reads as it now stands; `ControlShown::line` is
-/// the same for what the core holds.
-#[must_use]
-pub fn line_holding(control: &ControlShown, value: &str) -> String {
+/// id or title), a check's `true` or `false`. A device that works a dialog itself says a control
+/// in its own roles and words (the Orbit SDK's dialog), so only the core reads one as a row.
+fn line_holding(control: &ControlShown, value: &str) -> String {
     let value = match control.kind {
         ControlType::Text => return control.value.clone(),
         ControlType::Check => check_word(value == "true", &control.options),
