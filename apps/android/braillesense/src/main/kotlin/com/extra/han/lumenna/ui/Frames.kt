@@ -23,7 +23,8 @@ import dev.emassey0135.braillesense.ui.rendered
  * Shift-Tab are all that move between controls, as in the device's own dialogs; Space-1 and
  * Space-4 move only within a list, Space and Backspace change a combo box or a check box, and step
  * between a question's answers. A line's own keys are the SDK's box (`BoxEditing`, run by the shell
- * ahead of the frame), its text handed to the controller as it changes.
+ * ahead of the frame), its text handed to the controller as it changes; Space-4, which a box of one
+ * line leaves, offers what could come next at its cursor where the line has a syntax ([Completing]).
  */
 class FormFrame(
     val controller: DialogController,
@@ -35,6 +36,8 @@ class FormFrame(
     private val letterOf: (ControlShown) -> Char?,
     /** A question of answers alone: its buttons the device's prompt buttons, said as its prompt. */
     val prompt: Boolean = false,
+    /** Completion in a line that has a syntax (Space-4); none where the shell offers none. */
+    private val completing: Completing? = null,
 ) : Frame(controller.dialog.id) {
     /** What it is called, said as it opens. */
     val title: String? get() = controller.dialog.title.ifEmpty { null }
@@ -89,16 +92,20 @@ class FormFrame(
             }
             ControlType.CHOICE -> {
                 val at = controller.selected(control) ?: 0
-                line(ControlRole.COMBO_BOX, control.options.getOrNull(at)?.title.orEmpty(), label = control.label, position = at + 1, count = control.options.size)
+                line(ControlRole.COMBO_BOX, optionLine(control, at), label = control.label, position = at + 1, count = control.options.size)
             }
             ControlType.LIST -> {
                 val at = controller.selected(control) ?: 0
-                line(ControlRole.LIST_ITEM, control.options.getOrNull(at)?.title.orEmpty(), label = control.label, position = at + 1, count = control.options.size)
+                line(ControlRole.LIST_ITEM, optionLine(control, at), label = control.label, position = at + 1, count = control.options.size)
             }
             ControlType.CHECK -> line(if (controller.checked(control)) ControlRole.CHECK_BOX_CHECKED else ControlRole.CHECK_BOX_UNCHECKED, control.label)
             ControlType.BUTTON -> line(if (prompt) ControlRole.PROMPT_BUTTON else ControlRole.BUTTON, control.label, letter = letterOf(control), asks = control.asks)
         }
     }
+
+    /** Option [at] as the core says it as a row: its title, then why it is offered where it says (`option_lines`). */
+    private fun optionLine(control: ControlShown, at: Int): String =
+        control.optionLines.getOrNull(at) ?: control.options.getOrNull(at)?.title.orEmpty()
 
     /** Presses the button of [letter], the line in hand taken first; false if none has it. */
     fun press(letter: Char): Boolean {
@@ -124,7 +131,12 @@ class FormFrame(
         return when (control.kind) {
             // Enter in a line of one presses it (quick add's, a question's) or the dialog's default;
             // a multi-line box's Enter is its own new line.
-            ControlType.LINE -> key == Key.Enter && run { typed(); controller.press(); true }
+            ControlType.LINE -> when {
+                key == Key.Enter -> run { typed(); controller.press(); true }
+                // Space-4, which a box of one line leaves: what could come next at the cursor.
+                key == Key.Down && control.syntax != null && completing != null -> run { complete(control); true }
+                else -> false
+            }
             ControlType.LINES -> false
             ControlType.CHOICE -> choice(control, key)
             ControlType.LIST -> list(control, key)
@@ -139,6 +151,19 @@ class FormFrame(
                 else -> false
             }
             ControlType.TEXT -> false
+        }
+    }
+
+    /**
+     * What could come next at the cursor of [line], offered; the one chosen put in by the core, its
+     * box reading the line with the caret after it, and sent as typed so the core has it.
+     */
+    private fun complete(line: ControlShown) {
+        val syntax = line.syntax ?: return
+        val box = boxOf(line)
+        completing?.ask(box, syntax) { text, cursor ->
+            // Still the line in hand, as it is unless a turn moved it: else it is taken as it is left.
+            if (current?.key == line.key) controller.type(text, cursor)
         }
     }
 

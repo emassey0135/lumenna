@@ -59,6 +59,10 @@ pub struct ListShown {
     pub side: Option<Side>,
     /// What the list says of itself: the query, its count, its notices; on the day, its summary.
     pub readback: String,
+    /// Its name with what it says of itself, as one heading for a device that says a list's heading
+    /// as it opens: "Tasks, 3 tasks"; the readback alone where it begins with the name already (the
+    /// day's), the name alone where it says nothing.
+    pub heading: String,
     /// What it says with nothing in it.
     pub empty: String,
     /// How many rows are shown, those folded away left out.
@@ -195,9 +199,17 @@ fn shown_row(key: &str, shown: &[(String, Line, Vec<Offered>)]) -> Option<RowSho
 }
 
 fn list(name: String, side: Option<Side>, readback: String, empty: String, focus: Option<&str>, shown: &[(String, Line, Vec<Offered>)]) -> ListShown {
+    let heading = if readback.is_empty() {
+        name.clone()
+    } else if name.is_empty() || readback.starts_with(&name) {
+        readback.clone()
+    } else {
+        format!("{name}, {readback}")
+    };
     ListShown {
         name,
         side,
+        heading,
         readback,
         empty,
         count: u32::try_from(shown.len()).unwrap_or(u32::MAX),

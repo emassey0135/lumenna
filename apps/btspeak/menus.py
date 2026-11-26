@@ -30,15 +30,13 @@ The device's conventions, followed rather than invented:
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from BTSpeak import dialogs, host
+from BTSpeak import dialogs
 
 import actions
 from actions import L
 from core import Core, LumennaError, words
 from rows import Row, items
-from session import HELP, Command, Session, announce, live_menu, screen
+from session import Command, Session, announce, live_menu, screen
 import day
 import reminders
 import tasks
@@ -184,11 +182,12 @@ def add_in(session: Session, row) -> str:
 
 
 def key_help(session: Session) -> str:
-    """Key help, the shell's own: the help topic of the screen in front, from `help/`."""
-    topic = host.get_help_topic() or "lumenna"
-    if not (Path(HELP) / "en" / f"{topic}.md").is_file():
-        topic = "lumenna"
-    dialogs.view_file(Path(HELP) / "en" / f"{topic}.md", use_markdown=True, help_dir=HELP, help_topic=topic)
+    """Key help, the core's for a BTSpeak over the screen in front (`App::key_help_on`): this
+    device's own keys, Home's places, the screen's commands and the rows' actions, each by its
+    letter, a line each to pan through. H-Chord's topics (`help/`) are the guide beside it."""
+    session.view()
+    shown = session.app.key_help_on(0, L.KeyDevice.BT_SPEAK, True)
+    dialogs.view_lines(list(shown.lines), wrap=True)
     return ""
 
 

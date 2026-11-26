@@ -11,7 +11,6 @@ import dev.emassey0135.lumenna.app.SidebarKind
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.app.settingsPageOf
 import dev.emassey0135.lumenna.app.sidebarKey
-import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.SettingsPages
 import dev.emassey0135.orbit.ui.MenuItem
 
@@ -78,7 +77,7 @@ fun Ui.runMenuCommand(id: String) {
         "filter" -> view.place?.let { push(FilterScreen(it)) } ?: refuse()
         "keyboard-help" -> push(KeyHelpScreen())
         "reminders-due" -> push(DueScreen())
-        "about" -> appWords.metadata.let { say("${it.name} ${it.version}. ${it.description}") }
+        "about" -> push(AboutScreen())
         "projects" -> openGroup(SidebarGroup.PROJECTS)
         "labels" -> openGroup(SidebarGroup.LABELS)
         "filters" -> openGroup(SidebarGroup.FILTERS)

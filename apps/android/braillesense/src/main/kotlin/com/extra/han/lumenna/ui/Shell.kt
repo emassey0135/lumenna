@@ -69,11 +69,10 @@ import dev.emassey0135.lumenna.app.Typing
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.app.KeyDevice
 import dev.emassey0135.lumenna.app.Line
-import dev.emassey0135.lumenna.app.braillesenseKeys
+import dev.emassey0135.lumenna.app.Syntax
 import dev.emassey0135.lumenna.app.detailWithState
 import dev.emassey0135.lumenna.app.lineWithState
 import dev.emassey0135.lumenna.app.promptOf
-import dev.emassey0135.lumenna.app.screenKeys
 import dev.emassey0135.lumenna.app.settingsPageOf
 
 /** What only the activity can do. */
@@ -100,6 +99,7 @@ private sealed interface Page {
     data object Devices : Page
     data object Due : Page
     data object Help : Page
+    data object About : Page
 }
 
 /**
@@ -409,6 +409,7 @@ class Shell(
                 Page.Devices -> devices(model)
                 Page.Due -> due(model)
                 Page.Help -> help()
+                Page.About -> about()
             }
         }
 
@@ -463,7 +464,24 @@ class Shell(
             changed = { send(ShellEvent.Filter(it)) },
         )
 
-        override fun layout(): Frame = line
+        /** The line, with completion in the filter language on Space-4, which its box of one line leaves. */
+        private val completes = object : Frame(FILTER) {
+            override fun key(key: Key): Boolean {
+                if (key != Key.Down) return line.key(key)
+                completing.ask(line.box, Syntax.FILTER) { _, _ -> line.touched() }
+                return true
+            }
+
+            override val rendered: Rendered get() = line.rendered
+
+            override fun routed(at: Int) = line.routed(at)
+
+            override fun editBox(): TextBox = line.box
+
+            override fun edited() = line.edited()
+        }
+
+        override fun layout(): Frame = completes
 
         override fun back(): Boolean {
             editors.remove(FILTER)
@@ -551,7 +569,7 @@ class Shell(
             "reminders-due" -> openDue()
             "filter" -> startFiltering()
             "keyboard-help" -> pushPage(Page.Help)
-            "about" -> appWords.metadata.let { announce("${it.name} ${it.version}. ${it.description}") }
+            "about" -> pushPage(Page.About)
             "home" -> goHome()
             "settings" -> pushPage(Page.Settings)
             "close-window", "quit" -> host.exit()
@@ -804,12 +822,33 @@ class Shell(
             }
             editor(key, controller.text(control), multiLine = control.kind == ControlType.LINES)
         }
-        return FormFrame(controller, letters, readings, boxOf, letterOf = { lettered[it.key] }, prompt = prompt)
+        return FormFrame(controller, letters, readings, boxOf, letterOf = { lettered[it.key] }, prompt = prompt, completing = completing)
+    }
+
+    /**
+     * Completion in a line with a syntax (Space-4): the core's candidates, as the device's own list
+     * headed by the core's announcement, the line said again as it reads once one is put in.
+     */
+    private val completing by lazy {
+        Completing(
+            complete = { text, cursor, syntax -> runCatching { app.complete(text, cursor, syntax) }.getOrNull() },
+            offer = { title, lines, chosen ->
+                ui.choose(title, lines) { at ->
+                    chosen(at)
+                    // The line under the list, said as it closed, is said as it now reads.
+                    ui.redraw()
+                }
+            },
+            say = ::announce,
+            showCompletions = { appWords.quickAdd.showCompletions },
+            nothingToComplete = { appWords.quickAdd.nothingToComplete },
+        )
     }
 
     /** A control of this shell's own, for a page the core does not describe as a dialog. */
     private fun control(key: String, kind: ControlType, label: String = "", value: String = "", sends: ControlSends = ControlSends.Nothing, default: Boolean = false) =
-        ControlShown(key, kind, label, value, "", "", emptyList(), null, false, null, null, "", false, default, false, sends)
+        // Read here in the device's roles, label and value apart: its line as a row is never asked for.
+        ControlShown(key, kind, label, value, "", "", emptyList(), null, false, null, null, "", false, default, false, sends, "", emptyList())
 
     private fun text(key: String, value: String) = control(key, ControlType.TEXT, value = value)
 
@@ -842,7 +881,7 @@ class Shell(
         proposal.others.forEachIndexed { index, other ->
             rows += Row("other$index", other, open = { send(ShellEvent.Proposal(ProposalEvent.Take(index.toUInt()))) })
         }
-        if (proposal.changes.isNotEmpty()) rows += Row("apply", words.apply, role = ControlRole.BUTTON, open = { send(ShellEvent.Proposal(ProposalEvent.Apply)) })
+        if (proposal.changes.isNotEmpty()) rows += Row("apply", proposal.applyLine, role = ControlRole.BUTTON, open = { send(ShellEvent.Proposal(ProposalEvent.Apply)) })
         rows += Row("close", words.cancel, role = ControlRole.BUTTON, open = { send(ShellEvent.Proposal(ProposalEvent.Close)) })
         return list("proposal", words.title, rows, null, "", hold = false)
     }
@@ -898,7 +937,8 @@ class Shell(
             pages.firstOrNull { pageLetter(it.id)?.singleOrNull() == pressed }?.let { open(it); true } ?: false
         }
         val rows = pages.map { page ->
-            Row(page.id, page.title, finding = page.title, detail = page.description, letter = pageLetter(page.id)?.singleOrNull(),
+            // Its title and what is on it, as the core reads a page as one row.
+            Row(page.id, page.line, finding = page.title, letter = pageLetter(page.id)?.singleOrNull(),
                 open = { open(page) }, command = byLetter)
         }
         return list("settings", commandTitle("settings"), rows, null, "", hold = false)
@@ -950,18 +990,18 @@ class Shell(
         devices.status.takeIf { it.isNotEmpty() }?.let { controls += text("status", it) }
         val syncing = page?.buttons?.firstOrNull { it.id == "sync-now" }?.title ?: commandTitle("sync-now")
         controls += pressing("sync", syncing, ShellEvent.Key("sync-now"))
+        // Each device as the core words it, then its actions as buttons by their own names.
         devices.list?.devices.orEmpty().forEachIndexed { index, device ->
-            val said = worded.getOrNull(index)?.text ?: device.name
             val on = ActingOn.Held(Side.DEVICES, device.nodeId)
-            device.offered.forEach { action -> controls += pressing("${device.nodeId}:${action.kind}", "$said: ${action.name}", ShellEvent.ActOn(on, action)) }
-            if (device.offered.isEmpty()) controls += text(device.nodeId, said)
+            controls += text(device.nodeId, worded.getOrNull(index)?.text ?: device.name)
+            device.offered.forEach { action -> controls += pressing("${device.nodeId}:${action.kind}", action.name, ShellEvent.ActOn(on, action)) }
         }
         val words = devices.words
         val pairing = devices.pairing
         val pair = { event: PairEvent -> ShellEvent.Devices(DevicesEvent.Pair(event)) }
         controls += text("pairing", words.title)
-        // Where pairing stands is the core's; with none open (not yet, or one just done), what it says before one starts.
-        controls += text("pairing-status", pairing?.status ?: words.introSentence)
+        // Where pairing stands is the core's, what it says before one starts included.
+        controls += text("pairing-status", devices.pairingStatus)
         pairing?.mineLine?.let { controls += text("mine", it) }
         if (pairing?.running != true) controls += pressing("wait", words.wait, pair(PairEvent.Wait))
         if (pairing?.running != true || pairing.waiting) {
@@ -990,13 +1030,29 @@ class Shell(
 
     // ── Help ─────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * The core's key help for this device over what is shown (`key_help_on`): the device's own keys,
+     * Home's places, the screen's commands and the rows' actions, each by the keys that press it
+     * here. Each section's heading is a row, then its keys, each found by what it does.
+     */
     private fun help(): Frame {
-        val device = braillesenseKeys().map { row -> Row(row.keys, row.line, finding = row.what) }
-        // What the screen under it adds, each by the keys that press its letter here: the core's.
-        val here = screenKeys(KeyDevice.BRAILLE_SENSE, view?.screenActions.orEmpty()).map { row ->
-            Row("command:${row.keys}", row.line, finding = row.what)
+        val help = app.keyHelp(KeyDevice.BRAILLE_SENSE, true)
+        val rows = help.sections.flatMapIndexed { at, section ->
+            listOf(Row("section:$at", section.heading)) +
+                section.keys.mapIndexed { index, key -> Row("key:$at:$index", key.line, finding = key.what) }
         }
-        return list("help", appWords.braille.keyHelp, device + here, null, "", hold = false)
+        return list("help", help.title, rows, null, "", hold = false)
+    }
+
+    // ── About ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * About, as lines to read: the core's (`about_lines`), a row each, as Key Help is a list, under
+     * the title of the core's About page.
+     */
+    private fun about(): Frame {
+        val rows = appWords.aboutLines.mapIndexed { index, line -> Row("about:$index", line) }
+        return list("about", SettingsPages.of("about")?.title.orEmpty(), rows, null, "", hold = false)
     }
 
     private companion object {

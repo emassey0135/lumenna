@@ -105,7 +105,7 @@ class SettingsScreen : AppList() {
     override fun rows(): List<Row> {
         val view = host.view.settings ?: return emptyList()
         return view.pages.map { page ->
-                Row(page.id, listOf(page.title, page.description).filter { it.isNotEmpty() }.joinToString(". "), {
+                Row(page.id, page.line, {
                     host.push(if (page.devices) DevicesScreen() else PageScreen(page))
                 }, letter = pageLetter(page.id))
             }
@@ -217,7 +217,7 @@ class PairingScreen : AppList() {
 
     override fun rows(): List<Row> {
         val view = host.view.devices ?: return emptyList()
-        val pairing = view.pairing ?: return listOf(Row("status", view.status))
+        val pairing = view.pairing ?: return listOf(Row("status", view.pairingStatus))
         answered = true
         val words = view.words
         // Where pairing stands and the question about the words are the core's lines.

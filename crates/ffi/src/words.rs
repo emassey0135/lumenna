@@ -8,7 +8,7 @@ use lumenna_app::Capitals;
 use lumenna_app::ShellEvent;
 use lumenna_app::arrangement::{Arrangement, WatchKind};
 use lumenna_app::speech::Line;
-use lumenna_app::dialog::{ControlMove, ControlSends};
+use lumenna_app::dialog::{ControlMove, ControlSends, ControlShown};
 use lumenna_app::hotkeys::HotKind;
 use lumenna_app::words::{self as w, ShellWords, ThisDevice};
 use lumenna_app::keys::{MenuGroup, MenuItem};
@@ -452,6 +452,23 @@ pub fn press_name(device: KeyDevice, letter: String) -> Option<String> {
 #[export]
 pub fn press_instead(device: KeyDevice, letter: String) -> Option<String> {
     lumenna_app::key_help::press_instead(device, &letter)
+}
+
+/// `text` with the keys that press its `letter` on `device` after it ("Today, space t"), as a
+/// device that says a letter's press beside a row, an item or a button says it; `text` alone where
+/// no key presses it.
+#[export]
+pub fn with_press(device: KeyDevice, text: String, letter: String) -> String {
+    lumenna_app::key_help::with_press(device, &text, &letter)
+}
+
+/// What a dialog's `control` says as a row while it holds `value` (a line's text, a choice's
+/// option by id or title, a check's `true` or `false`): for a shell holding what the person did
+/// until the core's next description has it. `ControlShown::line` is the same for what the core
+/// holds.
+#[export]
+pub fn line_holding(control: ControlShown, value: String) -> String {
+    lumenna_app::dialog::line_holding(&control, &value)
 }
 
 /// Where the next line starting with `letter` is, from the line after `from` on, wrapping round

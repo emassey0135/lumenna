@@ -23,7 +23,7 @@ import core
 from core import device_name, refused
 import options
 from rows import Row, items
-from session import REFRESH, Command, Session, choose, command_title, confirm, live_menu, screen, sentences
+from session import REFRESH, Command, Session, choose, command_title, confirm, live_menu, screen
 from tasks import undo_commands
 
 
@@ -129,25 +129,6 @@ def control_of(session: Session, page_id: str, key: str):
     return next((control for control in (dialog.controls if dialog is not None else []) if control.key == key), None)
 
 
-def check_words(session: Session, control) -> dict:
-    """What a setting that is on or off calls each state, `true` and `false`: the setting's own
-    options ("On", "Off"), which its check does not carry."""
-    key = control.sends.field_0 if isinstance(control.sends, L.ControlSendsSetting) else ""
-    view = session.view().settings
-    shown = next((shown for shown in (view.settings if view is not None else []) if shown.setting.key == key), None)
-    named = {option.id: option.title for option in (shown.setting.options if shown is not None else [])}
-    if {"true", "false"} <= set(named):
-        return {"true": named["true"], "false": named["false"]}
-    yes_no = {choice.id: choice.title for choice in core.words().yes_no}
-    return {"true": yes_no.get("yes", "true"), "false": yes_no.get("no", "false")}
-
-
-def control_title(session: Session, control) -> str:
-    """A setting's row: its name and what it holds, as the core names them."""
-    value = check_words(session, control)[forms.shown_value(control)] if control.kind == forms.T.CHECK else control.value
-    return f"{control.label}, {value}" if value else control.label
-
-
 def setting_items(session: Session, page_id: str) -> list:
     """The page's controls, in its order, one row each: a setting said as the core names it, a
     button with its letter, a line to read (the store's actions' caption) as the hint of the rows
@@ -162,13 +143,12 @@ def setting_items(session: Session, page_id: str) -> list:
                     if getattr(item, "store_action", False):
                         item.hint = control.value
             continue
-        if is_folder(control):
-            # A folder setting, chosen with the device's folder dialog.
-            title, action = control_title(session, control), (lambda key=control.key: change_setting(session, page_id, key))
-        elif control.kind == forms.T.BUTTON:
+        if control.kind == forms.T.BUTTON and not is_folder(control):
             title, action = control.label, (lambda key=control.key: press(session, page_id, key))
         else:
-            title, action = control_title(session, control), (lambda key=control.key: change_setting(session, page_id, key))
+            # A setting (a folder one chosen with the device's folder dialog), its row the core's
+            # line: its name and what it holds, a check by its state's word.
+            title, action = control.line, (lambda key=control.key: change_setting(session, page_id, key))
         item = dialogs.DynamicMenuItem(title=title, action=action, shortcut=control.letter or None)
         item.store_action = control.key.startswith("action:")
         made.append(item)
@@ -180,9 +160,10 @@ def is_folder(control) -> bool:
     return control.kind == forms.T.BUTTON and isinstance(control.sends, L.ControlSendsShell) and control.key.startswith("setting:")
 
 
-def page_title(page) -> str:
-    """A page's heading: its title, then what it says under its settings."""
-    return sentences(page.title, page.caption) if page is not None else ""
+def page_heading(session: Session, page_id: str) -> str:
+    """A page's heading, the core's: its title, then what it says under its settings."""
+    page = page_of(session, page_id)
+    return page.heading if page is not None else ""
 
 
 def button_commands(session: Session, page_id: str) -> list[Command]:
@@ -203,7 +184,7 @@ def setting_page(session: Session, page_id: str) -> str:
         if page is None:
             return ""
         live_menu(
-            session, lambda: setting_items(session, page_id), lambda: page_title(page_of(session, page_id)),
+            session, lambda: setting_items(session, page_id), lambda: page_heading(session, page_id),
             app=lambda: [*button_commands(session, page_id), *undo_commands(session)], app_title=L.menu_of(page.title),
         )
     return ""
@@ -237,14 +218,11 @@ def change_setting(session: Session, page_id: str, key: str) -> str:
     if control is None:
         return ""
     asked = actions.prompt(control.label, control.hint)
-    if control.kind == forms.T.CHOICE:
-        chosen = choose({option.id: option.title for option in control.options}, asked, default=forms.selected_id(control))
-        if chosen is None or chosen == forms.selected_id(control):
-            return ""
-        return forms.send(session, control, chosen, L.ControlMoveSet())
-    if control.kind == forms.T.CHECK:
+    if control.kind in (forms.T.CHOICE, forms.T.CHECK):
+        # A choice's options, or a check's states in the setting's own words ("On", "Off", by ids
+        # `true` and `false`), the core's.
         now = forms.shown_value(control)
-        chosen = choose(check_words(session, control), asked, default=now)
+        chosen = choose({option.id: option.title for option in control.options}, asked, default=now)
         if chosen is None or chosen == now:
             return ""
         return forms.send(session, control, chosen, L.ControlMoveSet())
@@ -410,9 +388,9 @@ def pairing_screen(session: Session) -> str:
 
     def status() -> str:
         # Where pairing stands, the core's one line: what went wrong, else waiting, opening,
-        # connecting.
-        pairing = pairing_view(session)
-        return pairing.status if pairing is not None else ""
+        # connecting, else what pairing says before one starts.
+        view = session.view().devices
+        return view.pairing_status if view is not None else ""
 
     def code_line() -> str:
         # The code to give the other device, a row of its own under the status while waiting.

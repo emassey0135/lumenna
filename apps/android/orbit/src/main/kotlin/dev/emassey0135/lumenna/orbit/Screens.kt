@@ -6,9 +6,6 @@ import dev.emassey0135.lumenna.app.ActionKind
 import dev.emassey0135.lumenna.app.actionLetter
 import dev.emassey0135.lumenna.app.commandLetter
 import dev.emassey0135.lumenna.app.dueLetter
-import dev.emassey0135.lumenna.app.SpeakLetter
-import dev.emassey0135.lumenna.app.speakLetter
-import dev.emassey0135.lumenna.app.speakPress
 import dev.emassey0135.lumenna.app.ListShown
 import dev.emassey0135.lumenna.app.Asking
 import dev.emassey0135.lumenna.app.DueEvent
@@ -28,7 +25,6 @@ import dev.emassey0135.lumenna.app.Typing
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.appWords
 import dev.emassey0135.lumenna.app.lineWithState
-import dev.emassey0135.lumenna.app.screenKeys
 import dev.emassey0135.lumenna.levelsOf
 import dev.emassey0135.lumenna.offeredOf
 import dev.emassey0135.orbit.ui.MenuItem
@@ -232,16 +228,8 @@ fun undoCommands(ui: Ui): List<Command> = listOf("undo", "redo").map { id ->
     Command(ui.withLetter(titleOf(id), letter), letter) { ui.send(ShellEvent.Key(id)) }
 }
 
-/** The heading of the list the core says is showing: its name, then what it says of itself. */
-fun heading(list: ListShown?, name: String): String {
-    list ?: return name
-    return when {
-        list.readback.isEmpty() -> list.name.ifEmpty { name }
-        // The day's readback is its heading, the day's name first.
-        list.readback.startsWith(list.name) -> list.readback
-        else -> "${list.name.ifEmpty { name }}, ${list.readback}"
-    }
-}
+/** The heading of the list the core says is showing (`ListShown::heading`), else [name]. */
+fun heading(list: ListShown?, name: String): String = list?.heading?.ifEmpty { null } ?: name
 
 /**
  * The core's question, as its dialog (`ScreenView::dialog`): a confirmation, a line, a pick or a
@@ -321,7 +309,7 @@ class RemindersScreen : AppList() {
     override val lands: Lands get() = Lands.SIDE
 
     override val title: String
-        get() = listOf(host.view.remindersTitle.orEmpty(), host.view.reminders?.announcement.orEmpty()).filter { it.isNotEmpty() }.joinToString(". ")
+        get() = host.view.remindersHeading.orEmpty()
 
     override fun stands(view: ViewModel): Boolean = view.reminders != null
 
@@ -394,37 +382,23 @@ class DueScreen : AppList() {
     }
 }
 
-/** The keys this device has and what they do: the core's sentences, and on the Speak its letters. */
+/**
+ * The keys this device has and what they do: the core's key help for the Speak or the Player
+ * (`App::key_help_on`), over what the screen beneath it shows, its headings and keys a line each.
+ */
 class KeyHelpScreen : AppList() {
-    override val title: String get() = appWords.braille.keyHelp
+    override val title: String get() = help().title
 
-    override fun rows(): List<Row> = lines().mapIndexed { index, text -> Row(index.toString(), text) }
+    override fun rows(): List<Row> = help().lines.mapIndexed { index, text -> Row(index.toString(), text) }
 
-    private fun lines(): List<String> = if (host.phoneKeypad) appWords.orbit.playerKeys else buildList {
-        val words = appWords.braille
-        add(words.moving)
-        addAll(appWords.orbit.speakKeys)
-        // A letter's actions, under the key that presses it.
-        val actions = appWords.actionTitles
-            .mapNotNull { title -> actionLetter(title.kind)?.let { it to title.title } }
-            .groupBy({ it.first }, { it.second })
-            .toSortedMap()
-        fun letters(key: SpeakLetter) = actions.filterKeys { speakLetter(it) == key }.map { (letter, titles) ->
-            "$letter, ${titles.distinct().joinToString(", ")}"
-        }
-        add(words.withSpace)
-        addAll(letters(SpeakLetter.SPACE))
-        add(appWords.orbit.withDot8)
-        addAll(letters(SpeakLetter.ENTER))
-        // Home's places and actions, under its name; its actions by the core's key help for the Speak.
-        host.view.home?.let { home ->
-            add(home.title)
-            home.places.filter { it.letter.isNotEmpty() }.forEach { add("${speakPress(it.letter) ?: it.letter}, ${it.entry.title}") }
-            screenKeys(KeyDevice.ORBIT_SPEAK, home.actions).forEach { add(it.line) }
-        }
-        add(words.letterAlone)
-        add(words.findsARow)
-    }
+    private fun help() = host.app.keyHelp(if (host.phoneKeypad) KeyDevice.ORBIT_PLAYER else KeyDevice.ORBIT_SPEAK, true)
+}
+
+/** About: the core's lines (`ShellWords::about_lines`), a line each, as Key Help is a list. */
+class AboutScreen : AppList() {
+    override val title: String get() = titleOf("about")
+
+    override fun rows(): List<Row> = appWords.aboutLines.mapIndexed { index, text -> Row(index.toString(), text) }
 }
 
 /** Replan from Now and Plan the Day: the app proposes, and says so; the person checks what to take. */
@@ -451,7 +425,7 @@ class ProposalScreen : AppList() {
             }
             if (proposal.changes.isEmpty()) add(Row("nothing", words.nothing))
             proposal.unfitLines.forEachIndexed { index, line -> add(Row("unfit-$index", line)) }
-            if (proposal.changes.isNotEmpty()) add(Row("apply", listOf(words.apply, words.hint).joinToString(". "), { host.send(ShellEvent.Proposal(ProposalEvent.Apply)) }))
+            if (proposal.changes.isNotEmpty()) add(Row("apply", proposal.applyLine, { host.send(ShellEvent.Proposal(ProposalEvent.Apply)) }))
             if (proposal.others.isNotEmpty()) {
                 add(Row("others", words.others))
                 proposal.others.forEachIndexed { index, other ->

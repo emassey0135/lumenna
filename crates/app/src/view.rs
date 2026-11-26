@@ -89,6 +89,10 @@ pub struct ViewModel {
     /// The open reminder list's title: "Reminders for Pay rent".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reminders_title: Option<String>,
+    /// The open reminder list's title with what the list says of itself, as one heading:
+    /// "Reminders for Pay rent. 2 reminders".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reminders_heading: Option<String>,
     /// Every row and day command of the shared table (`keys::COMMANDS`) as it stands: its name now
     /// (Mark Not Done on a task done) and whether what is in hand offers it, for a menu to draw.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -230,6 +234,7 @@ pub(crate) fn whole(model: &Screen) -> ViewModel {
     if let Some(proposal) = &mut view.proposal {
         crate::proposal::compose(proposal);
     }
+    view.reminders_heading = view.reminders_title.as_ref().map(|title| crate::screen::prompt(&[title.as_str(), view.reminders.as_ref().map_or("", |list| list.announcement.as_str())]));
     // Worded in the shell's capitals as they are made, over the sidebar as it is now cased.
     if view.ready {
         view.screen_actions = model.screen_actions();
@@ -361,6 +366,7 @@ fn shown(model: &Screen) -> ViewModel {
                 .unwrap_or_default();
             lumenna_records::words::reminders_for(&name)
         }),
+        reminders_heading: None,
         line: model.line.as_ref().map(|line| {
             let style = model.style.unwrap_or(crate::proposal::default_style());
             let preview = lumenna_records::text::preview_in(&store.snapshot, &line.text, &store.now, style);

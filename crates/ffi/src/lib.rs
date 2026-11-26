@@ -216,8 +216,7 @@ impl App {
     /// shown offer, each by the keys that press it there.
     pub fn key_help_on(&self, screen: u32, device: KeyDevice, sentence: bool) -> KeyHelp {
         let capitals = if sentence { lumenna_app::Capitals::Sentence } else { lumenna_app::Capitals::Title };
-        let words = lumenna_app::words::shell_words(capitals, lumenna_app::words::ThisDevice::Device);
-        lumenna_app::key_help::key_help(device, &self.view_on(screen), &words)
+        lumenna_app::key_help::key_help(device, &self.view_on(screen), capitals)
     }
 
     /// What a widget, complication or tile shows for the next `hours` (at most two days),

@@ -713,7 +713,18 @@ class Menus(unittest.TestCase):
 
     def test_an_empty_task_list_says_the_cores_words_then_the_key_that_adds(self):
         script = self.run_script([("back",)], lambda: tasks.task_list(self.session))
-        self.assertEqual(script.menus[0]["empty"], "No open tasks. Press a to add one.")
+        # Joined as the core joins parts of a prompt (`prompt_of`).
+        self.assertEqual(script.menus[0]["empty"], "No open tasks. Press a to add one")
+        self.assertEqual(script.titles[0], "Tasks", "the count is left to the empty list")
+
+    def test_a_lists_heading_is_the_cores_its_name_then_what_it_says_of_itself(self):
+        self.call("task.add", text="write the chapter")
+        script = self.run_script([("back",)], lambda: tasks.task_list(self.session))
+        self.session.show(L.PlaceTasks())
+        listed = self.session.described().shown
+        self.assertIsInstance(listed, L.ShownList)
+        self.assertEqual(script.titles[0], listed.field_0.heading)
+        self.assertTrue(script.titles[0].startswith("Tasks, "), script.titles)
 
     def test_going_to_a_day_and_a_new_filter_ask_in_the_cores_words(self):
         script = self.run_script(
@@ -826,6 +837,23 @@ class Menus(unittest.TestCase):
             lambda: got.append(tasks.assisted_input(self.session, "Filter", L.Syntax.FILTER)),
         )
         self.assertEqual(got[0].strip(), "@calls")
+
+    def test_a_line_entered_ending_in_a_name_begun_offers_what_would_finish_it_after_an_accented_letter(self):
+        self.call("project.add", name="Work")
+        self.call("project.add", name="Workshop")
+        got = []
+        self.run_script(
+            [("input", "café #wo"), ("choose", "Workshop")],
+            lambda: got.append(tasks.assisted_input(self.session, "Add", L.Syntax.QUICK_ADD)),
+        )
+        # The core says where the name begun is in bytes, and puts the choice in there.
+        self.assertEqual(got[0].strip(), "café #Workshop")
+        # A name already whole is left as typed, nothing offered.
+        self.run_script(
+            [("input", "café #Work")],
+            lambda: got.append(tasks.assisted_input(self.session, "Add", L.Syntax.QUICK_ADD)),
+        )
+        self.assertEqual(got[1], "café #Work")
 
     def test_a_tasks_context_menu_says_each_entrys_key(self):
         self.call("task.add", text="labelled")
@@ -951,10 +979,25 @@ class Menus(unittest.TestCase):
         self.assertIn("New task", script.menus[1]["rows"])
         self.assertIn("nothing to undo", [said.lower() for said in script.said], "Undo ran")
 
-    def test_key_help_and_about_are_this_apps_own(self):
+    def test_key_help_is_the_cores_for_a_btspeak_over_the_screen_in_front_and_about_this_apps_own(self):
         script = self.run_script([("app", "Keyboard"), ("app", "About"), ("back",)], lambda: menus.home(self.session))
-        self.assertTrue(script.shown[0][0].endswith("lumenna.md"), script.shown)
+        shown = self.session.app.key_help_on(0, L.KeyDevice.BT_SPEAK, True)
+        self.assertEqual(script.shown[0], list(shown.lines), "a line each, the core's, in its order")
+        # This device's own keys, then Home's places by their letters alone.
+        self.assertIn("Enter: Open the row, or press the button", script.shown[0])
+        self.assertIn("t: Today", script.shown[0])
         self.assertEqual(script.shown[1][0], "Lumenna")
+
+    def test_key_help_on_a_place_names_its_commands_and_its_rows_actions_by_their_letters(self):
+        self.call("task.add", text="write the chapter")
+        # The bar opens on the list's own menu; Shift-Tab goes round to Help.
+        script = self.run_script(
+            [("bar",), ("shift-tab",), ("menu", "Keyboard"), ("back",)], lambda: tasks.task_list(self.session),
+        )
+        self.assertIn("u: Undo", script.shown[0])
+        # A row's action by its letter, in the sentence case this device asks for.
+        self.assertIn("c: Mark done", script.shown[0])
+        self.assertFalse(any(line.startswith("t: Today") for line in script.shown[0]), "Home's places are Home's")
 
     def test_a_menu_bar_command_that_goes_to_a_place_shows_it_and_leaving_it_is_home(self):
         self.call("task.add", text="write the chapter")
@@ -992,11 +1035,17 @@ class Menus(unittest.TestCase):
     # -- settings and data --------------------------------------------------------------
 
     def test_a_setting_with_few_values_is_a_choice(self):
-        self.run_script(
+        script = self.run_script(
             [("menu", "Announcements"), ("choose", "Terse"), ("back",)],
             lambda: preferences.setting_page(self.session, "planning"),
         )
         self.assertEqual(self.call("config.get", key="verbosity")["settings"][0]["value"], "terse")
+        # The page's heading is the core's: its title, then its caption.
+        planning = next(page for page in L.settings_pages(False, True) if page.id == "planning")
+        self.assertEqual(script.titles[0], planning.heading)
+        self.assertTrue(script.titles[0].startswith("Planning. "), script.titles)
+        # A setting's row is the core's line: its name, then what it holds.
+        self.assertIn("Announcements, Full sentences", script.menus[0]["rows"])
 
     def test_a_time_setting_shows_and_takes_hours_and_minutes(self):
         self.run_script(

@@ -16,7 +16,7 @@ import actions
 from actions import K, L
 import core
 from rows import Row, items
-from session import Command, Session, live_menu, screen, sentences
+from session import Command, Session, live_menu, screen
 from tasks import undo_commands
 
 
@@ -46,9 +46,8 @@ def reminders_of(session: Session, row=None) -> str:
     and the list's own Add reminder. Leaving closes it in the app."""
 
     def title() -> str:
-        view = session.view()
-        listing = view.reminders
-        return actions.prompt(view.reminders_title or "", listing.announcement if listing is not None else "")
+        # The core's heading: the list's title, then what it says of itself.
+        return session.view().reminders_heading or ""
 
     def build():
         return items(reminder_rows(session)) if session.view().reminders is not None else []
@@ -102,7 +101,7 @@ def due(session: Session) -> str:
     # opens, and only then: the rows say them after that.
     found = session.send(L.ShellEventDue(L.DueEventLookBack()))
     named = core.words().reminders_due
-    state = {"heading": sentences(named, found)}
+    state = {"heading": actions.prompt(named, found)}
 
     def title() -> str:
         shown, state["heading"] = state["heading"], named

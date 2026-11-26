@@ -122,7 +122,8 @@ pub struct ControlShown {
     /// A placeholder showing an answer's shape. Empty for none.
     pub example: String,
     /// A choice's options or a list's, each its `id` (what is sent) and `title`; for a question's
-    /// line asking how long, the usual lengths.
+    /// line asking how long, the usual lengths; for a setting's check, the
+    /// words of its states, `true` and `false` ("On", "Off").
     pub options: Vec<Choice>,
     /// Which of `options` it holds, by position.
     pub selected: Option<u32>,
@@ -249,20 +250,32 @@ fn dialog(id: String, title: String, controls: Vec<ControlShown>) -> DialogShown
 /// `control` with what it says as a row, where its builder has not said already.
 fn read(mut control: ControlShown) -> ControlShown {
     if control.line.is_empty() {
-        let value = match control.kind {
-            ControlType::Check => check_word(control.checked, &[]),
-            ControlType::Text => String::new(),
-            _ => control.value.clone(),
-        };
-        control.line = match control.kind {
-            ControlType::Text => control.value.clone(),
-            _ if value.is_empty() => control.label.clone(),
-            _ if control.label.is_empty() => value,
-            _ => format!("{}, {value}", control.label),
-        };
+        let holding = if control.kind == ControlType::Check { control.checked.to_string() } else { control.value.clone() };
+        control.line = line_holding(&control, &holding);
     }
     control.option_lines = control.options.iter().map(|option| crate::screen::prompt(&[option.title.as_str(), option.reason.as_deref().unwrap_or_default()])).collect();
     control
+}
+
+/// What `control` says as a row while it holds `value`: a line's text, a choice's option (by its
+/// id or title), a check's `true` or `false`. For a shell that holds what the person did until
+/// the core's next description has it, so the row reads as it now stands; `ControlShown::line` is
+/// the same for what the core holds.
+#[must_use]
+pub fn line_holding(control: &ControlShown, value: &str) -> String {
+    let value = match control.kind {
+        ControlType::Text => return control.value.clone(),
+        ControlType::Check => check_word(value == "true", &control.options),
+        ControlType::Choice | ControlType::List => {
+            control.options.iter().find(|option| option.id == value || option.title == value).map_or_else(|| value.to_owned(), |option| option.title.clone())
+        }
+        ControlType::Line | ControlType::Lines | ControlType::Button => value.to_owned(),
+    };
+    match (control.label.is_empty(), value.is_empty()) {
+        (_, true) => control.label.clone(),
+        (true, false) => value,
+        (false, false) => format!("{}, {value}", control.label),
+    }
 }
 
 /// What a check says of its state: `named`'s option of id `true` or `false` where it has them
@@ -522,11 +535,13 @@ pub fn settings_page(view: &ViewModel, page: &str) -> Option<DialogShown> {
         let sends = ControlSends::Setting(setting.key.clone());
         let id = format!("setting:{}", setting.key);
         controls.push(match setting.kind {
-            SettingKind::Toggle => {
-                let checked = setting.value == "true";
-                let line = format!("{}, {}", setting.title, check_word(checked, &setting.options));
-                ControlShown { checked, hint: setting.hint.clone(), line, ..ControlShown::new(id, ControlType::Check, setting.title.clone(), sends) }
-            }
+            // A check carries the setting's own words for its states ("On", "Off"), for its line.
+            SettingKind::Toggle => ControlShown {
+                checked: setting.value == "true",
+                hint: setting.hint.clone(),
+                options: setting.options.clone(),
+                ..ControlShown::new(id, ControlType::Check, setting.title.clone(), sends)
+            },
             SettingKind::Folder => ControlShown {
                 value: setting.value.clone(),
                 hint: setting.hint.clone(),

@@ -13,7 +13,8 @@ use lumenna_records::ActionKind;
 use serde::{Deserialize, Serialize};
 
 use crate::ViewModel;
-use crate::words::{DeviceKey, ShellWords};
+use crate::words::{DeviceKey, ShellWords, ThisDevice, shell_words};
+use crate::Capitals;
 
 /// A braille device, for how its letters are pressed and what its key help says.
 #[boltffi::data]
@@ -127,6 +128,17 @@ pub fn press_instead(device: KeyDevice, letter: &str) -> Option<String> {
     })
 }
 
+/// `text` (a row's, a menu item's, a button's) with the keys that press its `letter` on `device`
+/// after it, as a device that says a letter's press beside the thing says it: "Today, space t";
+/// `text` alone where no key presses it.
+#[must_use]
+pub fn with_press(device: KeyDevice, text: &str, letter: &str) -> String {
+    match press_name(device, letter) {
+        Some(press) => format!("{text}, {press}"),
+        None => text.to_owned(),
+    }
+}
+
 /// A key help: its sections in order, and the same as lines to read one after another.
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,11 +161,12 @@ pub struct KeySection {
     pub keys: Vec<DeviceKey>,
 }
 
-/// `device`'s key help over what `view` shows, in `words`' capitals: the device's own keys; on
+/// `device`'s key help over what `view` shows, in `capitals`: the device's own keys; on
 /// Home its places; the screen's own commands; then what the rows shown offer, each by the keys
 /// that press its letter. A part with nothing in it is left out.
 #[must_use]
-pub fn key_help(device: KeyDevice, view: &ViewModel, words: &ShellWords) -> KeyHelp {
+pub fn key_help(device: KeyDevice, view: &ViewModel, capitals: Capitals) -> KeyHelp {
+    let words = &shell_words(capitals, ThisDevice::Device);
     let braille = &words.braille;
     let mut sections = vec![KeySection { heading: braille.moving.clone(), keys: device_keys(device, words) }];
     let pressed = |letter: &str, what: &str| press_name(device, letter).map(|keys| DeviceKey::new(keys, what.to_owned()));
@@ -167,7 +180,7 @@ pub fn key_help(device: KeyDevice, view: &ViewModel, words: &ShellWords) -> KeyH
     }
     let commands = view.screen_actions.iter().filter_map(|action| pressed(&action.letter, &action.title)).collect();
     sections.push(KeySection { heading: words.screen_actions.clone(), keys: commands });
-    sections.push(KeySection { heading: braille.row_actions.clone(), keys: row_actions(device, view, &taken) });
+    sections.push(KeySection { heading: braille.row_actions.clone(), keys: row_actions(device, view, &taken, capitals == Capitals::Sentence) });
     sections.retain(|section| !section.keys.is_empty());
     let lines = sections.iter().flat_map(|section| std::iter::once(section.heading.clone()).chain(section.keys.iter().map(|key| key.line.clone()))).collect();
     KeyHelp { title: braille.key_help.clone(), sections, lines }
@@ -175,7 +188,7 @@ pub fn key_help(device: KeyDevice, view: &ViewModel, words: &ShellWords) -> KeyH
 
 /// The actions the rows shown offer, by letter in the alphabet's order, each letter's names
 /// together: "Space+C: Mark done, Mark not done".
-fn row_actions(device: KeyDevice, view: &ViewModel, taken: &[&str]) -> Vec<DeviceKey> {
+fn row_actions(device: KeyDevice, view: &ViewModel, taken: &[&str], sentence: bool) -> Vec<DeviceKey> {
     let offered = if view.home.is_some() {
         view.sidebar.iter().flat_map(|entry| &entry.offered).collect::<Vec<_>>()
     } else {
@@ -189,10 +202,12 @@ fn row_actions(device: KeyDevice, view: &ViewModel, taken: &[&str]) -> Vec<Devic
         if taken.contains(&letter) || offered.kind == ActionKind::ErasePermanently {
             continue;
         }
+        // An action's name in the capitals asked for: its `sentence` is its title in sentence case.
+        let title = if sentence { offered.sentence.as_str() } else { offered.title.as_str() };
         match lettered.iter_mut().find(|(seen, _)| *seen == letter) {
-            Some((_, titles)) if !titles.contains(&offered.title.as_str()) => titles.push(&offered.title),
+            Some((_, titles)) if !titles.contains(&title) => titles.push(title),
             Some(_) => {}
-            None => lettered.push((letter, vec![&offered.title])),
+            None => lettered.push((letter, vec![title])),
         }
     }
     lettered.sort_by_key(|(letter, _)| *letter);
@@ -218,10 +233,13 @@ fn device_keys(device: KeyDevice, words: &ShellWords) -> Vec<DeviceKey> {
             row("Control-L in a line", "What could come next where the cursor is"),
         ],
         KeyDevice::Reader => vec![
-            row("Previous and Next", "The row before and after"),
+            // As the readers' own guides name their keys (the NLS eReader's Common Keyboard Commands).
+            row("Up and Down, or Space+Dot1 and Space+Dot4", "The row before and after"),
+            row("Space+Dots123, Space+Dots456", "The first and the last row"),
+            row("Left and Right", "Pan through a long line"),
             row("Enter", "Open the row, or press the button"),
-            row("The menu key", "The row's actions first, then the screen's own menu, then File, Edit, View, Task, Day and Help"),
-            row("Exit", "Go back, close a dialog, or go up a level of a menu; on Home, leave Lumenna"),
+            row("Space+H on the eReader, Space+M on the others", "The row's actions first, then the screen's own menu, then File, Edit, View, Task, Day and Help"),
+            row("Space+E", "Go back, close a dialog, or go up a level of a menu; on Home, leave Lumenna"),
             row("Space+D", "Delete the row"),
             row("Enter in a line", "Enter it; a line ending in a name begun, such as #wo, then offers what would finish it"),
         ],
@@ -305,8 +323,7 @@ fn device_keys(device: KeyDevice, words: &ShellWords) -> Vec<DeviceKey> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::words::{ThisDevice, shell_words};
-    use crate::{Capitals, ScreenAction};
+    use crate::ScreenAction;
 
     fn action(id: &str, title: &str, letter: &str) -> ScreenAction {
         ScreenAction { id: id.to_owned(), title: title.to_owned(), letter: letter.to_owned(), asks: false, shell: false, enabled: true }
@@ -355,26 +372,45 @@ mod tests {
     fn a_key_help_names_each_command_by_the_keys_that_press_it_on_that_device() {
         let words = shell_words(Capitals::Sentence, ThisDevice::Device);
         let view = view_with(vec![action("new-task", "New task", "a"), action("undo", "Undo", "u"), action("go-to-day", "Go to day", "g"), action("filter", "Filter", "/")]);
-        assert_eq!(commands(&key_help(KeyDevice::Reader, &view, &words), &words), ["Enter+A: New task", "Space+U: Undo", "Enter+G: Go to day"]);
-        assert_eq!(commands(&key_help(KeyDevice::BrailleSense, &view, &words), &words), ["Enter-A: New task", "Space-U: Undo", "Space-G: Go to day"]);
-        assert_eq!(commands(&key_help(KeyDevice::OrbitSpeak, &view, &words), &words), ["dot 8 a: New task", "space u: Undo"]);
-        assert_eq!(commands(&key_help(KeyDevice::BtSpeak, &view, &words), &words), ["a: New task", "u: Undo", "g: Go to day"]);
-        assert!(commands(&key_help(KeyDevice::OrbitPlayer, &view, &words), &words).is_empty(), "the Player presses no letter");
+        assert_eq!(commands(&key_help(KeyDevice::Reader, &view, Capitals::Sentence), &words), ["Enter+A: New task", "Space+U: Undo", "Enter+G: Go to day"]);
+        assert_eq!(commands(&key_help(KeyDevice::BrailleSense, &view, Capitals::Sentence), &words), ["Enter-A: New task", "Space-U: Undo", "Space-G: Go to day"]);
+        assert_eq!(commands(&key_help(KeyDevice::OrbitSpeak, &view, Capitals::Sentence), &words), ["dot 8 a: New task", "space u: Undo"]);
+        assert_eq!(commands(&key_help(KeyDevice::BtSpeak, &view, Capitals::Sentence), &words), ["a: New task", "u: Undo", "g: Go to day"]);
+        assert!(commands(&key_help(KeyDevice::OrbitPlayer, &view, Capitals::Sentence), &words).is_empty(), "the Player presses no letter");
     }
 
     #[test]
     fn a_row_is_found_by_a_letter_alone_where_space_presses_commands_and_by_a_capital_where_the_letter_alone_does() {
         let words = shell_words(Capitals::Sentence, ThisDevice::Device);
         let view = view_with(Vec::new());
-        let finding = |device| key_help(device, &view, &words).sections[0].keys.last().map(|key| key.keys.clone());
+        let finding = |device| key_help(device, &view, Capitals::Sentence).sections[0].keys.last().map(|key| key.keys.clone());
         assert_eq!(finding(KeyDevice::Reader), Some(words.braille.letter_alone.clone()));
         assert_eq!(finding(KeyDevice::BtSpeak).as_deref(), Some("A capital letter, the letter with Dot 7"));
     }
 
     #[test]
+    fn the_rows_actions_are_named_in_the_capitals_asked_for_each_letter_once() {
+        let offered = |kind, title: &str, sentence: &str| lumenna_records::Offered {
+            kind,
+            subject: lumenna_records::Subject::Task,
+            title: title.to_owned(),
+            sentence: sentence.to_owned(),
+            destructive: false,
+            primary: false,
+            other: None,
+            asks: lumenna_records::Asks::Nothing,
+        };
+        let list = crate::ListView { offered: vec![offered(ActionKind::MarkDone, "Mark Done", "Mark done"), offered(ActionKind::MarkNotDone, "Mark Not Done", "Mark not done"), offered(ActionKind::MarkDone, "Mark Done", "Mark done")], ..crate::ListView::default() };
+        let view = ViewModel { list: Some(list), ..ViewModel::default() };
+        let rows = |capitals| key_help(KeyDevice::Reader, &view, capitals).sections.last().map(|section| section.keys.iter().map(|key| key.line.clone()).collect::<Vec<_>>()).unwrap_or_default();
+        assert_eq!(rows(Capitals::Sentence), ["Space+C: Mark done, Mark not done"]);
+        assert_eq!(rows(Capitals::Title), ["Space+C: Mark Done, Mark Not Done"]);
+    }
+
+    #[test]
     fn a_key_help_is_its_headings_and_keys_as_lines_in_order() {
         let words = shell_words(Capitals::Sentence, ThisDevice::Device);
-        let help = key_help(KeyDevice::Reader, &view_with(vec![action("undo", "Undo", "u")]), &words);
+        let help = key_help(KeyDevice::Reader, &view_with(vec![action("undo", "Undo", "u")]), Capitals::Sentence);
         assert_eq!(help.lines.first(), Some(&words.braille.moving));
         assert!(help.lines.contains(&words.screen_actions));
         assert_eq!(help.lines.last().map(String::as_str), Some("Space+U: Undo"));

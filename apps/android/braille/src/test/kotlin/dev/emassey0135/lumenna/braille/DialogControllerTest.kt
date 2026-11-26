@@ -165,6 +165,7 @@ class DialogControllerTest {
     private fun control(key: String, kind: ControlType, sends: ControlSends, value: String = "") = ControlShown(
         key = key, kind = kind, label = key, value = value, hint = "", example = "", options = emptyList(), selected = null,
         checked = false, `field` = null, syntax = null, letter = "", asks = false, default = false, cancel = false, sends = sends,
+        line = key, optionLines = emptyList(),
     )
 
     private fun line(key: String, value: String, sends: ControlSends) = control(key, ControlType.LINE, sends, value)

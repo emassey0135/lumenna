@@ -27,10 +27,11 @@ import dev.emassey0135.lumenna.app.brailleMenuBarOnRow
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.noRowStartsWith
 import dev.emassey0135.lumenna.app.nothingOnLetter
-import dev.emassey0135.lumenna.app.SpeakLetter
-import dev.emassey0135.lumenna.app.speakLetter
-import dev.emassey0135.lumenna.app.speakPress
-import dev.emassey0135.lumenna.app.speakPressInstead
+import dev.emassey0135.lumenna.app.KeyDevice
+import dev.emassey0135.lumenna.app.LetterPress
+import dev.emassey0135.lumenna.app.letterPress
+import dev.emassey0135.lumenna.app.pressInstead
+import dev.emassey0135.lumenna.app.withPress
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.commandTitle
 import dev.emassey0135.lumenna.appWords
@@ -220,9 +221,9 @@ abstract class AppList : ListScreen("", { emptyList() }, "") {
 }
 
 /**
- * Which key presses a letter, by the core (`speak_letter`): Space with it, or Dot 8 with it where
- * the Speak keeps Space with those dots, Space with such a letter saying so (`speak_press_instead`).
- * A letter is the core's `braille_letter`, a to z, none with dot 7 or 8.
+ * Which key presses a letter, by the core (`letter_press` for the Speak): Space with it, or Dot 8
+ * with it where the Speak keeps Space with those dots, Space with such a letter saying so
+ * (`press_instead`). A letter is the core's `braille_letter`, a to z, none with dot 7 or 8.
  */
 object CoreLetters : Letters() {
     override fun of(dots: Int): Char? = brailleLetter(dots.toUByte())?.singleOrNull()
@@ -232,8 +233,8 @@ object CoreLetters : Letters() {
             val letter = brailleLetter(key.dots.toUByte())
             when {
                 letter == null -> Letters.Pressed.Refused(null)
-                speakLetter(letter) == SpeakLetter.SPACE -> letter.singleOrNull()?.let { Letters.Pressed.Letter(it) } ?: Letters.Pressed.Refused(null)
-                else -> Letters.Pressed.Refused(speakPressInstead(letter))
+                letterPress(KeyDevice.ORBIT_SPEAK, letter) == LetterPress.SPACE -> letter.singleOrNull()?.let { Letters.Pressed.Letter(it) } ?: Letters.Pressed.Refused(null)
+                else -> Letters.Pressed.Refused(pressInstead(KeyDevice.ORBIT_SPEAK, letter))
             }
         }
         is Key.Enter -> of(key.dots)?.let { Letters.Pressed.Letter(it) } ?: Letters.Pressed.Refused(null)
@@ -577,7 +578,7 @@ class Ui(
             "filter" -> view.place?.let { push(FilterScreen(it)) } ?: refuse()
             "keyboard-help" -> push(KeyHelpScreen())
             "reminders-due" -> push(DueScreen())
-            "about" -> appWords.metadata.let { say("${it.name} ${it.version}. ${it.description}") }
+            "about" -> push(AboutScreen())
             else -> refuse()
         }
     }
@@ -612,10 +613,10 @@ object BuildConfigDebug {
     @Volatile var on = false
 }
 
-/** [text], with the chord that also runs it said after it on the Speak. */
+/** [text], with the chord that also runs it said after it on the Speak, as the core joins them (`with_press`). */
 fun Ui.withLetter(text: String, letter: String?): String {
-    val press = letter?.takeUnless { phoneKeypad }?.let(::speakPress) ?: return text
-    return "$text, $press"
+    if (letter == null || phoneKeypad) return text
+    return withPress(KeyDevice.ORBIT_SPEAK, text, letter)
 }
 
 /** A menu command's name in sentence case, by its id in the core's table. */

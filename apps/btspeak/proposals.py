@@ -43,11 +43,11 @@ def proposal_screen(session: Session) -> str:
 
     def toggle(index: int, checked: bool) -> str:
         send(L.ProposalEventCheck(index, not checked))
-        # Said as a check box says itself, by the core's name for a change and its state.
+        # Said as a check box says itself as it changes, the core's line (`ChangeView::toggled`).
         proposal = session.view().proposal
         if proposal is None or index >= len(proposal.changes):
             return ""
-        return f"{proposal.words.item}, {proposal.changes[index].state}"
+        return proposal.changes[index].toggled
 
     def apply(menu=None) -> str:
         made = send(L.ProposalEventApply())

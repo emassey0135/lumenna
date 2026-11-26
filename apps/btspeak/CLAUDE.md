@@ -95,9 +95,12 @@ test with a newer one (`PYTHON=…`).
   were changed too. A refusal is the dialog's `refusal` line, said before it is asked again. The
   prompt is `QuestionShown::prompt`, a refusal before it joined by the core (`prompt_of`); a pairing
   code is sent as typed, spaces and all. A project choice's options carry their level where it
-  changes (`lines::with_level`), so they are drawn as they come. One thing is still this app's: a
-  check setting's states are its setting's own options ("On", "Off"), which the controls do not
-  carry yet.
+  changes (`lines::with_level`), so they are drawn as they come. A settings page's heading is
+  `SettingsPage.heading` and each setting's row its control's `line` (a check by its state's word,
+  the setting's own "On" or "Off"). A check setting is changed as a choice is, from its control's
+  `options` (its states' words, ids `true` and `false`). A row is drawn again from the core's next
+  description once `send` returns, so nothing here holds a value the core has not got
+  (`line_holding` is for a shell that does).
 - **The Export and import page lists the store's own actions** (`SettingsView.offered`, Erase
   everything deleted) as rows after its buttons, with no shortcut, each handed back as `ActOn` with
   `ActingOnSettings` (`preferences.store_items`), the core's `offered_caption` its hint, which
@@ -117,6 +120,13 @@ test with a newer one (`PYTHON=…`).
   labels and filters screens each list one heading's places, so their level counts from there:
   folding is the app's (`hidden`, `expanded`), the levels the core's `levels` of their depths
   under the heading, as a project pick's are of its choices'.
+- **A list's heading is the core's** (`session.heading`): the described list's `heading`
+  (`ScreenView`'s `ListShown::heading`, its name then what it says of itself) where the app
+  describes the list shown under the same name (a filter typed over the tasks, which this screen
+  names itself while the app names it Tasks, is still joined here), its title alone while it is empty (the empty list
+  says the rest, `empty_then`, joined by `prompt_of`); a reminder list's is
+  `ViewModel.reminders_heading`, and Reminders due's its name and what the look found, by
+  `prompt_of`.
 - **A menu reopens on the app's row in hand** (`live_menu`'s `focus`), and is drawn after it is
   built, the arrival flag cleared then (`session.settle`): building sends (a place opened), and
   a flag left set draws every screen twice.
@@ -124,7 +134,9 @@ test with a newer one (`PYTHON=…`).
   device's `InputDialog` takes `hotkeys`, and a hotkey is handed the dialog, so it completes at
   the cursor and puts the choice in the field; no dialog or device key claims it. In literary
   braille the field holds braille, so it completes the line's end. A last pass after Enter
-  (`assisted_input`) still offers what would finish the last word.
+  (`assisted_input`) still offers what would finish the last word, when the core says the line ends
+  in a name begun (`ends_unfinished`). A choice is put in by the core (`put_in`, over its UTF-8
+  byte offsets); `char_offset` is only where the cursor goes after it.
 - **`main()` pushes an app context** (`host.push_app_context("lumenna", …, self_voice=True)`,
   popped in a `finally`). The device takes its braille table from the app it believes is in
   front; without the push, BT Code's `.py` table makes every menu computer braille. The push
@@ -157,7 +169,8 @@ test with a newer one (`PYTHON=…`).
   whose choices carry a `reason` is a `dynamic_menu` instead (`session.choose(hints=…)`),
   the device saying each hint after the row; a pick without reasons stays a choice dialog.
 - **Replan from now and Plan the day are one menu** (`proposals.py`) over the app's proposal:
-  rows toggled by Enter with callable titles, so checking rewords a row in place, the title the
+  rows toggled by Enter with callable titles (each change's `line`, what Enter says its `toggled`),
+  so checking rewords a row in place, the title the
   whole proposal (said as it opens, not again after an apply, whose announcement already says
   the next). It is drawn again only for a new proposal or a refusal (`shown`).
   `proposals.NOW` fixes the moment for tests (`PlanFrom`, sent before every action).
@@ -169,13 +182,16 @@ test with a newer one (`PYTHON=…`).
 - **The tests seed and check the store over `lum rpc`** (`tests/client.py`, `harness.py`), as
   another process would, and `tick` the app before each script. They run in UTC: the core
   reads the zone once per process, so a test cannot set its own.
-- **`help/en` is this app's own prose, for now**: H-Chord's topics, and Keyboard shortcuts on
-  Home's menu (`menus.key_help`, the topic of the screen in front). What in it is the device's
-  own stays here: the device's keys (H-Chord, Z-Chord, M-Chord and Dot 7, Control-D and the D
-  chord, left and right, a capital moving by first letter) and how the device's dialogs behave.
-  What should become the core's Key Help later, since every braille device would say it: each
-  screen's and Home's commands with their letters (`screen_actions`, `HomeView`), each row's
-  actions and letters (`action_letter`), what Enter does per row (`keys::runs_on`), what an
-  action asks (Weight's range, Delete's choice for a project's tasks, Erase Permanently's warning),
-  how to write a quick-add line and a filter, pairing's steps, and what the exports and backups
-  hold. Keep the help in step with Home and the screens' menus until then.
+- **Key help is the core's** (Keyboard shortcuts, `menus.key_help`): `App::key_help_on(0,
+  KeyDevice.BT_SPEAK, True)` over the screen in front, its `lines` shown with `view_lines`: this
+  device's own keys (Enter, M-Chord and Dot 7, M-Chord, Tab in the menu bar, Z-Chord, H-Chord,
+  Control-D or D-Chord, folding, Control-L, a capital finding a row), Home's places, the screen's
+  commands and the rows' actions, each by its letter. A key of this device's that it lacks or
+  words wrongly is changed in the core (`key_help::device_keys`), never added here.
+- **`help/en` is this app's own prose, for now**: H-Chord's topics, the guide beside Key help.
+  What in it is the device's own stays here: how the device's dialogs behave. What should become
+  the core's later, since every braille device would say it: what Enter does per row
+  (`keys::runs_on`), what an action asks (Weight's range, Delete's choice for a project's tasks,
+  Erase Permanently's warning), how to write a quick-add line and a filter, pairing's steps, and
+  what the exports and backups hold. Keep the topics in step with Home and the screens' menus
+  until then.

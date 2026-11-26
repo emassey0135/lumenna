@@ -195,6 +195,10 @@ pub struct ProposalView {
     /// Each of [`unfit`](Self::unfit) as a row of its own, said with what it is: "Does not fit:
     /// Laundry".
     pub unfit_lines: Vec<String>,
+    /// The button that makes what is checked, with what becomes of a change left unchecked, as one
+    /// row for a list that reads a line each: "Make the changes checked. One left unchecked is
+    /// proposed around".
+    pub apply_line: String,
     /// Other ways to replan, each its sentence.
     pub others: Vec<String>,
     /// Why the last apply was refused.
@@ -242,6 +246,7 @@ pub fn view(screen: &Sheet) -> ProposalView {
         changes,
         unfit,
         unfit_lines: Vec::new(),
+        apply_line: String::new(),
         others,
         refusal: screen.refusal.clone(),
         shown: screen.shown,
@@ -395,4 +400,5 @@ pub(crate) fn compose(view: &mut ProposalView) {
         };
     }
     view.unfit_lines = view.unfit.iter().map(|line| format!("{}: {line}", view.words.unfit)).collect();
+    view.apply_line = crate::screen::prompt(&[view.words.apply.as_str(), view.words.hint.as_str()]);
 }

@@ -187,7 +187,11 @@ crosses the FFI.
   `PairingView::status` and `question` (and with none open `DevicesView::pairing_status`), a
   settings page's title with its description `SettingsPage::line` and with its caption `heading`,
   a dialog's control as a row reads it `ControlShown::line` ("Clock, 24-hour", a check by its
-  state's word) and a choice with why it is offered `option_lines`, the task's fields read rather than edited
+  state's word) and a choice with why it is offered `option_lines` (and while a shell still
+  holds a value the core has not had back, `dialog::line_holding`), a list's name with its
+  readback `ListShown::heading`, a reminder list's title with its announcement
+  `ViewModel::reminders_heading`, a proposal's Apply with its hint `ProposalView::apply_line`, a
+  row's or item's name with the keys that press its letter `key_help::with_press`, the task's fields read rather than edited
   `DetailsView::field_lines` ("Priority: High"), parts of a prompt (a refusal before what is
   asked) `screen::prompt` (`prompt_of`), a line with its level after it `lines::with_level`
   (`line_with_level`), with its folding too `lines::with_state` and `detail_with_state`, a

@@ -35,6 +35,6 @@ On Home a letter is Home's first: a place's, or one of Home's own commands. An i
 - What should I work on?, w: goes to Today and offers the tasks to start on.
 - Sync now, n: one round with your other devices now. See [Lumenna Settings](help:lumenna-settings).
 - Settings, s. See [Lumenna Settings](help:lumenna-settings).
-- Keyboard shortcuts, e: help about the screen you are on.
+- Keyboard shortcuts, e: the keys of the screen you are on, a line each: the device's own, then its commands and what its items offer, each by its letter. H-Chord is help about the screen.
 - Quit, in the File menu, closes Lumenna.
 - About Lumenna, o: its version, and where it lives.
