@@ -201,6 +201,16 @@ pub fn timer_control_line(control: TimerControl, now: String, sentence: bool) ->
     lumenna_app::glance::control_line(&control, now, sentence)
 }
 
+/// What a timer's control shows beneath its name at `now` (RFC 3339), where what a press does is
+/// its hint: the task it runs on, then what is left of the sitting's planned length, else how long
+/// so far ("Essay, 12 minutes left"); while none runs, what a press would start, or why nothing
+/// would. Control Center's toggle, read afresh each time it is drawn.
+#[export]
+pub fn timer_control_value(control: TimerControl, now: String) -> String {
+    let now = now.parse().unwrap_or_else(|_| jiff::Timestamp::now());
+    lumenna_app::glance::control_value(&control, now)
+}
+
 /// How long a timer counting from `counting_from` has run at `now`, said.
 #[export]
 pub fn glance_logged(counting_from: String, now: String) -> Option<String> {

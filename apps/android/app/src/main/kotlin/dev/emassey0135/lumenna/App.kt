@@ -275,7 +275,7 @@ fun LumennaApp(
                         to == TODAY -> show(Destination.At(Place.Today), *screens)
                         to == TabKind.Settings -> show(Destination.Settings, *screens)
                         first == Screen.Blocks -> show(Destination.At(Place.Blocks))
-                        first is Screen.Tasks && (first.place == Place.Trash || first.place == Place.History) -> show(Destination.At(first.place))
+                        first is Screen.Tasks && (first.place == Place.Trash || first.place == Place.History || first.place == Place.Report) -> show(Destination.At(first.place))
                         else -> show(Destination.At(Place.Tasks), *screens)
                     }
                     return
@@ -342,6 +342,9 @@ fun LumennaApp(
             Offer(Command.GO_BLOCKS) { go(TabKind.Browse, Screen.Blocks) }
             Offer(Command.GO_TRASH) { go(TabKind.Browse, Screen.Tasks(Place.Trash)) }
             Offer(Command.GO_HISTORY) { go(TabKind.Browse, Screen.Tasks(Place.History)) }
+            Offer(Command.GO_REPORT) { go(TabKind.Browse, Screen.Tasks(Place.Report)) }
+            // How much of the running sitting is left, from any screen: the core's to say.
+            Offer(Command.TIME_LEFT) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("time-left")) }
             Offer(Command.SETTINGS) { go(TabKind.Settings) }
             Offer(Command.SYNC_NOW) { core.app.syncNow() }
 

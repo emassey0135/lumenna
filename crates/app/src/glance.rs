@@ -143,13 +143,22 @@ pub fn countdown(timer: &lumenna_records::glance::GlanceTimer, now: jiff::Timest
 #[must_use]
 pub fn control_line(control: &lumenna_records::controls::TimerControl, now: jiff::Timestamp, sentence: bool) -> String {
     let action = if sentence { &control.action_sentence } else { &control.action };
+    joined([Some(action.clone()), Some(control_value(control, now))])
+}
+
+/// What a timer's control shows beneath its name at `now`, where what a press does is its hint
+/// (Control Center's toggle): the task it runs on, then what is left of the planned length, else
+/// how long so far ("Essay, 12 minutes left"); while none runs, what a press would start, or why
+/// nothing would.
+#[must_use]
+pub fn control_value(control: &lumenna_records::controls::TimerControl, now: jiff::Timestamp) -> String {
     let count = control.timer.as_ref().and_then(|timer| countdown(timer, now).or_else(|| logged(&timer.counting_from, now)));
-    [Some(action.clone()), Some(control.detail.clone()), count]
-        .into_iter()
-        .flatten()
-        .filter(|part| !part.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join(", ")
+    joined([Some(control.detail.clone()), count])
+}
+
+/// The parts that say something, joined as a line's are.
+fn joined<const N: usize>(parts: [Option<String>; N]) -> String {
+    parts.into_iter().flatten().filter(|part| !part.trim().is_empty()).collect::<Vec<_>>().join(", ")
 }
 
 /// How long a timer counting from `counting_from` (RFC 3339) has run at `now`, in whole minutes,

@@ -105,7 +105,10 @@ internal object Assistant {
 
     fun timer(answer: Assisted): TimerState {
         val timer = (answer as? Assisted.Timer)?.field0 ?: unexpected(answer)
-        return TimerState(timer.announcement, timer.notices, timer.changed, timer.assignment, timer.minutes.toInt(), timer.capped, timer.running)
+        return TimerState(
+            timer.announcement, timer.notices, timer.changed, timer.assignment, timer.minutes.toInt(), timer.capped, timer.running,
+            timer.plannedMins?.toInt(), timer.leftSecs, timer.runsOutAt,
+        )
     }
 
     fun replanProposed(answer: Assisted) = (answer as? Assisted.Replan)?.field0?.proposed() ?: unexpected(answer)
