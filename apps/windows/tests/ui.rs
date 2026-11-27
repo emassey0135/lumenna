@@ -34,6 +34,7 @@ const SETTINGS: &str = "cmd:111";
 const GO_TASKS: &str = "cmd:141";
 const GO_TRASH: &str = "cmd:143";
 const GO_HISTORY: &str = "cmd:146";
+const GO_UPCOMING: &str = "cmd:147";
 const PUT_IN_BLOCK: &str = "cmd:169";
 const ERASE_PERMANENTLY: &str = "cmd:171";
 
@@ -1919,4 +1920,28 @@ fn the_toolbar_holds_the_screens_own_actions_in_the_cores_order_and_runs_them() 
     app.post(&[GO_TRASH]);
     let shown = automation::wait(Duration::from_secs(5), || (toolbar(&app) == ["Undo", "Redo"]).then_some(()));
     assert!(shown.is_some(), "the trash's own actions: {:?}", toolbar(&app));
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn upcoming_lists_the_tasks_due_and_starting_each_day_with_no_filter() {
+    let app = App::launch(|lumenna| {
+        add(lumenna, "Pay rent tomorrow");
+        add(lumenna, "Draft the essay from tomorrow");
+    });
+    app.post(&[GO_UPCOMING]);
+    let lines = automation::wait(Duration::from_secs(5), || {
+        let lines = app.automation.dump(app.window, 10);
+        lines.iter().any(|l| l.trim_start().starts_with("Tree 'Upcoming'")).then_some(lines)
+    })
+    .expect("Upcoming is shown");
+    let rows: Vec<&String> = lines
+        .iter()
+        .skip_while(|l| !l.trim_start().starts_with("Tree 'Upcoming'"))
+        .skip(1)
+        .take_while(|l| l.contains("TreeItem"))
+        .collect();
+    assert!(rows.iter().any(|row| row.contains("Pay rent")), "the task due tomorrow: {rows:#?}");
+    assert!(rows.iter().any(|row| row.contains("Draft the essay")), "the task starting tomorrow: {rows:#?}");
+    assert!(!lines.iter().any(|l| l.contains("Edit 'Filter")), "Upcoming has no filter: {lines:#?}");
 }
