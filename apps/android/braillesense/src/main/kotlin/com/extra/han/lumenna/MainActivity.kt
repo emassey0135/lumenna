@@ -22,6 +22,7 @@ import dev.emassey0135.braillesense.edit.SystemClipboard
 import dev.emassey0135.braillesense.files.FilePicker
 import dev.emassey0135.braillesense.files.FileRequest
 import dev.emassey0135.braillesense.files.PickKind
+import dev.emassey0135.braillesense.session.Background
 import dev.emassey0135.braillesense.session.Foreground
 import dev.emassey0135.braillesense.files.PickedFile
 import dev.emassey0135.braillesense.session.BrailleSenseSession
@@ -127,11 +128,11 @@ class MainActivity : ComponentActivity(), Host {
             SystemClipboard(this, applicationInfo.loadLabel(packageManager)),
             messageMillis = { settings.messageMillis }, opensOnLetter = { settings.opensOnLetter }, echoSetting = { settings.echo },
         ).apply {
-            reminderAccess = { Reminders.access(this@MainActivity) }
+            reminderAccess = { Reminders.access(this@MainActivity).copy(background = !Background.restricted(this@MainActivity)) }
         }
         shell = shown
         // What holds reminders back, asked once each, over Home.
-        val background = Reminders.backgroundRestricted(this) && Reminders.shouldAskHeldBack(this, HELD_BACKGROUND)
+        val background = Background.restricted(this) && Reminders.shouldAskHeldBack(this, HELD_BACKGROUND)
         val front = !Foreground.allowed(this) && Reminders.shouldAskHeldBack(this, HELD_FRONT)
         if (background) Reminders.askedHeldBack(this, HELD_BACKGROUND)
         if (front) Reminders.askedHeldBack(this, HELD_FRONT)
@@ -298,7 +299,7 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun allowBackground() {
-        Reminders.openBackgroundSettings(this)
+        Background.openSettings(this)
     }
 
     companion object {

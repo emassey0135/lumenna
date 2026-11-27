@@ -77,8 +77,8 @@ class OrbitActivity : ComponentActivity() {
         val ui = Ui(app, core, session, view, ::finish)
         ui.chooseFile = { pick(FileRequest(PickKind.OPEN_FILE, startIn = folder), ::importFrom) }
         ui.chooseFolder = { key, current -> chooseFolder(key, current) }
-        ui.reminderAccess = { Reminders.access(this) }
-        ui.allowBackground = { Reminders.openBackgroundSettings(this) }
+        ui.reminderAccess = { Reminders.access(this).copy(background = !dev.emassey0135.orbit.Background.restricted(this)) }
+        ui.allowBackground = { dev.emassey0135.orbit.Background.openSettings(this) }
         ui.returnToPrevious = { dev.emassey0135.orbit.Foreground.returnToPrevious(this) }
         this.ui = ui
         front = Front(this, core, "android").also { it.created() }
@@ -86,7 +86,7 @@ class OrbitActivity : ComponentActivity() {
         session.created()
         ui.push(HomeScreen())
         // Held back in the background, no reminder goes off: asked once, over Home.
-        if (Reminders.backgroundRestricted(this) && Reminders.shouldAskHeldBack(this, HELD_BACKGROUND)) {
+        if (dev.emassey0135.orbit.Background.restricted(this) && Reminders.shouldAskHeldBack(this, HELD_BACKGROUND)) {
             Reminders.askedHeldBack(this, HELD_BACKGROUND)
             ui.push(HeldBackScreen())
         }

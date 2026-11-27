@@ -651,8 +651,9 @@ object Reminders {
 
     /**
      * Whether Android holds the app back in the background (its battery use restricted; MediaTek's
-     * DuraSpeed restricts every app not switched on in its own list, as on the BrailleSense and both
-     * Orbits): its alarms then wait, undelivered, until the app is opened, so no reminder goes off.
+     * DuraSpeed restricts every app not switched on in its own list): its alarms then wait,
+     * undelivered, until the app is opened, so no reminder goes off. For the phone and the watch: the
+     * Orbit and BrailleSense apps ask their device's SDK (`Background`), which knows its device's pages.
      */
     fun backgroundRestricted(context: Context): Boolean =
         context.getSystemService(android.app.ActivityManager::class.java)?.isBackgroundRestricted == true
@@ -678,8 +679,8 @@ object Reminders {
 
     /**
      * Opens where the app's background use is allowed, as close to it as Android lets another app
-     * go: the app's own battery page (Android 11 names it `APP_BATTERY_SETTINGS` on the Orbits, 15
-     * `VIEW_ADVANCED_POWER_USAGE_DETAIL` on the BrailleSense; neither is published), else
+     * go: the app's own battery page (`APP_BATTERY_SETTINGS` on Android 11,
+     * `VIEW_ADVANCED_POWER_USAGE_DETAIL` later; neither is published), else
      * [backgroundSettings]. Each is tried in turn, a refusal going on to the next. Whether one opened.
      */
     fun openBackgroundSettings(context: Context): Boolean {
