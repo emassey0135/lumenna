@@ -3023,17 +3023,19 @@ fn a_running_timer_says_once_when_its_planned_length_runs_out_and_its_stop_timer
     let later = jiff::Timestamp::now().checked_add(jiff::SignedDuration::from_mins(26)).unwrap().to_string();
     let shell = app.send(Event::Due(lumenna_app::DueEvent::Look { since, now: Some(later.clone()) }));
     assert!(said(&shell).contains(&"Write report's 25 minutes are up"), "{shell:?}");
-    let due = app.view().due;
+    // Only the running out: the block's own reminders may fall in the window too, by the clock.
+    let up = |app: &App| app.view().due.into_iter().filter(|d| d.text.ends_with("are up")).collect::<Vec<_>>();
+    let due = up(&app);
     assert_eq!(due.len(), 1);
     let ids: Vec<&str> = due[0].buttons.iter().map(|b| b.id.as_str()).collect();
     assert_eq!(ids, ["stop", "dismiss"], "Stop Timer first, and no Snooze: it is said once");
     assert_eq!(due[0].buttons[0].title, "Stop Timer");
     app.send(Event::Due(lumenna_app::DueEvent::Press { id: due[0].id.clone(), button: "stop".to_owned() }));
-    assert!(app.view().due.is_empty(), "dealt with");
+    assert!(up(&app).is_empty(), "dealt with");
     let host = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
     assert!(!host.timer_now(None).unwrap().running, "its timer stopped");
     let again = host.reminders_due(jiff::Timestamp::now().to_string(), Some(later)).unwrap();
-    assert!(again.due.is_empty(), "never said again");
+    assert!(!again.due.iter().any(|d| d.text.ends_with("are up")), "never said again");
 }
 
 #[test]

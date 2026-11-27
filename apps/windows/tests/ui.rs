@@ -1897,7 +1897,7 @@ fn toolbar(app: &App) -> Vec<String> {
 #[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
 fn the_toolbar_holds_the_screens_own_actions_in_the_cores_order_and_runs_them() {
     let app = App::launch(|lumenna| add(lumenna, "Buy milk"));
-    let today = ["New Block...", "Previous Day", "Next Day", "Go to Day...", "Go to Now", "Undo", "Redo"];
+    let today = ["New Block...", "Previous Day", "Next Day", "Go to Day...", "Go to Now", "Time Left", "Undo", "Redo"];
     let shown = automation::wait(Duration::from_secs(5), || (toolbar(&app) == today).then_some(()));
     assert!(shown.is_some(), "Today's own actions: {:?} in {:#?}", toolbar(&app), app.automation.dump(app.window, 8));
     app.post(&[GO_TASKS]);
