@@ -203,8 +203,12 @@ data class ReminderOpened(val kind: String, val target: String, val occurrence: 
  * reminders' own thread, notifications allowed or not; not for what a catching up finds missed.
  */
 interface Ringer {
-    /** [due] has just gone off. */
-    fun ring(context: Context, due: DueReminder)
+    /**
+     * [due] has just gone off, as the core found it looking from [since] to [now] (RFC 3339): the
+     * moment Android's alarm gave, which the app's own clock, not ticking in the background, has
+     * not reached. A look over the same says it as its notification did.
+     */
+    fun ring(context: Context, due: DueReminder, since: String, now: String)
 }
 
 /** A block's day, as a reminder names it: its series and the occurrence's date. */
@@ -336,7 +340,8 @@ object Reminders {
     fun fire(context: Context, core: Core, key: String, occurrence: String, at: String): DueReminder? {
         val moment = runCatching { Instant.parse(at) }.getOrNull() ?: return null
         val now = maxOf(Instant.now(), moment)
-        val found = core.attempt { core.device.remindersDue(moment.minusSeconds(1).toString(), now.toString()) } ?: return null
+        val since = moment.minusSeconds(1).toString()
+        val found = core.attempt { core.device.remindersDue(since, now.toString()) } ?: return null
         val match = { due: DueReminder -> due.key == key && due.occurrence == occurrence }
         val firing = found.due.firstOrNull(match)?.let { it to it.text } ?: found.missed.firstOrNull(match)?.let { it to it.missed }
             ?: return null
@@ -344,7 +349,7 @@ object Reminders {
         // could not be shown, notifications being off, is missed, and said as missed once they
         // are on.
         if (show(context, core, firing.first, firing.second)) SystemShown(context).record("$key@$occurrence")
-        (context.applicationContext as? Ringer)?.ring(context, firing.first)
+        (context.applicationContext as? Ringer)?.ring(context, firing.first, since, now.toString())
         return firing.first
     }
 

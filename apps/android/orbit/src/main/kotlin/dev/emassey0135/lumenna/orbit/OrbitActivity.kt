@@ -124,10 +124,9 @@ class OrbitActivity : ComponentActivity() {
      */
     private fun reminderTapped(intent: android.content.Intent?) {
         Reminders.opened(this, intent)?.reminded?.let { ui?.reminded(it) }
-        OrbitApplication.ringing(intent)?.let { (key, occurrence) ->
-            intent?.removeExtra(OrbitApplication.RING_KEY)
-            intent?.removeExtra(OrbitApplication.RING_OCCURRENCE)
-            ui?.ring(key, occurrence)
+        OrbitApplication.ringing(intent)?.let { ringing ->
+            OrbitApplication.heard(intent)
+            ui?.ring(ringing)
         }
     }
 

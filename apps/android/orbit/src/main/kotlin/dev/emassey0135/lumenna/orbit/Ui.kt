@@ -491,26 +491,29 @@ class Ui(
     /** Looks back over the last day for reminders due, so Home offers them: as Home opens, and as the app comes to the front. */
     fun lookBack() = send(ShellEvent.Due(DueEvent.LookBack))
 
-    /** A reminder that went off and brought the app to the front, until the app holds it: its firing, and when. */
-    private var ringing: Triple<String, String, Long>? = null
+    /** A reminder that went off and brought the app to the front, until the app holds it, and when it came. */
+    private var ringing: Pair<OrbitApplication.Ringing, Long>? = null
 
     /**
-     * The firing [key] at [occurrence] went off and brought the app to the front: once the app's
-     * reminders due hold it, it is said as its dialog ([RingingScreen]). One the app has not found
-     * within a while (dealt with on another device meanwhile) is let go.
+     * A reminder went off and brought the app to the front: the app looks over the moments the
+     * alarm found it between, not by its own clock, which does not tick in the background and has
+     * not reached it; once the app's reminders due hold it, it is said as its dialog
+     * ([RingingScreen]), in the words its notification had. One not found within a while (dealt
+     * with on another device meanwhile) is let go, the while counted on a clock that runs on as the
+     * device sleeps, so a ring is never said when the device next wakes.
      */
-    fun ring(key: String, occurrence: String) {
-        ringing = Triple(key, occurrence, SystemClock.uptimeMillis())
-        lookBack()
+    fun ring(firing: OrbitApplication.Ringing) {
+        ringing = firing to SystemClock.elapsedRealtime()
+        send(ShellEvent.Due(DueEvent.Look(firing.since, firing.now)))
     }
 
     private fun followRinging(v: ViewModel) {
-        val (key, occurrence, since) = ringing ?: return
-        if (SystemClock.uptimeMillis() - since > RINGING_MS) {
+        val (firing, came) = ringing ?: return
+        if (SystemClock.elapsedRealtime() - came > RINGING_MS) {
             ringing = null
             return
         }
-        val due = v.due.firstOrNull { due -> due.firings.any { it.key == key && it.occurrence == occurrence } } ?: return
+        val due = v.due.firstOrNull { due -> due.firings.any { it.key == firing.key && it.occurrence == firing.occurrence } } ?: return
         ringing = null
         if (stack.screens.none { it is RingingScreen && it.id == due.id }) push(RingingScreen(due.id))
     }

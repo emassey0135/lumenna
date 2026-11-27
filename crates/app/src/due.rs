@@ -196,6 +196,24 @@ pub fn arrived(found: &DueReminders) -> Vec<Due> {
     out
 }
 
+/// One look covering two asked for while another was under way: from the earlier start to the
+/// later end, `None` being now, the latest of all. A look given the moment a platform's alarm went
+/// off must not be cut short by one at the app's own clock, which can lag behind it.
+fn covering(first: (String, Option<String>), then: (String, Option<String>)) -> (String, Option<String>) {
+    let at = |text: &str| text.parse::<jiff::Timestamp>().ok();
+    let since = match (at(&first.0), at(&then.0)) {
+        (Some(a), Some(b)) if b < a => then.0,
+        _ => first.0,
+    };
+    let now = match (&first.1, &then.1) {
+        (None, _) | (_, None) => None,
+        (Some(a), Some(b)) => match (at(a), at(b)) {
+            (Some(x), Some(y)) if x > y => first.1,
+            _ => then.1,
+        },
+    };
+    (since, now)
+}
 
 /// Whether the reminder `id` due offers what `has` asks of it.
 fn offers(model: &Screen, id: &str, has: impl Fn(&Due) -> bool) -> bool {
@@ -271,8 +289,10 @@ impl Lumenna {
             // so a burst of them (a clock moved on, a tab come back) is not a queue of them.
             DueEvent::Look { since, now } => {
                 if model.looking {
-                    let since = model.look_next.take().map_or(since, |(first, _)| first);
-                    model.look_next = Some((since, now));
+                    model.look_next = Some(match model.look_next.take() {
+                        Some(waiting) => covering(waiting, (since, now)),
+                        None => (since, now),
+                    });
                     return Command::done();
                 }
                 model.looking = true;
@@ -352,5 +372,30 @@ impl Lumenna {
             model.due.push(item);
         }
         render().and(said).and(next)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::covering;
+
+    fn look(since: &str, now: Option<&str>) -> (String, Option<String>) {
+        (since.to_owned(), now.map(str::to_owned))
+    }
+
+    #[test]
+    fn looks_asked_for_meanwhile_go_as_one_from_the_earlier_start_to_the_later_end() {
+        // An alarm's moment, then a look back by an app clock that had not reached it.
+        let alarm = look("2026-11-27T05:35:59Z", Some("2026-11-27T05:36:00Z"));
+        let back = look("2026-11-26T05:35:30Z", Some("2026-11-27T05:35:30Z"));
+        assert_eq!(covering(alarm.clone(), back.clone()), look("2026-11-26T05:35:30Z", Some("2026-11-27T05:36:00Z")));
+        assert_eq!(covering(back, alarm), look("2026-11-26T05:35:30Z", Some("2026-11-27T05:36:00Z")));
+    }
+
+    #[test]
+    fn a_look_until_now_keeps_the_merged_look_until_now() {
+        let until_now = look("2026-11-27T05:00:00Z", None);
+        let earlier = look("2026-11-27T04:00:00Z", Some("2026-11-27T05:36:00Z"));
+        assert_eq!(covering(until_now, earlier), look("2026-11-27T04:00:00Z", None));
     }
 }
