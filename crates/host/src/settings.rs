@@ -292,7 +292,8 @@ impl Lumenna {
         let mut notices = Vec::new();
         match key {
             "backup-dir" => {
-                if value.eq_ignore_ascii_case("default") {
+                // "default", or a line left empty, as a device that types the folder empties it.
+                if value.trim().is_empty() || value.trim().eq_ignore_ascii_case("default") {
                     self.write_device_setting(key, None)?;
                 } else {
                     let directory = absolute(Path::new(value));
@@ -440,7 +441,7 @@ fn described(key: &str, value: String) -> Setting {
             "A backup holds your whole history, including every task you deleted. It stays on this device.",
         ),
         "backup-keep" => ("Backups kept", K::Number, Vec::new(), ""),
-        "backup-dir" => ("Backups go to", K::Folder, Vec::new(), ""),
+        "backup-dir" => ("Backups go to", K::Folder, Vec::new(), "Empty for the default folder."),
         "reminders" => (
             "Reminders on this device",
             K::Toggle,

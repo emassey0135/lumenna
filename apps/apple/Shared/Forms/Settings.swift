@@ -215,6 +215,8 @@ struct SettingControl: View {
                 HStack {
                     Text(model.values[setting.key] ?? "").textSelection(.enabled).lineLimit(2)
                     Button(Wording.choose + "…") { model.chooseBackupFolder() }
+                    // Back to the folder the app keeps them in by itself.
+                    Button(Wording.settings.useDefaultFolder) { model.set(setting.key, "default") }
                 }
             }
             #else

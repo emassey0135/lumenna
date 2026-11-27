@@ -760,6 +760,8 @@ pub struct SettingWords {
     pub choose: String,
     /// That dialog's title.
     pub choose_folder: String,
+    /// The button beside a folder setting that puts it back to its default folder.
+    pub use_default_folder: String,
     /// The Devices page's line of how syncing is going (`DevicesView::status`): its label.
     pub sync_status: String,
     /// The Devices page's list of devices: its label.
@@ -780,6 +782,7 @@ pub fn setting_words() -> SettingWords {
         set: "Set".to_owned(),
         choose: "Choose".to_owned(),
         choose_folder: "Choose a Folder".to_owned(),
+        use_default_folder: "Use the Default Folder".to_owned(),
         sync_status: "Sync Status".to_owned(),
         devices: "Paired Devices".to_owned(),
         rename: "Rename".to_owned(),

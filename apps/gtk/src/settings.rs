@@ -864,6 +864,17 @@ fn backups(app: &Rc<App>, spec: &lumenna_records::fields::SettingsPage) -> Built
     let row = gtk::Box::builder().spacing(6).build();
     row.append(&folder);
     row.append(&choose);
+    // Back to the folder the app keeps them in by itself: the line cannot be emptied.
+    let default = gtk::Button::with_label(&crate::words().settings.use_default_folder);
+    row.append(&default);
+    {
+        let app = Rc::downgrade(app);
+        default.connect_clicked(move |_| {
+            if let Some(app) = app.upgrade() {
+                app.model.send(ShellEvent::Settings(SettingsEvent::Set { key: "backup-dir".to_owned(), value: "default".to_owned() }));
+            }
+        });
+    }
     let label = gtk::Label::builder().use_underline(true).xalign(0.0).margin_top(6).build();
     label.set_mnemonic_widget(Some(&folder));
     page.add(&label);
