@@ -70,6 +70,11 @@ abstract class LumennaFunctions : AppFunctionService() {
         Assistant.dayShown(assist("day", Assistant.text("date", date)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("The days ahead at once, today first: each day's blocks in time order, then the tasks due, starting or with their deadline that day.")
+    suspend fun listUpcoming(): Listing =
+        Assistant.listing(assist("list_upcoming"))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Every time block, each with when it happens and how often.")
     suspend fun listBlocks(): Listing =
         Assistant.listing(assist("list_blocks"))
@@ -115,7 +120,7 @@ abstract class LumennaFunctions : AppFunctionService() {
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it.")
     suspend fun addTask(
-        @AppFunctionInstruction("A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
+        @AppFunctionInstruction("A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"), when it may be begun (\"from monday\", or \"someday\"), the day it must be done by (\"by friday\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
         text: String,
     ): ChangeMade =
         Assistant.changeMade(assist("add_task", Assistant.text("text", text)))
@@ -137,6 +142,10 @@ abstract class LumennaFunctions : AppFunctionService() {
         estimate: String? = null,
         @AppFunctionInstruction("How long one sitting of it is (\"45m\"), for work better done in pieces: planning gives it a sitting at a time. `none` to plan it whole.")
         sittings: String? = null,
+        @AppFunctionInstruction("When it may be begun, as a person says a day (\"next monday\"): until then it is left out of the lists and the planner. `someday` keeps it until it is given a date; `none` starts it now.")
+        start: String? = null,
+        @AppFunctionInstruction("The day it must be done by (\"friday\"), or `none`.")
+        deadline: String? = null,
         @AppFunctionInstruction("Its notes, whole.")
         notes: String? = null,
         @AppFunctionInstruction("The project to move it to, by name.")
@@ -144,7 +153,7 @@ abstract class LumennaFunctions : AppFunctionService() {
         @AppFunctionInstruction("Its labels, all of them, by name.")
         labels: List<String>? = null,
     ): ChangeMade =
-        Assistant.changeMade(assist("edit_task", Assistant.text("id", id), Assistant.text("title", title), Assistant.text("due", due), Assistant.text("repeat", repeat), Assistant.number("priority", priority), Assistant.text("estimate", estimate), Assistant.text("sittings", sittings), Assistant.text("notes", notes), Assistant.text("project", project), Assistant.texts("labels", labels)))
+        Assistant.changeMade(assist("edit_task", Assistant.text("id", id), Assistant.text("title", title), Assistant.text("due", due), Assistant.text("repeat", repeat), Assistant.number("priority", priority), Assistant.text("estimate", estimate), Assistant.text("sittings", sittings), Assistant.text("start", start), Assistant.text("deadline", deadline), Assistant.text("notes", notes), Assistant.text("project", project), Assistant.texts("labels", labels)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Marks a task done. A repeating one moves on to its next date.")

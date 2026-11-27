@@ -73,8 +73,11 @@ import kotlinx.coroutines.flow.collectLatest
 
 /** Somewhere to be: what a tab's back stack holds. */
 sealed interface Screen {
-    /** The day planner: a reminder's block on its day, else today. */
-    data class Day(val block: BlockOn? = null) : Screen
+    /**
+     * The day planner: a reminder's block on its day, else today; [followed], the day the app
+     * has just gone to itself (Upcoming's Show the day), which it keeps rather than opening today.
+     */
+    data class Day(val block: BlockOn? = null, val followed: Boolean = false) : Screen
 
     /** A place's tasks, as the app lists them: every open task, a project's, the trash. */
     data class Tasks(val place: dev.emassey0135.lumenna.app.Place = dev.emassey0135.lumenna.app.Place.Tasks) : Screen
@@ -251,7 +254,8 @@ fun LumennaApp(
 
             // Where a place's action leads is the app's (renamed, made, merged, deleted): when the
             // app moves on from the place shown, the screen goes with it. A move made here shows
-            // its place first, so it is not the app's to follow.
+            // its place first, so it is not the app's to follow. A day shown from a list (Upcoming's
+            // day or block) goes over the list rather than in its place, so Back comes back to it.
             val appPlace = shownView?.place
             var lastPlace by remember { mutableStateOf(appPlace) }
             LaunchedEffect(appPlace) {
@@ -259,11 +263,19 @@ fun LumennaApp(
                 lastPlace = appPlace
                 if (appPlace == null || was == null || was == appPlace) return@LaunchedEffect
                 val to = Destination.At(appPlace)
+                val day = appPlace == Place.Today
+                val shown = if (day) Screen.Day(followed = true) else to.screen()
                 if (wide) {
-                    if ((destination as? Destination.At)?.place == was) show(to)
+                    if ((destination as? Destination.At)?.place == was) {
+                        destination = to
+                        placeStack.clear()
+                        placeStack.add(shown)
+                    }
                 } else {
                     val top = stack.lastOrNull()
-                    if (top is Screen.Tasks && top.place == was) stack[stack.lastIndex] = to.screen()
+                    if (top is Screen.Tasks && top.place == was) {
+                        if (day) stack.add(shown) else stack[stack.lastIndex] = shown
+                    }
                 }
             }
 
@@ -275,7 +287,7 @@ fun LumennaApp(
                         to == TODAY -> show(Destination.At(Place.Today), *screens)
                         to == TabKind.Settings -> show(Destination.Settings, *screens)
                         first == Screen.Blocks -> show(Destination.At(Place.Blocks))
-                        first is Screen.Tasks && (first.place == Place.Trash || first.place == Place.History) -> show(Destination.At(first.place))
+                        first is Screen.Tasks && (first.place == Place.Trash || first.place == Place.History || first.place == Place.Upcoming) -> show(Destination.At(first.place))
                         else -> show(Destination.At(Place.Tasks), *screens)
                     }
                     return
@@ -338,6 +350,7 @@ fun LumennaApp(
             Offer(Command.UNDO) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("undo")) }
             Offer(Command.REDO) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("redo")) }
             Offer(Command.GO_TODAY) { go(TODAY) }
+            Offer(Command.GO_UPCOMING) { go(TabKind.Browse, Screen.Tasks(Place.Upcoming)) }
             Offer(Command.GO_TASKS) { go(TASKS) }
             Offer(Command.GO_BLOCKS) { go(TabKind.Browse, Screen.Blocks) }
             Offer(Command.GO_TRASH) { go(TabKind.Browse, Screen.Tasks(Place.Trash)) }

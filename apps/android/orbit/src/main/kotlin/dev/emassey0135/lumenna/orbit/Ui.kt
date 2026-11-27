@@ -430,8 +430,8 @@ class Ui(
 
     /**
      * Where the app went: Home left for a place (Enter, a letter, What Should I Work On?) shows that
-     * place over Home, and the app moving from the place shown (a project renamed or deleted, today
-     * from anywhere) shows where it went in its stead.
+     * place over Home, and the app moving from the place shown (a project renamed or deleted) shows
+     * where it went in its stead; a day it goes to (today from anywhere, a day of Upcoming's) over it.
      */
     private fun followPlace(v: ViewModel) {
         val home = v.home != null
@@ -447,6 +447,10 @@ class Ui(
         val showing = screens[at]
         when {
             showing is HomeScreen && left -> stack.insert(adopt(screenFor(place)), above = showing)
+            // A day shown from a list (Upcoming's day or block) goes over the list, so Back comes
+            // back to it; any other place takes the place of the one left, which may be gone.
+            showing is ShowsPlace && moved && showing.place != place && place is dev.emassey0135.lumenna.app.Place.Today ->
+                stack.insert(adopt(screenFor(place)), above = showing)
             showing is ShowsPlace && moved && showing.place != place -> stack.replace(showing, adopt(screenFor(place)))
         }
     }

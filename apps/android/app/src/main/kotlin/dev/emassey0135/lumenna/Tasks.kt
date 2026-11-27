@@ -79,6 +79,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import dev.emassey0135.lumenna.app.Item
+import dev.emassey0135.lumenna.app.keyRunsOn
 import dev.emassey0135.lumenna.app.Line
 import dev.emassey0135.lumenna.app.placeTitle
 import dev.emassey0135.lumenna.app.Place
@@ -120,7 +121,7 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
     }
 
     val field = remember { FocusRequester() }
-    // Every place listed here offers the filter (`screen_actions`): the field above its list.
+    // Where the place offers the filter (`screen_actions`), it is the field above its list.
     val shortcuts = LocalShortcuts.current
     // Collected, not a key: clearing the request would change the key, and cancel the
     // effect before the field had focus.
@@ -139,8 +140,11 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
 
     // The place's own actions, the core's; the filter is this screen's field, which it focuses.
     val screenActions = ScreenButtons(here?.screenActions.orEmpty(), mapOf<String, () -> Unit>("filter" to { runCatching { field.requestFocus() } }))
+    // The field is there where the core offers the filter: not in the trash, the history or the
+    // days ahead, whose listings take none.
+    val filters = here?.screenActions.orEmpty().any { it.id == "filter" }
     ScreenFrame(here?.title ?: placeTitle(screen.place), core, navigator, screen = screenActions) {
-        CompletingField(
+        if (filters) CompletingField(
             core = core,
             syntax = Syntax.FILTER,
             label = appWords.quickAdd.filter,
@@ -166,8 +170,16 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
             shownRows(list?.items.orEmpty(), lines?.list.orEmpty()),
             list,
             open = if (trash) null else { row ->
-                app.send(ShellEvent.Focus(row.id))
-                navigator.push(Screen.Task(row.id))
+                if (row.role == "task") {
+                    app.send(ShellEvent.Focus(row.id))
+                    navigator.push(Screen.Task(row.id))
+                } else {
+                    // A day or a block of the days ahead: its Enter, the core's (Show the day).
+                    app.rowKeys(row.id).key("open")
+                }
+            },
+            openLabelOf = { item ->
+                if (item.row.role == "task") null else list?.let { keyRunsOn("open", it.offeredOf(item))?.name }
             },
         )
     }
@@ -186,6 +198,7 @@ fun AppTaskRows(
     open: ((RowView) -> Unit)?,
     openLabel: String = appWords.showDetails,
     local: (dev.emassey0135.lumenna.app.Offered) -> Boolean = { false },
+    openLabelOf: (Item) -> String? = { null },
 ) {
     val state = rememberLazyListState()
     val keys = items.map { it.first.row.id }
@@ -199,16 +212,20 @@ fun AppTaskRows(
         itemsIndexed(items, key = { _, (item, _) -> item.row.id }) { index, (item, line) ->
             val row = item.row
             ListRow(
-                title = row.title,
+                // The line's first part, as the core words it: a task's title, a day as this
+                // device says one, a block with its times (Upcoming's).
+                title = line?.title?.ifEmpty { null } ?: row.title,
                 detail = line?.detail.orEmpty(),
                 speech = spoken(item, line),
+                // A day or a block has no checkbox (`checked` null).
                 done = row.checked,
+                heading = row.role == "group",
                 depth = row.depth.toInt(),
                 index = index,
                 actions = core.app.rowActions(row.id, list?.offeredOf(item).orEmpty(), local),
                 keys = core.app.rowKeys(row.id),
                 open = open?.let { { it(row) } },
-                openLabel = openLabel,
+                openLabel = openLabelOf(item) ?: openLabel,
                 focus = focus.requester(row.id),
                 key = row.id,
                 say = core::say,

@@ -50,6 +50,10 @@ data class TaskWhole(
     val estimateMinutes: Int?,
     /** How long one sitting of it is, in minutes, when it is planned in sittings. */
     val sittingMinutes: Int?,
+    /** When it may be begun: a day, `YYYY-MM-DD`, or `someday`. */
+    val start: String?,
+    /** The day it must be done by, `YYYY-MM-DD`. */
+    val deadline: String?,
     /** What is true of it, in words: done, overdue, blocked. */
     val state: List<String>,
     /** Its history: sittings, time worked, completions, postponements. */

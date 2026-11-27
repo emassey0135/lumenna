@@ -606,6 +606,7 @@ class Shell(
             "settings" -> pushPage(Page.Settings)
             "close-window", "quit" -> host.exit()
             "go-today" -> goTo(id, Place.Today)
+            "go-upcoming" -> goTo(id, Place.Upcoming)
             "go-tasks" -> goTo(id, Place.Tasks)
             "go-blocks" -> goTo(id, Place.Blocks)
             "go-trash" -> goTo(id, Place.Trash)

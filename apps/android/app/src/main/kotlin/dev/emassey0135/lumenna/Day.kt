@@ -85,7 +85,8 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
     val app = core.app
     val view by app.view.collectAsState()
     LaunchedEffect(screen) {
-        app.send(ShellEvent.Open(Place.Today))
+        // A day the app went to itself is the one it shows: opening Today would show today.
+        if (!screen.followed || app.view.value?.place != Place.Today) app.send(ShellEvent.Open(Place.Today))
         // A reminder's block: its day, with it in hand.
         screen.block?.let { app.send(ShellEvent.ShowBlock(it.series, it.date)) }
     }

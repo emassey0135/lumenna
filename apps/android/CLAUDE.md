@@ -110,8 +110,11 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   the pane's width) and the rest in the bar's overflow menu (named `appWords.more`), where one
   that `asks` ends in "…". The icon for each `id` is Android's look (`iconOf`); an `id` with none
   goes to the menu. Each is `ShellEvent.Key(id)`, but what is the shell's (`shell`): the filter is
-  the field above the list, which the action focuses, and every task list has it, as the core
-  offers it on each, the trash's included. The screens follow what the app opens: quick add as its
+  the field above the list, which the action focuses, on a list only where the core offers it
+  (not the trash, the history or Upcoming). A day or a block of Upcoming opens with its Enter, the
+  core's `Key("open")` (Show the day), named by `keyRunsOn`; the day it shows is pushed over the
+  list, on the phone, the watch and the Orbit, so Back comes back to it, where a place the app moves
+  to otherwise takes the place left. The screens follow what the app opens: quick add as its
   line opens (`FollowLine`, only as it opens, so a line closing as the person comes back does not
   reopen it), the block form and the question as before. A screen that is no place (the details,
   a form, settings, Browse) has Undo and Redo in its bar, Android's own, since the core lists

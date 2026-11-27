@@ -210,7 +210,9 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
         val was = lastPlace
         lastPlace = appPlace
         if (appPlace == null || was != place || appPlace == place || navigator.current() != Screen.Tasks(place)) return@LaunchedEffect
-        navigator.replace(placeScreen(appPlace))
+        // A day shown from the list (Upcoming's day or block) goes over it, so back comes back
+        // to the list; any other place takes the one left, which may be gone.
+        if (appPlace == Place.Today) navigator.open(placeScreen(appPlace)) else navigator.replace(placeScreen(appPlace))
     }
     // Narrowing the list, as the phone's field above it does: the app's filter, and why what
     // was typed does not read yet.
@@ -250,18 +252,26 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
             item {
                 val task = shown.row
                 val actions = app.rowActions(task.id, list?.offeredOf(shown).orEmpty()).sortedByDescending { it.primary }
+                // The line's first part, as the core words it: a task's title, a day as this
+                // device says one, a block with its times (Upcoming's).
+                val title = line?.title?.ifEmpty { null } ?: task.title
                 RowButton(
-                    task.title,
+                    title,
                     detail = line?.detail?.ifEmpty { null },
                     state = spoken(shown, line).ifEmpty { null },
                     actions = actions,
-                    onLongClick = { navigator.actions(task.title, actions) },
+                    onLongClick = { navigator.actions(title, actions) },
                     key = task.id,
                     focus = focus,
                     swatch = task.swatch,
                     onClick = {
-                        app.send(ShellEvent.Focus(task.id))
-                        navigator.open(Screen.Task(task.id))
+                        if (task.role == "task") {
+                            app.send(ShellEvent.Focus(task.id))
+                            navigator.open(Screen.Task(task.id))
+                        } else {
+                            // A day or a block of the days ahead: its Enter, the core's (Show the day).
+                            app.rowKeys(task.id).key("open")
+                        }
                     },
                 )
             }
