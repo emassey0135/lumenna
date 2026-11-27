@@ -538,6 +538,12 @@ pub fn snooze_not_offered() -> String {
     "What was missed can be dismissed, not snoozed.".to_owned()
 }
 
+/// Why a sitting's time run out is not snoozed: it is said once.
+#[must_use]
+pub fn time_up_not_snoozed() -> String {
+    "Time running out is said once, not snoozed.".to_owned()
+}
+
 /// `text` in sentence case where `sentence`, else as given (Title Case).
 fn cased(text: &str, sentence: bool) -> String {
     if sentence { crate::fields::sentence_case(text.to_owned()) } else { text.to_owned() }

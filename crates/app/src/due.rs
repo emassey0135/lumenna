@@ -328,6 +328,7 @@ impl Lumenna {
             },
             DueEvent::Dismiss(id) => self.deal(&id, Deal::Dismiss, model),
             // A summary of what was missed has no Snooze: refused in the core's words.
+            DueEvent::Snooze(id) if offers(model, &id, |d| d.stop.is_some()) => refused(lumenna_records::words::time_up_not_snoozed()),
             DueEvent::Snooze(id) if !offers(model, &id, |d| d.snooze.is_some()) => refused(lumenna_records::words::snooze_not_offered()),
             DueEvent::Snooze(id) => self.deal(&id, Deal::Snooze, model),
             // A reminder without the button refuses it, in the core's words.

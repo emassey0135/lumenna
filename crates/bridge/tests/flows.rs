@@ -3030,6 +3030,8 @@ fn a_running_timer_says_once_when_its_planned_length_runs_out_and_its_stop_timer
     let ids: Vec<&str> = due[0].buttons.iter().map(|b| b.id.as_str()).collect();
     assert_eq!(ids, ["stop", "dismiss"], "Stop Timer first, and no Snooze: it is said once");
     assert_eq!(due[0].buttons[0].title, "Stop Timer");
+    let shell = app.send(Event::Due(lumenna_app::DueEvent::Snooze(due[0].id.clone())));
+    assert!(said(&shell).contains(&"Time running out is said once, not snoozed."), "{shell:?}");
     app.send(Event::Due(lumenna_app::DueEvent::Press { id: due[0].id.clone(), button: "stop".to_owned() }));
     assert!(up(&app).is_empty(), "dealt with");
     let host = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
