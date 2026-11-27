@@ -52,7 +52,7 @@ struct GlanceView: View {
     @ViewBuilder private var circular: some View {
         ZStack {
             AccessoryWidgetBackground()
-            if let start = entry.timerStart {
+            if let start = entry.timerCounts {
                 Text(start, style: .timer)
                     .font(.caption.monospacedDigit())
                     .multilineTextAlignment(.center)
@@ -81,7 +81,7 @@ struct GlanceView: View {
     /// The timer or the block's progress in the corner, the headline along its curve.
     @ViewBuilder private var corner: some View {
         Group {
-            if let start = entry.timerStart {
+            if let start = entry.timerCounts {
                 Text(start, style: .timer).font(.caption.monospacedDigit()).minimumScaleFactor(0.5)
             } else if let block = entry.blockUnderWay {
                 ProgressView(timerInterval: block, countsDown: false).progressViewStyle(.circular)
@@ -146,10 +146,17 @@ private struct Headline: View {
                 .foregroundStyle(Color.quietLabel)
                 .lineLimit(2)
         }
-        if let start = entry.timerStart {
+        if let start = entry.timerCounts {
             Text(start, style: .timer)
                 .font(compact ? .body.monospacedDigit() : .title2.monospacedDigit())
                 .widgetAccentable()
+        }
+        // What is left of the sitting's planned length, the core's words, beside the count.
+        if let countdown = entry.countdown {
+            Text(countdown)
+                .font(compact ? .caption : .subheadline)
+                .foregroundStyle(Color.quietLabel)
+                .lineLimit(1)
         }
     }
 }
@@ -225,10 +232,13 @@ private struct MarkDone: View {
 #endif
 
 private extension View {
-    /// One element for the whole glance, the core's sentence, a running timer as its value.
+    /// One element for the whole glance, the core's sentence, a running timer as its value: the
+    /// core's words for what is left of its planned length where it has one, else its count.
     @ViewBuilder func glanceElement(_ entry: GlanceTimelineEntry) -> some View {
         let element = accessibilityElement(children: .ignore).accessibilityLabel(entry.glance.spoken)
-        if let start = entry.timerStart {
+        if let countdown = entry.countdown {
+            element.accessibilityValue(countdown)
+        } else if let start = entry.timerCounts {
             element.accessibilityValue(Text(start, style: .timer))
         } else {
             element

@@ -24,7 +24,7 @@ struct MacTaskListScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             // The place's own actions, the core's, in its order: New Task or New Block, Filter
-            // Tasks, New Project Inside, Undo, Redo.
+            // Tasks, New Project Inside, New Section, Undo, Redo.
             ScreenActionRow(actions: model.screenActions, run: run)
                 .padding(.horizontal, 12)
                 .padding(.top, 12)

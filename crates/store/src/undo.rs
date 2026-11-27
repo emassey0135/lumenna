@@ -134,6 +134,8 @@ fn rebase_change(
             .map(|t| Change::Project(Box::new(t))),
         Change::Label(t) => step(t, d, |r| now.labels.get(&r.id), "label", k)
             .map(|t| Change::Label(Box::new(t))),
+        Change::Section(t) => step(t, d, |r| now.sections.get(&r.id), "section", k)
+            .map(|t| Change::Section(Box::new(t))),
         Change::Filter(t) => step(t, d, |r| now.saved_filters.get(&r.id), "filter", k)
             .map(|t| Change::Filter(Box::new(t))),
         Change::Series(t) => step(t, d, |r| now.series.get(&r.id), "block", k)
@@ -332,6 +334,9 @@ fn field_words(key: &str) -> String {
         "estimate_mins" => "estimate".to_owned(),
         "sitting_mins" => "sitting length".to_owned(),
         "start" => "start date".to_owned(),
+        "kept_at" | "kept_put_off" => "keeping".to_owned(),
+        "review_every_days" => "review interval".to_owned(),
+        "reviewed_at" => "last review".to_owned(),
         "accumulated_mins" | "extra_secs" => "logged time".to_owned(),
         "running_since" => "timer".to_owned(),
         "planned_mins" => "planned time".to_owned(),

@@ -93,10 +93,48 @@ final class WidgetTests: XCTestCase {
         let quiet = GlanceTimelineEntry(date: Date(), glance: entry)
         XCTAssertNil(quiet.timerStart)
         XCTAssertEqual(quiet.relevance?.score, 0)
-        entry.moment.timer = LumennaApp.GlanceTimer(sitting: "s", task: "Essay", block: "Deep work", countingFrom: "2026-10-25T09:00:00Z")
+        entry.moment.timer = LumennaApp.GlanceTimer(
+            sitting: "s", task: "Essay", block: "Deep work", countingFrom: "2026-10-25T09:00:00Z", plannedMins: nil, runsOutAt: nil
+        )
         let timing = GlanceTimelineEntry(date: Date(), glance: entry)
         XCTAssertEqual(timing.timerStart, Instant.parse("2026-10-25T09:00:00Z"))
+        XCTAssertEqual(timing.timerCounts, timing.timerStart, "with no planned length, it counts up")
+        XCTAssertNil(timing.countdown)
         XCTAssertEqual(timing.relevance?.score, 1)
+    }
+
+    /// A glance of one moment at 09:10, a timer running on a sitting of 25 minutes from 09:00.
+    private func countingDown() throws -> LumennaApp.GlanceEntry {
+        var entry = LumennaApp.glanceEmpty(locale: Writing())
+        entry.moment.at = "2026-10-25T09:10:00Z"
+        entry.moment.timer = LumennaApp.GlanceTimer(
+            sitting: "s", task: "Essay", block: "Deep work", countingFrom: "2026-10-25T09:00:00Z",
+            plannedMins: 25, runsOutAt: "2026-10-25T09:25:00Z"
+        )
+        return entry
+    }
+
+    func testATimerWithAPlannedLengthCountsDownToItAndSaysWhatIsLeftInTheCoresWords() throws {
+        let entry = try countingDown()
+        let shown = GlanceTimelineEntry(date: try XCTUnwrap(Instant.parse("2026-10-25T09:12:30Z")), glance: entry)
+        XCTAssertEqual(shown.timerCounts, Instant.parse("2026-10-25T09:25:00Z"), "down to where it runs out")
+        XCTAssertEqual(shown.countdown, "13 minutes left")
+        let over = GlanceTimelineEntry(date: try XCTUnwrap(Instant.parse("2026-10-25T09:28:00Z")), glance: entry)
+        XCTAssertEqual(over.countdown, "3 minutes over")
+    }
+
+    func testACountdownsWordsHaveAMomentEachMinuteAndAGlanceWithoutOneIsAsItWas() throws {
+        let now = try XCTUnwrap(Instant.parse("2026-10-25T09:10:00Z"))
+        let entries = GlanceWidgets.entries([try countingDown()])
+        let counted = GlanceWidgets.counted(entries, from: now, most: 30)
+        XCTAssertEqual(counted.count, 31, "the moment, then each minute the core says its words change")
+        XCTAssertEqual(counted.map(\.date), counted.map(\.date).sorted())
+        XCTAssertEqual(counted.dropFirst().first?.date, Instant.parse("2026-10-25T09:11:00Z"))
+        XCTAssertEqual(counted.dropFirst().first?.countdown, "14 minutes left")
+        XCTAssertTrue(counted.contains { $0.countdown == "time is up" })
+        XCTAssertTrue(counted.contains { $0.countdown == "1 minute over" })
+        let quiet = GlanceWidgets.entries([LumennaApp.glanceEmpty(locale: Writing())])
+        XCTAssertEqual(GlanceWidgets.counted(quiet, from: now).map(\.date), quiet.map(\.date))
     }
 
     func testABlockUnderWayIsWorthShowingAndFillsFromItsStartToItsEnd() throws {

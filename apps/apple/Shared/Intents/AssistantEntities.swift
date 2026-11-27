@@ -40,6 +40,7 @@ struct TaskEntity: AppEntity {
     @Property(title: "Title") var title: String
     @Property(title: "Due") var due: Date?
     @Property(title: "Project") var project: String?
+    @Property(title: "Section") var section: String?
     @Property(title: "Labels") var labels: [String]
     @Property(title: "Priority") var priority: Int
     @Property(title: "Done") var done: Bool
@@ -52,6 +53,8 @@ struct TaskEntity: AppEntity {
     @Property(title: "Deadline") var deadline: Date?
     /// How it repeats, in the core's words ("every weekday").
     @Property(title: "Repeats") var repeats: String?
+    /// A repeating task's streak, in the core's words ("done 12 times running").
+    @Property(title: "Streak") var streak: String?
     /// Its states, as the filter language names them: overdue, blocked, recurring, …
     @Property(title: "States") var states: [String]
     @Property(title: "Added") var added: Date?
@@ -73,6 +76,7 @@ struct TaskEntity: AppEntity {
         title = document.title
         due = document.due.flatMap { moment($0, task.dueTime) }
         project = task.project
+        section = task.section
         labels = task.labels
         priority = Int(task.priority)
         done = task.done
@@ -83,6 +87,7 @@ struct TaskEntity: AppEntity {
         start = task.start.flatMap { moment($0) }
         deadline = task.deadline.flatMap { moment($0) }
         repeats = task.repetition
+        streak = task.streak
         states = task.states
         added = Instant.parse(task.createdAt)
     }
@@ -102,6 +107,7 @@ struct TaskEntity: AppEntity {
         self.title = title
         due = nil
         project = nil
+        section = nil
         labels = []
         priority = 0
         done = false
@@ -111,6 +117,7 @@ struct TaskEntity: AppEntity {
         start = nil
         deadline = nil
         repeats = nil
+        streak = nil
         states = []
         added = nil
     }

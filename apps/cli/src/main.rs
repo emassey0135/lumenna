@@ -75,6 +75,10 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Label(LabelCommand),
 
+    /// Work with a project's sections: the headings its tasks sit under.
+    #[command(subcommand)]
+    Section(SectionCommand),
+
     /// Work with saved filters.
     #[command(subcommand)]
     Filter(FilterCommand),
@@ -310,6 +314,14 @@ pub(crate) enum Command {
 
     /// What was done over the last two weeks, newest first.
     History,
+
+    /// What is due for a second look: the projects due for review, then the tasks the planner
+    /// asks about, each with its question in short. `lum task show` says a task's in full,
+    /// `lum task reconsider` answers it and `lum project reviewed` marks a project reviewed.
+    Review,
+    /// The time report: what sittings logged over the last four weeks, by week, project and
+    /// label, with the estimates of the tasks worked beside it.
+    Report,
 
     /// Undo the last change made on this device.
     ///
@@ -576,6 +588,14 @@ pub(crate) enum TaskCommand {
         /// A row number from the last listing, or an identifier.
         id: String,
     },
+    /// Answer the planner's question about a task, which `lum task show` and `lum review` say.
+    Reconsider {
+        /// A row number from the last listing, or an identifier.
+        id: String,
+        /// keep (asked again later), drop (to the trash), less-often (a repeating task half as
+        /// often) or no-date (its due date taken away).
+        answer: String,
+    },
     /// Delete a task from the trash. Undo can bring it back, and it stays in the history every
     /// device keeps and in backups.
     ///
@@ -606,6 +626,10 @@ pub(crate) enum TaskCommand {
         /// Take it out from under its parent.
         #[arg(long)]
         top: bool,
+        /// Put it under this section of its project, by name or identifier, or Project/Section
+        /// for another project's; `none` for no section.
+        #[arg(long)]
+        section: Option<String>,
     },
 
     /// Search titles and notes.
@@ -698,6 +722,21 @@ pub(crate) enum ProjectCommand {
         /// up or down.
         direction: Way,
     },
+    /// Mark a project reviewed: it leaves `lum review` until its interval comes round.
+    Reviewed {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        name: String,
+    },
+    /// Set how often a project comes up for review: every week, every 2 weeks, every month, or
+    /// never.
+    ReviewEvery {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        name: String,
+        /// How often, such as "every 2 weeks", "month" or "never".
+        every: String,
+    },
     /// Set a project's urgency multiplier, roughly 0.5 to 2.0.
     ///
     /// This is not a second priority. Task priority is how much one item matters; weight is
@@ -776,6 +815,61 @@ pub(crate) enum ReminderCommand {
         /// How long, such as 10m.
         #[arg(long)]
         r#for: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum SectionCommand {
+    /// Add a section to a project, after its others.
+    Add {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        project: String,
+        /// The section's name.
+        name: String,
+    },
+    /// List a project's sections.
+    List {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        project: String,
+    },
+    /// Rename a section.
+    Rename {
+        /// A row number from the last listing of sections, an identifier, a name, or
+        /// Project/Section.
+        section: String,
+        /// Its new name.
+        to: String,
+    },
+    /// Move a section one place up or down among its project's.
+    Order {
+        /// A row number from the last listing of sections, an identifier, a name, or
+        /// Project/Section.
+        section: String,
+        /// up or down.
+        direction: Way,
+    },
+    /// Delete a section, asking whether its tasks go to the trash with it or stay in the
+    /// project, unless --keep-tasks or --yes says.
+    Rm {
+        /// A row number from the last listing of sections, an identifier, a name, or
+        /// Project/Section.
+        section: String,
+        /// Keep its tasks in the project, under no section, instead of trashing them.
+        #[arg(long)]
+        keep_tasks: bool,
+        /// Trash its tasks with it without asking.
+        #[arg(long, conflicts_with = "keep_tasks")]
+        yes: bool,
+    },
+    /// Add a task under a section, from a quick-add line.
+    AddTask {
+        /// A row number from the last listing of sections, an identifier, a name, or
+        /// Project/Section.
+        section: String,
+        /// The task, as quick add takes it.
+        text: Vec<String>,
     },
 }
 
@@ -1200,6 +1294,36 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::Task(command) => return task(profile, command),
         Command::Project(command) => return project(profile, command),
+        Command::Section(command) => {
+            let section = |input: &str| profile.row(input, "section");
+            Response::new(match command {
+                SectionCommand::Add { project, name } => profile.add_section(project, name)?,
+                SectionCommand::List { project } => return Ok(Response::new(profile.list_sections(project)?)),
+                SectionCommand::Rename { section: input, to } => profile.rename_section(&section(input)?, to)?,
+                SectionCommand::Order { section: input, direction } => {
+                    profile.reorder_section(&section(input)?, (*direction).into())?
+                }
+                SectionCommand::Rm { section: input, keep_tasks, yes } => {
+                    let input = section(input)?;
+                    // The core's own question, whose answers are what becomes of the tasks.
+                    let keep = if *keep_tasks {
+                        true
+                    } else if *yes {
+                        false
+                    } else {
+                        match chosen(&profile.actions_of(Subject::Section, &input)?, ActionKind::Delete)? {
+                            Choice::Answer(answer) => answer == "keep",
+                            Choice::Cancelled => return Ok(Response::unchanged("nothing was deleted")),
+                            Choice::NotAsked => false,
+                        }
+                    };
+                    profile.delete_section(&input, keep)?
+                }
+                SectionCommand::AddTask { section: input, text } => {
+                    profile.add_task_in_section(&section(input)?, &text.join(" "))?
+                }
+            })
+        }
         Command::Label(command) => Response::new(match command {
             LabelCommand::Add { name } => profile.add_label(name)?,
             LabelCommand::List => return Ok(Response::new(profile.list_labels()?)),
@@ -1464,6 +1588,8 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         Command::Notify { speak } => return notify(profile, *speak),
         Command::Upcoming => Response::new(profile.upcoming()?),
         Command::History => Response::new(profile.history()?),
+        Command::Review => Response::new(profile.review()?),
+        Command::Report => Response::new(profile.report()?),
         Command::Undo => Response::new(profile.undo()?),
         Command::Redo => Response::new(profile.redo()?),
         Command::Backup { to } => {
@@ -1526,6 +1652,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
             Response::new(change)
         }
         TaskCommand::History { id: input } => Response::new(profile.task_history(&id(input)?)?),
+        TaskCommand::Reconsider { id: input, answer } => Response::new(profile.reconsider(&id(input)?, answer)?),
         TaskCommand::Restore { id: input } => Response::new(profile.restore_task(&id(input)?)?),
         TaskCommand::Zone { id: input, zone } => Response::new(profile.set_task_zone(&id(input)?, Some(zone.clone()))?),
         TaskCommand::Erase { id: input, permanently: false, yes } => {
@@ -1544,14 +1671,18 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
             }
             Response::new(profile.erase_task_permanently(&id)?)
         }
-        TaskCommand::Move { id: input, parent, project, top } => {
+        TaskCommand::Move { id: input, parent, project, top, section } => {
+            if let Some(section) = section {
+                let section = Some(section.as_str()).filter(|s| !s.eq_ignore_ascii_case("none"));
+                return Ok(Response::new(profile.move_task_to_section(&id(input)?, section)?));
+            }
             let to = match (parent, project, top) {
                 (Some(parent), _, _) => MoveTarget::Parent { id: id(parent)? },
                 (_, Some(project), _) => MoveTarget::Project { name: project.clone() },
                 (_, _, true) => MoveTarget::Top,
                 _ => {
                     return Err(CliError::Message(
-                        "say where: --parent, --project, or --top".to_owned(),
+                        "say where: --parent, --project, --section, or --top".to_owned(),
                     ));
                 }
             };
@@ -1600,6 +1731,8 @@ fn project(profile: &Profile, command: &ProjectCommand) -> Result<Response> {
             };
             profile.delete_project(name, keep)?
         }
+        ProjectCommand::Reviewed { name } => profile.mark_reviewed(name)?,
+        ProjectCommand::ReviewEvery { name, every } => profile.review_every(name, every)?,
         ProjectCommand::Weight { name, value } => {
             profile.weigh_project(name, lumenna_host::parse_weight(value.clone())?)?
         }

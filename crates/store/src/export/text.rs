@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Zoned;
 use jiff::civil::{Date, Time};
 use lumenna_core::id::{ProjectId, TaskId};
-use lumenna_core::model::{Due, Priority, Project, Task};
+use lumenna_core::model::{Due, Priority, Project, Section, Task};
 use lumenna_core::snapshot::Snapshot;
 use lumenna_core::state::Facts;
 
@@ -71,12 +71,12 @@ impl<'a> Outline<'a> {
     }
 
     /// Calls `visit` for each task of `project` with its depth, parents before children.
-    fn each_task(&self, project: ProjectId, mut visit: impl FnMut(&Task, usize)) {
+    fn each_task(&self, project: ProjectId, mut visit: impl FnMut(&'a Task, usize)) {
         let Some(children) = self.tasks.get(&project) else {
             return;
         };
         let mut seen = BTreeSet::new();
-        let mut stack: Vec<(&Task, usize)> =
+        let mut stack: Vec<(&'a Task, usize)> =
             children.get(&None).into_iter().flatten().rev().map(|t| (*t, 0)).collect();
         while let Some((task, depth)) = stack.pop() {
             if !seen.insert(task.id) {
@@ -87,6 +87,27 @@ impl<'a> Outline<'a> {
                 stack.extend(under.iter().rev().map(|t| (*t, depth + 1)));
             }
         }
+    }
+
+    /// Every task of `project` with its depth, as the app lists them: those under no section,
+    /// then each section's, in the sections' order, each with the section it is under. A
+    /// subtask goes where its parent does.
+    fn ordered(&self, project: ProjectId) -> Vec<(Option<&Section>, &Task, usize)> {
+        let mut all = Vec::new();
+        self.each_task(project, |task, depth| all.push((task, depth)));
+        let mut under: Vec<(Option<&Section>, &Task, usize)> = Vec::new();
+        let mut section = None;
+        for (task, depth) in all {
+            if depth == 0 {
+                section = self.snapshot.section_of(task);
+            }
+            under.push((section, task, depth));
+        }
+        let sections = self.snapshot.sections_of(project);
+        let place = |section: Option<&Section>| section.and_then(|s| sections.iter().position(|o| o.id == s.id)).map_or(0, |at| at + 1);
+        // Stable, so each section's tasks keep their order.
+        under.sort_by_key(|(section, _, _)| place(*section));
+        under
     }
 
     fn label_names(&self, task: &Task) -> Vec<String> {
@@ -163,7 +184,14 @@ pub fn markdown(snapshot: &Snapshot, now: &Zoned) -> String {
         }
         out.push_str("\n\n");
         let mut any = false;
-        outline.each_task(project.id, |task, depth| {
+        // The tasks under no section, then each section's beneath its heading, a level deeper.
+        let mut heading = None;
+        for (section, task, depth) in outline.ordered(project.id) {
+            if let Some(section) = section.filter(|s| Some(s.id) != heading) {
+                heading = Some(section.id);
+                let gap = if any { "\n" } else { "" };
+                out.push_str(&format!("{gap}{} {}\n\n", "#".repeat((level + 1).min(6)), section.name));
+            }
             any = true;
             let indent = "  ".repeat(depth);
             let mark = if outline.facts.is_completed(task) { "x" } else { " " };
@@ -201,7 +229,7 @@ pub fn markdown(snapshot: &Snapshot, now: &Zoned) -> String {
             for line in task.notes.lines().filter(|l| !l.trim().is_empty()) {
                 out.push_str(&format!("{indent}  {line}\n"));
             }
-        });
+        }
         if !any {
             out.push_str("No tasks.\n");
         }
@@ -226,7 +254,14 @@ pub fn org(snapshot: &Snapshot, now: &Zoned) -> String {
             out.push_str(" :ARCHIVE:");
         }
         out.push('\n');
-        outline.each_task(project.id, |task, depth| {
+        // The tasks under no section, then each section a heading of its own over its tasks.
+        let mut heading = None;
+        for (section, task, depth) in outline.ordered(project.id) {
+            if let Some(section) = section.filter(|s| Some(s.id) != heading) {
+                heading = Some(section.id);
+                out.push_str(&format!("{} {}\n", "*".repeat(level + 1), section.name));
+            }
+            let depth = depth + usize::from(section.is_some());
             let stars = "*".repeat(level + 1 + depth);
             let keyword = if outline.facts.is_completed(task) { "DONE" } else { "TODO" };
             let priority = match task.priority {
@@ -269,7 +304,7 @@ pub fn org(snapshot: &Snapshot, now: &Zoned) -> String {
                 // than becoming a heading.
                 out.push_str(&format!("{body}{line}\n"));
             }
-        });
+        }
     }
     out
 }

@@ -423,6 +423,18 @@ impl Device {
         self.lumenna.assign(&task, &block, date, minutes)
     }
 
+    /// Pauses a sitting's timer, keeping what it logged: the Pause of a Live Activity, an ongoing
+    /// notification or a watch's ongoing activity, as `TimerControl::timer`'s sitting.
+    pub fn pause_timer(&self, assignment: String) -> Result<Timer, LumennaError> {
+        self.lumenna.pause_timer(&assignment)
+    }
+
+    /// The timer as it is now, said: what it runs on, how long so far and how much of its
+    /// planned length is left, else what a press of its control would start.
+    pub fn timer_now(&self) -> Result<Timer, LumennaError> {
+        self.lumenna.timer_now(None)
+    }
+
     /// Stops a sitting's timer, logging `minutes` if given.
     pub fn stop_timer(&self, assignment: String, minutes: Option<u32>) -> Result<Timer, LumennaError> {
         self.lumenna.stop_timer(&assignment, minutes)

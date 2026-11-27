@@ -21,14 +21,14 @@ use automerge::ReadDoc;
 use automerge::transaction::Transactable;
 use jiff::civil;
 use lumenna_core::id::{
-    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SeriesId,
+    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SectionId, SeriesId,
     TaskId,
 };
 use lumenna_core::model::{
     AssignmentStatus, BlockAssignment, BlockException, BlockFlags, BlockKind, BlockRef,
     BlockSeries, Delivery, Device, Due, ExceptionAction, ExternalProvider, ExternalRef, Label,
     Priority, Project, Recurrence, Reminder, ReminderAck, ReminderAction, ReminderAnchor,
-    ReminderTarget, SavedFilter, Settings, Task, TaskCompletion, Trigger, TzName, Verbosity,
+    ReminderTarget, SavedFilter, Section, Settings, Task, TaskCompletion, Trigger, TzName, Verbosity,
 };
 
 use crate::doc::Domain;
@@ -321,6 +321,7 @@ impl Record for Task {
             // A task with no project cannot be shown anywhere: Inbox is a real project,
             // so this is never legitimately absent.
             project_id: r.parsed("project_id")?,
+            section_id: r.parsed("section_id"),
             priority: Priority::from_u8(r.u32("priority").unwrap_or(4).try_into().unwrap_or(4)),
             labels: r.id_set("labels"),
             depends: r.id_set("depends"),
@@ -329,6 +330,8 @@ impl Record for Task {
             sitting_mins: r.u32("sitting_mins"),
             start: r.parsed("start"),
             deadline: r.parsed("deadline"),
+            kept_at: r.timestamp("kept_at"),
+            kept_put_off: r.u32("kept_put_off"),
             // Position is not something this device may invent: a locally generated order
             // key would differ on every replica and reorder the list on each sync.
             order: r.parsed("order")?,
@@ -343,6 +346,7 @@ impl Record for Task {
         w.set_text("notes", was.map(|b| b.notes.as_str()), &self.notes)?;
         w.set_opt_str("parent_id", was.map(|b| b.parent_id.as_ref()), self.parent_id.as_ref())?;
         w.set_str("project_id", was.map(|b| &b.project_id), &self.project_id)?;
+        w.set_opt_str("section_id", was.map(|b| b.section_id.as_ref()), self.section_id.as_ref())?;
         w.set_int(
             "priority",
             was.map(|b| i64::from(b.priority.as_u8())),
@@ -355,6 +359,8 @@ impl Record for Task {
         w.set_opt_u32("sitting_mins", was.map(|b| b.sitting_mins), self.sitting_mins)?;
         w.set_opt_str("start", was.map(|b| b.start.as_ref()), self.start.as_ref())?;
         w.set_opt_str("deadline", was.map(|b| b.deadline.as_ref()), self.deadline.as_ref())?;
+        w.set_opt_time("kept_at", was.map(|b| b.kept_at.as_ref()), self.kept_at.as_ref())?;
+        w.set_opt_u32("kept_put_off", was.map(|b| b.kept_put_off), self.kept_put_off)?;
         w.set_str("order", was.map(|b| &b.order), &self.order)?;
         w.set_nested(
             "external",
@@ -449,6 +455,8 @@ impl Record for Project {
             weight: r.f32("own_weight").or_else(|| {
                 r.f32("weight").filter(|w| *w != Self::NEUTRAL_WEIGHT)
             }),
+            review_every_days: r.u32("review_every_days"),
+            reviewed_at: r.timestamp("reviewed_at"),
             deleted_at: r.timestamp("deleted_at"),
         })
     }
@@ -468,6 +476,8 @@ impl Record for Project {
             // The legacy key would otherwise go on overriding an inherited weight.
             w.clear("weight")?;
         }
+        w.set_opt_u32("review_every_days", was.map(|b| b.review_every_days), self.review_every_days)?;
+        w.set_opt_time("reviewed_at", was.map(|b| b.reviewed_at.as_ref()), self.reviewed_at.as_ref())?;
         w.set_opt_time("deleted_at", was.map(|b| b.deleted_at.as_ref()), self.deleted_at.as_ref())
     }
 }
@@ -502,6 +512,42 @@ impl Record for Label {
     fn write<T: Transactable>(&self, w: &mut Writer<'_, T>, was: Option<&Self>) -> Result<()> {
         w.set_string("name", was.map(|b| b.name.as_str()), &self.name)?;
         w.set_opt_str("color", was.map(|b| b.color.as_ref()), self.color.as_ref())?;
+        w.set_str("order", was.map(|b| &b.order), &self.order)?;
+        w.set_opt_time("deleted_at", was.map(|b| b.deleted_at.as_ref()), self.deleted_at.as_ref())
+    }
+}
+
+impl Record for Section {
+    const DOMAIN: Domain = Domain::Core;
+    const COLLECTION: &'static str = crate::doc::SECTIONS;
+    type Key = SectionId;
+
+    fn key(&self) -> SectionId {
+        self.id
+    }
+
+    fn key_string(key: &SectionId) -> String {
+        key.to_string()
+    }
+
+    fn parse_key(text: &str) -> Option<SectionId> {
+        text.parse().ok()
+    }
+
+    fn hydrate<D: ReadDoc>(r: &Reader<'_, D>, id: SectionId) -> Option<Self> {
+        Some(Self {
+            id,
+            // A section of no project heads nothing anywhere.
+            project_id: r.parsed("project_id")?,
+            name: r.string("name").unwrap_or_default(),
+            order: r.parsed("order")?,
+            deleted_at: r.timestamp("deleted_at"),
+        })
+    }
+
+    fn write<T: Transactable>(&self, w: &mut Writer<'_, T>, was: Option<&Self>) -> Result<()> {
+        w.set_str("project_id", was.map(|b| &b.project_id), &self.project_id)?;
+        w.set_string("name", was.map(|b| b.name.as_str()), &self.name)?;
         w.set_str("order", was.map(|b| &b.order), &self.order)?;
         w.set_opt_time("deleted_at", was.map(|b| b.deleted_at.as_ref()), self.deleted_at.as_ref())
     }

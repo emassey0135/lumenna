@@ -13,8 +13,9 @@ Closing the app or stopping the service lets go of the right so another process 
 the app's Reminders on this device, which the core honours, turns them off alone.
 
 Dismissing, snoozing and carrying forward what a block's end left short (the reminder's
-`carry`, whose question ends its text) are the app's Reminders screen: a service has no keys
-of its own.
+`carry`, whose question ends its text), and stopping the timer whose planned length ran out (its
+`stop`, said once and never snoozed), are the app's Reminders screen: a service has no keys of
+its own.
 """
 
 from __future__ import annotations

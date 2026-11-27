@@ -23,7 +23,7 @@ It holds what can be done to the task now, as every Lumenna app offers it, then 
 - New task, a. In a project's or label's list, the line starts with it, so the task lands there.
 - Filter tasks, slash: a filter such as "#Work & overdue", or "search:" and words to look through titles and notes.
 - New project inside, p, in a project's list.
-- Undo, u, and Redo, y. In the Trash, History and Upcoming, these alone, with New task in Upcoming.
+- Undo, u, and Redo, y. In the Trash, History, Review and the Time report, these alone; in Upcoming, these and New task.
 
 ## The task form
 

@@ -32,30 +32,6 @@ The order, and why:
 
 ## 3. Planning
 
-- **A staleness question**, if a task becomes permanent furniture at the top: "this has been at
-  the top for three weeks; is it real?", rather than a bigger formula.
-- **Sections within a project**: named headings a project's tasks sit under (Todoist's
-  sections, Things' headings, Reminders' sections), lighter than a subproject. A record of
-  their own, with the care in `crates/store/CLAUDE.md` for records two devices make alone.
-- **A countdown, and a timer outside the app**: a sitting's planned length counted down, with
-  the core's words when it runs out (Tiimo counts down; TickTick has Pomodoro), beside the
-  count up there is now; and a running timer shown where the system shows one: a Live Activity
-  on the iPhone's Lock Screen and Dynamic Island, an ongoing notification on Android, its
-  buttons the core's Pause and Stop.
-- **Time reports**: the minutes every sitting logs, summed by project, label and week, with
-  estimates beside them, as Todoist's productivity view and Taskwarrior's reports have. A
-  listing of the core's, read as one.
-- **A review**: every project looked at in turn at an interval of its own, as OmniFocus' weekly
-  review is, each marked reviewed; the staleness question above is the same kind of asking.
-- **Habits, from what is kept already**: a repeating task already says its cadence (`every 2
-  days`, `every! 2 days` from when it is done, `every mon, wed, fri`), which stands in for a
-  target per period, and never piles up overdue copies, being one task whose date moves on.
-  Two things to add. A **streak**, counted from its completions (each records the occurrence
-  it completed) and said in words in its details and its glance line ("done 12 times running",
-  "missed Tuesday"). And, from the `postponed` tally, the planner asking of a task put off
-  again and again, repeating or not: "this has been put off five times; make it less often, or
-  drop it?", the staleness question's twin. No "3 times a week" of any days: a cadence says it
-  well enough.
 - **Energy, as the person rates it**: capacity for focus and for starting things, which ADHD
   and other conditions make uneven, not calories, so it is estimated, as a length is, never
   measured.
@@ -280,7 +256,7 @@ Each is a thin adapter over the command surface.
     Todoist's settings, so nothing needs registering (check the current API version when
     building; its priority 4 is P1); its CSV backups (a ZIP of a CSV per project, completed
     tasks left out) for someone without a token.
-  - **Taskwarrior**, from `task export`'s JSON: `wait` and `scheduled` to the start date above,
+  - **Taskwarrior**, from `task export`'s JSON: `wait` and `scheduled` to the start date,
     annotations into notes, its user-defined attributes kept in the notes as `name: value`
     rather than dropped.
   - **OmniFocus**, from its CSV or its plain-text (TaskPaper-style) export: defer dates to the

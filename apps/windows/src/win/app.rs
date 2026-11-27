@@ -1224,6 +1224,8 @@ impl App {
             "go-trash" => self.go(Place::Trash, true),
             "go-history" => self.go(Place::History, true),
             "go-upcoming" => self.go(Place::Upcoming, true),
+            "go-review" => self.go(Place::Review, true),
+            "go-report" => self.go(Place::Report, true),
             "new-block" => {
                 // Added where blocks are shown, to land on: the day, or the Blocks list; else
                 // today.
@@ -1385,7 +1387,7 @@ impl App {
                 // The core's tray menu, with the timer's control as the device has it now:
                 // what a press does, beside what it runs or would start, or why nothing would.
                 let timer = self.device.timer_control().ok();
-                let name = timer.as_ref().map(|timer| if timer.detail.is_empty() { timer.action.clone() } else { format!("{}, {}", timer.action, timer.detail) });
+                let name = timer.as_ref().map(|timer| lumenna_app::glance::control_line(timer, jiff::Timestamp::now(), false));
                 let items = menu::tray(name.as_deref());
                 let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
                 let popup = menu::popup(&items);
@@ -1472,6 +1474,16 @@ impl App {
             "dismiss" => firings.iter().map(|f| self.device.dismiss_reminder(f.key.clone(), f.occurrence.clone())).collect(),
             "snooze" => firings.iter().map(|f| self.device.snooze_reminder(f.key.clone(), f.occurrence.clone(), None)).collect(),
             "carry" => firings.iter().map(|f| self.device.carry_rest_forward(format!("{}@{}", f.target, f.occurrence))).collect(),
+            // A sitting's time run out: its timer stopped, said as the stop's own sentence, and
+            // the firing dismissed on every device.
+            "stop" => firings
+                .iter()
+                .map(|f| {
+                    let stopped = self.device.stop_timer(f.sitting.clone(), None)?;
+                    self.device.dismiss_reminder(f.key.clone(), f.occurrence.clone())?;
+                    Ok(Change::unchanged(stopped.announcement))
+                })
+                .collect(),
             // The app's Today with Replan from Now open over it, the window in front: the firing
             // named as the device delivered it, so the app dismisses its warning once something
             // is replanned.

@@ -477,6 +477,40 @@ impl BlockAssignment {
         let secs = self.logged_secs().saturating_add(running);
         Elapsed { mins: u32::try_from(secs / 60).unwrap_or(u32::MAX), capped }
     }
+
+    /// [`elapsed`](Self::elapsed) to the second: what sums of many sittings add, so short runs
+    /// across them are not each floored to a minute.
+    #[must_use]
+    pub fn elapsed_secs(&self, now: Timestamp, cap_mins: Option<u32>) -> u64 {
+        self.logged_secs().saturating_add(self.running_secs(now, cap_mins).0)
+    }
+
+    /// How many seconds of its planned length are left at `now`, counting the timer running:
+    /// below zero once it has run over. `None` without a planned length, when there is nothing
+    /// to count down from.
+    ///
+    /// Not capped, as [`elapsed`](Self::elapsed) is: a countdown that stops at the block's
+    /// end would say a forgotten timer still had time left. Polled on demand, never announced.
+    #[must_use]
+    pub fn left_secs(&self, now: Timestamp) -> Option<i64> {
+        let planned = i64::from(self.planned_mins?) * 60;
+        let (running, _) = self.running_secs(now, None);
+        Some(planned - i64::try_from(self.logged_secs().saturating_add(running)).unwrap_or(i64::MAX))
+    }
+
+    /// When the timer running uses up the planned length: the moment its countdown reaches
+    /// nothing, and the core says so once. `None` with no timer running, no planned length, or
+    /// none of it left as the timer started: resuming a sitting already over its plan says
+    /// nothing again.
+    #[must_use]
+    pub fn runs_out_at(&self) -> Option<Timestamp> {
+        let since = self.running_since?;
+        let left = i64::from(self.planned_mins?) * 60 - i64::try_from(self.logged_secs()).unwrap_or(i64::MAX);
+        if left <= 0 {
+            return None;
+        }
+        since.checked_add(SignedDuration::from_secs(left)).ok()
+    }
 }
 
 /// The result of [`BlockAssignment::elapsed`].
@@ -685,5 +719,28 @@ mod tests {
         a.start(t0);
         a.start(t0 + SignedDuration::from_secs(600));
         assert_eq!(a.running_since, Some(t0));
+    }
+
+    #[test]
+    fn a_planned_sitting_counts_down_from_its_length_less_what_it_logged() {
+        let mut a = assignment();
+        let t0 = Timestamp::from_second(1_700_000_000).unwrap();
+        assert_eq!(a.left_secs(t0), None, "nothing to count down from without a plan");
+        a.planned_mins = Some(25);
+        a.set_logged_secs(5 * 60 + 30);
+        assert_eq!(a.left_secs(t0), Some(19 * 60 + 30));
+        assert_eq!(a.runs_out_at(), None, "paused, it never runs out");
+        a.start(t0);
+        assert_eq!(a.runs_out_at(), Some(t0 + SignedDuration::from_secs(19 * 60 + 30)));
+        assert_eq!(a.left_secs(t0 + SignedDuration::from_mins(25)), Some(-(5 * 60 + 30)), "over, below zero");
+    }
+
+    #[test]
+    fn a_sitting_resumed_already_over_its_plan_does_not_run_out_again() {
+        let mut a = assignment();
+        a.planned_mins = Some(10);
+        a.set_logged_mins(12);
+        a.start(Timestamp::from_second(1_700_000_000).unwrap());
+        assert_eq!(a.runs_out_at(), None);
     }
 }

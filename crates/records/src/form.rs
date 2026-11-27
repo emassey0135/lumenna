@@ -345,6 +345,7 @@ mod tests {
             title: "Write report".to_owned(),
             notes: "Two pages.".to_owned(),
             project: Some("Work".to_owned()),
+            section: None,
             parent: None,
             priority: 2,
             labels: vec!["desk".to_owned(), "deep".to_owned()],
@@ -361,6 +362,8 @@ mod tests {
             created_at: "2026-10-01T09:00:00Z".to_owned(),
             actions: Vec::new(),
             history: Vec::new(),
+            streak: None,
+            asking: None,
         }
     }
 
@@ -375,6 +378,7 @@ mod tests {
             minutes: 0,
             capped: false,
             running: false,
+            left_secs: None,
             details: Vec::new(),
             actions: Vec::new(),
         }

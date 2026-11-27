@@ -331,7 +331,9 @@ impl Answers {
     #[must_use]
     pub fn to(id: &str) -> Option<Answers> {
         Some(match id {
-            "list_tasks" | "search_tasks" | "list_blocks" | "list_upcoming" | "list_projects" | "list_labels" => Answers::Rows,
+            "list_tasks" | "search_tasks" | "list_blocks" | "list_upcoming" | "list_projects" | "list_sections" | "list_labels" | "review" | "report" => {
+                Answers::Rows
+            }
             "show_task" => Answers::Task,
             "day" => Answers::Plan,
             "list_filters" => Answers::Filters,
@@ -342,8 +344,8 @@ impl Answers {
             "apply_replan" => Answers::Replanned,
             "apply_day_plan" => Answers::DayPlanned,
             "add_task" | "edit_task" | "complete_task" | "uncomplete_task" | "trash_task" | "erase_task_permanently"
-            | "erase_everything_deleted" | "restore_task" | "move_task" | "assign" | "unassign" | "start_timer" | "start_on"
-            | "toggle_timer" | "undo" | "redo" => Answers::Change,
+            | "erase_everything_deleted" | "restore_task" | "move_task" | "add_section" | "assign" | "unassign" | "start_timer" | "start_on"
+            | "toggle_timer" | "mark_reviewed" | "review_every" | "reconsider_task" | "undo" | "redo" => Answers::Change,
             _ => return None,
         })
     }
@@ -352,13 +354,13 @@ impl Answers {
     fn outputs(self) -> &'static [Output] {
         match self {
             Answers::Change | Answers::Replanned | Answers::DayPlanned => &[TASK_ID, TASK_TITLE],
-            Answers::Rows => &[COUNT, IDS, TITLES],
+            Answers::Rows => &[COUNT, IDS, TITLES, VALUES],
             Answers::Task => &[TASK_ID, TASK_TITLE],
             Answers::Plan => &[SUMMARY, BLOCK_IDS, BLOCK_TITLES, SITTING_IDS, SITTING_TITLES],
             Answers::Filters => &[IDS, NAMES, QUERIES],
             Answers::Choices => &[IDS, TITLES, REASONS],
             Answers::Replan | Answers::DayPlan => &[SENTENCES],
-            Answers::Timer => &[SITTING_ID, MINUTES],
+            Answers::Timer => &[SITTING_ID, MINUTES, LEFT],
         }
     }
 }
@@ -373,6 +375,7 @@ const TASK_TITLE: Output = Output("task_title", "Task Title", "The task's title.
 const COUNT: Output = Output("count", "Count", "How many it lists.", false);
 const IDS: Output = Output("ids", "Identifiers", "Each one's identifier, in the order listed.", true);
 const TITLES: Output = Output("titles", "Titles", "Each one's title, in the order listed.", true);
+const VALUES: Output = Output("values", "Values", "What each one says after its title, in the order listed: a report's time logged and estimated.", true);
 const NAMES: Output = Output("names", "Names", "Each saved filter's name, in the order listed.", true);
 const QUERIES: Output = Output("queries", "Queries", "Each saved filter's query, in the order listed.", true);
 const REASONS: Output = Output("reasons", "Reasons", "Why each is offered, in the order listed.", true);
@@ -384,6 +387,7 @@ const SITTING_TITLES: Output = Output("sitting_titles", "Sitting Titles", "The t
 const SENTENCES: Output = Output("sentences", "Changes", "Each change it proposes, as a sentence.", true);
 const SITTING_ID: Output = Output("sitting_id", "Sitting Identifier", "The sitting's identifier.", false);
 const MINUTES: Output = Output("minutes", "Minutes", "The minutes the sitting has logged.", false);
+const LEFT: Output = Output("left", "Time Left", "How much of the sitting's planned length is left, in words: \"12 minutes left\".", false);
 
 /// A variable an action set up gives back, as the app running it lists it for the person to
 /// pick: its name (lower case, as an app's own variables go), title and description.
@@ -479,6 +483,7 @@ pub fn automated(answer: &Assisted) -> Automated {
             (x.notices.clone(), vec![
                 (&IDS, x.rows.iter().map(|r| r.id.clone()).collect()),
                 (&TITLES, x.rows.iter().map(|r| r.title.clone()).collect()),
+                (&VALUES, x.rows.iter().map(|r| r.value.clone().unwrap_or_default()).collect()),
             ])
         }
         Assisted::Plan(x) => {
@@ -507,6 +512,7 @@ pub fn automated(answer: &Assisted) -> Automated {
             // The timer as it is names no sitting with none running.
             one(&SITTING_ID, Some(x.assignment.clone()).filter(|id| !id.is_empty()));
             one(&MINUTES, Some(x.minutes.to_string()));
+            one(&LEFT, x.left_secs.map(crate::words::left));
             (x.notices.clone(), Vec::new())
         }
     };

@@ -105,7 +105,10 @@ internal object Assistant {
 
     fun timer(answer: Assisted): TimerState {
         val timer = (answer as? Assisted.Timer)?.field0 ?: unexpected(answer)
-        return TimerState(timer.announcement, timer.notices, timer.changed, timer.assignment, timer.minutes.toInt(), timer.capped, timer.running)
+        return TimerState(
+            timer.announcement, timer.notices, timer.changed, timer.assignment, timer.minutes.toInt(), timer.capped, timer.running,
+            timer.plannedMins?.toInt(), timer.leftSecs, timer.runsOutAt,
+        )
     }
 
     fun replanProposed(answer: Assisted) = (answer as? Assisted.Replan)?.field0?.proposed() ?: unexpected(answer)
@@ -127,7 +130,7 @@ private fun Change.made() = ChangeMade(announcement, notices, changed, task?.who
 
 private fun TaskDetail.whole() = TaskWhole(
     id, title, notes, project, parent, priority.toInt(), labels, depends.map { it.title }, due, dueTime, repetition,
-    estimateMins?.toInt(), sittingMins?.toInt(), start, deadline, state, history,
+    estimateMins?.toInt(), sittingMins?.toInt(), start, deadline, state, history, streak, asking,
 )
 
 // A proposal goes back to the core whole, so each field is carried both ways.

@@ -45,13 +45,13 @@ final class ScreenActionTests: XCTestCase {
         _ = try core.app.device.addProject(name: "Garden", parent: nil)
         let list = TaskListViewController(core: core, place: .project("Garden"))
         shown(list)
-        XCTAssertEqual(core.app.view.screenActions.map(\.id), ["new-task", "filter", "new-project-inside", "undo", "redo"])
+        XCTAssertEqual(core.app.view.screenActions.map(\.id), ["new-task", "filter", "new-project-inside", "new-section", "undo", "redo"])
         XCTAssertEqual(names(list.navigationItem.leftBarButtonItems), ["Undo", "Redo"])
         // Laid from the edge inwards, so read from the leading side in the core's order.
         let trailing = Array((list.navigationItem.rightBarButtonItems ?? []).reversed())
         XCTAssertEqual(names(trailing), ["New Task", Wording.placeActions])
         let menu = try XCTUnwrap(trailing.last?.menu)
-        XCTAssertEqual(menu.children.map(\.title), ["Filter Tasks", "New Project Inside"])
+        XCTAssertEqual(menu.children.map(\.title), ["Filter Tasks", "New Project Inside", "New Section"])
     }
 
     func testTheDaysBarHoldsNewBlockUndoAndRedoAndItsButtonsTheRest() {
@@ -60,7 +60,7 @@ final class ScreenActionTests: XCTestCase {
         XCTAssertEqual(names(day.navigationItem.leftBarButtonItems), ["Undo", "Redo"])
         XCTAssertEqual(names(day.navigationItem.rightBarButtonItems), ["New Block"])
         let besides = core.app.view.screenActions.filter { !ScreenActionBar.holds($0) }.map(\.id)
-        XCTAssertEqual(besides, ["previous-day", "next-day", "go-to-day", "go-to-now"])
+        XCTAssertEqual(besides, ["previous-day", "next-day", "go-to-day", "go-to-now", "time-left"])
     }
 
     func testTheFilterFieldIsWhereTheCoreOffersFilterTasks() {

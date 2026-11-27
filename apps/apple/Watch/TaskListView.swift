@@ -95,7 +95,7 @@ struct TaskListView: View {
         let split = AppRowActions(actions: shown.actions, doneLeads: true) { _ in }
         // The row owns what VoiceOver says: the title as its name, then the rest of its line,
         // whether it is folded and its level as its value, as on the phone.
-        let label = HStack {
+        let line = HStack {
             SwatchMark(swatch: row.swatch)
             VStack(alignment: .leading) {
                 Text(row.title)
@@ -108,12 +108,15 @@ struct TaskListView: View {
         .accessibilityLabel(row.title)
         .accessibilityValue(AppModel.spoken(detail: shown.line?.detail, expanded: row.expanded, level: shown.item.level))
         return Group {
+            // A task opens its own screen; Upcoming's day or block the core's Open, which shows it on
+            // its day, the list following the app there (`left`); a row that is neither (the Time
+            // Report's sums and their headings) is read where it is, its folding its swipe.
             if row.role == "task" {
-                NavigationLink(value: TaskOpened(id: row.id)) { label }
+                NavigationLink(value: TaskOpened(id: row.id)) { line }
+            } else if model.place == .upcoming {
+                Button { model.key("open", on: row) } label: { line }
             } else {
-                // Upcoming's day or block: the core's Open, which shows it on its day; the list
-                // follows the app there (`left`).
-                Button { model.key("open", on: row) } label: { label }
+                line
             }
         }
         .accessibilityFocused($spoken, equals: row.id)

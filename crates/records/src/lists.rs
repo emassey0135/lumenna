@@ -45,13 +45,29 @@ pub fn tasks(snapshot: &Snapshot, query: &str, now: &Zoned) -> Result<Rows> {
         .collect();
 
     let order = sort.unwrap_or(snapshot.settings.task_order);
-    // A project's own listing shows everything not done in it, Someday and a start still to
-    // come with the rest; every other listing leaves those out unless its query asks for them.
-    let own_project = snapshot
+    // A project's own listing is headed by its sections, and shows everything not done in it,
+    // Someday and a start still to come with the rest; any other query lists tasks alone, and
+    // leaves those out unless it asks for them.
+    let project = snapshot
         .projects
         .values()
-        .any(|p| p.deleted_at.is_none() && query.trim() == crate::project_reference(p.name.clone()));
-    let mut rows = Rows::new(&snapshot.task_rows_shown(&expr, &cx, order, own_project), "task");
+        .find(|p| p.deleted_at.is_none() && query.trim() == crate::project_reference(p.name.clone()));
+    let projected = match project {
+        Some(project) => snapshot.project_rows(project.id, &expr, &cx, order),
+        None => snapshot.task_rows_sorted(&expr, &cx, order),
+    };
+    let tasks = projected.iter().filter(|row| row.role == Role::Task).count();
+    let mut rows = Rows::new(&projected, "task");
+    // Numbered within their kinds, as a day's blocks and sittings are: the third task is row 3
+    // whatever headings come before it.
+    let mut counted: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+    for row in &mut rows.rows {
+        let next = counted.entry(row.role.clone()).or_default();
+        *next += 1;
+        row.row = *next;
+    }
+    // The count says the tasks, never the headings among them.
+    rows.announcement = count_line(tasks, "task");
     if !query.trim().is_empty() {
         rows.query = Some(Query {
             text: query.to_owned(),

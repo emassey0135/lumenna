@@ -328,6 +328,7 @@ mod tests {
             minutes,
             capped: false,
             running: false,
+            left_secs: None,
             details: Vec::new(),
             actions: Vec::new(),
         };

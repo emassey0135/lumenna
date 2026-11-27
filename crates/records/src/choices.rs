@@ -18,6 +18,9 @@ use crate::plan::{Now, where_now};
 use crate::resolve::{self, split_day};
 use crate::words::{count_line, duration, suggested_because};
 
+/// What Move to Section's choice of no section answers: out of the one it is under.
+pub const NO_SECTION: &str = "none";
+
 /// Every task under `root`, at any depth.
 fn descendants(snapshot: &Snapshot, root: TaskId) -> BTreeSet<TaskId> {
     let mut children: BTreeMap<TaskId, Vec<TaskId>> = BTreeMap::new();
@@ -145,6 +148,23 @@ pub fn offered(snapshot: &Snapshot, action: &Action, now: &Zoned) -> Result<Choi
                     "project",
                     "There is no other project to move it to.",
                 )
+            }
+            (Subject::Task, K::MoveToSection) => {
+                let task = task()?;
+                let at = snapshot.section_of(task).map(|s| s.id);
+                // Out of its section first, where it is under one, then its project's others.
+                let mut choices: Vec<Choice> = Vec::new();
+                if at.is_some() {
+                    choices.push(Choice { id: NO_SECTION.to_owned(), title: "No Section".to_owned(), ..Choice::default() });
+                }
+                choices.extend(
+                    snapshot
+                        .sections_of(task.project_id)
+                        .into_iter()
+                        .filter(|s| Some(s.id) != at)
+                        .map(|s| Choice { id: s.id.to_string(), title: s.name.clone(), ..Choice::default() }),
+                );
+                listed(choices, "section", "There is no other section to move it to.")
             }
             (Subject::Task, K::MakeSubtaskOf) => {
                 let task = task()?;

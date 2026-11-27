@@ -37,6 +37,7 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::EditTask, "e"),
     (K::PutInBlock, "b"),
     (K::MoveToProject, "m"),
+    (K::MoveToSection, "h"),
     (K::MakeSubtaskOf, "s"),
     (K::MoveToTopLevel, "t"),
     (K::WaitFor, "w"),
@@ -71,6 +72,11 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::New, "a"),
     // The day's own, on its menu: no row of the day uses it.
     (K::WhatNow, "w"),
+    // The review's: a project's Mark Reviewed, its interval and opening it; a task's question.
+    (K::MarkReviewed, "v"),
+    (K::ReviewEvery, "i"),
+    (K::OpenProject, "o"),
+    (K::Reconsider, "q"),
 ];
 
 /// The shared table's command a kind runs where the table has one (`keys::what_runs`): a kind
@@ -88,6 +94,8 @@ const ACTION_COMMANDS: &[(ActionKind, &str)] = &[
     (K::StopWaiting, "stop-waiting"),
     (K::Restore, "restore-task"),
     (K::Rename, "rename"),
+    (K::MarkReviewed, "mark-reviewed"),
+    (K::Reconsider, "reconsider"),
 ];
 
 /// The letter of each settings page, by `SettingsPage::id`.
@@ -99,7 +107,7 @@ const BUTTON_LETTERS: &[(&str, &str)] =
     &[("sync-now", "n"), ("pair", "p"), ("back-up", "b"), ("restore-backup", "r"), ("import", "i")];
 
 /// The letter of each of a reminder's buttons, by `DueButton::id`. Dismiss is the delete keys'.
-const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("snooze", "z")];
+const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("stop", "t"), ("snooze", "z")];
 
 /// The letter of each of a screen's own actions (`screen_actions`), by the shared table's `id`
 /// where it has one, and of Home's places. No two on one screen share a letter (a test holds
@@ -116,12 +124,16 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-to-day", "g"),
     ("go-to-now", "t"),
     ("new-project-inside", "p"),
+    ("new-section", "i"),
     // Home.
     ("go-today", "t"),
     ("go-tasks", "k"),
     ("go-blocks", "b"),
     ("go-history", "h"),
-    ("go-upcoming", "d"),
+    ("go-upcoming", "j"),
+    ("go-review", "v"),
+    ("go-report", "g"),
+    ("time-left", "d"),
     ("go-trash", "x"),
     ("projects", "p"),
     ("labels", "l"),
@@ -256,7 +268,8 @@ const DAY_MOVES: &[&str] = &["previous-day", "next-day", "go-to-now", "go-to-day
 const BRAILLE_VIEW_EXTRAS: &[&str] = &["projects", "labels", "filters", "reminders-due"];
 
 /// What Home's places run, by their letters' ids: they are hot keys on Home.
-const HOME_PLACES: &[&str] = &["go-today", "go-upcoming", "go-tasks", "go-blocks", "go-history", "go-trash", "projects", "labels", "filters"];
+const HOME_PLACES: &[&str] =
+    &["go-today", "go-upcoming", "go-tasks", "go-blocks", "go-review", "go-history", "go-report", "go-trash", "projects", "labels", "filters"];
 
 /// The id of the braille menu bar's first menu: the screen's own actions (`screen_actions`).
 pub const SCREEN_MENU: &str = "screen";
@@ -296,6 +309,10 @@ pub fn menu_bar(place: Option<&Place>, home: bool, sentence: bool) -> Vec<Letter
         }
         if group.id == "file" && own.contains(&"new-project-inside") {
             ids.insert(1, ("new-project-inside".to_owned(), command_title("new-project-inside", sentence), true));
+        }
+        if group.id == "file" && own.contains(&"new-section") {
+            let at = if own.contains(&"new-project-inside") { 2 } else { 1 };
+            ids.insert(at.min(ids.len()), ("new-section".to_owned(), command_title("new-section", sentence), true));
         }
         (group, ids)
     });
@@ -709,6 +726,7 @@ mod tests {
             SidebarKind::Place(Place::Tasks),
             SidebarKind::Place(Place::Blocks),
             SidebarKind::Place(Place::History),
+            SidebarKind::Place(Place::Report),
             SidebarKind::Place(Place::Trash),
             SidebarKind::Group(lumenna_records::places::SidebarGroup::Projects),
             SidebarKind::Group(lumenna_records::places::SidebarGroup::Labels),

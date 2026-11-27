@@ -58,6 +58,10 @@ data class TaskWhole(
     val state: List<String>,
     /** Its history: sittings, time worked, completions, postponements. */
     val history: List<String>,
+    /** A repeating task's streak, in words: "done 12 times running", "missed Tuesday". */
+    val streak: String?,
+    /** The planner's question about it, in full, when it has one; `reconsider_task` answers it. */
+    val asking: String?,
 )
 
 /** One task, whole, with the sentence to say. */
@@ -237,6 +241,12 @@ data class TimerState(
     val capped: Boolean,
     /** Whether a timer runs now: never after a pause or a stop. */
     val running: Boolean,
+    /** For the timer as it is now: the sitting's planned length in minutes, when it has one. */
+    val plannedMinutes: Int?,
+    /** For the timer as it is now with a planned length: the seconds of it left, below zero once over. */
+    val leftSeconds: Long?,
+    /** For the timer running with some of its planned length left: when it runs out, RFC 3339. */
+    val runsOutAt: String?,
 )
 
 /** A replan of the rest of today, proposed: nothing changes until it is applied. */

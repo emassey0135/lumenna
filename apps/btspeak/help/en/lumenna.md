@@ -19,11 +19,13 @@ Press H-Chord on any Lumenna screen for help about that screen. Press Z-Chord to
 Lumenna opens on Home: your places, then what can be done from anywhere. Enter or a place's letter opens it; leaving the place brings you back to Home.
 
 - Today, t: the day's blocks, free time and now. See [Lumenna Day](help:lumenna-day).
-- Upcoming, d: the week ahead, today first, each day with its blocks, then the tasks due, starting or with their deadline that day. Enter on a day shows it in Today; on a block, shows its day with the block under the cursor; on a task, opens its form.
+- Upcoming, j: the week ahead, today first, each day with its blocks, then the tasks due, starting or with their deadline that day. Enter on a day shows it in Today; on a block, shows its day with the block under the cursor; on a task, opens its form.
 - Tasks, k: every open task. See [Lumenna Tasks](help:lumenna-tasks).
 - Projects, p; Labels, l; Saved filters, f: headings, with each project, label and saved filter under them. Enter on a heading folds or unfolds it. See [Lumenna Projects, Labels and Filters](help:lumenna-organise).
 - Blocks, b: every block, including ones on no day near today.
+- Review, v: the projects due for review, and the tasks the planner asks about: one near the top with nothing done on it for three weeks, or one put off five times. Enter on a project opens it; Mark reviewed, v, takes it off until its interval comes round, and Review every, i, sets that interval. On a task, Reconsider, q, asks its question: keep it, drop it, make it less often or take its date away.
 - History, h: what was completed or worked on over the last two weeks, newest first.
+- Time report, g: the time your sittings logged over the last four weeks, beside the estimates: By week, By project and By label, each a heading over its totals, folded and unfolded as any heading is.
 - Trash, x: deleted tasks, to restore or delete from the trash.
 
 On Home a letter is Home's first: a place's, or one of Home's own commands. An item's own command whose letter Home takes is in its context menu without the letter.
@@ -34,6 +36,7 @@ On Home a letter is Home's first: a place's, or one of Home's own commands. An i
 - New task, a: type it the way you would say it, such as "call the bank tomorrow at 3pm p1 #Home".
 - Undo, u, and Redo, y: the last change made on this device, wherever it was made.
 - What should I work on?, w: goes to Today and offers the tasks to start on.
+- Time left, d: what the timer runs on, how long so far, and how much of the sitting's planned length is left; with no timer running, what starting one would start.
 - Sync now, n: one round with your other devices now. See [Lumenna Settings](help:lumenna-settings).
 - Settings, s. See [Lumenna Settings](help:lumenna-settings).
 - Keyboard shortcuts, e: the keys of the screen you are on, a line each: the device's own, then its commands and what its items offer, each by its letter. H-Chord is help about the screen.

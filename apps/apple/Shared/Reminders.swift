@@ -34,6 +34,11 @@ enum Reminders {
     /// Replan (`DueReminder.replan`), which opens the app at Replan from Now.
     static let replanCategory = "dev.emassey0135.lumenna.reminder.replan"
     static let replanAction = "dev.emassey0135.lumenna.reminder.replan-from-now"
+    /// The category of a sitting's planned length running out with its timer running: the
+    /// core's Stop Timer (`DueReminder.stop`), then Dismiss, and no Snooze, since it is said once
+    /// and never again (its `snooze` is empty). An ordinary notification: nothing rings on.
+    static let stopCategory = "dev.emassey0135.lumenna.reminder.time-up"
+    static let stopAction = "dev.emassey0135.lumenna.reminder.stop-timer"
     /// What every reminder's identifier starts with, so re-arming cancels only its own.
     static let prefix = "reminder "
     /// How far ahead to schedule: the system holds 64 pending, so not a week of blocks.
@@ -62,17 +67,34 @@ enum Reminders {
         content.title = reminder.title
         content.body = reminder.text
         content.sound = .default
-        content.categoryIdentifier = !reminder.carry.isEmpty ? carryCategory : !reminder.replan.isEmpty ? replanCategory : category
+        content.categoryIdentifier = !reminder.stop.isEmpty ? stopCategory
+            : !reminder.carry.isEmpty ? carryCategory : !reminder.replan.isEmpty ? replanCategory : category
         // The reminders of one task or block group together.
         content.threadIdentifier = reminder.target
         content.userInfo = [
             "key": reminder.key, "occurrence": reminder.occurrence, "kind": reminder.kind, "target": reminder.target,
+            // The sitting whose time ran out, which Stop Timer stops; empty for any other.
+            "sitting": reminder.sitting,
         ]
         return content
     }
 
-    /// The category, its buttons worded by the core. Every reminder's words are the same, so
-    /// any one of them names them.
+    /// The time-up category: the core's Stop Timer, then Dismiss, in the core's order
+    /// (`Due::buttons`), and no Snooze.
+    static func stopCategory(for reminder: LumennaApp.DueReminder) -> UNNotificationCategory {
+        UNNotificationCategory(
+            identifier: stopCategory,
+            actions: [
+                UNNotificationAction(identifier: stopAction, title: reminder.stop, options: []),
+                UNNotificationAction(identifier: dismissAction, title: reminder.dismiss, options: []),
+            ],
+            intentIdentifiers: [],
+            options: []
+        )
+    }
+
+    /// The category, its buttons worded by the core. Every reminder that snoozes words them
+    /// alike, so any one of them names them; a time-up, which has no Snooze, never does.
     static func category(for reminder: LumennaApp.DueReminder) -> UNNotificationCategory {
         UNNotificationCategory(
             identifier: category,
@@ -122,14 +144,24 @@ enum Reminders {
     /// them all, and a carry notification already shown still needs its button.
     private static var lastCarried: LumennaApp.DueReminder?
 
-    /// Every category these reminders need, and the carry one once any has offered it.
+    /// The last reminder seen offering Stop Timer, for the same reason as `lastCarried`.
+    private static var lastStopped: LumennaApp.DueReminder?
+    /// The last reminder seen that snoozes, which names the ordinary category's buttons when
+    /// what is handed over now is only a time running out.
+    private static var lastSnoozed: LumennaApp.DueReminder?
+
+    /// Every category these reminders need, and the carry, replan and time-up ones once any has
+    /// offered them.
     static func categories(for due: [LumennaApp.DueReminder]) -> Set<UNNotificationCategory> {
         if let carried = due.first(where: { !$0.carry.isEmpty }) { lastCarried = carried }
         if let replanned = due.first(where: { !$0.replan.isEmpty }) { lastReplanned = replanned }
+        if let stopped = due.first(where: { !$0.stop.isEmpty }) { lastStopped = stopped }
+        if let snoozed = due.first(where: { !$0.snooze.isEmpty }) { lastSnoozed = snoozed }
         var categories = Set<UNNotificationCategory>()
-        if let first = due.first { categories.insert(category(for: first)) }
+        if let lastSnoozed { categories.insert(category(for: lastSnoozed)) }
         if let lastCarried { categories.insert(carryCategory(for: lastCarried)) }
         if let lastReplanned { categories.insert(replanCategory(for: lastReplanned)) }
+        if let lastStopped { categories.insert(stopCategory(for: lastStopped)) }
         return categories
     }
 
@@ -152,6 +184,26 @@ enum Reminders {
                 )
             }
     }
+
+    #if !os(macOS)
+    /// What a process with no `ReminderSchedule` of its own hands over once it has changed the
+    /// store: the Timer control's press in the widget extension (the iPhone's, the watch's), the
+    /// app perhaps not running, so a sitting's time running out is armed, or no longer, as the
+    /// press left the timer. Setting the categories replaces them all, so those already set are
+    /// kept beside these, which this process alone may not know of.
+    static func arm(_ upcoming: LumennaApp.DueReminders, now: Date = Date(), centre: UNUserNotificationCenter = .current()) async {
+        let requests = requests(upcoming.due, after: now)
+        let wanted = Set(requests.map(\.identifier))
+        if !upcoming.due.isEmpty {
+            let ours = categories(for: upcoming.due)
+            let kept = await centre.notificationCategories().filter { old in !ours.contains { $0.identifier == old.identifier } }
+            centre.setNotificationCategories(kept.union(ours))
+        }
+        let stale = await centre.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(prefix) && !wanted.contains($0) }
+        if !stale.isEmpty { centre.removePendingNotificationRequests(withIdentifiers: stale) }
+        for request in requests { try? await centre.add(request) }
+    }
+    #endif
 
     /// Whether this process may ask for permission. A UI test's never does: the system's
     /// question would cover the app under test.
@@ -222,6 +274,8 @@ extension UNUserNotificationCenter: NotificationCentre {
     }
 }
 
+// What follows is the apps' own: a widget extension arms only what one press left (`arm`).
+#if !LUMENNA_WIDGETS
 /// Keeps the system's pending notifications to what the core says fires next (iOS, watchOS).
 final class ReminderSchedule {
     private let device: LumennaApp.Device
@@ -463,7 +517,7 @@ struct RemindedOf {
     var key = ""
 }
 
-/// Answers a reminder's buttons, the core's Dismiss and Snooze, and opens what it is about
+/// Answers a reminder's buttons, the core's Dismiss, Snooze, Carry Forward and Stop Timer, and opens what it is about
 /// when it is chosen. Set as the notification center's delegate before launching finishes,
 /// so a button pressed while the app was not running reaches it.
 final class ReminderResponder: NSObject, UNUserNotificationCenterDelegate {
@@ -507,6 +561,18 @@ final class ReminderResponder: NSObject, UNUserNotificationCenterDelegate {
             case Reminders.carryAction:
                 guard let target = info["target"] as? String else { return }
                 change = try device.carryRestForward(block: "\(target)@\(occurrence)")
+            case Reminders.stopAction:
+                // The sitting's timer stopped, its time logged, and the firing dismissed on every
+                // device, as the core's Stop Timer does in the app.
+                guard let sitting = info["sitting"] as? String, !sitting.isEmpty else { return }
+                let stopped = Result { try device.stopTimer(assignment: sitting, minutes: nil) }
+                _ = try? device.dismissReminder(key: key, occurrence: occurrence)
+                NotificationCenter.default.post(name: Core.changed, object: nil)
+                switch stopped {
+                case let .success(timer): Announcer.say(timer.announcement, notices: timer.notices)
+                case let .failure(error): Announcer.say(error.sentence)
+                }
+                return
             case Reminders.replanAction:
                 open(RemindedOf(kind: info["kind"] as? String ?? "block", target: info["target"] as? String ?? "", day: occurrence, replan: true, key: key))
                 return
@@ -525,3 +591,4 @@ final class ReminderResponder: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 }
+#endif

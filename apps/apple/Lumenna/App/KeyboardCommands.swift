@@ -21,11 +21,17 @@ import UIKit
     @objc optional func goToBlocks()
     @objc optional func goToTrash()
     @objc optional func goToHistory()
+    @objc optional func goToReview()
+    @objc optional func goToReport()
+    /// Time Left: the timer as it is, said (the core's `time-left`).
+    @objc optional func timeLeft()
     @objc optional func toggleDone()
     @objc optional func putInBlock()
     @objc optional func moveToProject()
     @objc optional func makeSubtask()
     @objc optional func waitFor()
+    @objc optional func reconsider()
+    @objc optional func markReviewed()
     @objc optional func moveToTrash()
     @objc optional func saveChanges()
     @objc optional func previousDay()
@@ -88,11 +94,13 @@ enum KeyboardCommands {
     static var viewItems: [UIMenuElement] {
         [
             command(Commands.asking("go-today"), #selector(CommandActions.goToToday), "1"),
-            command(Commands.asking("go-upcoming"), #selector(CommandActions.goToUpcoming), "6"),
+            command(Commands.asking("go-upcoming"), #selector(CommandActions.goToUpcoming), "8"),
             command(Commands.asking("go-tasks"), #selector(CommandActions.goToTasks), "2"),
             command(Commands.asking("go-blocks"), #selector(CommandActions.goToBlocks), "3"),
             command(Commands.asking("go-trash"), #selector(CommandActions.goToTrash), "4"),
             command(Commands.asking("go-history"), #selector(CommandActions.goToHistory), "5"),
+            command(Commands.asking("go-review"), #selector(CommandActions.goToReview), "6"),
+            command(Commands.asking("go-report"), #selector(CommandActions.goToReport), "7"),
         ]
     }
 
@@ -103,6 +111,8 @@ enum KeyboardCommands {
             command(Commands.asking("move-to-project"), #selector(CommandActions.moveToProject), "m", [.command, .shift]),
             item(Commands.asking("make-subtask"), #selector(CommandActions.makeSubtask)),
             item(Commands.asking("wait-for"), #selector(CommandActions.waitFor)),
+            item(Commands.asking("reconsider"), #selector(CommandActions.reconsider)),
+            item(Commands.asking("mark-reviewed"), #selector(CommandActions.markReviewed)),
             command(Commands.asking("save-task"), #selector(CommandActions.saveChanges), "s"),
             command(Commands.asking("trash-task"), #selector(CommandActions.moveToTrash), "\u{8}"),
         ]
@@ -125,6 +135,8 @@ enum KeyboardCommands {
             command(Commands.asking("plan-day"), #selector(CommandActions.planTheDay), DayKeys.planDay, [.command, .alternate]),
             command(Commands.asking("replan"), #selector(CommandActions.replanFromNow), DayKeys.replan, [.command, .alternate]),
             item(Commands.asking("what-now"), #selector(CommandActions.whatNow)),
+            // The shared table's Ctrl+Shift+T, a Mac keyboard's Command for Control.
+            command(Commands.asking("time-left"), #selector(CommandActions.timeLeft), "t", [.command, .shift]),
             item(Commands.asking("end-day"), #selector(CommandActions.endTheDay)),
             item(Commands.asking("clear-day"), #selector(CommandActions.clearTheDay)),
         ]

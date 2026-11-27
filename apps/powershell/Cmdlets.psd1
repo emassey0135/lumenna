@@ -15,11 +15,13 @@
     list_blocks              = @{ Cmdlet = 'Get-LumennaBlock' }
     list_upcoming            = @{ Cmdlet = 'Get-LumennaUpcoming' }
     list_projects            = @{ Cmdlet = 'Get-LumennaProject' }
+    list_sections            = @{ Cmdlet = 'Get-LumennaSection' }
     list_labels              = @{ Cmdlet = 'Get-LumennaLabel' }
     list_filters             = @{ Cmdlet = 'Get-LumennaFilter' }
     what_should_i_work_on    = @{ Cmdlet = 'Get-LumennaChoice' }
     propose_replan           = @{ Cmdlet = 'Get-LumennaReplan' }
     timer                    = @{ Cmdlet = 'Get-LumennaTimer' }
+    report                   = @{ Cmdlet = 'Get-LumennaTimeReport' }
     propose_day_plan         = @{ Cmdlet = 'Get-LumennaDayPlan' }
     add_task                 = @{ Cmdlet = 'Add-LumennaTask' }
     edit_task                = @{ Cmdlet = 'Set-LumennaTask' }
@@ -30,6 +32,7 @@
     erase_everything_deleted = @{ Cmdlet = 'Clear-LumennaTrash' }
     restore_task             = @{ Cmdlet = 'Restore-LumennaTask' }
     move_task                = @{ Cmdlet = 'Move-LumennaTask' }
+    add_section              = @{ Cmdlet = 'Add-LumennaSection' }
     assign                   = @{ Cmdlet = 'Add-LumennaSitting' }
     unassign                 = @{ Cmdlet = 'Remove-LumennaSitting'; Parameters = @{ assignment = 'Sitting' } }
     start_timer              = @{ Cmdlet = 'Start-LumennaTimer'; Parameters = @{ assignment = 'Sitting' } }
@@ -39,6 +42,10 @@
     start_on                 = @{ Cmdlet = 'Start-LumennaChoice' }
     apply_replan             = @{ Cmdlet = 'Approve-LumennaReplan' }
     apply_day_plan           = @{ Cmdlet = 'Approve-LumennaDayPlan' }
+    review                   = @{ Cmdlet = 'Get-LumennaReview' }
+    mark_reviewed            = @{ Cmdlet = 'Complete-LumennaProjectReview' }
+    review_every             = @{ Cmdlet = 'Set-LumennaProjectReview' }
+    reconsider_task          = @{ Cmdlet = 'Resolve-LumennaTask' }
     undo                     = @{ Cmdlet = 'Undo-LumennaChange' }
     redo                     = @{ Cmdlet = 'Redo-LumennaChange' }
 }

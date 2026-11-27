@@ -33,6 +33,7 @@ class TimerTileTest {
         action = if (running) "Stop Timer" else "Start Timer",
         actionSentence = if (running) "Stop timer" else "Start timer",
         enabled = enabled,
+        timer = null,
     )
 
     @Test

@@ -51,7 +51,7 @@ pub const SCHEMA_VERSION: u32 = 2;
 /// The first version that follows a real erasure: one before it would go on syncing the
 /// history erased, with any device that still had it.
 pub const GENERATIONS: u32 = 2;
-pub use project::{Label, Project, SavedFilter};
+pub use project::{Label, Project, SavedFilter, Section};
 pub use reminder::{
     Delivery, Reminder, ReminderAck, ReminderAction, ReminderAnchor, ReminderTarget, Trigger,
 };

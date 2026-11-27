@@ -57,6 +57,8 @@ that goes there names it, and the day's buffer is its group's."
     ("Tasks" (lumenna-word '(command "go-tasks"))) ("Trash" (lumenna-word '(command "go-trash")))
     ("Blocks" (lumenna-word '(command "go-blocks"))) ("History" (lumenna-word '(command "go-history")))
     ("Upcoming" (lumenna-word '(command "go-upcoming")))
+    ("Review" (lumenna-word '(command "go-review")))
+    ("Report" (lumenna-word '(command "go-report")))
     ("Today" (lumenna-word '(group "day")))
     ((pred (lambda (p) (plist-get p :Project))) (plist-get place :Project))
     ((pred (lambda (p) (plist-get p :Label))) (plist-get place :Label))
@@ -74,9 +76,9 @@ that goes there names it, and the day's buffer is its group's."
 A buffer that shows it already is shown again."
   (if (equal place "Today")
       (lumenna-today)
-    (let ((mode (pcase place
-                  ("Trash" #'lumenna-trash-mode) ("Blocks" #'lumenna-blocks-mode) ("Upcoming" #'lumenna-upcoming-mode)
-                  (_ #'lumenna-tasks-mode)))
+    (let ((mode (pcase place ("Trash" #'lumenna-trash-mode) ("Review" #'lumenna-review-mode)
+                  ("Blocks" #'lumenna-blocks-mode) ("Report" #'lumenna-report-mode)
+                  ("Upcoming" #'lumenna-upcoming-mode) (_ #'lumenna-tasks-mode)))
           (name (lumenna--buffer-name (lumenna--place-title place))))
       (lumenna--show-screen name mode (list (list :Open place)))
       (setq lumenna--place place))))
@@ -407,6 +409,31 @@ what was done here, the app showing the day there with the block in hand."
   (interactive)
   (lumenna-open-place "Upcoming"))
 
+;;;###autoload
+(defun lumenna-review ()
+  "Show what is due for a second look: the projects due for review, and the
+tasks the planner asks about."
+  (interactive)
+  (lumenna-open-place "Review"))
+
+;;;; The time report
+
+(define-derived-mode lumenna-report-mode lumenna-list-mode "Lumenna Time Report"
+  "What sittings logged over the last weeks, by week, project and label.
+Each heading folds its totals (TAB); a total has no actions.
+
+\\{lumenna-report-mode-map}"
+  (lumenna--mode-name '(command "go-report"))
+  (setq-local lumenna--draw #'lumenna--list-rows)
+  ;; The core's Enter (`open'): a heading folds; a total runs nothing, in the app's words.
+  (setq-local lumenna--activate (lambda (_row) (lumenna-press "open"))))
+
+;;;###autoload
+(defun lumenna-report ()
+  "Show the time report: what sittings logged, beside the estimates."
+  (interactive)
+  (lumenna-open-place "Report"))
+
 ;;;; Menus
 
 (lumenna-define-keys lumenna-tasks-mode
@@ -442,6 +469,36 @@ what was done here, the app showing the day there with the block in hand."
 (lumenna-define-keys lumenna-upcoming-mode
   ((group "lists")
    ("RET" (kinds "show_day" "edit") lumenna-activate)))
+
+;;;; The review
+
+(define-derived-mode lumenna-review-mode lumenna-list-mode "Lumenna Review"
+  "The projects due for review, then the tasks the planner asks about.
+RET on a project opens it, on a task its details; v marks a project reviewed,
+q answers a task's question.
+
+\\{lumenna-review-mode-map}"
+  (lumenna--mode-name '(command "go-review"))
+  (setq-local lumenna--draw #'lumenna--list-rows)
+  ;; The core's Enter (`open'): a project opened, a task's details.
+  (setq-local lumenna--activate (lambda (_row) (lumenna-press "open"))))
+
+(lumenna-define-command lumenna-act-reconsider "reconsider"
+  "Answer the planner's question about the task at point.
+Keep it, drop it, or make it less often.")
+(lumenna-define-command lumenna-act-mark-reviewed "mark-reviewed"
+  "Mark the project at point reviewed, until its interval comes round.")
+(lumenna-define-action lumenna-act-review-every ("review_every")
+  "Set how often the project at point comes up for review.")
+
+(lumenna-define-keys lumenna-review-mode
+  (:project_at_point
+   ("v" (command "mark-reviewed") lumenna-act-mark-reviewed)
+   ("i" (kinds "review_every") lumenna-act-review-every))
+  (:task_at_point
+   ("q" (command "reconsider") lumenna-act-reconsider)
+   ("c" (kinds "mark_done" "mark_not_done") lumenna-act-done)
+   ("d" (command "trash-task") lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-trash-mode
   (:task_at_point

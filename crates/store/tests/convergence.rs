@@ -463,3 +463,35 @@ fn edits_to_different_fields_of_one_occurrence_both_survive() {
     assert_eq!(*start_time, Some(time(10, 0, 0, 0)));
     assert_eq!(title.as_deref(), Some("Review"));
 }
+
+#[test]
+fn sections_two_devices_make_apart_both_survive_a_merge() {
+    // Neither store has the sections map yet, as one from before sections: each device's first
+    // section brings in the same frozen change rather than a map of its own for merge to drop.
+    use lumenna_core::model::Section;
+    let mut alice = Documents::new();
+    let mut bob = Documents::new();
+    let errands = Section::new(ProjectId::INBOX, "Errands", OrderKey::middle());
+    let calls = Section::new(ProjectId::INBOX, "Calls", OrderKey::middle());
+    alice.put_section(&errands, None).unwrap();
+    bob.put_section(&calls, None).unwrap();
+
+    alice.merge(&mut bob).unwrap();
+    bob.merge(&mut alice).unwrap();
+    let (mine, _) = alice.snapshot();
+    let (theirs, _) = bob.snapshot();
+    assert_eq!(mine.sections.len(), 2, "{:?}", mine.sections);
+    assert_eq!(mine.sections, theirs.sections);
+
+    // A rename on one and a task put under it on the other both hold.
+    let mut renamed = errands.clone();
+    renamed.name = "Out and about".to_owned();
+    alice.put_section(&renamed, Some(&errands)).unwrap();
+    let mut task = lumenna_core::model::Task::new(ProjectId::INBOX, "Post the parcel", OrderKey::middle());
+    task.section_id = Some(errands.id);
+    bob.put_task(&task, None).unwrap();
+    alice.merge(&mut bob).unwrap();
+    let (s, _) = alice.snapshot();
+    let task = &s.tasks[&task.id];
+    assert_eq!(s.section_of(task).map(|s| s.name.as_str()), Some("Out and about"));
+}

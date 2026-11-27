@@ -168,17 +168,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             "show": #selector(showMainWindow(_:)), "new-task": #selector(showQuickAdd(_:)),
             "sync-now": #selector(syncNowFromMenu(_:)), "quit": #selector(NSApplication.terminate(_:)),
         ]
+        // The timer's own item says whether a press does anything, so the menu leaves each
+        // item's enabling to it.
+        menu.autoenablesItems = false
         for entry in LumennaApp.trayMenu(sentence: false) {
             guard !entry.id.isEmpty else {
                 menu.addItem(.separator())
                 continue
             }
             guard let action = actions[entry.id] else { continue }
+            if entry.id == "quit" {
+                // The timer's control before Quit, as Windows' and GTK's trays have it: what a
+                // press does, on what, and what is left of a sitting's planned length.
+                let timer = NSMenuItem(title: "", action: #selector(toggleTimerFromMenu(_:)), keyEquivalent: "")
+                timer.isHidden = true
+                menu.addItem(timer)
+                menu.addItem(.separator())
+                timerItem = timer
+            }
             let title = entry.id == "quit" ? Wording.quitApp : entry.title + (entry.asks ? "…" : "")
             menu.addItem(withTitle: title, action: action, keyEquivalent: "")
         }
+        menu.delegate = self
         item.menu = menu
         statusItem = item
+        drawTimerItem()
+        // At least each minute, so a countdown read in the menu is never a minute behind; in the
+        // common modes, so it goes on while the menu is open.
+        let redraw = Foundation.Timer(timeInterval: 15, repeats: true) { [weak self] _ in self?.drawTimerItem() }
+        RunLoop.main.add(redraw, forMode: .common)
+        timerRedraw = redraw
+    }
+
+    /// The menu bar item's timer item.
+    private var timerItem: NSMenuItem?
+    // Foundation's, named in full: the core has a record called `Timer` too.
+    private var timerRedraw: Foundation.Timer?
+    /// Where the timer's control is read: off the main thread, as the glance is.
+    private let timerQueue = DispatchQueue(label: "dev.emassey0135.lumenna.timer-item", qos: .utility)
+
+    /// The timer's item as the core has it now: the control's line (`timerControlLine`: "Stop
+    /// Timer, Essay, 12 minutes left"), dimmed where a press would do nothing.
+    func drawTimerItem() {
+        guard let core, timerItem != nil else { return }
+        let device = core.app.device
+        timerQueue.async { [weak self] in
+            let control = try? device.timerControl()
+            let line = control.map { LumennaApp.timerControlLine(control: $0, now: Instant.rfc3339(Date()), sentence: false) }
+            DispatchQueue.main.async {
+                guard let item = self?.timerItem else { return }
+                item.isHidden = line == nil
+                if let line, item.title != line { item.title = line }
+                item.isEnabled = control?.enabled ?? false
+            }
+        }
+    }
+
+    /// The timer's item pressed: the core's toggle, as the Timer control's press is, and what it
+    /// did said.
+    @objc func toggleTimerFromMenu(_ sender: Any?) {
+        do {
+            let change = try core.app.device.toggleTimer()
+            Announcer.say(change.announcement, notices: change.notices)
+        } catch {
+            Announcer.say(error.sentence)
+        }
+        drawTimerItem()
     }
 
     // MARK: - Sync
@@ -221,6 +276,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func goToBlocks(_ sender: Any?) { go(.blocks) }
     @objc func goToTrash(_ sender: Any?) { go(.trash) }
     @objc func goToHistory(_ sender: Any?) { go(.history) }
+    @objc func goToReview(_ sender: Any?) { go(.review) }
+    @objc func goToReport(_ sender: Any?) { go(.report) }
+
+    /// Time Left: the timer as it is, said, from wherever the window is (the core's `time-left`).
+    @objc func timeLeft(_ sender: Any?) {
+        core.app.key("time-left")
+    }
 
     /// Goes to `place`, then `then` on its pane once the window shows it (`MainWindowController.go`).
     private func go(_ place: LumennaApp.Place, then: (() -> Void)? = nil) {
@@ -283,6 +345,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case #selector(moveToProject(_:)): "move-to-project"
         case #selector(makeSubtask(_:)): "make-subtask"
         case #selector(waitFor(_:)): "wait-for"
+        case #selector(reconsider(_:)): "reconsider"
+        case #selector(markReviewed(_:)): "mark-reviewed"
         case #selector(moveToTrash(_:)): "delete"
         default: nil
         }
@@ -302,6 +366,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func moveToProject(_ sender: Any?) { perform(#selector(moveToProject(_:))) }
     @objc func makeSubtask(_ sender: Any?) { perform(#selector(makeSubtask(_:))) }
     @objc func waitFor(_ sender: Any?) { perform(#selector(waitFor(_:))) }
+    @objc func reconsider(_ sender: Any?) { perform(#selector(reconsider(_:))) }
+    @objc func markReviewed(_ sender: Any?) { perform(#selector(markReviewed(_:))) }
     @objc func moveToTrash(_ sender: Any?) { perform(#selector(moveToTrash(_:))) }
 
     @objc func nextPane(_ sender: Any?) { main?.nextPane(sender) }
@@ -364,5 +430,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         default:
             return true
         }
+    }
+}
+
+extension AppDelegate: NSMenuDelegate {
+    /// The menu bar item's menu, opening: its timer item as the timer is now.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        drawTimerItem()
     }
 }

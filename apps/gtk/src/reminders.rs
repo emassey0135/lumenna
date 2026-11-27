@@ -2,7 +2,7 @@
 //!
 //! When each fires and what it says are the core's (`Device::deliver_reminders`); this shows
 //! each as a desktop notification, so GNOME shows it, Orca reads it as it reads every other one,
-//! and the notification's own buttons dismiss, snooze, carry forward or replan. One process per
+//! and the notification's own buttons dismiss, snooze, carry forward, replan or stop a timer. One process per
 //! device gives them: while `lum notify` or another copy has the right, the device says so
 //! (`elsewhere`), and this asks again every few seconds, as the sync service waits its turn.
 //!
@@ -110,6 +110,8 @@ fn add_buttons(notification: &gio::Notification, shown: &str, due: &lumenna_app:
             "carry" => ("app.reminder-carry".to_owned(), (first.0.clone(), first.1.clone(), due.block.clone().unwrap_or_default()).to_variant()),
             // When a block's work outruns its time: Replan from Now.
             "replan" => ("app.reminder-replan".to_owned(), first.to_variant()),
+            // A sitting's planned length run out: its timer stopped.
+            "stop" => ("app.reminder-stop".to_owned(), (first.0.clone(), first.1.clone(), due.sitting.clone().unwrap_or_default()).to_variant()),
             _ => continue,
         };
         notification.add_button_with_target_value(&button.title, &action, Some(&target));
@@ -167,6 +169,22 @@ fn add_actions(app: &App) {
         answered(&app, app.model.device.carry_rest_forward(block), "");
     });
     app.application.add_action(&carry);
+    let stop = gio::SimpleAction::new("reminder-stop", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
+    stop.connect_activate(|_, parameter| {
+        // The sitting whose time ran out stops, its stop said, and the firing is dismissed.
+        let (Some(app), Some((key, occurrence, sitting))) =
+            (crate::window::app(), parameter.and_then(|p| p.get::<(String, String, String)>()))
+        else {
+            return;
+        };
+        app.application.withdraw_notification(&id(&key, &occurrence));
+        let device = &app.model.device;
+        let stopped = device
+            .stop_timer(sitting, None)
+            .and_then(|stopped| device.dismiss_reminder(key, occurrence).map(|_| Change::unchanged(stopped.announcement)));
+        answered(&app, stopped, "");
+    });
+    app.application.add_action(&stop);
     let open = gio::SimpleAction::new("reminder-open", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
     open.connect_activate(|_, parameter| {
         let (Some(app), Some((kind, target, occurrence))) =

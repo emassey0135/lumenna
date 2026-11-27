@@ -73,6 +73,8 @@ def place_screen(place):
         return tasks.history
     if isinstance(place, L.PlaceUpcoming):
         return tasks.upcoming
+    if isinstance(place, L.PlaceReport):
+        return tasks.report
     if isinstance(place, L.PlaceTrash):
         return tasks.trash
     return lambda session: tasks.task_list(session, place)

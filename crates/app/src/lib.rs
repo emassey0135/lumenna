@@ -532,10 +532,24 @@ impl Lumenna {
         match id {
             // From any place: today, its question asked, as the launch shortcut does.
             "what-now" => return self.launch("what-now", model),
+            // The timer as it is, said on request, its countdown among it: never a live region.
+            "time-left" => {
+                let Some(store) = &model.store else { return Command::done() };
+                return match lumenna_records::controls::timer_now(&store.snapshot, &store.now) {
+                    Ok(timer) => say(timer.announcement),
+                    Err(error) => refused(error.to_string()),
+                };
+            }
             "home" => return self.home(model),
             "new-project-inside" => {
                 return model.new_inside_shown().map_or_else(
                     || refused(lumenna_records::not_offered(ActionKind::NewInside, lumenna_records::Subject::Project, false)),
+                    |action| self.perform(action, model),
+                );
+            }
+            "new-section" => {
+                return model.new_section_shown().map_or_else(
+                    || refused(lumenna_records::not_offered(ActionKind::New, lumenna_records::Subject::Section, false)),
                     |action| self.perform(action, model),
                 );
             }
@@ -575,6 +589,8 @@ impl Lumenna {
                         "go-trash" => Place::Trash,
                         "go-history" => Place::History,
                         "go-upcoming" => Place::Upcoming,
+                        "go-review" => Place::Review,
+                        "go-report" => Place::Report,
                         _ => return Command::done(),
                     };
                     model.open = None;

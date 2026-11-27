@@ -92,6 +92,8 @@ fun RowButton(
     focus: RowFocus? = null,
     /** A project's, label's or block's colour, drawn as the button's icon beside its name. */
     swatch: Swatch? = null,
+    /** Whether it heads the rows beneath it (a list's group, as the time report's weeks). */
+    heading: Boolean = false,
     onClick: () -> Unit,
 ) {
     Button(
@@ -102,6 +104,7 @@ fun RowButton(
             .then(if (key != null && focus != null) Modifier.focusRequester(focus.requester(key)) else Modifier)
             .semantics {
                 if (key != null) rowKey = key
+                if (heading) heading()
                 contentDescription = listOfNotNull(title, state ?: detail).filter { it.isNotEmpty() }.joinToString(", ")
                 if (actions.isNotEmpty()) customActions = actions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
             },

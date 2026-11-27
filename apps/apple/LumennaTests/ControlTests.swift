@@ -36,7 +36,7 @@ final class ControlTests: XCTestCase {
 
     func testARunningTimerIsOnAndSaysItsTaskAndThatAPressStopsIt() {
         let control = LumennaApp.TimerControl(
-            running: true, detail: "Essay", action: "Stop Timer", actionSentence: "Stop timer", enabled: true
+            running: true, detail: "Essay", action: "Stop Timer", actionSentence: "Stop timer", enabled: true, timer: nil
         )
         let state = TimerControlState(control)
         XCTAssertTrue(state.isOn)
@@ -47,9 +47,67 @@ final class ControlTests: XCTestCase {
         XCTAssertEqual(state.spoken, "\(state.title), Stop Timer, Essay")
     }
 
+    /// A timer running on a sitting of 25 minutes, from 09:00.
+    private func running(planned: UInt32? = 25, runsOut: String? = "2026-10-25T09:25:00Z") -> LumennaApp.TimerControl {
+        LumennaApp.TimerControl(
+            running: true, detail: "Essay", action: "Stop Timer", actionSentence: "Stop timer", enabled: true,
+            timer: LumennaApp.GlanceTimer(
+                sitting: "s", task: "Essay", block: "Deep work", countingFrom: "2026-10-25T09:00:00Z",
+                plannedMins: planned, runsOutAt: runsOut
+            )
+        )
+    }
+
+    private func at(_ instant: String) throws -> Date { try XCTUnwrap(Instant.parse(instant)) }
+
+    func testARunningTimersControlSaysWhatIsLeftOfItsPlannedLengthElseHowLongSoFar() throws {
+        let state = TimerControlState(running(), at: try at("2026-10-25T09:12:30Z"))
+        XCTAssertEqual(state.value, "Essay, 13 minutes left", "the core's words beside the task")
+        XCTAssertEqual(state.spoken, "\(state.title), Stop Timer, Essay, 13 minutes left")
+        XCTAssertEqual(TimerControlState(running(), at: try at("2026-10-25T09:28:00Z")).value, "Essay, 3 minutes over")
+        XCTAssertEqual(TimerControlState(running(planned: nil, runsOut: nil), at: try at("2026-10-25T09:12:30Z")).value, "Essay, 12 minutes")
+    }
+
+    func testTheMenuBarsTimerItemIsTheCoresLineCountingDown() {
+        let line = LumennaApp.timerControlLine(control: running(), now: "2026-10-25T09:12:30Z", sentence: false)
+        XCTAssertEqual(line, "Stop Timer, Essay, 13 minutes left")
+    }
+
+    // MARK: - The Live Activity
+
+    func testTheLiveActivitysStateIsTheControlsTimerWithTheCoresButtons() throws {
+        let state = try XCTUnwrap(TimerActivityState.of(running(), at: try at("2026-10-25T09:12:30Z")))
+        XCTAssertEqual(state.sitting, "s", "what its Pause and Stop act on")
+        XCTAssertEqual(state.task, "Essay")
+        XCTAssertEqual(state.block, "Deep work")
+        XCTAssertEqual(state.countingFrom, try at("2026-10-25T09:00:00Z"))
+        XCTAssertEqual(state.runsOutAt, try at("2026-10-25T09:25:00Z"))
+        XCTAssertEqual(state.plannedMins, 25)
+        XCTAssertEqual(state.upWords, "time is up", "the core's words for the moment it runs out")
+        XCTAssertEqual(state.pause, Wording.pauseTimer)
+        XCTAssertEqual(state.stop, Wording.stopTimer)
+        // App Intents' titles are literals, read at build time: kept the core's by this test.
+        XCTAssertEqual(String(localized: PauseTimerActivityIntent.title), Wording.pauseTimer)
+        XCTAssertEqual(String(localized: StopTimerActivityIntent.title), Wording.stopTimer)
+    }
+
+    func testTheLiveActivityCountsDownToItsPlannedLengthThenUpAndShowsNothingWhileNoTimerRuns() throws {
+        let state = try XCTUnwrap(TimerActivityState.of(running()))
+        XCTAssertEqual(TimerActivityState.countsDown(state, at: try at("2026-10-25T09:12:30Z"))?.upperBound, try at("2026-10-25T09:25:00Z"))
+        XCTAssertNil(TimerActivityState.countsDown(state, at: try at("2026-10-25T09:26:00Z")), "past it, it counts up")
+        let unplanned = try XCTUnwrap(TimerActivityState.of(running(planned: nil, runsOut: nil)))
+        XCTAssertNil(TimerActivityState.countsDown(unplanned, at: try at("2026-10-25T09:12:30Z")), "with no planned length, only up")
+        XCTAssertNil(unplanned.upWords)
+        let stopped = LumennaApp.TimerControl(
+            running: false, detail: "Pay the rent", action: "Start Timer", actionSentence: "Start timer", enabled: true, timer: nil
+        )
+        XCTAssertNil(TimerActivityState.of(stopped), "no timer runs, so no Live Activity")
+        XCTAssertNil(TimerActivityState.of(try core.app.device.timerControl()))
+    }
+
     func testAStoppedTimerIsOffAndSaysWhatAPressWouldStart() {
         let control = LumennaApp.TimerControl(
-            running: false, detail: "Pay the rent", action: "Start Timer", actionSentence: "Start timer", enabled: true
+            running: false, detail: "Pay the rent", action: "Start Timer", actionSentence: "Start timer", enabled: true, timer: nil
         )
         let state = TimerControlState(control)
         XCTAssertFalse(state.isOn)

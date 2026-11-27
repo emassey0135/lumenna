@@ -45,6 +45,8 @@ pub struct SearchDocument {
 pub struct SearchTask {
     /// The project it is in, by name; none for the Inbox.
     pub project: Option<String>,
+    /// The section of its project it sits under, by name.
+    pub section: Option<String>,
     /// Its labels' names, without the `@`.
     pub labels: Vec<String>,
     /// 1 to 4, where 1 is highest.
@@ -61,6 +63,9 @@ pub struct SearchTask {
     pub deadline: Option<String>,
     /// How it repeats, in the words quick add takes ("every weekday").
     pub repetition: Option<String>,
+    /// A repeating task's streak, in words: "done 12 times running", "missed Tuesday".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub streak: Option<String>,
     /// Its states, as the filter language names them: `overdue`, `blocked`, `recurring`, …
     pub states: Vec<String>,
     /// Its notes.
@@ -203,6 +208,7 @@ fn task_document(snapshot: &Snapshot, facts: &lumenna_core::state::Facts<'_>, ta
         launch: id,
         task: Some(SearchTask {
             project,
+            section: snapshot.section_of(task).map(|s| s.name.clone()),
             labels,
             priority: task.priority.as_u8(),
             due_time: due.and_then(|d| d.time).map(lumenna_core::time::time_text),
@@ -211,6 +217,7 @@ fn task_document(snapshot: &Snapshot, facts: &lumenna_core::state::Facts<'_>, ta
             start: task.start.map(|start| start.to_string()),
             deadline: task.deadline.map(|date| date.to_string()),
             repetition,
+            streak: crate::review::streak_of(snapshot, task, now),
             states: facts.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
             notes: task.notes.clone(),
             created_at: task.created_at.to_string(),

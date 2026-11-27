@@ -1,8 +1,8 @@
-//! Projects, labels, and saved filters.
+//! Projects, their sections, labels, and saved filters.
 
 use jiff::Timestamp;
 
-use crate::id::{FilterId, LabelId, ProjectId};
+use crate::id::{FilterId, LabelId, ProjectId, SectionId};
 use crate::order::OrderKey;
 
 /// An area of work. Tasks belong to exactly one.
@@ -46,6 +46,12 @@ pub struct Project {
     /// `None` inherits. `Some(1.0)` is a real setting, not a synonym for `None`: it is how a
     /// chapter opts back to neutral under a heavy thesis.
     pub weight: Option<f32>,
+    /// How many days apart it is reviewed ([`crate::review`]): `None` the usual week
+    /// ([`crate::review::DEFAULT_REVIEW_DAYS`]), `Some(0)` never.
+    pub review_every_days: Option<u32>,
+    /// When it was last marked reviewed. Never, and its first review counts from when it was
+    /// made.
+    pub reviewed_at: Option<Timestamp>,
     /// Trash, for undo.
     pub deleted_at: Option<Timestamp>,
 }
@@ -69,6 +75,8 @@ impl Project {
             archived: false,
             is_inbox: false,
             weight: None,
+            review_every_days: None,
+            reviewed_at: None,
             deleted_at: None,
         }
     }
@@ -167,4 +175,38 @@ pub struct SavedFilter {
     pub color: Option<String>,
     /// Trash, for undo.
     pub deleted_at: Option<Timestamp>,
+}
+
+/// A named heading a project's tasks sit under: Todoist's sections, Things' headings.
+///
+/// Lighter than a subproject: no weight, colour or tree of its own, and its tasks are the
+/// project's still, in every filter that names the project. A record of its own rather than a
+/// name on each task, for the reasons a label is one: renaming it is one write, an empty one
+/// can stand ready for tasks, and its order is its own.
+///
+/// **A task's section is believed only while it is this project's and not deleted**
+/// ([`Snapshot::section_of`](crate::snapshot::Snapshot::section_of)): merge can leave a task
+/// naming a section deleted elsewhere, or one of the project it has since left, and the task
+/// then sits in the project with no section, as it does with none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Section {
+    /// Identity.
+    pub id: SectionId,
+    /// The project it heads tasks in.
+    pub project_id: ProjectId,
+    /// Display name.
+    pub name: String,
+    /// Position among the project's sections.
+    pub order: OrderKey,
+    /// Trash, for undo.
+    pub deleted_at: Option<Timestamp>,
+}
+
+impl Section {
+    /// A new section of `project`.
+    #[must_use]
+    pub fn new(project_id: ProjectId, name: impl Into<String>, order: OrderKey) -> Self {
+        Self { id: SectionId::new(), project_id, name: name.into(), order, deleted_at: None }
+    }
 }

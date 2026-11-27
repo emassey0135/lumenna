@@ -286,8 +286,10 @@ object Reminders {
     internal const val SNOOZE = "dev.emassey0135.lumenna.reminder.SNOOZE"
     internal const val REARM = "dev.emassey0135.lumenna.reminder.REARM"
     internal const val CARRY = "dev.emassey0135.lumenna.reminder.CARRY"
+    internal const val STOP = "dev.emassey0135.lumenna.reminder.STOP"
     private const val KEY = "key"
     private const val TARGET = "target"
+    private const val SITTING = "sitting"
     private const val OCCURRENCE = "occurrence"
     private const val AT = "at"
     private const val OPEN_KIND = "dev.emassey0135.lumenna.open.kind"
@@ -468,6 +470,36 @@ object Reminders {
         arm(context, core)
     }
 
+    /**
+     * The notification's Stop Timer button, as a sitting's planned length ran out with its timer
+     * running: stops that sitting's timer, logging what it ran, and dismisses the firing on every
+     * device, saying what it did as Carry Forward does, since the app may not be open to say it.
+     */
+    fun stop(context: Context, core: Core, key: String, sitting: String, occurrence: String) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.cancel("$key@$occurrence", NOTIFICATION)
+        val said = try {
+            val stopped = core.device.stopTimer(sitting, null)
+            core.device.dismissReminder(key, occurrence)
+            sentence(stopped.announcement, stopped.notices).also(core::say)
+        } catch (error: LumennaError) {
+            // Stopped elsewhere already, say: the firing is dealt with all the same.
+            core.attempt { core.device.dismissReminder(key, occurrence) }
+            core.say(error.sentence)
+            error.sentence
+        }
+        core.changed()
+        if (notificationsAllowed(context)) {
+            try {
+                manager.notify(CARRIED, NOTIFICATION, told(context, said))
+            } catch (_: SecurityException) {
+                // Notifications were refused after the check.
+            }
+        }
+        arm(context, core)
+        TimerNotification.show(context)
+    }
+
     /** What a notification's button did, said quietly where the reminder was, and gone in a while. */
     fun told(context: Context, text: String): Notification =
         NotificationCompat.Builder(context, CHANNEL)
@@ -496,16 +528,32 @@ object Reminders {
     }
 
     /**
-     * A firing's notification: the core's title, its whole message, and its Dismiss and Snooze
-     * buttons, and Carry Forward where the core offers it, in sentence case as Android writes. A reminder's category, so Do Not Disturb lets it through only where the person
-     * allows reminders; nothing in it is said by sound alone.
+     * The buttons of a firing's notification that [ReminderReceiver] answers, in order, each its
+     * receiver's action and its name in [cased] (Android's sentence case): Stop timer as a
+     * sitting's planned length runs out, Dismiss, Snooze where the core offers it (never for a
+     * time running out, which is said once), and Carry forward at a block's end with work left
+     * short, whose text ends in the question it answers. Replan opens the app, so it is not here.
+     */
+    fun buttons(due: DueReminder, cased: (String) -> String = ::sentenceCase): List<Pair<String, String>> = buildList {
+        if (due.stop.isNotEmpty() && due.sitting.isNotEmpty()) add(STOP to cased(due.stop))
+        add(DISMISS to cased(due.dismiss))
+        if (due.snooze.isNotEmpty()) add(SNOOZE to cased(due.snooze))
+        if (due.carry.isNotEmpty()) add(CARRY to cased(due.carry))
+    }
+
+    /**
+     * A firing's notification: the core's title, its whole message, and its [buttons], in
+     * sentence case as Android writes. A reminder's category, so Do Not Disturb lets it through
+     * only where the person allows reminders; nothing in it is said by sound alone. An ordinary
+     * notification, never an alarm that rings on: a time running out too is said once.
      */
     fun notification(context: Context, due: DueReminder, text: String = due.text, store: String? = null): Notification {
         val id = "${due.key}@${due.occurrence}"
         fun pressed(action: String) = PendingIntent.getBroadcast(
             context, 0,
             Intent(context, ReminderReceiver::class.java).setAction(action).setData(uri(id))
-                .putExtra(KEY, due.key).putExtra(OCCURRENCE, due.occurrence).putExtra(TARGET, due.target),
+                .putExtra(KEY, due.key).putExtra(OCCURRENCE, due.occurrence).putExtra(TARGET, due.target)
+                .putExtra(SITTING, due.sitting),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         // The firing in the intent's data, so each notification's is a pending intent of its own:
@@ -535,10 +583,7 @@ object Reminders {
                     setContentIntent(PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
                 }
             }
-            .addAction(0, sentenceCase(due.dismiss), pressed(DISMISS))
-            .addAction(0, sentenceCase(due.snooze), pressed(SNOOZE))
-            // At a block's end with work left short, the text ends in the question this answers.
-            .apply { if (due.carry.isNotEmpty()) addAction(0, sentenceCase(due.carry), pressed(CARRY)) }
+            .apply { buttons(due).forEach { (action, title) -> addAction(0, title, pressed(action)) } }
             // A block's work outrunning its time: Replan opens the app at Replan from Now.
             .apply {
                 if (due.replan.isNotEmpty()) {
@@ -621,6 +666,14 @@ object Reminders {
                 val target = intent.getStringExtra(TARGET)
                 if (key != null && target != null && occurrence != null) carry(context, core, key, target, occurrence)
             }
+            STOP -> {
+                val sitting = intent.getStringExtra(SITTING)?.takeIf { it.isNotEmpty() }
+                if (key != null && sitting != null && occurrence != null) stop(context, core, key, sitting, occurrence)
+            }
+            // The running timer's own notification (`TimerNotification`): its Pause and Stop.
+            TimerNotification.PAUSE, TimerNotification.STOP ->
+                intent.getStringExtra(TimerNotification.SITTING)?.takeIf { it.isNotEmpty() }
+                    ?.let { TimerNotification.pressed(context, core, intent.action!!, it) }
             else -> {
                 // The clock may have changed, its 12- or 24-hour setting included, or the zone,
                 // which moves every civil time; the core reads the zone itself.

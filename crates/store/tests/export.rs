@@ -39,10 +39,15 @@ fn populated() -> Populated {
     backend.parent_id = Some(work.id);
     backend.archived = true;
     backend.weight = Some(1.0);
+    backend.review_every_days = Some(14);
+    backend.reviewed_at = Some(now());
 
     let mut laptop = Label::new("laptop", OrderKey::middle());
     laptop.color = Some("#abcdef".to_owned());
     let errand = Label::new("errand", OrderKey::after(&laptop.order));
+    let errands = lumenna_core::model::Section::new(work.id, "Errands", OrderKey::middle());
+    let mut gone = lumenna_core::model::Section::new(work.id, "Old heading", OrderKey::after(&errands.order));
+    gone.deleted_at = Some(now());
 
     let filter = SavedFilter {
         id: lumenna_core::id::FilterId::new(),
@@ -57,6 +62,7 @@ fn populated() -> Populated {
     parent.notes = "Line one.\nLine two, with a comma; and a semicolon.".to_owned();
     parent.priority = Priority::P1;
     parent.labels = [laptop.id, errand.id].into_iter().collect();
+    parent.section_id = Some(errands.id);
     parent.due = Some(Due {
         date: date(2026, 9, 7),
         time: Some(time(15, 30, 0, 0)),
@@ -70,6 +76,8 @@ fn populated() -> Populated {
     parent.sitting_mins = Some(45);
     parent.start = Some(lumenna_core::model::Start::On(date(2026, 9, 3)));
     parent.deadline = Some(date(2026, 9, 11));
+    parent.kept_at = Some(now());
+    parent.kept_put_off = Some(5);
     parent.external = Some(ExternalRef {
         provider: ExternalProvider::CalDav,
         external_id: "abc-123".to_owned(),
@@ -183,6 +191,8 @@ fn populated() -> Populated {
             }
             docs.put_label(&laptop, None)?;
             docs.put_label(&errand, None)?;
+            docs.put_section(&errands, None)?;
+            docs.put_section(&gone, None)?;
             docs.put_filter(&filter, None)?;
             for t in [&parent, &child, &trashed] {
                 docs.put_task(t, None)?;
@@ -301,11 +311,14 @@ fn an_export_round_trips_everything_but_the_trash() {
     let mut expected = original.clone();
     expected.tasks.remove(&trashed_task);
     expected.completions.retain(|_, c| c.task_id != trashed_task);
+    expected.sections.retain(|_, s| s.deleted_at.is_none());
     // The Inbox comes with every store, so the fresh one's matches the original's.
     assert_eq!(rebuilt.tasks, expected.tasks);
     assert_eq!(rebuilt.completions, expected.completions);
     assert_eq!(rebuilt.projects, expected.projects);
     assert_eq!(rebuilt.labels, expected.labels);
+    assert_eq!(rebuilt.sections, expected.sections);
+    assert_eq!(rebuilt.sections.len(), 1, "a deleted section stays out, as the trash does");
     assert_eq!(rebuilt.saved_filters, expected.saved_filters);
     assert_eq!(rebuilt.series, expected.series);
     assert_eq!(rebuilt.exceptions, expected.exceptions);
@@ -354,14 +367,14 @@ fn markdown_and_org_lay_out_projects_and_subtasks() {
     assert!(md.contains("## Inbox"), "{md}");
     assert!(md.contains("## Work"));
     assert!(md.contains("### Backend (archived)"));
-    assert!(md.contains("- [ ] Ship the release — due 2026-09-07 at 15:30"), "{md}");
+    assert!(md.contains("### Errands\n\n- [ ] Ship the release — due 2026-09-07 at 15:30"), "a section is a heading over its tasks: {md}");
     assert!(md.contains("  - [x] Write the notes"), "the subtask nests, and is done: {md}");
     assert!(!md.contains("Something private"));
 
     let o = org(&snapshot, &local);
     assert!(o.contains("#+DATE: [2026-09-01 Tue 09:15]"), "{o}");
-    assert!(o.contains("** TODO [#A] Ship the release :laptop:errand:"), "{o}");
-    assert!(o.contains("*** DONE Write the notes"), "{o}");
+    assert!(o.contains("** Errands\n*** TODO [#A] Ship the release :laptop:errand:"), "a section is a heading over its tasks: {o}");
+    assert!(o.contains("**** DONE Write the notes"), "{o}");
     assert!(o.contains("DEADLINE: <2026-09-07 Mon 15:30>"), "{o}");
     assert!(o.contains(":EFFORT: 1:30"));
     assert!(!o.contains("Something private"));

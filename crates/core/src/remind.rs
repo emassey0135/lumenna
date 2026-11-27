@@ -48,6 +48,18 @@ pub struct Firing {
     pub carry: bool,
     /// Whether this is a block's work outrunning its time, and by how much at `at`.
     pub overrun: Option<Overrun>,
+    /// Whether this is a sitting's planned length used up by its timer running: said once, as
+    /// the countdown reaches nothing.
+    pub time_up: Option<TimeUp>,
+}
+
+/// A sitting's planned length used up by its timer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimeUp {
+    /// The sitting.
+    pub sitting: crate::id::AssignmentId,
+    /// The minutes it was planned for.
+    pub planned: u32,
 }
 
 /// A block's planned work outrunning the time left in it.
@@ -83,12 +95,16 @@ pub fn zone_of(held: Option<&crate::model::TzName>, local: &TimeZone) -> TimeZon
 }
 
 /// What the reminder `id` is for: an explicit reminder's target, or the task or block whose
-/// default reminder, carried-forward offer or overrun warning fires under `id`, with the default
-/// reminders as they are now. `None` when nothing in `snapshot` fires under it.
+/// default reminder, carried-forward offer or overrun warning fires under `id`, or the task whose
+/// sitting's running out does, with the default reminders as they are now. `None` when nothing in
+/// `snapshot` fires under it.
 #[must_use]
 pub fn target_of(snapshot: &Snapshot, id: ReminderId) -> Option<ReminderTarget> {
     if let Some(reminder) = snapshot.reminders.get(&id) {
         return Some(reminder.target);
+    }
+    if let Some(sitting) = snapshot.assignments.values().find(|a| time_up_key(a.id) == id) {
+        return Some(ReminderTarget::Task(sitting.task_id));
     }
     let settings = &snapshot.settings;
     let task = snapshot
@@ -151,6 +167,20 @@ pub fn carry_key(series: crate::id::SeriesId) -> ReminderId {
 #[must_use]
 pub fn overrun_key(series: crate::id::SeriesId) -> ReminderId {
     default_key(&ReminderTarget::Block(series), &Trigger { anchor: ReminderAnchor::BlockEnd, offset_mins: i32::MIN + 1 })
+}
+
+/// The key a sitting's running out fires under (`Firing::time_up`): fixed forever, from the
+/// sitting alone, so a dismissal holds on every device and the next sitting in the same block
+/// fires its own.
+#[must_use]
+pub fn time_up_key(sitting: crate::id::AssignmentId) -> ReminderId {
+    // FNV-1a, as `default_key`, over a prefix of its own so it can never meet a default's key.
+    let mut hash: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
+    for byte in b"time-up".iter().chain(sitting.as_uuid().as_bytes()) {
+        hash ^= u128::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0000_0100_0000_0000_0000_0000_013b);
+    }
+    ReminderId::from_uuid(Uuid::from_u128(hash))
 }
 
 /// When `block` (from `start` to `end`) first has more planned work left than time, by more
@@ -345,6 +375,7 @@ pub fn firings(
                 all_day,
                 carry: false,
                 overrun: None,
+                time_up: None,
             });
         }
     }
@@ -397,6 +428,7 @@ pub fn firings(
                 all_day: false,
                 carry: carries,
                 overrun: None,
+                time_up: None,
             });
         }
         // Planned work outrunning its time is said before the clock says it, unless the
@@ -424,6 +456,7 @@ pub fn firings(
                     all_day: false,
                     carry: false,
                     overrun: Some(overrun),
+                    time_up: None,
                 });
             }
         }
@@ -440,6 +473,7 @@ pub fn firings(
                 all_day: false,
                 carry: true,
                 overrun: None,
+                time_up: None,
             });
         }
     }
@@ -463,8 +497,37 @@ pub fn firings(
                 all_day: false,
                 carry: false,
                 overrun: None,
+                time_up: None,
             });
         }
+    }
+
+    // A sitting's planned length used up while its timer runs: once, as it runs out. Paused or
+    // stopped, it never does; resumed already over, it says nothing again (`runs_out_at`).
+    for sitting in snapshot.assignments.values() {
+        let Some(at) = sitting.runs_out_at() else { continue };
+        let (Some(planned), Some(task), Some(date)) =
+            (sitting.planned_mins, snapshot.tasks.get(&sitting.task_id), snapshot.assignment_date(sitting))
+        else {
+            continue;
+        };
+        if task.is_deleted() || facts.is_completed(task) {
+            continue;
+        }
+        consider(Firing {
+            key: time_up_key(sitting.id),
+            own: false,
+            target: ReminderTarget::Task(task.id),
+            occurrence: date,
+            trigger: Trigger::at(ReminderAnchor::Due),
+            anchor_at: at,
+            at,
+            snoozed: false,
+            all_day: false,
+            carry: false,
+            overrun: None,
+            time_up: Some(TimeUp { sitting: sitting.id, planned }),
+        });
     }
 
     found.sort_by_key(|f| (f.at, f.key));

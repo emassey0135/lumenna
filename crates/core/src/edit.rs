@@ -26,10 +26,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::Zoned;
 
-use crate::id::{AssignmentId, FilterId, LabelId, ProjectId, TaskId};
+use crate::id::{AssignmentId, FilterId, LabelId, ProjectId, SectionId, TaskId};
 use crate::model::{
     BlockAssignment, BlockException, BlockRef, BlockSeries, Device, ExceptionAction, Label,
-    Project, Reminder, ReminderAck, SavedFilter, Settings, Task, TaskCompletion,
+    Project, Reminder, ReminderAck, SavedFilter, Section, Settings, Task, TaskCompletion,
 };
 use crate::order::OrderKey;
 use crate::recur::{self, Advanced};
@@ -127,6 +127,8 @@ pub enum Change {
     Project(Box<Transition<Project>>),
     /// A label.
     Label(Box<Transition<Label>>),
+    /// A section of a project.
+    Section(Box<Transition<Section>>),
     /// A saved filter.
     Filter(Box<Transition<SavedFilter>>),
     /// A block series, in the year it starts.
@@ -194,6 +196,7 @@ impl Change {
             Self::Completion(t) => Self::Completion(Box::new(t.flip())),
             Self::Project(t) => Self::Project(Box::new(t.flip())),
             Self::Label(t) => Self::Label(Box::new(t.flip())),
+            Self::Section(t) => Self::Section(Box::new(t.flip())),
             Self::Filter(t) => Self::Filter(Box::new(t.flip())),
             Self::Series(t) => Self::Series(Box::new(t.flip())),
             Self::Exception(t) => Self::Exception(Box::new(t.flip())),
@@ -602,21 +605,41 @@ pub fn remove_dependency(snapshot: &Snapshot, id: TaskId, on: TaskId) -> Result<
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoveTo {
     /// A different project. Subtasks follow, since a subtask in another project from its
-    /// parent has no view that can show both.
+    /// parent has no view that can show both. A section is a project's own, so the task leaves
+    /// the one it was under.
     Project(ProjectId),
     /// Under a different parent, or to the top level. Tasks have no order of their own to
     /// move within: a list orders them by urgency or by when they were added.
     Parent(Option<TaskId>),
+    /// Under a section of a project, joining that project, or out of any section of its own
+    /// (`None`). Subtasks follow; a subtask leaves its parent, since it is listed under its
+    /// parent and could not be listed under a heading of its own.
+    Section(Option<SectionId>),
 }
 
 /// Moves a task.
 ///
 /// # Errors
 ///
-/// If the task is not loaded, or the move would put it inside itself.
+/// If the task or section is not loaded, or the move would put it inside itself.
 pub fn move_task(snapshot: &Snapshot, id: TaskId, to: MoveTo) -> Result<Edit, EditError> {
     let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
     let mut builder = Builder::new(format!("Moved {}", task.title));
+    // Each of the task and its subtasks into `project` and `section`, the task itself off its
+    // parent where `detach`.
+    let place = |builder: &mut Builder, project: ProjectId, section: Option<SectionId>, detach: bool| {
+        for target in std::iter::once(task).chain(descendants(snapshot, id)) {
+            let mut moved = target.clone();
+            moved.project_id = project;
+            moved.section_id = section;
+            if target.id == id && detach {
+                moved.parent_id = None;
+            }
+            if moved != *target {
+                builder.task(Transition::updated(target.clone(), moved));
+            }
+        }
+    };
 
     match to {
         MoveTo::Project(project) => {
@@ -628,14 +651,17 @@ pub fn move_task(snapshot: &Snapshot, id: TaskId, to: MoveTo) -> Result<Edit, Ed
                     .parent_id
                     .and_then(|parent| snapshot.tasks.get(&parent))
                     .is_some_and(|parent| parent.project_id != project);
-                for target in std::iter::once(task).chain(descendants(snapshot, id)) {
-                    let mut moved = target.clone();
-                    moved.project_id = project;
-                    if target.id == id && detach {
-                        moved.parent_id = None;
-                    }
-                    builder.task(Transition::updated(target.clone(), moved));
-                }
+                place(&mut builder, project, None, detach);
+            }
+        }
+        MoveTo::Section(section) => {
+            let project = match section {
+                Some(section) => snapshot.section(section).ok_or(EditError::NotFound { kind: "section" })?.project_id,
+                None => task.project_id,
+            };
+            let already = snapshot.section_of(task).map(|s| s.id) == section && task.project_id == project;
+            if !already || task.parent_id.is_some() {
+                place(&mut builder, project, section, true);
             }
         }
         MoveTo::Parent(parent) => {
@@ -644,23 +670,26 @@ pub fn move_task(snapshot: &Snapshot, id: TaskId, to: MoveTo) -> Result<Edit, Ed
             {
                 return Err(EditError::WouldCycle);
             }
-            // Joining a parent means joining its project, subtasks and all, for the same
-            // reason as above.
-            let project = match parent {
+            // Joining a parent means joining its project and its section, subtasks and all,
+            // for the same reason as above.
+            let (project, section) = match parent {
                 Some(parent) => {
-                    snapshot.tasks.get(&parent).ok_or(EditError::NotFound { kind: "task" })?.project_id
+                    let parent = snapshot.tasks.get(&parent).ok_or(EditError::NotFound { kind: "task" })?;
+                    (parent.project_id, parent.section_id)
                 }
-                None => task.project_id,
+                None => (task.project_id, task.section_id),
             };
-            if task.parent_id != parent || task.project_id != project {
+            if task.parent_id != parent || task.project_id != project || task.section_id != section {
                 let mut moved = task.clone();
                 moved.parent_id = parent;
                 moved.project_id = project;
+                moved.section_id = section;
                 builder.task(Transition::updated(task.clone(), moved));
-                if task.project_id != project {
-                    for target in descendants(snapshot, id) {
-                        let mut moved = target.clone();
-                        moved.project_id = project;
+                for target in descendants(snapshot, id) {
+                    let mut moved = target.clone();
+                    moved.project_id = project;
+                    moved.section_id = section;
+                    if moved != *target {
                         builder.task(Transition::updated(target.clone(), moved));
                     }
                 }
@@ -735,6 +764,69 @@ pub fn update_project(before: Project, after: Project) -> Edit {
     }
 }
 
+/// Marks a project reviewed at `now`: it leaves the review until its interval comes round.
+///
+/// # Errors
+///
+/// If the project is not loaded.
+pub fn mark_reviewed(snapshot: &Snapshot, id: ProjectId, now: jiff::Timestamp) -> Result<Edit, EditError> {
+    let project = snapshot.projects.get(&id).ok_or(EditError::NotFound { kind: "project" })?;
+    let after = Project { reviewed_at: Some(time::truncate(now)), ..project.clone() };
+    Ok(Edit {
+        description: format!("Reviewed {}", project.name),
+        changes: vec![Change::Project(Box::new(Transition::updated(project.clone(), after)))],
+    })
+}
+
+/// Sets how many days apart a project is reviewed: `None` the usual week, `Some(0)` never.
+///
+/// # Errors
+///
+/// If the project is not loaded.
+pub fn review_every(snapshot: &Snapshot, id: ProjectId, days: Option<u32>) -> Result<Edit, EditError> {
+    let project = snapshot.projects.get(&id).ok_or(EditError::NotFound { kind: "project" })?;
+    if project.review_every_days == days {
+        return Ok(Edit::nothing());
+    }
+    let after = Project { review_every_days: days, ..project.clone() };
+    let every = crate::review::interval_words(crate::review::review_every(&after));
+    Ok(Edit {
+        description: format!("{} is reviewed {every}", project.name),
+        changes: vec![Change::Project(Box::new(Transition::updated(project.clone(), after)))],
+    })
+}
+
+/// Keeps a task the planner asked about: not asked about as stale for three weeks, nor as put
+/// off until it is put off as often again. `put_off` is how often it has been, all told.
+///
+/// # Errors
+///
+/// If the task is not loaded.
+pub fn keep_task(snapshot: &Snapshot, id: TaskId, put_off: u32, now: jiff::Timestamp) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let after = Task { kept_at: Some(time::truncate(now)), kept_put_off: Some(put_off), ..task.clone() };
+    let mut builder = Builder::new(format!("Kept {}", task.title));
+    builder.task(Transition::updated(task.clone(), after));
+    Ok(builder.finish())
+}
+
+/// Makes a repeating task repeat half as often ([`crate::review::less_often`]), the planner's
+/// question about it answered: it is asked again only once put off as often again from
+/// `put_off`, how often it has been all told.
+///
+/// # Errors
+///
+/// If the task is not loaded, or does not repeat by a rule that can be made less often.
+pub fn make_less_often(snapshot: &Snapshot, id: TaskId, put_off: u32) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let due = task.due.as_ref().filter(|d| d.recurrence.is_some()).ok_or(EditError::NotFound { kind: "repetition" })?;
+    let less = due.recurrence.as_ref().and_then(crate::review::less_often).ok_or(EditError::NotFound { kind: "repetition" })?;
+    let after = Task { due: Some(crate::model::Due { recurrence: Some(less), ..due.clone() }), kept_put_off: Some(put_off), ..task.clone() };
+    let mut builder = Builder::new(format!("{} repeats less often", task.title));
+    builder.task(Transition::updated(task.clone(), after));
+    Ok(builder.finish())
+}
+
 /// What happens to a project's tasks when it goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectDeletion {
@@ -783,15 +875,18 @@ pub fn trash_project(
         }
         let mut changed = task.clone();
         match inbox {
-            Some(inbox) => changed.project_id = inbox,
+            Some(inbox) => {
+                changed.project_id = inbox;
+                changed.section_id = None;
+            }
             None if task.is_deleted() => continue,
             None => changed.deleted_at = Some(stamp),
         }
         builder.task(Transition::updated(task.clone(), changed));
     }
 
-    for project_id in affected {
-        if let Some(project) = snapshot.projects.get(&project_id)
+    for project_id in &affected {
+        if let Some(project) = snapshot.projects.get(project_id)
             && project.deleted_at.is_none()
         {
             let mut trashed = project.clone();
@@ -800,6 +895,14 @@ pub fn trash_project(
                 project.clone(),
                 trashed,
             ))));
+        }
+    }
+    // Its sections go with it, so undo brings each back where it was.
+    for section in snapshot.sections.values() {
+        if section.deleted_at.is_none() && affected.contains(&section.project_id) {
+            let mut trashed = section.clone();
+            trashed.deleted_at = Some(stamp);
+            builder.changes.push(Change::Section(Box::new(Transition::updated(section.clone(), trashed))));
         }
     }
     Ok(builder.finish())
@@ -916,6 +1019,72 @@ pub fn merge_labels(snapshot: &Snapshot, from: LabelId, into: LabelId) -> Result
     Ok(builder.finish())
 }
 
+// ---------------------------------------------------------------------------------------
+// Sections
+// ---------------------------------------------------------------------------------------
+
+/// Adds a section to its project.
+#[must_use]
+pub fn create_section(section: Section) -> Edit {
+    let description = format!("Added section {}", section.name);
+    Edit { description, changes: vec![Change::Section(Box::new(Transition::created(section)))] }
+}
+
+/// Replaces a section with an edited copy: renamed, or moved among its project's.
+#[must_use]
+pub fn update_section(before: Section, after: Section) -> Edit {
+    if before == after {
+        return Edit::nothing();
+    }
+    let description = if before.name == after.name {
+        format!("Moved section {}", after.name)
+    } else {
+        format!("Renamed section {} to {}", before.name, after.name)
+    };
+    Edit { description, changes: vec![Change::Section(Box::new(Transition::updated(before, after)))] }
+}
+
+/// What happens to a section's tasks when it goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SectionDeletion {
+    /// Trash them with it.
+    TrashTasks,
+    /// Keep them in the project, under no section. Offered beside trashing for the reason a
+    /// project's deletion offers both: the keystroke cannot say which is meant.
+    KeepTasks,
+}
+
+/// Moves a section to the trash, its tasks with it or kept in the project.
+///
+/// Kept tasks have their section cleared rather than left naming a deleted one, so undo, which
+/// gives the section back, gives them back their place under it too.
+///
+/// # Errors
+///
+/// If the section is not loaded.
+pub fn trash_section(snapshot: &Snapshot, id: SectionId, tasks: SectionDeletion) -> Result<Edit, EditError> {
+    let section = snapshot.sections.get(&id).ok_or(EditError::NotFound { kind: "section" })?;
+    let stamp = time::now();
+    let mut builder = Builder::new(format!("Deleted section {}", section.name));
+    let under: Vec<&Task> = snapshot.tasks.values().filter(|t| t.section_id == Some(id)).collect();
+    for task in under {
+        let mut changed = task.clone();
+        match tasks {
+            SectionDeletion::KeepTasks => changed.section_id = None,
+            SectionDeletion::TrashTasks if task.is_deleted() || task.project_id != section.project_id => {
+                changed.section_id = None;
+            }
+            SectionDeletion::TrashTasks => changed.deleted_at = Some(stamp),
+        }
+        builder.task(Transition::updated(task.clone(), changed));
+    }
+    if section.deleted_at.is_none() {
+        let mut trashed = section.clone();
+        trashed.deleted_at = Some(stamp);
+        builder.changes.push(Change::Section(Box::new(Transition::updated(section.clone(), trashed))));
+    }
+    Ok(builder.finish())
+}
 // ---------------------------------------------------------------------------------------
 // Blocks, assignments and timers — the join between the two halves
 // ---------------------------------------------------------------------------------------

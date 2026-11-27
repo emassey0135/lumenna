@@ -135,6 +135,16 @@ move made by the change that completed a repeating task is not counted).
   repeating block's day alone, a one-off itself; End the Day and Clear the Rest of the Day
   cancel later repeating blocks for today and trash one-offs; Carry Forward marks the old
   sitting Deferred.
+- **A sitting counts down to its planned length** (`BlockAssignment::left_secs`, below zero once
+  over, never capped), polled as its line's "12 minutes left", Time Left (`Key("time-left")`, the
+  assistants' `timer`) or a glance's `countdown`, never announced as it ticks. **Running out is
+  said once** (`runs_out_at`, `Firing::time_up` under `time_up_key(sitting)`): a reminder firing
+  while the timer runs, with Stop Timer and Dismiss and no Snooze; paused it never fires, and a
+  sitting resumed already over its plan says nothing again.
+- **Time reports are summed, never stored** (`core::report`, `records::report`,
+  `Place::Report`, `lum report`): each sitting's logged seconds over the last `REPORT_WEEKS`,
+  by week (the `week_start` setting's), project and label, each with the estimates of the tasks
+  worked, each task once, and how many had none.
 - **A block's end offers Carry Forward** (`remind::falls_short`, `Firing::carry`): the
   earliest reminder at or after the end says it, whatever order they were made in, or, with
   none, a firing of its own under `carry_key`, which scheduling devices re-arm as the sittings
@@ -203,6 +213,19 @@ move made by the change that completed a repeating task is not counted).
   under it its blocks (`RowView::ends` with `due_time`, said as the day says a block) then the
   open tasks due, starting or with their deadline then (`falls_on`). Enter on a day shows it;
   on a block, shows it on its day in hand (`ActionKind::ShowDay`).
+- **The planner asks, never acts** (`core::review`, `records::review`): a task among the five
+  most urgent with nothing done on it for three weeks is stale; one put off five times (its date
+  moved later by hand, or planned and left) since last answered is asked about, a repeating one
+  offered half as often (`less_often`). A project comes up for review at its interval
+  (`review_every_days`, a week unless set, `Some(0)` never) after it was last reviewed or made,
+  its making read from its UUIDv7. Every answer is an ordinary change that settles the
+  question (`kept_at`, `kept_put_off`). The askings reach the person one way, never
+  interrupting: the Review place (`Place::Review`) lists them, each with its answer as a primary
+  row action, and a task's details say its question.
+- **A streak is counted, never stored** (`core::streak`): a repeating task's latest occurrences
+  done on or before their day, from the completions that name them, ended by one missed (gone
+  by undone, done late, or skipped by a date moved past it). Said in its details, its glance
+  line and its search document.
 - **The weights are a synced setting with a key per weight** (`Settings::urgency`), so
   concurrent edits of different weights both hold; said and read as one line,
   `urgency-weights`.
@@ -214,3 +237,22 @@ move made by the change that completed a repeating task is not counted).
 - **A list's query may end in `sort: urgency` or `sort: added`** (`parse_query`, `Sort`). A
   block's filter selects and never orders, so `parse_filter` refuses `sort:` rather than
   search for it.
+
+## Sections
+
+A project's headings (`model::Section`, `Snapshot::sections_of`), a record of their own in
+`core`'s `sections` map (made by the store's third frozen change).
+
+- **A task's section is believed only while it is live and its own project's**
+  (`Snapshot::section_of`): merge can leave one naming a section deleted elsewhere, or a project
+  it has left; it then sits in its project under none. Nothing repairs it on read.
+- **A section is its project's**: moving a task to another project leaves its section
+  (`MoveTo::Project`), joining a parent takes the parent's, and `MoveTo::Section` joins the
+  section's project, subtasks and all, a subtask leaving its parent.
+- **Deleting one keeps or trashes its tasks** (`SectionDeletion`), the kept ones' section cleared
+  in the same edit, so one undo puts every task back under it; a project trashed takes its
+  sections.
+- **A project's own listing is headed by them** (`Snapshot::project_rows`, the records'
+  `lists::tasks` when the query is exactly the project's reference): the tasks under no section,
+  then each section's heading (`Role::Section`, every one, an empty one too) with its tasks a
+  level deeper, headings and loose tasks siblings. Any other query lists tasks alone.

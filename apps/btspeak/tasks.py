@@ -82,7 +82,8 @@ def readback(session: Session) -> str:
     return session.lines().readback
 
 
-def task_list(session: Session, place=None, title: str = "", query: str | None = None, main=None) -> str:
+def task_list(session: Session, place=None, title: str = "", query: str | None = None, main=None,
+              context=None, empty=None) -> str:
     """One of the app's places as a foldable list of tasks, with `query` typed over it.
 
     Enter opens a task's form; its context menu (M-Chord with Dot 7) has everything else, and the main
@@ -95,8 +96,9 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
     state = {"heading": title}
 
     def enter(row) -> str:
-        # Enter is `Key("open")`, as on every row: a task's form, a trashed task restored, and on
-        # Upcoming a day shown, or a block on its day, where the app goes on to Today itself.
+        # Enter is `Key("open")`, as on every row: a task's form, a trashed task restored, a
+        # project the review lists opened, and on Upcoming a day shown, or a block on its day: where
+        # the app goes on to another place itself, this screen closes for Home's loop to show it.
         said = actions.press(session, "open", row)
         view = session.view()
         if view.home is None and view.place is not None and view.place != place:
@@ -113,10 +115,10 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
         live_menu(
             session, build, lambda: state["heading"],
             main=main or enter,
-            context=lambda rows: task_commands(session, rows),
+            context=context or (lambda rows: task_commands(session, rows)),
             app=lambda: place_commands(session),
             bar=(place, False),
-            empty=empty_then(lambda: readback(session), L.press_to_add(L.command_letter("new-task"))),
+            empty=empty or empty_then(lambda: readback(session), L.press_to_add(L.command_letter("new-task"))),
             app_title=L.menu_of(title),
             focus=lambda: session.view().focus,
         )
@@ -151,6 +153,18 @@ def upcoming(session: Session) -> str:
     starting or with their deadline on it: Enter on a day shows it, on a block shows it on its
     day in hand, and on a task opens its form."""
     return task_list(session, L.PlaceUpcoming())
+
+
+def report(session: Session) -> str:
+    """The time report: what sittings logged over the last weeks, by week, project and label,
+    each heading folding its totals. A total is no task: it has no details, and nothing is added
+    here, so an empty report says only the core's words."""
+    place = L.PlaceReport()
+    return task_list(
+        session, place, session.sentence(L.place_title(place)),
+        context=lambda rows: actions.commands(session, rows),
+        empty=empty_then(lambda: readback(session)),
+    )
 
 
 def trash(session: Session) -> str:

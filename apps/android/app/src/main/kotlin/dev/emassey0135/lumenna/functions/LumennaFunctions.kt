@@ -40,7 +40,7 @@ abstract class LumennaFunctions : AppFunctionService() {
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Lists tasks: by default every open task, most urgent first, subtasks under their task; or those a filter admits.")
     suspend fun listTasks(
-        @AppFunctionInstruction("A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `p1`, or `search: words`; empty for every open task.")
+        @AppFunctionInstruction("A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `#Work & /Errands` (a section), `p1`, or `search: words`; empty for every open task.")
         query: String? = null,
     ): Listing =
         Assistant.listing(assist("list_tasks", Assistant.text("query", query)))
@@ -85,6 +85,14 @@ abstract class LumennaFunctions : AppFunctionService() {
         Assistant.listing(assist("list_projects"))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("A project's sections, the headings its tasks sit under, in order, each with how many open tasks it holds.")
+    suspend fun listSections(
+        @AppFunctionInstruction("The project, by name.")
+        project: String,
+    ): Listing =
+        Assistant.listing(assist("list_sections", Assistant.text("project", project)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Every label.")
     suspend fun listLabels(): Listing =
         Assistant.listing(assist("list_labels"))
@@ -105,9 +113,14 @@ abstract class LumennaFunctions : AppFunctionService() {
         Assistant.replanProposed(assist("propose_replan"))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
-    @AppFunctionInstruction("What the timer is doing now: running, on which task and how long so far; else what `toggle_timer` would start, or why nothing would.")
+    @AppFunctionInstruction("What the timer is doing now: running, on which task, how long so far and how much of the sitting's planned length is left; else what `toggle_timer` would start, or why nothing would.")
     suspend fun timer(): TimerState =
         Assistant.timer(assist("timer"))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("What every sitting logged over the last four weeks, summed by week, by project and by label, each with the estimates of the tasks worked beside it.")
+    suspend fun report(): Listing =
+        Assistant.listing(assist("report"))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Proposes which tasks to put in each of a day's work blocks still to come, each with why. Nothing changes until `apply_day_plan` is given the sittings the person accepted.")
@@ -120,7 +133,7 @@ abstract class LumennaFunctions : AppFunctionService() {
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it.")
     suspend fun addTask(
-        @AppFunctionInstruction("A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"), when it may be begun (\"from monday\", or \"someday\"), the day it must be done by (\"by friday\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
+        @AppFunctionInstruction("A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\") and a section of it (/Errands), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"), when it may be begun (\"from monday\", or \"someday\"), the day it must be done by (\"by friday\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
         text: String,
     ): ChangeMade =
         Assistant.changeMade(assist("add_task", Assistant.text("text", text)))
@@ -206,7 +219,7 @@ abstract class LumennaFunctions : AppFunctionService() {
         Assistant.changeMade(assist("restore_task", Assistant.text("id", id)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
-    @AppFunctionInstruction("Makes a task a subtask of another, moves it to a project, or makes it a task of its own.")
+    @AppFunctionInstruction("Makes a task a subtask of another, moves it to a project or under a section of one, or makes it a task of its own.")
     suspend fun moveTask(
         @AppFunctionInstruction("The task's identifier: a whole UUID, or a prefix that names one task.")
         id: String,
@@ -216,8 +229,20 @@ abstract class LumennaFunctions : AppFunctionService() {
         project: String? = null,
         @AppFunctionInstruction("True to make it a task of its own again, under no other.")
         top: Boolean? = null,
+        @AppFunctionInstruction("A section of its project to put it under, by name (Project/Section for another project's), or `none` to take it out of the one it is under.")
+        section: String? = null,
     ): ChangeMade =
-        Assistant.changeMade(assist("move_task", Assistant.text("id", id), Assistant.text("parent", parent), Assistant.text("project", project), Assistant.flag("top", top)))
+        Assistant.changeMade(assist("move_task", Assistant.text("id", id), Assistant.text("parent", parent), Assistant.text("project", project), Assistant.flag("top", top), Assistant.text("section", section)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("Adds a section to a project, after its others: a heading its tasks can sit under.")
+    suspend fun addSection(
+        @AppFunctionInstruction("The project, by name.")
+        project: String,
+        @AppFunctionInstruction("The section's name.")
+        name: String,
+    ): ChangeMade =
+        Assistant.changeMade(assist("add_section", Assistant.text("project", project), Assistant.text("name", name)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Puts a task in a block, as a sitting: one session of work on it there.")
@@ -299,6 +324,39 @@ abstract class LumennaFunctions : AppFunctionService() {
         accepted: List<SittingProposed>,
     ): DayPlanApplied =
         Assistant.dayPlanApplied(assist("apply_day_plan", Assistant.dayPlan("proposal", proposal), Assistant.dayPlanSittings("accepted", accepted)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("What is due for a second look: the projects due for review, each with when it was last reviewed and how often it is, then the tasks the planner asks about, each with its question in short. A task's whole question is its `asking` in `show_task`.")
+    suspend fun review(): Listing =
+        Assistant.listing(assist("review"))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("Marks a project reviewed now: it leaves the review until its interval comes round.")
+    suspend fun markReviewed(
+        @AppFunctionInstruction("The project, by name.")
+        project: String,
+    ): ChangeMade =
+        Assistant.changeMade(assist("mark_reviewed", Assistant.text("project", project)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("Sets how often a project comes up for review.")
+    suspend fun reviewEvery(
+        @AppFunctionInstruction("The project, by name.")
+        project: String,
+        @AppFunctionInstruction("How often, such as every week, every 2 weeks, every month, or never.")
+        every: String,
+    ): ChangeMade =
+        Assistant.changeMade(assist("review_every", Assistant.text("project", project), Assistant.text("every", every)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("Answers the planner's question about a task (its `asking` in `show_task`, put to the person first): keeps it, drops it, makes it repeat less often, or takes its date away.")
+    suspend fun reconsiderTask(
+        @AppFunctionInstruction("The task's identifier: a whole UUID, or a prefix that names one task.")
+        id: String,
+        @AppFunctionInstruction("One of the answers its question offers: `keep` (asked again later), `drop` (to the trash), `less-often` (a repeating task half as often), or `no-date` (its due date taken away).")
+        answer: String,
+    ): ChangeMade =
+        Assistant.changeMade(assist("reconsider_task", Assistant.text("id", id), Assistant.text("answer", answer)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Undoes the last change made on this device, whoever made it: an app, a command, or an assistant.")

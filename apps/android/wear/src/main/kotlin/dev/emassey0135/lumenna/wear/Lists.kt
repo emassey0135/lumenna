@@ -251,10 +251,11 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
         items.forEach { (shown, line) ->
             item {
                 val task = shown.row
-                val actions = app.rowActions(task.id, list?.offeredOf(shown).orEmpty()).sortedByDescending { it.primary }
                 // The line's first part, as the core words it: a task's title, a day as this
                 // device says one, a block with its times (Upcoming's).
                 val title = line?.title?.ifEmpty { null } ?: task.title
+                val offered = list?.offeredOf(shown).orEmpty()
+                val actions = app.rowActions(task.id, offered).sortedByDescending { it.primary }
                 RowButton(
                     title,
                     detail = line?.detail?.ifEmpty { null },
@@ -264,13 +265,17 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
                     key = task.id,
                     focus = focus,
                     swatch = task.swatch,
+                    heading = task.role == "group",
+                    // A row the core offers nothing on (the time report's) is no task: it opens nothing.
                     onClick = {
-                        if (task.role == "task") {
-                            app.send(ShellEvent.Focus(task.id))
-                            navigator.open(Screen.Task(task.id))
-                        } else {
+                        when {
+                            offered.isEmpty() -> Unit
+                            task.role == "task" -> {
+                                app.send(ShellEvent.Focus(task.id))
+                                navigator.open(Screen.Task(task.id))
+                            }
                             // A day or a block of the days ahead: its Enter, the core's (Show the day).
-                            app.rowKeys(task.id).key("open")
+                            else -> app.rowKeys(task.id).key("open")
                         }
                     },
                 )

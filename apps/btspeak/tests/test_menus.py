@@ -579,6 +579,17 @@ class Menus(unittest.TestCase):
         self.assertTrue(any(title.startswith("Plan the day. Plans 1 task") for title in script.titles), script.titles)
         self.assertEqual(self.call("plan", date="tomorrow")["blocks"][0]["assignments"], [])
 
+    def test_a_task_put_off_five_times_is_asked_about_in_the_review_and_answered_there(self):
+        self.call("task.add", text="call the dentist tomorrow")
+        task = self.call("task.list")["rows"][0]["id"]
+        for days in range(2, 7):
+            self.call("task.edit", id=task, due=f"in {days} days")
+        self.run_script(
+            [("context", "call the dentist", "Reconsider"), ("choose", "Take its date away"), ("back",)],
+            lambda: tasks.task_list(self.session, L.PlaceReview()),
+        )
+        self.assertIsNone(self.task("call the dentist").get("due"))
+
     def test_a_tasks_details_end_with_its_history(self):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
@@ -904,7 +915,7 @@ class Menus(unittest.TestCase):
         menu.menu = [type("Row", (), {"row": inbox})()]
         labels = [c.get_label(menu) for c in script.menus[-1]["context"] if c.applies(menu)]
         # w is What should I work on? on Home, which comes first there.
-        self.assertEqual(labels, ["Add a task to it", "Weight"])
+        self.assertEqual(labels, ["Add a task to it", "Weight", "New section"])
 
     def test_collapsing_a_project_hides_what_is_under_it_and_keeps_it(self):
         self.call("project.add", name="Work")
@@ -973,15 +984,17 @@ class Menus(unittest.TestCase):
         self.session.send(L.ShellEventHome())
         lettered = {row.title: row.letter for row in menus.home_rows(self.session)}
         self.assertEqual(
-            {title: lettered.get(title) for title in ("Today", "Upcoming", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "History", "Trash")},
-            {"Today": "t", "Upcoming": "d", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b",
-             "History": "h", "Trash": "x"},
+            {title: lettered.get(title) for title in (
+                "Today", "Upcoming", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "Review", "History", "Time report", "Trash",
+            )},
+            {"Today": "t", "Upcoming": "j", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b",
+             "Review": "v", "History": "h", "Time report": "g", "Trash": "x"},
         )
 
     def test_upcoming_lists_the_days_ahead_and_enter_on_a_day_shows_it_in_today(self):
         self.call("block.add", title="Deep work", at="9am", minutes=60, date="tomorrow")
         script = self.run_script(
-            [("key", "Today", "d"), ("menu", "Tomorrow"), ("back",), ("back",)], lambda: menus.home(self.session),
+            [("key", "Today", "j"), ("menu", "Tomorrow"), ("back",), ("back",)], lambda: menus.home(self.session),
         )
         self.assertTrue(script.titles[1].startswith("Upcoming"), script.titles)
         upcoming = script.menus[1]["rows"]
@@ -1023,6 +1036,34 @@ class Menus(unittest.TestCase):
         # Starting later, it is out of Tasks: asked for by its identifier.
         shown = self.call("task.show", id=made)
         self.assertEqual((shown["start"], shown["deadline"]), ("2030-03-01", "2030-03-08"))
+
+    def sitting_today(self, title: str, minutes: int) -> str:
+        """A sitting of a task `title`, planned for `minutes` in a block all of today: its id."""
+        self.call("block.add", title="Deep work", at="00:00", minutes=1439, date="today")
+        block = self.call("plan", date="today")["blocks"][0]["id"]
+        task = self.call("task.add", text=title)["task"]["id"]
+        self.call("assign", task=task, block=block, date="today", minutes=minutes)
+        return self.call("plan", date="today")["blocks"][0]["assignments"][0]["id"]
+
+    def test_the_time_report_is_a_place_of_headings_over_totals_opened_from_home_by_its_letter(self):
+        self.call("stop", assignment=self.sitting_today("Essay", 25), minutes=40)
+        script = self.run_script([("key", "Today", "g"), ("back",), ("back",)], lambda: menus.home(self.session))
+        report = next(menu for menu in script.menus if any(row.startswith("By week") for row in menu["rows"]))
+        self.assertTrue(any("This week, 40 minutes logged" in row for row in report["rows"]), report["rows"])
+        self.assertTrue(any(title.startswith("Time report") for title in script.titles), script.titles)
+
+    def test_an_empty_time_report_says_nothing_was_logged_and_offers_nothing_to_add(self):
+        script = self.run_script([("back",)], lambda: tasks.report(self.session))
+        self.assertEqual(script.titles[0], "Time report")
+        empty = script.menus[0]["empty"]
+        self.assertEqual(empty() if callable(empty) else empty, "Nothing logged in the last 4 weeks")
+
+    def test_time_left_on_homes_menu_says_the_timer_as_the_core_has_it(self):
+        self.call("start", assignment=self.sitting_today("Essay", 25))
+        script = self.run_script([("app", "Time left"), ("back",)], lambda: menus.home(self.session))
+        said = [line for line in script.said if line.startswith("The timer is running on Essay")]
+        self.assertTrue(said, script.said)
+        self.assertIn("25 minutes left of 25 minutes", said[0])
 
     def test_m_chord_on_home_opens_the_cores_menu_bar_on_homes_own_menu_and_tab_goes_round(self):
         script = self.run_script(

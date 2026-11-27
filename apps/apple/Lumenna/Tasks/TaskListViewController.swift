@@ -138,7 +138,7 @@ struct TaskListScreen: View {
         .accessibilityLabel(row.row.title)
         .accessibilityValue(AppModel.spoken(detail: detail, expanded: row.row.expanded, level: row.item.level))
         // Upcoming's days are shown, and its blocks shown on their day.
-        .accessibilityHint(model.trash ? "" : model.blocks ? Wording.editsEveryOccurrence : row.row.role == "task" ? Wording.showsDetails : row.row.role == "group" ? Wording.showsTheDay : row.row.role == "block" ? Wording.showsItOnItsDay : "")
+        .accessibilityHint(model.trash || model.report ? "" : model.blocks ? Wording.editsEveryOccurrence : row.row.role == "group" ? Wording.showsTheDay : row.row.role == "block" ? Wording.showsItOnItsDay : Wording.showsDetails)
         .accessibilityAddTraits(.isButton)
         .accessibilityFocused($spoken, equals: row.id)
         .swipeActions(edge: .leading) {
@@ -257,7 +257,7 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
     /// VoiceOver's Overdue rotor, from one overdue task to the next (`RowRotor`), on the list
     /// and the view holding it: VoiceOver collects a rotor from any container above its row.
     private func offerRotors() {
-        guard place != .trash, place != .blocks else { return }
+        guard place != .trash, place != .blocks, place != .report else { return }
         let model = model
         let overdue = RowRotor.make(
             Wording.overdue, in: self,
@@ -275,7 +275,7 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
 
     /// Quick add, or in Blocks the block form for a new one: the keyboard's New Task.
     @objc func addTask() {
-        guard place != .trash else { return }
+        guard place != .trash, place != .report else { return }
         guard place != .blocks else { return core.app.send(.block(.new(start: nil, minutes: nil))) }
         presentQuickAdd()
     }
@@ -299,7 +299,7 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         switch action {
         case #selector(toggleDone as () -> Void), #selector(moveToTrash), #selector(putInBlock), #selector(moveToProject),
-             #selector(makeSubtask), #selector(waitFor):
+             #selector(makeSubtask), #selector(waitFor), #selector(reconsider), #selector(markReviewed):
             model.inHand != nil
         case #selector(filterTasks): model.filters
         default: super.canPerformAction(action, withSender: sender)
@@ -316,6 +316,8 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
     @objc func moveToProject() { runInHand("move-to-project") }
     @objc func makeSubtask() { runInHand("make-subtask") }
     @objc func waitFor() { runInHand("wait-for") }
+    @objc func reconsider() { runInHand("reconsider") }
+    @objc func markReviewed() { runInHand("mark-reviewed") }
 
     private func runInHand(_ id: String) {
         guard let row = model.inHand else { return }

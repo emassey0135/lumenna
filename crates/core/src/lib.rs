@@ -19,20 +19,23 @@ pub mod order;
 pub mod recur;
 pub mod dayplan;
 pub mod reflow;
+pub mod report;
 pub mod remind;
 pub mod repair;
+pub mod review;
 pub mod row;
 pub mod snapshot;
 pub mod suggest;
 pub mod suggestions;
 pub mod state;
+pub mod streak;
 pub mod time;
 pub mod urgency;
 pub mod when;
 pub mod words;
 
 pub use id::{
-    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SeriesId,
+    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SectionId, SeriesId,
     TaskId,
 };
 pub use order::OrderKey;

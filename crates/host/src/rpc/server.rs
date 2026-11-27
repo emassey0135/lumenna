@@ -52,6 +52,7 @@ pub const METHODS: &[&str] = &[
     "task.list",
     "task.show",
     "task.history",
+    "task.reconsider",
     "task.edit",
     "task.done",
     "task.undone",
@@ -73,7 +74,15 @@ pub const METHODS: &[&str] = &[
     "project.move",
     "project.order",
     "project.weight",
+    "project.reviewed",
+    "project.review_every",
     "project.colour",
+    "section.add",
+    "section.list",
+    "section.rename",
+    "section.order",
+    "section.rm",
+    "section.add_task",
     "label.add",
     "label.list",
     "label.rename",
@@ -118,6 +127,8 @@ pub const METHODS: &[&str] = &[
     "day_plan.apply",
     "history",
     "upcoming",
+    "review",
+    "report",
     "config.get",
     "config.set",
     "undo",
@@ -164,6 +175,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("task.list", &["query"]),
     ("task.show", &["id"]),
     ("task.history", &["id"]),
+    ("task.reconsider", &["id", "answer"]),
     ("task.edit", &["id", "title", "due", "repeat", "priority", "estimate", "notes", "project", "labels", "sittings", "start", "deadline"]),
     ("task.done", &["id"]),
     ("task.undone", &["id"]),
@@ -173,7 +185,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("task.erase", &["id", "confirm"]),
     ("task.erase_permanently", &["id", "confirm"]),
     ("erase_everything_deleted", &["confirm"]),
-    ("task.move", &["id", "parent", "project", "top"]),
+    ("task.move", &["id", "parent", "project", "top", "section"]),
     ("task.search", &["text"]),
     ("task.depend.add", &["id", "on"]),
     ("task.depend.rm", &["id", "on"]),
@@ -185,7 +197,15 @@ const TAKES: &[(&str, &[&str])] = &[
     ("project.move", &["name", "parent"]),
     ("project.order", &["name", "direction"]),
     ("project.weight", &["name", "value"]),
+    ("project.reviewed", &["name"]),
+    ("project.review_every", &["name", "every"]),
     ("project.colour", &["name", "colour"]),
+    ("section.add", &["project", "name"]),
+    ("section.list", &["project"]),
+    ("section.rename", &["section", "to"]),
+    ("section.order", &["section", "direction"]),
+    ("section.rm", &["section", "keep_tasks"]),
+    ("section.add_task", &["section", "text"]),
     ("label.add", &["name"]),
     ("label.list", &[]),
     ("label.rename", &["name", "to"]),
@@ -230,6 +250,8 @@ const TAKES: &[(&str, &[&str])] = &[
     ("day_plan.apply", &["plan", "accepted", "now"]),
     ("history", &[]),
     ("upcoming", &[]),
+    ("review", &[]),
+    ("report", &[]),
     ("config.get", &["key"]),
     ("config.set", &["key", "value"]),
     ("undo", &[]),
@@ -680,6 +702,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "task.list" => Response::new(l.list_tasks(&maybe_text(params, "query").unwrap_or_default())?),
         "task.show" => Response::new(l.show_task(&id()?)?),
         "task.history" => Response::new(l.task_history(&id()?)?),
+        "task.reconsider" => Response::new(l.reconsider(&id()?, &text_of(params, "answer")?)?),
         "task.edit" => Response::new(l.edit_task(&id()?, TaskEdit {
             title: maybe_text(params, "title"),
             due: maybe_text(params, "due"),
@@ -737,6 +760,11 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             Response::new(l.erase_everything_deleted()?)
         }
         "task.move" => {
+            // `section`: a section's name or identifier, or `none` for none.
+            if let Some(section) = maybe_text(params, "section") {
+                let section = Some(section.as_str()).filter(|s| !s.eq_ignore_ascii_case("none"));
+                return Ok(Response::new(l.move_task_to_section(&id()?, section)?));
+            }
             let to = match (maybe_text(params, "parent"), maybe_text(params, "project"), flag(params, "top")) {
                 (Some(parent), _, _) => MoveTarget::Parent { id: parent },
                 (_, Some(project), _) => MoveTarget::Project { name: project },
@@ -757,6 +785,8 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "project.move" => Response::new(l.move_project(&name()?, maybe_text(params, "parent"))?),
         "project.order" => Response::new(l.reorder_project(&name()?, way(params)?)?),
         "project.colour" => Response::new(l.recolour_project(&name()?, colour(params))?),
+        "project.reviewed" => Response::new(l.mark_reviewed(&name()?)?),
+        "project.review_every" => Response::new(l.review_every(&name()?, &text_of(params, "every")?)?),
         "project.weight" => {
             // A number, or the string "inherit" to go back to the parent's weight.
             let value = match params.get("value") {
@@ -767,6 +797,12 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             Response::new(l.weigh_project(&name()?, crate::parse_weight(value)?)?)
         }
 
+        "section.add" => Response::new(l.add_section(&text_of(params, "project")?, &name()?)?),
+        "section.list" => Response::new(l.list_sections(&text_of(params, "project")?)?),
+        "section.rename" => Response::new(l.rename_section(&text_of(params, "section")?, &text_of(params, "to")?)?),
+        "section.order" => Response::new(l.reorder_section(&text_of(params, "section")?, way(params)?)?),
+        "section.rm" => Response::new(l.delete_section(&text_of(params, "section")?, flag(params, "keep_tasks"))?),
+        "section.add_task" => Response::new(l.add_task_in_section(&text_of(params, "section")?, &text_of(params, "text")?)?),
         "label.add" => Response::new(l.add_label(&name()?)?),
         "label.list" => Response::new(l.list_labels()?),
         "label.rename" => Response::new(l.rename_label(&name()?, &text_of(params, "to")?)?),
@@ -864,6 +900,8 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         )?),
         "history" => Response::new(l.history()?),
         "upcoming" => Response::new(l.upcoming()?),
+        "review" => Response::new(l.review()?),
+        "report" => Response::new(l.report()?),
 
         "config.get" => Response::new(l.settings(maybe_text(params, "key"))?),
         "config.set" => {

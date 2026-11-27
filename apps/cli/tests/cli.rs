@@ -1436,6 +1436,7 @@ fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static 
         K::EditTask => &[&["task", "edit", "{essay}", "--notes", "Two pages", "--priority", "2"]],
         K::PutInBlock | K::AssignTask => &[&["assign", "{groceries}", "--block", "{now}"]],
         K::MoveToProject => &[&["task", "move", "{groceries}", "--project", "Home"]],
+        K::MoveToSection => &[&["task", "move", "{essay}", "--section", "Drafts"], &["task", "move", "{essay}", "--section", "none"]],
         K::MakeSubtaskOf => &[&["task", "move", "{groceries}", "--parent", "{essay}"]],
         K::MoveToTopLevel => &[&["task", "move", "{groceries}", "--parent", "{essay}"], &["task", "move", "{groceries}", "--top"]],
         K::WaitFor => &[&["task", "depend", "add", "{groceries}", "--on", "{essay}"]],
@@ -1448,11 +1449,18 @@ fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static 
             &["project", "rm", "Home", "--keep-tasks"],
             &["label", "rm", "errands", "--yes"],
             &["filter", "rm", "Urgent", "--yes"],
+            &["section", "rm", "Work/Drafts", "--keep-tasks"],
+            &["section", "rm", "Sources", "--yes"],
         ],
         K::Restore => &[&["task", "rm", "{groceries}"], &["task", "restore", "{groceries}"]],
         K::DeleteForGood => &[&["task", "rm", "{groceries}"], &["task", "erase", "{groceries}", "--yes"]],
         K::ErasePermanently => &[&["task", "rm", "{groceries}"], &["task", "erase", "{groceries}", "--permanently", "--yes"]],
         K::EraseEverythingDeleted => &[&["task", "rm", "{groceries}"], &["erase-deleted", "--yes"]],
+        K::MarkReviewed => &[&["project", "reviewed", "Home"]],
+        K::ReviewEvery => &[&["project", "review-every", "Home", "every 2 weeks"]],
+        K::Reconsider => &[&["task", "reconsider", "{groceries}", "keep"], &["task", "reconsider", "{groceries}", "drop"]],
+        // A place is a listing: the project's own.
+        K::OpenProject => &[&["task", "list", "#Home"]],
         K::CancelDay => &[&["block", "cancel", "{daily}", "--date", "tomorrow"]],
         K::RestoreDay => &[&["block", "cancel", "{daily}", "--date", "tomorrow"], &["block", "restore", "{daily}", "--date", "tomorrow"]],
         K::StartTimer => &[&["start", "{essay-sitting}"]],
@@ -1468,21 +1476,30 @@ fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static 
             &["label", "rename", "calls", "phone"],
             &["filter", "edit", "Calls", "--rename", "Phone"],
             &["device", "rename", "{nobody}", "Laptop"],
+            &["section", "rename", "Drafts", "Outlines"],
         ],
         K::NewInside => &[&["project", "add", "Reading", "--parent", "Work"]],
-        K::New => &[&["project", "add", "Garden"], &["label", "add", "later"], &["filter", "add", "Soon", "p2"]],
+        K::New => &[
+            &["project", "add", "Garden"],
+            &["label", "add", "later"],
+            &["filter", "add", "Soon", "p2"],
+            &["section", "add", "Home", "Kitchen"],
+            &["section", "add-task", "Drafts", "Opening paragraph tomorrow"],
+        ],
         K::MoveUnder => &[&["project", "move", "Home", "--parent", "Work"]],
         K::MoveUp => &[
             &["project", "order", "Home", "up"],
             &["label", "order", "errands", "up"],
             &["filter", "order", "Urgent", "up"],
             &["reorder", "{laundry-sitting}", "up"],
+            &["section", "order", "Sources", "up"],
         ],
         K::MoveDown => &[
             &["project", "order", "Work", "down"],
             &["label", "order", "calls", "down"],
             &["filter", "order", "Calls", "down"],
             &["reorder", "{essay-sitting}", "down"],
+            &["section", "order", "Drafts", "down"],
         ],
         K::Weight => &[&["project", "weight", "Work", "1.5"]],
         K::Archive => &[&["project", "archive", "Home"]],
@@ -1532,6 +1549,8 @@ impl Seeded {
         lum.ok(&["label", "add", "errands"]);
         lum.ok(&["filter", "add", "Calls", "@calls"]);
         lum.ok(&["filter", "add", "Urgent", "p1"]);
+        lum.ok(&["section", "add", "Work", "Drafts"]);
+        lum.ok(&["section", "add", "Work", "Sources"]);
         lum.ok(&["task", "add", "Essay #Work @calls tomorrow at 9am"]);
         lum.ok(&["task", "add", "Groceries #Home"]);
         lum.ok(&["task", "add", "Laundry"]);
@@ -1606,8 +1625,8 @@ fn every_action_the_app_offers_has_a_command_that_does_it() {
     // Every kind, for running each one's commands; `commands_for` is what keeps new ones from
     // being forgotten.
     let kinds = [
-        K::MarkDone, K::MarkNotDone, K::Edit, K::EditTask, K::PutInBlock, K::MoveToProject, K::MakeSubtaskOf,
-        K::MoveToTopLevel, K::WaitFor, K::StopWaiting, K::Delete, K::Restore, K::DeleteForGood, K::AssignTask,
+        K::MarkDone, K::MarkNotDone, K::Edit, K::EditTask, K::PutInBlock, K::MoveToProject, K::MoveToSection,
+        K::MakeSubtaskOf, K::MoveToTopLevel, K::WaitFor, K::StopWaiting, K::Delete, K::Restore, K::DeleteForGood, K::AssignTask,
         K::CancelDay, K::RestoreDay, K::StartTimer, K::ResumeTimer, K::PauseTimer, K::StopTimer, K::PlannedLength,
         K::LogMinutes, K::Unassign, K::AddBlock, K::Rename, K::NewInside, K::MoveUnder, K::MoveUp, K::MoveDown,
         K::Weight, K::Archive, K::Unarchive, K::MergeInto, K::Colour, K::ChangeQuery, K::New, K::Unpair,

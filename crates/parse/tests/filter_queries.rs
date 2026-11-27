@@ -285,3 +285,10 @@ fn a_start_and_a_deadline_are_filtered_on_as_a_due_date_is() {
     assert_eq!(parse("deadline before: friday").describe(), "tasks with a deadline before Friday");
     assert_eq!(parse("someday | later").describe(), "tasks either someday or later");
 }
+
+#[test]
+fn a_slash_names_a_section_in_a_filter() {
+    let known = lumenna_parse::quickadd::Known { sections: vec!["Errands".to_owned()], ..Default::default() };
+    let expr = lumenna_parse::filter::parse_filter("#work & /errands", &known).unwrap();
+    assert_eq!(expr.describe(), "tasks in work, and in section errands");
+}

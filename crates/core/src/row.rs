@@ -35,7 +35,7 @@
 //! reads: the core says what is true, never how a line is joined.
 
 use crate::filter::{Context, Expr};
-use crate::id::{LabelId, ProjectId, SeriesId, TaskId};
+use crate::id::{LabelId, ProjectId, SectionId, SeriesId, TaskId};
 use crate::snapshot::Snapshot;
 use crate::state::State;
 
@@ -48,6 +48,8 @@ pub enum RowId {
     Project(ProjectId),
     /// A label.
     Label(LabelId),
+    /// A section heading in a project's listing.
+    Section(SectionId),
     /// One occurrence of a block series, on a date.
     Occurrence(SeriesId, jiff::civil::Date),
     /// A day, heading what falls on it in a view of the days ahead.
@@ -70,6 +72,8 @@ pub enum Role {
     Block,
     /// A heading that groups the rows beneath it.
     Group,
+    /// A section of a project, heading the tasks under it.
+    Section,
 }
 
 impl Role {
@@ -82,6 +86,7 @@ impl Role {
             Self::Label => "label",
             Self::Block => "block",
             Self::Group => "group",
+            Self::Section => "section",
         }
     }
 
@@ -97,6 +102,7 @@ impl Role {
             Self::Label => "lbl",
             Self::Block => "blk",
             Self::Group => "grp",
+            Self::Section => "sec",
         }
     }
 }
@@ -220,6 +226,87 @@ impl Snapshot {
         push_task_rows(cx, &children, &done, None, 0, &mut rows);
         rows
     }
+
+    /// A project's tasks a filter selects, headed by the project's sections in order: first the
+    /// tasks under no section, then each section's heading with its tasks a level beneath it.
+    /// Every section is listed, an empty one too, so a task can be put under it. A subtask
+    /// goes where its parent does; a task naming a section that is gone, or another project's,
+    /// is under none ([`Snapshot::section_of`]).
+    ///
+    /// The headings and the tasks under no section are siblings at the top: "2 of 5". What has
+    /// not started is kept in, as a project's own listing shows it ([`Expr::select_shown`]).
+    #[must_use]
+    pub fn project_rows(&self, project: ProjectId, expr: &Expr, cx: &Context<'_>, sort: crate::filter::Sort) -> Vec<Row> {
+        let rows = self.task_rows_shown(expr, cx, sort, true);
+        let sections = self.sections_of(project);
+        if sections.is_empty() {
+            return rows;
+        }
+        // Each top-level row with the rows under it, by the section its top task sits under.
+        let mut chunks: std::collections::BTreeMap<Option<SectionId>, Vec<Vec<Row>>> = std::collections::BTreeMap::new();
+        let mut current: Option<SectionId> = None;
+        for row in rows {
+            if row.depth == 0 || chunks.is_empty() {
+                let section = match row.id {
+                    RowId::Task(id) => self.tasks.get(&id).and_then(|t| self.section_of(t)).map(|s| s.id),
+                    _ => None,
+                };
+                current = section.filter(|id| sections.iter().any(|s| s.id == *id));
+                chunks.entry(current).or_default().push(vec![row]);
+            } else if let Some(chunk) = chunks.get_mut(&current).and_then(|c| c.last_mut()) {
+                chunk.push(row);
+            }
+        }
+        let loose = chunks.remove(&None).unwrap_or_default();
+        let count = u32::try_from(loose.len() + sections.len()).unwrap_or(u32::MAX);
+        let mut out = Vec::new();
+        let mut index = 0;
+        for mut chunk in loose {
+            index += 1;
+            chunk[0].index = index;
+            chunk[0].count = count;
+            out.extend(chunk);
+        }
+        for section in sections {
+            index += 1;
+            let under = chunks.remove(&Some(section.id)).unwrap_or_default();
+            let tasks = under.len();
+            out.push(Row {
+                id: RowId::Section(section.id),
+                role: Role::Section,
+                depth: 0,
+                index,
+                count,
+                expanded: (tasks > 0).then_some(true),
+                checked: None,
+                title: section.name.clone(),
+                state: Vec::new(),
+                due: None,
+                due_time: None,
+                // Said as a heading, since its line reads like a task's otherwise.
+                value: Some(match tasks {
+                    0 => "section, no tasks".to_owned(),
+                    1 => "section, 1 task".to_owned(),
+                    n => format!("section, {n} tasks"),
+                }),
+                hint: None,
+                priority: None,
+            });
+            let inner = u32::try_from(tasks).unwrap_or(u32::MAX);
+            for (at, chunk) in under.into_iter().enumerate() {
+                for (i, mut row) in chunk.into_iter().enumerate() {
+                    if i == 0 {
+                        row.index = u32::try_from(at).unwrap_or(u32::MAX) + 1;
+                        row.count = inner;
+                    }
+                    row.depth += 1;
+                    out.push(row);
+                }
+            }
+        }
+        out
+    }
+
 
     /// The closest ancestor of `task` that is in `included`, if any.
     ///

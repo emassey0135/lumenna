@@ -166,13 +166,20 @@ test("today's buttons are the core's own actions for it, in its order, then its 
   await open(page);
   await place(page, /^Today/);
   const buttons = page.getByRole("main").getByRole("toolbar", { name: "Day" }).getByRole("button");
-  const names = ["New block", "Previous day", "Next day", "Go to day", "Go to now", "Undo", "Redo", "Day actions", "Actions"];
+  const names = ["New block", "Previous day", "Next day", "Go to day", "Go to now", "Time left", "Undo", "Redo", "Day actions", "Actions"];
   await expect(buttons).toHaveCount(names.length);
   for (const [at, name] of names.entries()) await expect(buttons.nth(at)).toHaveAccessibleName(name);
   // One that asks something first says it opens a dialog, its ellipsis no part of its name.
   await expect(buttons.first()).toHaveAttribute("aria-haspopup", "dialog");
   await expect(buttons.nth(2)).not.toHaveAttribute("aria-haspopup", /.+/);
   await axe(page);
+});
+
+test("today's Time left says the timer as the core has it", async ({ page }) => {
+  await open(page);
+  await place(page, /^Today/);
+  await page.getByRole("main").getByRole("toolbar", { name: "Day" }).getByRole("button", { name: "Time left" }).click();
+  await expect(page.getByRole("contentinfo")).toContainText("No timer is running.");
 });
 
 test("enter on a trashed task restores it, as it does on every platform", async ({ page }) => {

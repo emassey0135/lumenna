@@ -9,14 +9,15 @@
 ;; back to Emacs, `reminder.deliver' hands over what came due, and each is said
 ;; through `lumenna-announce-function' -- the echo area, or Emacsvox's
 ;; notification lane -- and shown as a desktop notification where D-Bus has a
-;; notification service, with the core's Dismiss and Snooze as its buttons.
+;; notification service, with the core's buttons as its own.
 ;; Only while no other process on this device gives reminders: the Mac app,
 ;; the GTK app or `lum notify' does it better, and the server tells this
 ;; connection when one does.
 ;;
 ;; What came due and was not dealt with is the app's list, the same on every
 ;; device's apps, shown in M-x lumenna-reminders-due,
-;; where d dismisses one, z snoozes it, and c carries forward what a block's
+;; where d dismisses one, z snoozes it, t stops the timer whose planned length
+;; ran out, and c carries forward what a block's
 ;; end left short, where its reminder offers to.  A task's or block's own
 ;; reminders are its Reminders action (R): a list of them, a to add one by a
 ;; phrase the core reads ("5m before start"), d to remove one.  When each
@@ -110,11 +111,11 @@ Its buttons are the core's words, and each is the app's to carry out."
         (notifications-notify
          :title (plist-get due :title) :body (plist-get due :text) :app-name (lumenna--name)
          ;; The app's buttons, in the order every platform shows them: what the reminder
-         ;; offers of its own (Carry Forward, Replan), then Dismiss and Snooze.
+         ;; offers of its own (Carry Forward, Replan, Stop Timer), then Dismiss and Snooze.
          :actions (append (mapcan (lambda (button) (list (plist-get button :id) (plist-get button :title)))
                                   (append (plist-get due :buttons) nil))
                           ;; What was missed, as one summary, is about nothing to open.
-                          (and (plist-get due :snooze) (list "default" (plist-get first :title))))
+                          (and (plist-get due :block) (list "default" (plist-get first :title))))
          :on-action (lambda (_id action)
                       (if (equal action "default")
                           (lumenna-reminders--open first)
@@ -222,7 +223,7 @@ there."
       ;; Its sound, by what it is.
       (setq lumenna--acting (pcase button
                               ("dismiss" "reminder/dismiss") ("snooze" "reminder/snooze")
-                              ("carry" "block/carry_rest")))
+                              ("carry" "block/carry_rest") ("stop" "sitting/stop_timer")))
       (lumenna-send (lumenna-reminders--pressed id button) 0)
       (lumenna--follow))))
 
@@ -306,6 +307,12 @@ words."
   (interactive)
   (lumenna-reminders--press "carry"))
 
+(defun lumenna-reminders-stop ()
+  "Stop the timer whose planned length the reminder at point says ran out.
+The app stops that sitting's timer and dismisses the reminder."
+  (interactive)
+  (lumenna-reminders--press "stop"))
+
 (defun lumenna-reminders-replan ()
   "Open Replan from Now, as the reminder at point offers to.
 Once something is replanned, the app dismisses the warning."
@@ -386,6 +393,7 @@ One the core cannot read is asked again, with the core's sentence first."
    ("d" :dismiss lumenna-reminders-dismiss)
    ("z" :snooze lumenna-reminders-snooze)
    ("c" (kinds "carry_rest") lumenna-reminders-carry)
+   ("t" (kinds "stop_timer") lumenna-reminders-stop)
    ("r" (kinds "replan") lumenna-reminders-replan)))
 
 (lumenna-define-keys lumenna-reminder-list-mode

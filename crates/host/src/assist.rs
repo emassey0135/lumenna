@@ -106,6 +106,7 @@ impl Lumenna {
             "list_blocks" => Assisted::Rows(self.list_blocks()?),
             "list_upcoming" => Assisted::Rows(self.upcoming()?),
             "list_projects" => Assisted::Rows(self.list_projects()?),
+            "list_sections" => Assisted::Rows(self.list_sections(&given.required("project")?)?),
             "list_labels" => Assisted::Rows(self.list_labels()?),
             "list_filters" => Assisted::Filters(self.list_filters()?),
             "what_should_i_work_on" => Assisted::Choices(self.what_should_i_work_on(None)?),
@@ -156,14 +157,19 @@ impl Lumenna {
             "restore_task" => Assisted::Change(self.restore_task(&given.required("id")?)?),
             "move_task" => {
                 let task = given.required("id")?;
+                if let Some(section) = given.text("section")?.filter(|s| !s.trim().is_empty()) {
+                    let section = Some(section.as_str()).filter(|s| !s.trim().eq_ignore_ascii_case("none"));
+                    return Ok(Assisted::Change(self.move_task_to_section(&task, section)?));
+                }
                 let to = match (given.text("parent")?, given.text("project")?, given.flag("top")?) {
                     (Some(id), _, _) if !id.trim().is_empty() => MoveTarget::Parent { id },
                     (_, Some(name), _) if !name.trim().is_empty() => MoveTarget::Project { name },
                     (_, _, true) => MoveTarget::Top,
-                    _ => return Err(LumennaError::new("say where: a parent, a project, or top")),
+                    _ => return Err(LumennaError::new("say where: a parent, a project, a section, or top")),
                 };
                 Assisted::Change(self.move_task(&task, to)?)
             }
+            "add_section" => Assisted::Change(self.add_section(&given.required("project")?, &given.required("name")?)?),
             "assign" => {
                 let (task, block) = (given.required("task")?, given.required("block")?);
                 let (date, minutes) = (given.text("date")?, given.minutes("minutes")?);
@@ -178,6 +184,7 @@ impl Lumenna {
                 Assisted::Timer(self.stop_timer(&sitting, given.minutes("minutes")?)?)
             }
             "timer" => Assisted::Timer(self.timer_now(None)?),
+            "report" => Assisted::Rows(self.report()?),
             "toggle_timer" => Assisted::Change(self.toggle_timer(None)?),
             "start_on" => Assisted::Change(self.start_on(&given.required("choice")?, None)?),
             "apply_replan" => {
@@ -195,6 +202,16 @@ impl Lumenna {
                     return Err(LumennaError::new("apply_day_plan needs the proposal, and the sittings accepted"));
                 };
                 Assisted::DayPlanned(self.apply_day_plan(proposal, accepted, None)?)
+            }
+            "review" => Assisted::Rows(self.review()?),
+            "mark_reviewed" => Assisted::Change(self.mark_reviewed(&given.required("project")?)?),
+            "review_every" => {
+                let project = given.required("project")?;
+                Assisted::Change(self.review_every(&project, &given.required("every")?)?)
+            }
+            "reconsider_task" => {
+                let task = given.required("id")?;
+                Assisted::Change(self.reconsider(&task, &given.required("answer")?)?)
             }
             "undo" => Assisted::Change(self.undo()?),
             "redo" => Assisted::Change(self.redo()?),

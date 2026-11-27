@@ -89,11 +89,13 @@ enum MainMenu {
     private static func view() -> NSMenu {
         let menu = NSMenu(title: Commands.menu("view"))
         menu.addItem(item(Commands.asking("go-today"), #selector(AppDelegate.goToToday(_:)), "1"))
-        menu.addItem(item(Commands.asking("go-upcoming"), #selector(AppDelegate.goToUpcoming(_:)), "6"))
+        menu.addItem(item(Commands.asking("go-upcoming"), #selector(AppDelegate.goToUpcoming(_:)), "8"))
         menu.addItem(item(Commands.asking("go-tasks"), #selector(AppDelegate.goToTasks(_:)), "2"))
         menu.addItem(item(Commands.asking("go-blocks"), #selector(AppDelegate.goToBlocks(_:)), "3"))
         menu.addItem(item(Commands.asking("go-trash"), #selector(AppDelegate.goToTrash(_:)), "4"))
         menu.addItem(item(Commands.asking("go-history"), #selector(AppDelegate.goToHistory(_:)), "5"))
+        menu.addItem(item(Commands.asking("go-review"), #selector(AppDelegate.goToReview(_:)), "6"))
+        menu.addItem(item(Commands.asking("go-report"), #selector(AppDelegate.goToReport(_:)), "7"))
         menu.addItem(.separator())
         menu.addItem(item(Wording.toggleSidebar, #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]))
         return menu
@@ -106,6 +108,8 @@ enum MainMenu {
         menu.addItem(item(Commands.asking("move-to-project"), #selector(AppDelegate.moveToProject(_:)), "m", [.command, .shift]))
         menu.addItem(item(Commands.asking("make-subtask"), #selector(AppDelegate.makeSubtask(_:))))
         menu.addItem(item(Commands.asking("wait-for"), #selector(AppDelegate.waitFor(_:))))
+        menu.addItem(item(Commands.asking("reconsider"), #selector(AppDelegate.reconsider(_:))))
+        menu.addItem(item(Commands.asking("mark-reviewed"), #selector(AppDelegate.markReviewed(_:))))
         menu.addItem(item(Commands.asking("save-task"), #selector(TaskDetailViewController.saveTask(_:)), "s"))
         menu.addItem(.separator())
         menu.addItem(item(Commands.asking("trash-task"), #selector(AppDelegate.moveToTrash(_:)), "\u{8}"))
@@ -118,6 +122,8 @@ enum MainMenu {
         menu.addItem(item(Commands.asking("next-day"), #selector(AppDelegate.nextDay(_:)), "]"))
         menu.addItem(item(Commands.asking("go-to-now"), #selector(AppDelegate.goToNow(_:)), "t"))
         menu.addItem(item(Commands.asking("go-to-day"), #selector(AppDelegate.goToDay(_:)), "j"))
+        // The timer as it is, said, from anywhere: the shared table's Ctrl+Shift+T.
+        menu.addItem(item(Commands.asking("time-left"), #selector(AppDelegate.timeLeft(_:)), "t", [.command, .shift]))
         // Then the day's own actions, the core's, as the menu opens.
         menu.delegate = DayMenu.shared
         return menu

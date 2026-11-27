@@ -6,7 +6,7 @@ A task with a due date and every block offer Reminders, r, in their context menu
 
 ## What came due
 
-Reminders due, r, on Home's menu while anything has come due, lists what came due over the last day and was not dismissed. Control-D dismisses one, on every device. Its context menu also has Snooze, z, which says for how long, and, where a block ended with work left short and the reminder asks whether to carry it on, Carry forward, f; and where a block's work outruns its time, Replan, p, which opens Replan from now.
+Reminders due, r, on Home's menu while anything has come due, lists what came due over the last day and was not dismissed. Control-D dismisses one, on every device. Its context menu also has Snooze, z, which says for how long, and, where a block ended with work left short and the reminder asks whether to carry it on, Carry forward, f; and where a block's work outruns its time, Replan, p, which opens Replan from now. When a running timer uses up its sitting's planned length, Lumenna says so once, and the reminder offers Stop timer, t, which stops that timer and dismisses it, and no Snooze.
 
 ## Reminders on this device
 

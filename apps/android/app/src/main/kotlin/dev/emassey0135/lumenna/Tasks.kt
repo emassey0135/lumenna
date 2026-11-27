@@ -140,9 +140,9 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
 
     // The place's own actions, the core's; the filter is this screen's field, which it focuses.
     val screenActions = ScreenButtons(here?.screenActions.orEmpty(), mapOf<String, () -> Unit>("filter" to { runCatching { field.requestFocus() } }))
-    // The field is there where the core offers the filter: not in the trash, the history or the
-    // days ahead, whose listings take none.
-    val filters = here?.screenActions.orEmpty().any { it.id == "filter" }
+    // The field is there where the core offers the filter: not in the trash, the history, the
+    // days ahead or the time report, whose listings take none.
+    val filters = here?.screenActions?.any { it.id == "filter" } != false
     ScreenFrame(here?.title ?: placeTitle(screen.place), core, navigator, screen = screenActions) {
         if (filters) CompletingField(
             core = core,
@@ -211,6 +211,9 @@ fun AppTaskRows(
     ) {
         itemsIndexed(items, key = { _, (item, _) -> item.row.id }) { index, (item, line) ->
             val row = item.row
+            // A row the core offers nothing on (the time report's totals and its headings) is
+            // no task and opens nothing: it is a line to read.
+            val offered = list?.offeredOf(item).orEmpty()
             ListRow(
                 // The line's first part, as the core words it: a task's title, a day as this
                 // device says one, a block with its times (Upcoming's).
@@ -222,9 +225,9 @@ fun AppTaskRows(
                 heading = row.role == "group",
                 depth = row.depth.toInt(),
                 index = index,
-                actions = core.app.rowActions(row.id, list?.offeredOf(item).orEmpty(), local),
+                actions = core.app.rowActions(row.id, offered, local),
                 keys = core.app.rowKeys(row.id),
-                open = open?.let { { it(row) } },
+                open = open?.takeIf { offered.isNotEmpty() }?.let { { it(row) } },
                 openLabel = openLabelOf(item) ?: openLabel,
                 focus = focus.requester(row.id),
                 key = row.id,

@@ -44,6 +44,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Lumenna finds your other devices on this network and syncs with them directly.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

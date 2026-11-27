@@ -95,6 +95,51 @@ pub fn label<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a Label> {
     })
 }
 
+/// The section `input` names: its whole identifier, as a row's actions name it, or a prefix of
+/// one; else, within `project` where one is given, the section called `input`; else
+/// `<project>/<section>`, or a name only one project's sections have.
+pub fn section<'a>(snapshot: &'a Snapshot, input: &str, project: Option<&str>) -> Result<&'a lumenna_core::model::Section> {
+    let input = input.trim();
+    let named_in = |project: &Project, name: &str| {
+        snapshot.sections_of(project.id).into_iter().find(|s| lumenna_core::suggest::same_name(&s.name, name))
+    };
+    if let Some(project) = project {
+        let project = self::project(snapshot, project)?;
+        let name = input.trim_start_matches('/');
+        return named_in(project, name).ok_or_else(|| {
+            let sections = snapshot.sections_of(project.id);
+            LumennaError::new(format!(
+                "no section called '{name}' in {}{}",
+                project.name,
+                hint(name, sections.iter().map(|s| s.name.as_str()))
+            ))
+        });
+    }
+    let live = || snapshot.sections.values().filter(|s| s.deleted_at.is_none());
+    if let Some(section) = input.parse().ok().and_then(|id| snapshot.section(id)) {
+        return Ok(section);
+    }
+    // `Work/Errands`, at whichever slash splits a project's name from one of its sections'.
+    for (at, _) in input.match_indices('/') {
+        if let Some(project) = snapshot.project_by_name(&input[..at])
+            && let Some(section) = named_in(project, &input[at + 1..])
+        {
+            return Ok(section);
+        }
+    }
+    let name = input.trim_start_matches('/');
+    let mut found: Vec<_> = live().filter(|s| lumenna_core::suggest::same_name(&s.name, name)).collect();
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        0 => resolve(input, live().map(|s| s.id.to_string()))
+            .ok()
+            .and_then(|id| id.parse().ok())
+            .and_then(|id| snapshot.section(id))
+            .ok_or_else(|| LumennaError::new(format!("no section called '{name}'{}", hint(name, live().map(|s| s.name.as_str()))))),
+        _ => Err(LumennaError::new(format!("more than one project has a section called '{name}'; say which, as Project/{name}"))),
+    }
+}
+
 /// The saved filter whose whole identifier `name` is, as its row's actions name it, else the one
 /// called `name`, or a sentence suggesting the nearest name.
 pub fn filter<'a>(snapshot: &'a Snapshot, name: &str) -> Result<&'a lumenna_core::model::SavedFilter> {

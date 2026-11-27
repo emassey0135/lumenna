@@ -761,6 +761,12 @@ impl Store {
                     docs.put_label(l, before)?;
                 }
             }
+            for s in imported.sections.iter().filter(|s| !out(left("sections", s.id.to_string()))) {
+                let before = current.sections.get(&s.id);
+                if tally(&mut report, before, s) {
+                    docs.put_section(s, before)?;
+                }
+            }
             for f in imported.filters.iter().filter(|f| !out(left("filters", f.id.to_string()))) {
                 let before = current.saved_filters.get(&f.id);
                 if tally(&mut report, before, f) {

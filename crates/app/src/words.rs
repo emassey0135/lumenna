@@ -321,6 +321,15 @@ pub struct ShellWords {
     pub expand: String,
     /// The key that folds one: "Collapse".
     pub collapse: String,
+    /// The notification channel of a timer running, shown while it runs: "Timer".
+    pub timer_channel: String,
+    /// What that channel holds, as its settings describe it.
+    pub timer_channel_description: String,
+    /// A running timer's button outside the app (an ongoing notification, a Live Activity), the
+    /// core's action: "Pause Timer".
+    pub pause_timer: String,
+    /// Its other button: "Stop Timer".
+    pub stop_timer: String,
     // The web's.
     /// What Right arrow does in a list, in a keyboard help: "Expand the Row".
     pub expand_the_row: String,
@@ -665,6 +674,7 @@ pub fn kind_title(kind: ActionKind) -> String {
         K::EditTask => "Edit Task Details",
         K::PutInBlock => "Put in a Block",
         K::MoveToProject => "Move to Project",
+        K::MoveToSection => "Move to Section",
         K::MakeSubtaskOf => "Make Subtask Of",
         K::MoveToTopLevel => "Move to Top Level",
         K::WaitFor => "Wait For",
@@ -715,6 +725,10 @@ pub fn kind_title(kind: ActionKind) -> String {
         K::ErasePermanently => "Erase Permanently",
         K::EraseEverythingDeleted => "Erase Everything Deleted",
         K::ShowDay => "Show the Day",
+        K::MarkReviewed => "Mark Reviewed",
+        K::ReviewEvery => "Review Every",
+        K::Reconsider => "Reconsider",
+        K::OpenProject => "Open Project",
     };
     title.to_owned()
 }
@@ -723,15 +737,14 @@ pub fn kind_title(kind: ActionKind) -> String {
 pub const ACTION_KINDS: &[ActionKind] = {
     use ActionKind as K;
     &[
-        K::MarkDone, K::MarkNotDone, K::Edit, K::EditTask, K::PutInBlock, K::MoveToProject, K::MakeSubtaskOf,
-        K::MoveToTopLevel, K::WaitFor, K::StopWaiting, K::Delete, K::Restore, K::DeleteForGood, K::AssignTask,
+        K::MarkDone, K::MarkNotDone, K::Edit, K::EditTask, K::PutInBlock, K::MoveToProject, K::MoveToSection,
+        K::MakeSubtaskOf,        K::MoveToTopLevel, K::WaitFor, K::StopWaiting, K::Delete, K::Restore, K::DeleteForGood, K::AssignTask,
         K::CancelDay, K::RestoreDay, K::StartTimer, K::ResumeTimer, K::PauseTimer, K::StopTimer, K::PlannedLength,
         K::LogMinutes, K::Unassign, K::AddBlock, K::Rename, K::NewInside, K::MoveUnder, K::MoveUp, K::MoveDown,
         K::Weight, K::Archive, K::Unarchive, K::MergeInto, K::Colour, K::ChangeQuery, K::New, K::Unpair, K::Reminders,
         K::EndNow, K::Extend, K::EndDay, K::ClearDay, K::CarryForward, K::WhatNow, K::CarryRest, K::Replan,
         K::PlanDay, K::Expand, K::Collapse, K::Skip, K::Unskip, K::DeliverOn, K::TimeZone, K::ErasePermanently,
-        K::EraseEverythingDeleted,
-        K::ShowDay,
+        K::EraseEverythingDeleted, K::ShowDay, K::MarkReviewed, K::ReviewEvery, K::Reconsider, K::OpenProject,
     ]
 };
 
@@ -978,6 +991,10 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
 
         expand: c("Expand"),
         collapse: c("Collapse"),
+        timer_channel: c("Timer"),
+        timer_channel_description: "The timer while it runs: what it runs on, and how much of its planned length is left.".to_owned(),
+        pause_timer: c(&kind_title(ActionKind::PauseTimer)),
+        stop_timer: c(&kind_title(ActionKind::StopTimer)),
         expand_the_row: c("Expand the Row"),
         collapse_the_row: c("Collapse the Row"),
         offer_completions: c(
