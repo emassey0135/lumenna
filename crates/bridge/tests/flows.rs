@@ -3003,7 +3003,7 @@ fn upcoming_lists_each_day_ahead_with_its_blocks_then_the_tasks_falling_on_it() 
     app.send(Event::Open(Place::Upcoming));
     let view = app.view();
     let list = view.list.unwrap();
-    assert_eq!(list.announcement, "7 days");
+    assert_eq!(list.announcement, "7 days, 1 block and 2 tasks");
     let rows: Vec<(String, String, u32)> = list.items.iter().map(|i| (i.row.role.clone(), i.row.title.clone(), i.row.depth)).collect();
     assert_eq!(rows[0], ("group".to_owned(), "Today".to_owned(), 0));
     assert_eq!(list.items[0].row.value.as_deref(), Some("nothing planned"));
@@ -3077,4 +3077,17 @@ fn the_task_form_saves_a_start_and_a_deadline_and_a_date_ends_someday() {
     let after = store.show_task(&id).unwrap().task;
     assert!(after.start.as_deref().is_some_and(|s| s.parse::<jiff::civil::Date>().is_ok()), "{:?}", after.start);
     assert_eq!(after.deadline.as_deref(), Some("2027-01-15"));
+}
+
+#[test]
+fn going_back_to_upcoming_from_the_day_it_showed_finds_the_day_in_hand() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.send(Event::Open(Place::Upcoming));
+    let tomorrow = app.items()[1].row.id.clone();
+    app.send(Event::Focus(tomorrow.clone()));
+    app.send(Event::Key("open".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Today));
+    app.send(Event::Open(Place::Upcoming));
+    assert_eq!(app.view().focus, Some(tomorrow));
 }

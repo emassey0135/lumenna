@@ -94,7 +94,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::Day, "next-day", "Next Day", &["Ctrl+Page Down"]),
     key(Group::Day, "go-to-now", "Go to Now", &["Ctrl+T"]),
     key(Group::Day, "go-to-day", "Go to Day", &["Ctrl+G"]),
-    key(Group::Lists, "open", "Open the Task, Place or Block, or Restore from the Trash", &["Enter"]),
+    key(Group::Lists, "open", "Open the Task, Place or Block, Show a Day, or Restore from the Trash", &["Enter"]),
     key(Group::Lists, "toggle", "Mark Done, Restore from the Trash, or Start, Pause or Resume a Timer", &["Space"]),
     key(Group::Lists, "delete", "Delete, Move to Trash, Delete from the Trash, or Unassign", &["Delete"]),
     key(Group::Lists, "actions", "Everything That Can Be Done to the Row", &["Shift+F10", "Applications key"]),

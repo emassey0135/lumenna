@@ -442,6 +442,11 @@ impl Screen {
     /// Shows a day: Today shows today, and a new day opens on its summary, which it says.
     pub(crate) fn show_day(&mut self, day: Option<Date>) -> Command<Effect, Event> {
         let changed = self.place() != Place::Today || self.day != day || self.home;
+        // A place left for a day (Upcoming's Show the Day) keeps its row in hand, as `go` keeps it.
+        if let Some(from) = self.place.clone().filter(|from| *from != Place::Today) {
+            let left = Left { focus: self.focus.clone(), position: self.position, filter: self.filter.clone(), read: self.read.clone() };
+            self.left.insert(from, left);
+        }
         self.home = false;
         self.place = Some(Place::Today);
         self.day = day;

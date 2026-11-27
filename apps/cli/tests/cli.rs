@@ -1672,7 +1672,7 @@ fn upcoming_lists_the_week_and_a_task_put_off_waits_for_its_start() {
     let list = lum.ok(&["task", "list"]);
     assert!(list.contains("pay rent") && !list.contains("draft the essay") && !list.contains("cello"), "{list}");
     let upcoming = lum.ok(&["upcoming"]);
-    assert!(upcoming.starts_with("7 days"), "{upcoming}");
+    assert!(upcoming.starts_with("7 days, 2 tasks"), "{upcoming}");
     assert!(upcoming.contains("Tomorrow") && upcoming.contains("draft the essay") && upcoming.contains("pay rent"), "{upcoming}");
     assert!(!upcoming.contains("cello"), "Someday falls on no day: {upcoming}");
     let someday = lum.ok(&["task", "list", "someday"]);

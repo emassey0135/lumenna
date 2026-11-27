@@ -400,7 +400,16 @@ pub fn upcoming(snapshot: &Snapshot, now: &Zoned) -> Result<Rows> {
     }
     let days = rows.iter().filter(|row| row.role == Role::Group).count();
     let mut listed = Rows::new(&rows, "day");
-    listed.announcement = count_line(days, "day");
+    // What the days hold in all, said with how many: "7 days, 3 blocks and 5 tasks".
+    let blocks = rows.iter().filter(|row| row.role == Role::Block).count();
+    let tasks = rows.iter().filter(|row| row.role == Role::Task).count();
+    let held: Vec<String> =
+        [(blocks, "block"), (tasks, "task")].into_iter().filter(|(n, _)| *n > 0).map(|(n, noun)| count_line(n, noun)).collect();
+    listed.announcement = if held.is_empty() {
+        format!("{}, nothing planned", count_line(days, "day"))
+    } else {
+        format!("{}, {}", count_line(days, "day"), lumenna_core::words::listed(&held))
+    };
     listed.empty = "Nothing is coming up.".to_owned();
     for (at, end) in ends {
         if let Some(row) = listed.rows.get_mut(at) {

@@ -236,6 +236,10 @@ pub struct ShellWords {
     pub shows_details: String,
     /// A repeating block's hint: "Edits every occurrence".
     pub edits_every_occurrence: String,
+    /// A day's hint in a view of the days ahead (Upcoming): "Shows the day".
+    pub shows_the_day: String,
+    /// A block's hint there: "Shows it on its day".
+    pub shows_it_on_its_day: String,
 
     // Sentences and lines.
     /// Which of several: "Which?"
@@ -931,6 +935,8 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         add_task_wearing_it: c("Add a Task Wearing It"),
         shows_details: "Shows details".to_owned(),
         edits_every_occurrence: "Edits every occurrence".to_owned(),
+        shows_the_day: "Shows the day".to_owned(),
+        shows_it_on_its_day: "Shows it on its day".to_owned(),
 
         which: core::which(),
         nothing_to_choose: core::nothing_to_choose(),

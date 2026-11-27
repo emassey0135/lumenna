@@ -45,6 +45,8 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::AssignTask, "i"),
     (K::CancelDay, "x"),
     (K::RestoreDay, "o"),
+    // Only Upcoming's days and blocks offer it, and no cancelled day there.
+    (K::ShowDay, "o"),
     (K::StartTimer, "s"),
     (K::PauseTimer, "s"),
     (K::ResumeTimer, "s"),
@@ -119,7 +121,7 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-tasks", "k"),
     ("go-blocks", "b"),
     ("go-history", "h"),
-    ("go-upcoming", "c"),
+    ("go-upcoming", "d"),
     ("go-trash", "x"),
     ("projects", "p"),
     ("labels", "l"),
