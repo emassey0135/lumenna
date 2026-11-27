@@ -278,3 +278,10 @@ fn a_sigil_naming_nothing_is_refused() {
     assert!(fails("#").message.contains("names nothing"));
     assert!(fails(r#"@"" & p1"#).message.contains("names nothing"));
 }
+
+#[test]
+fn a_start_and_a_deadline_are_filtered_on_as_a_due_date_is() {
+    assert_eq!(parse("starts: monday").describe(), "tasks starting Monday");
+    assert_eq!(parse("deadline before: friday").describe(), "tasks with a deadline before Friday");
+    assert_eq!(parse("someday | later").describe(), "tasks either someday or later");
+}

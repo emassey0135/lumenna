@@ -41,6 +41,8 @@ fn full_task(project: ProjectId) -> Task {
     });
     task.estimate_mins = Some(90);
     task.sitting_mins = Some(45);
+    task.start = Some(lumenna_core::model::Start::Someday);
+    task.deadline = Some(date(2026, 9, 11));
     task.external = Some(ExternalRef {
         provider: ExternalProvider::CalDav,
         external_id: "abc-123".to_owned(),

@@ -45,7 +45,13 @@ pub fn tasks(snapshot: &Snapshot, query: &str, now: &Zoned) -> Result<Rows> {
         .collect();
 
     let order = sort.unwrap_or(snapshot.settings.task_order);
-    let mut rows = Rows::new(&snapshot.task_rows_sorted(&expr, &cx, order), "task");
+    // A project's own listing shows everything not done in it, Someday and a start still to
+    // come with the rest; every other listing leaves those out unless its query asks for them.
+    let own_project = snapshot
+        .projects
+        .values()
+        .any(|p| p.deleted_at.is_none() && query.trim() == crate::project_reference(p.name.clone()));
+    let mut rows = Rows::new(&snapshot.task_rows_shown(&expr, &cx, order, own_project), "task");
     if !query.trim().is_empty() {
         rows.query = Some(Query {
             text: query.to_owned(),

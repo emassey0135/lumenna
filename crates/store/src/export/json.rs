@@ -672,6 +672,11 @@ struct TaskOut {
     estimate_mins: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sitting_mins: Option<u32>,
+    /// A day, ISO, or `someday`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    start: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    deadline: Option<String>,
     order: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     external: Option<ExternalOut>,
@@ -692,6 +697,8 @@ impl From<&Task> for TaskOut {
             due: t.due.as_ref().map(DueOut::from),
             estimate_mins: t.estimate_mins,
             sitting_mins: t.sitting_mins,
+            start: t.start.map(|s| s.to_string()),
+            deadline: t.deadline.map(|d| d.to_string()),
             order: t.order.to_string(),
             external: t.external.as_ref().map(ExternalOut::from),
             created_at: t.created_at.to_string(),
@@ -720,6 +727,8 @@ impl TaskOut {
             due: self.due.map(|due| due.into_model(&record)).transpose()?,
             estimate_mins: self.estimate_mins,
             sitting_mins: self.sitting_mins,
+            start: optional(&record, "start", self.start.as_ref())?,
+            deadline: optional(&record, "date", self.deadline.as_ref())?,
             order: field(&record, "order key", &self.order)?,
             external: self.external.map(|e| e.into_model(&record)).transpose()?,
             created_at: field(&record, "timestamp", &self.created_at)?,

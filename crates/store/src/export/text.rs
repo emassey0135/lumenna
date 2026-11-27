@@ -185,6 +185,14 @@ pub fn markdown(snapshot: &Snapshot, now: &Zoned) -> String {
             if let Some(minutes) = task.sitting_mins {
                 details.push(format!("in sittings of {minutes} minutes"));
             }
+            match task.start {
+                Some(lumenna_core::model::Start::Someday) => details.push("someday".to_owned()),
+                Some(lumenna_core::model::Start::On(date)) => details.push(format!("starts {date}")),
+                None => {}
+            }
+            if let Some(date) = task.deadline {
+                details.push(format!("deadline {date}"));
+            }
             out.push_str(&format!("{indent}- [{mark}] {}", task.title));
             if !details.is_empty() {
                 out.push_str(&format!(" — {}", details.join("; ")));
@@ -241,6 +249,12 @@ pub fn org(snapshot: &Snapshot, now: &Zoned) -> String {
                     "{body}DEADLINE: {}\n",
                     org_date(due.date, due.time, "<", ">", repeater.as_deref())
                 ));
+            } else if let Some(deadline) = task.deadline {
+                out.push_str(&format!("{body}DEADLINE: {}\n", org_date(deadline, None, "<", ">", None)));
+            }
+            // Org's SCHEDULED is the day work on it begins.
+            if let Some(start) = task.start.and_then(lumenna_core::model::Start::date) {
+                out.push_str(&format!("{body}SCHEDULED: {}\n", org_date(start, None, "<", ">", None)));
             }
             out.push_str(&format!("{body}:PROPERTIES:\n{body}:ID: {}\n", task.id));
             if let Some(minutes) = task.estimate_mins {

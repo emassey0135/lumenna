@@ -29,7 +29,7 @@ use jiff::Zoned;
 use lumenna_core::model::{Due, Priority};
 use lumenna_core::snapshot::Snapshot;
 use lumenna_core::suggest;
-use lumenna_core::time::{DueSpec, RecurrenceSpec};
+use lumenna_core::time::{DateSpec, DueSpec, RecurrenceSpec};
 
 use crate::date::parse_when;
 use crate::words::{Word, minutes_of, position, priority_of, sigil_name, words};
@@ -99,6 +99,12 @@ pub struct QuickAdd {
     pub estimate_mins: Option<Spanned<u32>>,
     /// `in 45m sittings`: how long one sitting of it should be.
     pub sitting_mins: Option<Spanned<u32>>,
+    /// `from monday`: the day it may be begun, unresolved.
+    pub start: Option<Spanned<DateSpec>>,
+    /// `someday`: kept, but never offered until it is given a date.
+    pub someday: Option<Spanned<()>>,
+    /// `by friday`: the day it must be done by, unresolved.
+    pub deadline: Option<Spanned<DateSpec>>,
     /// Phrases that looked like they were going somewhere and were not understood.
     pub unparsed: Vec<Spanned<String>>,
     /// A `#` or `@` with no name after it, left in the title.
@@ -187,6 +193,33 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
                 out.sitting_mins = Some(Spanned { value: minutes, start: word.start, end: last.end });
             }
             index += 3;
+            continue;
+        }
+        // `from monday` and `by friday`: a start and a deadline, each a day alone, before the
+        // due date can take the day for itself. Either word before anything else is the title's.
+        if word.any_of(&["from", "by"])
+            && let Some((date, used)) = crate::date::parse_date(&tokens, index + 1)
+            && !is_title_word(&tokens, index + 1, used)
+        {
+            let end = tokens[index + used].end;
+            let slot = if word.is("from") { &mut out.start } else { &mut out.deadline };
+            if slot.is_some() || (word.is("from") && out.someday.is_some()) {
+                out.duplicates.push(spanned_text(input, word.start, end));
+            } else {
+                consumed.push((word.start, end));
+                *slot = Some(Spanned { value: date, start: word.start, end });
+            }
+            index += used + 1;
+            continue;
+        }
+        if word.is(lumenna_core::model::Start::SOMEDAY) {
+            if out.someday.is_some() || out.start.is_some() {
+                out.duplicates.push(spanned_text(input, word.start, word.end));
+            } else {
+                consumed.push((word.start, word.end));
+                out.someday = Some(Spanned { value: (), start: word.start, end: word.end });
+            }
+            index += 1;
             continue;
         }
         if let Some(when) = parse_when(&tokens, index)
@@ -361,6 +394,10 @@ pub struct Preview {
     pub estimate_mins: Option<u32>,
     /// How long one sitting of it should be, if given.
     pub sitting_mins: Option<u32>,
+    /// When it may be begun, or Someday, if given.
+    pub start: Option<lumenna_core::model::Start>,
+    /// The day it must be done by, if given.
+    pub deadline: Option<jiff::civil::Date>,
     /// Everything worth saying before confirming.
     pub diagnostics: Vec<Diagnostic>,
     /// Whether the readback is terse (the `verbosity` setting): the date said once, as itself.
@@ -411,6 +448,17 @@ impl Preview {
                 phrase.push_str(", counting from when you finish it");
             }
             parts.push(phrase);
+        }
+        // Each day said as itself, as the due date is: the day is the check.
+        match self.start {
+            Some(lumenna_core::model::Start::Someday) => parts.push("someday".to_owned()),
+            Some(lumenna_core::model::Start::On(date)) => {
+                parts.push(format!("starts {}", lumenna_core::time::day_words_long(date, self.today)));
+            }
+            None => {}
+        }
+        if let Some(date) = self.deadline {
+            parts.push(format!("deadline {}", lumenna_core::time::day_words_long(date, self.today)));
         }
         // The project and labels are said as they resolved, since a name that matched the
         // wrong one is what the readback is there to catch.
@@ -530,6 +578,26 @@ impl QuickAdd {
             }
         });
 
+        // A start or a deadline naming no real day is refused, as a due date naming none is.
+        let mut day_of = |spanned: &Spanned<DateSpec>| {
+            let day = spanned.value.resolve_in(now, snapshot.settings.week_start);
+            if day.is_none() {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    start: spanned.start,
+                    end: spanned.end,
+                    message: format!("there is no date {}, at position {}", spanned.value, position(&self.input, spanned.start)),
+                });
+            }
+            day
+        };
+        let start = match (&self.start, &self.someday) {
+            (Some(spanned), _) => day_of(spanned).map(lumenna_core::model::Start::On),
+            (None, Some(_)) => Some(lumenna_core::model::Start::Someday),
+            (None, None) => None,
+        };
+        let deadline = self.deadline.as_ref().and_then(&mut day_of);
+
         for spanned in &self.duplicates {
             diagnostics.push(Diagnostic {
                 severity: Severity::Notice,
@@ -584,6 +652,8 @@ impl QuickAdd {
             priority: self.priority.as_ref().map_or(Priority::P4, |p| p.value),
             estimate_mins: self.estimate_mins.as_ref().map(|e| e.value),
             sitting_mins: self.sitting_mins.as_ref().map(|e| e.value),
+            start,
+            deadline,
             diagnostics,
             terse: snapshot.settings.verbosity == lumenna_core::model::Verbosity::Terse,
             today: now.date(),

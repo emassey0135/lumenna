@@ -190,7 +190,7 @@ fn bare(
                         state.keyword(),
                     ));
                 }
-                for word in ["today", "due before:", "due after:", "assigned:", "search:"] {
+                for word in ["today", "due before:", "due after:", "starts:", "starts before:", "deadline:", "deadline before:", "assigned:", "search:"] {
                     out.push(Candidate::new(CandidateKind::Keyword, word, word));
                 }
             }

@@ -302,6 +302,8 @@ pub fn create_task(task: Task) -> Edit {
 /// field someone else changed on another device survives.
 #[must_use]
 pub fn update_task(before: Task, after: Task) -> Edit {
+    // Someday lasts until it is given a date.
+    let after = crate::when::given_a_date(&before, after);
     if before == after {
         return Edit::nothing();
     }

@@ -80,6 +80,10 @@ pub enum Predicate {
     State(State),
     /// A condition on the due date.
     Due(DueFilter),
+    /// `starts: monday`: a condition on the day it may be begun, read as the due date's is.
+    Starts(DueFilter),
+    /// `deadline: friday`: a condition on the day it must be done by.
+    Deadline(DueFilter),
     /// `assigned: today` — placed into a block on that day.
     Assigned(DateSpec),
     /// `search: invoice` — free text over titles and notes.
@@ -209,14 +213,27 @@ impl Expr {
     /// ties, so two devices show the same list.
     #[must_use]
     pub fn select<'a>(&self, cx: &Context<'a>) -> Vec<&'a Task> {
+        self.select_shown(cx, false)
+    }
+
+    /// [`Expr::select`], with what has not started (Someday, or a start still to come) kept out
+    /// unless the query mentions it (`someday`, `later`, `starts:`) or `unstarted` keeps it in:
+    /// a project's own listing, which shows everything not done in it.
+    #[must_use]
+    pub fn select_shown<'a>(&self, cx: &Context<'a>, unstarted: bool) -> Vec<&'a Task> {
         let wants_completed = self.mentions(State::Completed);
         let wants_deleted = self.mentions(State::Deleted);
+        let wants_someday = unstarted || self.mentions(State::Someday);
+        let wants_later = unstarted || self.mentions(State::Later) || self.mentions_start();
+        let today = cx.now.date();
         let mut found: Vec<&Task> = cx
             .snapshot
             .tasks
             .values()
             .filter(|task| wants_deleted || !task.is_deleted())
             .filter(|task| wants_completed || !cx.facts.is_completed(task))
+            .filter(|task| wants_someday || !crate::when::is_someday(task))
+            .filter(|task| wants_later || !crate::when::starts_later(task, today))
             .filter(|task| self.matches(task, cx))
             .collect();
         found.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
@@ -232,6 +249,17 @@ impl Expr {
             Self::Predicate(_) => false,
             Self::Not(inner) => inner.mentions(state),
             Self::And(parts) | Self::Or(parts) => parts.iter().any(|p| p.mentions(state)),
+        }
+    }
+
+    /// Whether the expression asks about a start date anywhere inside it.
+    #[must_use]
+    pub fn mentions_start(&self) -> bool {
+        match self {
+            Self::Predicate(Predicate::Starts(_)) => true,
+            Self::All | Self::Predicate(_) => false,
+            Self::Not(inner) => inner.mentions_start(),
+            Self::And(parts) | Self::Or(parts) => parts.iter().any(Self::mentions_start),
         }
     }
 
@@ -348,7 +376,9 @@ impl Predicate {
                 .is_some_and(|label| task.labels.contains(&label.id)),
             Self::Priority(p) => task.priority == *p,
             Self::State(s) => cx.facts.has_state(task, *s, cx.now),
-            Self::Due(filter) => filter.matches(task, cx),
+            Self::Due(filter) => filter.matches(task.due.as_ref().map(|d| d.date), cx),
+            Self::Starts(filter) => filter.matches(task.start.and_then(crate::model::Start::date), cx),
+            Self::Deadline(filter) => filter.matches(task.deadline, cx),
             Self::Assigned(spec) => spec
                 .resolve_in(cx.now, snapshot.settings.week_start)
                 .is_some_and(|date| cx.facts.is_assigned_on(task.id, date)),
@@ -371,7 +401,9 @@ impl Predicate {
             Self::Label(name) => format!("labelled {name}"),
             Self::Priority(p) => format!("priority {}", p.as_u8()),
             Self::State(s) => s.speech().to_owned(),
-            Self::Due(filter) => filter.describe(),
+            Self::Due(filter) => filter.describe("due"),
+            Self::Starts(filter) => filter.describe("starting"),
+            Self::Deadline(filter) => filter.describe("with a deadline"),
             Self::Assigned(spec) => format!("assigned {spec}"),
             Self::Search(text) => format!("matching {text:?}"),
         }
@@ -379,9 +411,10 @@ impl Predicate {
 }
 
 impl DueFilter {
-    fn matches(&self, task: &Task, cx: &Context<'_>) -> bool {
-        let Some(due) = task.due.as_ref().map(|d| d.date) else {
-            // A task with no due date satisfies no date condition. Selecting for its absence
+    /// Whether `date`, a task's due date, start or deadline, meets the condition.
+    fn matches(&self, date: Option<jiff::civil::Date>, cx: &Context<'_>) -> bool {
+        let Some(due) = date else {
+            // A task with no such date satisfies no date condition. Selecting for its absence
             // is `no date`, which is a State.
             return false;
         };
@@ -399,16 +432,17 @@ impl DueFilter {
         }
     }
 
-    fn describe(&self) -> String {
+    /// The condition in English, after what it is said of: "due", "starting".
+    fn describe(&self, what: &str) -> String {
         match self {
-            Self::Today => "due today".to_owned(),
+            Self::Today => format!("{what} today"),
             Self::Within { days } => {
                 let plural = if *days == 1 { "" } else { "s" };
-                format!("due within {days} day{plural}")
+                format!("{what} within {days} day{plural}")
             }
-            Self::On(spec) => format!("due {spec}"),
-            Self::Before(spec) => format!("due before {spec}"),
-            Self::After(spec) => format!("due after {spec}"),
+            Self::On(spec) => format!("{what} {spec}"),
+            Self::Before(spec) => format!("{what} before {spec}"),
+            Self::After(spec) => format!("{what} after {spec}"),
         }
     }
 }

@@ -155,7 +155,14 @@ impl Snapshot {
     /// the order: urgency ranks within each level, never across it.
     #[must_use]
     pub fn task_rows_sorted(&self, expr: &Expr, cx: &Context<'_>, sort: crate::filter::Sort) -> Vec<Row> {
-        let mut selected = expr.select(cx);
+        self.task_rows_shown(expr, cx, sort, false)
+    }
+
+    /// The same rows, with what has not started kept in where `unstarted` says
+    /// ([`Expr::select_shown`]): a project's own listing, and a pick of every open task.
+    #[must_use]
+    pub fn task_rows_shown(&self, expr: &Expr, cx: &Context<'_>, sort: crate::filter::Sort, unstarted: bool) -> Vec<Row> {
+        let mut selected = expr.select_shown(cx, unstarted);
         let mut included: std::collections::BTreeSet<TaskId> =
             selected.iter().map(|task| task.id).collect();
 
@@ -276,8 +283,18 @@ fn push_task_rows(
                 // "2 of 5 subtasks done": what a parent's row holds, whether or not they show.
                 // A due time held to one place's zone says so: its time is that zone's.
                 let zone = task.due.as_ref().and_then(|due| due.timezone.as_ref()).map(|zone| format!("{zone} time"));
+                // A start still to come and a deadline, after the due date they stand beside.
+                let today = cx.now.date();
+                let start = task
+                    .start
+                    .and_then(crate::model::Start::date)
+                    .filter(|start| *start > today)
+                    .map(|start| crate::time::start_words(start, today));
+                let deadline = task.deadline.map(|date| crate::time::deadline_words(date, today));
                 let parts: Vec<String> = zone
                     .into_iter()
+                    .chain(start)
+                    .chain(deadline)
                     .chain(priority_words(task.priority).map(str::to_owned))
                     .chain(done.get(&task.id).map(|(finished, all)| {
                         format!("{finished} of {all} {} done", if *all == 1 { "subtask" } else { "subtasks" })

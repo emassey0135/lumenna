@@ -70,7 +70,7 @@ fn task_choices(snapshot: &Snapshot, query: &str, now: &Zoned, skip: impl Fn(&Ta
     let expr = resolve::query(snapshot, query)?;
     let cx = Context::new(snapshot, now);
     Ok(snapshot
-        .task_rows(&expr, &cx)
+        .task_rows_shown(&expr, &cx, snapshot.settings.task_order, true)
         .into_iter()
         .filter_map(|row| {
             let RowId::Task(id) = row.id else { return None };

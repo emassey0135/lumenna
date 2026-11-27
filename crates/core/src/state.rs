@@ -43,6 +43,10 @@ pub enum State {
     Completed,
     /// In the trash, recoverable.
     Deleted,
+    /// Put off to Someday: kept, but never offered until it is given a date.
+    Someday,
+    /// Its start is still to come: kept out of the listings and the planner until then.
+    Later,
     /// Due in the past and not finished.
     Overdue,
     /// Repeats.
@@ -81,6 +85,8 @@ impl State {
     pub const ALL: &'static [Self] = &[
         Self::Completed,
         Self::Deleted,
+        Self::Someday,
+        Self::Later,
         Self::Overdue,
         Self::Running,
         Self::Blocked,
@@ -101,6 +107,8 @@ impl State {
         match self {
             Self::Completed => "completed",
             Self::Deleted => "deleted",
+            Self::Someday => "someday",
+            Self::Later => "later",
             Self::Overdue => "overdue",
             Self::Recurring => "recurring",
             Self::Subtask => "subtask",
@@ -136,6 +144,8 @@ impl State {
         match self {
             Self::Completed => "done",
             Self::Deleted => "del",
+            Self::Someday => "smdy",
+            Self::Later => "ltr",
             Self::Overdue => "ovd",
             Self::Recurring => "rec",
             Self::Subtask => "sub",
@@ -168,6 +178,8 @@ impl State {
         !matches!(
             self,
             Self::Ready
+                // A start still to come is said on the row as the day it starts.
+                | Self::Later
                 | Self::Unassigned
                 | Self::NoDate
                 | Self::NoLabel
@@ -343,9 +355,13 @@ impl<'a> Facts<'a> {
         match state {
             State::Completed => completed(),
             State::Deleted => task.is_deleted(),
+            // A deadline passed is as late as a due date passed.
             State::Overdue => {
-                task.due.as_ref().is_some_and(|due| is_overdue(due, now)) && !completed()
+                (task.due.as_ref().is_some_and(|due| is_overdue(due, now)) || crate::when::past_deadline(task, now.date()))
+                    && !completed()
             }
+            State::Someday => crate::when::is_someday(task),
+            State::Later => crate::when::starts_later(task, now.date()),
             State::Recurring => task.due.as_ref().is_some_and(|d| d.recurrence.is_some()),
             State::Subtask => task.parent_id.is_some(),
             State::Blocked => self.is_blocked(task),
