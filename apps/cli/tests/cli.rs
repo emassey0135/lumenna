@@ -1662,3 +1662,22 @@ fn the_timer_is_read_pressed_and_stopped_without_naming_a_sitting() {
     lum.ok(&["pause"]);
     assert!(lum.ok(&["timer"]).contains("No timer is running"));
 }
+
+#[test]
+fn upcoming_lists_the_week_and_a_task_put_off_waits_for_its_start() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "pay rent tomorrow"]);
+    lum.ok(&["task", "add", "draft the essay from tomorrow by next friday"]);
+    lum.ok(&["task", "add", "learn the cello someday"]);
+    let list = lum.ok(&["task", "list"]);
+    assert!(list.contains("pay rent") && !list.contains("draft the essay") && !list.contains("cello"), "{list}");
+    let upcoming = lum.ok(&["upcoming"]);
+    assert!(upcoming.starts_with("7 days"), "{upcoming}");
+    assert!(upcoming.contains("Tomorrow") && upcoming.contains("draft the essay") && upcoming.contains("pay rent"), "{upcoming}");
+    assert!(!upcoming.contains("cello"), "Someday falls on no day: {upcoming}");
+    let someday = lum.ok(&["task", "list", "someday"]);
+    assert!(someday.contains("learn the cello"), "{someday}");
+    lum.ok(&["task", "edit", "1", "--start", "none", "--deadline", "2027-01-15"]);
+    let shown = lum.ok(&["task", "show", "1"]);
+    assert!(shown.contains("2027-01-15") && !shown.contains("someday"), "{shown}");
+}

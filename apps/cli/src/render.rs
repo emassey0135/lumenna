@@ -374,6 +374,12 @@ fn detail(task: &TaskDetail, clock: Clock) {
         }
         fields.push(("due", text));
     }
+    if let Some(start) = &task.start {
+        fields.push(("starts", start.clone()));
+    }
+    if let Some(deadline) = &task.deadline {
+        fields.push(("deadline", deadline.clone()));
+    }
     if let Some(minutes) = task.estimate_mins {
         fields.push(("estimate", format!("{minutes} minutes")));
     }
