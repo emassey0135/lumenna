@@ -1547,6 +1547,7 @@ RET opens a place or does an action; ? shows every command."
 (lumenna-define-keys lumenna-command-map
   ((word :places)
    ("t" (command "go-today") lumenna-today)
+   ("U" (command "go-upcoming") lumenna-upcoming)
    ("k" (command "go-tasks") lumenna-tasks)
    ("p" :projects lumenna-projects)
    ("l" :labels lumenna-labels)

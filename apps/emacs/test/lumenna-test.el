@@ -976,9 +976,9 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (should (equal (lumenna-test--line) "Home"))
     ;; The places, at their levels, then what can be done from anywhere, in the app's order.
     (should (equal (mapcar (lambda (text) (and (search-forward text nil t) (line-number-at-pos)))
-                           '("  Garden" "New Task" "Undo" "Redo" "What Should I Work On?" "Sync Now"
+                           '("Upcoming" "  Garden" "New Task" "Undo" "Redo" "What Should I Work On?" "Sync Now"
                              "Settings" "Keyboard Shortcuts" "About Lumenna"))
-                   (cons 6 (number-sequence 12 19))))
+                   (append '(3 7) (number-sequence 13 20))))
     (lumenna-test--goto "  Garden")
     (should (= (funcall outline-level) 3))
     ;; A heading folds, as the app folds it.
@@ -1268,6 +1268,52 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
       (should (equal (car (last lines)) "History, made today"))
       ;; Its state is the core's line, its label then what it says.
       (should (seq-find (lambda (l) (string-prefix-p "State, unassigned" l)) lines)))))
+
+(ert-deftest lumenna-a-tasks-buffer-has-its-start-and-deadline-after-due-and-changes-them ()
+  (lumenna-test--with-store
+    (let ((id (plist-get (plist-get (lumenna-test--seed "task.add" :text "draft the essay") :task) :id)))
+      (lumenna-tasks)
+      (lumenna-test--goto "draft the essay")
+      (lumenna-activate)
+      (let ((lines (lumenna-test--lines)))
+        (should (equal (seq-take (seq-drop-while (lambda (l) (not (string-prefix-p "Due:" l))) lines) 3)
+                       '("Due: none" "Starts: none" "Deadline: none"))))
+      (lumenna-test--goto "Deadline:")
+      (lumenna-test--answering ("2030-03-08")
+        (lumenna-activate))
+      (lumenna-test--goto "Deadline: 2030-03-08")
+      (lumenna-test--goto "Starts:")
+      (lumenna-test--answering ("2030-03-01")
+        (lumenna-activate))
+      (lumenna-test--goto "Starts: 2030-03-01")
+      (let ((task (lumenna-call "task.show" :id id)))
+        (should (equal (list (plist-get task :start) (plist-get task :deadline)) '("2030-03-01" "2030-03-08")))))))
+
+(ert-deftest lumenna-upcoming-lists-the-days-ahead-and-ret-shows-a-day-or-a-block-in-the-days-buffer ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "block.add" :title "Deep work" :at "9:00" :minutes 60 :date "tomorrow")
+    (let ((display-time-24hr-format t))
+      (lumenna-upcoming)
+      (should (derived-mode-p 'lumenna-upcoming-mode))
+      (let ((upcoming (current-buffer))
+            (day (lumenna--buffer-name (lumenna-word '(group "day")))))
+        (should (string-prefix-p "Upcoming" (car (lumenna-test--lines))))
+        (should (member "  09:00 to 10:00, Deep work, 1 hour, work block, nothing assigned" (lumenna-test--lines)))
+        (lumenna-test--goto "Tomorrow")
+        (lumenna-activate)
+        ;; The day is shown in the day's buffer; Upcoming stays as it was.
+        (should (equal (buffer-name (window-buffer)) day))
+        (with-current-buffer day
+          (should (string-prefix-p "Tomorrow" (car (lumenna-test--lines))))
+          (should (seq-find (lambda (l) (string-match-p "Deep work" l)) (lumenna-test--lines))))
+        (with-current-buffer upcoming
+          (should (equal (plist-get lumenna--view :place) "Upcoming")))
+        (switch-to-buffer upcoming)
+        (lumenna-test--goto "Deep work")
+        (lumenna-activate)
+        (with-current-buffer day
+          (should (string-prefix-p "Tomorrow" (car (lumenna-test--lines))))
+          (should (string-match-p "Deep work" (lumenna-test--line))))))))
 
 (ert-deftest lumenna-a-blocks-end-offers-to-carry-its-short-work-forward-from-the-notification ()
   (lumenna-test--reminding

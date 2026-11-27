@@ -56,6 +56,7 @@ that goes there names it, and the day's buffer is its group's."
   (pcase place
     ("Tasks" (lumenna-word '(command "go-tasks"))) ("Trash" (lumenna-word '(command "go-trash")))
     ("Blocks" (lumenna-word '(command "go-blocks"))) ("History" (lumenna-word '(command "go-history")))
+    ("Upcoming" (lumenna-word '(command "go-upcoming")))
     ("Today" (lumenna-word '(group "day")))
     ((pred (lambda (p) (plist-get p :Project))) (plist-get place :Project))
     ((pred (lambda (p) (plist-get p :Label))) (plist-get place :Label))
@@ -73,7 +74,9 @@ that goes there names it, and the day's buffer is its group's."
 A buffer that shows it already is shown again."
   (if (equal place "Today")
       (lumenna-today)
-    (let ((mode (pcase place ("Trash" #'lumenna-trash-mode) ("Blocks" #'lumenna-blocks-mode) (_ #'lumenna-tasks-mode)))
+    (let ((mode (pcase place
+                  ("Trash" #'lumenna-trash-mode) ("Blocks" #'lumenna-blocks-mode) ("Upcoming" #'lumenna-upcoming-mode)
+                  (_ #'lumenna-tasks-mode)))
           (name (lumenna--buffer-name (lumenna--place-title place))))
       (lumenna--show-screen name mode (list (list :Open place)))
       (setq lumenna--place place))))
@@ -369,6 +372,41 @@ it with \\[lumenna-act-at-point].
   (interactive)
   (lumenna-open-place "History"))
 
+;;;; Upcoming
+
+(define-derived-mode lumenna-upcoming-mode lumenna-tasks-mode "Lumenna Upcoming"
+  "The days ahead, today first: under each day its blocks, then the tasks due,
+starting or with their deadline on it.  RET on a day shows it, and on a block
+shows it on its day in hand, in the day's buffer; on a task, its details.
+
+\\{lumenna-upcoming-mode-map}"
+  (lumenna--mode-name '(command "go-upcoming"))
+  (setq-local lumenna--activate #'lumenna--upcoming-activate))
+
+(defun lumenna--upcoming-activate (row)
+  "RET on ROW, the core's Enter (`open'): a task's form, else its day shown.
+The app shows the day on this screen; here the day is a buffer of its own, so
+this screen is put back on Upcoming, saying nothing, and the day's buffer does
+what was done here, the app showing the day there with the block in hand."
+  (lumenna-press "open")
+  (when (equal (plist-get lumenna--view :place) "Today")
+    (let ((key (lumenna--row-key row)))
+      (let ((lumenna--heard (list 'heard)))
+        (lumenna-send (list :Open "Upcoming"))
+        (lumenna--settle))
+      (let ((lumenna--heard (list 'heard)))
+        (with-current-buffer (lumenna-today)
+          (lumenna-send (list :Open "Upcoming"))
+          (lumenna-send (list :Focus key))
+          (lumenna-send (list :Key "open"))
+          (lumenna--settle))))))
+
+;;;###autoload
+(defun lumenna-upcoming ()
+  "Show the days ahead, today first: each day's blocks, then its tasks."
+  (interactive)
+  (lumenna-open-place "Upcoming"))
+
 ;;;; Menus
 
 (lumenna-define-keys lumenna-tasks-mode
@@ -400,6 +438,10 @@ it with \\[lumenna-act-at-point].
    ("W" (command "stop-waiting") lumenna-act-stop-waiting)
    ("R" (kinds "reminders") lumenna-act-reminders)
    ("d" (kinds "delete" "delete_for_good") lumenna-task-delete)))
+
+(lumenna-define-keys lumenna-upcoming-mode
+  ((group "lists")
+   ("RET" (kinds "show_day" "edit") lumenna-activate)))
 
 (lumenna-define-keys lumenna-trash-mode
   (:task_at_point
