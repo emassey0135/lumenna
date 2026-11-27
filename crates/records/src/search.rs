@@ -45,6 +45,8 @@ pub struct SearchDocument {
 pub struct SearchTask {
     /// The project it is in, by name; none for the Inbox.
     pub project: Option<String>,
+    /// The section of its project it sits under, by name.
+    pub section: Option<String>,
     /// Its labels' names, without the `@`.
     pub labels: Vec<String>,
     /// 1 to 4, where 1 is highest.
@@ -199,6 +201,7 @@ fn task_document(snapshot: &Snapshot, facts: &lumenna_core::state::Facts<'_>, ta
         launch: id,
         task: Some(SearchTask {
             project,
+            section: snapshot.section_of(task).map(|s| s.name.clone()),
             labels,
             priority: task.priority.as_u8(),
             due_time: due.and_then(|d| d.time).map(lumenna_core::time::time_text),

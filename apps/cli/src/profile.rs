@@ -20,6 +20,7 @@ fn listing_command(kind: &str) -> &'static str {
         "block" => "lum block list",
         "project" => "lum project list",
         "label" => "lum label list",
+        "section" => "lum section list <project>",
         _ => "lum task list",
     }
 }

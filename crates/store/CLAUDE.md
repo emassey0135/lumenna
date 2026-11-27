@@ -30,9 +30,12 @@ for any new record keyed that way.
 
 **Things that must exist once per store come from deterministic changes.** The genesis
 creates the root collections; `Doc::ensure_schema` creates the Inbox under the fixed
-`ProjectId::INBOX` and the `series_years` map. Both are frozen bytes: never edit what they
-write; add another change on top. Clients never create an Inbox; `edit::adopt_inbox` folds
-a pre-existing one into the shared one.
+`ProjectId::INBOX` and the `series_years` map, then, in a third change on top of that
+one (`core_sections_change`), the `sections` map, since sections came after the genesis's
+collections were fixed. All three are frozen bytes: never edit what they write; add another
+change on top, chained on the last by the genesis actor as the third is (two of that actor's
+changes on one parent would share a sequence number). Clients never create an Inbox;
+`edit::adopt_inbox` folds a pre-existing one into the shared one.
 
 **A series lives in its start year's document, and recurs into later ones.**
 `series_years` records which years hold recurring series, and `Store::load_year` loads

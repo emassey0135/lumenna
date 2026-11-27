@@ -10,6 +10,9 @@
 //!        title      date     pri proj label
 //! ```
 //!
+//! A `/section` after the project names one of its sections (`#work /errands`); alone, the
+//! section of that name in the Inbox, else in whichever project has one, the task going there.
+//!
 //! # The preview is the whole point
 //!
 //! A sighted user gets live inline highlighting as they type — each recognised token
@@ -57,6 +60,8 @@ pub struct Known {
     pub projects: Vec<String>,
     /// Label names.
     pub labels: Vec<String>,
+    /// Section names, of every project.
+    pub sections: Vec<String>,
 }
 
 impl Known {
@@ -76,6 +81,12 @@ impl Known {
                 .filter(|l| l.deleted_at.is_none())
                 .map(|l| l.name.clone())
                 .collect(),
+            sections: snapshot
+                .sections
+                .values()
+                .filter(|s| s.deleted_at.is_none())
+                .map(|s| s.name.clone())
+                .collect(),
         }
     }
 }
@@ -91,6 +102,11 @@ pub struct QuickAdd {
     pub project: Option<Spanned<String>>,
     /// Every `@label`, in the order they appeared.
     pub labels: Vec<Spanned<String>>,
+    /// The `/section`, if one was given that names a section there is.
+    pub section: Option<Spanned<String>>,
+    /// A `/word` naming no section there is, left in the title: a slash begins words in titles
+    /// too (`/etc`), so it is said, never refused.
+    pub not_sections: Vec<Spanned<String>>,
     /// `p1`–`p4`.
     pub priority: Option<Spanned<Priority>>,
     /// The date phrase, unresolved.
@@ -159,6 +175,27 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
             }
             consumed.push((word.start, end));
             out.labels.push(Spanned { value: name, start: word.start, end });
+            index += used;
+            continue;
+        }
+        // `/errands`: a section, when it names one there is; otherwise a word of the title,
+        // said. A slash alone is the title's.
+        if word.lower.starts_with('/') && word.lower.len() > 1 {
+            let (name, used) = sigil_name(input, &tokens, index, &known.sections);
+            let named = known.sections.iter().any(|s| lumenna_core::suggest::same_name(s, &name));
+            let end = tokens[index + used - 1].end;
+            if !named || name.trim().is_empty() {
+                out.not_sections.push(spanned_text(input, word.start, word.end));
+                index += 1;
+                continue;
+            }
+            if out.section.is_some() {
+                out.duplicates.push(spanned_text(input, word.start, end));
+                index += used;
+                continue;
+            }
+            consumed.push((word.start, end));
+            out.section = Some(Spanned { value: name, start: word.start, end });
             index += used;
             continue;
         }
@@ -349,6 +386,10 @@ pub struct Preview {
     pub project: Option<lumenna_core::id::ProjectId>,
     /// That project's name as stored, for reading back.
     pub project_name: Option<String>,
+    /// The section of that project it would go under, if one was named.
+    pub section: Option<lumenna_core::id::SectionId>,
+    /// That section's name as stored, for reading back.
+    pub section_name: Option<String>,
     /// Labels that already exist.
     pub labels: Vec<lumenna_core::id::LabelId>,
     /// Their names as stored, for reading back.
@@ -417,6 +458,9 @@ impl Preview {
         if let Some(project) = &self.project_name {
             parts.push(format!("in {project}"));
         }
+        if let Some(section) = &self.section_name {
+            parts.push(format!("under {section}"));
+        }
         if !self.label_names.is_empty() {
             parts.push(format!("labelled {}", lumenna_core::words::listed(&self.label_names)));
         }
@@ -462,6 +506,59 @@ impl QuickAdd {
                 }
             }
         });
+
+        // A section is its project's: named after one, it must be that project's; alone, the
+        // Inbox's of that name, else whichever project's, and the task goes to that project.
+        let mut project = project;
+        let mut section = None;
+        if let Some(spanned) = &self.section {
+            let named = |s: &&lumenna_core::model::Section| {
+                s.deleted_at.is_none() && suggest::same_name(&s.name, &spanned.value)
+            };
+            let found = match (project, self.project.is_some()) {
+                (Some(project), _) => snapshot.sections_of(project).into_iter().find(named),
+                (None, true) => None,
+                (None, false) => {
+                    let inbox = snapshot.inbox().map(|p| p.id);
+                    let mut all: Vec<&lumenna_core::model::Section> = snapshot.sections.values().filter(named).collect();
+                    all.sort_by_key(|s| (Some(s.project_id) != inbox, s.order.clone(), s.id));
+                    all.into_iter().next()
+                }
+            };
+            match found {
+                Some(found) => {
+                    // `None` is the Inbox, so a section of the Inbox leaves it so.
+                    if project.is_none() && Some(found.project_id) != snapshot.inbox().map(|p| p.id) {
+                        project = Some(found.project_id);
+                    }
+                    section = Some(found);
+                }
+                None if self.project.is_some() && project.is_some() => {
+                    let in_project = project.and_then(|id| snapshot.projects.get(&id)).map_or("", |p| p.name.as_str());
+                    let names: Vec<&str> = project.map(|id| snapshot.sections_of(id)).unwrap_or_default().iter().map(|s| s.name.as_str()).collect();
+                    let message = unknown_message("section", &spanned.value, position(&self.input, spanned.start), &names);
+                    diagnostics.push(Diagnostic {
+                        severity: Severity::Error,
+                        start: spanned.start,
+                        end: spanned.end,
+                        message: message.replacen(&format!("'{}'", spanned.value), &format!("'{}' in {in_project}", spanned.value), 1),
+                    });
+                }
+                None => {}
+            }
+        }
+        for spanned in &self.not_sections {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Notice,
+                start: spanned.start,
+                end: spanned.end,
+                message: format!(
+                    "'{}' at position {} names no section; it stayed in the title",
+                    spanned.value,
+                    position(&self.input, spanned.start)
+                ),
+            });
+        }
 
         let mut labels = Vec::new();
         let mut new_labels = Vec::new();
@@ -570,6 +667,8 @@ impl QuickAdd {
         diagnostics.sort_by_key(|d| d.start);
 
         let project_name = project.and_then(|id| snapshot.projects.get(&id)).map(|p| p.name.clone());
+        let section_name = section.map(|s| s.name.clone());
+        let section = section.map(|s| s.id);
         let label_names = labels.iter().filter_map(|id| snapshot.labels.get(id)).map(|l| l.name.clone()).collect();
         Preview {
             title: self.title.clone(),
@@ -578,6 +677,8 @@ impl QuickAdd {
             repetition,
             project,
             project_name,
+            section,
+            section_name,
             labels,
             label_names,
             new_labels,

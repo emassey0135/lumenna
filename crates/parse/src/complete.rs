@@ -41,6 +41,8 @@ pub enum CandidateKind {
     Project,
     /// A label name.
     Label,
+    /// A section name.
+    Section,
     /// A priority.
     Priority,
     /// A computed state or other bare keyword.
@@ -58,6 +60,7 @@ impl CandidateKind {
         match self {
             Self::Project => "project",
             Self::Label => "label",
+            Self::Section => "section",
             Self::Priority => "priority",
             Self::Keyword => "keyword",
             Self::Date => "date",
@@ -115,7 +118,10 @@ pub fn complete(text: &str, cursor: usize, syntax: Syntax, known: &Known) -> Com
             Some(rest) => projects(known, rest, "#"),
             None => match prefix.strip_prefix('@') {
                 Some(rest) => labels(known, rest),
-                None => bare(text, cursor, &prefix, syntax, known, current.map(|(i, _)| i)),
+                None => match prefix.strip_prefix('/') {
+                    Some(rest) => sections(known, rest),
+                    None => bare(text, cursor, &prefix, syntax, known, current.map(|(i, _)| i)),
+                },
             },
         },
     };
@@ -130,6 +136,14 @@ fn projects(known: &Known, prefix: &str, sigil: &str) -> Vec<Candidate> {
         .filter(|name| name.to_lowercase().starts_with(prefix))
         .map(|name| Candidate::new(CandidateKind::Project, quoted(sigil, name), name))
         .collect()
+}
+
+fn sections(known: &Known, prefix: &str) -> Vec<Candidate> {
+    let mut names: Vec<&String> = known.sections.iter().filter(|name| name.to_lowercase().starts_with(prefix)).collect();
+    // Two projects may each have an Errands: one candidate for the name.
+    names.sort();
+    names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    names.into_iter().map(|name| Candidate::new(CandidateKind::Section, quoted("/", name), name)).collect()
 }
 
 fn labels(known: &Known, prefix: &str) -> Vec<Candidate> {
@@ -211,8 +225,11 @@ fn bare(
             Expected::Project => {
                 out.push(Candidate::new(CandidateKind::Project, "#", "#"));
                 out.push(Candidate::new(CandidateKind::Label, "@", "@"));
+                if !known.sections.is_empty() {
+                    out.push(Candidate::new(CandidateKind::Section, "/", "/"));
+                }
             }
-            Expected::Label | Expected::Text | Expected::CloseParen => {}
+            Expected::Label | Expected::Section | Expected::Text | Expected::CloseParen => {}
         }
     }
 

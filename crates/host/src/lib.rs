@@ -51,6 +51,7 @@ mod whatnow;
 pub mod reminders;
 #[cfg(all(feature = "rpc", any(unix, windows)))]
 pub mod rpc;
+mod sections;
 mod settings;
 #[cfg(feature = "sync")]
 mod sync;
