@@ -576,7 +576,7 @@ pub fn details_words(sentence: bool) -> DetailsWords {
 }
 
 /// What the details list of `task` besides its form, in order: its state ("open" when nothing
-/// is worth saying), the rule it repeats by when the Repeats field cannot say it, what it waits
+/// is worth saying), the section it is under, the rule it repeats by when the Repeats field cannot say it, what it waits
 /// for, and its history. A line with nothing to say is left out, but for the state. Labels in
 /// sentence case where `sentence`.
 #[must_use]
@@ -584,6 +584,10 @@ pub fn details_lines(task: &crate::types::TaskDetail, sentence: bool) -> Vec<Det
     let line = |key: &str, label: &str, value: String| DetailsLine { key: key.to_owned(), label: cased(label, sentence), value };
     let states: Vec<&str> = task.state.iter().map(String::as_str).filter(|state| *state != "ready").collect();
     let mut lines = vec![line("state", "State", if states.is_empty() { "open".to_owned() } else { states.join(", ") })];
+    // The form chooses the project; the section is said here, and moved by Move to Section.
+    if let Some(section) = &task.section {
+        lines.push(line("section", "Section", section.clone()));
+    }
     if task.repetition.is_none()
         && let Some(rule) = &task.recurrence
     {

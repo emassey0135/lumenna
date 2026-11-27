@@ -273,10 +273,11 @@ impl Snapshot {
                 state: Vec::new(),
                 due: None,
                 due_time: None,
+                // Said as a heading, since its line reads like a task's otherwise.
                 value: Some(match tasks {
-                    0 => "no tasks".to_owned(),
-                    1 => "1 task".to_owned(),
-                    n => format!("{n} tasks"),
+                    0 => "section, no tasks".to_owned(),
+                    1 => "section, 1 task".to_owned(),
+                    n => format!("section, {n} tasks"),
                 }),
                 hint: None,
                 priority: None,

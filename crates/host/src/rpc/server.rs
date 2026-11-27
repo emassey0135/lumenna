@@ -74,6 +74,12 @@ pub const METHODS: &[&str] = &[
     "project.order",
     "project.weight",
     "project.colour",
+    "section.add",
+    "section.list",
+    "section.rename",
+    "section.order",
+    "section.rm",
+    "section.add_task",
     "label.add",
     "label.list",
     "label.rename",
@@ -172,7 +178,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("task.erase", &["id", "confirm"]),
     ("task.erase_permanently", &["id", "confirm"]),
     ("erase_everything_deleted", &["confirm"]),
-    ("task.move", &["id", "parent", "project", "top"]),
+    ("task.move", &["id", "parent", "project", "top", "section"]),
     ("task.search", &["text"]),
     ("task.depend.add", &["id", "on"]),
     ("task.depend.rm", &["id", "on"]),
@@ -185,6 +191,12 @@ const TAKES: &[(&str, &[&str])] = &[
     ("project.order", &["name", "direction"]),
     ("project.weight", &["name", "value"]),
     ("project.colour", &["name", "colour"]),
+    ("section.add", &["project", "name"]),
+    ("section.list", &["project"]),
+    ("section.rename", &["section", "to"]),
+    ("section.order", &["section", "direction"]),
+    ("section.rm", &["section", "keep_tasks"]),
+    ("section.add_task", &["section", "text"]),
     ("label.add", &["name"]),
     ("label.list", &[]),
     ("label.rename", &["name", "to"]),
@@ -733,6 +745,11 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             Response::new(l.erase_everything_deleted()?)
         }
         "task.move" => {
+            // `section`: a section's name or identifier, or `none` for none.
+            if let Some(section) = maybe_text(params, "section") {
+                let section = Some(section.as_str()).filter(|s| !s.eq_ignore_ascii_case("none"));
+                return Ok(Response::new(l.move_task_to_section(&id()?, section)?));
+            }
             let to = match (maybe_text(params, "parent"), maybe_text(params, "project"), flag(params, "top")) {
                 (Some(parent), _, _) => MoveTarget::Parent { id: parent },
                 (_, Some(project), _) => MoveTarget::Project { name: project },
@@ -763,6 +780,12 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             Response::new(l.weigh_project(&name()?, crate::parse_weight(value)?)?)
         }
 
+        "section.add" => Response::new(l.add_section(&text_of(params, "project")?, &name()?)?),
+        "section.list" => Response::new(l.list_sections(&text_of(params, "project")?)?),
+        "section.rename" => Response::new(l.rename_section(&text_of(params, "section")?, &text_of(params, "to")?)?),
+        "section.order" => Response::new(l.reorder_section(&text_of(params, "section")?, way(params)?)?),
+        "section.rm" => Response::new(l.delete_section(&text_of(params, "section")?, flag(params, "keep_tasks"))?),
+        "section.add_task" => Response::new(l.add_task_in_section(&text_of(params, "section")?, &text_of(params, "text")?)?),
         "label.add" => Response::new(l.add_label(&name()?)?),
         "label.list" => Response::new(l.list_labels()?),
         "label.rename" => Response::new(l.rename_label(&name()?, &text_of(params, "to")?)?),

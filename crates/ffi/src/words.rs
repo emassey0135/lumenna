@@ -495,7 +495,7 @@ pub fn due_letter(id: String) -> Option<String> {
 }
 
 /// A screen's own command's letter, by the shared table's `id` or `projects`, `labels`,
-/// `filters`, `reminders-due`, `add-task-in`, `new-project-inside`, `read-back`.
+/// `filters`, `reminders-due`, `add-task-in`, `new-project-inside`, `new-section`, `read-back`.
 #[export]
 pub fn command_letter(id: String) -> Option<String> {
     lumenna_app::braille::command_letter(&id).map(str::to_owned)

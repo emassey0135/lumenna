@@ -820,8 +820,8 @@ pub fn trash_project(
         builder.task(Transition::updated(task.clone(), changed));
     }
 
-    for project_id in affected.iter().copied() {
-        if let Some(project) = snapshot.projects.get(&project_id)
+    for project_id in &affected {
+        if let Some(project) = snapshot.projects.get(project_id)
             && project.deleted_at.is_none()
         {
             let mut trashed = project.clone();

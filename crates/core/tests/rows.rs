@@ -132,3 +132,31 @@ fn the_task_list_with_completed_subtasks_shown_reads_as_its_snapshot() {
     let cx = Context::new(&world.snapshot, &now);
     snapshot("task_list_with_completed_subtasks", &world.snapshot.task_rows(&Expr::All, &cx));
 }
+
+#[test]
+fn a_project_with_sections_reads_as_its_snapshot() {
+    use lumenna_core::model::Section;
+    let mut world = world();
+    let inbox = world.snapshot.projects.values().next().unwrap().id;
+    let travel = Section::new(inbox, "Travel", OrderKey::middle());
+    let empty = Section::new(inbox, "Someday", OrderKey::after(&travel.order));
+    let mut gone = Section::new(inbox, "Gone", OrderKey::before(&travel.order));
+    gone.deleted_at = Some(now().timestamp());
+    // The trip and its subtasks under Travel; the rent naming a section deleted since, so under none.
+    let ids: Vec<(TaskId, String)> = world.snapshot.tasks.values().map(|t| (t.id, t.title.clone())).collect();
+    for (id, title) in ids {
+        let task = world.snapshot.tasks.get_mut(&id).unwrap();
+        match title.as_str() {
+            "Plan the trip" | "Find a hotel" | "Book the train" => task.section_id = Some(travel.id),
+            "Pay the rent" => task.section_id = Some(gone.id),
+            _ => {}
+        }
+    }
+    for section in [travel, empty, gone] {
+        world.snapshot.sections.insert(section.id, section);
+    }
+    let now = now();
+    let cx = Context::new(&world.snapshot, &now);
+    let sort = world.snapshot.settings.task_order;
+    snapshot("project_with_sections", &world.snapshot.project_rows(inbox, &Expr::All, &cx, sort));
+}

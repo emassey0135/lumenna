@@ -40,6 +40,7 @@ struct TaskEntity: AppEntity {
     @Property(title: "Title") var title: String
     @Property(title: "Due") var due: Date?
     @Property(title: "Project") var project: String?
+    @Property(title: "Section") var section: String?
     @Property(title: "Labels") var labels: [String]
     @Property(title: "Priority") var priority: Int
     @Property(title: "Done") var done: Bool
@@ -69,6 +70,7 @@ struct TaskEntity: AppEntity {
         title = document.title
         due = document.due.flatMap { moment($0, task.dueTime) }
         project = task.project
+        section = task.section
         labels = task.labels
         priority = Int(task.priority)
         done = task.done
@@ -95,6 +97,7 @@ struct TaskEntity: AppEntity {
         self.title = title
         due = nil
         project = nil
+        section = nil
         labels = []
         priority = 0
         done = false

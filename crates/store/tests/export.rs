@@ -361,14 +361,14 @@ fn markdown_and_org_lay_out_projects_and_subtasks() {
     assert!(md.contains("## Inbox"), "{md}");
     assert!(md.contains("## Work"));
     assert!(md.contains("### Backend (archived)"));
-    assert!(md.contains("- [ ] Ship the release — due 2026-09-07 at 15:30"), "{md}");
+    assert!(md.contains("### Errands\n\n- [ ] Ship the release — due 2026-09-07 at 15:30"), "a section is a heading over its tasks: {md}");
     assert!(md.contains("  - [x] Write the notes"), "the subtask nests, and is done: {md}");
     assert!(!md.contains("Something private"));
 
     let o = org(&snapshot, &local);
     assert!(o.contains("#+DATE: [2026-09-01 Tue 09:15]"), "{o}");
-    assert!(o.contains("** TODO [#A] Ship the release :laptop:errand:"), "{o}");
-    assert!(o.contains("*** DONE Write the notes"), "{o}");
+    assert!(o.contains("** Errands\n*** TODO [#A] Ship the release :laptop:errand:"), "a section is a heading over its tasks: {o}");
+    assert!(o.contains("**** DONE Write the notes"), "{o}");
     assert!(o.contains("DEADLINE: <2026-09-07 Mon 15:30>"), "{o}");
     assert!(o.contains(":EFFORT: 1:30"));
     assert!(!o.contains("Something private"));

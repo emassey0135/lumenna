@@ -126,7 +126,9 @@ pub fn what_runs(id: &str) -> Runs {
         // Enter, the same on every row of every platform: a task's details, a block's form, free
         // time's new block, a cancelled day back, a trashed task restored, a device renamed. A
         // place in the sidebar or on Home opens (`Lumenna::command`).
-        "open" => Runs::Row(&[K::Edit, K::EditTask, K::AddBlock, K::RestoreDay, K::Restore, K::Rename]),
+        // A section heading folds, as a heading of the sidebar does; one with nothing under it
+        // is renamed.
+        "open" => Runs::Row(&[K::Edit, K::EditTask, K::AddBlock, K::RestoreDay, K::Restore, K::Collapse, K::Expand, K::Rename]),
         "open-task" | "properties" => Runs::Row(&[K::Edit, K::EditTask]),
         "mark-done" => Runs::Row(&[K::MarkDone, K::MarkNotDone]),
         "put-in-block" => Runs::Row(&[K::PutInBlock]),
@@ -150,7 +152,7 @@ pub fn what_runs(id: &str) -> Runs {
         "clear-day" => Runs::Day(&[K::ClearDay]),
         "new-task" | "new-block" | "new-project" | "new-label" | "new-filter" | "sync-now" | "settings" | "undo" | "redo"
         | "go-today" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "save-task" | "previous-day" | "next-day"
-        | "go-to-now" | "go-to-day" | "back-up" | "home" | "new-project-inside" => Runs::App,
+        | "go-to-now" | "go-to-day" | "back-up" | "home" | "new-project-inside" | "new-section" => Runs::App,
         _ => Runs::Shell,
     }
 }

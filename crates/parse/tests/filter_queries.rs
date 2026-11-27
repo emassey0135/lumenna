@@ -278,3 +278,10 @@ fn a_sigil_naming_nothing_is_refused() {
     assert!(fails("#").message.contains("names nothing"));
     assert!(fails(r#"@"" & p1"#).message.contains("names nothing"));
 }
+
+#[test]
+fn a_slash_names_a_section_in_a_filter() {
+    let known = lumenna_parse::quickadd::Known { sections: vec!["Errands".to_owned()], ..Default::default() };
+    let expr = lumenna_parse::filter::parse_filter("#work & /errands", &known).unwrap();
+    assert_eq!(expr.describe(), "tasks in work, and in section errands");
+}
