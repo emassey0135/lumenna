@@ -210,7 +210,9 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   `keys::menus` (`menus.rs`), made again when `ViewModel::commands` renames one (Mark Not
   Done); its accelerators are the shared keys, plus GNOME's own for Properties and help; the
   mnemonics are `menus::MNEMONICS`. The tray is `keys::tray`, with the timer's control
-  (`Device::timer_control`, read every two seconds off the main thread) before its separator. No key runs Erase Permanently: a trashed task's menu
+  (`Device::timer_control`, read every two seconds off the main thread) before its separator,
+  named as the core reads it (`glance::control_line`: "Stop Timer, Essay, 12 minutes left"),
+  given to the tray again whenever that line changes. No key runs Erase Permanently: a trashed task's menu
   offers it, and so does the Task menu's item, which has no accelerator. A menu's item, folding, a details button and
   Add Reminder send the row's action in short with `ActOn`. The question it asks is asked over
   the window it came from.
@@ -270,10 +272,10 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
   Shift+F10's press is closed by the releases.
 - **Reminders are `GNotification`s** (`reminders.rs`), so GNOME Shell shows them and Orca
   reads them as it reads any other; their buttons and opening are application actions
-  (`app.reminder-dismiss`, `-snooze`, `-carry`, `-replan`, `-open`), which reach the app with
+  (`app.reminder-dismiss`, `-snooze`, `-carry`, `-replan`, `-stop`, `-open`), which reach the app with
   its window closed, and answer through the device (`Device::dismiss_reminder` and the rest),
   their buttons the core's in its order (`due::arrived`'s `Due::buttons`: Carry Forward,
-  Replan, Dismiss, Snooze), each saying its `said` once done, else the change's sentence. The
+  Replan, Stop Timer, Dismiss, Snooze; a sitting's time run out has no Snooze), each saying its `said` once done, else the change's sentence. The
   summary of what was missed is one notification (`reminders-missed`) with the core's Dismiss,
   which dismisses every firing it stands for. Opening a task's reminder is
   the app's `Launch("task:<id>")`, a block's `ShowBlock`.

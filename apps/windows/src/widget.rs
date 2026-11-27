@@ -32,7 +32,12 @@ fn new_task() -> String {
 /// The card's data at `now`, for either template: each task the glance names as it words it,
 /// beside its Mark Done, named as the glance names it in Title Case, as Windows writes a button.
 pub fn data(entry: &GlanceEntry, now: Timestamp) -> Value {
-    let timer = entry.moment.timer.as_ref().and_then(|timer| logged(&timer.counting_from, now));
+    // Counted down to its planned length where it has one, else up from its start.
+    let timer = entry
+        .moment
+        .timer
+        .as_ref()
+        .and_then(|timer| lumenna_app::glance::countdown(timer, now).or_else(|| logged(&timer.counting_from, now)));
     let shown = |text: Option<&str>| json!({ "shown": text.is_some_and(|text| !text.is_empty()), "text": text.unwrap_or_default() });
     json!({
         "headline": {
@@ -139,6 +144,20 @@ mod tests {
         assert_eq!(data["headline"]["title"], "Write the report");
         assert_eq!(data["timer"]["text"], "1 hour 25 minutes");
         assert_eq!(data["timer"]["shown"], true);
+    }
+
+    #[test]
+    fn a_running_timer_with_a_planned_length_shows_what_is_left_in_the_cores_words() {
+        let timer = GlanceTimer {
+            sitting: "s".to_owned(),
+            task: "Write the report".to_owned(),
+            block: "Deep work".to_owned(),
+            counting_from: "2026-10-25T09:00:00Z".to_owned(),
+            planned_mins: Some(25),
+            runs_out_at: Some("2026-10-25T09:25:00Z".to_owned()),
+        };
+        let shown = entry(GlanceMoment { timer: Some(timer), ..moment("2026-10-25T09:00:00Z") });
+        assert_eq!(data(&shown, at("2026-10-25T09:10:00Z"))["timer"]["text"], "15 minutes left");
     }
 
     #[test]

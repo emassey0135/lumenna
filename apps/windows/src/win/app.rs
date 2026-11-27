@@ -1472,6 +1472,16 @@ impl App {
             "dismiss" => firings.iter().map(|f| self.device.dismiss_reminder(f.key.clone(), f.occurrence.clone())).collect(),
             "snooze" => firings.iter().map(|f| self.device.snooze_reminder(f.key.clone(), f.occurrence.clone(), None)).collect(),
             "carry" => firings.iter().map(|f| self.device.carry_rest_forward(format!("{}@{}", f.target, f.occurrence))).collect(),
+            // A sitting's time run out: its timer stopped, said as the stop's own sentence, and
+            // the firing dismissed on every device.
+            "stop" => firings
+                .iter()
+                .map(|f| {
+                    let stopped = self.device.stop_timer(f.sitting.clone(), None)?;
+                    self.device.dismiss_reminder(f.key.clone(), f.occurrence.clone())?;
+                    Ok(Change::unchanged(stopped.announcement))
+                })
+                .collect(),
             // The app's Today with Replan from Now open over it, the window in front: the firing
             // named as the device delivered it, so the app dismisses its warning once something
             // is replanned.
