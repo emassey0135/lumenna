@@ -22,7 +22,8 @@ let assistantIntents: [any OperationIntent.Type] = [
     TrashTaskIntent.self, EraseTaskPermanentlyIntent.self, EraseEverythingDeletedIntent.self, RestoreTaskIntent.self,
     MoveTaskIntent.self, AssignIntent.self, UnassignIntent.self, StartTimerIntent.self,
     PauseTimerIntent.self, StopTimerIntent.self, ToggleTimerIntent.self, StartOnIntent.self,
-    ApplyReplanIntent.self, ApplyDayPlanIntent.self, UndoIntent.self, RedoIntent.self,
+    ApplyReplanIntent.self, ApplyDayPlanIntent.self, ShowReviewIntent.self, MarkReviewedIntent.self,
+    ReviewEveryIntent.self, ReconsiderTaskIntent.self, UndoIntent.self, RedoIntent.self,
 ]
 
 /// What a write answers: the core's sentence.
@@ -690,6 +691,87 @@ struct ApplyDayPlanIntent: OperationIntent {
         try await askFirst(sittings == proposal.sittings ? proposal.said : asking.said)
         let applied = try store.assist(Self.persistentIdentifier, ["proposal": .dayPlan(proposal), "accepted": .dayPlanSittings(sittings)])
         return .result(dialog: IntentDialog(said: applied.said))
+    }
+}
+
+// MARK: - The review
+
+struct ShowReviewIntent: OperationIntent {
+    static let persistentIdentifier = "review"
+    static let title: LocalizedStringResource = "Show the Review"
+    static let description: IntentDescription? = IntentDescription(
+        "What is due for a second look: the projects due for review, each with when it was last reviewed and how often it is, then the tasks the planner asks about, each with its question in short. A task's whole question is its `asking` in `show_task`.",
+        categoryName: "Planning",
+        searchKeywords: ["review", "weekly review", "stale", "put off", "second look"]
+    )
+
+    @AppDependency private var store: AssistantStore
+
+    func perform() async throws -> some IntentResult & ReturnsValue<[TaskEntity]> & ProvidesDialog {
+        let listed = try store.assist(Self.persistentIdentifier)
+        return .result(value: store.tasks(listed), dialog: IntentDialog(said: listed.said))
+    }
+}
+
+struct MarkReviewedIntent: OperationIntent {
+    static let persistentIdentifier = "mark_reviewed"
+    static let title: LocalizedStringResource = "Mark a Project Reviewed"
+    static let description: IntentDescription? = IntentDescription(
+        "Marks a project reviewed now: it leaves the review until its interval comes round.",
+        categoryName: "Planning",
+        searchKeywords: ["reviewed", "review", "looked at"]
+    )
+
+    @Parameter(title: "Project", description: "The project, by name.")
+    var project: ProjectEntity
+
+    @AppDependency private var store: AssistantStore
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        said(try store.assist(Self.persistentIdentifier, ["project": .text(project.name)]))
+    }
+}
+
+struct ReviewEveryIntent: OperationIntent {
+    static let persistentIdentifier = "review_every"
+    static let title: LocalizedStringResource = "Set How Often a Project Is Reviewed"
+    static let description: IntentDescription? = IntentDescription(
+        "Sets how often a project comes up for review.",
+        categoryName: "Planning",
+        searchKeywords: ["review", "interval", "how often"]
+    )
+
+    @Parameter(title: "Project", description: "The project, by name.")
+    var project: ProjectEntity
+    @Parameter(title: "Every", description: "How often, such as every week, every 2 weeks, every month, or never.")
+    var every: String
+
+    @AppDependency private var store: AssistantStore
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        said(try store.assist(Self.persistentIdentifier, ["project": .text(project.name), "every": .text(every)]))
+    }
+}
+
+struct ReconsiderTaskIntent: OperationIntent {
+    static let persistentIdentifier = "reconsider_task"
+    static let title: LocalizedStringResource = "Answer the Planner's Question About a Task"
+    static let description: IntentDescription? = IntentDescription(
+        "Answers the planner's question about a task (its `asking` in `show_task`, put to the person first): keeps it, drops it, makes it repeat less often, or takes its date away.",
+        categoryName: "Planning",
+        searchKeywords: ["keep", "drop", "less often", "stale", "put off"]
+    )
+
+    @Parameter(title: "Task", description: "The task's identifier: a whole UUID, or a prefix that names one task.")
+    var id: TaskEntity
+    @Parameter(title: "Answer", description: "One of the answers its question offers: `keep` (asked again later), `drop` (to the trash), `less-often` (a repeating task half as often), or `no-date` (its due date taken away).")
+    var answer: String
+
+    @AppDependency private var store: AssistantStore
+
+    func perform() async throws -> some IntentResult & ReturnsValue<TaskEntity?> & ProvidesDialog {
+        let changed = try store.assist(Self.persistentIdentifier, ["id": .text(id.id), "answer": .text(answer)])
+        return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
     }
 }
 

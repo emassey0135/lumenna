@@ -93,6 +93,7 @@ enum MainMenu {
         menu.addItem(item(Commands.asking("go-blocks"), #selector(AppDelegate.goToBlocks(_:)), "3"))
         menu.addItem(item(Commands.asking("go-trash"), #selector(AppDelegate.goToTrash(_:)), "4"))
         menu.addItem(item(Commands.asking("go-history"), #selector(AppDelegate.goToHistory(_:)), "5"))
+        menu.addItem(item(Commands.asking("go-review"), #selector(AppDelegate.goToReview(_:)), "6"))
         menu.addItem(.separator())
         menu.addItem(item(Wording.toggleSidebar, #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]))
         return menu
@@ -105,6 +106,8 @@ enum MainMenu {
         menu.addItem(item(Commands.asking("move-to-project"), #selector(AppDelegate.moveToProject(_:)), "m", [.command, .shift]))
         menu.addItem(item(Commands.asking("make-subtask"), #selector(AppDelegate.makeSubtask(_:))))
         menu.addItem(item(Commands.asking("wait-for"), #selector(AppDelegate.waitFor(_:))))
+        menu.addItem(item(Commands.asking("reconsider"), #selector(AppDelegate.reconsider(_:))))
+        menu.addItem(item(Commands.asking("mark-reviewed"), #selector(AppDelegate.markReviewed(_:))))
         menu.addItem(item(Commands.asking("save-task"), #selector(TaskDetailViewController.saveTask(_:)), "s"))
         menu.addItem(.separator())
         menu.addItem(item(Commands.asking("trash-task"), #selector(AppDelegate.moveToTrash(_:)), "\u{8}"))

@@ -76,6 +76,8 @@ pub(crate) fn place_action_ids(place: &Place) -> &'static [&'static str] {
         Place::Blocks => &["new-block", "undo", "redo"],
         // Nothing is added to the trash or the history, and a filter there shows nothing useful.
         Place::Trash | Place::History => &["undo", "redo"],
+        // The review lists what is due for a second look; nothing is added to it.
+        Place::Review => &["undo", "redo"],
         Place::Project(_) => &["new-task", "filter", "new-project-inside", "undo", "redo"],
         _ => &["new-task", "filter", "undo", "redo"],
     }
@@ -96,6 +98,7 @@ pub fn every_kind_of_place() -> Vec<Place> {
         Place::Tasks,
         Place::Blocks,
         Place::History,
+        Place::Review,
         Place::Trash,
         Place::Project(String::new()),
         Place::Label(String::new()),
@@ -151,6 +154,7 @@ pub fn place_letter(kind: &SidebarKind) -> Option<&'static str> {
         SidebarKind::Place(Place::Tasks) => "go-tasks",
         SidebarKind::Place(Place::Blocks) => "go-blocks",
         SidebarKind::Place(Place::History) => "go-history",
+        SidebarKind::Place(Place::Review) => "go-review",
         SidebarKind::Place(Place::Trash) => "go-trash",
         SidebarKind::Group(SidebarGroup::Projects) => "projects",
         SidebarKind::Group(SidebarGroup::Labels) => "labels",
@@ -230,7 +234,7 @@ mod tests {
 
     /// The places Home lists by a letter of their own, as the ids those letters are.
     fn home_places() -> Vec<&'static str> {
-        vec!["go-today", "go-tasks", "go-blocks", "go-history", "go-trash"]
+        vec!["go-today", "go-tasks", "go-blocks", "go-review", "go-history", "go-trash"]
     }
 
     /// The heading whose New a command is.

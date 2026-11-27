@@ -307,6 +307,11 @@ pub(crate) enum Command {
     /// What was done over the last two weeks, newest first.
     History,
 
+    /// What is due for a second look: the projects due for review, then the tasks the planner
+    /// asks about, each with its question in short. `lum task show` says a task's in full,
+    /// `lum task reconsider` answers it and `lum project reviewed` marks a project reviewed.
+    Review,
+
     /// Undo the last change made on this device.
     ///
     /// The history is this device's alone and survives between commands, so `lum undo`
@@ -565,6 +570,14 @@ pub(crate) enum TaskCommand {
         /// A row number from the last listing, or an identifier.
         id: String,
     },
+    /// Answer the planner's question about a task, which `lum task show` and `lum review` say.
+    Reconsider {
+        /// A row number from the last listing, or an identifier.
+        id: String,
+        /// keep (asked again later), drop (to the trash), less-often (a repeating task half as
+        /// often) or no-date (its due date taken away).
+        answer: String,
+    },
     /// Delete a task from the trash. Undo can bring it back, and it stays in the history every
     /// device keeps and in backups.
     ///
@@ -686,6 +699,21 @@ pub(crate) enum ProjectCommand {
         name: String,
         /// up or down.
         direction: Way,
+    },
+    /// Mark a project reviewed: it leaves `lum review` until its interval comes round.
+    Reviewed {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        name: String,
+    },
+    /// Set how often a project comes up for review: every week, every 2 weeks, every month, or
+    /// never.
+    ReviewEvery {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        name: String,
+        /// How often, such as "every 2 weeks", "month" or "never".
+        every: String,
     },
     /// Set a project's urgency multiplier, roughly 0.5 to 2.0.
     ///
@@ -1452,6 +1480,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         },
         Command::Notify { speak } => return notify(profile, *speak),
         Command::History => Response::new(profile.history()?),
+        Command::Review => Response::new(profile.review()?),
         Command::Undo => Response::new(profile.undo()?),
         Command::Redo => Response::new(profile.redo()?),
         Command::Backup { to } => {
@@ -1512,6 +1541,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
             Response::new(change)
         }
         TaskCommand::History { id: input } => Response::new(profile.task_history(&id(input)?)?),
+        TaskCommand::Reconsider { id: input, answer } => Response::new(profile.reconsider(&id(input)?, answer)?),
         TaskCommand::Restore { id: input } => Response::new(profile.restore_task(&id(input)?)?),
         TaskCommand::Zone { id: input, zone } => Response::new(profile.set_task_zone(&id(input)?, Some(zone.clone()))?),
         TaskCommand::Erase { id: input, permanently: false, yes } => {
@@ -1586,6 +1616,8 @@ fn project(profile: &Profile, command: &ProjectCommand) -> Result<Response> {
             };
             profile.delete_project(name, keep)?
         }
+        ProjectCommand::Reviewed { name } => profile.mark_reviewed(name)?,
+        ProjectCommand::ReviewEvery { name, every } => profile.review_every(name, every)?,
         ProjectCommand::Weight { name, value } => {
             profile.weigh_project(name, lumenna_host::parse_weight(value.clone())?)?
         }

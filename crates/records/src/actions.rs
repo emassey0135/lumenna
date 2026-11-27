@@ -139,6 +139,15 @@ pub enum ActionKind {
     ErasePermanently,
     /// Erase everything deleted for good: the trash, and every deleted thing's history.
     EraseEverythingDeleted,
+    /// Mark a project reviewed: it leaves the review until its interval comes round.
+    MarkReviewed,
+    /// Set how often a project is reviewed.
+    ReviewEvery,
+    /// Answer the planner's question about a task: keep it, drop it, make it less often.
+    Reconsider,
+    /// Open a project's own list, from where it is listed beside other things (the review): the
+    /// app's, which changes nothing stored.
+    OpenProject,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -775,6 +784,8 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     reorder(&mut actions, Subject::Project, &target, position_of(&ids, &project.id), ids.len());
     actions.push(weight);
     actions.push(colour(Subject::Project, &target, &name));
+    actions.push(crate::review::mark_reviewed_action(project));
+    actions.push(crate::review::review_every_action(project));
     actions.push(if project.archived { a(K::Unarchive, "Unarchive") } else { a(K::Archive, "Archive") });
     actions.push(a(K::Delete, "Delete").asking(Question::Choose {
         title: format!("Delete {name}?"),
@@ -988,6 +999,10 @@ pub fn not_offered(kind: ActionKind, subject: Subject, this_device: bool) -> Str
         (Subject::Project, ActionKind::Rename | ActionKind::Delete | ActionKind::Archive | ActionKind::MoveUnder) => {
             "The Inbox keeps its name and its place; only its order and weight change.".to_owned()
         }
+        (Subject::Project, ActionKind::MarkReviewed | ActionKind::ReviewEvery) => {
+            "The Inbox is emptied rather than reviewed.".to_owned()
+        }
+        (Subject::Task, ActionKind::Reconsider) => "The planner has no question about this task.".to_owned(),
         (Subject::Project | Subject::Label | Subject::Filter | Subject::Sitting, ActionKind::MoveUp) => "It is already first.".to_owned(),
         (Subject::Project | Subject::Label | Subject::Filter | Subject::Sitting, ActionKind::MoveDown) => "It is already last.".to_owned(),
         (Subject::Sitting, ActionKind::Skip) => "Only a sitting not yet started can be skipped.".to_owned(),

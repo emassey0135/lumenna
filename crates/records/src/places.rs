@@ -37,6 +37,9 @@ pub enum Place {
     Trash,
     /// What was done lately: tasks completed and worked on, newest first.
     History,
+    /// What is due for a second look: the projects due for review, and the tasks the planner
+    /// asks about.
+    Review,
 }
 
 impl Place {
@@ -49,6 +52,7 @@ impl Place {
             Self::Blocks => "Blocks".to_owned(),
             Self::Trash => "Trash".to_owned(),
             Self::History => "History".to_owned(),
+            Self::Review => "Review".to_owned(),
         }
     }
 
@@ -59,7 +63,7 @@ impl Place {
             Self::Label(name) => label_reference(name.clone()),
             Self::Filter { query, .. } => query.clone(),
             Self::Trash => "deleted".to_owned(),
-            Self::Today | Self::Tasks | Self::Blocks | Self::History => String::new(),
+            Self::Today | Self::Tasks | Self::Blocks | Self::History | Self::Review => String::new(),
         }
     }
 
@@ -284,6 +288,8 @@ pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
     // show them beneath (the iPhone's Browse) says what is in each.
     let blocks = crate::plan::blocks(snapshot, now.date()).map(|r| r.announcement).unwrap_or_default();
     entries.push(place(Place::Blocks, &blocks, 0));
+    let review = crate::review::count(snapshot, now);
+    entries.push(place(Place::Review, &review, 0));
     let done = crate::lists::history(snapshot, now).map(|r| r.announcement).unwrap_or_default();
     entries.push(place(Place::History, &done, 0));
     let trashed = crate::lists::tasks(snapshot, "deleted", now).map(|r| r.announcement).unwrap_or_default();

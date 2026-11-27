@@ -359,6 +359,19 @@ const OPERATIONS: &[Op] = &[
         Param("proposal", "Proposal", K::DayPlan, false, "The proposal as `propose_day_plan` returned it, whole."),
         Param("accepted", "Accepted", K::DayPlanSittings, false, "Those of its `sittings` the person accepted, each as it was proposed."),
     ], "Puts the sittings the person accepted into their blocks, as one change they can undo, and plans again around what they turned down."),
+    read("review", "Show the Review", C::Planning, &["review", "weekly review", "stale", "put off", "second look"], &[],
+        "What is due for a second look: the projects due for review, each with when it was last reviewed and how often it is, then the tasks the planner asks about, each with its question in short. A task's whole question is its `asking` in `show_task`."),
+    write("mark_reviewed", "Mark a Project Reviewed", C::Planning, &["reviewed", "review", "looked at"], &[
+        Param("project", "Project", K::Project, false, "The project, by name."),
+    ], "Marks a project reviewed now: it leaves the review until its interval comes round.").idempotent(),
+    write("review_every", "Set How Often a Project Is Reviewed", C::Planning, &["review", "interval", "how often"], &[
+        Param("project", "Project", K::Project, false, "The project, by name."),
+        Param("every", "Every", K::Text, false, "How often, such as every week, every 2 weeks, every month, or never."),
+    ], "Sets how often a project comes up for review.").idempotent(),
+    write("reconsider_task", "Answer the Planner's Question About a Task", C::Planning, &["keep", "drop", "less often", "stale", "put off"], &[
+        ID,
+        Param("answer", "Answer", K::Text, false, "One of the answers its question offers: `keep` (asked again later), `drop` (to the trash), `less-often` (a repeating task half as often), or `no-date` (its due date taken away)."),
+    ], "Answers the planner's question about a task (its `asking` in `show_task`, put to the person first): keeps it, drops it, makes it repeat less often, or takes its date away.").destructive(),
     write("undo", "Undo", C::Undo, &["undo", "take back"], &[], "Undoes the last change made on this device, whoever made it: an app, a command, or an assistant."),
     write("redo", "Redo", C::Undo, &["redo"], &[], "Redoes what was last undone."),
 ];
@@ -456,6 +469,7 @@ pub fn entities() -> Vec<AssistantEntity> {
                 ("estimate", "Estimate in Minutes"),
                 ("sittings", "Sitting Length in Minutes"),
                 ("repeats", "Repeats"),
+                ("streak", "Streak"),
                 ("states", "States"),
                 ("added", "Added"),
             ],
