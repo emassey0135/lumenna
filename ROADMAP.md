@@ -153,8 +153,7 @@ A day or less each, for between the larger pieces, except the first.
   - Whether DuraSpeed keeps Lumenna's background use allowed once set on its page in Android's
     settings (DuraSpeed's own list is closed to other apps; every alarm is held back while it is off).
   - A reminder's notification: its sound and vibration through Do Not Disturb (which Satellite lets
-    notifications through), and BackTalk reading it in the shade; its dialog coming to the front is
-    tried.
+    notifications through), and BackTalk reading it in the shade.
   - Dates: the default locale is en-IN, so they read as India writes them unless it is set.
   - A backup folder outside the shared folders, which Android lets an app without all-files
     access write only there.
