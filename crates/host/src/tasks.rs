@@ -359,8 +359,7 @@ impl Lumenna {
                 after.deadline = resolve::day(deadline, &now, snapshot.settings.week_start)?;
             }
             // Someday lasts until it is given a date, however the edit reaches the store.
-            let after = lumenna_core::when::given_a_date(&before, after);
-            let mut after = after;
+            let mut after = lumenna_core::when::given_a_date(&before, after);
             if let Some(notes) = edit.notes {
                 after.notes = notes;
             }
