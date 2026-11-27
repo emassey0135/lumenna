@@ -97,7 +97,7 @@ const BUTTON_LETTERS: &[(&str, &str)] =
     &[("sync-now", "n"), ("pair", "p"), ("back-up", "b"), ("restore-backup", "r"), ("import", "i")];
 
 /// The letter of each of a reminder's buttons, by `DueButton::id`. Dismiss is the delete keys'.
-const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("snooze", "z")];
+const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("stop", "t"), ("snooze", "z")];
 
 /// The letter of each of a screen's own actions (`screen_actions`), by the shared table's `id`
 /// where it has one, and of Home's places. No two on one screen share a letter (a test holds
@@ -119,6 +119,8 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-tasks", "k"),
     ("go-blocks", "b"),
     ("go-history", "h"),
+    ("go-report", "g"),
+    ("time-left", "v"),
     ("go-trash", "x"),
     ("projects", "p"),
     ("labels", "l"),
@@ -706,6 +708,7 @@ mod tests {
             SidebarKind::Place(Place::Tasks),
             SidebarKind::Place(Place::Blocks),
             SidebarKind::Place(Place::History),
+            SidebarKind::Place(Place::Report),
             SidebarKind::Place(Place::Trash),
             SidebarKind::Group(lumenna_records::places::SidebarGroup::Projects),
             SidebarKind::Group(lumenna_records::places::SidebarGroup::Labels),

@@ -307,6 +307,10 @@ pub(crate) enum Command {
     /// What was done over the last two weeks, newest first.
     History,
 
+    /// The time report: what sittings logged over the last four weeks, by week, project and
+    /// label, with the estimates of the tasks worked beside it.
+    Report,
+
     /// Undo the last change made on this device.
     ///
     /// The history is this device's alone and survives between commands, so `lum undo`
@@ -1452,6 +1456,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         },
         Command::Notify { speak } => return notify(profile, *speak),
         Command::History => Response::new(profile.history()?),
+        Command::Report => Response::new(profile.report()?),
         Command::Undo => Response::new(profile.undo()?),
         Command::Redo => Response::new(profile.redo()?),
         Command::Backup { to } => {

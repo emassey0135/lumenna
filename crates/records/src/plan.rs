@@ -59,6 +59,9 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
                     minutes: elapsed.mins,
                     capped: elapsed.capped,
                     running: assignment.is_running(),
+                    left_secs: (assignment.status == AssignmentStatus::InProgress)
+                        .then(|| assignment.left_secs(now.timestamp()))
+                        .flatten(),
                     details: Vec::new(),
                     actions: Vec::new(),
                 };

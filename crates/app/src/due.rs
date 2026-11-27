@@ -32,7 +32,7 @@ pub enum DueEvent {
     /// what a list of reminders due looks at as it opens.
     LookBack,
     /// One of a reminder's buttons pressed, by the reminder's `id` and the button's (`DueButton::id`):
-    /// `carry`, `replan`, `dismiss` or `snooze`, as the events of those names. A shell hands a
+    /// `carry`, `replan`, `stop`, `dismiss` or `snooze`, as the events of those names. A shell hands a
     /// button back this way, never choosing the event itself.
     Press {
         /// The reminder, `Due::id`.
@@ -46,6 +46,8 @@ pub enum DueEvent {
     Snooze(String),
     /// Carry the work a block left short on to its next block, and dismiss the reminder.
     Carry(String),
+    /// Stop the timer whose sitting's planned length ran out, and dismiss the reminder.
+    Stop(String),
     /// Open Replan from Now for an overrun; the warning is dismissed once something is replanned.
     Replan(String),
     /// Open Replan from Now for an overrun the platform gave itself (`Device::deliver_reminders`,
@@ -72,6 +74,7 @@ impl DueEvent {
         match button {
             "carry" => Some(DueEvent::Carry(id)),
             "replan" => Some(DueEvent::Replan(id)),
+            "stop" => Some(DueEvent::Stop(id)),
             "dismiss" => Some(DueEvent::Dismiss(id)),
             "snooze" => Some(DueEvent::Snooze(id)),
             _ => None,
@@ -100,13 +103,19 @@ pub struct Due {
     /// When a block's work outruns its time: the core's Replan.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replan: Option<String>,
+    /// When a sitting's planned length ran out with its timer running: the core's Stop Timer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop: Option<String>,
+    /// The sitting Stop Timer stops.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sitting: Option<String>,
     /// What carrying forward carries: `<series>@<date>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block: Option<String>,
     /// What dismissing it dismisses: itself, or for a summary, everything missed.
     pub firings: Vec<DueReminder>,
     /// Its buttons, in the order every platform shows them: what it offers of its own (Carry
-    /// Forward, Replan) first, then Dismiss and Snooze. Each is handed back as its `DueEvent`.
+    /// Forward, Replan, Stop Timer) first, then Dismiss and Snooze. Each is handed back as its `DueEvent`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub buttons: Vec<DueButton>,
 }
@@ -115,8 +124,8 @@ pub struct Due {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DueButton {
-    /// Which: `carry`, `replan`, `dismiss`, `snooze`, as `DueEvent::Carry`, `Replan`, `Dismiss`,
-    /// `Snooze`.
+    /// Which: `carry`, `replan`, `stop`, `dismiss`, `snooze`, as `DueEvent::Carry`, `Replan`,
+    /// `Stop`, `Dismiss`, `Snooze`.
     pub id: String,
     /// Its name, the core's, in the shell's capitals.
     pub title: String,
@@ -126,13 +135,14 @@ pub struct DueButton {
 }
 
 /// A reminder's buttons, in order.
-fn buttons(carry: Option<&String>, replan: Option<&String>, dismiss: &str, snooze: Option<&String>) -> Vec<DueButton> {
+fn buttons(carry: Option<&String>, replan: Option<&String>, stop: Option<&String>, dismiss: &str, snooze: Option<&String>) -> Vec<DueButton> {
     let button = |id: &str, title: &str, said: String| DueButton { id: id.to_owned(), title: title.to_owned(), said };
     let snoozed = format!("Snoozed for {}", lumenna_records::words::duration(lumenna_records::reminders::SNOOZE_MINS));
     carry
         .map(|title| button("carry", title, String::new()))
         .into_iter()
         .chain(replan.map(|title| button("replan", title, String::new())))
+        .chain(stop.map(|title| button("stop", title, lumenna_records::words::timer_stopped())))
         .chain([button("dismiss", dismiss, "Dismissed".to_owned())])
         .chain(snooze.map(|title| button("snooze", title, snoozed.clone())))
         .collect()
@@ -169,9 +179,11 @@ pub fn arrived(found: &DueReminders) -> Vec<Due> {
             snooze: None,
             carry: None,
             replan: None,
+            stop: None,
+            sitting: None,
             block: None,
             firings: found.missed.clone(),
-            buttons: buttons(None, None, &first.dismiss, None),
+            buttons: buttons(None, None, None, &first.dismiss, None),
         });
     }
     for reminder in &found.due {
@@ -180,16 +192,19 @@ pub fn arrived(found: &DueReminders) -> Vec<Due> {
             title: reminder.title.clone(),
             text: reminder.text.clone(),
             dismiss: reminder.dismiss.clone(),
-            snooze: Some(reminder.snooze.clone()),
+            snooze: (!reminder.snooze.is_empty()).then(|| reminder.snooze.clone()),
             carry: (!reminder.carry.is_empty()).then(|| reminder.carry.clone()),
             replan: (!reminder.replan.is_empty()).then(|| reminder.replan.clone()),
+            stop: (!reminder.stop.is_empty()).then(|| reminder.stop.clone()),
+            sitting: (!reminder.sitting.is_empty()).then(|| reminder.sitting.clone()),
             block: Some(format!("{}@{}", reminder.target, reminder.occurrence)),
             firings: vec![reminder.clone()],
             buttons: buttons(
                 Some(&reminder.carry).filter(|c| !c.is_empty()),
                 Some(&reminder.replan).filter(|r| !r.is_empty()),
+                Some(&reminder.stop).filter(|s| !s.is_empty()),
                 &reminder.dismiss,
-                Some(&reminder.snooze),
+                Some(&reminder.snooze).filter(|s| !s.is_empty()),
             ),
         });
     }
@@ -231,6 +246,7 @@ enum Deal {
     Dismiss,
     Snooze,
     Carry,
+    Stop,
 }
 
 /// Whether the store has an acknowledgement — dismissed, snoozed — of `firing`, from this
@@ -277,6 +293,7 @@ impl Lumenna {
             Deal::Dismiss => HostRequest::Dismiss(firings),
             Deal::Snooze => HostRequest::Snooze(firings),
             Deal::Carry => HostRequest::CarryForward { block: item.block.unwrap_or_default(), firings },
+            Deal::Stop => HostRequest::StopTimer { sitting: item.sitting.unwrap_or_default(), firings },
         };
         let (number, sent) = write(model, request, None);
         model.dealing.push((number, item.id));
@@ -320,6 +337,8 @@ impl Lumenna {
             // all the same: its button is what was pressed.
             DueEvent::Replan(id) if offers(model, &id, |d| d.replan.is_none()) => refused(not_offered(ActionKind::Replan)),
             DueEvent::Carry(id) => self.deal(&id, Deal::Carry, model),
+            DueEvent::Stop(id) if !offers(model, &id, |d| d.stop.is_some()) => refused(not_offered(ActionKind::StopTimer)),
+            DueEvent::Stop(id) => self.deal(&id, Deal::Stop, model),
             // Today, with Replan from Now open over it. Cancelled, the warning stays; something
             // replanned, it is dismissed.
             DueEvent::Replan(id) => {

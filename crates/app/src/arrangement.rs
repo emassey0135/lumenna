@@ -284,8 +284,8 @@ mod tests {
             assert_eq!(first, 1, "New Task leads, then the places");
             actions
         };
-        assert_eq!(ids(WatchKind::SyncsItself), ["new-task", "undo", "redo", "what-now", "sync-now", "settings"]);
-        assert_eq!(ids(WatchKind::ThroughItsPhone), ["new-task", "undo", "redo", "what-now", "settings"]);
+        assert_eq!(ids(WatchKind::SyncsItself), ["new-task", "undo", "redo", "what-now", "time-left", "sync-now", "settings"]);
+        assert_eq!(ids(WatchKind::ThroughItsPhone), ["new-task", "undo", "redo", "what-now", "time-left", "settings"]);
     }
 
     #[test]

@@ -292,8 +292,10 @@ const OPERATIONS: &[Op] = &[
         "What to work on now, ranked, each choice with the reason it is offered: in a block under way its own unfinished sittings, then its suggestions; in free time, what fits before the next block. Starting on one is `start_on`."),
     read("propose_replan", "Propose a Replan of Today", C::Planning, &["replan", "behind", "reschedule", "running late"], &[],
         "Proposes how to replan the rest of today, when the day has slipped: every change as a whole sentence. Nothing changes until `apply_replan` is given the ones the person accepted; say them to the person first."),
-    read("timer", "Show the Timer", C::Timers, &["timer", "running", "how long", "tracking"], &[],
-        "What the timer is doing now: running, on which task and how long so far; else what `toggle_timer` would start, or why nothing would."),
+    read("timer", "Show the Timer", C::Timers, &["timer", "running", "how long", "tracking", "time left", "countdown"], &[],
+        "What the timer is doing now: running, on which task, how long so far and how much of the sitting's planned length is left; else what `toggle_timer` would start, or why nothing would."),
+    read("report", "Show the Time Report", C::Timers, &["report", "time spent", "logged", "hours", "productivity", "estimates"], &[],
+        "What every sitting logged over the last four weeks, summed by week, by project and by label, each with the estimates of the tasks worked beside it."),
     read("propose_day_plan", "Propose a Plan for a Day", C::Planning, &["plan the day", "fill", "schedule"], &[DAY],
         "Proposes which tasks to put in each of a day's work blocks still to come, each with why. Nothing changes until `apply_day_plan` is given the sittings the person accepted."),
     write("add_task", "Add a Task", C::Tasks, &["new", "create", "remember", "capture", "remind"], &[

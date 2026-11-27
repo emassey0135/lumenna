@@ -33,7 +33,8 @@ const TREE: u16 = 401;
 pub struct TaskList {
     pub place: Place,
     trash: bool,
-    /// Whether the place lists under a filter: not the trash, nor History, which list what they hold.
+    /// Whether the place lists under a filter: not the trash, History or the time report, which list
+    /// what they hold.
     filtered: bool,
     label: HWND,
     filter: HWND,
@@ -49,7 +50,7 @@ pub struct TaskList {
 impl TaskList {
     pub fn create(_app: &App, pane: HWND, place: Place) -> Rc<Self> {
         let trash = place == Place::Trash;
-        let filtered = !matches!(place, Place::Trash | Place::History);
+        let filtered = !matches!(place, Place::Trash | Place::History | Place::Report);
         // The core's words, with an access key clear of the menu bar's letters.
         let words = lumenna_records::fields::quick_add_words(false);
         let label = controls::create(pane, WC_STATICW, &format!("{}:", crate::devices::marked(&words.filter, 'r', '&')), 0, 0, 0);

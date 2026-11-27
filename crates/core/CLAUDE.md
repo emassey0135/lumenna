@@ -135,6 +135,16 @@ move made by the change that completed a repeating task is not counted).
   repeating block's day alone, a one-off itself; End the Day and Clear the Rest of the Day
   cancel later repeating blocks for today and trash one-offs; Carry Forward marks the old
   sitting Deferred.
+- **A sitting counts down to its planned length** (`BlockAssignment::left_secs`, below zero once
+  over, never capped), polled as its line's "12 minutes left", Time Left (`Key("time-left")`, the
+  assistants' `timer`) or a glance's `countdown`, never announced as it ticks. **Running out is
+  said once** (`runs_out_at`, `Firing::time_up` under `time_up_key(sitting)`): a reminder firing
+  while the timer runs, with Stop Timer and Dismiss and no Snooze; paused it never fires, and a
+  sitting resumed already over its plan says nothing again.
+- **Time reports are summed, never stored** (`core::report`, `records::report`,
+  `Place::Report`, `lum report`): each sitting's logged seconds over the last `REPORT_WEEKS`,
+  by week (the `week_start` setting's), project and label, each with the estimates of the tasks
+  worked, each task once, and how many had none.
 - **A block's end offers Carry Forward** (`remind::falls_short`, `Firing::carry`): the
   earliest reminder at or after the end says it, whatever order they were made in, or, with
   none, a firing of its own under `carry_key`, which scheduling devices re-arm as the sittings

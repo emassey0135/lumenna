@@ -873,8 +873,12 @@ pub struct PlanAssignment {
     /// without the sitting ending.
     #[serde(default)]
     pub running: bool,
+    /// While it is under way (running or paused) with a planned length: the seconds of it left,
+    /// below zero once over. Its countdown, said as its details' "12 minutes left".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left_secs: Option<i64>,
     /// What a line about it says after its title, as parts every app words alike: "planned
-    /// for 45 minutes", or "paused", "20 minutes logged".
+    /// for 45 minutes", or "paused", "20 minutes logged", "5 minutes left".
     #[serde(default)]
     pub details: Vec<String>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
@@ -903,6 +907,17 @@ pub struct Timer {
     /// it is now, whether the sitting's runs.
     #[serde(default)]
     pub running: bool,
+    /// For the timer as it is now: the sitting's planned length, when it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_mins: Option<u32>,
+    /// For the timer as it is now with a planned length: the seconds of it left, below zero
+    /// once over, which the announcement says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left_secs: Option<i64>,
+    /// For the timer running with a planned length left: when it runs out, RFC 3339, for a
+    /// platform that counts down to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runs_out_at: Option<String>,
 }
 
 // ---------------------------------------------------------------------------------------

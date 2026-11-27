@@ -131,6 +131,8 @@ mod tests {
             task: "Write the report".to_owned(),
             block: "Deep work".to_owned(),
             counting_from: "2026-10-25T09:00:00Z".to_owned(),
+            planned_mins: None,
+            runs_out_at: None,
         };
         let shown = entry(GlanceMoment { timer: Some(timer), ..moment("2026-10-25T09:00:00Z") });
         let data = data(&shown, at("2026-10-25T10:25:30Z"));

@@ -852,8 +852,8 @@ fn history_lists_what_was_done_newest_first_and_its_rows_are_tasks_with_details(
     assert_eq!(view.details.map(|d| d.task.title), Some("Buy milk".to_owned()), "the details show it");
     let sidebar = app.view().sidebar;
     let at = |title: &str| sidebar.iter().position(|e| e.title == title).unwrap();
-    assert_eq!(at("History"), at("Blocks") + 1, "beside Trash, after Blocks");
-    assert_eq!(at("Trash"), at("History") + 1);
+    assert_eq!(at("History"), at("Blocks") + 1, "after Blocks");
+    assert_eq!(at("Trash"), at("History") + 2, "the time report between");
 }
 
 #[test]
@@ -1842,6 +1842,8 @@ fn a_failed_dismiss_says_why_and_leaves_the_reminder_listed_and_the_question_alo
         snooze: "Snooze".to_owned(),
         carry: String::new(),
         replan: String::new(),
+        stop: String::new(),
+        sitting: String::new(),
     };
     app.send(Event::Answered(lumenna_app::HostAnswer::Found(Ok(lumenna_records::reminders::DueReminders {
         announcement: String::new(),
@@ -1928,6 +1930,8 @@ fn an_overruns_replan_opens_on_today_and_its_warning_stays_when_nothing_is_repla
         snooze: "Snooze".to_owned(),
         carry: String::new(),
         replan: "Replan".to_owned(),
+        stop: String::new(),
+        sitting: String::new(),
     };
     app.send(Event::Answered(lumenna_app::HostAnswer::Found(Ok(lumenna_records::reminders::DueReminders {
         announcement: String::new(),
@@ -2286,6 +2290,8 @@ fn a_summary_of_missed_reminders_refuses_snooze_in_the_cores_words() {
         snooze: "Snooze".to_owned(),
         carry: String::new(),
         replan: String::new(),
+        stop: String::new(),
+        sitting: String::new(),
     };
     app.send(Event::Answered(lumenna_app::HostAnswer::Found(
         Ok(lumenna_records::reminders::DueReminders {
@@ -2544,7 +2550,7 @@ fn home_lists_the_places_then_what_is_done_from_anywhere_and_enter_opens_the_pla
     assert_eq!(home.places[0].entry.title, "Today");
     assert_eq!(home.places[0].letter, "t");
     let ids: Vec<&str> = home.actions.iter().map(|action| action.id.as_str()).collect();
-    assert_eq!(ids, ["new-task", "undo", "redo", "what-now", "sync-now", "settings", "keyboard-help", "about"]);
+    assert_eq!(ids, ["new-task", "undo", "redo", "what-now", "time-left", "sync-now", "settings", "keyboard-help", "about"]);
     assert_eq!(view.screen_actions, home.actions, "Home's own actions are the screen's");
     assert_eq!(view.sidebar_held.focus.as_ref(), Some(&home.places[0].entry.key), "Home opens on its first place");
     let tasks = home.places.iter().find(|place| place.entry.title == "Tasks").unwrap().entry.key.clone();
@@ -2968,7 +2974,7 @@ fn a_phones_browse_and_a_watchs_root_come_from_the_sidebar() {
     app.session.tick();
     let arranged = lumenna_app::arrangement::arrangement(&app.view().sidebar, lumenna_app::arrangement::WatchKind::SyncsItself, true);
     let browse: Vec<&str> = arranged.browse.iter().map(|row| row.title.as_str()).collect();
-    assert_eq!(browse, ["Projects", "Labels", "Saved Filters", "Blocks", "History", "Trash"], "in the view's own capitals");
+    assert_eq!(browse, ["Projects", "Labels", "Saved Filters", "Blocks", "History", "Time Report", "Trash"], "in the view's own capitals");
     let projects = arranged.groups.iter().find(|group| group.group == lumenna_records::places::SidebarGroup::Projects).unwrap();
     assert_eq!(arranged.browse[0].detail, lumenna_records::places::SidebarGroup::Projects.count(projects.entries.len()), "counts what it holds");
     assert!(projects.entries.iter().any(|place| place.title == "Work"));
@@ -2991,4 +2997,74 @@ fn about_is_a_settings_page_only_where_the_shell_has_none_of_its_own() {
     let dialog = lumenna_app::dialog::settings_page(&view, "about").unwrap();
     assert!(dialog.controls.iter().all(|control| control.kind == ControlType::Text), "lines to read and nothing else");
     assert_eq!(dialog.controls.len(), about.lines.len());
+}
+
+#[test]
+fn a_running_timer_says_once_when_its_planned_length_runs_out_and_its_stop_timer_stops_it() {
+    let mut app = App::new();
+    let today = jiff::Zoned::now().date().to_string();
+    block(&mut app, "Deep work", "00:00", &today, None);
+    app.add("Write report");
+    {
+        let host = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+        let block = host.list_blocks().unwrap().rows[0].id.clone();
+        let task = host.list_tasks("").unwrap().rows[0].id.clone();
+        host.assign(&task, &block, Some(today.clone()), Some(25)).unwrap();
+        let sitting = host.plan(None).unwrap().blocks[0].assignments[0].id.clone();
+        host.start_timer(&sitting).unwrap();
+    }
+    app.session.tick();
+    let shell = app.send(Event::Key("time-left".to_owned()));
+    assert!(
+        said(&shell).iter().any(|s| s.starts_with("The timer is running on Write report") && s.contains("25 minutes left of 25 minutes")),
+        "{shell:?}"
+    );
+    let since = jiff::Timestamp::now().to_string();
+    let later = jiff::Timestamp::now().checked_add(jiff::SignedDuration::from_mins(26)).unwrap().to_string();
+    let shell = app.send(Event::Due(lumenna_app::DueEvent::Look { since, now: Some(later.clone()) }));
+    assert!(said(&shell).contains(&"Write report's 25 minutes are up"), "{shell:?}");
+    let due = app.view().due;
+    assert_eq!(due.len(), 1);
+    let ids: Vec<&str> = due[0].buttons.iter().map(|b| b.id.as_str()).collect();
+    assert_eq!(ids, ["stop", "dismiss"], "Stop Timer first, and no Snooze: it is said once");
+    assert_eq!(due[0].buttons[0].title, "Stop Timer");
+    app.send(Event::Due(lumenna_app::DueEvent::Press { id: due[0].id.clone(), button: "stop".to_owned() }));
+    assert!(app.view().due.is_empty(), "dealt with");
+    let host = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    assert!(!host.timer_now(None).unwrap().running, "its timer stopped");
+    let again = host.reminders_due(jiff::Timestamp::now().to_string(), Some(later)).unwrap();
+    assert!(again.due.is_empty(), "never said again");
+}
+
+#[test]
+fn the_time_report_is_a_place_after_history_reading_what_sittings_logged_by_week_project_and_label() {
+    let mut app = App::new();
+    let today = jiff::Zoned::now().date().to_string();
+    block(&mut app, "Deep work", "00:00", &today, None);
+    app.add("Write report");
+    {
+        let host = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+        let block = host.list_blocks().unwrap().rows[0].id.clone();
+        let task = host.list_tasks("").unwrap().rows[0].id.clone();
+        host.assign(&task, &block, Some(today), None).unwrap();
+        let sitting = host.plan(None).unwrap().blocks[0].assignments[0].id.clone();
+        host.stop_timer(&sitting, Some(40)).unwrap();
+    }
+    app.session.tick();
+    app.send(Event::Key("go-report".to_owned()));
+    let view = app.view();
+    assert_eq!((view.place, view.title.as_str()), (Some(Place::Report), "Time Report"));
+    let list = view.list.unwrap();
+    assert_eq!(list.announcement, "40 minutes logged in the last 4 weeks");
+    let lines: Vec<(u32, String, Option<String>)> =
+        list.items.iter().map(|i| (i.row.depth, i.row.title.clone(), i.row.value.clone())).collect();
+    assert_eq!(lines[0], (0, "By Week".to_owned(), Some("40 minutes logged, 1 task without an estimate".to_owned())));
+    assert_eq!(lines[1], (1, "This week".to_owned(), Some("40 minutes logged, 1 task without an estimate".to_owned())));
+    assert!(lines.iter().any(|(depth, title, _)| *depth == 1 && title == "Inbox"), "{lines:?}");
+    let sidebar = app.view().sidebar;
+    let at = |title: &str| sidebar.iter().position(|e| e.title == title).unwrap();
+    assert_eq!((at("Time Report"), at("Trash")), (at("History") + 1, at("History") + 2));
+    app.send(Event::Capitals(lumenna_app::Capitals::Sentence));
+    let view = app.view();
+    assert_eq!((view.title.as_str(), view.list.unwrap().items[0].row.title.as_str()), ("Time report", "By week"));
 }

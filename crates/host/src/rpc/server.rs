@@ -117,6 +117,7 @@ pub const METHODS: &[&str] = &[
     "day_plan",
     "day_plan.apply",
     "history",
+    "report",
     "config.get",
     "config.set",
     "undo",
@@ -228,6 +229,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("day_plan", &["date", "clock", "pins", "now"]),
     ("day_plan.apply", &["plan", "accepted", "now"]),
     ("history", &[]),
+    ("report", &[]),
     ("config.get", &["key"]),
     ("config.set", &["key", "value"]),
     ("undo", &[]),
@@ -859,6 +861,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             maybe_number(params, "minutes")?,
         )?),
         "history" => Response::new(l.history()?),
+        "report" => Response::new(l.report()?),
 
         "config.get" => Response::new(l.settings(maybe_text(params, "key"))?),
         "config.set" => {

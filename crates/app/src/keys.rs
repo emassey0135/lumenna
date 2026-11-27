@@ -83,6 +83,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::View, "go-blocks", "Blocks", &["Ctrl+3"]),
     key(Group::View, "go-trash", "Trash", &["Ctrl+4"]),
     key(Group::View, "go-history", "History", &["Ctrl+5"]),
+    key(Group::View, "go-report", "Time Report", &["Ctrl+6"]),
     key(Group::View, "next-pane", "Next Pane", &["F6"]),
     key(Group::View, "previous-pane", "Previous Pane", &["Shift+F6"]),
     key(Group::Task, "mark-done", "Mark Done or Not Done", &["Ctrl+K"]),
@@ -93,6 +94,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::Day, "next-day", "Next Day", &["Ctrl+Page Down"]),
     key(Group::Day, "go-to-now", "Go to Now", &["Ctrl+T"]),
     key(Group::Day, "go-to-day", "Go to Day", &["Ctrl+G"]),
+    key(Group::Day, "time-left", "Time Left", &["Ctrl+Shift+T"]),
     key(Group::Lists, "open", "Open the Task, Place or Block, or Restore from the Trash", &["Enter"]),
     key(Group::Lists, "toggle", "Mark Done, Restore from the Trash, or Start, Pause or Resume a Timer", &["Space"]),
     key(Group::Lists, "delete", "Delete, Move to Trash, Delete from the Trash, or Unassign", &["Delete"]),
@@ -149,8 +151,8 @@ pub fn what_runs(id: &str) -> Runs {
         "end-day" => Runs::Day(&[K::EndDay]),
         "clear-day" => Runs::Day(&[K::ClearDay]),
         "new-task" | "new-block" | "new-project" | "new-label" | "new-filter" | "sync-now" | "settings" | "undo" | "redo"
-        | "go-today" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "save-task" | "previous-day" | "next-day"
-        | "go-to-now" | "go-to-day" | "back-up" | "home" | "new-project-inside" => Runs::App,
+        | "go-today" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "go-report" | "save-task" | "previous-day"
+        | "next-day" | "go-to-now" | "go-to-day" | "time-left" | "back-up" | "home" | "new-project-inside" => Runs::App,
         _ => Runs::Shell,
     }
 }
@@ -221,6 +223,7 @@ pub const COMMANDS: &[Command] = &[
     command("go-blocks", "Blocks", false),
     command("go-trash", "Trash", false),
     command("go-history", "History", false),
+    command("go-report", "Time Report", false),
     command("next-pane", "Next Pane", false),
     command("previous-pane", "Previous Pane", false),
     command("mark-done", "Mark Done", false),
@@ -243,6 +246,7 @@ pub const COMMANDS: &[Command] = &[
     command("plan-day", "Plan the Day", true),
     command("replan", "Replan from Now", true),
     command("what-now", "What Should I Work On?", true),
+    command("time-left", "Time Left", false),
     command("end-day", "End the Day", true),
     command("clear-day", "Clear the Rest of the Day", true),
     command("keyboard-help", "Keyboard Shortcuts", false),
@@ -294,7 +298,7 @@ pub const MENUS: &[Menu] = &[
     Menu { group: Group::Edit, items: &["undo", "redo", SEPARATOR, "filter"] },
     Menu {
         group: Group::View,
-        items: &["go-today", "go-tasks", "go-blocks", "go-trash", "go-history", SEPARATOR, "next-pane", "previous-pane"],
+        items: &["go-today", "go-tasks", "go-blocks", "go-trash", "go-history", "go-report", SEPARATOR, "next-pane", "previous-pane"],
     },
     Menu {
         group: Group::Task,
@@ -307,7 +311,7 @@ pub const MENUS: &[Menu] = &[
         group: Group::Day,
         items: &[
             "previous-day", "next-day", "go-to-now", "go-to-day", SEPARATOR, "new-block", SEPARATOR, "plan-day", "replan",
-            "what-now", "end-day", "clear-day",
+            "what-now", "time-left", "end-day", "clear-day",
         ],
     },
     Menu { group: Group::Help, items: &["keyboard-help", "about"] },

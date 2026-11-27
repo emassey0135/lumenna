@@ -19,6 +19,7 @@
     what_should_i_work_on    = @{ Cmdlet = 'Get-LumennaChoice' }
     propose_replan           = @{ Cmdlet = 'Get-LumennaReplan' }
     timer                    = @{ Cmdlet = 'Get-LumennaTimer' }
+    report                   = @{ Cmdlet = 'Get-LumennaTimeReport' }
     propose_day_plan         = @{ Cmdlet = 'Get-LumennaDayPlan' }
     add_task                 = @{ Cmdlet = 'Add-LumennaTask' }
     edit_task                = @{ Cmdlet = 'Set-LumennaTask' }

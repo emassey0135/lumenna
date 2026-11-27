@@ -16,6 +16,7 @@ $script:Operations = [ordered]@{
     'what_should_i_work_on' = @{ Cmdlet = 'Get-LumennaChoice'; Switch = $null; Title = 'What Should I Work On?'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'propose_replan' = @{ Cmdlet = 'Get-LumennaReplan'; Switch = $null; Title = 'Propose a Replan of Today'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'timer' = @{ Cmdlet = 'Get-LumennaTimer'; Switch = $null; Title = 'Show the Timer'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
+    'report' = @{ Cmdlet = 'Get-LumennaTimeReport'; Switch = $null; Title = 'Show the Time Report'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'propose_day_plan' = @{ Cmdlet = 'Get-LumennaDayPlan'; Switch = $null; Title = 'Propose a Plan for a Day'; Writes = $false; Confirms = $false; Target = $null; Names = @{ 'Date' = 'date' } }
     'add_task' = @{ Cmdlet = 'Add-LumennaTask'; Switch = $null; Title = 'Add a Task'; Writes = $true; Confirms = $false; Target = 'Text'; Names = @{ 'Text' = 'text' } }
     'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Sittings' = 'sittings'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
@@ -374,13 +375,13 @@ function Get-LumennaTimer {
     Show the Timer
 
     .DESCRIPTION
-    What the timer is doing now: running, on which task and how long so far; else what Switch-LumennaTimer would start, or why nothing would.
+    What the timer is doing now: running, on which task, how long so far and how much of the sitting's planned length is left; else what Switch-LumennaTimer would start, or why nothing would.
 
     .PARAMETER Profile
     The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
 
     .NOTES
-    Get-LumennaTimer is the assistant operation timer (lum assist timer), also found by: timer, running, how long, tracking.
+    Get-LumennaTimer is the assistant operation timer (lum assist timer), also found by: timer, running, how long, tracking, time left, countdown.
 
     .LINK
     Get-LumennaOperation
@@ -394,6 +395,35 @@ function Get-LumennaTimer {
 
     process {
         Invoke-LumennaAssist $PSCmdlet 'timer' $PSBoundParameters
+    }
+}
+
+function Get-LumennaTimeReport {
+    <#
+    .SYNOPSIS
+    Show the Time Report
+
+    .DESCRIPTION
+    What every sitting logged over the last four weeks, summed by week, by project and by label, each with the estimates of the tasks worked beside it.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Get-LumennaTimeReport is the assistant operation report (lum assist report), also found by: report, time spent, logged, hours, productivity, estimates.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'report' $PSBoundParameters
     }
 }
 

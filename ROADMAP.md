@@ -49,14 +49,6 @@ The order, and why:
 - **Sections within a project**: named headings a project's tasks sit under (Todoist's
   sections, Things' headings, Reminders' sections), lighter than a subproject. A record of
   their own, with the care in `crates/store/CLAUDE.md` for records two devices make alone.
-- **A countdown, and a timer outside the app**: a sitting's planned length counted down, with
-  the core's words when it runs out (Tiimo counts down; TickTick has Pomodoro), beside the
-  count up there is now; and a running timer shown where the system shows one: a Live Activity
-  on the iPhone's Lock Screen and Dynamic Island, an ongoing notification on Android, its
-  buttons the core's Pause and Stop.
-- **Time reports**: the minutes every sitting logs, summed by project, label and week, with
-  estimates beside them, as Todoist's productivity view and Taskwarrior's reports have. A
-  listing of the core's, read as one.
 - **A review**: every project looked at in turn at an interval of its own, as OmniFocus' weekly
   review is, each marked reviewed; the staleness question above is the same kind of asking.
 - **Habits, from what is kept already**: a repeating task already says its cadence (`every 2

@@ -23,8 +23,19 @@ pub enum Capitals {
 
 /// `view` with its fixed words in sentence case.
 pub(crate) fn in_sentence_case(view: &mut ViewModel) {
+    // The time report is called by the core's words, not a name: "Time report", its headings
+    // "By week".
+    let report = SidebarKind::Place(lumenna_records::places::Place::Report);
+    if view.place == Some(lumenna_records::places::Place::Report) {
+        view.title = sentence_case(std::mem::take(&mut view.title));
+        if let Some(list) = &mut view.list {
+            for item in list.items.iter_mut().filter(|item| item.row.id.starts_with("report:")) {
+                item.row.title = sentence_case(std::mem::take(&mut item.row.title));
+            }
+        }
+    }
     for entry in &mut view.sidebar {
-        if matches!(entry.kind, SidebarKind::Group(_)) {
+        if matches!(entry.kind, SidebarKind::Group(_)) || entry.kind == report {
             entry.title = sentence_case(std::mem::take(&mut entry.title));
             entry.text = sentence_case(std::mem::take(&mut entry.text));
         }

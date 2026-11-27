@@ -553,6 +553,7 @@ mod tests {
             action: "Stop Timer".to_owned(),
             action_sentence: "Stop timer".to_owned(),
             enabled: true,
+            timer: None,
         };
         assert_eq!(timer_control_from_file(timer_control_file(control.clone())).unwrap(), control);
         assert!(timer_control_from_file("{\"running\":tr".to_owned()).is_err());

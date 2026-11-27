@@ -191,6 +191,21 @@ impl Lumenna {
         self.told(|store| crate::lists::history(&repaired(store), &now))
     }
 
+    /// The time report: what every sitting logged over the last four weeks, by week, project and
+    /// label, with the estimates of the tasks worked beside it, as a listing.
+    ///
+    /// # Errors
+    ///
+    /// Never, as things stand; a `Result` as every listing is.
+    pub fn report(&self) -> Result<Rows> {
+        let now = Zoned::now();
+        self.told(|store| {
+            // Sittings live in their year's document: every year the weeks reach is read.
+            store.load_all_years()?;
+            lumenna_records::report::report(&repaired(store), &now)
+        })
+    }
+
     /// Tasks whose title or notes contain `text`.
     ///
     /// # Errors

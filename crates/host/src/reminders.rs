@@ -36,6 +36,13 @@ fn words(firing: &Firing, snapshot: &Snapshot, verbosity: Verbosity) -> (String,
     }
     .unwrap_or_else(|| "A reminder".to_owned());
     use std::cmp::Ordering::{Equal, Greater, Less};
+    if let Some(up) = firing.time_up {
+        return (
+            title.clone(),
+            lumenna_records::words::time_up(&title, up.planned),
+            lumenna_records::words::time_up_missed(&title, up.planned),
+        );
+    }
     if let Some(overrun) = firing.overrun {
         let said = format!(
             "{title} has {} left and {} of work planned, more than it holds",
@@ -125,9 +132,15 @@ fn notification(firing: &Firing, snapshot: &Snapshot, verbosity: Verbosity) -> D
         text,
         missed,
         dismiss: "Dismiss".to_owned(),
-        snooze: format!("Snooze {}", crate::actions::title_case(&duration(SNOOZE_MINS))),
+        snooze: if firing.time_up.is_some() {
+            String::new()
+        } else {
+            format!("Snooze {}", crate::actions::title_case(&duration(SNOOZE_MINS)))
+        },
         carry: if carried.is_some_and(|(_, movable)| movable) { "Carry Forward".to_owned() } else { String::new() },
         replan: if firing.overrun.is_some() { "Replan".to_owned() } else { String::new() },
+        stop: if firing.time_up.is_some() { "Stop Timer".to_owned() } else { String::new() },
+        sitting: firing.time_up.map(|up| up.sitting.to_string()).unwrap_or_default(),
     }
 }
 

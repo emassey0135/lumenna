@@ -1223,6 +1223,7 @@ impl App {
             "go-blocks" => self.go(Place::Blocks, true),
             "go-trash" => self.go(Place::Trash, true),
             "go-history" => self.go(Place::History, true),
+            "go-report" => self.go(Place::Report, true),
             "new-block" => {
                 // Added where blocks are shown, to land on: the day, or the Blocks list; else
                 // today.
@@ -1384,7 +1385,7 @@ impl App {
                 // The core's tray menu, with the timer's control as the device has it now:
                 // what a press does, beside what it runs or would start, or why nothing would.
                 let timer = self.device.timer_control().ok();
-                let name = timer.as_ref().map(|timer| if timer.detail.is_empty() { timer.action.clone() } else { format!("{}, {}", timer.action, timer.detail) });
+                let name = timer.as_ref().map(|timer| lumenna_app::glance::control_line(timer, jiff::Timestamp::now(), false));
                 let items = menu::tray(name.as_deref());
                 let items: Vec<(u16, &str)> = items.iter().map(|(id, text)| (*id, text.as_str())).collect();
                 let popup = menu::popup(&items);
