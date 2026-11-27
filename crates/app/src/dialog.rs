@@ -576,7 +576,7 @@ pub fn settings_page(view: &ViewModel, page: &str) -> Option<DialogShown> {
             controls.push(ControlShown::press(
                 format!("default:{}", setting.key),
                 settings.words.use_default_folder.clone(),
-                vec![ShellEvent::Settings(SettingsEvent::Set(setting.key.clone(), "default".to_owned()))],
+                vec![ShellEvent::Settings(SettingsEvent::Set { key: setting.key.clone(), value: "default".to_owned() })],
             ));
         }
         if let Some(problem) = &shown.problem {

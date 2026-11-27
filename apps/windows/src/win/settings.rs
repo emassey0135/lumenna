@@ -327,6 +327,8 @@ fn lines_of(text: &str) -> i16 {
 const FIELDS: u16 = 200;
 /// The page's own buttons from here (`SettingsPage::buttons`).
 const BUTTONS: u16 = 600;
+/// A folder setting's Use the Default Folder: a page holds one folder setting at most.
+const DEFAULT_FOLDER: u16 = 400;
 
 // General: the shortcuts from anywhere, each its keys, Change and Turn Off.
 const SHORTCUT: u16 = 110;
@@ -611,6 +613,9 @@ impl Dialog for Page {
                         template = template
                             .item(Class::Edit, "", id, READ_ONLY, LEFT, y + 10, INNER - 56, 14)
                             .item(Class::Button, &format!("{}...", keyed(&self.words.choose, &mut taken)), id + 1, BUTTON, LEFT + INNER - 52, y + 10, 52, 14);
+                        // Back to the folder the app keeps them in by itself: the line is read-only.
+                        template = template.item(Class::Button, &keyed(&self.words.use_default_folder, &mut taken), DEFAULT_FOLDER, BUTTON, LEFT, y + 28, 140, 14);
+                        y += 18;
                     } else {
                         template = template.item(Class::Edit, "", id, FIELD, LEFT, y + 10, INNER, 14);
                     }
@@ -748,6 +753,13 @@ impl Dialog for Page {
 
     fn command(&self, page: HWND, id: u16, code: u16) -> Option<isize> {
         let code = u32::from(code);
+        // The folder setting put back to its default, by the button under its line.
+        if id == DEFAULT_FOLDER && code == BN_CLICKED {
+            if let Some(key) = self.fields.borrow().iter().find(|f| f.kind == SettingKind::Folder).map(|f| f.key.clone()) {
+                set(&key, "default");
+            }
+            return None;
+        }
         // A setting's own control.
         let field = self.fields.borrow().iter().find(|f| f.id == id || f.id + 1 == id).map(|f| (f.id, f.key.clone(), f.kind));
         if let Some((field, key, kind)) = field {
