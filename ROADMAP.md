@@ -155,15 +155,9 @@ A day or less each, for between the larger pieces, except the first.
   do themselves, and never Space with a letter; the Orbit Speak and the BrailleSense take **Space
   with the letter** for the command and **the letter alone for first-letter navigation**. Their dots give a to z alone (no `,`, `.`, `/`), so Move Up, Move Down and the
   filter are their own keys or their row's actions there.
-- **What the three braille apps still each have to themselves**:
-  - Typing (the BTSpeak's input, Orbit's liblouis buffer, the BrailleSense's input method), the
-    output and its service, and panning a line across the cells, until the BrailleSense shows
-    whether its output service pans by itself (`displayBrailleWordWrap`, `setCurrentCellLine`)
-    or a second device with cells needs it.
-  - **Between the two Android apps**, a little Kotlin, lifted once both existed
-    (`apps/android/braille/`): one ordered worker for a service's calls, rebound when it dies; the
-    keys and the display held only while in front and given back first on leaving; a decoded key
-    handed to the app. Line editors and menus were not the same, so stay in each app.
+- **What a device does is its SDK's** (`apps/android/orbit-sdk`, `braillesense-sdk`): its keys,
+  services, typing, lists, menus and dialogs. The two Android apps share only the dialog
+  controller over the core's forms (`apps/android/braille/`).
 - **The Orbit Speak and the Orbit Player**, Orbit Research's Android 11 devices, through
   Satellite (`emassey0135/satellite-launcher` and `satellite-hook`) until Orbit's own SDK,
   promised with no date, exists. Neither has a braille display: the Speak has eight braille
@@ -214,8 +208,9 @@ A day or less each, for between the larger pieces, except the first.
     pages, devices and pairing, backups, export and import, and a key help. Tried on both devices
     with keys sent over adb, what Orbit said read from its log: the lists, typing a task by cells on
     the Speak and by T9 on the Player, the block form, assigning, a plan, the timer and undo.
-  - **Open**: the keys pressed by hand on both devices (so far only injected); Iroh over
-    Wi-Fi, and Wi-Fi in sleep, untried there; reminders through Orbit's Do Not Disturb untried; the
+  - **Open**: the keys pressed by hand on both devices (so far only injected); syncing over Iroh
+    untried there (sleep is Android's own, so it syncs as a phone does); how a reminder reaches the
+    person, since Orbit has no notification shade to read it in, and through Do Not Disturb; the
     default locale is en-IN, so dates read as India writes them unless set; backups and import
     through Android's file picker, read by Orbit rather than the app. All of it rests on unofficial
     behaviour an Orbit update or its SDK may change; CI has no Orbit, so it is tried on the devices
@@ -223,14 +218,16 @@ A day or less each, for between the larger pieces, except the first.
 - **A BrailleSense 7 app** (`apps/android/braillesense/`, package `com.extra.han.lumenna`, in its
   Programs menu by name alone): the screens over the Crux app, speech and cells through
   `IHanOutputService` and liblouis, chords through `han_brailleinput`'s callback as a bitmask, the
-  QWERTY keyboard as key events, typing through its own line editor since a self-voicing app's
-  chords skip the device's input method; every screen, the menus (Space-M, F2) and a row's actions
+  QWERTY keyboard as key events, typing through the SDK's edit box, worked as the device's own,
+  since a self-voicing app's chords skip the device's input method; every screen, the menus (Space-M, F2) and a row's actions
   (Enter-I), panning, routing, help (Space-H), the device's conventions throughout. Unofficial
   behaviour an update may change; CI has no BrailleSense, so it is tried on the device over adb.
   - **Open, for a person at the device**: the physical F-keys, scroll keys and routing keys are
     decoded from their names in the framework and read only from the shell's injection so far;
     Programs menu placement and Quick Launch letters; whether a 32-cell H732B reads the 40-cell
-    wrap correctly; Iroh over Wi-Fi and in sleep; reminders through the device's notifications.
+    wrap correctly; syncing over Iroh (its sleep is Android's, so it syncs as a phone does; its
+    deeper sleep turns Wi-Fi off, and it syncs again on waking); reminders through the device's
+    notifications.
 
 ## 6. Integrations
 
