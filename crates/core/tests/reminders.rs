@@ -258,3 +258,40 @@ fn work_left_short_is_carried_on_the_earliest_reminder_after_the_end_whatever_or
     let carrying: Vec<_> = found.iter().filter(|f| f.carry).map(|f| f.key).collect();
     assert_eq!(carrying, vec![at_end.id], "not {:?}", later.id);
 }
+
+#[test]
+fn a_running_timer_says_once_that_its_sittings_planned_length_is_used_up() {
+    use lumenna_core::model::{BlockAssignment, BlockRef};
+    use lumenna_core::remind::time_up_key;
+    let mut world = World::new();
+    let deep = world.daily("Deep work", 9, 0, 120);
+    let essay = world.task("Essay", Due::on(date(2026, 5, 8)));
+    let mut sitting = BlockAssignment::new(BlockRef::Occurrence(deep, date(2026, 5, 6)), essay, OrderKey::middle());
+    sitting.planned_mins = Some(25);
+    sitting.set_logged_mins(5);
+    let id = sitting.id;
+    world.snapshot.assignments.insert(id, sitting.clone());
+    assert!(world.fired(at(2026, 5, 6, 9, 0), at(2026, 5, 6, 10, 30)).is_empty(), "paused, it never runs out");
+
+    sitting.start(at(2026, 5, 6, 9, 10));
+    world.snapshot.assignments.insert(id, sitting.clone());
+    let fired = firings(&world.snapshot, at(2026, 5, 6, 9, 0), at(2026, 5, 6, 10, 30), &zone(), None).firings;
+    assert_eq!(fired.len(), 1);
+    assert_eq!(fired[0].at, at(2026, 5, 6, 9, 30), "twenty minutes left of twenty-five, from 9:10");
+    assert_eq!((fired[0].key, fired[0].target), (time_up_key(id), ReminderTarget::Task(essay)));
+    assert_eq!(fired[0].time_up.map(|t| t.planned), Some(25));
+    assert_eq!(lumenna_core::remind::target_of(&world.snapshot, time_up_key(id)), Some(ReminderTarget::Task(essay)));
+
+    world.snapshot.acks.insert(
+        (time_up_key(id), date(2026, 5, 6)),
+        ReminderAck {
+            reminder_id: time_up_key(id),
+            occurrence_date: date(2026, 5, 6),
+            action: ReminderAction::Dismissed,
+            acked_at: Timestamp::now(),
+            acked_by: NodeId::from_bytes([1; 32]),
+            target: None,
+        },
+    );
+    assert!(world.fired(at(2026, 5, 6, 9, 0), at(2026, 5, 6, 10, 30)).is_empty(), "dismissed, said no more");
+}
