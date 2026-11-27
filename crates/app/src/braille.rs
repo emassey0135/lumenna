@@ -37,6 +37,7 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::EditTask, "e"),
     (K::PutInBlock, "b"),
     (K::MoveToProject, "m"),
+    (K::MoveToSection, "h"),
     (K::MakeSubtaskOf, "s"),
     (K::MoveToTopLevel, "t"),
     (K::WaitFor, "w"),
@@ -121,6 +122,7 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-to-day", "g"),
     ("go-to-now", "t"),
     ("new-project-inside", "p"),
+    ("new-section", "i"),
     // Home.
     ("go-today", "t"),
     ("go-tasks", "k"),
@@ -301,6 +303,10 @@ pub fn menu_bar(place: Option<&Place>, home: bool, sentence: bool) -> Vec<Letter
         }
         if group.id == "file" && own.contains(&"new-project-inside") {
             ids.insert(1, ("new-project-inside".to_owned(), command_title("new-project-inside", sentence), true));
+        }
+        if group.id == "file" && own.contains(&"new-section") {
+            let at = if own.contains(&"new-project-inside") { 2 } else { 1 };
+            ids.insert(at.min(ids.len()), ("new-section".to_owned(), command_title("new-section", sentence), true));
         }
         (group, ids)
     });

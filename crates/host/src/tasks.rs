@@ -61,6 +61,12 @@ impl Lumenna {
     /// If the text is empty, or names a project that does not exist. An unknown label is
     /// not an error: it becomes a new label.
     pub fn add_task(&self, text: &str) -> Result<Change> {
+        self.add_task_into(text, None)
+    }
+
+    /// Adds a task from a quick-add line, under `into` unless the line names a project or a
+    /// section of its own.
+    pub(crate) fn add_task_into(&self, text: &str, into: Option<lumenna_core::id::SectionId>) -> Result<Change> {
         if text.trim().is_empty() {
             return Err(LumennaError::new("nothing to add"));
         }
@@ -80,7 +86,7 @@ impl Lumenna {
         let now = Zoned::now();
         self.told(|store| {
             let snapshot = repaired(store);
-            let preview =
+            let mut preview =
                 parse_quick_add(text, &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now);
 
             // An unknown project is an error; an unknown label is a new label. A mistyped
@@ -94,7 +100,17 @@ impl Lumenna {
             let inbox = snapshot
                 .inbox()
                 .ok_or_else(|| LumennaError::new("this store has no Inbox"))?;
-            let project_id = preview.project.unwrap_or(inbox.id);
+            // A section's own New Task lands under it, unless the line said somewhere else.
+            let into = into
+                .and_then(|id| snapshot.section(id))
+                .filter(|_| preview.project.is_none() && preview.section.is_none());
+            let project_id = into.map(|s| s.project_id).or(preview.project).unwrap_or(inbox.id);
+            let section_id = into.map(|s| s.id).or(preview.section);
+            // Said where it went, as a line naming them would have been.
+            if let Some(section) = into {
+                preview.project_name = snapshot.projects.get(&section.project_id).map(|p| p.name.clone()).filter(|_| section.project_id != inbox.id);
+                preview.section_name = Some(section.name.clone());
+            }
 
             let mut changes = Vec::new();
             let mut labels: BTreeSet<LabelId> = preview.labels.iter().copied().collect();
@@ -117,6 +133,7 @@ impl Lumenna {
                         .map(|t| t.order.clone()),
                 ),
             );
+            task.section_id = section_id;
             task.due = preview.due.clone();
             task.priority = preview.priority;
             task.estimate_mins = preview.estimate_mins;

@@ -274,7 +274,7 @@ const CONFIRM: Param = Param("confirm", "Confirm", K::Flag, true, "True only onc
 
 const OPERATIONS: &[Op] = &[
     read("list_tasks", "List Tasks", C::Tasks, &["tasks", "to do", "overdue", "due"], &[
-        Param("query", "Filter", K::Query, true, "A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `p1`, or `search: words`; empty for every open task."),
+        Param("query", "Filter", K::Query, true, "A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `#Work & /Errands` (a section), `p1`, or `search: words`; empty for every open task."),
     ], "Lists tasks: by default every open task, most urgent first, subtasks under their task; or those a filter admits."),
     read("search_tasks", "Search Tasks", C::Tasks, &["find", "search"], &[
         Param("text", "Words", K::Text, false, "Words to search titles and notes for."),
@@ -286,6 +286,9 @@ const OPERATIONS: &[Op] = &[
     read("list_blocks", "List Blocks", C::Day, &["blocks", "routine", "schedule"], &[],
         "Every time block, each with when it happens and how often."),
     read("list_projects", "List Projects", C::Tasks, &["projects"], &[], "Every project, its subprojects under it."),
+    read("list_sections", "List a Project's Sections", C::Tasks, &["sections", "headings"], &[
+        Param("project", "Project", K::Project, false, "The project, by name."),
+    ], "A project's sections, the headings its tasks sit under, in order, each with how many open tasks it holds."),
     read("list_labels", "List Labels", C::Tasks, &["labels", "tags"], &[], "Every label."),
     read("list_filters", "List Saved Filters", C::Tasks, &["filters", "views"], &[], "Every saved filter, with its query."),
     read("what_should_i_work_on", "What Should I Work On?", C::Planning, &["next", "focus", "now", "suggest"], &[],
@@ -297,7 +300,7 @@ const OPERATIONS: &[Op] = &[
     read("propose_day_plan", "Propose a Plan for a Day", C::Planning, &["plan the day", "fill", "schedule"], &[DAY],
         "Proposes which tasks to put in each of a day's work blocks still to come, each with why. Nothing changes until `apply_day_plan` is given the sittings the person accepted."),
     write("add_task", "Add a Task", C::Tasks, &["new", "create", "remember", "capture", "remind"], &[
-        Param("text", "Line", K::Line, false, "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read."),
+        Param("text", "Line", K::Line, false, "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\") and a section of it (/Errands), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read."),
     ], "Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it."),
     write("edit_task", "Edit a Task", C::Tasks, &["change", "rename", "reschedule", "due date"], &[
         ID,
@@ -329,7 +332,12 @@ const OPERATIONS: &[Op] = &[
         Param("parent", "Parent Task", K::Task, true, "A task to make it a subtask of, by identifier."),
         Param("project", "Project", K::Project, true, "A project to move it to, by name."),
         Param("top", "A Task of Its Own", K::Flag, true, "True to make it a task of its own again, under no other."),
-    ], "Makes a task a subtask of another, moves it to a project, or makes it a task of its own."),
+        Param("section", "Section", K::Text, true, "A section of its project to put it under, by name (Project/Section for another project's), or `none` to take it out of the one it is under."),
+    ], "Makes a task a subtask of another, moves it to a project or under a section of one, or makes it a task of its own."),
+    write("add_section", "Add a Section", C::Tasks, &["section", "heading", "new"], &[
+        Param("project", "Project", K::Project, false, "The project, by name."),
+        Param("name", "Name", K::Text, false, "The section's name."),
+    ], "Adds a section to a project, after its others: a heading its tasks can sit under."),
     write("assign", "Put a Task in a Block", C::Day, &["schedule", "block", "time block", "plan"], &[
         Param("task", "Task", K::Task, false, "The task's identifier."),
         Param("block", "Block", K::Block, false, "The block's identifier, as the day lists it."),
@@ -462,6 +470,7 @@ pub fn entities() -> Vec<AssistantEntity> {
                 ("title", "Title"),
                 ("due", "Due"),
                 ("project", "Project"),
+                ("section", "Section"),
                 ("labels", "Labels"),
                 ("priority", "Priority"),
                 ("done", "Done"),

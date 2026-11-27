@@ -6,7 +6,7 @@ use jiff::Timestamp;
 use jiff::civil;
 
 use super::{ExternalRef, TzName};
-use crate::id::{CompletionId, LabelId, ProjectId, TaskId};
+use crate::id::{CompletionId, LabelId, ProjectId, SectionId, TaskId};
 use crate::order::OrderKey;
 
 /// A thing to do.
@@ -24,6 +24,10 @@ pub struct Task {
     pub parent_id: Option<TaskId>,
     /// Always set. Inbox is a real [`Project`](super::Project), not a null project.
     pub project_id: ProjectId,
+    /// The heading it sits under in its project, if any. Believed only while that section is
+    /// its project's and not deleted (`Snapshot::section_of`); a subtask is listed under its
+    /// parent, whatever it names.
+    pub section_id: Option<SectionId>,
     /// How much this one item matters. Project weight is the other axis and is never
     /// called priority.
     pub priority: Priority,
@@ -75,6 +79,7 @@ impl Task {
             notes: String::new(),
             parent_id: None,
             project_id,
+            section_id: None,
             priority: Priority::default(),
             labels: BTreeSet::new(),
             depends: BTreeSet::new(),

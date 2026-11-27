@@ -39,6 +39,8 @@ pub enum Expected {
     Project,
     /// An `@label` name.
     Label,
+    /// A `/section` name.
+    Section,
     /// A `p1`–`p4`.
     Priority,
     /// A computed state, or another bare keyword.
@@ -60,6 +62,7 @@ impl Expected {
         match self {
             Self::Project => "a project, like #work",
             Self::Label => "a label, like @laptop",
+            Self::Section => "a section, like /errands",
             Self::Priority => "a priority, p1 to p4",
             Self::Keyword => "a keyword, like overdue or blocked",
             Self::Date => "a date, like next friday",
@@ -297,6 +300,10 @@ impl<'a> Cursor<'a> {
         if word.lower.starts_with('@') {
             let name = self.sigil_name(&self.known.labels, Expected::Label)?;
             return Ok(Expr::Predicate(Predicate::Label(name)));
+        }
+        if word.lower.starts_with('/') {
+            let name = self.sigil_name(&self.known.sections, Expected::Section)?;
+            return Ok(Expr::Predicate(Predicate::Section(name)));
         }
         if let Some(priority) = priority_of(&word.lower) {
             self.at += 1;

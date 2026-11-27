@@ -134,6 +134,8 @@ fn rebase_change(
             .map(|t| Change::Project(Box::new(t))),
         Change::Label(t) => step(t, d, |r| now.labels.get(&r.id), "label", k)
             .map(|t| Change::Label(Box::new(t))),
+        Change::Section(t) => step(t, d, |r| now.sections.get(&r.id), "section", k)
+            .map(|t| Change::Section(Box::new(t))),
         Change::Filter(t) => step(t, d, |r| now.saved_filters.get(&r.id), "filter", k)
             .map(|t| Change::Filter(Box::new(t))),
         Change::Series(t) => step(t, d, |r| now.series.get(&r.id), "block", k)

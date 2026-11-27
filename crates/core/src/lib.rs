@@ -33,7 +33,7 @@ pub mod urgency;
 pub mod words;
 
 pub use id::{
-    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SeriesId,
+    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SectionId, SeriesId,
     TaskId,
 };
 pub use order::OrderKey;

@@ -331,7 +331,7 @@ impl Answers {
     #[must_use]
     pub fn to(id: &str) -> Option<Answers> {
         Some(match id {
-            "list_tasks" | "search_tasks" | "list_blocks" | "list_projects" | "list_labels" | "review" => Answers::Rows,
+            "list_tasks" | "search_tasks" | "list_blocks" | "list_projects" | "list_sections" | "list_labels" | "review" => Answers::Rows,
             "show_task" => Answers::Task,
             "day" => Answers::Plan,
             "list_filters" => Answers::Filters,
@@ -342,7 +342,7 @@ impl Answers {
             "apply_replan" => Answers::Replanned,
             "apply_day_plan" => Answers::DayPlanned,
             "add_task" | "edit_task" | "complete_task" | "uncomplete_task" | "trash_task" | "erase_task_permanently"
-            | "erase_everything_deleted" | "restore_task" | "move_task" | "assign" | "unassign" | "start_timer" | "start_on"
+            | "erase_everything_deleted" | "restore_task" | "move_task" | "add_section" | "assign" | "unassign" | "start_timer" | "start_on"
             | "toggle_timer" | "mark_reviewed" | "review_every" | "reconsider_task" | "undo" | "redo" => Answers::Change,
             _ => return None,
         })

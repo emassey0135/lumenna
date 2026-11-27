@@ -16,11 +16,11 @@ import LumennaApp
 /// Every operation's intent, in the table's order: what the tests compare with the table.
 let assistantIntents: [any OperationIntent.Type] = [
     ListTasksIntent.self, SearchTasksIntent.self, ShowTaskIntent.self, ShowDayIntent.self,
-    ListBlocksIntent.self, ListProjectsIntent.self, ListLabelsIntent.self, ListSavedFiltersIntent.self,
+    ListBlocksIntent.self, ListProjectsIntent.self, ListSectionsIntent.self, ListLabelsIntent.self, ListSavedFiltersIntent.self,
     WhatShouldIWorkOnIntent.self, ProposeReplanIntent.self, ShowTimerIntent.self, ProposeDayPlanIntent.self,
     AddTaskIntent.self, EditTaskIntent.self, CompleteTaskIntent.self, UncompleteTaskIntent.self,
     TrashTaskIntent.self, EraseTaskPermanentlyIntent.self, EraseEverythingDeletedIntent.self, RestoreTaskIntent.self,
-    MoveTaskIntent.self, AssignIntent.self, UnassignIntent.self, StartTimerIntent.self,
+    MoveTaskIntent.self, AddSectionIntent.self, AssignIntent.self, UnassignIntent.self, StartTimerIntent.self,
     PauseTimerIntent.self, StopTimerIntent.self, ToggleTimerIntent.self, StartOnIntent.self,
     ApplyReplanIntent.self, ApplyDayPlanIntent.self, ShowReviewIntent.self, MarkReviewedIntent.self,
     ReviewEveryIntent.self, ReconsiderTaskIntent.self, UndoIntent.self, RedoIntent.self,
@@ -42,7 +42,7 @@ struct ListTasksIntent: OperationIntent {
         searchKeywords: ["tasks", "to do", "overdue", "due"]
     )
 
-    @Parameter(title: "Filter", description: "A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `p1`, or `search: words`; empty for every open task.")
+    @Parameter(title: "Filter", description: "A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `#Work & /Errands` (a section), `p1`, or `search: words`; empty for every open task.")
     var query: String?
 
     @AppDependency private var store: AssistantStore
@@ -112,6 +112,27 @@ struct ListProjectsIntent: OperationIntent {
     }
 }
 
+struct ListSectionsIntent: OperationIntent {
+    static let persistentIdentifier = "list_sections"
+    static let title: LocalizedStringResource = "List a Project's Sections"
+    static let description: IntentDescription? = IntentDescription(
+        "A project's sections, the headings its tasks sit under, in order, each with how many open tasks it holds.",
+        categoryName: "Tasks",
+        searchKeywords: ["sections", "headings"]
+    )
+
+    @Parameter(title: "Project", description: "The project, by name.")
+    var project: ProjectEntity
+
+    @AppDependency private var store: AssistantStore
+
+    func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog {
+        let listed = try store.assist(Self.persistentIdentifier, ["project": .text(project.name)])
+        guard case let .rows(rows) = listed else { return .result(value: [], dialog: IntentDialog(said: listed.said)) }
+        return .result(value: rows.rows.filter { $0.role == "section" }.map(\.title), dialog: IntentDialog(said: listed.said))
+    }
+}
+
 struct ListLabelsIntent: OperationIntent {
     static let persistentIdentifier = "list_labels"
     static let title: LocalizedStringResource = "List Labels"
@@ -159,7 +180,7 @@ struct AddTaskIntent: OperationIntent {
         searchKeywords: ["new", "create", "remember", "capture", "remind"]
     )
 
-    @Parameter(title: "Line", description: "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\"), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
+    @Parameter(title: "Line", description: "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\") and a section of it (/Errands), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
     var text: String
 
     @AppDependency private var store: AssistantStore
@@ -243,7 +264,7 @@ struct MoveTaskIntent: OperationIntent {
     static let persistentIdentifier = "move_task"
     static let title: LocalizedStringResource = "Move a Task"
     static let description: IntentDescription? = IntentDescription(
-        "Makes a task a subtask of another, moves it to a project, or makes it a task of its own.",
+        "Makes a task a subtask of another, moves it to a project or under a section of one, or makes it a task of its own.",
         categoryName: "Tasks",
         searchKeywords: ["subtask", "project", "move"]
     )
@@ -256,6 +277,8 @@ struct MoveTaskIntent: OperationIntent {
     var project: ProjectEntity?
     @Parameter(title: "A Task of Its Own", description: "True to make it a task of its own again, under no other.", default: false)
     var top: Bool
+    @Parameter(title: "Section", description: "A section of its project to put it under, by name (Project/Section for another project's), or `none` to take it out of the one it is under.")
+    var section: String?
 
     @AppDependency private var store: AssistantStore
 
@@ -265,8 +288,30 @@ struct MoveTaskIntent: OperationIntent {
             "parent": parent.map { .text($0.id) },
             "project": project.map { .text($0.name) },
             "top": top ? .flag(true) : nil,
+            "section": section.map { .text($0) },
         ])
         return .result(value: store.entity(changed.task), dialog: IntentDialog(said: changed.said))
+    }
+}
+
+struct AddSectionIntent: OperationIntent {
+    static let persistentIdentifier = "add_section"
+    static let title: LocalizedStringResource = "Add a Section"
+    static let description: IntentDescription? = IntentDescription(
+        "Adds a section to a project, after its others: a heading its tasks can sit under.",
+        categoryName: "Tasks",
+        searchKeywords: ["section", "heading", "new"]
+    )
+
+    @Parameter(title: "Project", description: "The project, by name.")
+    var project: ProjectEntity
+    @Parameter(title: "Name", description: "The section's name.")
+    var name: String
+
+    @AppDependency private var store: AssistantStore
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        said(try store.assist(Self.persistentIdentifier, ["project": .text(project.name), "name": .text(name)]))
     }
 }
 

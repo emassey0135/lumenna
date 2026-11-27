@@ -149,6 +149,9 @@ pub struct Affected {
     /// Labels.
     #[serde(default, skip_serializing_if = "none")]
     pub labels: Vec<String>,
+    /// Sections of projects.
+    #[serde(default, skip_serializing_if = "none")]
+    pub sections: Vec<String>,
     /// Saved filters.
     #[serde(default, skip_serializing_if = "none")]
     pub filters: Vec<String>,
@@ -187,6 +190,9 @@ impl Affected {
                 CoreChange::Label(t) => {
                     push(&mut affected.labels, t.before.as_ref().map(|x| x.id), t.after.as_ref().map(|x| x.id));
                 }
+                CoreChange::Section(t) => {
+                    push(&mut affected.sections, t.before.as_ref().map(|x| x.id), t.after.as_ref().map(|x| x.id));
+                }
                 CoreChange::Filter(t) => {
                     push(&mut affected.filters, t.before.as_ref().map(|x| x.id), t.after.as_ref().map(|x| x.id));
                 }
@@ -221,6 +227,7 @@ impl Affected {
         self.tasks.is_empty()
             && self.projects.is_empty()
             && self.labels.is_empty()
+            && self.sections.is_empty()
             && self.filters.is_empty()
             && self.blocks.is_empty()
             && self.assignments.is_empty()
@@ -321,7 +328,7 @@ pub struct Query {
 #[boltffi::data]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Unresolved {
-    /// `project` or `label`.
+    /// `project`, `label` or `section`.
     pub kind: String,
     /// The name as written.
     pub name: String,
@@ -362,7 +369,7 @@ pub struct RowView {
     pub row: u32,
     /// The full identifier.
     pub id: String,
-    /// What kind of thing it is: `task`, `project`, `label`, `block`.
+    /// What kind of thing it is: `task`, `project`, `label`, `block`, `section`.
     pub role: String,
     /// Depth in the tree, zero at the top.
     pub depth: u32,
@@ -422,6 +429,7 @@ pub fn row_id(id: &RowId) -> String {
         RowId::Task(id) => id.to_string(),
         RowId::Project(id) => id.to_string(),
         RowId::Label(id) => id.to_string(),
+        RowId::Section(id) => id.to_string(),
         RowId::Occurrence(id, date) => format!("{id}@{date}"),
     }
 }
@@ -435,6 +443,7 @@ pub const fn role_name(role: Role) -> &'static str {
         Role::Label => "label",
         Role::Block => "block",
         Role::Group => "group",
+        Role::Section => "section",
     }
 }
 
@@ -444,6 +453,7 @@ pub const fn name_kind(kind: NameKind) -> &'static str {
     match kind {
         NameKind::Project => "project",
         NameKind::Label => "label",
+        NameKind::Section => "section",
     }
 }
 
@@ -478,6 +488,9 @@ pub struct TaskDetail {
     /// The project it sits in, by name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
+    /// The section of its project it sits under, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<String>,
     /// The task it sits under, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
@@ -560,6 +573,7 @@ impl TaskDetail {
             title: task.title.clone(),
             notes: task.notes.clone(),
             project: snapshot.projects.get(&task.project_id).map(|p| p.name.clone()),
+            section: snapshot.section_of(task).map(|s| s.name.clone()),
             parent: task.parent_id.map(|id| id.to_string()),
             priority: task.priority.as_u8(),
             labels: snapshot.labels_of(task).iter().map(|l| l.name.clone()).collect(),

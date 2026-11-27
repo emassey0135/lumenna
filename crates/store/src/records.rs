@@ -21,14 +21,14 @@ use automerge::ReadDoc;
 use automerge::transaction::Transactable;
 use jiff::civil;
 use lumenna_core::id::{
-    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SeriesId,
+    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SectionId, SeriesId,
     TaskId,
 };
 use lumenna_core::model::{
     AssignmentStatus, BlockAssignment, BlockException, BlockFlags, BlockKind, BlockRef,
     BlockSeries, Delivery, Device, Due, ExceptionAction, ExternalProvider, ExternalRef, Label,
     Priority, Project, Recurrence, Reminder, ReminderAck, ReminderAction, ReminderAnchor,
-    ReminderTarget, SavedFilter, Settings, Task, TaskCompletion, Trigger, TzName, Verbosity,
+    ReminderTarget, SavedFilter, Section, Settings, Task, TaskCompletion, Trigger, TzName, Verbosity,
 };
 
 use crate::doc::Domain;
@@ -321,6 +321,7 @@ impl Record for Task {
             // A task with no project cannot be shown anywhere: Inbox is a real project,
             // so this is never legitimately absent.
             project_id: r.parsed("project_id")?,
+            section_id: r.parsed("section_id"),
             priority: Priority::from_u8(r.u32("priority").unwrap_or(4).try_into().unwrap_or(4)),
             labels: r.id_set("labels"),
             depends: r.id_set("depends"),
@@ -343,6 +344,7 @@ impl Record for Task {
         w.set_text("notes", was.map(|b| b.notes.as_str()), &self.notes)?;
         w.set_opt_str("parent_id", was.map(|b| b.parent_id.as_ref()), self.parent_id.as_ref())?;
         w.set_str("project_id", was.map(|b| &b.project_id), &self.project_id)?;
+        w.set_opt_str("section_id", was.map(|b| b.section_id.as_ref()), self.section_id.as_ref())?;
         w.set_int(
             "priority",
             was.map(|b| i64::from(b.priority.as_u8())),
@@ -506,6 +508,42 @@ impl Record for Label {
     fn write<T: Transactable>(&self, w: &mut Writer<'_, T>, was: Option<&Self>) -> Result<()> {
         w.set_string("name", was.map(|b| b.name.as_str()), &self.name)?;
         w.set_opt_str("color", was.map(|b| b.color.as_ref()), self.color.as_ref())?;
+        w.set_str("order", was.map(|b| &b.order), &self.order)?;
+        w.set_opt_time("deleted_at", was.map(|b| b.deleted_at.as_ref()), self.deleted_at.as_ref())
+    }
+}
+
+impl Record for Section {
+    const DOMAIN: Domain = Domain::Core;
+    const COLLECTION: &'static str = crate::doc::SECTIONS;
+    type Key = SectionId;
+
+    fn key(&self) -> SectionId {
+        self.id
+    }
+
+    fn key_string(key: &SectionId) -> String {
+        key.to_string()
+    }
+
+    fn parse_key(text: &str) -> Option<SectionId> {
+        text.parse().ok()
+    }
+
+    fn hydrate<D: ReadDoc>(r: &Reader<'_, D>, id: SectionId) -> Option<Self> {
+        Some(Self {
+            id,
+            // A section of no project heads nothing anywhere.
+            project_id: r.parsed("project_id")?,
+            name: r.string("name").unwrap_or_default(),
+            order: r.parsed("order")?,
+            deleted_at: r.timestamp("deleted_at"),
+        })
+    }
+
+    fn write<T: Transactable>(&self, w: &mut Writer<'_, T>, was: Option<&Self>) -> Result<()> {
+        w.set_str("project_id", was.map(|b| &b.project_id), &self.project_id)?;
+        w.set_string("name", was.map(|b| b.name.as_str()), &self.name)?;
         w.set_str("order", was.map(|b| &b.order), &self.order)?;
         w.set_opt_time("deleted_at", was.map(|b| b.deleted_at.as_ref()), self.deleted_at.as_ref())
     }

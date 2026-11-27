@@ -211,3 +211,22 @@ move made by the change that completed a repeating task is not counted).
 - **A list's query may end in `sort: urgency` or `sort: added`** (`parse_query`, `Sort`). A
   block's filter selects and never orders, so `parse_filter` refuses `sort:` rather than
   search for it.
+
+## Sections
+
+A project's headings (`model::Section`, `Snapshot::sections_of`), a record of their own in
+`core`'s `sections` map (made by the store's third frozen change).
+
+- **A task's section is believed only while it is live and its own project's**
+  (`Snapshot::section_of`): merge can leave one naming a section deleted elsewhere, or a project
+  it has left; it then sits in its project under none. Nothing repairs it on read.
+- **A section is its project's**: moving a task to another project leaves its section
+  (`MoveTo::Project`), joining a parent takes the parent's, and `MoveTo::Section` joins the
+  section's project, subtasks and all, a subtask leaving its parent.
+- **Deleting one keeps or trashes its tasks** (`SectionDeletion`), the kept ones' section cleared
+  in the same edit, so one undo puts every task back under it; a project trashed takes its
+  sections.
+- **A project's own listing is headed by them** (`Snapshot::project_rows`, the records'
+  `lists::tasks` when the query is exactly the project's reference): the tasks under no section,
+  then each section's heading (`Role::Section`, every one, an empty one too) with its tasks a
+  level deeper, headings and loose tasks siblings. Any other query lists tasks alone.

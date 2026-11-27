@@ -295,7 +295,7 @@ until the app has taken it in."
                  (lambda (_prompt choices &rest _) (setq offered (mapcar #'car choices)) (car offered)))
                 ((symbol-function 'read-string) (lambda (&rest _) "1")))
         (lumenna-act-at-point))
-      (should (equal offered '("Weight"))))))
+      (should (equal offered '("Weight" "New Section"))))))
 
 (ert-deftest lumenna-a-project-with-a-space-is-quoted-by-the-core-in-its-list ()
   (lumenna-test--with-store
@@ -1022,7 +1022,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (lumenna-test--seed "project.add" :name "Garden")
     (lumenna-open-place '(:Project "Garden"))
     (should (equal (mapcar (lambda (item) (aref item 0)) (lumenna--screen-action-menu nil))
-                   '("New Task..." "Filter Tasks" "New Project Inside..." "Undo" "Redo")))
+                   '("New Task..." "Filter Tasks" "New Project Inside..." "New Section..." "Undo" "Redo")))
     ;; One the app runs, by its key: what it asks is asked.
     (lumenna-test--answering ("New Project Inside" "Seeds")
       (lumenna-screen-action))

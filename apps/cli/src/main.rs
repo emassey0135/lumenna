@@ -75,6 +75,10 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Label(LabelCommand),
 
+    /// Work with a project's sections: the headings its tasks sit under.
+    #[command(subcommand)]
+    Section(SectionCommand),
+
     /// Work with saved filters.
     #[command(subcommand)]
     Filter(FilterCommand),
@@ -608,6 +612,10 @@ pub(crate) enum TaskCommand {
         /// Take it out from under its parent.
         #[arg(long)]
         top: bool,
+        /// Put it under this section of its project, by name or identifier, or Project/Section
+        /// for another project's; `none` for no section.
+        #[arg(long)]
+        section: Option<String>,
     },
 
     /// Search titles and notes.
@@ -793,6 +801,61 @@ pub(crate) enum ReminderCommand {
         /// How long, such as 10m.
         #[arg(long)]
         r#for: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum SectionCommand {
+    /// Add a section to a project, after its others.
+    Add {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        project: String,
+        /// The section's name.
+        name: String,
+    },
+    /// List a project's sections.
+    List {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        project: String,
+    },
+    /// Rename a section.
+    Rename {
+        /// A row number from the last listing of sections, an identifier, a name, or
+        /// Project/Section.
+        section: String,
+        /// Its new name.
+        to: String,
+    },
+    /// Move a section one place up or down among its project's.
+    Order {
+        /// A row number from the last listing of sections, an identifier, a name, or
+        /// Project/Section.
+        section: String,
+        /// up or down.
+        direction: Way,
+    },
+    /// Delete a section, asking whether its tasks go to the trash with it or stay in the
+    /// project, unless --keep-tasks or --yes says.
+    Rm {
+        /// A row number from the last listing of sections, an identifier, a name, or
+        /// Project/Section.
+        section: String,
+        /// Keep its tasks in the project, under no section, instead of trashing them.
+        #[arg(long)]
+        keep_tasks: bool,
+        /// Trash its tasks with it without asking.
+        #[arg(long, conflicts_with = "keep_tasks")]
+        yes: bool,
+    },
+    /// Add a task under a section, from a quick-add line.
+    AddTask {
+        /// A row number from the last listing of sections, an identifier, a name, or
+        /// Project/Section.
+        section: String,
+        /// The task, as quick add takes it.
+        text: Vec<String>,
     },
 }
 
@@ -1217,6 +1280,36 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         }
         Command::Task(command) => return task(profile, command),
         Command::Project(command) => return project(profile, command),
+        Command::Section(command) => {
+            let section = |input: &str| profile.row(input, "section");
+            Response::new(match command {
+                SectionCommand::Add { project, name } => profile.add_section(project, name)?,
+                SectionCommand::List { project } => return Ok(Response::new(profile.list_sections(project)?)),
+                SectionCommand::Rename { section: input, to } => profile.rename_section(&section(input)?, to)?,
+                SectionCommand::Order { section: input, direction } => {
+                    profile.reorder_section(&section(input)?, (*direction).into())?
+                }
+                SectionCommand::Rm { section: input, keep_tasks, yes } => {
+                    let input = section(input)?;
+                    // The core's own question, whose answers are what becomes of the tasks.
+                    let keep = if *keep_tasks {
+                        true
+                    } else if *yes {
+                        false
+                    } else {
+                        match chosen(&profile.actions_of(Subject::Section, &input)?, ActionKind::Delete)? {
+                            Choice::Answer(answer) => answer == "keep",
+                            Choice::Cancelled => return Ok(Response::unchanged("nothing was deleted")),
+                            Choice::NotAsked => false,
+                        }
+                    };
+                    profile.delete_section(&input, keep)?
+                }
+                SectionCommand::AddTask { section: input, text } => {
+                    profile.add_task_in_section(&section(input)?, &text.join(" "))?
+                }
+            })
+        }
         Command::Label(command) => Response::new(match command {
             LabelCommand::Add { name } => profile.add_label(name)?,
             LabelCommand::List => return Ok(Response::new(profile.list_labels()?)),
@@ -1560,14 +1653,18 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
             }
             Response::new(profile.erase_task_permanently(&id)?)
         }
-        TaskCommand::Move { id: input, parent, project, top } => {
+        TaskCommand::Move { id: input, parent, project, top, section } => {
+            if let Some(section) = section {
+                let section = Some(section.as_str()).filter(|s| !s.eq_ignore_ascii_case("none"));
+                return Ok(Response::new(profile.move_task_to_section(&id(input)?, section)?));
+            }
             let to = match (parent, project, top) {
                 (Some(parent), _, _) => MoveTarget::Parent { id: id(parent)? },
                 (_, Some(project), _) => MoveTarget::Project { name: project.clone() },
                 (_, _, true) => MoveTarget::Top,
                 _ => {
                     return Err(CliError::Message(
-                        "say where: --parent, --project, or --top".to_owned(),
+                        "say where: --parent, --project, --section, or --top".to_owned(),
                     ));
                 }
             };

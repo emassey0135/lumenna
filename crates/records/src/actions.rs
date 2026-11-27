@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use lumenna_core::model::{BlockSeries, Label, Project, SavedFilter, Task};
+use lumenna_core::model::{BlockSeries, Label, Project, SavedFilter, Section, Task};
 use lumenna_core::row::RowId;
 use lumenna_core::snapshot::Snapshot;
 use serde::{Deserialize, Serialize};
@@ -40,6 +40,8 @@ pub enum ActionKind {
     PutInBlock,
     /// Move a task to another project.
     MoveToProject,
+    /// Move a task under a section of its project, or out of the one it is under.
+    MoveToSection,
     /// Put a task under another.
     MakeSubtaskOf,
     /// Take a task or project out from under its parent.
@@ -171,6 +173,8 @@ pub enum Subject {
     Label,
     /// A saved filter, by name.
     Filter,
+    /// A section of a project, by identifier; for New, the project it is added to.
+    Section,
     /// A paired device, by key.
     Device,
     /// A reminder of a task's or block's own, by identifier; for New, the task or block it
@@ -501,8 +505,10 @@ const fn is_primary(kind: ActionKind, subject: Subject) -> bool {
     use ActionKind as K;
     match kind {
         K::MarkDone | K::MarkNotDone | K::Restore | K::DeleteForGood | K::Delete | K::AssignTask | K::StartTimer
-        | K::PauseTimer | K::ResumeTimer | K::StopTimer | K::AddBlock | K::RestoreDay | K::New | K::Unpair => true,
-        K::Rename => matches!(subject, Subject::Project | Subject::Label | Subject::Filter | Subject::Device),
+        | K::PauseTimer | K::ResumeTimer | K::StopTimer | K::AddBlock | K::RestoreDay | K::Unpair => true,
+        // A project's New Section is a menu away; a heading's New, and a section's New Task, show.
+        K::New => !matches!(subject, Subject::Section),
+        K::Rename => matches!(subject, Subject::Project | Subject::Label | Subject::Filter | Subject::Device | Subject::Section),
         _ => false,
     }
 }
@@ -594,6 +600,10 @@ pub fn task(snapshot: &Snapshot, task: &Task, done: bool, shown: bool) -> Vec<Ac
         yes: "Put It There".to_owned(),
     }));
     actions.push(a(K::MoveToProject, "Move to Project").asking(pick(format!("Move {} to", task.title), "Move")));
+    // Under a heading of its project, once the project has one to go under.
+    if !snapshot.sections_of(task.project_id).is_empty() {
+        actions.push(a(K::MoveToSection, "Move to Section").asking(pick(format!("Move {} to the section", task.title), "Move")));
+    }
     actions.push(a(K::MakeSubtaskOf, "Make Subtask Of").asking(pick(format!("Make {} a subtask of", task.title), "Move")));
     if task.parent_id.is_some() {
         actions.push(a(K::MoveToTopLevel, "Move to Top Level"));
@@ -773,10 +783,13 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     if project.is_inbox {
         reorder(&mut actions, Subject::Project, &target, position_of(&ids, &project.id), ids.len());
         actions.push(weight);
+        // After the project's own: a row is said to be what its first action is done to.
+        actions.push(new_section(project));
         return actions;
     }
     actions.push(a(K::Rename, "Rename").asking(text(format!("Rename {name}"), "Name", name.clone(), "", false)));
     actions.push(a(K::NewInside, "New Project Inside").asking(text(format!("New project inside {name}"), "Name", "", "", false)));
+    actions.push(new_section(project));
     actions.push(a(K::MoveUnder, "Move Under").asking(pick(format!("Move {name} under"), "Move")));
     if project.parent_id.is_some() {
         actions.push(a(K::MoveToTopLevel, "Move to Top Level"));
@@ -790,6 +803,43 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     actions.push(a(K::Delete, "Delete").asking(Question::Choose {
         title: format!("Delete {name}?"),
         message: "Its tasks can go to the trash with it, or move to the Inbox.".to_owned(),
+        answers: vec![
+            Choice { id: "trash".to_owned(), title: "Delete and Trash Its Tasks".to_owned(), ..Choice::default() },
+            Choice { id: "keep".to_owned(), title: "Delete and Keep Its Tasks".to_owned(), ..Choice::default() },
+        ],
+    }));
+    actions
+}
+
+/// A project's New Section, asking the new section's name.
+#[must_use]
+pub fn new_section(project: &Project) -> Action {
+    action(ActionKind::New, Subject::Section, "New Section", project.id.to_string())
+        .asking(text(format!("New section in {}", project.name), "Name", "", "", false))
+}
+
+/// What a section's New Task takes: a quick-add line, which lands under the section.
+pub const NEW_TASK_IN: &str = "A task as quick add takes it, such as Post the parcel tomorrow p2.";
+
+/// A section heading's: a task added under it, its name, its place among its project's, and
+/// deleting it, its tasks with it or kept in the project.
+pub fn section(snapshot: &Snapshot, section: &Section) -> Vec<Action> {
+    use ActionKind as K;
+    let name = section.name.clone();
+    let target = section.id.to_string();
+    let a = |kind, title: &str| action(kind, Subject::Section, title, target.clone());
+    let ids: Vec<_> = snapshot.sections_of(section.project_id).iter().map(|s| s.id).collect();
+    let project = snapshot.projects.get(&section.project_id).map_or("its project", |p| p.name.as_str());
+    // Rename first: a row is said to be what its first action is done to.
+    let mut actions = vec![
+        a(K::Rename, "Rename").asking(text(format!("Rename {name}"), "Name", name.clone(), "", false)),
+        action(K::New, Subject::Task, "New Task", target.clone())
+            .asking(text(format!("New task in {name}"), "Task", "", NEW_TASK_IN, false)),
+    ];
+    reorder(&mut actions, Subject::Section, &target, position_of(&ids, &section.id), ids.len());
+    actions.push(a(K::Delete, "Delete").asking(Question::Choose {
+        title: format!("Delete {name}?"),
+        message: format!("Its tasks can go to the trash with it, or stay in {project} under no section."),
         answers: vec![
             Choice { id: "trash".to_owned(), title: "Delete and Trash Its Tasks".to_owned(), ..Choice::default() },
             Choice { id: "keep".to_owned(), title: "Delete and Keep Its Tasks".to_owned(), ..Choice::default() },
@@ -1003,8 +1053,9 @@ pub fn not_offered(kind: ActionKind, subject: Subject, this_device: bool) -> Str
             "The Inbox is emptied rather than reviewed.".to_owned()
         }
         (Subject::Task, ActionKind::Reconsider) => "The planner has no question about this task.".to_owned(),
-        (Subject::Project | Subject::Label | Subject::Filter | Subject::Sitting, ActionKind::MoveUp) => "It is already first.".to_owned(),
-        (Subject::Project | Subject::Label | Subject::Filter | Subject::Sitting, ActionKind::MoveDown) => "It is already last.".to_owned(),
+        (Subject::Project | Subject::Label | Subject::Filter | Subject::Sitting | Subject::Section, ActionKind::MoveUp) => "It is already first.".to_owned(),
+        (Subject::Project | Subject::Label | Subject::Filter | Subject::Sitting | Subject::Section, ActionKind::MoveDown) => "It is already last.".to_owned(),
+        (Subject::Task, ActionKind::MoveToSection) => "Its project has no sections; add one with New Section.".to_owned(),
         (Subject::Sitting, ActionKind::Skip) => "Only a sitting not yet started can be skipped.".to_owned(),
         (Subject::Sitting, ActionKind::Unskip) => "It is not skipped.".to_owned(),
         (Subject::Block, ActionKind::AssignTask) => "This block does not take tasks.".to_owned(),
@@ -1042,6 +1093,7 @@ pub fn fill_rows(rows: &mut Rows, snapshot: &Snapshot) {
             Some(RowId::Project(id)) => snapshot.projects.get(&id).map(|p| project(snapshot, p)).unwrap_or_default(),
             Some(RowId::Label(id)) => snapshot.labels.get(&id).map(|l| label(snapshot, l)).unwrap_or_default(),
             Some(RowId::Occurrence(id, _)) => snapshot.series.get(&id).map(series).unwrap_or_default(),
+            Some(RowId::Section(id)) => snapshot.sections.get(&id).map(|s| section(snapshot, s)).unwrap_or_default(),
             None => Vec::new(),
         };
     }
@@ -1055,6 +1107,7 @@ fn rows_ids(rows: &Rows) -> Vec<Option<RowId>> {
             "task" => row.id.parse().ok().map(RowId::Task),
             "project" => row.id.parse().ok().map(RowId::Project),
             "label" => row.id.parse().ok().map(RowId::Label),
+            "section" => row.id.parse().ok().map(RowId::Section),
             "block" => {
                 let (series, date) = row.id.split_once('@')?;
                 Some(RowId::Occurrence(series.parse().ok()?, date.parse().ok()?))

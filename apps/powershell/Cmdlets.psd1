@@ -14,6 +14,7 @@
     day                      = @{ Cmdlet = 'Get-LumennaDay' }
     list_blocks              = @{ Cmdlet = 'Get-LumennaBlock' }
     list_projects            = @{ Cmdlet = 'Get-LumennaProject' }
+    list_sections            = @{ Cmdlet = 'Get-LumennaSection' }
     list_labels              = @{ Cmdlet = 'Get-LumennaLabel' }
     list_filters             = @{ Cmdlet = 'Get-LumennaFilter' }
     what_should_i_work_on    = @{ Cmdlet = 'Get-LumennaChoice' }
@@ -29,6 +30,7 @@
     erase_everything_deleted = @{ Cmdlet = 'Clear-LumennaTrash' }
     restore_task             = @{ Cmdlet = 'Restore-LumennaTask' }
     move_task                = @{ Cmdlet = 'Move-LumennaTask' }
+    add_section              = @{ Cmdlet = 'Add-LumennaSection' }
     assign                   = @{ Cmdlet = 'Add-LumennaSitting' }
     unassign                 = @{ Cmdlet = 'Remove-LumennaSitting'; Parameters = @{ assignment = 'Sitting' } }
     start_timer              = @{ Cmdlet = 'Start-LumennaTimer'; Parameters = @{ assignment = 'Sitting' } }

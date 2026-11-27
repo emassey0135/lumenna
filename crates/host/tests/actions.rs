@@ -107,16 +107,16 @@ fn a_trashed_task_is_restored_or_deleted_from_the_trash_after_saying_what_that_m
 }
 
 #[test]
-fn the_inbox_is_only_reordered_and_weighed() {
+fn the_inbox_is_only_reordered_and_weighed_and_given_sections() {
     let (_directory, lumenna) = open();
     lumenna.add_project("Work", None).unwrap();
     let rows = lumenna.list_projects().unwrap().rows;
     let inbox = rows.iter().find(|r| r.title == "Inbox").unwrap();
-    assert_eq!(titles(&inbox.actions), ["Move Down", "Weight"]);
+    assert_eq!(titles(&inbox.actions), ["Move Down", "Weight", "New Section"]);
     let work = rows.iter().find(|r| r.title == "Work").unwrap();
     assert_eq!(
         titles(&work.actions),
-        ["Rename", "New Project Inside", "Move Under", "Move Up", "Weight", "Colour", "Mark Reviewed", "Review Every", "Archive", "Delete"]
+        ["Rename", "New Project Inside", "New Section", "Move Under", "Move Up", "Weight", "Colour", "Mark Reviewed", "Review Every", "Archive", "Delete"]
     );
 }
 

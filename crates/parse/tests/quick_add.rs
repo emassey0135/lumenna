@@ -572,3 +572,59 @@ fn in_before_anything_but_a_sitting_length_is_left_alone() {
     let p = preview("read in the garden");
     assert_eq!((p.title.as_str(), p.sitting_mins), ("read in the garden", None));
 }
+
+/// The store with a section of Work's, "Errands", and one of the same name in My Big Project.
+fn sectioned() -> Snapshot {
+    let mut snapshot = store();
+    let ids: Vec<_> = snapshot.projects.values().filter(|p| !p.is_inbox).map(|p| (p.name.clone(), p.id)).collect();
+    for (_, id) in ids {
+        let section = lumenna_core::model::Section::new(id, "Errands", OrderKey::middle());
+        snapshot.sections.insert(section.id, section);
+    }
+    let calls = lumenna_core::model::Section::new(lumenna_core::id::ProjectId::INBOX, "Calls", OrderKey::middle());
+    snapshot.sections.insert(calls.id, calls);
+    snapshot
+}
+
+fn sectioned_preview(input: &str) -> Preview {
+    let snapshot = sectioned();
+    let known = Known::from_snapshot(&snapshot);
+    parse_quick_add(input, &known).resolve(&snapshot, &now())
+}
+
+#[test]
+fn a_section_after_its_project_puts_the_task_under_it_and_says_so() {
+    let snapshot = sectioned();
+    let p = parse_quick_add("post the parcel #work /errands tomorrow", &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now());
+    assert_eq!(p.title, "post the parcel");
+    let work = snapshot.project_by_name("Work").unwrap().id;
+    assert_eq!(p.project, Some(work));
+    let section = snapshot.sections.get(&p.section.unwrap()).unwrap();
+    assert_eq!(section.project_id, work);
+    assert!(!p.has_errors(), "{:?}", p.diagnostics);
+    assert!(p.announcement().contains("in Work, under Errands"), "{}", p.announcement());
+}
+
+#[test]
+fn a_section_alone_is_the_inboxs_where_it_has_one() {
+    let p = sectioned_preview("ring the bank /calls");
+    assert_eq!(p.title, "ring the bank");
+    assert_eq!(p.project, None, "the Inbox");
+    assert_eq!(p.section_name.as_deref(), Some("Calls"));
+}
+
+#[test]
+fn a_section_its_project_lacks_is_an_error() {
+    let p = sectioned_preview("ring the bank #work /calls");
+    assert!(p.has_errors());
+    assert!(p.diagnostics.iter().any(|d| d.message.contains("section 'calls' in Work")), "{:?}", p.diagnostics);
+}
+
+#[test]
+fn a_slash_word_naming_no_section_stays_in_the_title_and_is_said() {
+    let p = sectioned_preview("tidy /etc and/or the garage");
+    assert_eq!(p.title, "tidy /etc and/or the garage");
+    assert_eq!(p.section, None);
+    assert!(!p.has_errors());
+    assert!(p.diagnostics.iter().any(|d| d.message.contains("'/etc' at position 6 names no section")), "{:?}", p.diagnostics);
+}

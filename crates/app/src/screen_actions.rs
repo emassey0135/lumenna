@@ -22,7 +22,7 @@ use crate::model::Screen;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScreenAction {
     /// What it is: the shared table's `id` ("new-task", "go-to-day", "what-now"), or
-    /// `new-project-inside`, `reminders-due`. Sent back as `Event::Key(id)`, unless `shell`.
+    /// `new-project-inside`, `new-section`, `reminders-due`. Sent back as `Event::Key(id)`, unless `shell`.
     pub id: String,
     /// Its name, in the shell's capitals.
     pub title: String,
@@ -78,7 +78,7 @@ pub(crate) fn place_action_ids(place: &Place) -> &'static [&'static str] {
         Place::Trash | Place::History => &["undo", "redo"],
         // The review lists what is due for a second look; nothing is added to it.
         Place::Review => &["undo", "redo"],
-        Place::Project(_) => &["new-task", "filter", "new-project-inside", "undo", "redo"],
+        Place::Project(_) => &["new-task", "filter", "new-project-inside", "new-section", "undo", "redo"],
         _ => &["new-task", "filter", "undo", "redo"],
     }
 }
@@ -121,6 +121,7 @@ pub fn screen_action_ids(place: Option<&Place>, home: bool, due: bool) -> Vec<&'
 pub fn action_title(id: &str, sentence: bool) -> String {
     let title = match id {
         "new-project-inside" => "New Project Inside",
+        "new-section" => "New Section",
         "reminders-due" => return lumenna_records::words::reminders_due(sentence),
         other => command_of(other).map_or(other, |command| command.title),
     };
@@ -134,7 +135,7 @@ pub fn screen_action(id: &str, sentence: bool, enabled: bool) -> ScreenAction {
         id: id.to_owned(),
         title: action_title(id, sentence),
         letter: crate::braille::command_letter(id).unwrap_or_default().to_owned(),
-        asks: id == "new-project-inside" || command_of(id).is_some_and(|command| command.asks),
+        asks: matches!(id, "new-project-inside" | "new-section") || command_of(id).is_some_and(|command| command.asks),
         shell: SHELLS.contains(&id),
         enabled,
     }
@@ -170,6 +171,7 @@ impl Screen {
         match id {
             "what-now" => self.today_offers(lumenna_records::ActionKind::WhatNow),
             "new-project-inside" => self.project_shown_offers_new_inside(),
+            "new-section" => self.new_section_shown().is_some(),
             "reminders-due" => !self.due.is_empty(),
             _ => true,
         }
@@ -196,6 +198,24 @@ impl Screen {
             .into_iter()
             .find(|entry| matches!(&entry.kind, SidebarKind::Place(found) if *found == place))
             .and_then(|entry| entry.actions.into_iter().find(|action| action.kind == lumenna_records::ActionKind::NewInside))
+    }
+
+    /// The project shown's New Section, as its sidebar row offers it.
+    pub(crate) fn new_section_shown(&self) -> Option<lumenna_records::Action> {
+        self.project_shown_offers(|action| action.kind == lumenna_records::ActionKind::New && action.subject == lumenna_records::Subject::Section)
+    }
+
+    /// The first of the project shown's sidebar row's actions `wanted` takes.
+    fn project_shown_offers(&self, wanted: impl Fn(&lumenna_records::Action) -> bool) -> Option<lumenna_records::Action> {
+        let place = self.place();
+        if !matches!(place, Place::Project(_)) {
+            return None;
+        }
+        let store = self.store.as_ref()?;
+        lumenna_records::places::sidebar(&store.snapshot, &store.now)
+            .into_iter()
+            .find(|entry| matches!(&entry.kind, SidebarKind::Place(found) if *found == place))
+            .and_then(|entry| entry.actions.into_iter().find(|action| wanted(action)))
     }
 
     /// The screen's own actions now: Home's while it is shown, else the place's.

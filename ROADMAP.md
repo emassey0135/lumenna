@@ -44,9 +44,6 @@ The order, and why:
   starting then, as Todoist's and Things' Upcoming and OmniFocus' Forecast are; today the day
   is shown one at a time (Go to Day). A listing, worded as every line is, so it reads as well
   as it looks.
-- **Sections within a project**: named headings a project's tasks sit under (Todoist's
-  sections, Things' headings, Reminders' sections), lighter than a subproject. A record of
-  their own, with the care in `crates/store/CLAUDE.md` for records two devices make alone.
 - **A countdown, and a timer outside the app**: a sitting's planned length counted down, with
   the core's words when it runs out (Tiimo counts down; TickTick has Pomodoro), beside the
   count up there is now; and a running timer shown where the system shows one: a Live Activity
