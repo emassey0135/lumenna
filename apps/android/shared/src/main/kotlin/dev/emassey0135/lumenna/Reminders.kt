@@ -389,7 +389,8 @@ object Reminders {
         // could not be shown, notifications being off, is missed, and said as missed once they
         // are on.
         if (show(context, core, firing.first, firing.second)) SystemShown(context).record("$key@$occurrence")
-        (context.applicationContext as? Ringer)?.ring(context, firing.first, since, now.toString())
+        // Do Not Disturb holding the notification back holds the ringing back too.
+        if (letThrough(context)) (context.applicationContext as? Ringer)?.ring(context, firing.first, since, now.toString())
         return firing.first
     }
 
@@ -641,6 +642,21 @@ object Reminders {
             },
         )
     }
+
+    /**
+     * Whether Do Not Disturb lets a reminder through now: off, or on with reminders among what it
+     * allows. Held back, its notification is posted silently, and nothing else of it interrupts the
+     * person either (a [Ringer] coming to the front).
+     */
+    fun letThrough(context: Context): Boolean = runCatching {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        when (manager.currentInterruptionFilter) {
+            NotificationManager.INTERRUPTION_FILTER_ALL, NotificationManager.INTERRUPTION_FILTER_UNKNOWN -> true
+            NotificationManager.INTERRUPTION_FILTER_PRIORITY ->
+                manager.notificationPolicy.priorityCategories and NotificationManager.Policy.PRIORITY_CATEGORY_REMINDERS != 0
+            else -> false
+        }
+    }.getOrDefault(true)
 
     /** What Android allows reminders here now. */
     fun access(context: Context): ReminderAccess =

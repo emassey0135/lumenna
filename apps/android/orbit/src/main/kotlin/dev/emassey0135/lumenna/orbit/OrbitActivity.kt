@@ -157,6 +157,10 @@ class OrbitActivity : ComponentActivity() {
 
         /** What [Reminders.shouldAskHeldBack] asks about here: background use. */
         const val HELD_BACKGROUND = "background"
+
+        // Where it is kept that the person was sent to allow all-files access once.
+        const val FILES = "files"
+        const val ASKED_ACCESS = "asked-all-files-access"
     }
 
     // ---- files ----------------------------------------------------------------------------
@@ -194,9 +198,39 @@ class OrbitActivity : ComponentActivity() {
     }
 
     /** A folder setting set to the folder chosen, starting where it is now. */
+    /**
+     * A folder setting set to the folder chosen, starting where it is now. The core writes backups
+     * into it by its path, which Android lets an app without all-files access do only in folders such
+     * as Documents and Download, and only for files it made there: so the person is sent once to allow
+     * all-files access first, as the BrailleSense app sends them. A file chosen needs none, the File
+     * Manager granting it.
+     */
     private fun chooseFolder(key: String, current: String) {
-        pick(FileRequest(PickKind.OPEN_FOLDER, startIn = current.ifEmpty { folder })) { chosen ->
-            ui?.send(ShellEvent.Settings(SettingsEvent.Set(key, chosen.path)))
+        withFolderAccess {
+            pick(FileRequest(PickKind.OPEN_FOLDER, startIn = current.ifEmpty { folder })) { chosen ->
+                ui?.send(ShellEvent.Settings(SettingsEvent.Set(key, chosen.path)))
+            }
+        }
+    }
+
+    // What waits for the person to come back from Android's all-files access screen.
+    private var afterAccess: (() -> Unit)? = null
+    private val access = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        afterAccess?.also { afterAccess = null }?.invoke()
+    }
+
+    /** Runs [then], first sending the person to allow all-files access if they never were. */
+    private fun withFolderAccess(then: () -> Unit) {
+        val asked = getSharedPreferences(FILES, MODE_PRIVATE)
+        if (android.os.Environment.isExternalStorageManager() || asked.getBoolean(ASKED_ACCESS, false)) return then()
+        asked.edit().putBoolean(ASKED_ACCESS, true).apply()
+        afterAccess = then
+        val sent = runCatching {
+            access.launch(android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, android.net.Uri.parse("package:$packageName")))
+        }.isSuccess
+        if (!sent) {
+            afterAccess = null
+            then()
         }
     }
 }

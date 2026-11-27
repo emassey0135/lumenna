@@ -68,6 +68,8 @@ pub(crate) fn in_sentence_case(view: &mut ViewModel) {
         for export in &mut settings.exports {
             export.label = sentence_case(std::mem::take(&mut export.label));
         }
+        // The folder setting's button in the settings page's dialog (`dialog::settings_page`).
+        settings.words.use_default_folder = sentence_case(std::mem::take(&mut settings.words.use_default_folder));
     }
     // The block form comes worded in the shell's capitals already: its heading names the block,
     // whose capitals are its own.

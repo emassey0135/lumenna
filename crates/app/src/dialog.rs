@@ -570,6 +570,15 @@ pub fn settings_page(view: &ViewModel, page: &str) -> Option<DialogShown> {
                 ..ControlShown::new(id, ControlType::Line, setting.title.clone(), sends)
             },
         });
+        // A folder chosen goes back to the default by a button of its own: a device that picks a
+        // folder in a dialog has no line to empty.
+        if setting.kind == SettingKind::Folder {
+            controls.push(ControlShown::press(
+                format!("default:{}", setting.key),
+                settings.words.use_default_folder.clone(),
+                vec![ShellEvent::Settings(SettingsEvent::Set(setting.key.clone(), "default".to_owned()))],
+            ));
+        }
         if let Some(problem) = &shown.problem {
             controls.push(ControlShown::text(format!("problem:{}", setting.key), problem.clone()));
         }
