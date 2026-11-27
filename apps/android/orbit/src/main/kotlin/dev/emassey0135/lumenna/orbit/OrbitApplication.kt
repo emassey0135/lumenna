@@ -5,6 +5,8 @@ import android.content.Context
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.GlanceShower
+import dev.emassey0135.lumenna.Glances
+import dev.emassey0135.lumenna.TimerNotification
 import dev.emassey0135.lumenna.Reminders
 import dev.emassey0135.lumenna.Ringer
 import dev.emassey0135.lumenna.Ringing
@@ -20,12 +22,19 @@ class OrbitApplication : Application(), CoreHolder, GlanceShower, Ringer {
         super.onCreate()
         SyncWorker.schedulePeriodic(this)
         Thread({
-            core.getOrNull()?.let { Reminders.follow(this, it) }
+            core.getOrNull()?.let {
+                Reminders.follow(this, it)
+                // What follows the glance's moments: here only a running timer's notification.
+                Glances.follow(this, it)
+            }
         }, "lumenna-open").start()
     }
 
-    // No home-screen widgets on these devices.
-    override fun showGlances(context: Context) {}
+    /**
+     * No home-screen widgets on these devices: only a running timer's ongoing notification, in
+     * Satellite's shade with the reminders. How much is left is said on request too (Time Left).
+     */
+    override fun showGlances(context: Context) = TimerNotification.show(context)
 
     /**
      * A reminder going off brings the app to the front, as Orbit's own Alarm Clock rings, where it

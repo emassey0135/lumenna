@@ -5,7 +5,8 @@
 //! Widget systems ask for a day ahead, not a redraw every minute, so a glance is a
 //! [`timeline`]: one [`GlanceMoment`] from now, then one at each moment what it shows changes
 //! (a block starts or ends, a due time passes, midnight), each whole. A running timer needs no
-//! moment of its own: its start is given, and the platform counts from it.
+//! moment of its own: its start is given, and the platform counts from it, or down to when its
+//! planned length runs out.
 
 use std::collections::BTreeSet;
 
@@ -55,6 +56,14 @@ pub struct GlanceTimer {
     /// The instant counting from which gives everything logged: when the timer started, less
     /// what was logged before. A platform shows the time since, and needs no other moment.
     pub counting_from: String,
+    /// The sitting's planned length, when it has one: what a countdown counts down from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_mins: Option<u32>,
+    /// When the planned length runs out, RFC 3339, while some of it is left as the timer
+    /// started: a platform counts down to it (a Live Activity, an ongoing notification), and
+    /// counts up from `counting_from` without one. The core says once when it comes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runs_out_at: Option<String>,
 }
 
 /// A task a glance names.
@@ -253,6 +262,8 @@ fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
             task: snapshot.tasks.get(&a.task_id).map(|t| t.title.clone()).unwrap_or_default(),
             block: in_block.map(|b| b.title.clone()).unwrap_or_default(),
             counting_from: counting_from.to_string(),
+            planned_mins: a.planned_mins,
+            runs_out_at: a.runs_out_at().map(|at| at.to_string()),
         })
     });
     let rows = crate::lists::tasks(snapshot, "overdue | today", now)?;

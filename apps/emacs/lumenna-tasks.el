@@ -57,6 +57,7 @@ that goes there names it, and the day's buffer is its group's."
     ("Tasks" (lumenna-word '(command "go-tasks"))) ("Trash" (lumenna-word '(command "go-trash")))
     ("Blocks" (lumenna-word '(command "go-blocks"))) ("History" (lumenna-word '(command "go-history")))
     ("Review" (lumenna-word '(command "go-review")))
+    ("Report" (lumenna-word '(command "go-report")))
     ("Today" (lumenna-word '(group "day")))
     ((pred (lambda (p) (plist-get p :Project))) (plist-get place :Project))
     ((pred (lambda (p) (plist-get p :Label))) (plist-get place :Label))
@@ -74,7 +75,8 @@ that goes there names it, and the day's buffer is its group's."
 A buffer that shows it already is shown again."
   (if (equal place "Today")
       (lumenna-today)
-    (let ((mode (pcase place ("Trash" #'lumenna-trash-mode) ("Review" #'lumenna-review-mode) ("Blocks" #'lumenna-blocks-mode) (_ #'lumenna-tasks-mode)))
+    (let ((mode (pcase place ("Trash" #'lumenna-trash-mode) ("Review" #'lumenna-review-mode)
+                  ("Blocks" #'lumenna-blocks-mode) ("Report" #'lumenna-report-mode) (_ #'lumenna-tasks-mode)))
           (name (lumenna--buffer-name (lumenna--place-title place))))
       (lumenna--show-screen name mode (list (list :Open place)))
       (setq lumenna--place place))))
@@ -376,6 +378,24 @@ it with \\[lumenna-act-at-point].
 tasks the planner asks about."
   (interactive)
   (lumenna-open-place "Review"))
+
+;;;; The time report
+
+(define-derived-mode lumenna-report-mode lumenna-list-mode "Lumenna Time Report"
+  "What sittings logged over the last weeks, by week, project and label.
+Each heading folds its totals (TAB); a total has no actions.
+
+\\{lumenna-report-mode-map}"
+  (lumenna--mode-name '(command "go-report"))
+  (setq-local lumenna--draw #'lumenna--list-rows)
+  ;; The core's Enter (`open'): a heading folds; a total runs nothing, in the app's words.
+  (setq-local lumenna--activate (lambda (_row) (lumenna-press "open"))))
+
+;;;###autoload
+(defun lumenna-report ()
+  "Show the time report: what sittings logged, beside the estimates."
+  (interactive)
+  (lumenna-open-place "Report"))
 
 ;;;; Menus
 

@@ -249,7 +249,8 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
         items.forEach { (shown, line) ->
             item {
                 val task = shown.row
-                val actions = app.rowActions(task.id, list?.offeredOf(shown).orEmpty()).sortedByDescending { it.primary }
+                val offered = list?.offeredOf(shown).orEmpty()
+                val actions = app.rowActions(task.id, offered).sortedByDescending { it.primary }
                 RowButton(
                     task.title,
                     detail = line?.detail?.ifEmpty { null },
@@ -259,9 +260,13 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
                     key = task.id,
                     focus = focus,
                     swatch = task.swatch,
+                    heading = task.role == "group",
+                    // A row the core offers nothing on (the time report's) is no task: it opens nothing.
                     onClick = {
-                        app.send(ShellEvent.Focus(task.id))
-                        navigator.open(Screen.Task(task.id))
+                        if (offered.isNotEmpty()) {
+                            app.send(ShellEvent.Focus(task.id))
+                            navigator.open(Screen.Task(task.id))
+                        }
                     },
                 )
             }

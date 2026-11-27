@@ -24,6 +24,7 @@
         'Get-LumennaChoice'
         'Get-LumennaReplan'
         'Get-LumennaTimer'
+        'Get-LumennaTimeReport'
         'Get-LumennaDayPlan'
         'Add-LumennaTask'
         'Set-LumennaTask'

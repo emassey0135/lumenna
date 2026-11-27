@@ -24,6 +24,11 @@ struct LumennaWidgets: WidgetBundle {
         #else
         TodayWidget()
         #endif
+        #if os(iOS)
+        // The running timer on the Lock Screen and in the Dynamic Island, from the core's
+        // `TimerControl.timer`, which the app starts and keeps (`TimerActivities`).
+        TimerLiveActivity()
+        #endif
         // Control Center's, the core's (`controls()`).
         if #available(iOS 18.0, macOS 26.0, watchOS 26.0, *) {
             TimerControlWidget()
@@ -152,13 +157,13 @@ enum GlanceSource {
     static func timeline() -> (entries: [GlanceTimelineEntry], fresh: Bool) {
         let now = Date()
         let written = GlanceWidgets.entries(read())
-        if !GlanceWidgets.stale(written, at: now) { return (written, true) }
+        if !GlanceWidgets.stale(written, at: now) { return (GlanceWidgets.counted(written, from: now), true) }
         #if !os(watchOS) && !(os(macOS) && !APP_STORE)
         if let worked = try? GlanceStore.visit(AppGroup.store, { try $0.glance(hours: GlanceFile.hours, locale: Writing()) }) {
             // Kept for the next reading, as the app would have written it.
             if let container = AppGroup.container { try? GlanceFile(directory: container) { worked }.writeNow() }
             let entries = GlanceWidgets.entries(worked)
-            if !entries.isEmpty { return (entries, true) }
+            if !entries.isEmpty { return (GlanceWidgets.counted(entries, from: now), true) }
         }
         #endif
         let last = written.last?.glance ?? LumennaApp.glanceEmpty(locale: Writing())
@@ -171,7 +176,9 @@ enum GlanceSource {
         let entries = timeline().entries
         let now = Date()
         guard let current = LumennaApp.glanceCurrent(entries: entries.map(\.glance), now: Instant.rfc3339(now)) else { return entries[0] }
-        return entries.first { $0.glance == current } ?? GlanceTimelineEntry(date: now, glance: current)
+        // The latest of its moments come, a countdown's minute among them.
+        return entries.last { $0.glance == current && $0.date <= now } ?? entries.first { $0.glance == current }
+            ?? GlanceTimelineEntry(date: now, glance: current)
     }
 
     /// The core's words for a day with nothing in it, now.

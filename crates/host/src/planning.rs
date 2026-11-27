@@ -586,6 +586,9 @@ impl Lumenna {
                 minutes: elapsed.mins,
                 capped: elapsed.capped,
                 running: false,
+                planned_mins: None,
+                left_secs: None,
+                runs_out_at: None,
             };
             if change.is_empty() {
                 return Ok(Timer {
@@ -634,6 +637,9 @@ impl Lumenna {
                 minutes,
                 capped,
                 running: false,
+                planned_mins: None,
+                left_secs: None,
+                runs_out_at: None,
             };
 
             if let Some(minutes) = minutes {

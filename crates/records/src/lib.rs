@@ -29,6 +29,7 @@ pub mod plan;
 pub mod proposals;
 pub mod reminders;
 pub mod replan;
+pub mod report;
 pub mod resolve;
 pub mod review;
 pub mod search;

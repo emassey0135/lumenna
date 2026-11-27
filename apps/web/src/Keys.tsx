@@ -34,6 +34,7 @@ export const WEB: Record<string, string[]> = {
   "go-trash": ["Alt+Shift+4"],
   "go-history": ["Alt+Shift+5"],
   "go-review": ["Alt+Shift+6"],
+  "go-report": ["Alt+Shift+7"],
   "next-pane": ["Alt+Shift+Period"],
   "previous-pane": ["Alt+Shift+Comma"],
   "mark-done": ["Alt+Shift+K"],
@@ -46,6 +47,8 @@ export const WEB: Record<string, string[]> = {
   "next-day": ["Alt+Shift+Page Down"],
   "go-to-now": ["Alt+Shift+O"],
   "go-to-day": ["Alt+Shift+G"],
+  // R for remaining: T and L are the browser's. Ctrl+Shift+T reopens a closed tab.
+  "time-left": ["Alt+Shift+R"],
   "keyboard-help": ["?"],
 };
 

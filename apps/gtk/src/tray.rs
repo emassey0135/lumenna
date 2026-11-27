@@ -32,7 +32,7 @@ struct Tray {
 thread_local! {
     static HANDLE: RefCell<Option<ksni::Handle<Tray>>> = const { RefCell::new(None) };
     /// The control as last given to the tray, so an unchanged one is not sent again.
-    static SHOWN: RefCell<Option<TimerControl>> = const { RefCell::new(None) };
+    static SHOWN: RefCell<Option<(TimerControl, String)>> = const { RefCell::new(None) };
 }
 
 impl ksni::Tray for Tray {
@@ -91,7 +91,7 @@ impl ksni::Tray for Tray {
 /// Write the report"), as the core's lines join a title and its detail; greyed where a press
 /// would do nothing.
 fn timer_item(control: &TimerControl) -> MenuItem<Tray> {
-    let text = if control.detail.is_empty() { control.action.clone() } else { format!("{}, {}", control.action, control.detail) };
+    let text = lumenna_app::glance::control_line(control, jiff::Timestamp::now(), false);
     StandardItem {
         label: crate::menus::label("timer", &text, false),
         enabled: control.enabled,
@@ -137,10 +137,13 @@ async fn read() {
         return;
     }
     let Ok(control) = crate::off_main(move || device.timer_control()).await else { return };
-    if SHOWN.with_borrow(|shown| shown.as_ref() == Some(&control)) {
+    // Its line too, which counts the minutes while the control itself stays the same.
+    let line = lumenna_app::glance::control_line(&control, jiff::Timestamp::now(), false);
+    let shown = (control.clone(), line);
+    if SHOWN.with_borrow(|before| before.as_ref() == Some(&shown)) {
         return;
     }
-    SHOWN.set(Some(control.clone()));
+    SHOWN.set(Some(shown));
     let Some(handle) = HANDLE.with_borrow(Clone::clone) else { return };
     handle.update(move |tray| tray.timer = Some(control)).await;
 }

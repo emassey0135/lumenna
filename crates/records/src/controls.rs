@@ -8,6 +8,7 @@ use lumenna_core::snapshot::Snapshot;
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
+use crate::glance::GlanceTimer;
 
 /// What kind of control a platform draws.
 #[boltffi::data]
@@ -74,6 +75,11 @@ pub struct TimerControl {
     pub action_sentence: String,
     /// Whether a press does anything: not when nothing runs and nothing can be started.
     pub enabled: bool,
+    /// The timer running, as a glance has it (`GlanceTimer`): when it counts from, and when its
+    /// planned length runs out, for a tray, a menu bar item, a Live Activity or an ongoing
+    /// notification to count. None while nothing runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timer: Option<GlanceTimer>,
 }
 
 /// The sitting whose timer runs, if one does.
@@ -98,14 +104,27 @@ pub fn timer_now(snapshot: &Snapshot, now: &Zoned) -> Result<crate::Timer> {
         let task = snapshot.tasks.get(&sitting.task_id).map(|t| t.title.clone()).unwrap_or_default();
         let since = sitting.running_since.map_or(0, |since| now.timestamp().duration_since(since).as_mins().max(0));
         let minutes = sitting.accumulated_mins.saturating_add(u32::try_from(since).unwrap_or(u32::MAX));
+        let left_secs = sitting.left_secs(now.timestamp());
+        let so_far = crate::words::duration(minutes);
+        let announcement = match (left_secs, sitting.planned_mins) {
+            (Some(left), Some(planned)) => format!(
+                "The timer is running on {task}: {so_far} so far, {} of {}.",
+                crate::words::left(left),
+                crate::words::duration(planned)
+            ),
+            _ => format!("The timer is running on {task}: {so_far} so far."),
+        };
         return Ok(crate::Timer {
-            announcement: format!("The timer is running on {task}: {} so far.", crate::words::duration(minutes)),
+            announcement,
             notices: Vec::new(),
             changed: false,
             assignment: sitting.id.to_string(),
             minutes,
             capped: false,
             running: true,
+            planned_mins: sitting.planned_mins,
+            left_secs,
+            runs_out_at: sitting.runs_out_at().map(|at| at.to_string()),
         });
     }
     let control = timer_control(snapshot, now)?;
@@ -114,7 +133,18 @@ pub fn timer_now(snapshot: &Snapshot, now: &Zoned) -> Result<crate::Timer> {
     } else {
         format!("{NOTHING_RUNNING} Nothing would start: {}", control.detail)
     };
-    Ok(crate::Timer { announcement, notices: Vec::new(), changed: false, assignment: String::new(), minutes: 0, capped: false, running: false })
+    Ok(crate::Timer {
+        announcement,
+        notices: Vec::new(),
+        changed: false,
+        assignment: String::new(),
+        minutes: 0,
+        capped: false,
+        running: false,
+        planned_mins: None,
+        left_secs: None,
+        runs_out_at: None,
+    })
 }
 
 /// The timer's control at `now`.
@@ -129,11 +159,13 @@ pub fn timer_control(snapshot: &Snapshot, now: &Zoned) -> Result<TimerControl> {
         action: action.to_owned(),
         action_sentence: crate::fields::sentence_case(action.to_owned()),
         enabled,
+        timer: None,
     };
     let running = snapshot.assignments.values().find(|a| a.running_since.is_some());
     if let Some(sitting) = running {
         let task = snapshot.tasks.get(&sitting.task_id).map(|t| t.title.clone()).unwrap_or_default();
-        return Ok(control(true, task, "Stop Timer", true));
+        let timer = crate::glance::timeline(snapshot, now, now.timestamp())?.into_iter().next().and_then(|moment| moment.timer);
+        return Ok(TimerControl { timer, ..control(true, task, "Stop Timer", true) });
     }
     let choices = crate::choices::what_now(snapshot, now)?;
     Ok(match choices.choices.first() {

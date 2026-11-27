@@ -256,6 +256,51 @@ class Reminders(unittest.TestCase):
         self.assertEqual(len(replans), 2, script.titles)
         self.assertNotIn("Nothing needs to change", replans[0])
 
+    def running_today(self, title: str, minutes: int) -> str:
+        """A sitting of a task `title` planned for `minutes`, its timer started now, in a block
+        all of today by the real clock, the blocks' own reminders off: its id."""
+        self.client.call("config.set", key="default-block-reminders", value="")
+        self.away_from_midnight(2)
+        date = self.block_at("Focus", -1, minutes=600)
+        block = self.client.call("plan", date=date)["blocks"][0]["id"]
+        task = self.client.call("task.add", text=title)["task"]["id"]
+        self.client.call("assign", task=task, block=block, date=date, minutes=minutes)
+        sitting = self.client.call("plan", date=date)["blocks"][0]["assignments"][0]["id"]
+        self.client.call("start", assignment=sitting)
+        return sitting
+
+    @staticmethod
+    def moment(after_secs: float = 0) -> str:
+        """Now by the real clock, `after_secs` on, as the core reads a moment."""
+        when = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=after_secs)
+        return when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def test_the_service_says_once_when_a_sittings_planned_length_runs_out(self):
+        self.running_today("Essay", 25)
+        at = {"now": self.moment()}
+        giver = self.giver(at)
+        self.assertEqual(giver.once(), [])
+        at["now"] = self.moment(25 * 60 + 30)
+        self.assertEqual(giver.once(), ["Essay's 25 minutes are up"])
+        at["now"] = self.moment(27 * 60)
+        self.assertEqual(giver.once(), [], "said once")
+
+    def test_a_time_up_is_stopped_from_what_came_due_by_its_letter_and_offers_no_snooze(self):
+        sitting = self.running_today("Essay", 25)
+        # What the service gave, as the app finds it: its timer's time ran out.
+        self.store.caught_up()
+        self.session.send(L.ShellEventDue(L.DueEventLook(since=self.moment(-60), now=self.moment(25 * 60 + 30))))
+        due = self.session.view().due
+        self.assertEqual([button.id for button in due[0].buttons], ["stop", "dismiss"])
+        script = self.run_script(
+            [("key", "Essay's 25 minutes", "z"), ("key", "Essay's 25 minutes", "t"), ("back",)],
+            lambda: reminder_lists.due(self.session),
+        )
+        self.assertNotIn("Snoozed for 10 minutes", script.said)
+        self.assertEqual(self.session.view().due, [])
+        running = [a for b in self.client.call("plan")["blocks"] for a in b["assignments"] if a["id"] == sitting]
+        self.assertFalse(running[0]["running"])
+
     def test_replan_where_a_reminder_does_not_offer_it_says_why(self):
         self.block_at("Deep work", 3)
         script = self.run_script(

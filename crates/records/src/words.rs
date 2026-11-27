@@ -106,10 +106,52 @@ pub fn sitting_details(sitting: &crate::types::PlanAssignment) -> Vec<String> {
     if sitting.minutes > 0 {
         parts.push(format!("{} logged", duration(sitting.minutes)));
     }
+    if let Some(left_secs) = sitting.left_secs {
+        parts.push(left(left_secs));
+    }
     if sitting.capped {
         parts.push("capped, the timer looks forgotten".to_owned());
     }
     parts
+}
+
+/// A countdown, said: "12 minutes left", "time is up" at nothing, "3 minutes over" past it. A
+/// part of a minute left counts as a minute, so it never says nothing is left while some is.
+#[must_use]
+pub fn left(left_secs: i64) -> String {
+    if left_secs > 0 {
+        format!("{} left", duration(u32::try_from((left_secs + 59) / 60).unwrap_or(u32::MAX)))
+    } else if left_secs > -60 {
+        "time is up".to_owned()
+    } else {
+        format!("{} over", duration(u32::try_from(-left_secs / 60).unwrap_or(u32::MAX)))
+    }
+}
+
+/// [`left`] as a braille display shows it: "0:12 left", "up", "0:03 over".
+#[must_use]
+pub fn left_braille(left_secs: i64) -> String {
+    if left_secs > 0 {
+        format!("{} left", duration_braille(u32::try_from((left_secs + 59) / 60).unwrap_or(u32::MAX)))
+    } else if left_secs > -60 {
+        "up".to_owned()
+    } else {
+        format!("{} over", duration_braille(u32::try_from(-left_secs / 60).unwrap_or(u32::MAX)))
+    }
+}
+
+/// What is said, once, as a sitting's planned length runs out with its timer running: "Essay's
+/// 25 minutes are up". The timer goes on; Stop Timer ends it.
+#[must_use]
+pub fn time_up(task: &str, planned_mins: u32) -> String {
+    format!("{task}'s {} {} up", duration(planned_mins), if planned_mins == 1 { "is" } else { "are" })
+}
+
+/// [`time_up`] said of the past, in a summary of what was missed: "Essay ran past its 25
+/// minutes".
+#[must_use]
+pub fn time_up_missed(task: &str, planned_mins: u32) -> String {
+    format!("{task} ran past its {}", duration(planned_mins))
 }
 
 /// [`sitting_details`] as a braille display shows them: lengths as [`duration_braille`],
@@ -123,6 +165,9 @@ pub fn sitting_braille(sitting: &crate::types::PlanAssignment) -> Vec<String> {
     };
     if sitting.minutes > 0 {
         parts.push(format!("{} logged", duration_braille(sitting.minutes)));
+    }
+    if let Some(left_secs) = sitting.left_secs {
+        parts.push(left_braille(left_secs));
     }
     if sitting.capped {
         parts.push("capped".to_owned());
@@ -426,6 +471,12 @@ pub fn phone_sync(phone: &str, status: &PhoneSync) -> String {
     }
 }
 
+/// What a notification's Stop Timer says once pressed, where the app is not there to say it.
+#[must_use]
+pub fn timer_stopped() -> String {
+    "Timer stopped".to_owned()
+}
+
 /// A timer running, as a glance says it beside its task.
 #[must_use]
 pub fn timer_running() -> String {
@@ -485,6 +536,12 @@ pub fn overdue_count(count: u32) -> String {
 #[must_use]
 pub fn snooze_not_offered() -> String {
     "What was missed can be dismissed, not snoozed.".to_owned()
+}
+
+/// Why a sitting's time run out is not snoozed: it is said once.
+#[must_use]
+pub fn time_up_not_snoozed() -> String {
+    "Time running out is said once, not snoozed.".to_owned()
 }
 
 /// `text` in sentence case where `sentence`, else as given (Title Case).

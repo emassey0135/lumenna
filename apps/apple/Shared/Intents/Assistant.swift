@@ -55,6 +55,23 @@ final class AssistantStore: @unchecked Sendable {
         }
     }
 
+    /// One of a sitting's timer's own calls on the store (`Device.pauseTimer`, `stopTimer`): a
+    /// Live Activity's button. A refusal is the core's sentence; a widget's store hears of the
+    /// change while it is still open, as after any operation.
+    @discardableResult
+    func timer(_ body: (LumennaApp.Device) throws -> LumennaApp.Timer) throws -> LumennaApp.Timer {
+        do {
+            return try using { device in
+                let before = changed == nil ? nil : try? device.heads()
+                let timer = try body(device)
+                if let changed, (try? device.heads()) != before { changed(device) }
+                return timer
+            }
+        } catch {
+            throw AssistantRefusal(error)
+        }
+    }
+
     /// One task whole, by its identifier.
     func task(_ id: String) throws -> LumennaApp.TaskDetail? {
         guard case let .task(shown) = try assist("show_task", ["id": .text(id)]) else { return nil }

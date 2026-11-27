@@ -36,7 +36,8 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   row. As a menu opens its items take the app's names and states (`ViewModel::commands`: Mark Not
   Done), grey only where they act on what the app judged, and are enabled again as it closes,
   since an accelerator does nothing while its item is grey. The tray adds the timer's control
-  (`Device::timer_control`, `toggle_timer`) before Exit.
+  (`Device::timer_control`, `toggle_timer`) before Exit, named as the core reads it at the
+  moment the menu opens (`glance::control_line`: "Stop Timer, Essay, 12 minutes left").
 - **The toolbar is the screen's own actions** (`toolbar.rs`, `ViewModel::screen_actions`, drawn
   from the app's current view each turn), above the list, as the Mac's toolbar and the web's
   buttons: the core's order and Title Case titles, "..." after one that `asks`, greyed where not
@@ -153,7 +154,8 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   in Windows' clock) as Adaptive Cards (`src/widget.rs`, its templates in `src/widget/`), one
   definition for each of the core's widgets (`glance_widgets()`, whose test checks the
   manifest's names and descriptions), the card chosen by size: Now, small, the headline and the
-  timer running; Today, medium, the headline, the next block and the tasks due,
+  timer running (counted down to its planned length where it has one, `glance::countdown`);
+  Today, medium, the headline, the next block and the tasks due,
   each the glance's own line (`GlanceEntry::tasks`) beside a button named as the glance names
   Mark Done (`mark_done`, Title Case), run as `assist("complete_task")`, then New Task (the
   core's `NewTask` part, its launch shortcut's name), whose `launch` verb starts the app with
@@ -248,7 +250,9 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   identity of their own (`LUMENNA_APP_ID` for tests), each as the app lists it
   (`lumenna_app::due::arrived`: the summary of what was missed, then each due) with its buttons
   in the core's order and words (`Due::buttons`): Carry Forward and Replan where a firing has
-  them, then Dismiss and Snooze; a button's sentence is its change's, else the core's `said`.
+  them, then Dismiss and Snooze; a sitting's time run out has Stop Timer and Dismiss alone, Stop
+  Timer stopping `sitting`'s timer and dismissing the firing; a button's sentence is its change's,
+  else the core's `said`.
   An overrun's Replan is `DueEvent::ReplanFiring`, naming the firing as the device delivered it
   (not `DueEvent::Replan`, which works on the reminders the app looked for itself): the app opens
   Today with Replan from Now and dismisses the warning once something is replanned. Tests can read a shown toast's XML from the

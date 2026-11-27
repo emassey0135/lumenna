@@ -111,7 +111,7 @@ final class ReminderScheduleTests: XCTestCase {
             LumennaApp.DueReminder(
                 key: "key\(minutes)", occurrence: "2026-10-10", at: Instant.rfc3339(now.addingTimeInterval(TimeInterval(minutes * 60 + 30))),
                 target: "t", kind: "block", title: "T", text: "T starts", missed: "T started", dismiss: "Dismiss", snooze: "Snooze",
-                carry: "", replan: ""
+                carry: "", replan: "", stop: "", sitting: ""
             )
         }.reversed()
         let requests = Reminders.requests(Array(due), after: now)
@@ -224,7 +224,7 @@ final class ReminderScheduleTests: XCTestCase {
         LumennaApp.DueReminder(
             key: "k", occurrence: day, at: "\(day)T10:00:00Z", target: "series", kind: "block", title: "Deep work",
             text: "Deep work ends now. Carry the rest forward?", missed: "Deep work ended", dismiss: "Dismiss",
-            snooze: "Snooze", carry: carry, replan: replan
+            snooze: "Snooze", carry: carry, replan: replan, stop: "", sitting: ""
         )
     }
 
@@ -253,5 +253,69 @@ final class ReminderScheduleTests: XCTestCase {
         let responder = ReminderResponder(device: core.app.device) { opened = $0 }
         responder.answer(Reminders.replanAction, info: Reminders.content(warned).userInfo)
         XCTAssertEqual(opened?.replan, true)
+    }
+
+    // MARK: - A sitting's planned length running out
+
+    /// A sitting of `minutes` in a block under way, its timer running; its identifier.
+    private func runningSitting(minutes: UInt32) throws -> String {
+        let (series, start) = try block("Deep work", inMinutes: -5)
+        let task = try XCTUnwrap(core.app.device.addTask(text: "Essay").task?.id)
+        let day = Clock.isoDay(start)
+        let block = try XCTUnwrap(core.app.device.plan(date: day).blocks.first { $0.series == series })
+        _ = try core.app.device.assign(task: task, block: block.id, date: day, minutes: minutes)
+        let sitting = try XCTUnwrap(core.app.device.plan(date: day).blocks.first { $0.series == series }?.assignments.first?.id)
+        _ = try AssistantStore(device: core.app.device).assist("start_timer", ["assignment": .text(sitting)])
+        return sitting
+    }
+
+    func testATimeRunningOutOffersStopTimerThenDismissAndNeverSnooze() throws {
+        let up = LumennaApp.DueReminder(
+            key: "time-up s", occurrence: day, at: "\(day)T10:25:00Z", target: "task", kind: "task", title: "Essay",
+            text: "Essay's 25 minutes are up", missed: "Essay's 25 minutes ran out", dismiss: "Dismiss", snooze: "",
+            carry: "", replan: "", stop: "Stop Timer", sitting: "s"
+        )
+        let content = Reminders.content(up)
+        XCTAssertEqual(content.categoryIdentifier, Reminders.stopCategory)
+        XCTAssertEqual(content.userInfo["sitting"] as? String, "s", "what Stop Timer stops")
+        let categories = Reminders.categories(for: [up])
+        let stop = try XCTUnwrap(categories.first { $0.identifier == Reminders.stopCategory })
+        XCTAssertEqual(stop.actions.map(\.title), ["Stop Timer", "Dismiss"], "the core's order and words")
+        XCTAssertEqual(stop.actions.map(\.identifier), [Reminders.stopAction, Reminders.dismissAction])
+        XCTAssertFalse(stop.actions.contains { $0.identifier == Reminders.snoozeAction }, "said once, never snoozed")
+        XCTAssertFalse(stop.actions.contains { $0.options.contains(.foreground) }, "an ordinary notification, nothing opened")
+        XCTAssertFalse(categories.contains { $0.actions.contains { $0.title.isEmpty } }, "no button named by an empty snooze")
+    }
+
+    func testATimerRunningWithAPlannedLengthArmsItsRunningOutWithItsSitting() throws {
+        let sitting = try runningSitting(minutes: 20)
+        rearm()
+        let up = try XCTUnwrap(centre.scheduled.first { $0.content.categoryIdentifier == Reminders.stopCategory })
+        XCTAssertEqual(up.content.userInfo["sitting"] as? String, sitting)
+        let fires = try XCTUnwrap(moment(up))
+        XCTAssertEqual(fires.timeIntervalSinceNow, 20 * 60, accuracy: 90, "when its planned length runs out")
+        let category = try XCTUnwrap(centre.categories.first { $0.identifier == Reminders.stopCategory })
+        XCTAssertEqual(category.actions.first?.title, "Stop Timer")
+    }
+
+    func testStopTimerFromTheNotificationStopsTheSittingsTimerAndItIsArmedNoMore() throws {
+        try runningSitting(minutes: 20)
+        rearm()
+        let up = try XCTUnwrap(centre.scheduled.first { $0.content.categoryIdentifier == Reminders.stopCategory })
+        ReminderResponder(device: core.app.device) { _ in }.answer(Reminders.stopAction, info: up.content.userInfo)
+        XCTAssertFalse(try core.app.device.timerControl().running, "the timer stopped")
+        centre.scheduled = []
+        rearm()
+        XCTAssertFalse(centre.scheduled.contains { $0.content.categoryIdentifier == Reminders.stopCategory }, "nothing runs out now")
+    }
+
+    func testPausingTheTimerDisarmsItsRunningOut() throws {
+        let sitting = try runningSitting(minutes: 20)
+        rearm()
+        XCTAssertTrue(centre.scheduled.contains { $0.content.categoryIdentifier == Reminders.stopCategory })
+        _ = try core.app.device.pauseTimer(assignment: sitting)
+        centre.scheduled = []
+        rearm()
+        XCTAssertFalse(centre.scheduled.contains { $0.content.categoryIdentifier == Reminders.stopCategory })
     }
 }

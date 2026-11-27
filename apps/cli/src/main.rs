@@ -315,6 +315,9 @@ pub(crate) enum Command {
     /// asks about, each with its question in short. `lum task show` says a task's in full,
     /// `lum task reconsider` answers it and `lum project reviewed` marks a project reviewed.
     Review,
+    /// The time report: what sittings logged over the last four weeks, by week, project and
+    /// label, with the estimates of the tasks worked beside it.
+    Report,
 
     /// Undo the last change made on this device.
     ///
@@ -1574,6 +1577,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         Command::Notify { speak } => return notify(profile, *speak),
         Command::History => Response::new(profile.history()?),
         Command::Review => Response::new(profile.review()?),
+        Command::Report => Response::new(profile.report()?),
         Command::Undo => Response::new(profile.undo()?),
         Command::Redo => Response::new(profile.redo()?),
         Command::Backup { to } => {

@@ -1,12 +1,16 @@
 package dev.emassey0135.lumenna
 
 import android.service.quicksettings.Tile
+import dev.emassey0135.lumenna.app.GlanceTimer
 import dev.emassey0135.lumenna.app.TimerControl
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TimerTileTest {
-    private val running = TimerControl(true, "Essay", "Pause timer", "Pause the timer", true)
+    private val running = TimerControl(
+        true, "Essay", "Pause timer", "Pause the timer", true,
+        GlanceTimer("sitting-1", "Essay", "Deep work", "2026-11-27T10:00:00Z", 25u, "2026-11-27T10:25:00Z"),
+    )
 
     // The core's `timer_described`, its parts shown, without the native library.
     private val described = { name: String, action: String, detail: String, locked: Boolean -> "$name|$action|$detail|$locked" }
@@ -33,7 +37,7 @@ class TimerTileTest {
 
     @Test
     fun aTimerThatCannotStartIsUnavailableAndOneNotRunningIsOff() {
-        val nothing = TimerControl(false, "Nothing to time", "Start timer", "Start the timer", false)
+        val nothing = TimerControl(false, "Nothing to time", "Start timer", "Start the timer", false, null)
         assertEquals(Tile.STATE_UNAVAILABLE, TimerTile.shown(nothing, locked = false, name = "Timer", described = described).state)
         assertEquals(Tile.STATE_INACTIVE, TimerTile.shown(nothing.copy(enabled = true), locked = false, name = "Timer", described = described).state)
     }

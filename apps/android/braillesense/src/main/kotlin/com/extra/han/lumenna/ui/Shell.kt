@@ -611,6 +611,7 @@ class Shell(
             "go-trash" -> goTo(id, Place.Trash)
             "go-history" -> goTo(id, Place.History)
             "go-review" -> goTo(id, Place.Review)
+            "go-report" -> goTo(id, Place.Report)
             else -> send(ShellEvent.Key(id))
         }
     }

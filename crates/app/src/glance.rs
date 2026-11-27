@@ -110,14 +110,57 @@ pub fn current(entries: &[GlanceEntry], now: jiff::Timestamp) -> Option<&GlanceE
 #[must_use]
 pub fn redraw_at(entries: &[GlanceEntry], now: jiff::Timestamp) -> Option<jiff::Timestamp> {
     let next = entries.iter().filter_map(|entry| entry.moment.at.parse::<jiff::Timestamp>().ok()).find(|at| *at > now);
-    let minute = current(entries, now)
-        .and_then(|entry| entry.moment.timer.as_ref())
-        .and_then(|timer| timer.counting_from.parse::<jiff::Timestamp>().ok())
-        .and_then(|from| {
-            let passed = now.duration_since(from).as_mins().max(0);
-            from.checked_add(jiff::SignedDuration::from_mins(passed + 1)).ok()
-        });
-    [next, minute].into_iter().flatten().min()
+    let timer = current(entries, now).and_then(|entry| entry.moment.timer.as_ref());
+    let minute = timer.and_then(|timer| timer.counting_from.parse::<jiff::Timestamp>().ok()).and_then(|from| {
+        let passed = now.duration_since(from).as_mins().max(0);
+        from.checked_add(jiff::SignedDuration::from_mins(passed + 1)).ok()
+    });
+    // A countdown's minutes turn at whole minutes before it runs out, not since it started.
+    let down = timer.and_then(|timer| timer.runs_out_at.as_deref()?.parse::<jiff::Timestamp>().ok()).and_then(|out| {
+        let secs = out.duration_since(now).as_secs();
+        let step = if secs > 0 { (secs - 1).rem_euclid(60) + 1 } else { 60 - (-secs).rem_euclid(60) };
+        now.checked_add(jiff::SignedDuration::from_secs(step)).ok()
+    });
+    [next, minute, down].into_iter().flatten().min()
+}
+
+/// How much of a timer's planned length is left at `now`, said: "12 minutes left", "time is up",
+/// "3 minutes over". None for a timer with no planned length, which only counts up (`logged`).
+/// What a widget, a tray or a menu bar item, a Live Activity's or an ongoing notification's text
+/// shows beside the task, drawn again at `redraw_at`.
+#[must_use]
+pub fn countdown(timer: &lumenna_records::glance::GlanceTimer, now: jiff::Timestamp) -> Option<String> {
+    let planned = i64::from(timer.planned_mins?) * 60;
+    let left = match timer.runs_out_at.as_deref().and_then(|at| at.parse::<jiff::Timestamp>().ok()) {
+        Some(out) => out.duration_since(now).as_secs(),
+        None => planned - now.duration_since(timer.counting_from.parse::<jiff::Timestamp>().ok()?).as_secs().max(0),
+    };
+    Some(words::left(left))
+}
+
+/// The timer's control as a menu's item reads it at `now`: what a press does, what it runs on or
+/// would start, and, while it runs with a planned length, what is left ("Stop Timer, Essay, 12
+/// minutes left"), else how long so far. `sentence` for a shell writing sentence case. What a
+/// tray's or a menu bar's item says, drawn again at least each minute while a timer runs.
+#[must_use]
+pub fn control_line(control: &lumenna_records::controls::TimerControl, now: jiff::Timestamp, sentence: bool) -> String {
+    let action = if sentence { &control.action_sentence } else { &control.action };
+    joined([Some(action.clone()), Some(control_value(control, now))])
+}
+
+/// What a timer's control shows beneath its name at `now`, where what a press does is its hint
+/// (Control Center's toggle): the task it runs on, then what is left of the planned length, else
+/// how long so far ("Essay, 12 minutes left"); while none runs, what a press would start, or why
+/// nothing would.
+#[must_use]
+pub fn control_value(control: &lumenna_records::controls::TimerControl, now: jiff::Timestamp) -> String {
+    let count = control.timer.as_ref().and_then(|timer| countdown(timer, now).or_else(|| logged(&timer.counting_from, now)));
+    joined([Some(control.detail.clone()), count])
+}
+
+/// The parts that say something, joined as a line's are.
+fn joined<const N: usize>(parts: [Option<String>; N]) -> String {
+    parts.into_iter().flatten().filter(|part| !part.trim().is_empty()).collect::<Vec<_>>().join(", ")
 }
 
 /// How long a timer counting from `counting_from` (RFC 3339) has run at `now`, in whole minutes,
@@ -228,6 +271,64 @@ mod tests {
         assert_eq!(redraw_at(&entries, now("2026-10-25T09:30:00Z")), Some(now("2026-10-25T10:00:00Z")));
         assert_eq!(redraw_at(&entries, now("2026-10-25T10:30:00Z")), None);
         assert_eq!(logged("2026-10-25T09:00:00Z", now("2026-10-25T09:25:30Z")).as_deref(), Some("25 minutes"));
+    }
+
+    #[test]
+    fn a_timer_with_a_planned_length_counts_down_to_it_and_on_past_it_and_one_without_only_up() {
+        let now = |t: &str| t.parse::<jiff::Timestamp>().unwrap();
+        let mut timer = lumenna_records::glance::GlanceTimer {
+            sitting: "s".to_owned(),
+            task: "Essay".to_owned(),
+            block: String::new(),
+            counting_from: "2026-10-25T09:00:00Z".to_owned(),
+            planned_mins: Some(25),
+            runs_out_at: Some("2026-10-25T09:25:00Z".to_owned()),
+        };
+        assert_eq!(countdown(&timer, now("2026-10-25T09:12:30Z")).as_deref(), Some("13 minutes left"));
+        assert_eq!(countdown(&timer, now("2026-10-25T09:25:20Z")).as_deref(), Some("time is up"));
+        assert_eq!(countdown(&timer, now("2026-10-25T09:28:00Z")).as_deref(), Some("3 minutes over"));
+        timer.runs_out_at = None;
+        assert_eq!(countdown(&timer, now("2026-10-25T09:30:00Z")).as_deref(), Some("5 minutes over"), "over before it started");
+        timer.planned_mins = None;
+        assert_eq!(countdown(&timer, now("2026-10-25T09:30:00Z")), None);
+
+        let entries = vec![worded(
+            GlanceMoment {
+                timer: Some(lumenna_records::glance::GlanceTimer {
+                    planned_mins: Some(25),
+                    runs_out_at: Some("2026-10-25T09:25:30Z".to_owned()),
+                    ..timer
+                }),
+                ..moment()
+            },
+            &TwentyFour,
+        )];
+        assert_eq!(redraw_at(&entries, now("2026-10-25T09:40:10Z")), Some(now("2026-10-25T09:40:30Z")), "the countdown's minute, before the count up's");
+    }
+
+    #[test]
+    fn a_trays_timer_item_says_what_a_press_does_on_what_and_what_is_left() {
+        let now = "2026-10-25T09:12:30Z".parse::<jiff::Timestamp>().unwrap();
+        let mut control = lumenna_records::controls::TimerControl {
+            running: true,
+            detail: "Essay".to_owned(),
+            action: "Stop Timer".to_owned(),
+            action_sentence: "Stop timer".to_owned(),
+            enabled: true,
+            timer: Some(lumenna_records::glance::GlanceTimer {
+                sitting: "s".to_owned(),
+                task: "Essay".to_owned(),
+                block: String::new(),
+                counting_from: "2026-10-25T09:00:00Z".to_owned(),
+                planned_mins: Some(25),
+                runs_out_at: Some("2026-10-25T09:25:00Z".to_owned()),
+            }),
+        };
+        assert_eq!(control_line(&control, now, false), "Stop Timer, Essay, 13 minutes left");
+        control.timer.as_mut().unwrap().planned_mins = None;
+        assert_eq!(control_line(&control, now, true), "Stop timer, Essay, 12 minutes", "no plan: how long so far");
+        control.timer = None;
+        assert_eq!(control_line(&control, now, false), "Stop Timer, Essay");
     }
 
     #[test]

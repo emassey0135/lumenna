@@ -44,14 +44,6 @@ The order, and why:
   starting then, as Todoist's and Things' Upcoming and OmniFocus' Forecast are; today the day
   is shown one at a time (Go to Day). A listing, worded as every line is, so it reads as well
   as it looks.
-- **A countdown, and a timer outside the app**: a sitting's planned length counted down, with
-  the core's words when it runs out (Tiimo counts down; TickTick has Pomodoro), beside the
-  count up there is now; and a running timer shown where the system shows one: a Live Activity
-  on the iPhone's Lock Screen and Dynamic Island, an ongoing notification on Android, its
-  buttons the core's Pause and Stop.
-- **Time reports**: the minutes every sitting logs, summed by project, label and week, with
-  estimates beside them, as Todoist's productivity view and Taskwarrior's reports have. A
-  listing of the core's, read as one.
 - **Energy, as the person rates it**: capacity for focus and for starting things, which ADHD
   and other conditions make uneven, not calories, so it is estimated, as a length is, never
   measured.

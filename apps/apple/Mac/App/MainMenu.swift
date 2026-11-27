@@ -94,6 +94,7 @@ enum MainMenu {
         menu.addItem(item(Commands.asking("go-trash"), #selector(AppDelegate.goToTrash(_:)), "4"))
         menu.addItem(item(Commands.asking("go-history"), #selector(AppDelegate.goToHistory(_:)), "5"))
         menu.addItem(item(Commands.asking("go-review"), #selector(AppDelegate.goToReview(_:)), "6"))
+        menu.addItem(item(Commands.asking("go-report"), #selector(AppDelegate.goToReport(_:)), "7"))
         menu.addItem(.separator())
         menu.addItem(item(Wording.toggleSidebar, #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]))
         return menu
@@ -120,6 +121,8 @@ enum MainMenu {
         menu.addItem(item(Commands.asking("next-day"), #selector(AppDelegate.nextDay(_:)), "]"))
         menu.addItem(item(Commands.asking("go-to-now"), #selector(AppDelegate.goToNow(_:)), "t"))
         menu.addItem(item(Commands.asking("go-to-day"), #selector(AppDelegate.goToDay(_:)), "j"))
+        // The timer as it is, said, from anywhere: the shared table's Ctrl+Shift+T.
+        menu.addItem(item(Commands.asking("time-left"), #selector(AppDelegate.timeLeft(_:)), "t", [.command, .shift]))
         // Then the day's own actions, the core's, as the menu opens.
         menu.delegate = DayMenu.shared
         return menu

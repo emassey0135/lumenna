@@ -27,8 +27,11 @@ final class TaskListModel: ObservableObject {
     /// Whether the list has a filter above it: wherever the core offers Filter Tasks among the
     /// place's own actions (`screenActions`), the field being how the filter is drawn.
     var filters: Bool { screenActions.contains { $0.id == "filter" } }
-    /// Whether its rows are tasks that can be checked off: not the trash's, nor Blocks'.
-    var checks: Bool { !trash && !blocks }
+    /// Whether this is the Time Report: sums by week, project and label, no tasks.
+    var report: Bool { place == .report }
+    /// Whether its rows are tasks that can be checked off: not the trash's, nor Blocks', nor the
+    /// Time Report's sums.
+    var checks: Bool { !trash && !blocks && !report }
     /// What a row here is, for saying why it has no action of a kind.
     var subject: LumennaApp.Subject { blocks ? .block : .task }
     /// Every row, those folded away included (`hidden`): a tree draws them inside their

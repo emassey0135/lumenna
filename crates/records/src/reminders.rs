@@ -38,7 +38,8 @@ pub struct DueReminder {
     pub missed: String,
     /// The notification's button that dismisses it, on every device.
     pub dismiss: String,
-    /// The notification's button that snoozes it for [`SNOOZE_MINS`].
+    /// The notification's button that snoozes it for [`SNOOZE_MINS`]. Empty for a sitting's
+    /// time running out, which is said once and never again.
     pub snooze: String,
     /// At a block's end with work left short: the button that carries it forward
     /// ([`Lumenna::carry_rest_forward`] of `target@occurrence`). Empty when there is none.
@@ -48,6 +49,13 @@ pub struct DueReminder {
     /// Empty when there is none.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub replan: String,
+    /// When a sitting's planned length ran out with its timer running: the button that stops
+    /// that timer, the core's Stop Timer. Empty when there is none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub stop: String,
+    /// The sitting whose time ran out, which Stop Timer stops. Empty but for a time running out.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sitting: String,
 }
 
 /// What reminders to give now, or over a while.

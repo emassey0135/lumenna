@@ -105,7 +105,7 @@ const BUTTON_LETTERS: &[(&str, &str)] =
     &[("sync-now", "n"), ("pair", "p"), ("back-up", "b"), ("restore-backup", "r"), ("import", "i")];
 
 /// The letter of each of a reminder's buttons, by `DueButton::id`. Dismiss is the delete keys'.
-const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("snooze", "z")];
+const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("stop", "t"), ("snooze", "z")];
 
 /// The letter of each of a screen's own actions (`screen_actions`), by the shared table's `id`
 /// where it has one, and of Home's places. No two on one screen share a letter (a test holds
@@ -129,6 +129,8 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-blocks", "b"),
     ("go-history", "h"),
     ("go-review", "v"),
+    ("go-report", "g"),
+    ("time-left", "d"),
     ("go-trash", "x"),
     ("projects", "p"),
     ("labels", "l"),
@@ -263,7 +265,8 @@ const DAY_MOVES: &[&str] = &["previous-day", "next-day", "go-to-now", "go-to-day
 const BRAILLE_VIEW_EXTRAS: &[&str] = &["projects", "labels", "filters", "reminders-due"];
 
 /// What Home's places run, by their letters' ids: they are hot keys on Home.
-const HOME_PLACES: &[&str] = &["go-today", "go-tasks", "go-blocks", "go-review", "go-history", "go-trash", "projects", "labels", "filters"];
+const HOME_PLACES: &[&str] =
+    &["go-today", "go-tasks", "go-blocks", "go-review", "go-history", "go-report", "go-trash", "projects", "labels", "filters"];
 
 /// The id of the braille menu bar's first menu: the screen's own actions (`screen_actions`).
 pub const SCREEN_MENU: &str = "screen";
@@ -720,6 +723,7 @@ mod tests {
             SidebarKind::Place(Place::Tasks),
             SidebarKind::Place(Place::Blocks),
             SidebarKind::Place(Place::History),
+            SidebarKind::Place(Place::Report),
             SidebarKind::Place(Place::Trash),
             SidebarKind::Group(lumenna_records::places::SidebarGroup::Projects),
             SidebarKind::Group(lumenna_records::places::SidebarGroup::Labels),

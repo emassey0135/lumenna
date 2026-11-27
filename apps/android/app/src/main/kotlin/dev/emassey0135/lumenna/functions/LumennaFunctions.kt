@@ -108,9 +108,14 @@ abstract class LumennaFunctions : AppFunctionService() {
         Assistant.replanProposed(assist("propose_replan"))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
-    @AppFunctionInstruction("What the timer is doing now: running, on which task and how long so far; else what `toggle_timer` would start, or why nothing would.")
+    @AppFunctionInstruction("What the timer is doing now: running, on which task, how long so far and how much of the sitting's planned length is left; else what `toggle_timer` would start, or why nothing would.")
     suspend fun timer(): TimerState =
         Assistant.timer(assist("timer"))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("What every sitting logged over the last four weeks, summed by week, by project and by label, each with the estimates of the tasks worked beside it.")
+    suspend fun report(): Listing =
+        Assistant.listing(assist("report"))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Proposes which tasks to put in each of a day's work blocks still to come, each with why. Nothing changes until `apply_day_plan` is given the sittings the person accepted.")

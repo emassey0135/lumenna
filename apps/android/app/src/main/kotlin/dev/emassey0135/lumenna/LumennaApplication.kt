@@ -29,11 +29,12 @@ class LumennaApplication : Application(), CoreHolder, GlanceShower {
     }
 
     /**
-     * The glance is shown on the home screen's widgets; the timer's tile, which follows the same
-     * changes, is asked to draw itself again with them.
+     * The glance is shown on the home screen's widgets; the timer's tile and its ongoing
+     * notification, which follow the same changes, are drawn again with them.
      */
     override fun showGlances(context: Context) {
         Widgets.refresh(context)
         TimerTile.refresh(context)
+        TimerNotification.show(context)
     }
 }

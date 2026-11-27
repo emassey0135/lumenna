@@ -17,7 +17,8 @@ import LumennaApp
 let assistantIntents: [any OperationIntent.Type] = [
     ListTasksIntent.self, SearchTasksIntent.self, ShowTaskIntent.self, ShowDayIntent.self,
     ListBlocksIntent.self, ListProjectsIntent.self, ListSectionsIntent.self, ListLabelsIntent.self, ListSavedFiltersIntent.self,
-    WhatShouldIWorkOnIntent.self, ProposeReplanIntent.self, ShowTimerIntent.self, ProposeDayPlanIntent.self,
+    WhatShouldIWorkOnIntent.self, ProposeReplanIntent.self, ShowTimerIntent.self, ShowReportIntent.self,
+    ProposeDayPlanIntent.self,
     AddTaskIntent.self, EditTaskIntent.self, CompleteTaskIntent.self, UncompleteTaskIntent.self,
     TrashTaskIntent.self, EraseTaskPermanentlyIntent.self, EraseEverythingDeletedIntent.self, RestoreTaskIntent.self,
     MoveTaskIntent.self, AddSectionIntent.self, AssignIntent.self, UnassignIntent.self, StartTimerIntent.self,
@@ -513,13 +514,30 @@ struct ShowTimerIntent: OperationIntent {
     static let persistentIdentifier = "timer"
     static let title: LocalizedStringResource = "Show the Timer"
     static let description: IntentDescription? = IntentDescription(
-        "What the timer is doing now: running, on which task and how long so far; else what `toggle_timer` would start, or why nothing would.",
+        "What the timer is doing now: running, on which task, how long so far and how much of the sitting's planned length is left; else what `toggle_timer` would start, or why nothing would.",
         categoryName: "Timers",
-        searchKeywords: ["timer", "running", "how long", "tracking"]
+        searchKeywords: ["timer", "running", "how long", "tracking", "time left", "countdown"]
     )
 
     @AppDependency private var store: AssistantStore
 
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        said(try store.assist(Self.persistentIdentifier))
+    }
+}
+
+struct ShowReportIntent: OperationIntent {
+    static let persistentIdentifier = "report"
+    static let title: LocalizedStringResource = "Show the Time Report"
+    static let description: IntentDescription? = IntentDescription(
+        "What every sitting logged over the last four weeks, summed by week, by project and by label, each with the estimates of the tasks worked beside it.",
+        categoryName: "Timers",
+        searchKeywords: ["report", "time spent", "logged", "hours", "productivity", "estimates"]
+    )
+
+    @AppDependency private var store: AssistantStore
+
+    /// What was logged in all, the core's sentence; the sums are the Time Report's place.
     func perform() async throws -> some IntentResult & ProvidesDialog {
         said(try store.assist(Self.persistentIdentifier))
     }

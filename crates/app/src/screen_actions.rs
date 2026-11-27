@@ -72,10 +72,10 @@ pub struct HomePlace {
 pub(crate) fn place_action_ids(place: &Place) -> &'static [&'static str] {
     match place {
         // What Should I Work On? is the day's own action here (`DayView::offered`), never a second time.
-        Place::Today => &["new-block", "previous-day", "next-day", "go-to-day", "go-to-now", "undo", "redo"],
+        Place::Today => &["new-block", "previous-day", "next-day", "go-to-day", "go-to-now", "time-left", "undo", "redo"],
         Place::Blocks => &["new-block", "undo", "redo"],
         // Nothing is added to the trash or the history, and a filter there shows nothing useful.
-        Place::Trash | Place::History => &["undo", "redo"],
+        Place::Trash | Place::History | Place::Report => &["undo", "redo"],
         // The review lists what is due for a second look; nothing is added to it.
         Place::Review => &["undo", "redo"],
         Place::Project(_) => &["new-task", "filter", "new-project-inside", "new-section", "undo", "redo"],
@@ -84,7 +84,8 @@ pub(crate) fn place_action_ids(place: &Place) -> &'static [&'static str] {
 }
 
 /// What Home offers of its own, after Reminders Due while any are due.
-pub(crate) const HOME_ACTIONS: &[&str] = &["new-task", "undo", "redo", "what-now", "sync-now", "settings", "keyboard-help", "about"];
+pub(crate) const HOME_ACTIONS: &[&str] =
+    &["new-task", "undo", "redo", "what-now", "time-left", "sync-now", "settings", "keyboard-help", "about"];
 
 /// What a shell runs itself, of the screens' own actions.
 const SHELLS: &[&str] = &["filter", "keyboard-help", "about", "reminders-due"];
@@ -99,6 +100,7 @@ pub fn every_kind_of_place() -> Vec<Place> {
         Place::Blocks,
         Place::History,
         Place::Review,
+        Place::Report,
         Place::Trash,
         Place::Project(String::new()),
         Place::Label(String::new()),
@@ -156,6 +158,7 @@ pub fn place_letter(kind: &SidebarKind) -> Option<&'static str> {
         SidebarKind::Place(Place::Blocks) => "go-blocks",
         SidebarKind::Place(Place::History) => "go-history",
         SidebarKind::Place(Place::Review) => "go-review",
+        SidebarKind::Place(Place::Report) => "go-report",
         SidebarKind::Place(Place::Trash) => "go-trash",
         SidebarKind::Group(SidebarGroup::Projects) => "projects",
         SidebarKind::Group(SidebarGroup::Labels) => "labels",
@@ -254,7 +257,7 @@ mod tests {
 
     /// The places Home lists by a letter of their own, as the ids those letters are.
     fn home_places() -> Vec<&'static str> {
-        vec!["go-today", "go-tasks", "go-blocks", "go-review", "go-history", "go-trash"]
+        vec!["go-today", "go-tasks", "go-blocks", "go-review", "go-history", "go-report", "go-trash"]
     }
 
     /// The heading whose New a command is.

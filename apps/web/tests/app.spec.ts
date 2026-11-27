@@ -89,6 +89,15 @@ test("history lists a task done today, said as when it was done, beside the tras
   expect(audit.violations).toEqual([]);
 });
 
+test("the time report is a place after history, saying when nothing was logged", async ({ page }) => {
+  await open(page);
+  await page.getByRole("navigation", { name: "Places" }).getByRole("row", { name: /^Time report/ }).click();
+  await expect(page.getByRole("main", { name: "Time report" })).toBeVisible();
+  await expect(page.getByRole("main")).toContainText("Nothing logged in the last 4 weeks.");
+  const audit = await new AxeBuilder({ page }).analyze();
+  expect(audit.violations).toEqual([]);
+});
+
 test("a task due at a time says it in the browser's clock, then its priority", async ({ page }) => {
   await open(page);
   await add(page, "Call the bank tomorrow at 3pm p1");

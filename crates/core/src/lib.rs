@@ -19,6 +19,7 @@ pub mod order;
 pub mod recur;
 pub mod dayplan;
 pub mod reflow;
+pub mod report;
 pub mod remind;
 pub mod repair;
 pub mod review;

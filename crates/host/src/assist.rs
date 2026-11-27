@@ -181,6 +181,7 @@ impl Lumenna {
                 Assisted::Timer(self.stop_timer(&sitting, given.minutes("minutes")?)?)
             }
             "timer" => Assisted::Timer(self.timer_now(None)?),
+            "report" => Assisted::Rows(self.report()?),
             "toggle_timer" => Assisted::Change(self.toggle_timer(None)?),
             "start_on" => Assisted::Change(self.start_on(&given.required("choice")?, None)?),
             "apply_replan" => {

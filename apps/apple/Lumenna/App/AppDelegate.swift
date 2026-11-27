@@ -52,6 +52,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             reminders.follow()
             reminders.rearm(catchingUp: true)
             Self.reminders = reminders
+            // The running timer on the Lock Screen and in the Dynamic Island, as the store has it.
+            let activities = TimerActivities(device: core.app.device)
+            activities.follow()
+            activities.refresh()
+            TimerActivities.shared = activities
         }
         return true
     }

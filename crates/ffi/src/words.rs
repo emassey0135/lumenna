@@ -4,6 +4,8 @@
 use boltffi::export;
 use lumenna_records::places::{Place, SidebarEntry, SidebarGroup, SidebarKind};
 use lumenna_app::glance::GlanceEntry;
+use lumenna_records::glance::GlanceTimer;
+use lumenna_records::controls::TimerControl;
 use lumenna_app::Capitals;
 use lumenna_app::ShellEvent;
 use lumenna_app::arrangement::{Arrangement, WatchKind};
@@ -181,6 +183,32 @@ pub fn glance_current(entries: Vec<GlanceEntry>, now: String) -> Option<GlanceEn
 pub fn glance_redraw_at(entries: Vec<GlanceEntry>, now: String) -> Option<String> {
     let now = now.parse().unwrap_or_else(|_| jiff::Timestamp::now());
     lumenna_app::glance::redraw_at(&entries, now).map(|at| at.to_string())
+}
+
+/// How much of a running timer's planned length is left at `now` (RFC 3339), said: "12
+/// minutes left", "time is up", "3 minutes over"; none without a planned length.
+#[export]
+pub fn glance_countdown(timer: GlanceTimer, now: String) -> Option<String> {
+    let now = now.parse().unwrap_or_else(|_| jiff::Timestamp::now());
+    lumenna_app::glance::countdown(&timer, now)
+}
+
+/// The timer's control as a tray's or menu bar's item reads it at `now` (RFC 3339): "Stop Timer,
+/// Essay, 12 minutes left", in sentence case where `sentence`.
+#[export]
+pub fn timer_control_line(control: TimerControl, now: String, sentence: bool) -> String {
+    let now = now.parse().unwrap_or_else(|_| jiff::Timestamp::now());
+    lumenna_app::glance::control_line(&control, now, sentence)
+}
+
+/// What a timer's control shows beneath its name at `now` (RFC 3339), where what a press does is
+/// its hint: the task it runs on, then what is left of the sitting's planned length, else how long
+/// so far ("Essay, 12 minutes left"); while none runs, what a press would start, or why nothing
+/// would. Control Center's toggle, read afresh each time it is drawn.
+#[export]
+pub fn timer_control_value(control: TimerControl, now: String) -> String {
+    let now = now.parse().unwrap_or_else(|_| jiff::Timestamp::now());
+    lumenna_app::glance::control_value(&control, now)
 }
 
 /// How long a timer counting from `counting_from` has run at `now`, said.

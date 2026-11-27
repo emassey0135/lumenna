@@ -317,6 +317,15 @@ pub struct ShellWords {
     pub expand: String,
     /// The key that folds one: "Collapse".
     pub collapse: String,
+    /// The notification channel of a timer running, shown while it runs: "Timer".
+    pub timer_channel: String,
+    /// What that channel holds, as its settings describe it.
+    pub timer_channel_description: String,
+    /// A running timer's button outside the app (an ongoing notification, a Live Activity), the
+    /// core's action: "Pause Timer".
+    pub pause_timer: String,
+    /// Its other button: "Stop Timer".
+    pub stop_timer: String,
     // The web's.
     /// What Right arrow does in a list, in a keyboard help: "Expand the Row".
     pub expand_the_row: String,
@@ -975,6 +984,10 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
 
         expand: c("Expand"),
         collapse: c("Collapse"),
+        timer_channel: c("Timer"),
+        timer_channel_description: "The timer while it runs: what it runs on, and how much of its planned length is left.".to_owned(),
+        pause_timer: c(&kind_title(ActionKind::PauseTimer)),
+        stop_timer: c(&kind_title(ActionKind::StopTimer)),
         expand_the_row: c("Expand the Row"),
         collapse_the_row: c("Collapse the Row"),
         offer_completions: c(

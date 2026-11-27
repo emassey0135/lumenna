@@ -179,6 +179,7 @@ pub fn listing(snapshot: &Snapshot, place: &Place, query: &str, now: &Zoned) -> 
         Place::Blocks => Some(lumenna_records::plan::blocks(snapshot, now.date())),
         Place::History => Some(lumenna_records::lists::history(snapshot, now)),
         Place::Review => Some(lumenna_records::review::review(snapshot, now)),
+        Place::Report => Some(lumenna_records::report::report(snapshot, now)),
         _ => Some(lists::tasks(snapshot, query, now)),
     }
 }

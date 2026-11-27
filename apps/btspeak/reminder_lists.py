@@ -5,7 +5,9 @@ reminder (`a`), a phrase the core reads, asked again with the core's sentence wh
 read, and Remove reminder on each of its own (the delete keys). The main menu's Reminders lists
 what came due over the last day and was not dealt with, whatever gave it — this app's service,
 or another device's dismissal not yet here — to dismiss (the delete keys) or snooze (`z`), at a
-block's end that left work short to carry it forward (`f`), and on an overrun to replan (`p`).
+block's end that left work short to carry it forward (`f`), on an overrun to replan (`p`), and
+when a sitting's planned length ran out with its timer running to stop that timer (`t`), which
+the core says once and offers no Snooze for.
 Settings' Reminders page, the core's, has Reminders on this device and the defaults; the background
 service that gives them while the app is closed is on its General page (`preferences.py`).
 """
@@ -90,7 +92,7 @@ def reminders_of(session: Session, row=None) -> str:
 
 
 #: A reminder's buttons, by the ids the core gives them (`DueButton::id`), for their letters.
-BUTTONS = ("carry", "replan", "dismiss", "snooze")
+BUTTONS = ("carry", "replan", "stop", "dismiss", "snooze")
 
 
 def due(session: Session) -> str:
@@ -130,7 +132,7 @@ def due(session: Session) -> str:
 
     def commands(rows) -> list[Command]:
         """Each row's buttons, the core's, in its order: what a reminder offers of its own
-        (Carry forward, Replan) first, then Dismiss, which the delete keys run, and Snooze. A
+        (Carry forward, Replan, Stop timer) first, then Dismiss, which the delete keys run, and Snooze. A
         letter of a button some reminder here offers is pressed as the app's letter on every row
         (`Event::Letter`), the app saying why where a reminder lacks it."""
         order: list[str] = []

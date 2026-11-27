@@ -139,8 +139,10 @@ fun TaskListScreen(core: Core, navigator: Navigator, screen: Screen.Tasks) {
 
     // The place's own actions, the core's; the filter is this screen's field, which it focuses.
     val screenActions = ScreenButtons(here?.screenActions.orEmpty(), mapOf<String, () -> Unit>("filter" to { runCatching { field.requestFocus() } }))
+    // The field is there where the core offers the filter: not on the time report or the history.
+    val filters = here?.screenActions?.any { it.id == "filter" } != false
     ScreenFrame(here?.title ?: placeTitle(screen.place), core, navigator, screen = screenActions) {
-        CompletingField(
+        if (filters) CompletingField(
             core = core,
             syntax = Syntax.FILTER,
             label = appWords.quickAdd.filter,
@@ -198,6 +200,9 @@ fun AppTaskRows(
     ) {
         itemsIndexed(items, key = { _, (item, _) -> item.row.id }) { index, (item, line) ->
             val row = item.row
+            // A row the core offers nothing on (the time report's totals and its headings) is
+            // no task and opens nothing: it is a line to read.
+            val offered = list?.offeredOf(item).orEmpty()
             ListRow(
                 title = row.title,
                 detail = line?.detail.orEmpty(),
@@ -205,9 +210,10 @@ fun AppTaskRows(
                 done = row.checked,
                 depth = row.depth.toInt(),
                 index = index,
-                actions = core.app.rowActions(row.id, list?.offeredOf(item).orEmpty(), local),
+                actions = core.app.rowActions(row.id, offered, local),
                 keys = core.app.rowKeys(row.id),
-                open = open?.let { { it(row) } },
+                open = open?.takeIf { offered.isNotEmpty() }?.let { { it(row) } },
+                heading = row.role == "group",
                 openLabel = openLabel,
                 focus = focus.requester(row.id),
                 key = row.id,

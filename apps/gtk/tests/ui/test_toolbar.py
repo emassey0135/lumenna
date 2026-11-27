@@ -39,7 +39,7 @@ class ToolbarTest(unittest.TestCase):
         self.go("Control+1")
         self.assertEqual(
             self.buttons(),
-            ["New Block…", "Previous Day", "Next Day", "Go to Day…", "Go to Now", "Undo", "Redo"],
+            ["New Block…", "Previous Day", "Next Day", "Go to Day…", "Go to Now", "Time Left", "Undo", "Redo"],
         )
 
     def test_the_trash_offers_no_filter_and_its_toolbar_undo_and_redo(self):

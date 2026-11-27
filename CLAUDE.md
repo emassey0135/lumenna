@@ -252,6 +252,19 @@ crosses the FFI.
   first choice. New Task is its launch shortcut. No platform decides what a press starts. A
   control that cannot reach its store reads the app's `timer_control_file` instead, as a widget
   reads the glance's.
+- **A running timer outside the app is the core's too**: `TimerControl::timer` and a glance's
+  `GlanceTimer` carry when it counts from and, with a planned length, when that runs out
+  (`runs_out_at`); what is left is `glance::countdown` (`glance_countdown`), drawn again at
+  `redraw_at`. A Live Activity, an ongoing notification, a watch's ongoing activity, a tray or a
+  menu bar item shows the task, counts down to `runs_out_at` (else up from `counting_from`), and
+  offers the core's Pause Timer and Stop Timer (`Device::pause_timer`, `stop_timer` of
+  `timer.sitting`). Running out is a reminder (`DueReminder::stop`, `sitting`; no `snooze`),
+  said once where the platform notifies, its Stop Timer pressed as `DueEvent::Press` `stop`.
+  Inside the app a sitting's line says what is left, and Time Left (`Key("time-left")`) says the
+  timer on request from anywhere.
+- **The time report is a place** (`Place::Report`, `records::report`, `lum report`, the
+  assistants' `report`): headings By Week, By Project and By Label over their sums, each row
+  "<what>, <logged>, <estimated>", read as any listing is.
 - **What a platform's search finds is the core's** (`records::search`: `search_documents` for an
   index such as Spotlight's or AppSearch, `search_results(text)` for one that asks as the person
   types, such as GNOME Shell or KRunner): each a `SearchDocument` opened by its `launch`

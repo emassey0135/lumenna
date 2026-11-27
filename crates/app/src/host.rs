@@ -125,6 +125,14 @@ pub enum HostRequest {
         /// The firings, dismissed once it is carried.
         firings: Vec<(String, String)>,
     },
+    /// Stop the timer of a sitting whose planned length ran out, and dismiss the firings that
+    /// said so.
+    StopTimer {
+        /// The sitting.
+        sitting: String,
+        /// The firings, dismissed once it is stopped.
+        firings: Vec<(String, String)>,
+    },
     /// Undo the last change made on this device.
     Undo,
     /// Redo the last change undone.

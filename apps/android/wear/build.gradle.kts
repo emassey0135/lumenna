@@ -62,6 +62,9 @@ dependencies {
     implementation(libs.wear.protolayout)
     implementation(libs.wear.protolayout.material3)
     implementation(libs.wear.complications.data.source)
+    // A running timer as an Ongoing Activity over its notification (`WearApplication.ongoing`).
+    implementation(libs.wear.ongoing)
+    implementation(libs.androidx.core)
 
     androidTestImplementation(bom)
     androidTestImplementation(libs.compose.ui.test.junit4)

@@ -52,7 +52,7 @@ struct TimerControlIntent: SetValueIntent {
     init() {}
 
     func perform() async throws -> some IntentResult {
-        try TimerControlSource.press()
+        try await TimerControlSource.press()
         return .result()
     }
 }
@@ -91,17 +91,27 @@ enum TimerControlSource {
 
     /// The control pressed: the core's toggle, on the store in the group, then the glance written
     /// again while it is still open, since the app may not be running, and every widget and
-    /// control told. In the Mac's direct download it is handed to the app (`WidgetRequests`).
-    static func press() throws {
+    /// control told; where reminders are scheduled (the iPhone, the watch), what fires next
+    /// handed over as the press left it, so a sitting's time running out is armed or no longer.
+    /// In the Mac's direct download it is handed to the app (`WidgetRequests`).
+    static func press() async throws {
         #if os(macOS) && !APP_STORE
         guard let container = AppGroup.container else { throw CocoaError(.fileNoSuchFile) }
         try WidgetRequests.hand(.init(operation: WidgetRequests.toggleTimer, arguments: [:]), into: container)
         #else
-        let pressed: Void? = try GlanceStore.visit(AppGroup.store) { device in
+        let pressed: LumennaApp.DueReminders?? = try GlanceStore.visit(AppGroup.store) { device -> LumennaApp.DueReminders? in
             _ = try device.toggleTimer()
             try? GlanceFile(device: device)?.writeNow()
+            #if os(macOS)
+            return nil
+            #else
+            return try? device.upcomingReminders(until: Instant.rfc3339(Date().addingTimeInterval(Reminders.window)))
+            #endif
         }
-        guard pressed != nil else { throw CocoaError(.fileNoSuchFile) }
+        guard let pressed else { throw CocoaError(.fileNoSuchFile) }
+        #if !os(macOS)
+        if let upcoming = pressed { await Reminders.arm(upcoming) }
+        #endif
         #endif
         GlanceFile.reload()
     }

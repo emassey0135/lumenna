@@ -152,6 +152,19 @@ fn answer_with(lumenna: &Lumenna, request: HostRequest, after: &dyn Fn() -> Opti
             each(&firings, |(key, occurrence)| lumenna.dismiss_reminder(key.clone(), occurrence.clone()))?;
             Ok(carried)
         })),
+        HostRequest::StopTimer { sitting, firings } => wrote({
+            let stop = lumenna_records::Action::new(
+                lumenna_records::ActionKind::StopTimer,
+                lumenna_records::Subject::Sitting,
+                "Stop Timer",
+                sitting,
+            );
+            lumenna.act(stop, lumenna_records::actions::Answer::Yes)
+        }
+        .and_then(|stopped| {
+            each(&firings, |(key, occurrence)| lumenna.dismiss_reminder(key.clone(), occurrence.clone()))?;
+            Ok(stopped)
+        })),
         HostRequest::Undo => wrote(lumenna.undo()),
         HostRequest::Redo => wrote(lumenna.redo()),
         HostRequest::Apply { proposal, accepted, now } => {

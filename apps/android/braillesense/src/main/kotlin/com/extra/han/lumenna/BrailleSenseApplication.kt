@@ -6,6 +6,8 @@ import dev.emassey0135.braillesense.session.Foreground
 import dev.emassey0135.lumenna.Core
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.GlanceShower
+import dev.emassey0135.lumenna.Glances
+import dev.emassey0135.lumenna.TimerNotification
 import dev.emassey0135.lumenna.Reminders
 import dev.emassey0135.lumenna.Ringer
 import dev.emassey0135.lumenna.Ringing
@@ -28,12 +30,19 @@ class BrailleSenseApplication : Application(), CoreHolder, GlanceShower, Ringer 
         super.onCreate()
         SyncWorker.schedulePeriodic(this)
         Thread({
-            core.getOrNull()?.let { Reminders.follow(this, it) }
+            core.getOrNull()?.let {
+                Reminders.follow(this, it)
+                // What follows the glance's moments: here only a running timer's notification.
+                Glances.follow(this, it)
+            }
         }, "lumenna-open").start()
     }
 
-    /** No widget here: the launcher offers none. */
-    override fun showGlances(context: Context) {}
+    /**
+     * No widget here: the launcher offers none. A running timer has its ongoing notification, in
+     * the device's list of notifications; how much is left is said on request too (Time Left).
+     */
+    override fun showGlances(context: Context) = TimerNotification.show(context)
 
     /**
      * A reminder going off brings the app to the front, as the Schedule Manager rings, where it is

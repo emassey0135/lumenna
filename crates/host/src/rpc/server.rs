@@ -127,6 +127,7 @@ pub const METHODS: &[&str] = &[
     "day_plan.apply",
     "history",
     "review",
+    "report",
     "config.get",
     "config.set",
     "undo",
@@ -248,6 +249,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("day_plan.apply", &["plan", "accepted", "now"]),
     ("history", &[]),
     ("review", &[]),
+    ("report", &[]),
     ("config.get", &["key"]),
     ("config.set", &["key", "value"]),
     ("undo", &[]),
@@ -894,6 +896,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         )?),
         "history" => Response::new(l.history()?),
         "review" => Response::new(l.review()?),
+        "report" => Response::new(l.report()?),
 
         "config.get" => Response::new(l.settings(maybe_text(params, "key"))?),
         "config.set" => {

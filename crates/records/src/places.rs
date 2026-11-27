@@ -40,6 +40,9 @@ pub enum Place {
     /// What is due for a second look: the projects due for review, and the tasks the planner
     /// asks about.
     Review,
+    /// The time sittings logged over the last weeks, by week, project and label, with the
+    /// estimates beside it (`crate::report`).
+    Report,
 }
 
 impl Place {
@@ -53,6 +56,7 @@ impl Place {
             Self::Trash => "Trash".to_owned(),
             Self::History => "History".to_owned(),
             Self::Review => "Review".to_owned(),
+            Self::Report => "Time Report".to_owned(),
         }
     }
 
@@ -63,7 +67,7 @@ impl Place {
             Self::Label(name) => label_reference(name.clone()),
             Self::Filter { query, .. } => query.clone(),
             Self::Trash => "deleted".to_owned(),
-            Self::Today | Self::Tasks | Self::Blocks | Self::History | Self::Review => String::new(),
+            Self::Today | Self::Tasks | Self::Blocks | Self::History | Self::Review | Self::Report => String::new(),
         }
     }
 
@@ -240,7 +244,7 @@ pub fn place_quick_add_prefix(place: &Place) -> String {
 }
 
 /// Every place, as the sidebar lists them: Today, Tasks, the project tree, labels, saved
-/// filters, blocks, the trash.
+/// filters, blocks, history, the time report, the trash.
 ///
 /// A listing that fails leaves its group empty rather than the whole sidebar: the places
 /// that do not depend on it still work.
@@ -292,6 +296,8 @@ pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
     entries.push(place(Place::Review, &review, 0));
     let done = crate::lists::history(snapshot, now).map(|r| r.announcement).unwrap_or_default();
     entries.push(place(Place::History, &done, 0));
+    let logged = crate::report::report(snapshot, now).map(|r| r.announcement).unwrap_or_default();
+    entries.push(place(Place::Report, &logged, 0));
     let trashed = crate::lists::tasks(snapshot, "deleted", now).map(|r| r.announcement).unwrap_or_default();
     entries.push(place(Place::Trash, &trashed, 0));
     entries

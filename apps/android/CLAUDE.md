@@ -110,8 +110,10 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   the pane's width) and the rest in the bar's overflow menu (named `appWords.more`), where one
   that `asks` ends in "…". The icon for each `id` is Android's look (`iconOf`); an `id` with none
   goes to the menu. Each is `ShellEvent.Key(id)`, but what is the shell's (`shell`): the filter is
-  the field above the list, which the action focuses, and every task list has it, as the core
-  offers it on each, the trash's included. The screens follow what the app opens: quick add as its
+  the field above the list, which the action focuses, on every list whose place the core offers it
+  on (not the trash, the history or the time report). A row the core offers nothing on (the time
+  report's headings, role `group`, and totals) opens nothing on the phone or the watch: it is a
+  line to read, a group's a heading. The screens follow what the app opens: quick add as its
   line opens (`FollowLine`, only as it opens, so a line closing as the person comes back does not
   reopen it), the block form and the question as before. A screen that is no place (the details,
   a form, settings, Browse) has Undo and Redo in its bar, Android's own, since the core lists
@@ -243,6 +245,24 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   `carryRestForward("<target>@<occurrence>")` and says the change in a quiet notification of its
   own (tag `carried`, no `@`, so arming does not take it for a firing), since the app may not be
   open to say it.
+- **A sitting's planned length running out** is an ordinary reminder (`DueReminder.stop`,
+  `sitting`), said once, never ringing on: its buttons (`Reminders.buttons`, which the tests check)
+  are Stop timer and Dismiss, never Snooze, since the core gives it an empty `snooze`. Stop timer is
+  `ReminderReceiver`'s, as Carry Forward is: `stopTimer(sitting, null)` and `dismissReminder`, said
+  in the quiet `carried` notification. Its alarm moves with the timer: starting, pausing or
+  stopping one writes the store, which re-arms as any change does.
+- **A running timer is an ongoing notification** (shared's `TimerNotification`, from
+  `Device.timerControl().timer`), on its own low-importance channel (the core's `timerChannel`),
+  silent and alerting once: the task, the core's `glanceCountdown` words with the block beside them
+  (else the block), and a chronometer counting down to `runsOutAt` where the core gives it, else up
+  from `countingFrom`; its ticker is the core's `timerControlLine`; Pause timer and Stop timer (the
+  core's `pauseTimer`/`stopTimer` words) are `ReminderReceiver`'s, through `Device.pauseTimer` and
+  `stopTimer`; a tap opens Today. Behind a secure lock its public version says only that the timer
+  runs. Drawn in each Application's `showGlances` (the store changing, the tile pressed, the
+  glance's next minute), on the phone, the watch (with its Ongoing Activity, `OngoingTimer`), and
+  the Orbit and BrailleSense apps, which follow the glance for it alone. Bridging to the watch is
+  off for it by `BRIDGE_TAG`, as for reminders. Checked by hand on a device: `TimerShown`
+  (`TimerNotification.shown`) is what the JVM tests check.
 - **A day or a time has Android's own picker beside its line** (`Pickers.kt`: `ChooseDay`,
   `ChooseTime`, named by the core's picker words, `appWords.picker`), in the block form, Go to
   Day and a time setting's dialog, filling the line. The day is Material's calendar without its
@@ -415,7 +435,10 @@ phone does.
   is quick add with the system's input screen straight away. The complication's pending intent
   has a request code of its own: an intent differing only in its extras is the same pending
   intent, and the Now complication's would open on New Task. Its picker name
-  (`complication_new_task`) is checked by a test of the core. The timer is not on the watch.
+  (`complication_new_task`) is checked by a test of the core. The timer has no control on the
+  watch, but one running is an Ongoing Activity over its notification (`WearApplication.ongoing`,
+  `androidx.wear.ongoing`), counting as the phone's notification counts, in the watch's
+  elapsed-realtime clock, with its Pause and Stop.
 - The watch says it runs `wearos` (`PLATFORM`), in pairing and over the link.
 - **32-bit ARM too** (`armeabi-v7a`): many Wear OS watches run a 32-bit Android. The phone's
   APK leaves it out.

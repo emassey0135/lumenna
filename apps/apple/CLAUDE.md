@@ -216,7 +216,14 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   `replan`, and each app sends the app's `DueEvent::ReplanFiring` with the firing's key and
   occurrence (`AppModel.replan(from:)`), never `ProposalEvent::Replan`: today with Replan from Now
   over it, the screens following, and the warning dismissed on every device once something is
-  replanned. No Apple app fills the app's due list (`DueEvent::Look`), the system holding the
+  replanned. A sitting's planned length running out with its timer running (`stop` set, its
+  `snooze` empty) is a fourth, `stopCategory`: the core's Stop Timer, then Dismiss, never Snooze,
+  an ordinary notification that rings on for nothing; Stop Timer stops the firing's `sitting`
+  (`Device.stopTimer`) and dismisses it. The ordinary category is named by the last reminder
+  seen that snoozes, never a time-up's empty word. A timer starting, pausing or stopping is a
+  write, so `Core.changed` re-arms it; the Timer control's press in the widget extension, the app
+  perhaps not running, arms what the press left itself (`Reminders.arm`, keeping the categories
+  already set beside its own, since setting them replaces them all). No Apple app fills the app's due list (`DueEvent::Look`), the system holding the
   reminders, so `DueEvent::Replan(id)`, `Press` and `LookBack`, for that list, are never sent: a
   notification's button is answered through `Device` (`ReminderResponder`). A reminder's block is the
   app's `ShowBlock` on every Apple app.
@@ -311,8 +318,9 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
   (`backupFailed`), the watch's sync `phoneSync`, pairing's question `PairingView.matching`
   whole. The sidebar's folding and levels are its entries' (`hidden`, `expanded`, `level`), a
   pick's its lines', a count `choiceCount`. A widget's moment now is `glanceCurrent`;
-  `glance_redraw_at` and `glance_logged` are for a widget redrawn by hand, which WidgetKit's is
-  not: it takes every moment at once, and a timer counts by itself. What stays a literal is what
+  `glance_logged` is for a widget redrawn by hand, which WidgetKit's is not: it takes every
+  moment at once, and a timer counts by itself. A countdown's words change each minute, so
+  `GlanceWidgets.counted` gives each `glanceRedrawAt` a moment of its own ("The widgets"). What stays a literal is what
   App Intents and WidgetKit read at build time, held to the core by tests: intents
   (`AssistantIntentTests`, parameters' titles too), entities and the Open intents
   (`AssistantEntityTests`, against `assistantEntities()`), controls (`ControlTests`).
@@ -456,6 +464,10 @@ platforms need different answers it is an `#if os` in `FormParts.swift` (`Named`
   the app's network middleware syncs for as long as it runs and, while it holds the endpoint,
   serves the command surface at the profile's address (`App.serveCommands`, the bridge's `rpc`
   feature), as the daemon would. `LUMENNA_NO_SYNC` (the UI tests') keeps it from both.
+- **The menu bar item's menu is the core's tray** (`trayMenu`), with the Timer control's item
+  before Quit, as Windows' and GTK's trays have it: `timerControlLine` ("Stop Timer, Essay, 12
+  minutes left"), drawn as the menu opens and every 15 seconds in the run loop's common modes (so
+  while it is open too), dimmed where a press does nothing, pressed as `Device.toggleTimer`.
 - **Opening at login is the app's background setting** (`LoginItem`, `BackgroundKind::MacLogin`,
   over `SMAppService.mainApp`); General draws the setting's row, its title the toggle's and its
   hint beneath. Under `LUMENNA_TEST_PROFILE` the login item is a stand-in in memory, so no
@@ -609,8 +621,12 @@ each embedded in its app.
   day (`glanceEmpty`), never a sentence of ours, and asked for again in 15 minutes rather than
   at once. The core writes instants to the nanosecond, which Foundation's ISO 8601 parser refuses
   past milliseconds, so `GlanceWidgets.instant` reads the fraction itself. A running timer counts
-  by itself (`Text(_, style: .timer)` from `countingFrom`) and a block under way fills its gauge
-  (`ProgressView(timerInterval:)`), neither with an entry of its own. The Smart Stack is told a
+  by itself (`Text(_, style: .timer)`: down to `runsOutAt` where the sitting has a planned length,
+  and on past it, else up from `countingFrom`) and a block under way fills its gauge
+  (`ProgressView(timerInterval:)`), neither with an entry of its own; beside a countdown the
+  core's words for what is left (`glanceCountdown` at the entry's date, also VoiceOver's value),
+  which need a moment each minute (`GlanceWidgets.counted`, from `glanceRedrawAt`, at most three
+  hours of them). The Smart Stack is told a
   moment matters (`relevance`, score 1) while a block is under way or a timer runs.
 - **VoiceOver hears a widget as one element**, the core's `spoken`, with a running timer as its
   value: the headline part, every widget's first (the core's test), carries it, and the other
@@ -697,7 +713,8 @@ iPhone's and iPad's and the Mac's are behind `#available`, the watch's always th
   test keeps New Task's intent titled as the core names it.
 - **The Timer is a `ControlWidgetToggle` over the core's `TimerControl`** (`Device.timerControl`,
   `TimerControlState`): on while a timer runs, its title the core's name, beneath it the core's
-  `detail` (the task whose timer runs, what a press would start, or why nothing would), the
+  `timerControlValue` as it is drawn (the task whose timer runs with what is left of its planned
+  length, else how long so far; what a press would start, or why nothing would), the
   core's `action` as the press's hint, dimmed when `enabled` is false. VoiceOver hears the name,
   the action and the detail, joined. Its `SetValueIntent` ignores the value the system hands it
   and calls `Device.toggleTimer`: a press is always the core's toggle, never on to start and off
@@ -740,6 +757,32 @@ iPhone's and iPad's and the Mac's are behind `#available`, the watch's always th
 - **Not checked by CI**, as the widgets are not: the controls in the gallery and Control Center on
   each device, the press on each store, the direct download's hand-off, the complication on a
   face, and VoiceOver on each.
+
+## The Live Activity
+
+The running timer on the iPhone's Lock Screen and in its Dynamic Island
+(`Widgets/TimerLiveActivity.swift`, in the iPhone's widget extension), and from there in a
+paired watch's Smart Stack, which watchOS takes from the phone's (its compact views): no watch
+code of its own.
+
+- **Its state is the core's `TimerControl.timer`** (`TimerActivityState.of`, `Shared/TimerActivity.swift`,
+  compiled into the app and the extension): the sitting, task, block, `countingFrom`, `runsOutAt`
+  and planned length, its buttons `Wording.pauseTimer` and `stopTimer`, and the core's words for
+  the moment it runs out (`upWords`, `glanceCountdown` at `runsOutAt`), the one moment its text
+  cannot count to, written ahead. It counts down to `runsOutAt` (`Text(timerInterval:countsDown:)`),
+  stale from then (`staleDate`), when it counts up from `countingFrom` with those words; with no
+  planned length it only counts up.
+- **The app starts, updates and ends it** (`TimerActivities`, `Lumenna/App`): at launch, after
+  every `Core.changed` (which a Control Center press reaches through the app's look at the heads)
+  and after its own buttons; one activity, ended where no timer runs. Never under
+  `LUMENNA_TEST_PROFILE`. `NSSupportsLiveActivities` is project.yml's.
+- **Its Pause Timer and Stop Timer are `LiveActivityIntent`s** (`PauseTimerActivityIntent`,
+  `StopTimerActivityIntent`, not discoverable: Shortcuts has Pause a Timer and Stop a Timer), on the
+  sitting shown, through `AssistantStore.timer` (`Device.pauseTimer`, `stopTimer`), run in the app's
+  process, which then posts `Core.changed` and writes the activity again. Their titles are literals,
+  held to the core's words by `ControlTests`.
+- **Not checked by CI**: the activity on a real Lock Screen, in the Dynamic Island and a watch's
+  Smart Stack, its buttons, and VoiceOver on each. The simulator shows none under test.
 
 ## The Apple Watch app
 
@@ -788,7 +831,8 @@ iPhone's and iPad's and the Mac's are behind `#available`, the watch's always th
   file. `Shared/Clock.swift` and `Words.swift` are shared too; the watch's core is its own.
 - **The watch's lists and day follow the phone's models** (`TaskListModel`, `DayModel`): what
   is listed, the row in hand put back on returning, the filter, and VoiceOver taken to a row
-  the app moved, its swipes split by the phone's `AppRowActions`.
+  the app moved, its swipes split by the phone's `AppRowActions`. Only a task's row opens the
+  task's screen: a heading's and the Time Report's sums are read where they are.
 - **The root list is the core's** (`Arrangement.watch`, `RootView`), Home as a watch that syncs
   through its phone has it (`AppModel.arrangement` passes `WatchKind.throughItsPhone`): New Task,
   every place the sidebar shows, as it folds them, then Undo, Redo, What Should I Work On? and
