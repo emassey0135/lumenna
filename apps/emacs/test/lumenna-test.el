@@ -978,7 +978,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (should (equal (mapcar (lambda (text) (and (search-forward text nil t) (line-number-at-pos)))
                            '("  Garden" "New Task" "Undo" "Redo" "What Should I Work On?" "Sync Now"
                              "Settings" "Keyboard Shortcuts" "About Lumenna"))
-                   (cons 6 (number-sequence 12 19))))
+                   (cons 6 (number-sequence 13 20))))
     (lumenna-test--goto "  Garden")
     (should (= (funcall outline-level) 3))
     ;; A heading folds, as the app folds it.
