@@ -423,7 +423,8 @@ q answers a task's question.
   (setq-local lumenna--activate (lambda (_row) (lumenna-press "open"))))
 
 (lumenna-define-command lumenna-act-reconsider "reconsider"
-  "Answer the planner's question about the task at point: keep it, drop it, or less often.")
+  "Answer the planner's question about the task at point.
+Keep it, drop it, or make it less often.")
 (lumenna-define-command lumenna-act-mark-reviewed "mark-reviewed"
   "Mark the project at point reviewed, until its interval comes round.")
 (lumenna-define-action lumenna-act-review-every ("review_every")
