@@ -348,6 +348,7 @@ fun LumennaApp(
             // The app has one question open at a time, asked once over whatever is shown; a
             // task's form is its details.
             AppQuestions(core) { action -> Navigator(stack).push(Screen.Task(action.target)) }
+            HeldBackAsk()
 
             val split = wide && stack.size > 1
             // The tabs or the sidebar, then each pane shown: what F6 moves between, as on

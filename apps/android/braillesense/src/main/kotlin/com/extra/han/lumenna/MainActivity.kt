@@ -22,6 +22,7 @@ import dev.emassey0135.braillesense.edit.SystemClipboard
 import dev.emassey0135.braillesense.files.FilePicker
 import dev.emassey0135.braillesense.files.FileRequest
 import dev.emassey0135.braillesense.files.PickKind
+import dev.emassey0135.braillesense.session.Foreground
 import dev.emassey0135.braillesense.files.PickedFile
 import dev.emassey0135.braillesense.session.BrailleSenseSession
 import dev.emassey0135.braillesense.ui.SettingsReadings
@@ -112,6 +113,7 @@ class MainActivity : ComponentActivity(), Host {
         device.beforeSettings = { shell?.settle() }
         device.onTableChanged = { shell?.retable() }
         device.onSettingsChanged = { shell?.redraw() }
+        device.onMeasured = { shell?.redraw() }
         device.created()
         val opened = core.getOrElse { error ->
             device.display.say(storeUnopened(error.message.orEmpty()))
@@ -128,6 +130,12 @@ class MainActivity : ComponentActivity(), Host {
             reminderAccess = { Reminders.access(this@MainActivity) }
         }
         shell = shown
+        // What holds reminders back, asked once each, over Home.
+        val background = Reminders.backgroundRestricted(this) && Reminders.shouldAskHeldBack(this, HELD_BACKGROUND)
+        val front = !Foreground.allowed(this) && Reminders.shouldAskHeldBack(this, HELD_FRONT)
+        if (background) Reminders.askedHeldBack(this, HELD_BACKGROUND)
+        if (front) Reminders.askedHeldBack(this, HELD_FRONT)
+        shown.askHeldBack(background, front)
         syncing?.created()
         shown.drawn = { screen.text = it }
         lifecycleScope.launch { opened.announcements.collect { shown.announce(it) } }
@@ -149,6 +157,11 @@ class MainActivity : ComponentActivity(), Host {
             null -> {}
         }
         Launching.id(intent)?.let { app.send(ShellEvent.Launch(it)) }
+        // Brought to the front by a reminder going off: said as its dialog once the app holds it.
+        dev.emassey0135.lumenna.Ringing.of(intent)?.let { ringing ->
+            dev.emassey0135.lumenna.Ringing.heard(intent)
+            shell?.ring(ringing)
+        }
     }
 
     override fun onResume() {
@@ -273,11 +286,25 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun deviceName(): String = deviceName(this)
 
+    override fun comesToFront(): Boolean = Foreground.allowed(this)
+
+    override fun allowFront() {
+        Foreground.openSettings(this)
+    }
+
+    override fun allowBackground() {
+        Reminders.openBackgroundSettings(this)
+    }
+
     companion object {
         const val PLATFORM = "android"
 
         // Where it is kept that the person was sent to allow all-files access once.
         private const val FILES = "files"
         private const val ASKED_ACCESS = "asked-all-files-access"
+
+        // What [Reminders.shouldAskHeldBack] asks about here: background use, and coming to the front.
+        private const val HELD_BACKGROUND = "background"
+        private const val HELD_FRONT = "front"
     }
 }

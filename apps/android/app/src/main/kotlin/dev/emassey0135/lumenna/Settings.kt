@@ -325,7 +325,7 @@ fun ReminderSettingsScreen(core: Core, navigator: Navigator, changes: Long) {
     val words = appWords.notifications
     // Read again whenever the app comes back, as from the system's settings (`changes` moves).
     val access = LocalReminderAccess.current
-    val (allowed, exact, grant) = remember(changes) { access(context) }
+    val (allowed, exact, grant, background) = remember(changes) { access(context) }
     val ask = rememberNotificationAsk()
     ScreenFrame(page?.title.orEmpty(), core, navigator) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -343,6 +343,12 @@ fun ReminderSettingsScreen(core: Core, navigator: Navigator, changes: Long) {
                     OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { context.startActivity(intent) }) {
                         Text(words.allowExact)
                     }
+                }
+            }
+            if (!background) {
+                Text(words.heldBack, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                OutlinedButton(modifier = Target.padding(horizontal = 16.dp), onClick = { Reminders.openBackgroundSettings(context) }) {
+                    Text(words.allowBackground)
                 }
             }
             Caption(page?.caption.orEmpty())

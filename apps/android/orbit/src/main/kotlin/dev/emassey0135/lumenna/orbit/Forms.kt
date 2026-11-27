@@ -5,6 +5,7 @@ import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.app.BlockEvent
 import dev.emassey0135.lumenna.app.ControlSends
 import dev.emassey0135.lumenna.app.ControlShown
+import dev.emassey0135.lumenna.app.ControlType
 import dev.emassey0135.lumenna.app.DialogShown
 import dev.emassey0135.lumenna.app.Offered
 import dev.emassey0135.lumenna.app.DetailsEvent
@@ -118,7 +119,29 @@ class SettingsScreen : AppList() {
  * cancel: Escape leaves it.
  */
 class PageScreen(private val page: SettingsPage) : CoreDialog() {
-    override fun shown(): DialogShown? = host.app.settingsPage(page.id)
+    override fun shown(): DialogShown? {
+        val core = host.app.settingsPage(page.id) ?: return null
+        return if (page.id == "reminders") core.copy(controls = core.controls + reminderControls()) else core
+    }
+
+    /**
+     * What Android allows reminders, after the Reminders page's own: Android's, so this app's to add,
+     * as the core's records. Restricted in the background, no reminder goes off until the app is opened.
+     */
+    private fun reminderControls(): List<ControlShown> {
+        if (host.reminderAccess().background) return emptyList()
+        val words = appWords.notifications
+        return listOf(
+            own(HELD_BACK, ControlType.TEXT, value = words.heldBack),
+            own(ALLOW_BACKGROUND, ControlType.BUTTON, label = words.allowBackground),
+        )
+    }
+
+    private fun own(key: String, kind: ControlType, label: String = "", value: String = "") = ControlShown(
+        key = key, kind = kind, label = label, value = value, hint = "", example = "", options = emptyList(), selected = null,
+        checked = false, `field` = null, syntax = null, letter = "", asks = false, default = false, cancel = false,
+        sends = ControlSends.Shell(key), line = "", optionLines = emptyList(),
+    )
 
     override val title: String get() = shown()?.title?.ifEmpty { null } ?: page.title
 
@@ -140,11 +163,17 @@ class PageScreen(private val page: SettingsPage) : CoreDialog() {
             "back-up" -> host.core.backUpNow()
             "restore-backup", "import" -> host.pickImport()
             "pair" -> host.push(DevicesScreen())
+            ALLOW_BACKGROUND -> host.allowBackground()
             // A folder setting (`backup-dir`): chosen in Orbit's File Manager, starting where it is.
             else -> (control.sends as? ControlSends.Shell)?.takeIf { control.key.startsWith("setting:") }
                 ?.let { host.chooseFolder(it.field0, control.value) }
                 ?: host.refuse()
         }
+    }
+
+    private companion object {
+        const val HELD_BACK = "held-back"
+        const val ALLOW_BACKGROUND = "allow-background"
     }
 }
 

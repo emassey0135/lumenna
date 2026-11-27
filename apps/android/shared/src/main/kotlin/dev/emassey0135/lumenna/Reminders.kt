@@ -177,7 +177,15 @@ class SystemAlarms(private val context: Context) : Alarms {
  * [LocalReminderAccess], so a test can show the page as a refusal leaves it: revoking exact
  * alarms kills the app, tests and all.
  */
-data class ReminderAccess(val notifications: Boolean, val exact: Boolean, val grantExact: Intent?)
+data class ReminderAccess(
+    val notifications: Boolean,
+    val exact: Boolean,
+    val grantExact: Intent?,
+    /** Whether Android lets the app run in the background: restricted, no alarm reaches it until it is opened. */
+    val background: Boolean = true,
+    /** The app's own page in Android's settings, where its battery use is allowed. */
+    val grantBackground: Intent? = null,
+)
 
 /** How a screen learns what Android allows: the system's answer, unless a test says otherwise. */
 val LocalReminderAccess = staticCompositionLocalOf<(Context) -> ReminderAccess> { Reminders::access }
@@ -203,8 +211,44 @@ data class ReminderOpened(val kind: String, val target: String, val occurrence: 
  * reminders' own thread, notifications allowed or not; not for what a catching up finds missed.
  */
 interface Ringer {
-    /** [due] has just gone off. */
-    fun ring(context: Context, due: DueReminder)
+    /**
+     * [due] has just gone off, as the core found it looking from [since] to [now] (RFC 3339): the
+     * moment Android's alarm gave, which the app's own clock, not ticking in the background, has
+     * not reached. A look over the same says it as its notification did.
+     */
+    fun ring(context: Context, due: DueReminder, since: String, now: String)
+}
+
+/**
+ * A reminder that went off and brought the app to the front ([Ringer]): its firing, and the moments
+ * the core found it between, carried in the activity's intent as string extras.
+ */
+data class Ringing(val key: String, val occurrence: String, val since: String, val now: String) {
+    /** As the intent's string extras. */
+    fun extras(): Map<String, String> = mapOf(KEY to key, OCCURRENCE to occurrence, SINCE to since, NOW to now)
+
+    companion object {
+        private const val KEY = "dev.emassey0135.lumenna.ring.key"
+        private const val OCCURRENCE = "dev.emassey0135.lumenna.ring.occurrence"
+        private const val SINCE = "dev.emassey0135.lumenna.ring.since"
+        private const val NOW = "dev.emassey0135.lumenna.ring.now"
+
+        /** The firing [intent] was started for, if a reminder going off started it. */
+        fun of(intent: Intent?): Ringing? {
+            intent ?: return null
+            return Ringing(
+                intent.getStringExtra(KEY) ?: return null,
+                intent.getStringExtra(OCCURRENCE) ?: return null,
+                intent.getStringExtra(SINCE) ?: return null,
+                intent.getStringExtra(NOW) ?: return null,
+            )
+        }
+
+        /** Takes the ring out of [intent] once heard, so the activity made again keeps no ringing of the past. */
+        fun heard(intent: Intent?) {
+            listOf(KEY, OCCURRENCE, SINCE, NOW).forEach { intent?.removeExtra(it) }
+        }
+    }
 }
 
 /** A block's day, as a reminder names it: its series and the occurrence's date. */
@@ -336,7 +380,8 @@ object Reminders {
     fun fire(context: Context, core: Core, key: String, occurrence: String, at: String): DueReminder? {
         val moment = runCatching { Instant.parse(at) }.getOrNull() ?: return null
         val now = maxOf(Instant.now(), moment)
-        val found = core.attempt { core.device.remindersDue(moment.minusSeconds(1).toString(), now.toString()) } ?: return null
+        val since = moment.minusSeconds(1).toString()
+        val found = core.attempt { core.device.remindersDue(since, now.toString()) } ?: return null
         val match = { due: DueReminder -> due.key == key && due.occurrence == occurrence }
         val firing = found.due.firstOrNull(match)?.let { it to it.text } ?: found.missed.firstOrNull(match)?.let { it to it.missed }
             ?: return null
@@ -344,7 +389,7 @@ object Reminders {
         // could not be shown, notifications being off, is missed, and said as missed once they
         // are on.
         if (show(context, core, firing.first, firing.second)) SystemShown(context).record("$key@$occurrence")
-        (context.applicationContext as? Ringer)?.ring(context, firing.first)
+        (context.applicationContext as? Ringer)?.ring(context, firing.first, since, now.toString())
         return firing.first
     }
 
@@ -599,7 +644,67 @@ object Reminders {
 
     /** What Android allows reminders here now. */
     fun access(context: Context): ReminderAccess =
-        ReminderAccess(notificationsAllowed(context), exactAllowed(context), exactAlarmSettings(context))
+        ReminderAccess(
+            notificationsAllowed(context), exactAllowed(context), exactAlarmSettings(context),
+            !backgroundRestricted(context), backgroundSettings(context),
+        )
+
+    /**
+     * Whether Android holds the app back in the background (its battery use restricted; MediaTek's
+     * DuraSpeed restricts every app not switched on in its own list, as on the BrailleSense and both
+     * Orbits): its alarms then wait, undelivered, until the app is opened, so no reminder goes off.
+     */
+    fun backgroundRestricted(context: Context): Boolean =
+        context.getSystemService(android.app.ActivityManager::class.java)?.isBackgroundRestricted == true
+
+    /**
+     * Where the app's background use is allowed: DuraSpeed's own list where another app may open it;
+     * else the app's own page in Android's settings, where its battery use is set. On the Orbits and
+     * the BrailleSense DuraSpeed's list is closed to other apps (a permission of MediaTek's own on the
+     * Orbits, not exported at all on the BrailleSense), so it is the app's page there.
+     */
+    fun backgroundSettings(context: Context): Intent {
+        val duraSpeed = Intent(Intent.ACTION_MAIN).setComponent(android.content.ComponentName(DURASPEED, "$DURASPEED.DuraSpeedMainActivity"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val info = runCatching { context.packageManager.getActivityInfo(duraSpeed.component!!, 0) }.getOrNull()
+        val opens = info != null && info.exported &&
+            (info.permission == null || context.checkSelfPermission(info.permission) == PackageManager.PERMISSION_GRANTED)
+        if (opens) return duraSpeed
+        return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    private const val DURASPEED = "com.mediatek.duraspeed"
+
+    /**
+     * Opens where the app's background use is allowed, as close to it as Android lets another app
+     * go: the app's own battery page (Android 11 names it `APP_BATTERY_SETTINGS` on the Orbits, 15
+     * `VIEW_ADVANCED_POWER_USAGE_DETAIL` on the BrailleSense; neither is published), else
+     * [backgroundSettings]. Each is tried in turn, a refusal going on to the next. Whether one opened.
+     */
+    fun openBackgroundSettings(context: Context): Boolean {
+        val app = Uri.parse("package:${context.packageName}")
+        return (listOf(Intent(APP_BATTERY, app), Intent(POWER_USAGE_DETAIL, app)) + backgroundSettings(context)).any { intent ->
+            intent.resolveActivity(context.packageManager) != null &&
+                runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+        }
+    }
+
+    private const val APP_BATTERY = "android.settings.APP_BATTERY_SETTINGS"
+    private const val POWER_USAGE_DETAIL = "android.settings.VIEW_ADVANCED_POWER_USAGE_DETAIL"
+
+    /**
+     * Whether to ask, as the app comes to the front, about what holds reminders back: asked once for
+     * each thing ([held]: `background`, or a shell's own such as `front`), and after that only the
+     * Reminders page says it.
+     */
+    fun shouldAskHeldBack(context: Context, held: String): Boolean =
+        !context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).getBoolean("asked-held-back:$held", false)
+
+    /** Notes that what holds reminders back ([held]) has been asked about. */
+    fun askedHeldBack(context: Context, held: String) {
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit().putBoolean("asked-held-back:$held", true).apply()
+    }
 
     /** Whether alarms may be exact: always before Android 12, else as the person allows. */
     fun exactAllowed(context: Context): Boolean =

@@ -77,11 +77,18 @@ class OrbitActivity : ComponentActivity() {
         val ui = Ui(app, core, session, view, ::finish)
         ui.chooseFile = { pick(FileRequest(PickKind.OPEN_FILE, startIn = folder), ::importFrom) }
         ui.chooseFolder = { key, current -> chooseFolder(key, current) }
+        ui.reminderAccess = { Reminders.access(this) }
+        ui.allowBackground = { Reminders.openBackgroundSettings(this) }
         this.ui = ui
         front = Front(this, core, "android").also { it.created() }
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
         session.created()
         ui.push(HomeScreen())
+        // Held back in the background, no reminder goes off: asked once, over Home.
+        if (Reminders.backgroundRestricted(this) && Reminders.shouldAskHeldBack(this, HELD_BACKGROUND)) {
+            Reminders.askedHeldBack(this, HELD_BACKGROUND)
+            ui.push(HeldBackScreen())
+        }
         reminderTapped(intent)
         app.described = ui::turned
         lifecycleScope.launch { core.announcements.collect { ui.announce(it) } }
@@ -124,10 +131,9 @@ class OrbitActivity : ComponentActivity() {
      */
     private fun reminderTapped(intent: android.content.Intent?) {
         Reminders.opened(this, intent)?.reminded?.let { ui?.reminded(it) }
-        OrbitApplication.ringing(intent)?.let { (key, occurrence) ->
-            intent?.removeExtra(OrbitApplication.RING_KEY)
-            intent?.removeExtra(OrbitApplication.RING_OCCURRENCE)
-            ui?.ring(key, occurrence)
+        dev.emassey0135.lumenna.Ringing.of(intent)?.let { ringing ->
+            dev.emassey0135.lumenna.Ringing.heard(intent)
+            ui?.ring(ringing)
         }
     }
 
@@ -144,6 +150,9 @@ class OrbitActivity : ComponentActivity() {
 
     private companion object {
         const val DEBUG_KEY = "dev.emassey0135.lumenna.orbit.DEBUG_KEY"
+
+        /** What [Reminders.shouldAskHeldBack] asks about here: background use. */
+        const val HELD_BACKGROUND = "background"
     }
 
     // ---- files ----------------------------------------------------------------------------

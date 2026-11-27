@@ -320,6 +320,13 @@ class Ui(
     /** The list the core says is showing, if one is. */
     val listShown: ListShown? get() = (screenView.shown as? Shown.List)?.field0
 
+    /**
+     * The main list as the app last described it, for a place or the day: none while the description
+     * is of a list beside it (a task's reminders), which a place shown again under it, before the app
+     * has heard that list closed, must not take for its own.
+     */
+    val mainShown: ListShown? get() = listShown?.takeIf { it.side == null }
+
     val top: Screen? get() = stack.top
 
     /** This app's screens know it before the stack shows them. */
@@ -491,26 +498,29 @@ class Ui(
     /** Looks back over the last day for reminders due, so Home offers them: as Home opens, and as the app comes to the front. */
     fun lookBack() = send(ShellEvent.Due(DueEvent.LookBack))
 
-    /** A reminder that went off and brought the app to the front, until the app holds it: its firing, and when. */
-    private var ringing: Triple<String, String, Long>? = null
+    /** A reminder that went off and brought the app to the front, until the app holds it, and when it came. */
+    private var ringing: Pair<dev.emassey0135.lumenna.Ringing, Long>? = null
 
     /**
-     * The firing [key] at [occurrence] went off and brought the app to the front: once the app's
-     * reminders due hold it, it is said as its dialog ([RingingScreen]). One the app has not found
-     * within a while (dealt with on another device meanwhile) is let go.
+     * A reminder went off and brought the app to the front: the app looks over the moments the
+     * alarm found it between, not by its own clock, which does not tick in the background and has
+     * not reached it; once the app's reminders due hold it, it is said as its dialog
+     * ([RingingScreen]), in the words its notification had. One not found within a while (dealt
+     * with on another device meanwhile) is let go, the while counted on a clock that runs on as the
+     * device sleeps, so a ring is never said when the device next wakes.
      */
-    fun ring(key: String, occurrence: String) {
-        ringing = Triple(key, occurrence, SystemClock.uptimeMillis())
-        lookBack()
+    fun ring(firing: dev.emassey0135.lumenna.Ringing) {
+        ringing = firing to SystemClock.elapsedRealtime()
+        send(ShellEvent.Due(DueEvent.Look(firing.since, firing.now)))
     }
 
     private fun followRinging(v: ViewModel) {
-        val (key, occurrence, since) = ringing ?: return
-        if (SystemClock.uptimeMillis() - since > RINGING_MS) {
+        val (firing, came) = ringing ?: return
+        if (SystemClock.elapsedRealtime() - came > RINGING_MS) {
             ringing = null
             return
         }
-        val due = v.due.firstOrNull { due -> due.firings.any { it.key == key && it.occurrence == occurrence } } ?: return
+        val due = v.due.firstOrNull { due -> due.firings.any { it.key == firing.key && it.occurrence == firing.occurrence } } ?: return
         ringing = null
         if (stack.screens.none { it is RingingScreen && it.id == due.id }) push(RingingScreen(due.id))
     }
@@ -575,6 +585,12 @@ class Ui(
      * and set to the folder chosen.
      */
     var chooseFolder: (key: String, current: String) -> Unit = { _, _ -> refuse() }
+
+    /** Set by the activity: what Android allows reminders here, asked of the system each time. */
+    var reminderAccess: () -> dev.emassey0135.lumenna.ReminderAccess = { dev.emassey0135.lumenna.ReminderAccess(true, true, null) }
+
+    /** Set by the activity: opens the app's own page in Android's settings, where its background use is allowed. */
+    var allowBackground: () -> Unit = { refuse() }
 }
 
 /** Verbose logging for debug builds. */
