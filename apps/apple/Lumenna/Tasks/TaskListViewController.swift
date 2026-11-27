@@ -137,8 +137,8 @@ struct TaskListScreen: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.row.title)
         .accessibilityValue(AppModel.spoken(detail: detail, expanded: row.row.expanded, level: row.item.level))
-        // Upcoming's days and blocks are shown on their day, which the core has no hint for yet.
-        .accessibilityHint(model.trash ? "" : model.blocks ? Wording.editsEveryOccurrence : row.row.role == "task" ? Wording.showsDetails : "")
+        // Upcoming's days are shown, and its blocks shown on their day.
+        .accessibilityHint(model.trash ? "" : model.blocks ? Wording.editsEveryOccurrence : row.row.role == "task" ? Wording.showsDetails : row.row.role == "group" ? Wording.showsTheDay : row.row.role == "block" ? Wording.showsItOnItsDay : "")
         .accessibilityAddTraits(.isButton)
         .accessibilityFocused($spoken, equals: row.id)
         .swipeActions(edge: .leading) {

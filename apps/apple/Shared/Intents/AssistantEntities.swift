@@ -79,9 +79,9 @@ struct TaskEntity: AppEntity {
         notes = task.notes
         estimate = task.estimateMins.map(Int.init)
         sittings = task.sittingMins.map(Int.init)
-        // The search document carries neither yet (`SearchTask` has no start or deadline).
-        start = nil
-        deadline = nil
+        // A day, ISO; Someday is no day, and is said among its states.
+        start = task.start.flatMap { moment($0) }
+        deadline = task.deadline.flatMap { moment($0) }
         repeats = task.repetition
         states = task.states
         added = Instant.parse(task.createdAt)
