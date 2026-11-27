@@ -973,9 +973,56 @@ class Menus(unittest.TestCase):
         self.session.send(L.ShellEventHome())
         lettered = {row.title: row.letter for row in menus.home_rows(self.session)}
         self.assertEqual(
-            {title: lettered.get(title) for title in ("Today", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "History", "Trash")},
-            {"Today": "t", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b", "History": "h", "Trash": "x"},
+            {title: lettered.get(title) for title in ("Today", "Upcoming", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "History", "Trash")},
+            {"Today": "t", "Upcoming": "d", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b",
+             "History": "h", "Trash": "x"},
         )
+
+    def test_upcoming_lists_the_days_ahead_and_enter_on_a_day_shows_it_in_today(self):
+        self.call("block.add", title="Deep work", at="9am", minutes=60, date="tomorrow")
+        script = self.run_script(
+            [("key", "Today", "d"), ("menu", "Tomorrow"), ("back",), ("back",)], lambda: menus.home(self.session),
+        )
+        self.assertTrue(script.titles[1].startswith("Upcoming"), script.titles)
+        upcoming = script.menus[1]["rows"]
+        self.assertTrue(upcoming[0].startswith("Today"), upcoming)
+        self.assertTrue(any(row.startswith("Tomorrow") for row in upcoming), upcoming)
+        self.assertTrue(any("Deep work" in row for row in upcoming), upcoming)
+        # Enter on the day went on to Today, on that day, and leaving it is Home again.
+        self.assertTrue(script.titles[2].startswith("Tomorrow"), script.titles)
+        self.assertTrue(any("Deep work" in row for row in script.menus[2]["rows"]), script.menus[2]["rows"])
+        self.assertEqual(script.titles[3], "Home")
+
+    def test_enter_on_a_block_of_upcoming_shows_its_day_with_the_block_in_hand_and_today_keeps_it(self):
+        import actions
+
+        self.call("block.add", title="Deep work", at="9am", minutes=60, date="tomorrow")
+        self.store.caught_up()
+        self.session.show(L.PlaceUpcoming())
+        block = next(row for row in tasks.list_rows(self.session) if row.title == "Deep work")
+        actions.press(self.session, "open", block)
+        view = self.session.view()
+        self.assertIsInstance(view.place, L.PlaceToday)
+        held, shown = view.focus, view.day.date
+        self.assertTrue(held.startswith("block:"), held)
+        self.session.went_on()
+        # The screen then shown for Today takes the day as the app has it, not opened afresh on today.
+        self.session.show(L.PlaceToday())
+        self.assertEqual((self.session.view().focus, self.session.view().day.date), (held, shown))
+
+    def test_a_task_form_has_its_start_and_deadline_after_its_due_date_and_saves_them(self):
+        self.call("task.add", text="draft the essay")
+        made = self.task("draft the essay")["id"]
+        script = self.run_script(
+            [("context", "draft the essay", "Edit"), ("form", {"field:start": "2030-03-01", "field:deadline": "2030-03-08"}),
+             ("back",)],
+            lambda: tasks.task_list(self.session),
+        )
+        keys = [f.key.removeprefix("field:") for f in script.forms[0]]
+        self.assertEqual(keys[keys.index("due") + 1:keys.index("due") + 3], ["start", "deadline"], keys)
+        # Starting later, it is out of Tasks: asked for by its identifier.
+        shown = self.call("task.show", id=made)
+        self.assertEqual((shown["start"], shown["deadline"]), ("2030-03-01", "2030-03-08"))
 
     def test_m_chord_on_home_opens_the_cores_menu_bar_on_homes_own_menu_and_tab_goes_round(self):
         script = self.run_script(

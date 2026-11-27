@@ -94,6 +94,15 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
     title = title or L.place_title(place)
     state = {"heading": title}
 
+    def enter(row) -> str:
+        # Enter is `Key("open")`, as on every row: a task's form, a trashed task restored, and on
+        # Upcoming a day shown, or a block on its day, where the app goes on to Today itself.
+        said = actions.press(session, "open", row)
+        view = session.view()
+        if view.home is None and view.place is not None and view.place != place:
+            session.went_on()
+        return said
+
     def build():
         session.show(place, query)
         rows = list_rows(session)
@@ -103,8 +112,7 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
     with screen("lumenna-tasks"):
         live_menu(
             session, build, lambda: state["heading"],
-            # Enter is `Key("open")`, as on every row: a task's form, a trashed task restored.
-            main=main or (lambda row: actions.press(session, "open", row)),
+            main=main or enter,
             context=lambda rows: task_commands(session, rows),
             app=lambda: place_commands(session),
             bar=(place, False),
@@ -127,13 +135,22 @@ def query_tasks(session: Session) -> str:
 
 def task_commands(session: Session, rows) -> list[Command]:
     """What can be done to a task: the app's actions for it, then its details."""
-    return actions.commands(session, rows, after=[Command(core.words().details.title, lambda row: show(session, row))])
+    # The details are a task's: not for Upcoming's days and blocks, which a list shows beside tasks.
+    return actions.commands(session, rows, after=[Command(core.words().details.title, lambda row: show(session, row),
+                                                          applies=lambda row: row.record.role == "task")])
 
 
 def history(session: Session) -> str:
     """What was done over the last two weeks, newest first, each a task's row: Enter shows its
     details."""
     return task_list(session, L.PlaceHistory())
+
+
+def upcoming(session: Session) -> str:
+    """The days ahead, today first, each a heading with its blocks and then the tasks due,
+    starting or with their deadline on it: Enter on a day shows it, on a block shows it on its
+    day in hand, and on a task opens its form."""
+    return task_list(session, L.PlaceUpcoming())
 
 
 def trash(session: Session) -> str:

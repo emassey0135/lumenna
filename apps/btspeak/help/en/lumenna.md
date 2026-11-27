@@ -19,6 +19,7 @@ Press H-Chord on any Lumenna screen for help about that screen. Press Z-Chord to
 Lumenna opens on Home: your places, then what can be done from anywhere. Enter or a place's letter opens it; leaving the place brings you back to Home.
 
 - Today, t: the day's blocks, free time and now. See [Lumenna Day](help:lumenna-day).
+- Upcoming, d: the week ahead, today first, each day with its blocks, then the tasks due, starting or with their deadline that day. Enter on a day shows it in Today; on a block, shows its day with the block under the cursor; on a task, opens its form.
 - Tasks, k: every open task. See [Lumenna Tasks](help:lumenna-tasks).
 - Projects, p; Labels, l; Saved filters, f: headings, with each project, label and saved filter under them. Enter on a heading folds or unfolds it. See [Lumenna Projects, Labels and Filters](help:lumenna-organise).
 - Blocks, b: every block, including ones on no day near today.

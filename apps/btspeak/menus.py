@@ -71,6 +71,8 @@ def place_screen(place):
         return day.blocks
     if isinstance(place, L.PlaceHistory):
         return tasks.history
+    if isinstance(place, L.PlaceUpcoming):
+        return tasks.upcoming
     if isinstance(place, L.PlaceTrash):
         return tasks.trash
     return lambda session: tasks.task_list(session, place)

@@ -241,7 +241,7 @@ def run_from_bar(session: Session, picked, row, place, home: bool) -> str:
         # moving the app on; the app's may (View's places, What should I work on?).
         view = session.view()
         if (view.home is not None) != home or (not home and view.place != place):
-            session.moved_on = True
+            session.went_on()
     return said
 
 
