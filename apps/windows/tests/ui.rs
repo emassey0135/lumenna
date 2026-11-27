@@ -390,8 +390,8 @@ fn delete_in_the_sidebar_asks_before_deleting_a_project() {
     let app = App::launch(|lumenna| {
         lumenna.add_project("Garden", None).unwrap();
     });
-    // Today, Tasks, Projects, Inbox, Garden.
-    app.post(&["f6", "home", "down", "down", "down", "down"]);
+    // Today, Upcoming, Tasks, Projects, Inbox, Garden.
+    app.post(&["f6", "home", "down", "down", "down", "down", "down"]);
     assert!(app.focus().contains("TreeItem 'Garden"), "{}", app.focus());
     app.post(&["delete"]);
     let dialog = app.front();
@@ -410,8 +410,8 @@ fn a_project_renamed_from_the_sidebar_is_shown_under_its_new_name_its_row_still_
     let app = App::launch(|lumenna| {
         lumenna.add_project("Garden", None).unwrap();
     });
-    // Today, Tasks, Projects, Inbox, Garden.
-    app.post(&["f6", "home", "down", "down", "down", "down", "f2"]);
+    // Today, Upcoming, Tasks, Projects, Inbox, Garden.
+    app.post(&["f6", "home", "down", "down", "down", "down", "down", "f2"]);
     assert!(app.front().iter().any(|l| l.contains("Edit") && l.contains("FOCUSED")), "F2 asks for the name: {:#?}", app.front());
     app.post(&["text:Allotment", "enter"]);
     let renamed = automation::wait(Duration::from_secs(5), || app.focus().contains("TreeItem 'Allotment").then_some(()));
@@ -431,8 +431,8 @@ fn a_projects_colour_is_picked_from_the_palette_and_drawn_beside_its_name_never_
     let app = App::launch_with(&[("LUMENNA_DARK", "0")], |lumenna| {
         lumenna.add_project("Garden", None).unwrap();
     });
-    // Today, Tasks, Projects, Inbox, Garden.
-    app.post(&["f6", "home", "down", "down", "down", "down", "context"]);
+    // Today, Upcoming, Tasks, Projects, Inbox, Garden.
+    app.post(&["f6", "home", "down", "down", "down", "down", "down", "context"]);
     choose_from_menu(&app, "Colour...");
     let pick = automation::wait(Duration::from_secs(5), || {
         let front = app.front();
@@ -577,8 +577,8 @@ fn a_saved_filters_query_and_a_blocks_tasks_from_complete_as_the_filter_does() {
         lumenna.add_project("Work", None).unwrap();
         lumenna.add_filter("Urgent", "p1").unwrap();
     });
-    // Today, Tasks, Projects, Inbox, Work, Labels, Saved Filters, Urgent.
-    app.post(&["f6", "home", "down", "down", "down", "down", "down", "down", "down"]);
+    // Today, Upcoming, Tasks, Projects, Inbox, Work, Labels, Saved Filters, Urgent.
+    app.post(&["f6", "home", "down", "down", "down", "down", "down", "down", "down", "down"]);
     assert!(app.focus().contains("TreeItem 'Urgent"), "{}", app.focus());
     app.post(&["context"]);
     choose_from_menu(&app, "Change Query...");
