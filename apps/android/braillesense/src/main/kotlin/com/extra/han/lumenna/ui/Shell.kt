@@ -951,11 +951,14 @@ class Shell(
         controls += control("not-now", ControlType.BUTTON, words.notNow, sends = ControlSends.Shell("not-now"))
         val shown = DialogShown(id = "held-back", title = words.channel, prompt = words.channel, controls = controls, focus = 1u, cancel = emptyList())
         return dialog(shown) { what ->
-            when (what) {
-                "allow-background" -> host.allowBackground()
-                "allow-front" -> host.allowFront()
-            }
+            // One allowed, the other is still asked, waiting for the person back from Android's page.
+            val rest = when (what) {
+                "allow-background" -> page.copy(background = false).also { host.allowBackground() }
+                "allow-front" -> page.copy(front = false).also { host.allowFront() }
+                else -> null
+            }?.takeIf { it.background || it.front }
             ui.screens.lastOrNull { it is PageScreen && it.page == page }?.let(ui::close)
+            rest?.let(::pushPage)
         }
     }
 

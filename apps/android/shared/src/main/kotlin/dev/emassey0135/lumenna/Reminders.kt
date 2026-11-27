@@ -658,14 +658,18 @@ object Reminders {
         context.getSystemService(android.app.ActivityManager::class.java)?.isBackgroundRestricted == true
 
     /**
-     * Where the app's background use is allowed: DuraSpeed's own list where the device has it, which
-     * puts its restriction back over a change made anywhere else; else the app's own page in
-     * Android's settings, where its battery use is set.
+     * Where the app's background use is allowed: DuraSpeed's own list where another app may open it;
+     * else the app's own page in Android's settings, where its battery use is set. On the Orbits and
+     * the BrailleSense DuraSpeed's list is closed to other apps (a permission of MediaTek's own on the
+     * Orbits, not exported at all on the BrailleSense), so it is the app's page there.
      */
     fun backgroundSettings(context: Context): Intent {
         val duraSpeed = Intent(Intent.ACTION_MAIN).setComponent(android.content.ComponentName(DURASPEED, "$DURASPEED.DuraSpeedMainActivity"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (duraSpeed.resolveActivity(context.packageManager) != null) return duraSpeed
+        val info = runCatching { context.packageManager.getActivityInfo(duraSpeed.component!!, 0) }.getOrNull()
+        val opens = info != null && info.exported &&
+            (info.permission == null || context.checkSelfPermission(info.permission) == PackageManager.PERMISSION_GRANTED)
+        if (opens) return duraSpeed
         return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }

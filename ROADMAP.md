@@ -150,8 +150,8 @@ A day or less each, for between the larger pieces, except the first.
   change.
   - The keys pressed by hand on both devices, so far only sent over adb.
   - Syncing over Iroh on Wi-Fi.
-  - DuraSpeed's list as the button opens it, and whether Lumenna switched on there stays so
-    (every alarm is held back until the app is opened while it is off).
+  - Whether DuraSpeed keeps Lumenna's background use allowed once set on its page in Android's
+    settings (DuraSpeed's own list is closed to other apps; every alarm is held back while it is off).
   - A reminder firing: its dialog coming to the front, the notification's sound and vibration
     through Do Not Disturb (which Satellite lets notifications through), and BackTalk reading it
     in the shade.
