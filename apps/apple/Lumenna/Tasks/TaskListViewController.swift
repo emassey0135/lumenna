@@ -112,7 +112,7 @@ struct TaskListScreen: View {
             model.key("open", on: row.row)
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                if model.checks {
+                if model.checks(row.row) {
                     Image(systemName: done ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(done ? Color.accentColor : Color.quietLabel)
                 }
@@ -137,7 +137,8 @@ struct TaskListScreen: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.row.title)
         .accessibilityValue(AppModel.spoken(detail: detail, expanded: row.row.expanded, level: row.item.level))
-        .accessibilityHint(model.trash ? "" : model.blocks ? Wording.editsEveryOccurrence : Wording.showsDetails)
+        // Upcoming's days and blocks are shown on their day, which the core has no hint for yet.
+        .accessibilityHint(model.trash ? "" : model.blocks ? Wording.editsEveryOccurrence : row.row.role == "task" ? Wording.showsDetails : "")
         .accessibilityAddTraits(.isButton)
         .accessibilityFocused($spoken, equals: row.id)
         .swipeActions(edge: .leading) {
@@ -205,6 +206,11 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
         observer = NotificationCenter.default.addObserver(forName: AppModel.shown, object: core.app, queue: .main) { [weak self] _ in
             guard let self else { return }
             if self.title != self.model.title { self.title = self.model.title }
+        }
+        // A row's action that took the app to another place (Upcoming's Show the Day): the
+        // window shows it, as it does a launch's.
+        model.left = { [weak self] _ in
+            (self?.view.window?.rootViewController as? PlaceFollowing)?.showAppPlace()
         }
         // The place's own actions, the core's, in the bar: Undo and Redo, New Task or New Block,
         // and the rest (the filter, New Project Inside) in its Place Actions menu.

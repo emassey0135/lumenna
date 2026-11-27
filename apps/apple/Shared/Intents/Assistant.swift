@@ -84,10 +84,12 @@ final class AssistantStore: @unchecked Sendable {
         task.flatMap { entities([$0.id]).first }
     }
 
-    /// Each task a listing names, in the listing's order.
+    /// Each task a listing names, in the listing's order, once: Upcoming names a task on each day
+    /// it falls on (due, starting, its deadline).
     func tasks(_ assisted: LumennaApp.Assisted) -> [TaskEntity] {
         guard case let .rows(rows) = assisted else { return [] }
-        return entities(rows.rows.filter { $0.role == "task" }.map(\.id))
+        var seen = Set<String>()
+        return entities(rows.rows.filter { $0.role == "task" && seen.insert($0.id).inserted }.map(\.id))
     }
 
     /// A day, as a person says it, or today.

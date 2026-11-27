@@ -16,6 +16,8 @@ struct TaskListView: View {
     /// Whether one of the place's own actions ran here: when the app then goes on to another
     /// place — renamed, merged, deleted — this list goes back to the places.
     @State private var acted = false
+    /// Where a row's action took the app (Upcoming's Show the Day: the day), shown over this list.
+    @State private var elsewhere: LumennaApp.Place?
     @AccessibilityFocusState private var spoken: String?
 
     init(core: Core, place: LumennaApp.Place) {
@@ -56,12 +58,18 @@ struct TaskListView: View {
             .navigationDestination(for: TaskOpened.self) { opened in
                 TaskView(id: opened.id)
             }
+            .navigationDestination(item: $elsewhere) { place in
+                PlaceView(core: core, place: place)
+            }
             .sheet(isPresented: $adding) {
                 QuickAddView().showsWhatIsSaid()
             }
             // Coming back from a task's details keeps the place, its filter and the row in hand;
             // from anywhere else it opens again with them.
-            .onAppear { model.appear() }
+            .onAppear {
+                model.left = { elsewhere = $0 }
+                model.appear()
+            }
             .onChange(of: core.app.view.place) { _, shown in
                 if acted, shown != place {
                     acted = false
@@ -85,21 +93,28 @@ struct TaskListView: View {
         // Split as the phone splits them (`AppRowActions`): Mark Done from the leading edge,
         // the rest and Expand or Collapse from the trailing; every one is on the task's screen.
         let split = AppRowActions(actions: shown.actions, doneLeads: true) { _ in }
-        return NavigationLink(value: TaskOpened(id: row.id)) {
-            // The row owns what VoiceOver says: the title as its name, then the rest of its
-            // line, whether it is folded and its level as its value, as on the phone.
-            HStack {
-                SwatchMark(swatch: row.swatch)
-                VStack(alignment: .leading) {
-                    Text(row.title)
-                    if let detail = shown.line?.detail, !detail.isEmpty {
-                        Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
-                    }
+        // The row owns what VoiceOver says: the title as its name, then the rest of its line,
+        // whether it is folded and its level as its value, as on the phone.
+        let label = HStack {
+            SwatchMark(swatch: row.swatch)
+            VStack(alignment: .leading) {
+                Text(row.title)
+                if let detail = shown.line?.detail, !detail.isEmpty {
+                    Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(row.title)
-            .accessibilityValue(AppModel.spoken(detail: shown.line?.detail, expanded: row.expanded, level: shown.item.level))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(row.title)
+        .accessibilityValue(AppModel.spoken(detail: shown.line?.detail, expanded: row.expanded, level: shown.item.level))
+        return Group {
+            if row.role == "task" {
+                NavigationLink(value: TaskOpened(id: row.id)) { label }
+            } else {
+                // Upcoming's day or block: the core's Open, which shows it on its day; the list
+                // follows the app there (`left`).
+                Button { model.key("open", on: row) } label: { label }
+            }
         }
         .accessibilityFocused($spoken, equals: row.id)
         .swipeActions(edge: .leading) {

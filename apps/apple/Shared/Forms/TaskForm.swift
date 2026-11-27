@@ -21,6 +21,8 @@ final class TaskDetailModel: NSObject, ObservableObject {
     @Published private(set) var task: LumennaApp.TaskDetail?
     @Published var title = "" { didSet { typed("title", title) } }
     @Published var due = "" { didSet { typed("due", due) } }
+    @Published var start = "" { didSet { typed("start", start) } }
+    @Published var deadline = "" { didSet { typed("deadline", deadline) } }
     @Published var repetition = "" { didSet { typed("repeat", repetition) } }
     @Published var priority: UInt8 = 4 { didSet { typed("priority", String(priority)) } }
     @Published var estimate = "" { didSet { typed("estimate", estimate) } }
@@ -99,6 +101,8 @@ final class TaskDetailModel: NSObject, ObservableObject {
         defer { following = false }
         if title != fields.title { title = fields.title }
         if due != fields.due { due = fields.due }
+        if start != fields.start { start = fields.start }
+        if deadline != fields.deadline { deadline = fields.deadline }
         if repetition != fields.repeat { repetition = fields.repeat }
         if priority != fields.priority { priority = fields.priority }
         if estimate != fields.estimate { estimate = fields.estimate }
@@ -163,6 +167,9 @@ struct TaskDetailView: View {
             Section {
                 title
                 namedField(words["due"], text: $model.due).modifier(Lowercase())
+                // Beside the due date they stand apart from, as the core's form has them.
+                namedField(words["start"], text: $model.start).modifier(Lowercase())
+                namedField(words["deadline"], text: $model.deadline).modifier(Lowercase())
                 namedField(words["repeat"], text: $model.repetition).modifier(Lowercase())
                 namedField(words["estimate"], text: $model.estimate).modifier(Lowercase())
                 namedField(words["sittings"], text: $model.sittings).modifier(Lowercase())

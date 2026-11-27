@@ -46,6 +46,10 @@ struct TaskEntity: AppEntity {
     @Property(title: "Notes") var notes: String
     @Property(title: "Estimate in Minutes") var estimate: Int?
     @Property(title: "Sitting Length in Minutes") var sittings: Int?
+    /// The day it may be begun; one kept for someday has none, and says so in its states.
+    @Property(title: "Starts") var start: Date?
+    /// The day it must be done by.
+    @Property(title: "Deadline") var deadline: Date?
     /// How it repeats, in the core's words ("every weekday").
     @Property(title: "Repeats") var repeats: String?
     /// Its states, as the filter language names them: overdue, blocked, recurring, …
@@ -75,6 +79,9 @@ struct TaskEntity: AppEntity {
         notes = task.notes
         estimate = task.estimateMins.map(Int.init)
         sittings = task.sittingMins.map(Int.init)
+        // The search document carries neither yet (`SearchTask` has no start or deadline).
+        start = nil
+        deadline = nil
         repeats = task.repetition
         states = task.states
         added = Instant.parse(task.createdAt)
@@ -101,6 +108,8 @@ struct TaskEntity: AppEntity {
         notes = ""
         estimate = nil
         sittings = nil
+        start = nil
+        deadline = nil
         repeats = nil
         states = []
         added = nil

@@ -29,6 +29,12 @@ final class TaskListModel: ObservableObject {
     var filters: Bool { screenActions.contains { $0.id == "filter" } }
     /// Whether its rows are tasks that can be checked off: not the trash's, nor Blocks'.
     var checks: Bool { !trash && !blocks }
+    /// Whether `row` has a checkbox: only one that can be checked off (`checked` set), never
+    /// Upcoming's days and blocks.
+    func checks(_ row: LumennaApp.RowView) -> Bool { checks && row.checked != nil }
+    /// A row's action took the app to another place (Upcoming's Show the Day, to the day): a
+    /// shell whose screens do not follow the app's place by themselves shows that place.
+    var left: ((LumennaApp.Place) -> Void)?
     /// What a row here is, for saying why it has no action of a kind.
     var subject: LumennaApp.Subject { blocks ? .block : .task }
     /// Every row, those folded away included (`hidden`): a tree draws them inside their
@@ -132,6 +138,7 @@ final class TaskListModel: ObservableObject {
     /// the window's `AppQuestions` asks.
     func run(_ action: LumennaApp.Offered, on row: LumennaApp.RowView) {
         core.app.run(action, on: row.id)
+        follow()
     }
 
     /// What can be done to the row listed as `row`, in short.
@@ -143,6 +150,16 @@ final class TaskListModel: ObservableObject {
     /// it says why the row has none.
     func key(_ id: String, on row: LumennaApp.RowView) {
         core.app.key(id, on: row.id)
+        follow()
+    }
+
+    /// Once the app is still, the place it went on to from here, if it left this one.
+    private func follow() {
+        guard left != nil else { return }
+        core.app.whenStill { [weak self] in
+            guard let self, let shown = self.core.app.view.place, shown != self.place else { return }
+            self.left?(shown)
+        }
     }
 
     /// The row in hand, if it is listed.

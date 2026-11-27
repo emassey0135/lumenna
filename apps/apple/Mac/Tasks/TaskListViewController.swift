@@ -153,7 +153,7 @@ struct MacTaskListScreen: View {
             let done = row.row.checked == true
             let detail = row.line?.detail ?? ""
             HStack(alignment: .top, spacing: 6) {
-                if model.checks {
+                if model.checks(row.row) {
                     // For a pointer alone, as the web's is: Space and the row's menu mark it done
                     // for everyone else, and its line says "completed" in words. Left in, the
                     // check box was said before the title, and differently on a row with
