@@ -160,7 +160,10 @@ class MainActivity : ComponentActivity(), Host {
         // Brought to the front by a reminder going off: said as its dialog once the app holds it.
         dev.emassey0135.lumenna.Ringing.of(intent)?.let { ringing ->
             dev.emassey0135.lumenna.Ringing.heard(intent)
-            shell?.ring(ringing)
+            // Come to the front over another app for it: back to that app once it is dealt with.
+            val fromBackground = Foreground.openedFromBackground(intent)
+            Foreground.heard(intent)
+            shell?.ring(ringing, fromBackground)
         }
     }
 
@@ -287,6 +290,8 @@ class MainActivity : ComponentActivity(), Host {
     override fun deviceName(): String = deviceName(this)
 
     override fun comesToFront(): Boolean = Foreground.allowed(this)
+
+    override fun returnToPrevious() = Foreground.returnToPrevious(this)
 
     override fun allowFront() {
         Foreground.openSettings(this)

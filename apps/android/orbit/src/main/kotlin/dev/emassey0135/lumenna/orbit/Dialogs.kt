@@ -293,7 +293,7 @@ abstract class CoreDialog : DialogScreen(), AppScreen {
  * with its letter, handed back by its id. It rings no more than its notification did. Back leaves it
  * due, among Home's Reminders Due; dealt with here or anywhere else, it goes.
  */
-class RingingScreen(val id: String) : DialogScreen(), AppScreen {
+class RingingScreen(val id: String, private val fromBackground: Boolean = false) : DialogScreen(), AppScreen {
     override lateinit var host: Ui
 
     private val due get() = host.view.due.firstOrNull { it.id == id }
@@ -321,8 +321,20 @@ class RingingScreen(val id: String) : DialogScreen(), AppScreen {
         }
     }
 
+    /** The button last pressed: Replan carries on in the app, so the person stays. */
+    private var pressedButton: String? = null
+
     override fun pressed(control: DialogControl) {
-        if (control is DialogControl.Button) host.send(ShellEvent.Due(DueEvent.Press(id, control.key)))
+        if (control !is DialogControl.Button) return
+        pressedButton = control.key
+        host.send(ShellEvent.Due(DueEvent.Press(id, control.key)))
+    }
+
+    // Brought to the front over another app for it, the app goes back there once it is dealt with or
+    // Back is pressed on it, as the Alarm Clock's dialog leaves; not after Replan, which goes on here.
+    override fun closed() {
+        super.closed()
+        if (fromBackground && pressedButton != REPLAN) host.returnToPrevious()
     }
 
     // Nothing in it is typed, chosen or checked.
@@ -336,6 +348,7 @@ class RingingScreen(val id: String) : DialogScreen(), AppScreen {
 
     private companion object {
         const val MESSAGE = "message"
+        const val REPLAN = "replan"
     }
 }
 
