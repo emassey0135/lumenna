@@ -116,7 +116,7 @@ fn the_inbox_is_only_reordered_and_weighed_and_given_sections() {
     let work = rows.iter().find(|r| r.title == "Work").unwrap();
     assert_eq!(
         titles(&work.actions),
-        ["Rename", "New Project Inside", "New Section", "Move Under", "Move Up", "Weight", "Colour", "Archive", "Delete"]
+        ["Rename", "New Project Inside", "New Section", "Move Under", "Move Up", "Weight", "Colour", "Mark Reviewed", "Review Every", "Archive", "Delete"]
     );
 }
 

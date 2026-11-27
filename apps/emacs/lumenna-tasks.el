@@ -56,6 +56,7 @@ that goes there names it, and the day's buffer is its group's."
   (pcase place
     ("Tasks" (lumenna-word '(command "go-tasks"))) ("Trash" (lumenna-word '(command "go-trash")))
     ("Blocks" (lumenna-word '(command "go-blocks"))) ("History" (lumenna-word '(command "go-history")))
+    ("Review" (lumenna-word '(command "go-review")))
     ("Today" (lumenna-word '(group "day")))
     ((pred (lambda (p) (plist-get p :Project))) (plist-get place :Project))
     ((pred (lambda (p) (plist-get p :Label))) (plist-get place :Label))
@@ -73,7 +74,7 @@ that goes there names it, and the day's buffer is its group's."
 A buffer that shows it already is shown again."
   (if (equal place "Today")
       (lumenna-today)
-    (let ((mode (pcase place ("Trash" #'lumenna-trash-mode) ("Blocks" #'lumenna-blocks-mode) (_ #'lumenna-tasks-mode)))
+    (let ((mode (pcase place ("Trash" #'lumenna-trash-mode) ("Review" #'lumenna-review-mode) ("Blocks" #'lumenna-blocks-mode) (_ #'lumenna-tasks-mode)))
           (name (lumenna--buffer-name (lumenna--place-title place))))
       (lumenna--show-screen name mode (list (list :Open place)))
       (setq lumenna--place place))))
@@ -369,6 +370,13 @@ it with \\[lumenna-act-at-point].
   (interactive)
   (lumenna-open-place "History"))
 
+;;;###autoload
+(defun lumenna-review ()
+  "Show what is due for a second look: the projects due for review, and the
+tasks the planner asks about."
+  (interactive)
+  (lumenna-open-place "Review"))
+
 ;;;; Menus
 
 (lumenna-define-keys lumenna-tasks-mode
@@ -400,6 +408,36 @@ it with \\[lumenna-act-at-point].
    ("W" (command "stop-waiting") lumenna-act-stop-waiting)
    ("R" (kinds "reminders") lumenna-act-reminders)
    ("d" (kinds "delete" "delete_for_good") lumenna-task-delete)))
+
+;;;; The review
+
+(define-derived-mode lumenna-review-mode lumenna-list-mode "Lumenna Review"
+  "The projects due for review, then the tasks the planner asks about.
+RET on a project opens it, on a task its details; v marks a project reviewed,
+q answers a task's question.
+
+\\{lumenna-review-mode-map}"
+  (lumenna--mode-name '(command "go-review"))
+  (setq-local lumenna--draw #'lumenna--list-rows)
+  ;; The core's Enter (`open'): a project opened, a task's details.
+  (setq-local lumenna--activate (lambda (_row) (lumenna-press "open"))))
+
+(lumenna-define-command lumenna-act-reconsider "reconsider"
+  "Answer the planner's question about the task at point.
+Keep it, drop it, or make it less often.")
+(lumenna-define-command lumenna-act-mark-reviewed "mark-reviewed"
+  "Mark the project at point reviewed, until its interval comes round.")
+(lumenna-define-action lumenna-act-review-every ("review_every")
+  "Set how often the project at point comes up for review.")
+
+(lumenna-define-keys lumenna-review-mode
+  (:project_at_point
+   ("v" (command "mark-reviewed") lumenna-act-mark-reviewed)
+   ("i" (kinds "review_every") lumenna-act-review-every))
+  (:task_at_point
+   ("q" (command "reconsider") lumenna-act-reconsider)
+   ("c" (kinds "mark_done" "mark_not_done") lumenna-act-done)
+   ("d" (command "trash-task") lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-trash-mode
   (:task_at_point

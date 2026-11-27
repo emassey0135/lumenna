@@ -1456,6 +1456,11 @@ fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static 
         K::DeleteForGood => &[&["task", "rm", "{groceries}"], &["task", "erase", "{groceries}", "--yes"]],
         K::ErasePermanently => &[&["task", "rm", "{groceries}"], &["task", "erase", "{groceries}", "--permanently", "--yes"]],
         K::EraseEverythingDeleted => &[&["task", "rm", "{groceries}"], &["erase-deleted", "--yes"]],
+        K::MarkReviewed => &[&["project", "reviewed", "Home"]],
+        K::ReviewEvery => &[&["project", "review-every", "Home", "every 2 weeks"]],
+        K::Reconsider => &[&["task", "reconsider", "{groceries}", "keep"], &["task", "reconsider", "{groceries}", "drop"]],
+        // A place is a listing: the project's own.
+        K::OpenProject => &[&["task", "list", "#Home"]],
         K::CancelDay => &[&["block", "cancel", "{daily}", "--date", "tomorrow"]],
         K::RestoreDay => &[&["block", "cancel", "{daily}", "--date", "tomorrow"], &["block", "restore", "{daily}", "--date", "tomorrow"]],
         K::StartTimer => &[&["start", "{essay-sitting}"]],

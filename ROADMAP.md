@@ -32,8 +32,6 @@ The order, and why:
 
 ## 3. Planning
 
-- **A staleness question**, if a task becomes permanent furniture at the top: "this has been at
-  the top for three weeks; is it real?", rather than a bigger formula.
 - **When to start, apart from when it is due**: a task's one date says both "do it Monday" and
   "it must be done Friday", which Things (When and Deadline), OmniFocus (defer, planned and due),
   Taskwarrior (`wait`, `scheduled`, `due`) and Todoist (due and, since 2025, deadlines) keep
@@ -54,17 +52,6 @@ The order, and why:
 - **Time reports**: the minutes every sitting logs, summed by project, label and week, with
   estimates beside them, as Todoist's productivity view and Taskwarrior's reports have. A
   listing of the core's, read as one.
-- **A review**: every project looked at in turn at an interval of its own, as OmniFocus' weekly
-  review is, each marked reviewed; the staleness question above is the same kind of asking.
-- **Habits, from what is kept already**: a repeating task already says its cadence (`every 2
-  days`, `every! 2 days` from when it is done, `every mon, wed, fri`), which stands in for a
-  target per period, and never piles up overdue copies, being one task whose date moves on.
-  Two things to add. A **streak**, counted from its completions (each records the occurrence
-  it completed) and said in words in its details and its glance line ("done 12 times running",
-  "missed Tuesday"). And, from the `postponed` tally, the planner asking of a task put off
-  again and again, repeating or not: "this has been put off five times; make it less often, or
-  drop it?", the staleness question's twin. No "3 times a week" of any days: a cadence says it
-  well enough.
 - **Energy, as the person rates it**: capacity for focus and for starting things, which ADHD
   and other conditions make uneven, not calories, so it is estimated, as a length is, never
   measured.

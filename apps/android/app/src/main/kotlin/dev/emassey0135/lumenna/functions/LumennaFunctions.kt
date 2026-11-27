@@ -312,6 +312,39 @@ abstract class LumennaFunctions : AppFunctionService() {
         Assistant.dayPlanApplied(assist("apply_day_plan", Assistant.dayPlan("proposal", proposal), Assistant.dayPlanSittings("accepted", accepted)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("What is due for a second look: the projects due for review, each with when it was last reviewed and how often it is, then the tasks the planner asks about, each with its question in short. A task's whole question is its `asking` in `show_task`.")
+    suspend fun review(): Listing =
+        Assistant.listing(assist("review"))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("Marks a project reviewed now: it leaves the review until its interval comes round.")
+    suspend fun markReviewed(
+        @AppFunctionInstruction("The project, by name.")
+        project: String,
+    ): ChangeMade =
+        Assistant.changeMade(assist("mark_reviewed", Assistant.text("project", project)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("Sets how often a project comes up for review.")
+    suspend fun reviewEvery(
+        @AppFunctionInstruction("The project, by name.")
+        project: String,
+        @AppFunctionInstruction("How often, such as every week, every 2 weeks, every month, or never.")
+        every: String,
+    ): ChangeMade =
+        Assistant.changeMade(assist("review_every", Assistant.text("project", project), Assistant.text("every", every)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("Answers the planner's question about a task (its `asking` in `show_task`, put to the person first): keeps it, drops it, makes it repeat less often, or takes its date away.")
+    suspend fun reconsiderTask(
+        @AppFunctionInstruction("The task's identifier: a whole UUID, or a prefix that names one task.")
+        id: String,
+        @AppFunctionInstruction("One of the answers its question offers: `keep` (asked again later), `drop` (to the trash), `less-often` (a repeating task half as often), or `no-date` (its due date taken away).")
+        answer: String,
+    ): ChangeMade =
+        Assistant.changeMade(assist("reconsider_task", Assistant.text("id", id), Assistant.text("answer", answer)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Undoes the last change made on this device, whoever made it: an app, a command, or an assistant.")
     suspend fun undo(): ChangeMade =
         Assistant.changeMade(assist("undo"))

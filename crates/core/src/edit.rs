@@ -762,6 +762,69 @@ pub fn update_project(before: Project, after: Project) -> Edit {
     }
 }
 
+/// Marks a project reviewed at `now`: it leaves the review until its interval comes round.
+///
+/// # Errors
+///
+/// If the project is not loaded.
+pub fn mark_reviewed(snapshot: &Snapshot, id: ProjectId, now: jiff::Timestamp) -> Result<Edit, EditError> {
+    let project = snapshot.projects.get(&id).ok_or(EditError::NotFound { kind: "project" })?;
+    let after = Project { reviewed_at: Some(time::truncate(now)), ..project.clone() };
+    Ok(Edit {
+        description: format!("Reviewed {}", project.name),
+        changes: vec![Change::Project(Box::new(Transition::updated(project.clone(), after)))],
+    })
+}
+
+/// Sets how many days apart a project is reviewed: `None` the usual week, `Some(0)` never.
+///
+/// # Errors
+///
+/// If the project is not loaded.
+pub fn review_every(snapshot: &Snapshot, id: ProjectId, days: Option<u32>) -> Result<Edit, EditError> {
+    let project = snapshot.projects.get(&id).ok_or(EditError::NotFound { kind: "project" })?;
+    if project.review_every_days == days {
+        return Ok(Edit::nothing());
+    }
+    let after = Project { review_every_days: days, ..project.clone() };
+    let every = crate::review::interval_words(crate::review::review_every(&after));
+    Ok(Edit {
+        description: format!("{} is reviewed {every}", project.name),
+        changes: vec![Change::Project(Box::new(Transition::updated(project.clone(), after)))],
+    })
+}
+
+/// Keeps a task the planner asked about: not asked about as stale for three weeks, nor as put
+/// off until it is put off as often again. `put_off` is how often it has been, all told.
+///
+/// # Errors
+///
+/// If the task is not loaded.
+pub fn keep_task(snapshot: &Snapshot, id: TaskId, put_off: u32, now: jiff::Timestamp) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let after = Task { kept_at: Some(time::truncate(now)), kept_put_off: Some(put_off), ..task.clone() };
+    let mut builder = Builder::new(format!("Kept {}", task.title));
+    builder.task(Transition::updated(task.clone(), after));
+    Ok(builder.finish())
+}
+
+/// Makes a repeating task repeat half as often ([`crate::review::less_often`]), the planner's
+/// question about it answered: it is asked again only once put off as often again from
+/// `put_off`, how often it has been all told.
+///
+/// # Errors
+///
+/// If the task is not loaded, or does not repeat by a rule that can be made less often.
+pub fn make_less_often(snapshot: &Snapshot, id: TaskId, put_off: u32) -> Result<Edit, EditError> {
+    let task = snapshot.tasks.get(&id).ok_or(EditError::NotFound { kind: "task" })?;
+    let due = task.due.as_ref().filter(|d| d.recurrence.is_some()).ok_or(EditError::NotFound { kind: "repetition" })?;
+    let less = due.recurrence.as_ref().and_then(crate::review::less_often).ok_or(EditError::NotFound { kind: "repetition" })?;
+    let after = Task { due: Some(crate::model::Due { recurrence: Some(less), ..due.clone() }), kept_put_off: Some(put_off), ..task.clone() };
+    let mut builder = Builder::new(format!("{} repeats less often", task.title));
+    builder.task(Transition::updated(task.clone(), after));
+    Ok(builder.finish())
+}
+
 /// What happens to a project's tasks when it goes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectDeletion {

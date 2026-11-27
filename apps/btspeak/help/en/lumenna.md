@@ -22,6 +22,7 @@ Lumenna opens on Home: your places, then what can be done from anywhere. Enter o
 - Tasks, k: every open task. See [Lumenna Tasks](help:lumenna-tasks).
 - Projects, p; Labels, l; Saved filters, f: headings, with each project, label and saved filter under them. Enter on a heading folds or unfolds it. See [Lumenna Projects, Labels and Filters](help:lumenna-organise).
 - Blocks, b: every block, including ones on no day near today.
+- Review, v: the projects due for review, and the tasks the planner asks about: one near the top with nothing done on it for three weeks, or one put off five times. Enter on a project opens it; Mark reviewed, v, takes it off until its interval comes round, and Review every, i, sets that interval. On a task, Reconsider, q, asks its question: keep it, drop it, make it less often or take its date away.
 - History, h: what was completed or worked on over the last two weeks, newest first.
 - Trash, x: deleted tasks, to restore or delete from the trash.
 

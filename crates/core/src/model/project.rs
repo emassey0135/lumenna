@@ -46,6 +46,12 @@ pub struct Project {
     /// `None` inherits. `Some(1.0)` is a real setting, not a synonym for `None`: it is how a
     /// chapter opts back to neutral under a heavy thesis.
     pub weight: Option<f32>,
+    /// How many days apart it is reviewed ([`crate::review`]): `None` the usual week
+    /// ([`crate::review::DEFAULT_REVIEW_DAYS`]), `Some(0)` never.
+    pub review_every_days: Option<u32>,
+    /// When it was last marked reviewed. Never, and its first review counts from when it was
+    /// made.
+    pub reviewed_at: Option<Timestamp>,
     /// Trash, for undo.
     pub deleted_at: Option<Timestamp>,
 }
@@ -69,6 +75,8 @@ impl Project {
             archived: false,
             is_inbox: false,
             weight: None,
+            review_every_days: None,
+            reviewed_at: None,
             deleted_at: None,
         }
     }

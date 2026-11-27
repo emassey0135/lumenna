@@ -532,6 +532,10 @@ struct ProjectOut {
     inbox: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     weight: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    review_every_days: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reviewed_at: Option<String>,
 }
 
 impl From<&Project> for ProjectOut {
@@ -545,6 +549,8 @@ impl From<&Project> for ProjectOut {
             archived: p.archived,
             inbox: p.is_inbox,
             weight: p.weight,
+            review_every_days: p.review_every_days,
+            reviewed_at: p.reviewed_at.map(|t| t.to_string()),
         }
     }
 }
@@ -561,6 +567,8 @@ impl ProjectOut {
             archived: self.archived,
             is_inbox: self.inbox,
             weight: self.weight,
+            review_every_days: self.review_every_days,
+            reviewed_at: optional(&record, "timestamp", self.reviewed_at.as_ref())?,
             deleted_at: None,
         })
     }
@@ -721,6 +729,10 @@ struct TaskOut {
     estimate_mins: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sitting_mins: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kept_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kept_put_off: Option<u32>,
     order: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     external: Option<ExternalOut>,
@@ -742,6 +754,8 @@ impl From<&Task> for TaskOut {
             due: t.due.as_ref().map(DueOut::from),
             estimate_mins: t.estimate_mins,
             sitting_mins: t.sitting_mins,
+            kept_at: t.kept_at.map(|t| t.to_string()),
+            kept_put_off: t.kept_put_off,
             order: t.order.to_string(),
             external: t.external.as_ref().map(ExternalOut::from),
             created_at: t.created_at.to_string(),
@@ -771,6 +785,8 @@ impl TaskOut {
             due: self.due.map(|due| due.into_model(&record)).transpose()?,
             estimate_mins: self.estimate_mins,
             sitting_mins: self.sitting_mins,
+            kept_at: optional(&record, "timestamp", self.kept_at.as_ref())?,
+            kept_put_off: self.kept_put_off,
             order: field(&record, "order key", &self.order)?,
             external: self.external.map(|e| e.into_model(&record)).transpose()?,
             created_at: field(&record, "timestamp", &self.created_at)?,

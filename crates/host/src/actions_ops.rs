@@ -193,6 +193,16 @@ impl Lumenna {
                 }
             }
             (S::Project, K::Delete) => self.delete_project(target, answer_pick(&answer)?.0 == "keep"),
+            (S::Project, K::MarkReviewed) => self.mark_reviewed(target),
+            (S::Project, K::ReviewEvery) => {
+                // A pick of the intervals, by days; a line saying one, from a client that asks so.
+                let every = match &answer {
+                    Answer::Picked { id, .. } => id.clone(),
+                    _ => answer_text(&answer)?,
+                };
+                self.review_every(target, &every)
+            }
+            (S::Task, K::Reconsider) => self.reconsider(target, &answer_pick(&answer)?.0),
             (S::Label, K::Rename) => self.rename_label(target, &answer_text(&answer)?),
             (S::Label, K::New) => self.add_label(&answer_text(&answer)?),
             (S::Label, K::MergeInto) => self.merge_labels(target, &answer_pick(&answer)?.0),

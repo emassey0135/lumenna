@@ -54,6 +54,10 @@ data class TaskWhole(
     val state: List<String>,
     /** Its history: sittings, time worked, completions, postponements. */
     val history: List<String>,
+    /** A repeating task's streak, in words: "done 12 times running", "missed Tuesday". */
+    val streak: String?,
+    /** The planner's question about it, in full, when it has one; `reconsider_task` answers it. */
+    val asking: String?,
 )
 
 /** One task, whole, with the sentence to say. */

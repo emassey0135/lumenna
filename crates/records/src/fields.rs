@@ -584,6 +584,13 @@ pub fn details_lines(task: &crate::types::TaskDetail, sentence: bool) -> Vec<Det
     let line = |key: &str, label: &str, value: String| DetailsLine { key: key.to_owned(), label: cased(label, sentence), value };
     let states: Vec<&str> = task.state.iter().map(String::as_str).filter(|state| *state != "ready").collect();
     let mut lines = vec![line("state", "State", if states.is_empty() { "open".to_owned() } else { states.join(", ") })];
+    // The planner's question first after its state, where it is seen before the rest.
+    if let Some(asking) = &task.asking {
+        lines.push(line("asking", "Question", asking.clone()));
+    }
+    if let Some(streak) = &task.streak {
+        lines.push(line("streak", "Streak", streak.clone()));
+    }
     // The form chooses the project; the section is said here, and moved by Move to Section.
     if let Some(section) = &task.section {
         lines.push(line("section", "Section", section.clone()));

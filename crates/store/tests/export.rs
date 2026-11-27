@@ -39,6 +39,8 @@ fn populated() -> Populated {
     backend.parent_id = Some(work.id);
     backend.archived = true;
     backend.weight = Some(1.0);
+    backend.review_every_days = Some(14);
+    backend.reviewed_at = Some(now());
 
     let mut laptop = Label::new("laptop", OrderKey::middle());
     laptop.color = Some("#abcdef".to_owned());
@@ -72,6 +74,8 @@ fn populated() -> Populated {
     });
     parent.estimate_mins = Some(90);
     parent.sitting_mins = Some(45);
+    parent.kept_at = Some(now());
+    parent.kept_put_off = Some(5);
     parent.external = Some(ExternalRef {
         provider: ExternalProvider::CalDav,
         external_id: "abc-123".to_owned(),

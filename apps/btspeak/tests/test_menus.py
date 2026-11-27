@@ -579,6 +579,17 @@ class Menus(unittest.TestCase):
         self.assertTrue(any(title.startswith("Plan the day. Plans 1 task") for title in script.titles), script.titles)
         self.assertEqual(self.call("plan", date="tomorrow")["blocks"][0]["assignments"], [])
 
+    def test_a_task_put_off_five_times_is_asked_about_in_the_review_and_answered_there(self):
+        self.call("task.add", text="call the dentist tomorrow")
+        task = self.call("task.list")["rows"][0]["id"]
+        for days in range(2, 7):
+            self.call("task.edit", id=task, due=f"in {days} days")
+        self.run_script(
+            [("context", "call the dentist", "Reconsider"), ("choose", "Take its date away"), ("back",)],
+            lambda: tasks.task_list(self.session, L.PlaceReview()),
+        )
+        self.assertIsNone(self.task("call the dentist").get("due"))
+
     def test_a_tasks_details_end_with_its_history(self):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
@@ -973,8 +984,8 @@ class Menus(unittest.TestCase):
         self.session.send(L.ShellEventHome())
         lettered = {row.title: row.letter for row in menus.home_rows(self.session)}
         self.assertEqual(
-            {title: lettered.get(title) for title in ("Today", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "History", "Trash")},
-            {"Today": "t", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b", "History": "h", "Trash": "x"},
+            {title: lettered.get(title) for title in ("Today", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "Review", "History", "Trash")},
+            {"Today": "t", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b", "Review": "v", "History": "h", "Trash": "x"},
         )
 
     def test_m_chord_on_home_opens_the_cores_menu_bar_on_homes_own_menu_and_tab_goes_round(self):

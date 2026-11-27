@@ -83,6 +83,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::View, "go-blocks", "Blocks", &["Ctrl+3"]),
     key(Group::View, "go-trash", "Trash", &["Ctrl+4"]),
     key(Group::View, "go-history", "History", &["Ctrl+5"]),
+    key(Group::View, "go-review", "Review", &["Ctrl+6"]),
     key(Group::View, "next-pane", "Next Pane", &["F6"]),
     key(Group::View, "previous-pane", "Previous Pane", &["Shift+F6"]),
     key(Group::Task, "mark-done", "Mark Done or Not Done", &["Ctrl+K"]),
@@ -125,10 +126,10 @@ pub fn what_runs(id: &str) -> Runs {
         "toggle" => Runs::Row(&[K::MarkDone, K::MarkNotDone, K::Restore, K::StartTimer, K::PauseTimer, K::ResumeTimer]),
         // Enter, the same on every row of every platform: a task's details, a block's form, free
         // time's new block, a cancelled day back, a trashed task restored, a device renamed. A
-        // place in the sidebar or on Home opens (`Lumenna::command`).
+        // place in the sidebar or on Home opens (`Lumenna::command`), and a project the review lists.
         // A section heading folds, as a heading of the sidebar does; one with nothing under it
         // is renamed.
-        "open" => Runs::Row(&[K::Edit, K::EditTask, K::AddBlock, K::RestoreDay, K::Restore, K::Collapse, K::Expand, K::Rename]),
+        "open" => Runs::Row(&[K::OpenProject, K::Edit, K::EditTask, K::AddBlock, K::RestoreDay, K::Restore, K::Collapse, K::Expand, K::Rename]),
         "open-task" | "properties" => Runs::Row(&[K::Edit, K::EditTask]),
         "mark-done" => Runs::Row(&[K::MarkDone, K::MarkNotDone]),
         "put-in-block" => Runs::Row(&[K::PutInBlock]),
@@ -137,6 +138,8 @@ pub fn what_runs(id: &str) -> Runs {
         "move-to-top" => Runs::Row(&[K::MoveToTopLevel]),
         "wait-for" => Runs::Row(&[K::WaitFor]),
         "stop-waiting" => Runs::Row(&[K::StopWaiting]),
+        "reconsider" => Runs::Row(&[K::Reconsider]),
+        "mark-reviewed" => Runs::Row(&[K::MarkReviewed]),
         "trash-task" => Runs::Row(&[K::Delete]),
         "restore-task" => Runs::Row(&[K::Restore]),
         "erase-task" => Runs::Row(&[K::DeleteForGood]),
@@ -151,7 +154,7 @@ pub fn what_runs(id: &str) -> Runs {
         "end-day" => Runs::Day(&[K::EndDay]),
         "clear-day" => Runs::Day(&[K::ClearDay]),
         "new-task" | "new-block" | "new-project" | "new-label" | "new-filter" | "sync-now" | "settings" | "undo" | "redo"
-        | "go-today" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "save-task" | "previous-day" | "next-day"
+        | "go-today" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "go-review" | "save-task" | "previous-day" | "next-day"
         | "go-to-now" | "go-to-day" | "back-up" | "home" | "new-project-inside" | "new-section" => Runs::App,
         _ => Runs::Shell,
     }
@@ -223,6 +226,7 @@ pub const COMMANDS: &[Command] = &[
     command("go-blocks", "Blocks", false),
     command("go-trash", "Trash", false),
     command("go-history", "History", false),
+    command("go-review", "Review", false),
     command("next-pane", "Next Pane", false),
     command("previous-pane", "Previous Pane", false),
     command("mark-done", "Mark Done", false),
@@ -234,6 +238,8 @@ pub const COMMANDS: &[Command] = &[
     command("move-to-top", "Move to Top Level", false),
     command("wait-for", "Wait For", true),
     command("stop-waiting", "Stop Waiting", false),
+    command("reconsider", "Reconsider", true),
+    command("mark-reviewed", "Mark Reviewed", false),
     command("trash-task", "Move to Trash", false),
     command("restore-task", "Restore from Trash", false),
     command("erase-task", "Delete from Trash", true),
@@ -296,13 +302,13 @@ pub const MENUS: &[Menu] = &[
     Menu { group: Group::Edit, items: &["undo", "redo", SEPARATOR, "filter"] },
     Menu {
         group: Group::View,
-        items: &["go-today", "go-tasks", "go-blocks", "go-trash", "go-history", SEPARATOR, "next-pane", "previous-pane"],
+        items: &["go-today", "go-tasks", "go-blocks", "go-trash", "go-history", "go-review", SEPARATOR, "next-pane", "previous-pane"],
     },
     Menu {
         group: Group::Task,
         items: &[
             "mark-done", "open-task", "save-task", SEPARATOR, "put-in-block", "move-to-project", "make-subtask", "move-to-top",
-            "wait-for", SEPARATOR, "trash-task", "restore-task", "erase-task", "erase-permanently",
+            "wait-for", SEPARATOR, "reconsider", "mark-reviewed", SEPARATOR, "trash-task", "restore-task", "erase-task", "erase-permanently",
         ],
     },
     Menu {

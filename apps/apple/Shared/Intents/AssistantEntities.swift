@@ -49,6 +49,8 @@ struct TaskEntity: AppEntity {
     @Property(title: "Sitting Length in Minutes") var sittings: Int?
     /// How it repeats, in the core's words ("every weekday").
     @Property(title: "Repeats") var repeats: String?
+    /// A repeating task's streak, in the core's words ("done 12 times running").
+    @Property(title: "Streak") var streak: String?
     /// Its states, as the filter language names them: overdue, blocked, recurring, …
     @Property(title: "States") var states: [String]
     @Property(title: "Added") var added: Date?
@@ -78,6 +80,7 @@ struct TaskEntity: AppEntity {
         estimate = task.estimateMins.map(Int.init)
         sittings = task.sittingMins.map(Int.init)
         repeats = task.repetition
+        streak = task.streak
         states = task.states
         added = Instant.parse(task.createdAt)
     }
@@ -105,6 +108,7 @@ struct TaskEntity: AppEntity {
         estimate = nil
         sittings = nil
         repeats = nil
+        streak = nil
         states = []
         added = nil
     }

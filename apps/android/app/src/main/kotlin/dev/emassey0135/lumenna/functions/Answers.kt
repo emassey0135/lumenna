@@ -127,7 +127,7 @@ private fun Change.made() = ChangeMade(announcement, notices, changed, task?.who
 
 private fun TaskDetail.whole() = TaskWhole(
     id, title, notes, project, parent, priority.toInt(), labels, depends.map { it.title }, due, dueTime, repetition,
-    estimateMins?.toInt(), sittingMins?.toInt(), state, history,
+    estimateMins?.toInt(), sittingMins?.toInt(), state, history, streak, asking,
 )
 
 // A proposal goes back to the core whole, so each field is carried both ways.

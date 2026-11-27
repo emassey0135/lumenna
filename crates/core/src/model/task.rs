@@ -51,6 +51,13 @@ pub struct Task {
     /// essay): the planner plans it a sitting of this at a time, one a day unless its due
     /// date needs more. Absent, it is planned whole where it fits.
     pub sitting_mins: Option<u32>,
+    /// When the person last kept it, answering the planner's question about it
+    /// ([`crate::review`]): it is not asked about as stale again for
+    /// [`crate::review::STALE_DAYS`].
+    pub kept_at: Option<Timestamp>,
+    /// How often it had been put off when it was kept, so it is asked again only once it is put
+    /// off [`crate::review::PUT_OFF_TIMES`] times more.
+    pub kept_put_off: Option<u32>,
     /// Position among siblings.
     pub order: OrderKey,
     /// Set when imported from a team system.
@@ -79,6 +86,8 @@ impl Task {
             due: None,
             estimate_mins: None,
             sitting_mins: None,
+            kept_at: None,
+            kept_put_off: None,
             order,
             external: None,
             created_at: crate::time::now(),

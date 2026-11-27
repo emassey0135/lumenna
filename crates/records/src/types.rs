@@ -529,6 +529,13 @@ pub struct TaskDetail {
     /// For its own screen, asked for; never said in a list.
     #[serde(default, skip_serializing_if = "none")]
     pub history: Vec<String>,
+    /// A repeating task's streak, in words: "done 12 times running", "missed Tuesday".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub streak: Option<String>,
+    /// The planner's question about it, in full, when it has one ([`crate::review`]); its
+    /// answer is the Reconsider among `actions`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asking: Option<String>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
@@ -552,7 +559,15 @@ impl TaskDetail {
     /// Reads one task out of a snapshot, resolving the names it points at.
     #[must_use]
     pub fn of(task: &Task, snapshot: &Snapshot, now: &jiff::Zoned) -> Self {
+        let asked = crate::review::asked_of(snapshot, task, now);
+        let mut actions = crate::actions::task(snapshot, task, snapshot.facts().is_completed(task), true);
+        let asking = asked.map(|(question, answer)| {
+            actions.insert(0, answer);
+            question
+        });
         Self {
+            streak: crate::review::streak_of(snapshot, task, now),
+            asking,
             offered: Vec::new(),
             id: task.id.to_string(),
             title: task.title.clone(),
@@ -589,7 +604,7 @@ impl TaskDetail {
             sitting_mins: task.sitting_mins,
             state: snapshot.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
             created_at: task.created_at.to_string(),
-            actions: crate::actions::task(snapshot, task, snapshot.facts().is_completed(task), true),
+            actions,
             history: crate::history::history_words(&lumenna_core::history::history(snapshot, task, now), now.date()),
         }
     }

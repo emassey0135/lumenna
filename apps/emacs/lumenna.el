@@ -1553,6 +1553,7 @@ RET opens a place or does an action; ? shows every command."
    ("f" (word :filters) lumenna-filters)
    ("b" (command "go-blocks") lumenna-blocks)
    ("h" (command "go-history") lumenna-history)
+   ("v" (command "go-review") lumenna-review)
    ("x" (command "go-trash") lumenna-trash)
    ("L" :all_places lumenna))
   (:doing

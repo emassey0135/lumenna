@@ -199,6 +199,16 @@ impl Lumenna {
                 };
                 Assisted::DayPlanned(self.apply_day_plan(proposal, accepted, None)?)
             }
+            "review" => Assisted::Rows(self.review()?),
+            "mark_reviewed" => Assisted::Change(self.mark_reviewed(&given.required("project")?)?),
+            "review_every" => {
+                let project = given.required("project")?;
+                Assisted::Change(self.review_every(&project, &given.required("every")?)?)
+            }
+            "reconsider_task" => {
+                let task = given.required("id")?;
+                Assisted::Change(self.reconsider(&task, &given.required("answer")?)?)
+            }
             "undo" => Assisted::Change(self.undo()?),
             "redo" => Assisted::Change(self.redo()?),
             other => return Err(LumennaError::new(format!("{other} is listed but not done; this is a bug"))),

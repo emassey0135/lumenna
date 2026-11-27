@@ -70,6 +70,11 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::New, "a"),
     // The day's own, on its menu: no row of the day uses it.
     (K::WhatNow, "w"),
+    // The review's: a project's Mark Reviewed, its interval and opening it; a task's question.
+    (K::MarkReviewed, "v"),
+    (K::ReviewEvery, "i"),
+    (K::OpenProject, "o"),
+    (K::Reconsider, "q"),
 ];
 
 /// The shared table's command a kind runs where the table has one (`keys::what_runs`): a kind
@@ -87,6 +92,8 @@ const ACTION_COMMANDS: &[(ActionKind, &str)] = &[
     (K::StopWaiting, "stop-waiting"),
     (K::Restore, "restore-task"),
     (K::Rename, "rename"),
+    (K::MarkReviewed, "mark-reviewed"),
+    (K::Reconsider, "reconsider"),
 ];
 
 /// The letter of each settings page, by `SettingsPage::id`.
@@ -121,6 +128,7 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-tasks", "k"),
     ("go-blocks", "b"),
     ("go-history", "h"),
+    ("go-review", "v"),
     ("go-trash", "x"),
     ("projects", "p"),
     ("labels", "l"),
@@ -255,7 +263,7 @@ const DAY_MOVES: &[&str] = &["previous-day", "next-day", "go-to-now", "go-to-day
 const BRAILLE_VIEW_EXTRAS: &[&str] = &["projects", "labels", "filters", "reminders-due"];
 
 /// What Home's places run, by their letters' ids: they are hot keys on Home.
-const HOME_PLACES: &[&str] = &["go-today", "go-tasks", "go-blocks", "go-history", "go-trash", "projects", "labels", "filters"];
+const HOME_PLACES: &[&str] = &["go-today", "go-tasks", "go-blocks", "go-review", "go-history", "go-trash", "projects", "labels", "filters"];
 
 /// The id of the braille menu bar's first menu: the screen's own actions (`screen_actions`).
 pub const SCREEN_MENU: &str = "screen";

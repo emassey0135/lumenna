@@ -37,6 +37,10 @@ $script:Operations = [ordered]@{
     'start_on' = @{ Cmdlet = 'Start-LumennaChoice'; Switch = $null; Title = 'Start on a Choice'; Writes = $true; Confirms = $false; Target = 'Choice'; Names = @{ 'Choice' = 'choice' } }
     'apply_replan' = @{ Cmdlet = 'Approve-LumennaReplan'; Switch = $null; Title = 'Apply a Replan'; Writes = $true; Confirms = $false; Target = 'Proposal'; Names = @{ 'Proposal' = 'proposal'; 'Accepted' = 'accepted' } }
     'apply_day_plan' = @{ Cmdlet = 'Approve-LumennaDayPlan'; Switch = $null; Title = 'Apply a Day Plan'; Writes = $true; Confirms = $false; Target = 'Proposal'; Names = @{ 'Proposal' = 'proposal'; 'Accepted' = 'accepted' } }
+    'review' = @{ Cmdlet = 'Get-LumennaReview'; Switch = $null; Title = 'Show the Review'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
+    'mark_reviewed' = @{ Cmdlet = 'Complete-LumennaProjectReview'; Switch = $null; Title = 'Mark a Project Reviewed'; Writes = $true; Confirms = $false; Target = 'Project'; Names = @{ 'Project' = 'project' } }
+    'review_every' = @{ Cmdlet = 'Set-LumennaProjectReview'; Switch = $null; Title = 'Set How Often a Project Is Reviewed'; Writes = $true; Confirms = $false; Target = 'Project'; Names = @{ 'Project' = 'project'; 'Every' = 'every' } }
+    'reconsider_task' = @{ Cmdlet = 'Resolve-LumennaTask'; Switch = $null; Title = 'Answer the Planner''s Question About a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Answer' = 'answer' } }
     'undo' = @{ Cmdlet = 'Undo-LumennaChange'; Switch = $null; Title = 'Undo'; Writes = $true; Confirms = $false; Target = $null; Names = @{} }
     'redo' = @{ Cmdlet = 'Redo-LumennaChange'; Switch = $null; Title = 'Redo'; Writes = $true; Confirms = $false; Target = $null; Names = @{} }
 }
@@ -51,6 +55,8 @@ $script:Completed = [ordered]@{
     'Set-LumennaTask/Labels' = 'label'
     'Move-LumennaTask/Project' = 'project'
     'Add-LumennaSection/Project' = 'project'
+    'Complete-LumennaProjectReview/Project' = 'project'
+    'Set-LumennaProjectReview/Project' = 'project'
 }
 
 function Get-LumennaTask {
@@ -1264,6 +1270,157 @@ function Approve-LumennaDayPlan {
 
     process {
         Invoke-LumennaAssist $PSCmdlet 'apply_day_plan' $PSBoundParameters
+    }
+}
+
+function Get-LumennaReview {
+    <#
+    .SYNOPSIS
+    Show the Review
+
+    .DESCRIPTION
+    What is due for a second look: the projects due for review, each with when it was last reviewed and how often it is, then the tasks the planner asks about, each with its question in short. A task's whole question is its `asking` in Get-LumennaTaskDetail.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Get-LumennaReview is the assistant operation review (lum assist review), also found by: review, weekly review, stale, put off, second look.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'review' $PSBoundParameters
+    }
+}
+
+function Complete-LumennaProjectReview {
+    <#
+    .SYNOPSIS
+    Mark a Project Reviewed
+
+    .DESCRIPTION
+    Marks a project reviewed now: it leaves the review until its interval comes round.
+
+    .PARAMETER Project
+    The project, by name.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Complete-LumennaProjectReview is the assistant operation mark_reviewed (lum assist mark_reviewed), also found by: reviewed, review, looked at.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]
+        $Project,
+
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'mark_reviewed' $PSBoundParameters
+    }
+}
+
+function Set-LumennaProjectReview {
+    <#
+    .SYNOPSIS
+    Set How Often a Project Is Reviewed
+
+    .DESCRIPTION
+    Sets how often a project comes up for review.
+
+    .PARAMETER Project
+    The project, by name.
+
+    .PARAMETER Every
+    How often, such as every week, every 2 weeks, every month, or never.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Set-LumennaProjectReview is the assistant operation review_every (lum assist review_every), also found by: review, interval, how often.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]
+        $Project,
+
+        [Parameter(Mandatory = $true, Position = 1)]
+        [string]
+        $Every,
+
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'review_every' $PSBoundParameters
+    }
+}
+
+function Resolve-LumennaTask {
+    <#
+    .SYNOPSIS
+    Answer the Planner's Question About a Task
+
+    .DESCRIPTION
+    Answers the planner's question about a task (its `asking` in Get-LumennaTaskDetail, put to the person first): keeps it, drops it, makes it repeat less often, or takes its date away.
+
+    .PARAMETER Id
+    The task's identifier: a whole UUID, or a prefix that names one task.
+
+    .PARAMETER Answer
+    One of the answers its question offers: `keep` (asked again later), `drop` (to the trash), `less-often` (a repeating task half as often), or `no-date` (its due date taken away).
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Resolve-LumennaTask is the assistant operation reconsider_task (lum assist reconsider_task), also found by: keep, drop, less often, stale, put off.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+    param(
+        [Parameter(Mandatory = $true, Position = 0, ValueFromPipelineByPropertyName = $true)]
+        [string]
+        $Id,
+
+        [Parameter(Mandatory = $true, Position = 1)]
+        [string]
+        $Answer,
+
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'reconsider_task' $PSBoundParameters
     }
 }
 

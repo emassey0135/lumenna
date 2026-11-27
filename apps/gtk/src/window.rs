@@ -704,6 +704,7 @@ impl App {
             "go-blocks" => self.go(Place::Blocks, true),
             "go-trash" => self.go(Place::Trash, true),
             "go-history" => self.go(Place::History, true),
+            "go-review" => self.go(Place::Review, true),
             "next-pane" => self.move_pane(1),
             "previous-pane" => self.move_pane(-1),
             "save-task" => self.detail.save(self),
