@@ -215,6 +215,7 @@ export function App() {
   );
   useCommand("filter", () => thenRun({ tag: "Tasks" }, "filter"), -1);
   useCommand("go-today", () => goTo({ tag: "Today" }), -1);
+  useCommand("go-upcoming", () => goTo({ tag: "Upcoming" }), -1);
   useCommand("go-tasks", () => goTo({ tag: "Tasks" }), -1);
   useCommand("go-blocks", () => goTo({ tag: "Blocks" }), -1);
   useCommand("go-trash", () => goTo({ tag: "Trash" }), -1);
