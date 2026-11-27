@@ -21,8 +21,7 @@ The order, and why:
 
 ## 1. Safeguards
 
-- **CI** runs (`.github/workflows/ci.yml`), and so do unsigned release builds of every app
-  (`release.yml`). Still to come: **signing and publishing** from them, under Packaging (Before
+- **Signing and publishing** from the release builds (`release.yml`), under Packaging (Before
   others use it).
 
 ## 2. Reminders and time events
@@ -146,100 +145,32 @@ A day or less each, for between the larger pieces, except the first.
     watch polls over plain HTTPS, the one networking watchOS allows.
 - **Wear OS**, on a real watch: rotary scrolling with TalkBack, and pairing over the network.
 - **Toolchain**: unpinned.
-- **Done, in the core** (`lumenna_app::braille` and `screen`; the root `CLAUDE.md`): the letters
-  (`Event::Letter`, `action_letter` and friends), dots to a letter (`braille_letter`), first-letter
-  search (`Event::FindLetter`, `first_letter`) and the screen for a shell that speaks for itself
-  (`Turn::described`). How a letter is pressed is each app's own, mapped onto `Letter` and
-  `FindLetter`, and the core assumes neither: the BTSpeak takes **the plain letter for the
-  command and a capital (Dot 7 with the letter) for first-letter navigation**, which its dialogs
-  do themselves, and never Space with a letter; the Orbit Speak and the BrailleSense take **Space
-  with the letter** for the command and **the letter alone for first-letter navigation**. Their dots give a to z alone (no `,`, `.`, `/`), so Move Up, Move Down and the
-  filter are their own keys or their row's actions there.
-- **What the three braille apps still each have to themselves**:
-  - Typing (the BTSpeak's input, Orbit's liblouis buffer, the BrailleSense's input method), the
-    output and its service, and panning a line across the cells, until the BrailleSense shows
-    whether its output service pans by itself (`displayBrailleWordWrap`, `setCurrentCellLine`)
-    or a second device with cells needs it.
-  - **Between the two Android apps**, a little Kotlin, lifted once both existed
-    (`apps/android/braille/`): one ordered worker for a service's calls, rebound when it dies; the
-    keys and the display held only while in front and given back first on leaving; a decoded key
-    handed to the app. Line editors and menus were not the same, so stay in each app.
-- **The Orbit Speak and the Orbit Player**, Orbit Research's Android 11 devices, through
-  Satellite (`emassey0135/satellite-launcher` and `satellite-hook`) until Orbit's own SDK,
-  promised with no date, exists. Neither has a braille display: the Speak has eight braille
-  keys, Space, arrows, OK and F1-F4 and speaks; the Player has a phone keypad. (Orbit's Strata
-  has cells; its output API is unknown.)
-  - **What it rests on**: both halves of Satellite. Its **launcher** lists the app in its menu
-    (any app with a launcher activity), and beside Orbit's own apps when the app says
-    `<meta-data android:name="orbit.self_voicing" android:value="true"/>`; its **hook** routes
-    the keys to such an app, since Orbit routes them only to a `com.orbit.` package. So the app's
-    ID must not begin `com.orbit.` (nor hold "inputmethod"), and without the hook it gets no keys
-    at all. The launcher's code (`ScreenReaderClient`, `MenuKeys`, `Frame`, `ListFinder`) is the
-    example of what the app does.
-  - **A module of its own** (`apps/android/orbit/`, over `shared` and the Crux app's Kotlin):
-    the self-voicing flag is static, and in the phone app it would silence BackTalk there.
-    Sideloaded, or from GitHub's releases.
-  - **Speech is Orbit's screen reader's**, over clean-room copies of its AIDL
-    (`IScreenReaderService`, the transaction order kept exactly; never #44, which the Player
-    lacks), bound by explicit intent, rebound when an Orbit update kills the binding, speaking
-    only after `onScreenReaderReady`, every call on one ordered worker. Rather than speak
-    lines itself, the app **describes its screens** and Orbit voices them in the person's own
-    voice and verbosity: a place is `onFocusChanged` of a list box (role 5) named by the place,
-    the row in hand its item; a move is `onItemChanged`, only when `landing` rose or a key moved
-    it; a question `onDialogOpened`; a row's actions `onContextMenuOpened`; a line being typed an
-    edit box (role 6) with `onEditBoxContentChanged`. What the app says is `speakText`, a refusal
-    `playSound(1)`. The core's lines go as they are.
-  - **Keys** (`IUARTKeypadCallback`, claimed only while the app's window has focus, keyed by
-    `keyName`): on the Speak a chord arrives whole (`SPACE_DOT1_DOT5`), so Space with a letter is
-    that letter's command from the core's table, a letter alone a first letter (its letter by the
-    core's dots for a to z, never the person's contracted table, which reads Z alone as "as"),
-    dot 7 back and dot 8 open. Orbit keeps some chords even from a self-voicing app (Space alone, dot
-    7 alone on some screens, Space with dots 2, 3, 5 or 6 outside an edit box, the review
-    chords), which the table must leave free. On the Player, digits open rows by number,
-    holding star finds by letter (T9), Menu offers a row's actions, Back goes back; Home and 0
-    never arrive.
-  - **Typing**: on the Speak a cell buffer per word through Orbit's liblouis service
-    (`translateBrailleToText`, mode 388 for each cell's echo, 132 at each Space), in the
-    person's own table, contracted included: UEB writes `#`, `@` and digits plainly, as the
-    BTSpeak's contracted input already shows. On the Player, multi-tap T9. Satellite's `ListFinder`,
-    `T9Input` and keypad decoder are Apache-2.0 and the user's own, to port; Orbit's own code is
-    not.
-  - **The person's braille table** and selection mode are in Orbit's signature-protected
-    settings, read through root (`content query` of `com.orbit.settings.provider`), as Orbit's
-    own apps read them: every device has Magisk with root granted to them, and Satellite to its
-    own.
-  - **Built**: `apps/android/orbit/`, drawn from the Crux app: places, the day with its blocks,
-    sittings and free time, details and the forms, assigning, Replan from Now and Plan the Day,
-    What Should I Work On?, the timer, undo, reminders and Reminders due, settings by the core's
-    pages, devices and pairing, backups, export and import, and a key help. Tried on both devices
-    with keys sent over adb, what Orbit said read from its log: the lists, typing a task by cells on
-    the Speak and by T9 on the Player, the block form, assigning, a plan, the timer and undo.
-  - **Open**: the keys pressed by hand on both devices (so far only injected); Iroh over
-    Wi-Fi, and Wi-Fi in sleep, untried there; reminders through Orbit's Do Not Disturb untried; the
-    default locale is en-IN, so dates read as India writes them unless set; backups and import
-    through Android's file picker, read by Orbit rather than the app. All of it rests on unofficial
-    behaviour an Orbit update or its SDK may change; CI has no Orbit, so it is tried on the devices
-    over adb.
-- **A BrailleSense 7 app** (`apps/android/braillesense/`, package `com.extra.han.lumenna`, in its
-  Programs menu by name alone): the screens over the Crux app, speech and cells through
-  `IHanOutputService` and liblouis, chords through `han_brailleinput`'s callback as a bitmask, the
-  QWERTY keyboard as key events, typing through its own line editor since a self-voicing app's
-  chords skip the device's input method; every screen, the menus (Space-M, F2) and a row's actions
-  (Enter-I), panning, routing, help (Space-H), the device's conventions throughout. Unofficial
-  behaviour an update may change; CI has no BrailleSense, so it is tried on the device over adb.
-  - **Open, for a person at the device**: the physical F-keys, scroll keys and routing keys are
-    decoded from their names in the framework and read only from the shell's injection so far;
-    Programs menu placement and Quick Launch letters; whether a 32-cell H732B reads the 40-cell
-    wrap correctly; Iroh over Wi-Fi and in sleep; reminders through the device's notifications.
+- **The Orbit Speak and the Orbit Player**, tried by hand: CI has no Orbit, and all of it rests
+  on unofficial behaviour that an Orbit update, or Orbit's own SDK (promised with no date), may
+  change.
+  - The keys pressed by hand on both devices, so far only sent over adb.
+  - Syncing over Iroh on Wi-Fi.
+  - A reminder firing: its dialog coming to the front, the notification's sound and vibration
+    through Do Not Disturb (which Satellite lets notifications through), and BackTalk reading it
+    in the shade.
+  - Dates: the default locale is en-IN, so they read as India writes them unless it is set.
+  - A backup folder outside the shared folders, which Android lets an app without all-files
+    access write only there.
+- **Orbit's Strata**, which has cells: its output API is unknown.
+- **The BrailleSense 7**, tried by a person at the device, since CI has none:
+  - The F-keys, scroll keys and routing keys, read so far only from the shell's injection.
+  - Where the Programs menu puts the app, and its Quick Launch letters.
+  - Whether a 32-cell H732B reads the 40-cell wrap correctly.
+  - Syncing over Iroh on Wi-Fi.
+  - A reminder through the device's own notifications (`com.selvashc.systemui` listens to them).
+  - Whether the File Manager's picker is open to another app.
 
 ## 6. Integrations
 
 Each is a thin adapter over the command surface.
 
-- **Controls, tried as a person gets them**: Apple's are built from the core's `controls()` (the
-  Timer and New Task in Control Center on the iPhone, iPad, Mac and watch, and the watch's New
-  Task complication, `apps/apple/CLAUDE.md`), and what CI cannot check is left by hand, on a
-  signed build and a device: each added from the gallery under the core's names; the Timer
+- **Apple's controls, tried as a person gets them** (`apps/apple/CLAUDE.md`), on a signed build
+  and a device, since CI cannot: each added from the gallery under the core's names; the Timer
   pressed on and off and with nothing to start (dimmed, saying why), on the store in the group
   (the iPhone, iPad, App Store edition and watch) and handed to the app in the direct download;
   New Task opening quick add on each, from a cold start too; the complication on a face opening
@@ -268,22 +199,17 @@ Each is a thin adapter over the command surface.
   (`apps/android/CLAUDE.md`), but Gemini calls only the apps in Google's early access programme
   (a private preview with trusted testers as of May 2026). Register interest; until then a
   function is checked by `adb shell cmd app_function`, not through Gemini.
-- **Widgets, tried as a person gets them**: every platform's are built from the core's glance and
-  `glance_widgets()` (Now and Today), and what CI cannot check is left by hand: Apple's on a
+- **Widgets, tried as a person gets them**, since CI cannot: Apple's on a
   signed build (the group's glance read, Mark Done in the widget on the iPhone and the App Store
   edition, and for the direct download handed to the app through the group's `requests/`,
   taken within a second while it runs and at its next start otherwise, a complication on a face
   and in the Smart Stack), the Windows board drawing the cards and pressing Mark Done (`apps/windows/CLAUDE.md`),
   and VoiceOver, TalkBack and Narrator on each.
-- **The PowerShell module, shipped.** Built (`apps/powershell`, over `lum rpc`): a cmdlet per
-  operation of the assistant table, checked against it in CI on Windows PowerShell 5.1 and
-  PowerShell 7. Still to come: shipping it, since it is only in the repository now. The Windows
-  installer and the MSIX putting it where PowerShell finds it (beside `lum`, which it looks for
+- **The PowerShell module, shipped** (`apps/powershell`), since it is only in the repository
+  now: the Windows installer and the MSIX putting it where PowerShell finds it (beside `lum`, which it looks for
   first); `release.yml` keeping it as an artifact; and publishing it to the PowerShell Gallery
   from a version tag, its `ModuleVersion` the release's.
-- **`lum mcp` without a command line.** Built: stdio and Streamable HTTP (`--listen`), tools,
-  resources and their subscriptions, `--writes`. Still to come, so a person who never opens a
-  terminal can add it: for Claude Desktop, a bundle (under Packaging); and for Claude on the web
+- **`lum mcp` without a command line**, so a person who never opens a terminal can add it: for Claude Desktop, a bundle (under Packaging); and for Claude on the web
   and phone and Meta's Muse, which reach a server from their own cloud, an HTTPS address and
   OAuth (a bearer token cannot be typed in there), each client approved by the person. Two
   ways, decided, neither letting whoever runs them read the store:
