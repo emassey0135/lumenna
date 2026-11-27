@@ -209,8 +209,11 @@ A day or less each, for between the larger pieces, except the first.
     with keys sent over adb, what Orbit said read from its log: the lists, typing a task by cells on
     the Speak and by T9 on the Player, the block form, assigning, a plan, the timer and undo.
   - **Open**: the keys pressed by hand on both devices (so far only injected); syncing over Iroh
-    untried there (sleep is Android's own, so it syncs as a phone does); how a reminder reaches the
-    person, since Orbit has no notification shade to read it in, and through Do Not Disturb; the
+    untried there (sleep is Android's own, so it syncs as a phone does); a reminder as it fires:
+    Orbit's own Alarm Clock posts no notification but opens its ringing dialog in front of
+    whatever is shown (by root's `am start`), waking the device, while a Lumenna reminder is a
+    notification read only in the shade Satellite's launcher opens (Space with N, read by
+    BackTalk); and through Do Not Disturb; the
     default locale is en-IN, so dates read as India writes them unless set; backups and import
     through Android's file picker, read by Orbit rather than the app. All of it rests on unofficial
     behaviour an Orbit update or its SDK may change; CI has no Orbit, so it is tried on the devices
