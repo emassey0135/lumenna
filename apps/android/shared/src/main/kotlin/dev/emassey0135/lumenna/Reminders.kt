@@ -197,6 +197,16 @@ data class ReminderOpened(val kind: String, val target: String, val occurrence: 
         }
 }
 
+/**
+ * What an app does beside a firing's notification as the firing goes off, its Application being
+ * one: the Orbit app comes to the front with it, as Orbit's own Alarm Clock rings. Called on
+ * reminders' own thread, notifications allowed or not; not for what a catching up finds missed.
+ */
+interface Ringer {
+    /** [due] has just gone off. */
+    fun ring(context: Context, due: DueReminder)
+}
+
 /** A block's day, as a reminder names it: its series and the occurrence's date. */
 data class BlockOn(val series: String, val date: String)
 
@@ -334,6 +344,7 @@ object Reminders {
         // could not be shown, notifications being off, is missed, and said as missed once they
         // are on.
         if (show(context, core, firing.first, firing.second)) SystemShown(context).record("$key@$occurrence")
+        (context.applicationContext as? Ringer)?.ring(context, firing.first)
         return firing.first
     }
 

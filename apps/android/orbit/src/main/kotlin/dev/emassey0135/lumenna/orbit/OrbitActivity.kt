@@ -117,9 +117,18 @@ class OrbitActivity : ComponentActivity() {
         reminderTapped(intent)
     }
 
-    /** Opened from a reminder's notification: its task, its block's day, or a replan. */
+    /**
+     * Opened from a reminder's notification: its task, its block's day, or a replan; or brought to
+     * the front by a reminder going off, which is said as its dialog. The ring is taken out of the
+     * intent once heard, so the activity made again keeps no ringing of the past.
+     */
     private fun reminderTapped(intent: android.content.Intent?) {
         Reminders.opened(this, intent)?.reminded?.let { ui?.reminded(it) }
+        OrbitApplication.ringing(intent)?.let { (key, occurrence) ->
+            intent?.removeExtra(OrbitApplication.RING_KEY)
+            intent?.removeExtra(OrbitApplication.RING_OCCURRENCE)
+            ui?.ring(key, occurrence)
+        }
     }
 
     override fun onDestroy() {

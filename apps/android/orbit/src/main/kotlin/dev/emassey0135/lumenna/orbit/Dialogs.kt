@@ -7,10 +7,12 @@ import dev.emassey0135.lumenna.app.ControlSends
 import dev.emassey0135.lumenna.app.ControlShown
 import dev.emassey0135.lumenna.app.ControlType
 import dev.emassey0135.lumenna.app.DialogShown
+import dev.emassey0135.lumenna.app.DueEvent
 import dev.emassey0135.lumenna.app.Offered
 import dev.emassey0135.lumenna.app.ShellEvent
 import dev.emassey0135.lumenna.app.ViewModel
 import dev.emassey0135.lumenna.app.candidateLine
+import dev.emassey0135.lumenna.app.dueLetter
 import dev.emassey0135.lumenna.app.firstLetter
 import dev.emassey0135.lumenna.app.noRowStartsWith
 import dev.emassey0135.lumenna.appWords
@@ -282,5 +284,57 @@ abstract class CoreDialog : DialogScreen(), AppScreen {
             checked = false, `field` = null, syntax = null, letter = "", asks = false, default = false, cancel = false,
             sends = ControlSends.Shell(key), line = "", optionLines = emptyList(),
         )
+    }
+}
+
+/**
+ * A reminder that has just gone off ([Ui.ring]), said as Orbit's Alarm Clock says its alarm: a dialog
+ * named by the reminder, its message to read, then its buttons in the core's order and words, each
+ * with its letter, handed back by its id. It rings no more than its notification did. Back leaves it
+ * due, among Home's Reminders Due; dealt with here or anywhere else, it goes.
+ */
+class RingingScreen(val id: String) : DialogScreen(), AppScreen {
+    override lateinit var host: Ui
+
+    private val due get() = host.view.due.firstOrNull { it.id == id }
+
+    override val title: String get() = due?.title.orEmpty()
+
+    override val loaded: Boolean get() = host.view.ready && due != null
+
+    override fun stands(): Boolean = due != null
+
+    // Opening on its message, so it is read first, as the alarm's is.
+    private var at = 0
+
+    override val focus: Int get() = at
+
+    override fun focusOn(at: Int) {
+        this.at = at
+    }
+
+    override fun controls(): List<DialogControl> {
+        val due = due ?: return emptyList()
+        return listOf(DialogControl.Text(MESSAGE, due.text)) + due.buttons.map { button ->
+            val letter = dueLetter(button.id)
+            DialogControl.Button(button.id, host.withLetter(button.title, letter), letter?.singleOrNull())
+        }
+    }
+
+    override fun pressed(control: DialogControl) {
+        if (control is DialogControl.Button) host.send(ShellEvent.Due(DueEvent.Press(id, control.key)))
+    }
+
+    // Nothing in it is typed, chosen or checked.
+    override fun lineDone(line: DialogControl.Line, text: String) {}
+
+    override fun lineSet(line: DialogControl.Line, text: String) {}
+
+    override fun chose(choice: DialogControl.Choice, option: Int): Boolean = false
+
+    override fun toggled(check: DialogControl.Check): Boolean? = null
+
+    private companion object {
+        const val MESSAGE = "message"
     }
 }

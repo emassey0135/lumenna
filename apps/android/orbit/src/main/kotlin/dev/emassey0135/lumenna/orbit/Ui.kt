@@ -3,6 +3,7 @@ package dev.emassey0135.lumenna.orbit
 import dev.emassey0135.lumenna.name
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.widget.TextView
 import dev.emassey0135.lumenna.AppModel
 import dev.emassey0135.lumenna.Core
@@ -457,6 +458,7 @@ class Ui(
             if (screen.stands()) break
             stack.close(screen)
         }
+        followRinging(v)
         v.asking?.let { asking ->
             // Open already, under something it opened (its completions).
             if (stack.screens.any { (it as? AskingScreen)?.number == asking.number } && stack.top !is AskingScreen) return
@@ -480,6 +482,7 @@ class Ui(
         if (v.blockForm != null && screens.none { it is BlockFormScreen }) push(BlockFormScreen())
         if (v.proposal != null && screens.none { it is ProposalScreen }) push(ProposalScreen())
         if (v.reminders != null && screens.none { it is RemindersScreen }) push(RemindersScreen())
+
     }
 
     /** Quick add was left here, and the app has not yet said its line is closed. */
@@ -487,6 +490,30 @@ class Ui(
 
     /** Looks back over the last day for reminders due, so Home offers them: as Home opens, and as the app comes to the front. */
     fun lookBack() = send(ShellEvent.Due(DueEvent.LookBack))
+
+    /** A reminder that went off and brought the app to the front, until the app holds it: its firing, and when. */
+    private var ringing: Triple<String, String, Long>? = null
+
+    /**
+     * The firing [key] at [occurrence] went off and brought the app to the front: once the app's
+     * reminders due hold it, it is said as its dialog ([RingingScreen]). One the app has not found
+     * within a while (dealt with on another device meanwhile) is let go.
+     */
+    fun ring(key: String, occurrence: String) {
+        ringing = Triple(key, occurrence, SystemClock.uptimeMillis())
+        lookBack()
+    }
+
+    private fun followRinging(v: ViewModel) {
+        val (key, occurrence, since) = ringing ?: return
+        if (SystemClock.uptimeMillis() - since > RINGING_MS) {
+            ringing = null
+            return
+        }
+        val due = v.due.firstOrNull { due -> due.firings.any { it.key == key && it.occurrence == occurrence } } ?: return
+        ringing = null
+        if (stack.screens.none { it is RingingScreen && it.id == due.id }) push(RingingScreen(due.id))
+    }
 
     /** Settings were left here, and the app has not yet said they are closed. */
     var settingsClosed = false
@@ -563,3 +590,6 @@ fun Ui.withLetter(text: String, letter: String?): String {
 
 /** A menu command's name in sentence case, by its id in the core's table. */
 fun titleOf(id: String): String = appWords.commands.firstOrNull { it.id == id }?.title ?: commandTitle(id)
+
+/** How long a reminder that brought the app to the front is waited for among the reminders due. */
+private const val RINGING_MS = 15_000L
