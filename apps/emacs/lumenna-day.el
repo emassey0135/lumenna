@@ -295,6 +295,7 @@ Refused, the core's reason is said and a field asked for again."
    ("P" (command "plan-day") lumenna-day-plan)
    ("r" (command "replan") lumenna-day-replan)
    ("w" (command "what-now") lumenna-day-what-now)
+   ("T" (command "time-left") lumenna-time-left)
    ("E" (command "end-day") lumenna-day-end)
    ("C" (command "clear-day") lumenna-day-clear))
   (:a_block

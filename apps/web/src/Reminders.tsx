@@ -5,7 +5,8 @@
 // last looked, from when it opened. Each is said through the live region, always, and shown as
 // a notification where the browser allows; acting on one is in the page, in Reminders due,
 // whose buttons are the core's Dismiss and Snooze, at a block's end with work left short its
-// Carry Forward, and when a block's work outruns its time its Replan, each handed back by its id
+// Carry Forward, when a block's work outruns its time its Replan, and when a sitting's planned
+// length runs out with its timer running its Stop timer and no Snooze, each handed back by its id
 // (`DueEvent::Press`). When each fires, what it says and what its buttons do are the core's; this
 // decides nothing about them.
 //

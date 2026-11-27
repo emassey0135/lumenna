@@ -1023,6 +1023,17 @@ erased permanently, which is only ever chosen by name."
     (lumenna-send "Redo")
     (lumenna--follow)))
 
+;;;###autoload
+(defun lumenna-time-left ()
+  "Say the timer as it is: what it runs on, how long so far, and what is left.
+The app's Time Left, from anywhere; with no timer running, what a start
+would start."
+  (interactive)
+  (lumenna--on-a-screen
+    (setq lumenna--acting nil)
+    (lumenna-send (list :Key "time-left"))
+    (lumenna--follow)))
+
 ;;;; A screen's own actions
 
 ;; What a screen offers of its own beside its rows -- New Task, the filter, the
@@ -1553,6 +1564,7 @@ RET opens a place or does an action; ? shows every command."
    ("f" (word :filters) lumenna-filters)
    ("b" (command "go-blocks") lumenna-blocks)
    ("h" (command "go-history") lumenna-history)
+   ("g" (command "go-report") lumenna-report)
    ("x" (command "go-trash") lumenna-trash)
    ("L" :all_places lumenna))
   (:doing
@@ -1561,6 +1573,7 @@ RET opens a place or does an action; ? shows every command."
    ("u" (command "undo") lumenna-undo)
    ("y" (command "redo") lumenna-redo)
    ("n" (command "sync-now") lumenna-sync-now)
+   ("T" (command "time-left") lumenna-time-left)
    ("r" (word :reminders_due) lumenna-reminders-due))
   ((command "settings")
    ("d" (command "devices") lumenna-devices)

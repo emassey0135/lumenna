@@ -82,7 +82,8 @@ def readback(session: Session) -> str:
     return session.lines().readback
 
 
-def task_list(session: Session, place=None, title: str = "", query: str | None = None, main=None) -> str:
+def task_list(session: Session, place=None, title: str = "", query: str | None = None, main=None,
+              context=None, empty=None) -> str:
     """One of the app's places as a foldable list of tasks, with `query` typed over it.
 
     Enter opens a task's form; its context menu (M-Chord with Dot 7) has everything else, and the main
@@ -105,10 +106,10 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
             session, build, lambda: state["heading"],
             # Enter is `Key("open")`, as on every row: a task's form, a trashed task restored.
             main=main or (lambda row: actions.press(session, "open", row)),
-            context=lambda rows: task_commands(session, rows),
+            context=context or (lambda rows: task_commands(session, rows)),
             app=lambda: place_commands(session),
             bar=(place, False),
-            empty=empty_then(lambda: readback(session), L.press_to_add(L.command_letter("new-task"))),
+            empty=empty or empty_then(lambda: readback(session), L.press_to_add(L.command_letter("new-task"))),
             app_title=L.menu_of(title),
             focus=lambda: session.view().focus,
         )
@@ -134,6 +135,18 @@ def history(session: Session) -> str:
     """What was done over the last two weeks, newest first, each a task's row: Enter shows its
     details."""
     return task_list(session, L.PlaceHistory())
+
+
+def report(session: Session) -> str:
+    """The time report: what sittings logged over the last weeks, by week, project and label,
+    each heading folding its totals. A total is no task: it has no details, and nothing is added
+    here, so an empty report says only the core's words."""
+    place = L.PlaceReport()
+    return task_list(
+        session, place, session.sentence(L.place_title(place)),
+        context=lambda rows: actions.commands(session, rows),
+        empty=empty_then(lambda: readback(session)),
+    )
 
 
 def trash(session: Session) -> str:

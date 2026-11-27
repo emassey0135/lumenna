@@ -32,7 +32,7 @@ On free time, Add block here, a. On a cancelled day, Restore this day, o.
 
 ## The menu bar, M-Chord
 
-- The Today menu, first: New block, a. Previous day, p. Next day, n. Go to day, g: any date you can say, such as "next friday". Go to now, t. Undo, u, and Redo, y.
+- The Today menu, first: New block, a. Previous day, p. Next day, n. Go to day, g: any date you can say, such as "next friday". Go to now, t. Time left, v: what the timer has left of the sitting's planned length. Undo, u, and Redo, y.
 - The Day menu, Shift-Tab twice from there: what the day offers itself, as it does: Plan the day; Replan from now; What should I work on?, w, which offers the tasks to start on, each saying after a moment why it is suggested; End the day; Clear the rest of the day.
 - From the day, a letter is the item's own first: on a running sitting t stops its timer rather than going to now. What should I work on?, w, works from the day itself.
 

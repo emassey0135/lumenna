@@ -973,9 +973,37 @@ class Menus(unittest.TestCase):
         self.session.send(L.ShellEventHome())
         lettered = {row.title: row.letter for row in menus.home_rows(self.session)}
         self.assertEqual(
-            {title: lettered.get(title) for title in ("Today", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "History", "Trash")},
-            {"Today": "t", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b", "History": "h", "Trash": "x"},
+            {title: lettered.get(title) for title in ("Today", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "History", "Time report", "Trash")},
+            {"Today": "t", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b", "History": "h", "Time report": "g", "Trash": "x"},
         )
+
+    def sitting_today(self, title: str, minutes: int) -> str:
+        """A sitting of a task `title`, planned for `minutes` in a block all of today: its id."""
+        self.call("block.add", title="Deep work", at="00:00", minutes=1439, date="today")
+        block = self.call("plan", date="today")["blocks"][0]["id"]
+        task = self.call("task.add", text=title)["task"]["id"]
+        self.call("assign", task=task, block=block, date="today", minutes=minutes)
+        return self.call("plan", date="today")["blocks"][0]["assignments"][0]["id"]
+
+    def test_the_time_report_is_a_place_of_headings_over_totals_opened_from_home_by_its_letter(self):
+        self.call("stop", assignment=self.sitting_today("Essay", 25), minutes=40)
+        script = self.run_script([("key", "Today", "g"), ("back",), ("back",)], lambda: menus.home(self.session))
+        report = next(menu for menu in script.menus if any(row.startswith("By week") for row in menu["rows"]))
+        self.assertTrue(any("This week, 40 minutes logged" in row for row in report["rows"]), report["rows"])
+        self.assertTrue(any(title.startswith("Time report") for title in script.titles), script.titles)
+
+    def test_an_empty_time_report_says_nothing_was_logged_and_offers_nothing_to_add(self):
+        script = self.run_script([("back",)], lambda: tasks.report(self.session))
+        self.assertEqual(script.titles[0], "Time report")
+        empty = script.menus[0]["empty"]
+        self.assertEqual(empty() if callable(empty) else empty, "Nothing logged in the last 4 weeks")
+
+    def test_time_left_on_homes_menu_says_the_timer_as_the_core_has_it(self):
+        self.call("start", assignment=self.sitting_today("Essay", 25))
+        script = self.run_script([("app", "Time left"), ("back",)], lambda: menus.home(self.session))
+        said = [line for line in script.said if line.startswith("The timer is running on Essay")]
+        self.assertTrue(said, script.said)
+        self.assertIn("25 minutes left of 25 minutes", said[0])
 
     def test_m_chord_on_home_opens_the_cores_menu_bar_on_homes_own_menu_and_tab_goes_round(self):
         script = self.run_script(

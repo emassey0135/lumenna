@@ -976,9 +976,9 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (should (equal (lumenna-test--line) "Home"))
     ;; The places, at their levels, then what can be done from anywhere, in the app's order.
     (should (equal (mapcar (lambda (text) (and (search-forward text nil t) (line-number-at-pos)))
-                           '("  Garden" "New Task" "Undo" "Redo" "What Should I Work On?" "Sync Now"
-                             "Settings" "Keyboard Shortcuts" "About Lumenna"))
-                   (cons 6 (number-sequence 12 19))))
+                           '("  Garden" "Time Report" "New Task" "Undo" "Redo" "What Should I Work On?" "Time Left"
+                             "Sync Now" "Settings" "Keyboard Shortcuts" "About Lumenna"))
+                   (append '(6 11) (number-sequence 13 21))))
     (lumenna-test--goto "  Garden")
     (should (= (funcall outline-level) 3))
     ;; A heading folds, as the app folds it.
@@ -1031,7 +1031,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     ;; The day's, from its own buffer.
     (lumenna-today)
     (should (equal (mapcar (lambda (a) (plist-get a :id)) (lumenna--screen-actions))
-                   '("new-block" "previous-day" "next-day" "go-to-day" "go-to-now" "undo" "redo")))
+                   '("new-block" "previous-day" "next-day" "go-to-day" "go-to-now" "time-left" "undo" "redo")))
     (let ((shown (plist-get (plist-get lumenna--view :day) :date)))
       (lumenna-screen-action "next-day")
       (should-not (equal (plist-get (plist-get lumenna--view :day) :date) shown)))))
@@ -1356,6 +1356,84 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
       (lumenna-test--goto "Deep work has")
       (lumenna-reminders-replan)
       (should (equal (buffer-name) "*Lumenna: Replan from Now*")))))
+
+(defun lumenna-test--sitting-today (title minutes)
+  "A sitting of TITLE, a task made for it, planned for MINUTES in a block all of today.
+Its id."
+  (lumenna-test--seed "block.add" :title "Deep work" :at "00:00" :minutes 1439 :date "today")
+  (let ((block (plist-get (aref (plist-get (lumenna-call "plan" :date "today") :blocks) 0) :id))
+        (task (plist-get (plist-get (lumenna-call "task.add" :text title) :task) :id)))
+    (lumenna-call "assign" :task task :block block :date "today" :minutes minutes)
+    (plist-get (aref (plist-get (aref (plist-get (lumenna-call "plan" :date "today") :blocks) 0) :assignments) 0) :id)))
+
+(ert-deftest lumenna-a-sittings-time-running-out-is-said-once-with-stop-timer-and-no-snooze ()
+  (lumenna-test--reminding
+    (lumenna-call "config.set" :key "default-block-reminders" :value "")
+    (let ((sitting (lumenna-test--sitting-today "Essay" 25)))
+      (lumenna-call "start" :assignment sitting))
+    (setq now (lumenna-reminders--moment nil))
+    (lumenna-test--deliver)
+    (setq now (lumenna-reminders--moment (time-add nil (+ (* 25 60) 30))) said nil)
+    (lumenna-test--deliver)
+    (should (equal said '("Essay's 25 minutes are up")))
+    (let ((notification (car shown)))
+      (should (equal (plist-get notification :actions) '("stop" "Stop Timer" "dismiss" "Dismiss" "default" "Essay")))
+      (funcall (plist-get notification :on-action) 1 "stop"))
+    (should-not (lumenna-test--due))
+    (let ((sitting (aref (plist-get (aref (plist-get (lumenna-call "plan" :date "today") :blocks) 0) :assignments) 0)))
+      (should-not (lumenna--true (plist-get sitting :running))))))
+
+(ert-deftest lumenna-the-due-list-stops-a-timer-whose-time-ran-out-and-refuses-snooze ()
+  (lumenna-test--reminding
+    (lumenna-call "config.set" :key "default-block-reminders" :value "")
+    (let ((sitting (lumenna-test--sitting-today "Essay" 25)))
+      (lumenna-call "start" :assignment sitting))
+    (setq now (lumenna-reminders--moment nil))
+    (lumenna-test--deliver)
+    (setq now (lumenna-reminders--moment (time-add nil (+ (* 25 60) 30))))
+    (lumenna-test--deliver)
+    (lumenna-reminders-due)
+    (lumenna-test--goto "Essay's 25 minutes")
+    ;; Said once, never again: the app refuses Snooze, in its words.
+    (should-error (lumenna-reminders-snooze) :type 'user-error)
+    (should (equal (length (lumenna-test--due)) 1))
+    (lumenna-reminders-stop)
+    (should-not (lumenna-test--due))
+    (let ((sitting (aref (plist-get (aref (plist-get (lumenna-call "plan" :date "today") :blocks) 0) :assignments) 0)))
+      (should-not (lumenna--true (plist-get sitting :running))))))
+
+(ert-deftest lumenna-time-left-says-the-timer-from-anywhere ()
+  (lumenna-test--with-store
+    (let* ((said nil)
+           (lumenna-announce-function (lambda (announcement _notices) (push announcement said))))
+      (lumenna-test--seed "start" :assignment (lumenna-test--sitting-today "Essay" 25))
+      (lumenna-tasks)
+      (lumenna-time-left)
+      (should (string-prefix-p "The timer is running on Essay" (car said)))
+      (should (string-match-p "25 minutes left of 25 minutes" (car said)))
+      ;; Today's own key for it, among the day's.
+      (lumenna-today)
+      (setq said nil)
+      (call-interactively (keymap-lookup lumenna-day-mode-map "T"))
+      (should (string-prefix-p "The timer is running on Essay" (car said))))))
+
+(ert-deftest lumenna-the-time-report-is-a-place-of-its-own-headings-over-totals ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "stop" :assignment (lumenna-test--sitting-today "Essay" 25) :minutes 40)
+    (lumenna-report)
+    (should (equal (buffer-name) "*Lumenna: Time Report*"))
+    (should (derived-mode-p 'lumenna-report-mode))
+    (let ((lines (lumenna-test--lines)))
+      (should (seq-find (lambda (l) (string-prefix-p "By Week" l)) lines))
+      (should (seq-find (lambda (l) (string-match-p "This week, 40 minutes logged" l)) lines)))
+    ;; A heading folds its totals, as the app folds it.
+    (lumenna-test--goto "By Week")
+    (lumenna-toggle)
+    (should-not (seq-find (lambda (l) (string-match-p "This week" l)) (lumenna-test--lines)))
+    ;; From anywhere, as the other places are.
+    (lumenna-tasks)
+    (call-interactively (keymap-lookup lumenna-command-map "g"))
+    (should (equal (buffer-name) "*Lumenna: Time Report*"))))
 
 (ert-deftest lumenna-a-colour-is-a-blank-mark-in-its-colour ()
   "A colour is spaces in its colour, blank to speech, and nothing without colour."
