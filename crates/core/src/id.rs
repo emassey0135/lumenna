@@ -98,6 +98,10 @@ id_type!(
     LabelId
 );
 id_type!(
+    /// Identifies a [`Section`](crate::model::Section).
+    SectionId
+);
+id_type!(
     /// Identifies a [`SavedFilter`](crate::model::SavedFilter).
     FilterId
 );

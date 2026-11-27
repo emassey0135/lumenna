@@ -14,13 +14,13 @@ use std::str::FromStr;
 
 use jiff::{Timestamp, Zoned, civil};
 use lumenna_core::id::{
-    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SeriesId,
+    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SectionId, SeriesId,
     TaskId,
 };
 use lumenna_core::model::{
     AssignmentStatus, BlockAssignment, BlockException, BlockFlags, BlockKind, BlockRef,
     BlockSeries, Delivery, Due, ExceptionAction, ExternalProvider, ExternalRef, Label, Priority,
-    Project, Recurrence, Reminder, ReminderAnchor, ReminderTarget, SavedFilter, Settings, Task,
+    Project, Recurrence, Reminder, ReminderAnchor, ReminderTarget, SavedFilter, Section, Settings, Task,
     TaskCompletion, Trigger, TzName, Verbosity,
 };
 use lumenna_core::order::OrderKey;
@@ -47,6 +47,8 @@ struct File {
     projects: Vec<ProjectOut>,
     #[serde(default)]
     labels: Vec<LabelOut>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    sections: Vec<SectionOut>,
     #[serde(default)]
     filters: Vec<FilterOut>,
     #[serde(default)]
@@ -77,6 +79,8 @@ pub struct Imported {
     pub projects: Vec<Project>,
     /// Labels.
     pub labels: Vec<Label>,
+    /// Sections of projects.
+    pub sections: Vec<Section>,
     /// Saved filters.
     pub filters: Vec<SavedFilter>,
     /// Tasks.
@@ -102,6 +106,7 @@ impl Imported {
     pub fn len(&self) -> usize {
         self.projects.len()
             + self.labels.len()
+            + self.sections.len()
             + self.filters.len()
             + self.tasks.len()
             + self.completions.len()
@@ -131,10 +136,12 @@ pub fn export_json_keeping(snapshot: &Snapshot, now: Timestamp, docs: &crate::Do
     use crate::doc::DocId;
     let mut file = file_of(snapshot, now);
     let live_task = |id: &TaskId| snapshot.tasks.get(id).is_some_and(|t| !t.is_deleted());
+    let live_section = |s: &Section| is_live_section(snapshot, s);
     let mut unknown = Vec::new();
     unknown.extend(snapshot.tasks.values().filter(|t| !t.is_deleted()).filter_map(|t| docs.unknown_in(DocId::Core, t)));
     unknown.extend(snapshot.projects.values().filter(|p| p.deleted_at.is_none()).filter_map(|p| docs.unknown_in(DocId::Core, p)));
     unknown.extend(snapshot.labels.values().filter(|l| l.deleted_at.is_none()).filter_map(|l| docs.unknown_in(DocId::Core, l)));
+    unknown.extend(snapshot.sections.values().filter(|s| live_section(s)).filter_map(|s| docs.unknown_in(DocId::Core, s)));
     unknown.extend(snapshot.saved_filters.values().filter(|f| f.deleted_at.is_none()).filter_map(|f| docs.unknown_in(DocId::Core, f)));
     unknown.extend(snapshot.completions.values().filter(|c| live_task(&c.task_id)).filter_map(|c| docs.unknown_in(DocId::Core, c)));
     unknown.extend(
@@ -153,6 +160,11 @@ pub fn export_json_keeping(snapshot: &Snapshot, now: Timestamp, docs: &crate::Do
     );
     file.unknown = unknown.iter().map(crate::doc::Removed::to_json).collect();
     serde_json::to_string_pretty(&file).unwrap_or_default()
+}
+
+/// Whether a section is exported: not deleted, and of a project that is.
+fn is_live_section(snapshot: &Snapshot, section: &Section) -> bool {
+    section.deleted_at.is_none() && snapshot.projects.get(&section.project_id).is_some_and(|p| p.deleted_at.is_none())
 }
 
 fn file_of(snapshot: &Snapshot, now: Timestamp) -> File {
@@ -177,6 +189,12 @@ fn file_of(snapshot: &Snapshot, now: Timestamp) -> File {
             .filter(|l| l.deleted_at.is_none())
             .map(LabelOut::from)
             .collect(),
+        sections: snapshot
+            .sections
+            .values()
+            .filter(|s| is_live_section(snapshot, s))
+            .map(SectionOut::from)
+            .collect(),
         filters: snapshot
             .saved_filters
             .values()
@@ -193,6 +211,7 @@ fn file_of(snapshot: &Snapshot, now: Timestamp) -> File {
             .map(|t| {
                 let mut out = TaskOut::from(t);
                 out.parent = t.parent_id.filter(|id| live_task(id)).map(|id| id.to_string());
+                out.section = t.section_id.filter(|id| snapshot.sections.get(id).is_some_and(|s| is_live_section(snapshot, s))).map(|id| id.to_string());
                 out.depends = t.depends.iter().filter(|id| live_task(id)).map(ToString::to_string).collect();
                 out
             })
@@ -261,6 +280,7 @@ pub fn parse_json(text: &str) -> Result<Imported> {
         settings: file.settings.map(SettingsOut::into_model).transpose()?,
         projects: collect(file.projects, ProjectOut::into_model)?,
         labels: collect(file.labels, LabelOut::into_model)?,
+        sections: collect(file.sections, SectionOut::into_model)?,
         filters: collect(file.filters, FilterOut::into_model)?,
         tasks: collect(file.tasks, TaskOut::into_model)?,
         completions: collect(file.completions, CompletionOut::into_model)?,
@@ -575,6 +595,33 @@ impl LabelOut {
 }
 
 #[derive(Serialize, Deserialize)]
+struct SectionOut {
+    id: String,
+    project: String,
+    name: String,
+    order: String,
+}
+
+impl From<&Section> for SectionOut {
+    fn from(s: &Section) -> Self {
+        Self { id: s.id.to_string(), project: s.project_id.to_string(), name: s.name.clone(), order: s.order.to_string() }
+    }
+}
+
+impl SectionOut {
+    fn into_model(self) -> Result<Section> {
+        let record = format!("section '{}'", self.name);
+        Ok(Section {
+            id: field::<SectionId>(&record, "identifier", &self.id)?,
+            project_id: field::<ProjectId>(&record, "project identifier", &self.project)?,
+            order: field(&record, "order key", &self.order)?,
+            name: self.name,
+            deleted_at: None,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 struct FilterOut {
     id: String,
     name: String,
@@ -661,6 +708,8 @@ struct TaskOut {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     parent: Option<String>,
     project: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    section: Option<String>,
     priority: u8,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     labels: Vec<String>,
@@ -686,6 +735,7 @@ impl From<&Task> for TaskOut {
             notes: t.notes.clone(),
             parent: t.parent_id.map(|id| id.to_string()),
             project: t.project_id.to_string(),
+            section: t.section_id.map(|id| id.to_string()),
             priority: t.priority.as_u8(),
             labels: t.labels.iter().map(ToString::to_string).collect(),
             depends: t.depends.iter().map(ToString::to_string).collect(),
@@ -706,6 +756,7 @@ impl TaskOut {
             id: field::<TaskId>(&record, "identifier", &self.id)?,
             parent_id: optional(&record, "identifier", self.parent.as_ref())?,
             project_id: field(&record, "identifier", &self.project)?,
+            section_id: optional(&record, "section identifier", self.section.as_ref())?,
             priority: Priority::from_u8(self.priority),
             labels: self
                 .labels
