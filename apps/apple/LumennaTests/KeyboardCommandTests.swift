@@ -42,6 +42,23 @@ final class KeyboardCommandTests: XCTestCase {
         XCTAssertEqual(filter?.title, "Filter Tasks")
     }
 
+    func testCommandSixIsTheTimeReportAndShiftCommandTTimeLeftInTheCoresWords() {
+        let report = KeyboardCommands.all.first { $0.input == "6" && $0.modifierFlags == .command }
+        XCTAssertEqual(report?.action, #selector(CommandActions.goToReport))
+        XCTAssertEqual(report?.title, Commands.title("go-report"))
+        let left = KeyboardCommands.all.first { $0.input == "t" && $0.modifierFlags == [.command, .shift] }
+        XCTAssertEqual(left?.action, #selector(CommandActions.timeLeft))
+        XCTAssertEqual(left?.title, Commands.title("time-left"))
+    }
+
+    func testGoToTimeReportFromTodayOpensItInBrowse() throws {
+        let root = try showRoot()
+        root.goToReport()
+        let deadline = Date().addingTimeInterval(5)
+        while core.app.view.place != .report, Date() < deadline { settle(0.05) }
+        XCTAssertEqual(core.app.view.place, .report)
+    }
+
     func testFilterTasksFromTodayOpensTheTasksWithTheFilterInHand() throws {
         let root = try showRoot()
         XCTAssertEqual(root.selectedIndex, 0)

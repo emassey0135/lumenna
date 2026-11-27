@@ -88,7 +88,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
         switch place {
         case .today: return day
         case .tasks: return tasks
-        case .blocks, .trash, .history, .project, .label, .filter:
+        case .blocks, .trash, .history, .report, .project, .label, .filter:
             return TaskListViewController(core: core, place: place)
         }
     }
@@ -130,7 +130,10 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func goToBlocks() { show(.place(.blocks)) }
     @objc func goToTrash() { show(.place(.trash)) }
     @objc func goToHistory() { show(.place(.history)) }
+    @objc func goToReport() { show(.place(.report)) }
     @objc func showSettings() { show(.settings) }
+    /// Time Left: the timer as it is, said, from any place (the core's `time-left`).
+    @objc func timeLeft() { core.app.key("time-left") }
     @objc func undoChange() { undoInStore(core) }
     @objc func redoChange() { redoInStore(core) }
     @objc func syncNow() { syncAndSay(core) }

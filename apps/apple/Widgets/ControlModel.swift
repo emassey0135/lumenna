@@ -27,7 +27,8 @@ enum Controls {
     /// its app has written it): off, saying why in the core's words, pressed to no effect.
     static func unknown(reason: String = "") -> LumennaApp.TimerControl {
         LumennaApp.TimerControl(
-            running: false, detail: LumennaApp.storeUnopened(reason: reason), action: "", actionSentence: "", enabled: false
+            running: false, detail: LumennaApp.storeUnopened(reason: reason), action: "", actionSentence: "", enabled: false,
+            timer: nil
         )
     }
 }
@@ -38,18 +39,19 @@ struct TimerControlState: Equatable {
     let isOn: Bool
     /// Its title: the core's name.
     let title: String
-    /// What it says beneath: the task whose timer runs, what a press would start, or why nothing
-    /// would.
+    /// What it says beneath: the task whose timer runs with what is left of its planned length
+    /// (else how long so far), what a press would start, or why nothing would; the core's
+    /// (`timerControlValue`) as it is at the moment drawn.
     let value: String
     /// What a press does, shown as it is pressed.
     let action: String
     /// Whether a press does anything.
     let enabled: Bool
 
-    init(_ control: LumennaApp.TimerControl, name: String = Controls.name(Controls.timer)) {
+    init(_ control: LumennaApp.TimerControl, name: String = Controls.name(Controls.timer), at now: Date = Date()) {
         isOn = control.running
         title = name
-        value = control.detail
+        value = LumennaApp.timerControlValue(control: control, now: Instant.rfc3339(now))
         action = control.action
         enabled = control.enabled
     }

@@ -16,6 +16,17 @@ struct GlanceTimelineEntry: TimelineEntry {
     /// timer needs no moment of its own.
     var timerStart: Date? { glance.moment.timer.flatMap { Instant.parse($0.countingFrom) } }
 
+    /// What the timer's text counts on by itself: down to the end of the sitting's planned
+    /// length where one is set (and on past it, the time over), else up from `timerStart`.
+    var timerCounts: Date? { glance.moment.timer?.runsOutAt.flatMap(Instant.parse) ?? timerStart }
+
+    /// The core's words for what is left of the sitting's planned length at this entry's moment
+    /// ("13 minutes left", "time is up", "3 minutes over"), shown beside the task; none for a
+    /// timer with no planned length. A moment of its own each minute (`GlanceWidgets.counted`).
+    var countdown: String? {
+        glance.moment.timer.flatMap { LumennaApp.glanceCountdown(timer: $0, now: Instant.rfc3339(date)) }
+    }
+
     /// The block under way, from its start to its end, for a gauge that fills by itself.
     var blockUnderWay: ClosedRange<Date>? {
         guard let block = glance.moment.current, let start = Instant.parse(block.startsAt),
@@ -54,6 +65,34 @@ enum GlanceWidgets {
     /// moment cannot be read is left out.
     static func entries(_ glance: [LumennaApp.GlanceEntry]) -> [GlanceTimelineEntry] {
         glance.compactMap { entry in Instant.parse(entry.moment.at).map { GlanceTimelineEntry(date: $0, glance: entry) } }
+    }
+
+    /// At most this many moments added for a countdown's minutes: three hours of them, past which
+    /// the timeline is read again at its end, as any.
+    static let countedMost = 180
+
+    /// `entries` with a moment of their own wherever the core says a countdown's words change
+    /// (`glanceRedrawAt`: the minute before it runs out, and so on) from `now`, each the moment
+    /// it falls in again: WidgetKit takes every moment at once, so words that change each minute
+    /// need one each, where the timer's own text counts by itself. A glance with no planned
+    /// length running is as it was.
+    static func counted(_ entries: [GlanceTimelineEntry], from now: Date, most: Int = countedMost) -> [GlanceTimelineEntry] {
+        let glance = entries.map(\.glance)
+        var out: [GlanceTimelineEntry] = []
+        var added = 0
+        for (index, entry) in entries.enumerated() {
+            out.append(entry)
+            guard entry.glance.moment.timer?.plannedMins != nil else { continue }
+            let end = index + 1 < entries.count ? entries[index + 1].date : entry.date.addingTimeInterval(TimeInterval(countedMost * 60))
+            var at = max(entry.date, now)
+            while added < most, let next = LumennaApp.glanceRedrawAt(entries: glance, now: Instant.rfc3339(at)).flatMap(Instant.parse),
+                  next > at, next < end {
+                out.append(GlanceTimelineEntry(date: next, glance: entry.glance))
+                added += 1
+                at = next
+            }
+        }
+        return out
     }
 
     /// Whether the glance has run out by `now`: none written, or its last moment come. The app

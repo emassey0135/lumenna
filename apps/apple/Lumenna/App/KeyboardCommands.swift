@@ -20,6 +20,9 @@ import UIKit
     @objc optional func goToBlocks()
     @objc optional func goToTrash()
     @objc optional func goToHistory()
+    @objc optional func goToReport()
+    /// Time Left: the timer as it is, said (the core's `time-left`).
+    @objc optional func timeLeft()
     @objc optional func toggleDone()
     @objc optional func putInBlock()
     @objc optional func moveToProject()
@@ -91,6 +94,7 @@ enum KeyboardCommands {
             command(Commands.asking("go-blocks"), #selector(CommandActions.goToBlocks), "3"),
             command(Commands.asking("go-trash"), #selector(CommandActions.goToTrash), "4"),
             command(Commands.asking("go-history"), #selector(CommandActions.goToHistory), "5"),
+            command(Commands.asking("go-report"), #selector(CommandActions.goToReport), "6"),
         ]
     }
 
@@ -123,6 +127,8 @@ enum KeyboardCommands {
             command(Commands.asking("plan-day"), #selector(CommandActions.planTheDay), DayKeys.planDay, [.command, .alternate]),
             command(Commands.asking("replan"), #selector(CommandActions.replanFromNow), DayKeys.replan, [.command, .alternate]),
             item(Commands.asking("what-now"), #selector(CommandActions.whatNow)),
+            // The shared table's Ctrl+Shift+T, a Mac keyboard's Command for Control.
+            command(Commands.asking("time-left"), #selector(CommandActions.timeLeft), "t", [.command, .shift]),
             item(Commands.asking("end-day"), #selector(CommandActions.endTheDay)),
             item(Commands.asking("clear-day"), #selector(CommandActions.clearTheDay)),
         ]

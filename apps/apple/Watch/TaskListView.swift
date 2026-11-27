@@ -85,21 +85,28 @@ struct TaskListView: View {
         // Split as the phone splits them (`AppRowActions`): Mark Done from the leading edge,
         // the rest and Expand or Collapse from the trailing; every one is on the task's screen.
         let split = AppRowActions(actions: shown.actions, doneLeads: true) { _ in }
-        return NavigationLink(value: TaskOpened(id: row.id)) {
-            // The row owns what VoiceOver says: the title as its name, then the rest of its
-            // line, whether it is folded and its level as its value, as on the phone.
-            HStack {
-                SwatchMark(swatch: row.swatch)
-                VStack(alignment: .leading) {
-                    Text(row.title)
-                    if let detail = shown.line?.detail, !detail.isEmpty {
-                        Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
-                    }
+        // The row owns what VoiceOver says: the title as its name, then the rest of its line,
+        // whether it is folded and its level as its value, as on the phone.
+        let line = HStack {
+            SwatchMark(swatch: row.swatch)
+            VStack(alignment: .leading) {
+                Text(row.title)
+                if let detail = shown.line?.detail, !detail.isEmpty {
+                    Text(detail).font(.footnote).foregroundStyle(Color.quietLabel)
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(row.title)
-            .accessibilityValue(AppModel.spoken(detail: shown.line?.detail, expanded: row.expanded, level: shown.item.level))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(row.title)
+        .accessibilityValue(AppModel.spoken(detail: shown.line?.detail, expanded: row.expanded, level: shown.item.level))
+        return Group {
+            // A task opens its own screen; a row that is no task (the Time Report's sums and
+            // their headings) is read where it is, its folding its swipe.
+            if row.role == "task" {
+                NavigationLink(value: TaskOpened(id: row.id)) { line }
+            } else {
+                line
+            }
         }
         .accessibilityFocused($spoken, equals: row.id)
         .swipeActions(edge: .leading) {

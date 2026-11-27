@@ -118,6 +118,9 @@ targetTemplates:
       # New Task's control opens the app on the core's launch, in the app (Launches.swift).
       - path: Shared/Launches.swift
         group: Shared
+      # The Timer control's press arms a sitting's time running out, the app perhaps not running.
+      - path: Shared/Reminders.swift
+        group: Shared
     dependencies:
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework
@@ -236,6 +239,8 @@ targets:
           - _lumenna._udp
           - _lumenna-pair._udp
         UILaunchScreen: {}
+        # The running timer on the Lock Screen and in the Dynamic Island (TimerActivities).
+        NSSupportsLiveActivities: true
         # Syncing in the background: a refresh now and then (BackgroundSync).
         UIBackgroundModes:
           - fetch
@@ -292,6 +297,9 @@ targets:
         group: Lumenna
         includes:
           - Colours.swift
+      # The running timer's Live Activity, its state and its buttons, as the app has them.
+      - path: Shared/TimerActivity.swift
+        group: Shared
     dependencies:
       # Linked, not embedded: the app embeds it, and the extension finds it there.
       - target: LumennaAppiOS

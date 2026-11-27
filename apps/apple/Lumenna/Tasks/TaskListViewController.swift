@@ -137,7 +137,7 @@ struct TaskListScreen: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.row.title)
         .accessibilityValue(AppModel.spoken(detail: detail, expanded: row.row.expanded, level: row.item.level))
-        .accessibilityHint(model.trash ? "" : model.blocks ? Wording.editsEveryOccurrence : Wording.showsDetails)
+        .accessibilityHint(model.trash || model.report ? "" : model.blocks ? Wording.editsEveryOccurrence : Wording.showsDetails)
         .accessibilityAddTraits(.isButton)
         .accessibilityFocused($spoken, equals: row.id)
         .swipeActions(edge: .leading) {
@@ -251,7 +251,7 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
     /// VoiceOver's Overdue rotor, from one overdue task to the next (`RowRotor`), on the list
     /// and the view holding it: VoiceOver collects a rotor from any container above its row.
     private func offerRotors() {
-        guard place != .trash, place != .blocks else { return }
+        guard place != .trash, place != .blocks, place != .report else { return }
         let model = model
         let overdue = RowRotor.make(
             Wording.overdue, in: self,
@@ -269,7 +269,7 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
 
     /// Quick add, or in Blocks the block form for a new one: the keyboard's New Task.
     @objc func addTask() {
-        guard place != .trash else { return }
+        guard place != .trash, place != .report else { return }
         guard place != .blocks else { return core.app.send(.block(.new(start: nil, minutes: nil))) }
         presentQuickAdd()
     }

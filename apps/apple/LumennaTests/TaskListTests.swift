@@ -215,4 +215,32 @@ final class TaskListTests: XCTestCase {
         XCTAssertEqual(title, "Delete the secret from the trash?")
         XCTAssertTrue(message.hasPrefix("Undo can bring it back"), "Delete from Trash's question, not Erase Permanently's: \(message)")
     }
+
+    func testTheTimeReportListsTheCoresSumsUnderTheirHeadingsWithNothingToCheckOrDo() throws {
+        let report = shownTasks(.report)
+        XCTAssertFalse(report.checks, "sums, not tasks to check off")
+        XCTAssertTrue(report.shown.isEmpty)
+        XCTAssertFalse(report.readback.isEmpty, "the core's words for nothing logged")
+        XCTAssertEqual(report.title, LumennaApp.placeTitle(place: .report))
+
+        // Half an hour logged on a task in a block under way.
+        let start = Date().addingTimeInterval(-5 * 60)
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: start)
+        let day = Clock.isoDay(start)
+        _ = try core.app.device.addBlock(block: newBlock(
+            title: "Deep work", at: String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0), minutes: 60, date: day
+        ))
+        let task = try XCTUnwrap(core.app.device.addTask(text: "Essay").task?.id)
+        let block = try XCTUnwrap(core.app.device.plan(date: day).blocks.first { $0.title == "Deep work" })
+        _ = try core.app.device.assign(task: task, block: block.id, date: day, minutes: 25)
+        let sitting = try XCTUnwrap(core.app.device.plan(date: day).blocks.first { $0.title == "Deep work" }?.assignments.first?.id)
+        _ = try AssistantStore(device: core.app.device).assist("start_timer", ["assignment": .text(sitting)])
+        _ = try core.app.device.stopTimer(assignment: sitting, minutes: 30)
+
+        let logged = shownTasks(.report)
+        settle { !logged.shown.isEmpty }
+        XCTAssertEqual(logged.shown.first?.row.role, "group", "a heading over its sums")
+        XCTAssertTrue(logged.shown.contains { $0.row.role == "total" })
+        XCTAssertTrue(logged.shown.filter { $0.row.role == "total" }.allSatisfy { $0.actions.isEmpty }, "a sum has nothing to do to it")
+    }
 }
