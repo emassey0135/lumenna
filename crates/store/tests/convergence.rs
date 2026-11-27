@@ -44,6 +44,9 @@ enum Op {
     Priority(usize, u8),
     /// Trash, which is a field like any other and must not behave specially.
     ToggleTrash(usize),
+    /// A start that is a day or Someday, and a deadline, put off and cleared on several devices:
+    /// one field each, which must merge to one value on every replica.
+    PutOff(usize, u8),
 }
 
 fn op_strategy() -> impl Strategy<Value = Op> {
@@ -56,7 +59,8 @@ fn op_strategy() -> impl Strategy<Value = Op> {
         (i.clone(), 0..TASKS).prop_map(|(a, b)| Op::ToggleDepend(a, b)),
         i.clone().prop_map(Op::Note),
         (i.clone(), 1u8..5).prop_map(|(a, b)| Op::Priority(a, b)),
-        i.prop_map(Op::ToggleTrash),
+        i.clone().prop_map(Op::ToggleTrash),
+        (i, 0u8..4).prop_map(|(a, b)| Op::PutOff(a, b)),
     ]
 }
 
@@ -106,7 +110,8 @@ fn apply(docs: &mut Documents, cast: &Cast, op: Op, replica: usize, step: usize)
         | Op::ToggleDepend(i, _)
         | Op::Note(i)
         | Op::Priority(i, _)
-        | Op::ToggleTrash(i) => i,
+        | Op::ToggleTrash(i)
+        | Op::PutOff(i, _) => i,
     }) else {
         return;
     };
@@ -138,6 +143,15 @@ fn apply(docs: &mut Documents, cast: &Cast, op: Op, replica: usize, step: usize)
         }
         Op::Note(_) => after.notes.push_str(&format!("[{replica}:{step}]")),
         Op::Priority(_, p) => after.priority = Priority::from_u8(p),
+        Op::PutOff(_, how) => {
+            let day = jiff::civil::date(2026, 6, 1) + jiff::Span::new().days(i64::from(how) + i64::try_from(step).unwrap_or(0));
+            match how {
+                0 => after.start = Some(lumenna_core::model::Start::Someday),
+                1 => after.start = Some(lumenna_core::model::Start::On(day)),
+                2 => after.deadline = Some(day),
+                _ => (after.start, after.deadline) = (None, None),
+            }
+        }
         Op::ToggleTrash(_) => {
             after.deleted_at = if after.deleted_at.is_some() { None } else { Some(time::now()) };
         }
