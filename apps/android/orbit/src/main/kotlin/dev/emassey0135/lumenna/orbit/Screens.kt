@@ -107,7 +107,7 @@ class HomeScreen : AppList() {
 class PlaceScreen(override val place: Place, private val name: String) : AppList(), ShowsPlace {
     override fun loaded(view: ViewModel): Boolean = view.place == place && view.list != null
 
-    override val title: String get() = heading(host.listShown, name)
+    override val title: String get() = heading(host.mainShown, name)
 
     override val lands: Lands get() = Lands.MAIN
 
@@ -117,7 +117,7 @@ class PlaceScreen(override val place: Place, private val name: String) : AppList
 
     override fun inHand(): String? = host.view.focus
 
-    override val empty: String get() = host.listShown?.empty?.ifEmpty { null } ?: appWords.nothingHere
+    override val empty: String get() = host.mainShown?.empty?.ifEmpty { null } ?: appWords.nothingHere
 
     override fun moved(row: Row) = host.send(ShellEvent.Focus(row.key))
 
@@ -177,7 +177,7 @@ class DayScreen : AppList(), ShowsPlace {
 
     override fun loaded(view: ViewModel): Boolean = view.place is Place.Today && view.day != null
 
-    override val title: String get() = heading(host.listShown, titleOf("go-today"))
+    override val title: String get() = heading(host.mainShown, titleOf("go-today"))
 
     override val lands: Lands get() = Lands.MAIN
 
@@ -314,10 +314,7 @@ class RemindersScreen : AppList() {
     override fun stands(view: ViewModel): Boolean = view.reminders != null
 
     override fun leaving() {
-        if (host.view.reminders != null) {
-            host.remindersClosed = true
-            host.send(ShellEvent.CloseReminders)
-        }
+        if (host.view.reminders != null) host.send(ShellEvent.CloseReminders)
     }
 
     override fun inHand(): String? = host.view.remindersHeld.focus

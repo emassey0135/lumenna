@@ -320,6 +320,13 @@ class Ui(
     /** The list the core says is showing, if one is. */
     val listShown: ListShown? get() = (screenView.shown as? Shown.List)?.field0
 
+    /**
+     * The main list as the app last described it, for a place or the day: none while the description
+     * is of a list beside it (a task's reminders), which a place shown again under it, before the app
+     * has heard that list closed, must not take for its own.
+     */
+    val mainShown: ListShown? get() = listShown?.takeIf { it.side == null }
+
     val top: Screen? get() = stack.top
 
     /** This app's screens know it before the stack shows them. */
@@ -475,14 +482,13 @@ class Ui(
         // still open in the view until the app has the close, and is not opened again meanwhile.
         if (v.line == null) lineClosed = false
         if (v.settings == null) settingsClosed = false
-        if (v.reminders == null) remindersClosed = false
         val screens = stack.screens
         // Settings the core opened (Home's Settings, its letter): shown here too.
         if (v.settings != null && !settingsClosed && screens.none { it is SettingsScreen }) push(SettingsScreen())
         if (v.line != null && !lineClosed && screens.none { it is QuickAddScreen }) push(QuickAddScreen())
         if (v.blockForm != null && screens.none { it is BlockFormScreen }) push(BlockFormScreen())
         if (v.proposal != null && screens.none { it is ProposalScreen }) push(ProposalScreen())
-        if (v.reminders != null && !remindersClosed && screens.none { it is RemindersScreen }) push(RemindersScreen())
+        if (v.reminders != null && screens.none { it is RemindersScreen }) push(RemindersScreen())
 
     }
 
@@ -521,9 +527,6 @@ class Ui(
 
     /** Settings were left here, and the app has not yet said they are closed. */
     var settingsClosed = false
-
-    /** A reminder list was left here, and the app has not yet said it is closed: a turn made before it heard is no reason to open it again. */
-    var remindersClosed = false
 
     // ---- what a key opens ---------------------------------------------------------------------
 
