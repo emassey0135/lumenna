@@ -295,7 +295,7 @@ until the app has taken it in."
                  (lambda (_prompt choices &rest _) (setq offered (mapcar #'car choices)) (car offered)))
                 ((symbol-function 'read-string) (lambda (&rest _) "1")))
         (lumenna-act-at-point))
-      (should (equal offered '("Weight"))))))
+      (should (equal offered '("Weight" "New Section"))))))
 
 (ert-deftest lumenna-a-project-with-a-space-is-quoted-by-the-core-in-its-list ()
   (lumenna-test--with-store

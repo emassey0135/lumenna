@@ -904,7 +904,7 @@ class Menus(unittest.TestCase):
         menu.menu = [type("Row", (), {"row": inbox})()]
         labels = [c.get_label(menu) for c in script.menus[-1]["context"] if c.applies(menu)]
         # w is What should I work on? on Home, which comes first there.
-        self.assertEqual(labels, ["Add a task to it", "Weight"])
+        self.assertEqual(labels, ["Add a task to it", "Weight", "New section"])
 
     def test_collapsing_a_project_hides_what_is_under_it_and_keeps_it(self):
         self.call("project.add", name="Work")
