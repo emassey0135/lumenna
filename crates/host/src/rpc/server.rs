@@ -52,6 +52,7 @@ pub const METHODS: &[&str] = &[
     "task.list",
     "task.show",
     "task.history",
+    "task.reconsider",
     "task.edit",
     "task.done",
     "task.undone",
@@ -73,6 +74,8 @@ pub const METHODS: &[&str] = &[
     "project.move",
     "project.order",
     "project.weight",
+    "project.reviewed",
+    "project.review_every",
     "project.colour",
     "label.add",
     "label.list",
@@ -117,6 +120,7 @@ pub const METHODS: &[&str] = &[
     "day_plan",
     "day_plan.apply",
     "history",
+    "review",
     "config.get",
     "config.set",
     "undo",
@@ -163,6 +167,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("task.list", &["query"]),
     ("task.show", &["id"]),
     ("task.history", &["id"]),
+    ("task.reconsider", &["id", "answer"]),
     ("task.edit", &["id", "title", "due", "repeat", "priority", "estimate", "notes", "project", "labels", "sittings"]),
     ("task.done", &["id"]),
     ("task.undone", &["id"]),
@@ -184,6 +189,8 @@ const TAKES: &[(&str, &[&str])] = &[
     ("project.move", &["name", "parent"]),
     ("project.order", &["name", "direction"]),
     ("project.weight", &["name", "value"]),
+    ("project.reviewed", &["name"]),
+    ("project.review_every", &["name", "every"]),
     ("project.colour", &["name", "colour"]),
     ("label.add", &["name"]),
     ("label.list", &[]),
@@ -228,6 +235,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("day_plan", &["date", "clock", "pins", "now"]),
     ("day_plan.apply", &["plan", "accepted", "now"]),
     ("history", &[]),
+    ("review", &[]),
     ("config.get", &["key"]),
     ("config.set", &["key", "value"]),
     ("undo", &[]),
@@ -678,6 +686,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "task.list" => Response::new(l.list_tasks(&maybe_text(params, "query").unwrap_or_default())?),
         "task.show" => Response::new(l.show_task(&id()?)?),
         "task.history" => Response::new(l.task_history(&id()?)?),
+        "task.reconsider" => Response::new(l.reconsider(&id()?, &text_of(params, "answer")?)?),
         "task.edit" => Response::new(l.edit_task(&id()?, TaskEdit {
             title: maybe_text(params, "title"),
             due: maybe_text(params, "due"),
@@ -753,6 +762,8 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "project.move" => Response::new(l.move_project(&name()?, maybe_text(params, "parent"))?),
         "project.order" => Response::new(l.reorder_project(&name()?, way(params)?)?),
         "project.colour" => Response::new(l.recolour_project(&name()?, colour(params))?),
+        "project.reviewed" => Response::new(l.mark_reviewed(&name()?)?),
+        "project.review_every" => Response::new(l.review_every(&name()?, &text_of(params, "every")?)?),
         "project.weight" => {
             // A number, or the string "inherit" to go back to the parent's weight.
             let value = match params.get("value") {
@@ -859,6 +870,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             maybe_number(params, "minutes")?,
         )?),
         "history" => Response::new(l.history()?),
+        "review" => Response::new(l.review()?),
 
         "config.get" => Response::new(l.settings(maybe_text(params, "key"))?),
         "config.set" => {

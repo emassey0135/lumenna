@@ -103,8 +103,9 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
     with screen("lumenna-tasks"):
         live_menu(
             session, build, lambda: state["heading"],
-            # Enter is `Key("open")`, as on every row: a task's form, a trashed task restored.
-            main=main or (lambda row: actions.press(session, "open", row)),
+            # Enter is `Key("open")`, as on every row: a task's form, a trashed task restored, a
+            # project the review lists opened, which this screen leaves for (`opened`).
+            main=main or (lambda row: opened(session, place, actions.press(session, "open", row))),
             context=lambda rows: task_commands(session, rows),
             app=lambda: place_commands(session),
             bar=(place, False),
@@ -113,6 +114,14 @@ def task_list(session: Session, place=None, title: str = "", query: str | None =
             focus=lambda: session.view().focus,
         )
     return ""
+
+
+def opened(session: Session, place, said: str) -> str:
+    """What Enter said, and, where it took the app to another place (a project the review lists,
+    `OpenProject`), this screen closed for Home's loop to show that one (`session.moved_on`)."""
+    if session.view().place != place:
+        session.moved_on = True
+    return said
 
 
 def query_tasks(session: Session) -> str:

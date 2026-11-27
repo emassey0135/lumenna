@@ -38,6 +38,10 @@
     start_on                 = @{ Cmdlet = 'Start-LumennaChoice' }
     apply_replan             = @{ Cmdlet = 'Approve-LumennaReplan' }
     apply_day_plan           = @{ Cmdlet = 'Approve-LumennaDayPlan' }
+    review                   = @{ Cmdlet = 'Get-LumennaReview' }
+    mark_reviewed            = @{ Cmdlet = 'Complete-LumennaProjectReview' }
+    review_every             = @{ Cmdlet = 'Set-LumennaProjectReview' }
+    reconsider_task          = @{ Cmdlet = 'Resolve-LumennaTask' }
     undo                     = @{ Cmdlet = 'Undo-LumennaChange' }
     redo                     = @{ Cmdlet = 'Redo-LumennaChange' }
 }

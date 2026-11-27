@@ -1456,6 +1456,24 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
         (insert-file-contents file)
         (should (search-forward "exported" nil t))))))
 
+(ert-deftest lumenna-a-task-put-off-five-times-is-asked-about-in-the-review-and-answered-there ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "task.add" :text "call the dentist tomorrow")
+    (let ((id (plist-get (aref (plist-get (lumenna-call "task.list") :rows) 0) :id)))
+      (dolist (days '(2 3 4 5 6))
+        (lumenna-test--seed "task.edit" :id id :due (format "in %d days" days)))
+      (lumenna-review)
+      (should (derived-mode-p 'lumenna-review-mode))
+      (lumenna-test--goto "call the dentist")
+      (should (string-match-p "put off 5 times" (thing-at-point 'line t)))
+      (let (offered)
+        (cl-letf (((symbol-function 'completing-read)
+                   (lambda (_prompt choices &rest _) (setq offered (mapcar #'car choices)) "Take Its Date Away")))
+          (lumenna-act-reconsider))
+        (should (equal offered '("Keep It" "Take Its Date Away" "Drop It"))))
+      (should-not (plist-get (lumenna-call "task.show" :id id) :due))
+      (should-not (seq-find (lambda (l) (string-match-p "call the dentist" l)) (lumenna-test--lines))))))
+
 (provide 'lumenna-test)
 
 ;;; lumenna-test.el ends here

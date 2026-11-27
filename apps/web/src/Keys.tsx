@@ -33,6 +33,7 @@ export const WEB: Record<string, string[]> = {
   "go-blocks": ["Alt+Shift+3"],
   "go-trash": ["Alt+Shift+4"],
   "go-history": ["Alt+Shift+5"],
+  "go-review": ["Alt+Shift+6"],
   "next-pane": ["Alt+Shift+Period"],
   "previous-pane": ["Alt+Shift+Comma"],
   "mark-done": ["Alt+Shift+K"],
