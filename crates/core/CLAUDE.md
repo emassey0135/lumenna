@@ -197,6 +197,19 @@ move made by the change that completed a repeating task is not counted).
 - **History is a place** (`Place::History`, `lists::history`, `lum history`): each task once,
   at its last completion or sitting in two weeks, newest first, its row a task's row, so the
   details, a row's actions and focus by identifier work as on any list.
+- **The planner asks, never acts** (`core::review`, `records::review`): a task among the five
+  most urgent with nothing done on it for three weeks is stale; one put off five times (its date
+  moved later by hand, or planned and left) since last answered is asked about, a repeating one
+  offered half as often (`less_often`). A project comes up for review at its interval
+  (`review_every_days`, a week unless set, `Some(0)` never) after it was last reviewed or made,
+  its making read from its UUIDv7. Every answer is an ordinary change that settles the
+  question (`kept_at`, `kept_put_off`). The askings reach the person one way, never
+  interrupting: the Review place (`Place::Review`) lists them, each with its answer as a primary
+  row action, and a task's details say its question.
+- **A streak is counted, never stored** (`core::streak`): a repeating task's latest occurrences
+  done on or before their day, from the completions that name them, ended by one missed (gone
+  by undone, done late, or skipped by a date moved past it). Said in its details, its glance
+  line and its search document.
 - **The weights are a synced setting with a key per weight** (`Settings::urgency`), so
   concurrent edits of different weights both hold; said and read as one line,
   `urgency-weights`.
@@ -208,3 +221,22 @@ move made by the change that completed a repeating task is not counted).
 - **A list's query may end in `sort: urgency` or `sort: added`** (`parse_query`, `Sort`). A
   block's filter selects and never orders, so `parse_filter` refuses `sort:` rather than
   search for it.
+
+## Sections
+
+A project's headings (`model::Section`, `Snapshot::sections_of`), a record of their own in
+`core`'s `sections` map (made by the store's third frozen change).
+
+- **A task's section is believed only while it is live and its own project's**
+  (`Snapshot::section_of`): merge can leave one naming a section deleted elsewhere, or a project
+  it has left; it then sits in its project under none. Nothing repairs it on read.
+- **A section is its project's**: moving a task to another project leaves its section
+  (`MoveTo::Project`), joining a parent takes the parent's, and `MoveTo::Section` joins the
+  section's project, subtasks and all, a subtask leaving its parent.
+- **Deleting one keeps or trashes its tasks** (`SectionDeletion`), the kept ones' section cleared
+  in the same edit, so one undo puts every task back under it; a project trashed takes its
+  sections.
+- **A project's own listing is headed by them** (`Snapshot::project_rows`, the records'
+  `lists::tasks` when the query is exactly the project's reference): the tasks under no section,
+  then each section's heading (`Role::Section`, every one, an empty one too) with its tasks a
+  level deeper, headings and loose tasks siblings. Any other query lists tasks alone.

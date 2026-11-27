@@ -11,6 +11,7 @@ $script:Operations = [ordered]@{
     'day' = @{ Cmdlet = 'Get-LumennaDay'; Switch = $null; Title = 'Show the Day'; Writes = $false; Confirms = $false; Target = $null; Names = @{ 'Date' = 'date' } }
     'list_blocks' = @{ Cmdlet = 'Get-LumennaBlock'; Switch = $null; Title = 'List Blocks'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'list_projects' = @{ Cmdlet = 'Get-LumennaProject'; Switch = $null; Title = 'List Projects'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
+    'list_sections' = @{ Cmdlet = 'Get-LumennaSection'; Switch = $null; Title = 'List a Project''s Sections'; Writes = $false; Confirms = $false; Target = 'Project'; Names = @{ 'Project' = 'project' } }
     'list_labels' = @{ Cmdlet = 'Get-LumennaLabel'; Switch = $null; Title = 'List Labels'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'list_filters' = @{ Cmdlet = 'Get-LumennaFilter'; Switch = $null; Title = 'List Saved Filters'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'what_should_i_work_on' = @{ Cmdlet = 'Get-LumennaChoice'; Switch = $null; Title = 'What Should I Work On?'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
@@ -26,7 +27,8 @@ $script:Operations = [ordered]@{
     'erase_task_permanently' = @{ Cmdlet = 'Remove-LumennaTask'; Switch = 'Permanently'; Title = 'Erase a Task Permanently'; Writes = $true; Confirms = $true; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'erase_everything_deleted' = @{ Cmdlet = 'Clear-LumennaTrash'; Switch = $null; Title = 'Erase Everything Deleted'; Writes = $true; Confirms = $true; Target = $null; Names = @{} }
     'restore_task' = @{ Cmdlet = 'Restore-LumennaTask'; Switch = $null; Title = 'Restore a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
-    'move_task' = @{ Cmdlet = 'Move-LumennaTask'; Switch = $null; Title = 'Move a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Parent' = 'parent'; 'Project' = 'project'; 'Top' = 'top' } }
+    'move_task' = @{ Cmdlet = 'Move-LumennaTask'; Switch = $null; Title = 'Move a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Parent' = 'parent'; 'Project' = 'project'; 'Top' = 'top'; 'Section' = 'section' } }
+    'add_section' = @{ Cmdlet = 'Add-LumennaSection'; Switch = $null; Title = 'Add a Section'; Writes = $true; Confirms = $false; Target = 'Project'; Names = @{ 'Project' = 'project'; 'Name' = 'name' } }
     'assign' = @{ Cmdlet = 'Add-LumennaSitting'; Switch = $null; Title = 'Put a Task in a Block'; Writes = $true; Confirms = $false; Target = 'Task'; Names = @{ 'Task' = 'task'; 'Block' = 'block'; 'Date' = 'date'; 'Minutes' = 'minutes' } }
     'unassign' = @{ Cmdlet = 'Remove-LumennaSitting'; Switch = $null; Title = 'Take a Task out of a Block'; Writes = $true; Confirms = $false; Target = 'Sitting'; Names = @{ 'Sitting' = 'assignment' } }
     'start_timer' = @{ Cmdlet = 'Start-LumennaTimer'; Switch = $null; Title = 'Start a Timer'; Writes = $true; Confirms = $false; Target = 'Sitting'; Names = @{ 'Sitting' = 'assignment' } }
@@ -36,6 +38,10 @@ $script:Operations = [ordered]@{
     'start_on' = @{ Cmdlet = 'Start-LumennaChoice'; Switch = $null; Title = 'Start on a Choice'; Writes = $true; Confirms = $false; Target = 'Choice'; Names = @{ 'Choice' = 'choice' } }
     'apply_replan' = @{ Cmdlet = 'Approve-LumennaReplan'; Switch = $null; Title = 'Apply a Replan'; Writes = $true; Confirms = $false; Target = 'Proposal'; Names = @{ 'Proposal' = 'proposal'; 'Accepted' = 'accepted' } }
     'apply_day_plan' = @{ Cmdlet = 'Approve-LumennaDayPlan'; Switch = $null; Title = 'Apply a Day Plan'; Writes = $true; Confirms = $false; Target = 'Proposal'; Names = @{ 'Proposal' = 'proposal'; 'Accepted' = 'accepted' } }
+    'review' = @{ Cmdlet = 'Get-LumennaReview'; Switch = $null; Title = 'Show the Review'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
+    'mark_reviewed' = @{ Cmdlet = 'Complete-LumennaProjectReview'; Switch = $null; Title = 'Mark a Project Reviewed'; Writes = $true; Confirms = $false; Target = 'Project'; Names = @{ 'Project' = 'project' } }
+    'review_every' = @{ Cmdlet = 'Set-LumennaProjectReview'; Switch = $null; Title = 'Set How Often a Project Is Reviewed'; Writes = $true; Confirms = $false; Target = 'Project'; Names = @{ 'Project' = 'project'; 'Every' = 'every' } }
+    'reconsider_task' = @{ Cmdlet = 'Resolve-LumennaTask'; Switch = $null; Title = 'Answer the Planner''s Question About a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Answer' = 'answer' } }
     'undo' = @{ Cmdlet = 'Undo-LumennaChange'; Switch = $null; Title = 'Undo'; Writes = $true; Confirms = $false; Target = $null; Names = @{} }
     'redo' = @{ Cmdlet = 'Redo-LumennaChange'; Switch = $null; Title = 'Redo'; Writes = $true; Confirms = $false; Target = $null; Names = @{} }
 }
@@ -44,10 +50,14 @@ $script:Operations = [ordered]@{
 # functions a completer in a parameter's attribute could not call.
 $script:Completed = [ordered]@{
     'Get-LumennaTask/Filter' = 'filter'
+    'Get-LumennaSection/Project' = 'project'
     'Add-LumennaTask/Text' = 'line'
     'Set-LumennaTask/Project' = 'project'
     'Set-LumennaTask/Labels' = 'label'
     'Move-LumennaTask/Project' = 'project'
+    'Add-LumennaSection/Project' = 'project'
+    'Complete-LumennaProjectReview/Project' = 'project'
+    'Set-LumennaProjectReview/Project' = 'project'
 }
 
 function Get-LumennaTask {
@@ -59,7 +69,7 @@ function Get-LumennaTask {
     Lists tasks: by default every open task, most urgent first, subtasks under their task; or those a filter admits.
 
     .PARAMETER Filter
-    A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `p1`, or `search: words`; empty for every open task.
+    A filter in Lumenna's filter language, such as `overdue`, `today & #Work`, `@calls`, `#Work & /Errands` (a section), `p1`, or `search: words`; empty for every open task.
 
     .PARAMETER Profile
     The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
@@ -250,6 +260,42 @@ function Get-LumennaProject {
 
     process {
         Invoke-LumennaAssist $PSCmdlet 'list_projects' $PSBoundParameters
+    }
+}
+
+function Get-LumennaSection {
+    <#
+    .SYNOPSIS
+    List a Project's Sections
+
+    .DESCRIPTION
+    A project's sections, the headings its tasks sit under, in order, each with how many open tasks it holds.
+
+    .PARAMETER Project
+    The project, by name.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Get-LumennaSection is the assistant operation list_sections (lum assist list_sections), also found by: sections, headings.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]
+        $Project,
+
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'list_sections' $PSBoundParameters
     }
 }
 
@@ -472,7 +518,7 @@ function Add-LumennaTask {
     Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it.
 
     .PARAMETER Text
-    A quick-add line, read as a person's would be: the title, then any of a due date or time ("tomorrow at 3pm", "every weekday"), a priority (p1 to p4), labels (@calls), a project (#Work, #"Home Office"), an estimate (~30m), how long a sitting of it is ("3h in 45m sittings"). A line starting with `block` makes a time block instead ("block Deep work 9-11am weekdays"). The answer says how it was read.
+    A quick-add line, read as a person's would be: the title, then any of a due date or time ("tomorrow at 3pm", "every weekday"), a priority (p1 to p4), labels (@calls), a project (#Work, #"Home Office") and a section of it (/Errands), an estimate (~30m), how long a sitting of it is ("3h in 45m sittings"). A line starting with `block` makes a time block instead ("block Deep work 9-11am weekdays"). The answer says how it was read.
 
     .PARAMETER Profile
     The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
@@ -791,7 +837,7 @@ function Move-LumennaTask {
     Move a Task
 
     .DESCRIPTION
-    Makes a task a subtask of another, moves it to a project, or makes it a task of its own.
+    Makes a task a subtask of another, moves it to a project or under a section of one, or makes it a task of its own.
 
     .PARAMETER Id
     The task's identifier: a whole UUID, or a prefix that names one task.
@@ -804,6 +850,9 @@ function Move-LumennaTask {
 
     .PARAMETER Top
     True to make it a task of its own again, under no other.
+
+    .PARAMETER Section
+    A section of its project to put it under, by name (Project/Section for another project's), or `none` to take it out of the one it is under.
 
     .PARAMETER Profile
     The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
@@ -834,11 +883,58 @@ function Move-LumennaTask {
 
         [Parameter()]
         [string]
+        $Section,
+
+        [Parameter()]
+        [string]
         $Profile
     )
 
     process {
         Invoke-LumennaAssist $PSCmdlet 'move_task' $PSBoundParameters
+    }
+}
+
+function Add-LumennaSection {
+    <#
+    .SYNOPSIS
+    Add a Section
+
+    .DESCRIPTION
+    Adds a section to a project, after its others: a heading its tasks can sit under.
+
+    .PARAMETER Project
+    The project, by name.
+
+    .PARAMETER Name
+    The section's name.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Add-LumennaSection is the assistant operation add_section (lum assist add_section), also found by: section, heading, new.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]
+        $Project,
+
+        [Parameter(Mandatory = $true, Position = 1)]
+        [string]
+        $Name,
+
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'add_section' $PSBoundParameters
     }
 }
 
@@ -1204,6 +1300,157 @@ function Approve-LumennaDayPlan {
 
     process {
         Invoke-LumennaAssist $PSCmdlet 'apply_day_plan' $PSBoundParameters
+    }
+}
+
+function Get-LumennaReview {
+    <#
+    .SYNOPSIS
+    Show the Review
+
+    .DESCRIPTION
+    What is due for a second look: the projects due for review, each with when it was last reviewed and how often it is, then the tasks the planner asks about, each with its question in short. A task's whole question is its `asking` in Get-LumennaTaskDetail.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Get-LumennaReview is the assistant operation review (lum assist review), also found by: review, weekly review, stale, put off, second look.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'review' $PSBoundParameters
+    }
+}
+
+function Complete-LumennaProjectReview {
+    <#
+    .SYNOPSIS
+    Mark a Project Reviewed
+
+    .DESCRIPTION
+    Marks a project reviewed now: it leaves the review until its interval comes round.
+
+    .PARAMETER Project
+    The project, by name.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Complete-LumennaProjectReview is the assistant operation mark_reviewed (lum assist mark_reviewed), also found by: reviewed, review, looked at.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]
+        $Project,
+
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'mark_reviewed' $PSBoundParameters
+    }
+}
+
+function Set-LumennaProjectReview {
+    <#
+    .SYNOPSIS
+    Set How Often a Project Is Reviewed
+
+    .DESCRIPTION
+    Sets how often a project comes up for review.
+
+    .PARAMETER Project
+    The project, by name.
+
+    .PARAMETER Every
+    How often, such as every week, every 2 weeks, every month, or never.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Set-LumennaProjectReview is the assistant operation review_every (lum assist review_every), also found by: review, interval, how often.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]
+        $Project,
+
+        [Parameter(Mandatory = $true, Position = 1)]
+        [string]
+        $Every,
+
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'review_every' $PSBoundParameters
+    }
+}
+
+function Resolve-LumennaTask {
+    <#
+    .SYNOPSIS
+    Answer the Planner's Question About a Task
+
+    .DESCRIPTION
+    Answers the planner's question about a task (its `asking` in Get-LumennaTaskDetail, put to the person first): keeps it, drops it, makes it repeat less often, or takes its date away.
+
+    .PARAMETER Id
+    The task's identifier: a whole UUID, or a prefix that names one task.
+
+    .PARAMETER Answer
+    One of the answers its question offers: `keep` (asked again later), `drop` (to the trash), `less-often` (a repeating task half as often), or `no-date` (its due date taken away).
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Resolve-LumennaTask is the assistant operation reconsider_task (lum assist reconsider_task), also found by: keep, drop, less often, stale, put off.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+    param(
+        [Parameter(Mandatory = $true, Position = 0, ValueFromPipelineByPropertyName = $true)]
+        [string]
+        $Id,
+
+        [Parameter(Mandatory = $true, Position = 1)]
+        [string]
+        $Answer,
+
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'reconsider_task' $PSBoundParameters
     }
 }
 

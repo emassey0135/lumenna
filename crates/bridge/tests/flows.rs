@@ -852,7 +852,8 @@ fn history_lists_what_was_done_newest_first_and_its_rows_are_tasks_with_details(
     assert_eq!(view.details.map(|d| d.task.title), Some("Buy milk".to_owned()), "the details show it");
     let sidebar = app.view().sidebar;
     let at = |title: &str| sidebar.iter().position(|e| e.title == title).unwrap();
-    assert_eq!(at("History"), at("Blocks") + 1, "after Blocks");
+    assert_eq!(at("Review"), at("Blocks") + 1, "after Blocks");
+    assert_eq!(at("History"), at("Review") + 1, "beside Trash, after the review");
     assert_eq!(at("Trash"), at("History") + 2, "the time report between");
 }
 
@@ -2974,7 +2975,7 @@ fn a_phones_browse_and_a_watchs_root_come_from_the_sidebar() {
     app.session.tick();
     let arranged = lumenna_app::arrangement::arrangement(&app.view().sidebar, lumenna_app::arrangement::WatchKind::SyncsItself, true);
     let browse: Vec<&str> = arranged.browse.iter().map(|row| row.title.as_str()).collect();
-    assert_eq!(browse, ["Projects", "Labels", "Saved Filters", "Blocks", "History", "Time Report", "Trash"], "in the view's own capitals");
+    assert_eq!(browse, ["Projects", "Labels", "Saved Filters", "Blocks", "Review", "History", "Time Report", "Trash"], "in the view's own capitals");
     let projects = arranged.groups.iter().find(|group| group.group == lumenna_records::places::SidebarGroup::Projects).unwrap();
     assert_eq!(arranged.browse[0].detail, lumenna_records::places::SidebarGroup::Projects.count(projects.entries.len()), "counts what it holds");
     assert!(projects.entries.iter().any(|place| place.title == "Work"));
@@ -2997,6 +2998,59 @@ fn about_is_a_settings_page_only_where_the_shell_has_none_of_its_own() {
     let dialog = lumenna_app::dialog::settings_page(&view, "about").unwrap();
     assert!(dialog.controls.iter().all(|control| control.kind == ControlType::Text), "lines to read and nothing else");
     assert_eq!(dialog.controls.len(), about.lines.len());
+}
+
+#[test]
+fn a_task_put_off_five_times_is_asked_about_in_the_review_and_answered_there_and_its_details_say_the_question() {
+    let mut app = App::new();
+    app.add("Call the dentist tomorrow");
+    let id = app.id_of("Call the dentist");
+    let host = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    for days in 2..=6 {
+        let edit = lumenna_records::TaskEdit { due: Some(format!("in {days} days")), ..Default::default() };
+        host.edit_task(&id, edit).unwrap();
+    }
+    app.session.tick();
+    app.send(Event::Open(Place::Review));
+    let list = app.view().list.unwrap();
+    assert_eq!(list.announcement, "1 task to reconsider");
+    let row = &list.items[0].row;
+    assert_eq!(row.title, "Call the dentist");
+    assert!(row.value.as_deref().unwrap().starts_with("put off 5 times"), "{:?}", row.value);
+    let reconsider = list.items[0].actions.iter().map(|at| list.offered[*at as usize].clone()).find(|o| o.kind == ActionKind::Reconsider).unwrap();
+    assert!(reconsider.primary, "the answer is shown by itself");
+    let details = app.view().details.expect("its details show it");
+    let asking = details.lines.iter().find(|line| line.key == "asking").expect("its question is among its lines");
+    assert_eq!(asking.value, "Call the dentist has been put off 5 times. Take its date away, or drop it?");
+
+    app.send(Event::ActOn(ActingOn::Row(id.clone()), reconsider));
+    let asked = app.view().asking.expect("its question is open");
+    let Question::Choose { answers, .. } = asked.question else { panic!("a choice: {:?}", asked.question) };
+    assert_eq!(answers.iter().map(|a| a.title.as_str()).collect::<Vec<_>>(), ["Keep It", "Take Its Date Away", "Drop It"]);
+    let shell = app.send(Event::Answer(Answer::Picked { id: "no-date".to_owned(), length: None }));
+    assert!(said(&shell).iter().any(|s| s.contains("has no due date now")), "{shell:?}");
+    assert!(app.view().list.unwrap().items.is_empty(), "answered, it leaves the review");
+    assert_eq!(app.view().list.unwrap().empty, lumenna_records::review::review(&Default::default(), &jiff::Zoned::now()).unwrap().empty);
+}
+
+#[test]
+fn a_repeating_tasks_streak_is_said_in_its_details_and_the_review_is_a_place_of_its_own() {
+    let mut app = App::new();
+    app.add("Stretch every day");
+    app.send(Event::Open(Place::Tasks));
+    let id = app.id_of("Stretch");
+    Lumenna::open(app.profile.to_str().unwrap()).unwrap().complete_task(&id).unwrap();
+    app.session.tick();
+    app.send(Event::Focus(id.clone()));
+    let details = app.view().details.expect("its details show it");
+    let streak = details.lines.iter().find(|line| line.key == "streak").expect("a streak line");
+    assert_eq!((streak.label.as_str(), streak.value.as_str()), ("Streak", "done last time"));
+    assert_eq!(details.task.streak.as_deref(), Some("done last time"));
+
+    app.send(Event::Key("go-review".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Review));
+    let ids: Vec<String> = app.view().screen_actions.iter().map(|a| a.id.clone()).collect();
+    assert_eq!(ids, ["undo", "redo"], "nothing is added to the review");
 }
 
 #[test]

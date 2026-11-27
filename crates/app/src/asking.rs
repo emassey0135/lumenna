@@ -161,6 +161,16 @@ impl Lumenna {
                 let said = lumenna_records::words::folded_said(expand);
                 return render().and(say(said));
             }
+            // Opening a project the review lists is the app's: it goes there.
+            ActionKind::OpenProject => {
+                let name = model.store.as_ref().and_then(|store| {
+                    lumenna_records::resolve::project(&store.snapshot, &action.target).ok().map(|p| p.name.clone())
+                });
+                let Some(name) = name else { return refused(lumenna_records::no_longer_here()) };
+                model.open = None;
+                model.go(Place::Project(name));
+                return render();
+            }
             // Folding is the app's: nothing stored changes.
             ActionKind::Expand | ActionKind::Collapse => {
                 let expand = action.kind == ActionKind::Expand;

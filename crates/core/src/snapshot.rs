@@ -18,12 +18,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::civil;
 
 use crate::id::{
-    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SeriesId,
+    AssignmentId, CompletionId, FilterId, LabelId, NodeId, ProjectId, ReminderId, SectionId, SeriesId,
     TaskId,
 };
 use crate::model::{
     BlockAssignment, BlockException, BlockSeries, Device, Label, Project, Reminder,
-    ReminderAck, SavedFilter, Settings, Task, TaskCompletion,
+    ReminderAck, SavedFilter, Section, Settings, Task, TaskCompletion,
 };
 use crate::repair::{break_dependency_cycles, break_tree_cycles};
 
@@ -38,6 +38,8 @@ pub struct Snapshot {
     pub projects: BTreeMap<ProjectId, Project>,
     /// From `core`.
     pub labels: BTreeMap<LabelId, Label>,
+    /// From `core`: every project's sections.
+    pub sections: BTreeMap<SectionId, Section>,
     /// From `core`.
     pub saved_filters: BTreeMap<FilterId, SavedFilter>,
     /// From the loaded `blocks-<year>` documents.
@@ -193,6 +195,29 @@ impl Snapshot {
     #[must_use]
     pub fn label(&self, id: LabelId) -> Option<&Label> {
         self.labels.get(&id).filter(|l| l.deleted_at.is_none())
+    }
+
+    /// The section, if it still exists.
+    #[must_use]
+    pub fn section(&self, id: SectionId) -> Option<&Section> {
+        self.sections.get(&id).filter(|s| s.deleted_at.is_none())
+    }
+
+    /// A project's live sections, in order.
+    #[must_use]
+    pub fn sections_of(&self, project: ProjectId) -> Vec<&Section> {
+        let mut sections: Vec<&Section> =
+            self.sections.values().filter(|s| s.project_id == project && s.deleted_at.is_none()).collect();
+        sections.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
+        sections
+    }
+
+    /// The section a task sits under: the one it names, while that is live and its own
+    /// project's. Merge can leave it naming one deleted elsewhere, or one of a project it has
+    /// since left; it then sits in its project with no section, as it would with none.
+    #[must_use]
+    pub fn section_of(&self, task: &Task) -> Option<&Section> {
+        self.section(task.section_id?).filter(|s| s.project_id == task.project_id)
     }
 
     /// A task's labels, in list order, skipping deleted ones.

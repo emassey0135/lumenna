@@ -1350,11 +1350,11 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
     let front = app.front();
     assert!(!front.iter().any(|l| l.contains("Window 'Make Subtask Of")), "Write report was offered somewhere to go under: {front:#?}");
 
-    // The Inbox keeps its name and place: only reordered and weighed.
+    // The Inbox keeps its name and place: only reordered, weighed and given sections.
     app.post(&["cmd:145", "select:Inbox, 2 open tasks", "context"]);
     let menu = names(app.automation.menu_items());
     app.post(&["esc"]);
-    assert_eq!(menu, ["Weight..."], "the Inbox's menu");
+    assert_eq!(menu, ["Weight...", "New Section..."], "the Inbox's menu");
     // Delete there says why not, in the core's words.
     app.post(&["delete"]);
     let why = lumenna_host::not_offered(lumenna_host::ActionKind::Delete, lumenna_host::Subject::Project, false);

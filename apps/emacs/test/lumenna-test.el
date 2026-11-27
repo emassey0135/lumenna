@@ -295,7 +295,7 @@ until the app has taken it in."
                  (lambda (_prompt choices &rest _) (setq offered (mapcar #'car choices)) (car offered)))
                 ((symbol-function 'read-string) (lambda (&rest _) "1")))
         (lumenna-act-at-point))
-      (should (equal offered '("Weight"))))))
+      (should (equal offered '("Weight" "New Section"))))))
 
 (ert-deftest lumenna-a-project-with-a-space-is-quoted-by-the-core-in-its-list ()
   (lumenna-test--with-store
@@ -976,9 +976,9 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (should (equal (lumenna-test--line) "Home"))
     ;; The places, at their levels, then what can be done from anywhere, in the app's order.
     (should (equal (mapcar (lambda (text) (and (search-forward text nil t) (line-number-at-pos)))
-                           '("  Garden" "Time Report" "New Task" "Undo" "Redo" "What Should I Work On?" "Time Left"
+                           '("  Garden" "Review" "Time Report" "New Task" "Undo" "Redo" "What Should I Work On?" "Time Left"
                              "Sync Now" "Settings" "Keyboard Shortcuts" "About Lumenna"))
-                   (append '(6 11) (number-sequence 13 21))))
+                   (append '(6 10 12) (number-sequence 14 22))))
     (lumenna-test--goto "  Garden")
     (should (= (funcall outline-level) 3))
     ;; A heading folds, as the app folds it.
@@ -1022,7 +1022,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (lumenna-test--seed "project.add" :name "Garden")
     (lumenna-open-place '(:Project "Garden"))
     (should (equal (mapcar (lambda (item) (aref item 0)) (lumenna--screen-action-menu nil))
-                   '("New Task..." "Filter Tasks" "New Project Inside..." "Undo" "Redo")))
+                   '("New Task..." "Filter Tasks" "New Project Inside..." "New Section..." "Undo" "Redo")))
     ;; One the app runs, by its key: what it asks is asked.
     (lumenna-test--answering ("New Project Inside" "Seeds")
       (lumenna-screen-action))
@@ -1533,6 +1533,24 @@ Its id."
       (with-temp-buffer
         (insert-file-contents file)
         (should (search-forward "exported" nil t))))))
+
+(ert-deftest lumenna-a-task-put-off-five-times-is-asked-about-in-the-review-and-answered-there ()
+  (lumenna-test--with-store
+    (lumenna-test--seed "task.add" :text "call the dentist tomorrow")
+    (let ((id (plist-get (aref (plist-get (lumenna-call "task.list") :rows) 0) :id)))
+      (dolist (days '(2 3 4 5 6))
+        (lumenna-test--seed "task.edit" :id id :due (format "in %d days" days)))
+      (lumenna-review)
+      (should (derived-mode-p 'lumenna-review-mode))
+      (lumenna-test--goto "call the dentist")
+      (should (string-match-p "put off 5 times" (thing-at-point 'line t)))
+      (let (offered)
+        (cl-letf (((symbol-function 'completing-read)
+                   (lambda (_prompt choices &rest _) (setq offered (mapcar #'car choices)) "Take Its Date Away")))
+          (lumenna-act-reconsider))
+        (should (equal offered '("Keep It" "Take Its Date Away" "Drop It"))))
+      (should-not (plist-get (lumenna-call "task.show" :id id) :due))
+      (should-not (seq-find (lambda (l) (string-match-p "call the dentist" l)) (lumenna-test--lines))))))
 
 (provide 'lumenna-test)
 

@@ -67,6 +67,7 @@ final class TaskDetailViewController: UIHostingController<TaskDetailView>, TaskF
     @objc func moveToProject() { model.key("move-to-project") }
     @objc func makeSubtask() { model.key("make-subtask") }
     @objc func waitFor() { model.key("wait-for") }
+    @objc func reconsider() { model.key("reconsider") }
 
     @objc func moveToTrash() {
         model.trash()

@@ -74,6 +74,8 @@ pub enum Predicate {
     },
     /// `@laptop`.
     Label(String),
+    /// `/Errands`: under a section of that name, in whichever project.
+    Section(String),
     /// `p1` through `p4`.
     Priority(Priority),
     /// A bare word from [`State`], shared with the accessibility layer.
@@ -168,6 +170,8 @@ pub enum NameKind {
     Project,
     /// An `@label`.
     Label,
+    /// A `/section`.
+    Section,
 }
 
 impl NameKind {
@@ -177,6 +181,7 @@ impl NameKind {
         match self {
             Self::Project => "project",
             Self::Label => "label",
+            Self::Section => "section",
         }
     }
 }
@@ -278,6 +283,21 @@ impl Expr {
                     });
                 }
             }
+            Self::Predicate(Predicate::Section(name)) => {
+                if snapshot.section_by_name(name).is_none() {
+                    let names: Vec<&str> = snapshot
+                        .sections
+                        .values()
+                        .filter(|s| s.deleted_at.is_none())
+                        .map(|s| s.name.as_str())
+                        .collect();
+                    out.push(Unresolved {
+                        kind: NameKind::Section,
+                        name: name.clone(),
+                        suggestion: suggest::nearest(name, names).map(ToOwned::to_owned),
+                    });
+                }
+            }
             Self::Predicate(_) => {}
             Self::Not(inner) => inner.collect_unresolved(snapshot, out),
             Self::And(parts) | Self::Or(parts) => {
@@ -346,6 +366,9 @@ impl Predicate {
             Self::Label(name) => snapshot
                 .label_by_name(name)
                 .is_some_and(|label| task.labels.contains(&label.id)),
+            Self::Section(name) => snapshot
+                .section_of(task)
+                .is_some_and(|section| crate::suggest::same_name(&section.name, name)),
             Self::Priority(p) => task.priority == *p,
             Self::State(s) => cx.facts.has_state(task, *s, cx.now),
             Self::Due(filter) => filter.matches(task, cx),
@@ -369,6 +392,7 @@ impl Predicate {
                 format!("in {name} or anything under it")
             }
             Self::Label(name) => format!("labelled {name}"),
+            Self::Section(name) => format!("in section {name}"),
             Self::Priority(p) => format!("priority {}", p.as_u8()),
             Self::State(s) => s.speech().to_owned(),
             Self::Due(filter) => filter.describe(),
@@ -428,6 +452,15 @@ impl Snapshot {
         self.labels
             .values()
             .find(|l| l.deleted_at.is_none() && crate::suggest::same_name(&l.name, name))
+    }
+
+    /// A section by name, case-insensitively, skipping deleted ones: the first of that name,
+    /// in whichever project.
+    #[must_use]
+    pub fn section_by_name(&self, name: &str) -> Option<&crate::model::Section> {
+        self.sections
+            .values()
+            .find(|s| s.deleted_at.is_none() && crate::suggest::same_name(&s.name, name))
     }
 
     /// Whether `project` is `ancestor` or sits anywhere beneath it.

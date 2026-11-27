@@ -6,7 +6,7 @@ use jiff::Timestamp;
 use jiff::civil;
 
 use super::{ExternalRef, TzName};
-use crate::id::{CompletionId, LabelId, ProjectId, TaskId};
+use crate::id::{CompletionId, LabelId, ProjectId, SectionId, TaskId};
 use crate::order::OrderKey;
 
 /// A thing to do.
@@ -24,6 +24,10 @@ pub struct Task {
     pub parent_id: Option<TaskId>,
     /// Always set. Inbox is a real [`Project`](super::Project), not a null project.
     pub project_id: ProjectId,
+    /// The heading it sits under in its project, if any. Believed only while that section is
+    /// its project's and not deleted (`Snapshot::section_of`); a subtask is listed under its
+    /// parent, whatever it names.
+    pub section_id: Option<SectionId>,
     /// How much this one item matters. Project weight is the other axis and is never
     /// called priority.
     pub priority: Priority,
@@ -47,6 +51,13 @@ pub struct Task {
     /// essay): the planner plans it a sitting of this at a time, one a day unless its due
     /// date needs more. Absent, it is planned whole where it fits.
     pub sitting_mins: Option<u32>,
+    /// When the person last kept it, answering the planner's question about it
+    /// ([`crate::review`]): it is not asked about as stale again for
+    /// [`crate::review::STALE_DAYS`].
+    pub kept_at: Option<Timestamp>,
+    /// How often it had been put off when it was kept, so it is asked again only once it is put
+    /// off [`crate::review::PUT_OFF_TIMES`] times more.
+    pub kept_put_off: Option<u32>,
     /// Position among siblings.
     pub order: OrderKey,
     /// Set when imported from a team system.
@@ -68,12 +79,15 @@ impl Task {
             notes: String::new(),
             parent_id: None,
             project_id,
+            section_id: None,
             priority: Priority::default(),
             labels: BTreeSet::new(),
             depends: BTreeSet::new(),
             due: None,
             estimate_mins: None,
             sitting_mins: None,
+            kept_at: None,
+            kept_put_off: None,
             order,
             external: None,
             created_at: crate::time::now(),

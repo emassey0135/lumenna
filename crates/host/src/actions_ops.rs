@@ -66,6 +66,7 @@ impl Lumenna {
             Ok(match subject {
                 Subject::Project => crate::actions::project(&snapshot, resolve::project(&snapshot, target)?),
                 Subject::Label => crate::actions::label(&snapshot, resolve::label(&snapshot, target)?),
+                Subject::Section => crate::actions::section(&snapshot, resolve::section(&snapshot, target, None)?),
                 Subject::Filter => crate::actions::filter(&snapshot, crate::organise::filter_named(&snapshot, target)?),
                 Subject::Series | Subject::Block => {
                     let id = resolve::series_id(&snapshot, target)?;
@@ -119,6 +120,16 @@ impl Lumenna {
             (S::Task, K::MoveToProject) => {
                 self.move_task(target, MoveTarget::Project { name: answer_pick(&answer)?.0 })
             }
+            (S::Task, K::MoveToSection) => {
+                let picked = answer_pick(&answer)?.0;
+                self.move_task_to_section(target, Some(picked.as_str()).filter(|p| *p != lumenna_records::choices::NO_SECTION))
+            }
+            (S::Task, K::New) => self.add_task_in_section(target, &answer_text(&answer)?),
+            (S::Section, K::New) => self.add_section(target, &answer_text(&answer)?),
+            (S::Section, K::Rename) => self.rename_section(target, &answer_text(&answer)?),
+            (S::Section, K::MoveUp) => self.reorder_section(target, Direction::Up),
+            (S::Section, K::MoveDown) => self.reorder_section(target, Direction::Down),
+            (S::Section, K::Delete) => self.delete_section(target, answer_pick(&answer)?.0 == "keep"),
             (S::Task, K::MakeSubtaskOf) => self.move_task(target, MoveTarget::Parent { id: answer_pick(&answer)?.0 }),
             (S::Task, K::WaitFor) => self.add_dependency(target, &answer_pick(&answer)?.0),
             (S::Task, K::StopWaiting) => self.remove_dependency(target, action.other.as_deref().unwrap_or_default()),
@@ -182,6 +193,16 @@ impl Lumenna {
                 }
             }
             (S::Project, K::Delete) => self.delete_project(target, answer_pick(&answer)?.0 == "keep"),
+            (S::Project, K::MarkReviewed) => self.mark_reviewed(target),
+            (S::Project, K::ReviewEvery) => {
+                // A pick of the intervals, by days; a line saying one, from a client that asks so.
+                let every = match &answer {
+                    Answer::Picked { id, .. } => id.clone(),
+                    _ => answer_text(&answer)?,
+                };
+                self.review_every(target, &every)
+            }
+            (S::Task, K::Reconsider) => self.reconsider(target, &answer_pick(&answer)?.0),
             (S::Label, K::Rename) => self.rename_label(target, &answer_text(&answer)?),
             (S::Label, K::New) => self.add_label(&answer_text(&answer)?),
             (S::Label, K::MergeInto) => self.merge_labels(target, &answer_pick(&answer)?.0),

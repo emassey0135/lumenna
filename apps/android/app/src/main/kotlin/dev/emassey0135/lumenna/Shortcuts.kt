@@ -79,6 +79,7 @@ enum class Command(
     GO_BLOCKS("go-blocks", Place.APP),
     GO_TRASH("go-trash", Place.APP),
     GO_HISTORY("go-history", Place.APP),
+    GO_REVIEW("go-review", Place.APP),
     GO_REPORT("go-report", Place.APP),
     SETTINGS("settings", Place.APP),
     SYNC_NOW("sync-now", Place.APP),

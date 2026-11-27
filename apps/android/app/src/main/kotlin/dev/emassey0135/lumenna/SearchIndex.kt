@@ -66,6 +66,7 @@ object SearchIndex {
         .addProperty(kept("dueTime", StringPropertyConfig.INDEXING_TYPE_NONE, StringPropertyConfig.TOKENIZER_TYPE_NONE))
         .addProperty(number("estimateMinutes"))
         .addProperty(kept("repetition", StringPropertyConfig.INDEXING_TYPE_NONE, StringPropertyConfig.TOKENIZER_TYPE_NONE))
+        .addProperty(kept("streak", StringPropertyConfig.INDEXING_TYPE_NONE, StringPropertyConfig.TOKENIZER_TYPE_NONE))
         .addProperty(several("states"))
         .addProperty(kept("createdAt", StringPropertyConfig.INDEXING_TYPE_NONE, StringPropertyConfig.TOKENIZER_TYPE_NONE))
         .addProperty(flag("done"))
@@ -118,6 +119,7 @@ object SearchIndex {
                 task.dueTime?.let { setPropertyString("dueTime", it) }
                 task.estimateMins?.let { setPropertyLong("estimateMinutes", it.toLong()) }
                 task.repetition?.let { setPropertyString("repetition", it) }
+                task.streak?.let { setPropertyString("streak", it) }
                 setPropertyString("states", *task.states.toTypedArray())
                 setPropertyString("createdAt", task.createdAt)
                 setPropertyBoolean("done", task.done)

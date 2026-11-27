@@ -62,6 +62,8 @@ pub fn worded(moment: GlanceMoment, clock: &dyn Clock) -> GlanceEntry {
             if task.overdue {
                 rest.push("overdue".to_owned());
             }
+            // A repeating task's streak last, as its details say it.
+            rest.extend(task.streak.clone());
             Line::of(task.title.clone(), rest)
         })
         .collect();
@@ -234,6 +236,7 @@ mod tests {
             due: Some("due today".to_owned()),
             due_time: time.map(str::to_owned),
             overdue,
+            streak: None,
         };
         let entry = worded(
             GlanceMoment { tasks: vec![task("Call the bank", Some("15:00"), false), task("Pay rent", None, true)], due: 2, overdue: 1, ..moment() },
@@ -242,6 +245,20 @@ mod tests {
         let lines: Vec<&str> = entry.tasks.iter().map(|line| line.text.as_str()).collect();
         assert_eq!(lines, ["Call the bank, due today at 15:00", "Pay rent, due today, overdue"]);
         assert_eq!((entry.mark_done.as_str(), entry.mark_done_sentence.as_str()), ("Mark Done", "Mark done"));
+    }
+
+    #[test]
+    fn a_repeating_tasks_streak_ends_its_glance_line() {
+        let stretch = lumenna_records::glance::GlanceTask {
+            id: "stretch".to_owned(),
+            title: "Stretch".to_owned(),
+            due: Some("due today".to_owned()),
+            due_time: None,
+            overdue: false,
+            streak: Some("done 12 times running".to_owned()),
+        };
+        let entry = worded(GlanceMoment { tasks: vec![stretch], due: 1, ..moment() }, &TwentyFour);
+        assert_eq!(entry.tasks[0].text, "Stretch, due today, done 12 times running");
     }
 
     #[test]

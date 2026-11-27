@@ -118,6 +118,7 @@ final class RootTabs: UITabBarController, CommandActions, PlaceFollowing {
     @objc func goToBlocks() { openFromBrowse(.place(.blocks)) }
     @objc func goToTrash() { openFromBrowse(.place(.trash)) }
     @objc func goToHistory() { openFromBrowse(.place(.history)) }
+    @objc func goToReview() { openFromBrowse(.place(.review)) }
     @objc func goToReport() { openFromBrowse(.place(.report)) }
     @objc func showSettings() { select(.settings) }
     /// Time Left: the timer as it is, said, from any tab (the core's `time-left`).

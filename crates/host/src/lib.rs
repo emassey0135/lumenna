@@ -42,6 +42,7 @@ mod history_ops;
 mod link;
 mod organise;
 mod places_ops;
+mod review_ops;
 pub mod profile;
 mod planning;
 pub mod dayplan;
@@ -51,6 +52,7 @@ mod whatnow;
 pub mod reminders;
 #[cfg(all(feature = "rpc", any(unix, windows)))]
 pub mod rpc;
+mod sections;
 mod settings;
 #[cfg(feature = "sync")]
 mod sync;

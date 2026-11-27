@@ -37,6 +37,7 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::EditTask, "e"),
     (K::PutInBlock, "b"),
     (K::MoveToProject, "m"),
+    (K::MoveToSection, "h"),
     (K::MakeSubtaskOf, "s"),
     (K::MoveToTopLevel, "t"),
     (K::WaitFor, "w"),
@@ -69,6 +70,11 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::New, "a"),
     // The day's own, on its menu: no row of the day uses it.
     (K::WhatNow, "w"),
+    // The review's: a project's Mark Reviewed, its interval and opening it; a task's question.
+    (K::MarkReviewed, "v"),
+    (K::ReviewEvery, "i"),
+    (K::OpenProject, "o"),
+    (K::Reconsider, "q"),
 ];
 
 /// The shared table's command a kind runs where the table has one (`keys::what_runs`): a kind
@@ -86,6 +92,8 @@ const ACTION_COMMANDS: &[(ActionKind, &str)] = &[
     (K::StopWaiting, "stop-waiting"),
     (K::Restore, "restore-task"),
     (K::Rename, "rename"),
+    (K::MarkReviewed, "mark-reviewed"),
+    (K::Reconsider, "reconsider"),
 ];
 
 /// The letter of each settings page, by `SettingsPage::id`.
@@ -114,13 +122,15 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-to-day", "g"),
     ("go-to-now", "t"),
     ("new-project-inside", "p"),
+    ("new-section", "i"),
     // Home.
     ("go-today", "t"),
     ("go-tasks", "k"),
     ("go-blocks", "b"),
     ("go-history", "h"),
+    ("go-review", "v"),
     ("go-report", "g"),
-    ("time-left", "v"),
+    ("time-left", "d"),
     ("go-trash", "x"),
     ("projects", "p"),
     ("labels", "l"),
@@ -256,7 +266,7 @@ const BRAILLE_VIEW_EXTRAS: &[&str] = &["projects", "labels", "filters", "reminde
 
 /// What Home's places run, by their letters' ids: they are hot keys on Home.
 const HOME_PLACES: &[&str] =
-    &["go-today", "go-tasks", "go-blocks", "go-history", "go-report", "go-trash", "projects", "labels", "filters"];
+    &["go-today", "go-tasks", "go-blocks", "go-review", "go-history", "go-report", "go-trash", "projects", "labels", "filters"];
 
 /// The id of the braille menu bar's first menu: the screen's own actions (`screen_actions`).
 pub const SCREEN_MENU: &str = "screen";
@@ -296,6 +306,10 @@ pub fn menu_bar(place: Option<&Place>, home: bool, sentence: bool) -> Vec<Letter
         }
         if group.id == "file" && own.contains(&"new-project-inside") {
             ids.insert(1, ("new-project-inside".to_owned(), command_title("new-project-inside", sentence), true));
+        }
+        if group.id == "file" && own.contains(&"new-section") {
+            let at = if own.contains(&"new-project-inside") { 2 } else { 1 };
+            ids.insert(at.min(ids.len()), ("new-section".to_owned(), command_title("new-section", sentence), true));
         }
         (group, ids)
     });

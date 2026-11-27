@@ -24,7 +24,7 @@ use jiff::civil;
 use lumenna_core::model::SCHEMA_VERSION;
 use lumenna_core::model::{
     BlockAssignment, BlockException, BlockSeries, Device, Label, Project, Reminder, ReminderAck,
-    SavedFilter, Settings, Task, TaskCompletion,
+    SavedFilter, Section, Settings, Task, TaskCompletion,
 };
 use lumenna_core::edit::{Change, Edit};
 use lumenna_core::id::ProjectId;
@@ -71,6 +71,33 @@ fn core_schema_change() -> &'static (ChangeHash, Vec<u8>) {
         doc.commit_with(CommitOptions::default().with_time(0).with_message("inbox"));
         let change = doc
             .get_changes(&genesis)
+            .into_iter()
+            .next()
+            .expect("the change just committed");
+        (change.hash(), change.raw_bytes().to_vec())
+    })
+}
+
+/// The root map in `core` that holds every project's sections.
+pub(crate) const SECTIONS: &str = "sections";
+
+/// `core`'s third change, and its hash: the `sections` map, made on top of the second. See
+/// [`Doc::ensure_schema`].
+///
+/// **Frozen**, as the second is: sections came after the genesis, whose collections are fixed,
+/// so their map is a change of its own that every device makes byte for byte alike, rather
+/// than one each device would make on its first section and merge would choose between.
+fn core_sections_change() -> &'static (ChangeHash, Vec<u8>) {
+    static CHANGE: std::sync::OnceLock<(ChangeHash, Vec<u8>)> = std::sync::OnceLock::new();
+    CHANGE.get_or_init(|| {
+        let mut doc = Doc::new(DocId::Core).doc;
+        doc.load_incremental(&core_schema_change().1).expect("the second change follows the genesis");
+        let before = doc.get_heads();
+        doc.set_actor(ActorId::from(GENESIS_ACTOR));
+        doc.put_object(ROOT, SECTIONS, ObjType::Map).expect("the root accepts a map");
+        doc.commit_with(CommitOptions::default().with_time(0).with_message("sections"));
+        let change = doc
+            .get_changes(&before)
             .into_iter()
             .next()
             .expect("the change just committed");
@@ -238,7 +265,9 @@ impl Doc {
         Self { id, doc, revive: BTreeMap::new() }
     }
 
-    /// Brings in `core`'s second deterministic change, if it is not already here.
+    /// Brings in `core`'s deterministic changes after the genesis, where they are not already
+    /// here: the second, then the third ([`core_sections_change`]), which makes the
+    /// **`sections`** map on top of it.
     ///
     /// The genesis creates the root collections; this one creates the two things that have
     /// to exist exactly once in every store and so must never be created by a device on its
@@ -248,7 +277,7 @@ impl Doc {
     /// byte-identical wherever it is made, and a store that applies it late gains the same
     /// change a new store starts with.
     ///
-    /// Returns whether it was newly applied. Other documents have nothing to apply.
+    /// Returns whether either was newly applied. Other documents have nothing to apply.
     ///
     /// # Errors
     ///
@@ -257,12 +286,14 @@ impl Doc {
         if self.id != DocId::Core {
             return Ok(false);
         }
-        let (hash, bytes) = core_schema_change();
-        if self.doc.get_change_by_hash(hash).is_some() {
-            return Ok(false);
+        let mut applied = false;
+        for (hash, bytes) in [core_schema_change(), core_sections_change()] {
+            if self.doc.get_change_by_hash(hash).is_none() {
+                self.doc.load_incremental(bytes)?;
+                applied = true;
+            }
         }
-        self.doc.load_incremental(bytes)?;
-        Ok(true)
+        Ok(applied)
     }
 
     /// The highest stored-format version that has written this document, or zero if none
@@ -409,8 +440,12 @@ impl Doc {
         })
     }
 
-    /// The collection map at the root, created if this is the first write to it.
+    /// The collection map at the root, created if this is the first write to it. A map that
+    /// came after the genesis is brought in by its own frozen change first, never made here.
     fn collection_for_write(&mut self, name: &str) -> Result<ObjId> {
+        if name == SECTIONS && self.collection_for_read(name).is_none() {
+            self.ensure_schema()?;
+        }
         Ok(match self.doc.get(ROOT, name)? {
             Some((Value::Object(ObjType::Map), id)) => id,
             _ => self.doc.put_object(ROOT, name, ObjType::Map)?,
@@ -644,6 +679,7 @@ impl Doc {
                 self.rehydrate::<TaskCompletion>(&touched, &mut part.completions, s);
                 self.rehydrate::<Project>(&touched, &mut part.projects, s);
                 self.rehydrate::<Label>(&touched, &mut part.labels, s);
+                self.rehydrate::<Section>(&touched, &mut part.sections, s);
                 self.rehydrate::<SavedFilter>(&touched, &mut part.saved_filters, s);
                 self.rehydrate::<Reminder>(&touched, &mut part.reminders, s);
                 self.rehydrate::<ReminderAck>(&touched, &mut part.acks, s);
@@ -880,6 +916,7 @@ impl Doc {
                 completions: self.hydrate::<TaskCompletion>(s),
                 projects: self.hydrate::<Project>(s),
                 labels: self.hydrate::<Label>(s),
+                sections: self.hydrate::<Section>(s),
                 saved_filters: self.hydrate::<SavedFilter>(s),
                 reminders: self.hydrate::<Reminder>(s),
                 acks: self.hydrate::<ReminderAck>(s),
@@ -906,6 +943,7 @@ struct KeptRef<'a> {
     completions: Vec<&'a TaskCompletion>,
     projects: Vec<&'a Project>,
     labels: Vec<&'a Label>,
+    sections: Vec<&'a Section>,
     saved_filters: Vec<&'a SavedFilter>,
     reminders: Vec<&'a Reminder>,
     acks: Vec<&'a ReminderAck>,
@@ -922,6 +960,8 @@ struct Kept {
     completions: Vec<TaskCompletion>,
     projects: Vec<Project>,
     labels: Vec<Label>,
+    #[serde(default)]
+    sections: Vec<Section>,
     saved_filters: Vec<SavedFilter>,
     reminders: Vec<Reminder>,
     acks: Vec<ReminderAck>,
@@ -939,6 +979,7 @@ pub(crate) fn encode_part(part: &Snapshot) -> Vec<u8> {
         completions: part.completions.values().collect(),
         projects: part.projects.values().collect(),
         labels: part.labels.values().collect(),
+        sections: part.sections.values().collect(),
         saved_filters: part.saved_filters.values().collect(),
         reminders: part.reminders.values().collect(),
         acks: part.acks.values().collect(),
@@ -962,6 +1003,7 @@ pub(crate) fn decode_part(bytes: &[u8]) -> Option<Snapshot> {
         completions: keyed(kept.completions),
         projects: keyed(kept.projects),
         labels: keyed(kept.labels),
+        sections: keyed(kept.sections),
         saved_filters: keyed(kept.saved_filters),
         reminders: keyed(kept.reminders),
         acks: keyed(kept.acks),
@@ -982,6 +1024,7 @@ pub(crate) fn absorb(snapshot: &mut Snapshot, id: DocId, part: &Snapshot) {
             snapshot.completions.clone_from(&part.completions);
             snapshot.projects.clone_from(&part.projects);
             snapshot.labels.clone_from(&part.labels);
+            snapshot.sections.clone_from(&part.sections);
             snapshot.saved_filters.clone_from(&part.saved_filters);
             snapshot.reminders.clone_from(&part.reminders);
             snapshot.acks.clone_from(&part.acks);
@@ -1052,13 +1095,14 @@ macro_rules! core_methods {
     };
 }
 
-use lumenna_core::id::{CompletionId, FilterId, LabelId, ReminderId, TaskId};
+use lumenna_core::id::{CompletionId, FilterId, LabelId, ReminderId, SectionId, TaskId};
 
 core_methods! {
     put_task, purge_task, Task, TaskId, "a task";
     put_completion, purge_completion, TaskCompletion, CompletionId, "a completion";
     put_project, purge_project, Project, ProjectId, "a project";
     put_label, purge_label, Label, LabelId, "a label";
+    put_section, purge_section, Section, SectionId, "a section";
     put_filter, purge_filter, SavedFilter, FilterId, "a saved filter";
     put_reminder, purge_reminder, Reminder, ReminderId, "a reminder";
 }
@@ -1293,6 +1337,11 @@ impl Documents {
             Change::Label(t) => match (&t.before, &t.after) {
                 (before, Some(after)) => self.put_label(after, before.as_ref()),
                 (Some(before), None) => self.purge_label(&before.id),
+                (None, None) => Ok(()),
+            },
+            Change::Section(t) => match (&t.before, &t.after) {
+                (before, Some(after)) => self.put_section(after, before.as_ref()),
+                (Some(before), None) => self.purge_section(&before.id),
                 (None, None) => Ok(()),
             },
             Change::Filter(t) => match (&t.before, &t.after) {
@@ -1904,6 +1953,7 @@ impl Documents {
                 Change::Completion(t) if t.after.is_none() => taken::<TaskCompletion>(core, &t.before.as_ref()?.id),
                 Change::Project(t) if t.after.is_none() => taken::<Project>(core, &t.before.as_ref()?.id),
                 Change::Label(t) if t.after.is_none() => taken::<Label>(core, &t.before.as_ref()?.id),
+                Change::Section(t) if t.after.is_none() => taken::<Section>(core, &t.before.as_ref()?.id),
                 Change::Filter(t) if t.after.is_none() => taken::<SavedFilter>(core, &t.before.as_ref()?.id),
                 Change::Reminder(t) if t.after.is_none() => taken::<Reminder>(core, &t.before.as_ref()?.id),
                 Change::Series(t) if t.after.is_none() => {
@@ -1932,6 +1982,7 @@ impl Documents {
                 Change::Completion(t) if t.after.is_none() => Some(key::<TaskCompletion>(&t.before.as_ref()?.id)),
                 Change::Project(t) if t.after.is_none() => Some(key::<Project>(&t.before.as_ref()?.id)),
                 Change::Label(t) if t.after.is_none() => Some(key::<Label>(&t.before.as_ref()?.id)),
+                Change::Section(t) if t.after.is_none() => Some(key::<Section>(&t.before.as_ref()?.id)),
                 Change::Filter(t) if t.after.is_none() => Some(key::<SavedFilter>(&t.before.as_ref()?.id)),
                 Change::Reminder(t) if t.after.is_none() => Some(key::<Reminder>(&t.before.as_ref()?.id)),
                 Change::Series(t) if t.after.is_none() => Some(key::<BlockSeries>(&t.before.as_ref()?.id)),

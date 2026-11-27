@@ -579,6 +579,17 @@ class Menus(unittest.TestCase):
         self.assertTrue(any(title.startswith("Plan the day. Plans 1 task") for title in script.titles), script.titles)
         self.assertEqual(self.call("plan", date="tomorrow")["blocks"][0]["assignments"], [])
 
+    def test_a_task_put_off_five_times_is_asked_about_in_the_review_and_answered_there(self):
+        self.call("task.add", text="call the dentist tomorrow")
+        task = self.call("task.list")["rows"][0]["id"]
+        for days in range(2, 7):
+            self.call("task.edit", id=task, due=f"in {days} days")
+        self.run_script(
+            [("context", "call the dentist", "Reconsider"), ("choose", "Take its date away"), ("back",)],
+            lambda: tasks.task_list(self.session, L.PlaceReview()),
+        )
+        self.assertIsNone(self.task("call the dentist").get("due"))
+
     def test_a_tasks_details_end_with_its_history(self):
         self.call("task.add", text="write the chapter")
         script = self.run_script(
@@ -904,7 +915,7 @@ class Menus(unittest.TestCase):
         menu.menu = [type("Row", (), {"row": inbox})()]
         labels = [c.get_label(menu) for c in script.menus[-1]["context"] if c.applies(menu)]
         # w is What should I work on? on Home, which comes first there.
-        self.assertEqual(labels, ["Add a task to it", "Weight"])
+        self.assertEqual(labels, ["Add a task to it", "Weight", "New section"])
 
     def test_collapsing_a_project_hides_what_is_under_it_and_keeps_it(self):
         self.call("project.add", name="Work")
@@ -973,8 +984,8 @@ class Menus(unittest.TestCase):
         self.session.send(L.ShellEventHome())
         lettered = {row.title: row.letter for row in menus.home_rows(self.session)}
         self.assertEqual(
-            {title: lettered.get(title) for title in ("Today", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "History", "Time report", "Trash")},
-            {"Today": "t", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b", "History": "h", "Time report": "g", "Trash": "x"},
+            {title: lettered.get(title) for title in ("Today", "Tasks", "Projects", "Labels", "Saved filters", "Blocks", "Review", "History", "Time report", "Trash")},
+            {"Today": "t", "Tasks": "k", "Projects": "p", "Labels": "l", "Saved filters": "f", "Blocks": "b", "Review": "v", "History": "h", "Time report": "g", "Trash": "x"},
         )
 
     def sitting_today(self, title: str, minutes: int) -> str:

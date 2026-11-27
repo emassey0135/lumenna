@@ -80,6 +80,9 @@ pub struct GlanceTask {
     pub due_time: Option<String>,
     /// Whether it is overdue.
     pub overdue: bool,
+    /// A repeating task's streak, in words: "done 12 times running", "missed Tuesday".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub streak: Option<String>,
 }
 
 /// What a glance shows from one moment until the next.
@@ -282,6 +285,7 @@ fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
             due: row.due.clone(),
             due_time: row.due_time.clone(),
             overdue: overdue_of(&row.id),
+            streak: row.id.parse().ok().and_then(|id| snapshot.tasks.get(&id)).and_then(|task| crate::review::streak_of(snapshot, task, now)),
         })
         .collect();
     let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);

@@ -115,7 +115,7 @@ pub(crate) fn priority_of(text: &str) -> Option<lumenna_core::model::Priority> {
     }
 }
 
-/// The name after a `#` or `@` at `at` (`##` too), and how many words it took.
+/// The name after a `#`, `@` or `/` at `at` (`##` too), and how many words it took.
 ///
 /// Quoted, `#"Home Office"`, it runs to the closing quote; one never closed runs to the end,
 /// and `#""` names nothing. Unquoted, it is the longest run of words that spells a `known`
@@ -124,6 +124,8 @@ pub(crate) fn priority_of(text: &str) -> Option<lumenna_core::model::Priority> {
 /// took `#"" now p1` to the end of the line.
 pub(crate) fn sigil_name(input: &str, tokens: &[Word], at: usize, known: &[String]) -> (String, usize) {
     let first = tokens[at].raw(input).trim_start_matches(['#', '@']);
+    // A section's sigil is one slash: `//` names the section called "/".
+    let first = if first.len() == tokens[at].raw(input).len() { first.strip_prefix('/').unwrap_or(first) } else { first };
     if let Some(opened) = first.strip_prefix('"') {
         if let Some(name) = opened.strip_suffix('"') {
             return (name.to_owned(), 1);

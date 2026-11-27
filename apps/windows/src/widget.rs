@@ -177,6 +177,7 @@ mod tests {
             due: Some("due today".to_owned()),
             due_time: Some("15:00".to_owned()),
             overdue: true,
+            streak: None,
         };
         let shown = entry(GlanceMoment { tasks: vec![task], due: 1, overdue: 1, ..moment("2026-10-25T09:00:00Z") });
         let data = data(&shown, at("2026-10-25T16:00:00Z"));

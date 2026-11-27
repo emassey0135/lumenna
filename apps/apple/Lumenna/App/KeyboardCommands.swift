@@ -20,6 +20,7 @@ import UIKit
     @objc optional func goToBlocks()
     @objc optional func goToTrash()
     @objc optional func goToHistory()
+    @objc optional func goToReview()
     @objc optional func goToReport()
     /// Time Left: the timer as it is, said (the core's `time-left`).
     @objc optional func timeLeft()
@@ -28,6 +29,8 @@ import UIKit
     @objc optional func moveToProject()
     @objc optional func makeSubtask()
     @objc optional func waitFor()
+    @objc optional func reconsider()
+    @objc optional func markReviewed()
     @objc optional func moveToTrash()
     @objc optional func saveChanges()
     @objc optional func previousDay()
@@ -94,7 +97,8 @@ enum KeyboardCommands {
             command(Commands.asking("go-blocks"), #selector(CommandActions.goToBlocks), "3"),
             command(Commands.asking("go-trash"), #selector(CommandActions.goToTrash), "4"),
             command(Commands.asking("go-history"), #selector(CommandActions.goToHistory), "5"),
-            command(Commands.asking("go-report"), #selector(CommandActions.goToReport), "6"),
+            command(Commands.asking("go-review"), #selector(CommandActions.goToReview), "6"),
+            command(Commands.asking("go-report"), #selector(CommandActions.goToReport), "7"),
         ]
     }
 
@@ -105,6 +109,8 @@ enum KeyboardCommands {
             command(Commands.asking("move-to-project"), #selector(CommandActions.moveToProject), "m", [.command, .shift]),
             item(Commands.asking("make-subtask"), #selector(CommandActions.makeSubtask)),
             item(Commands.asking("wait-for"), #selector(CommandActions.waitFor)),
+            item(Commands.asking("reconsider"), #selector(CommandActions.reconsider)),
+            item(Commands.asking("mark-reviewed"), #selector(CommandActions.markReviewed)),
             command(Commands.asking("save-task"), #selector(CommandActions.saveChanges), "s"),
             command(Commands.asking("trash-task"), #selector(CommandActions.moveToTrash), "\u{8}"),
         ]

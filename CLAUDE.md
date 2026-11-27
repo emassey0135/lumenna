@@ -370,8 +370,9 @@ directly (8805659 is the last commit before the move). How the app works inside 
   the app's own (quick add, a place, undo, a day). One the row lacks is refused in
   `not_offered`'s words; the details take `DetailsEvent::Key`. **Enter is `Key("open")` on every
   row of every platform**, never a choice per place: a task's details, a block's form, free
-  time's new block, a cancelled day back, a trashed task restored, a device renamed; on a place in
-  the sidebar or on Home, the place opened (a heading folded). On a task, Enter runs its Edit
+  time's new block, a cancelled day back, a trashed task restored, a device renamed, a project's
+  section heading folded (an empty one renamed); on a place in the sidebar or on Home, the place
+  opened (a heading folded). On a task, Enter runs its Edit
   Details, which asks for the task's form (`Question::Form`), the app showing that task's details
   as it asks: every shell opens its task form for
   it, as for any action asking that, `ScreenView::dialog` describing it to one that speaks for

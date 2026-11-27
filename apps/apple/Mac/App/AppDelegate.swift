@@ -275,6 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func goToBlocks(_ sender: Any?) { go(.blocks) }
     @objc func goToTrash(_ sender: Any?) { go(.trash) }
     @objc func goToHistory(_ sender: Any?) { go(.history) }
+    @objc func goToReview(_ sender: Any?) { go(.review) }
     @objc func goToReport(_ sender: Any?) { go(.report) }
 
     /// Time Left: the timer as it is, said, from wherever the window is (the core's `time-left`).
@@ -343,6 +344,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case #selector(moveToProject(_:)): "move-to-project"
         case #selector(makeSubtask(_:)): "make-subtask"
         case #selector(waitFor(_:)): "wait-for"
+        case #selector(reconsider(_:)): "reconsider"
+        case #selector(markReviewed(_:)): "mark-reviewed"
         case #selector(moveToTrash(_:)): "delete"
         default: nil
         }
@@ -362,6 +365,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func moveToProject(_ sender: Any?) { perform(#selector(moveToProject(_:))) }
     @objc func makeSubtask(_ sender: Any?) { perform(#selector(makeSubtask(_:))) }
     @objc func waitFor(_ sender: Any?) { perform(#selector(waitFor(_:))) }
+    @objc func reconsider(_ sender: Any?) { perform(#selector(reconsider(_:))) }
+    @objc func markReviewed(_ sender: Any?) { perform(#selector(markReviewed(_:))) }
     @objc func moveToTrash(_ sender: Any?) { perform(#selector(moveToTrash(_:))) }
 
     @objc func nextPane(_ sender: Any?) { main?.nextPane(sender) }

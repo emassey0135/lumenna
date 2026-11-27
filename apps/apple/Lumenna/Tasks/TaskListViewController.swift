@@ -293,7 +293,7 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         switch action {
         case #selector(toggleDone as () -> Void), #selector(moveToTrash), #selector(putInBlock), #selector(moveToProject),
-             #selector(makeSubtask), #selector(waitFor):
+             #selector(makeSubtask), #selector(waitFor), #selector(reconsider), #selector(markReviewed):
             model.inHand != nil
         case #selector(filterTasks): model.filters
         default: super.canPerformAction(action, withSender: sender)
@@ -310,6 +310,8 @@ final class TaskListViewController: UIHostingController<TaskListScreen> {
     @objc func moveToProject() { runInHand("move-to-project") }
     @objc func makeSubtask() { runInHand("make-subtask") }
     @objc func waitFor() { runInHand("wait-for") }
+    @objc func reconsider() { runInHand("reconsider") }
+    @objc func markReviewed() { runInHand("mark-reviewed") }
 
     private func runInHand(_ id: String) {
         guard let row = model.inHand else { return }

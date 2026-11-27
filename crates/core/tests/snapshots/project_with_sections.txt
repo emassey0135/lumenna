@@ -1,0 +1,8 @@
+[1/6] unchecked | Get the data | Task | priority 2
+[2/6] unchecked | Pay the rent | Task | overdue | due yesterday
+[3/6] unchecked | Water the plants | Task | recurring | due today | 18:00
+[4/6] unchecked | Write the report | Task | blocked
+[5/6] expanded | Travel | Section | section, 1 task
+  [1/1] expanded unchecked | Plan the trip | Task | priority 1, 1 of 2 subtasks done
+    [1/1] unchecked | Find a hotel | Task | subtask
+[6/6] | Someday | Section | section, no tasks

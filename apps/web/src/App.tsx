@@ -219,6 +219,7 @@ export function App() {
   useCommand("go-blocks", () => goTo({ tag: "Blocks" }), -1);
   useCommand("go-trash", () => goTo({ tag: "Trash" }), -1);
   useCommand("go-history", () => goTo({ tag: "History" }), -1);
+  useCommand("go-review", () => goTo({ tag: "Review" }), -1);
   useCommand("go-report", () => goTo({ tag: "Report" }), -1);
   // What the timer has left, said from anywhere: the app's own, as Today's button sends it.
   useCommand("time-left", () => void send(keyPressed("time-left")), -1);

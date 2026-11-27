@@ -547,6 +547,12 @@ impl Lumenna {
                     |action| self.perform(action, model),
                 );
             }
+            "new-section" => {
+                return model.new_section_shown().map_or_else(
+                    || refused(lumenna_records::not_offered(ActionKind::New, lumenna_records::Subject::Section, false)),
+                    |action| self.perform(action, model),
+                );
+            }
             // Enter on a place opens it, wherever the places are listed (the sidebar, Home); on a
             // heading it folds or unfolds what is under it.
             "open" if model.acting == Some(Side::Sidebar) => return self.open_held_place(model),
@@ -582,6 +588,7 @@ impl Lumenna {
                         "go-blocks" => Place::Blocks,
                         "go-trash" => Place::Trash,
                         "go-history" => Place::History,
+                        "go-review" => Place::Review,
                         "go-report" => Place::Report,
                         _ => return Command::done(),
                     };
