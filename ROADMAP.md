@@ -150,6 +150,8 @@ A day or less each, for between the larger pieces, except the first.
   change.
   - The keys pressed by hand on both devices, so far only sent over adb.
   - Syncing over Iroh on Wi-Fi.
+  - What restricted Lumenna's background use on both (and on the BrailleSense), which holds back
+    every alarm until the app is opened.
   - A reminder firing: its dialog coming to the front, the notification's sound and vibration
     through Do Not Disturb (which Satellite lets notifications through), and BackTalk reading it
     in the shade.
@@ -162,7 +164,8 @@ A day or less each, for between the larger pieces, except the first.
   - Where the Programs menu puts the app, and its Quick Launch letters.
   - Whether a 32-cell H732B reads the 40-cell wrap correctly.
   - Syncing over Iroh on Wi-Fi.
-  - A reminder through the device's own notifications (`com.selvashc.systemui` listens to them).
+  - A reminder going off coming to the front as its dialog, once "Display over other apps" is
+    allowed, as the Schedule Manager rings.
   - Whether the File Manager's picker is open to another app.
 
 ## 6. Integrations

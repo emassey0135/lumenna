@@ -77,6 +77,8 @@ class OrbitActivity : ComponentActivity() {
         val ui = Ui(app, core, session, view, ::finish)
         ui.chooseFile = { pick(FileRequest(PickKind.OPEN_FILE, startIn = folder), ::importFrom) }
         ui.chooseFolder = { key, current -> chooseFolder(key, current) }
+        ui.reminderAccess = { Reminders.access(this) }
+        ui.allowBackground = { runCatching { startActivity(Reminders.appSettings(this)) } }
         this.ui = ui
         front = Front(this, core, "android").also { it.created() }
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
@@ -124,8 +126,8 @@ class OrbitActivity : ComponentActivity() {
      */
     private fun reminderTapped(intent: android.content.Intent?) {
         Reminders.opened(this, intent)?.reminded?.let { ui?.reminded(it) }
-        OrbitApplication.ringing(intent)?.let { ringing ->
-            OrbitApplication.heard(intent)
+        dev.emassey0135.lumenna.Ringing.of(intent)?.let { ringing ->
+            dev.emassey0135.lumenna.Ringing.heard(intent)
             ui?.ring(ringing)
         }
     }

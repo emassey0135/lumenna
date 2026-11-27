@@ -177,7 +177,15 @@ class SystemAlarms(private val context: Context) : Alarms {
  * [LocalReminderAccess], so a test can show the page as a refusal leaves it: revoking exact
  * alarms kills the app, tests and all.
  */
-data class ReminderAccess(val notifications: Boolean, val exact: Boolean, val grantExact: Intent?)
+data class ReminderAccess(
+    val notifications: Boolean,
+    val exact: Boolean,
+    val grantExact: Intent?,
+    /** Whether Android lets the app run in the background: restricted, no alarm reaches it until it is opened. */
+    val background: Boolean = true,
+    /** The app's own page in Android's settings, where its battery use is allowed. */
+    val grantBackground: Intent? = null,
+)
 
 /** How a screen learns what Android allows: the system's answer, unless a test says otherwise. */
 val LocalReminderAccess = staticCompositionLocalOf<(Context) -> ReminderAccess> { Reminders::access }
@@ -209,6 +217,38 @@ interface Ringer {
      * not reached. A look over the same says it as its notification did.
      */
     fun ring(context: Context, due: DueReminder, since: String, now: String)
+}
+
+/**
+ * A reminder that went off and brought the app to the front ([Ringer]): its firing, and the moments
+ * the core found it between, carried in the activity's intent as string extras.
+ */
+data class Ringing(val key: String, val occurrence: String, val since: String, val now: String) {
+    /** As the intent's string extras. */
+    fun extras(): Map<String, String> = mapOf(KEY to key, OCCURRENCE to occurrence, SINCE to since, NOW to now)
+
+    companion object {
+        private const val KEY = "dev.emassey0135.lumenna.ring.key"
+        private const val OCCURRENCE = "dev.emassey0135.lumenna.ring.occurrence"
+        private const val SINCE = "dev.emassey0135.lumenna.ring.since"
+        private const val NOW = "dev.emassey0135.lumenna.ring.now"
+
+        /** The firing [intent] was started for, if a reminder going off started it. */
+        fun of(intent: Intent?): Ringing? {
+            intent ?: return null
+            return Ringing(
+                intent.getStringExtra(KEY) ?: return null,
+                intent.getStringExtra(OCCURRENCE) ?: return null,
+                intent.getStringExtra(SINCE) ?: return null,
+                intent.getStringExtra(NOW) ?: return null,
+            )
+        }
+
+        /** Takes the ring out of [intent] once heard, so the activity made again keeps no ringing of the past. */
+        fun heard(intent: Intent?) {
+            listOf(KEY, OCCURRENCE, SINCE, NOW).forEach { intent?.removeExtra(it) }
+        }
+    }
 }
 
 /** A block's day, as a reminder names it: its series and the occurrence's date. */
@@ -604,7 +644,23 @@ object Reminders {
 
     /** What Android allows reminders here now. */
     fun access(context: Context): ReminderAccess =
-        ReminderAccess(notificationsAllowed(context), exactAllowed(context), exactAlarmSettings(context))
+        ReminderAccess(
+            notificationsAllowed(context), exactAllowed(context), exactAlarmSettings(context),
+            !backgroundRestricted(context), appSettings(context),
+        )
+
+    /**
+     * Whether Android holds the app back in the background (its battery use restricted, as it was
+     * found on the BrailleSense and both Orbits): its alarms then wait, undelivered, until the app
+     * is opened, so no reminder goes off.
+     */
+    fun backgroundRestricted(context: Context): Boolean =
+        context.getSystemService(android.app.ActivityManager::class.java)?.isBackgroundRestricted == true
+
+    /** The app's own page in Android's settings, where its battery use is set. */
+    fun appSettings(context: Context): Intent =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     /** Whether alarms may be exact: always before Android 12, else as the person allows. */
     fun exactAllowed(context: Context): Boolean =

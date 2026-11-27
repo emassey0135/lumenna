@@ -314,7 +314,10 @@ class RemindersScreen : AppList() {
     override fun stands(view: ViewModel): Boolean = view.reminders != null
 
     override fun leaving() {
-        if (host.view.reminders != null) host.send(ShellEvent.CloseReminders)
+        if (host.view.reminders != null) {
+            host.remindersClosed = true
+            host.send(ShellEvent.CloseReminders)
+        }
     }
 
     override fun inHand(): String? = host.view.remindersHeld.focus

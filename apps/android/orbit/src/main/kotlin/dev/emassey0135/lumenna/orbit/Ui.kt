@@ -475,13 +475,14 @@ class Ui(
         // still open in the view until the app has the close, and is not opened again meanwhile.
         if (v.line == null) lineClosed = false
         if (v.settings == null) settingsClosed = false
+        if (v.reminders == null) remindersClosed = false
         val screens = stack.screens
         // Settings the core opened (Home's Settings, its letter): shown here too.
         if (v.settings != null && !settingsClosed && screens.none { it is SettingsScreen }) push(SettingsScreen())
         if (v.line != null && !lineClosed && screens.none { it is QuickAddScreen }) push(QuickAddScreen())
         if (v.blockForm != null && screens.none { it is BlockFormScreen }) push(BlockFormScreen())
         if (v.proposal != null && screens.none { it is ProposalScreen }) push(ProposalScreen())
-        if (v.reminders != null && screens.none { it is RemindersScreen }) push(RemindersScreen())
+        if (v.reminders != null && !remindersClosed && screens.none { it is RemindersScreen }) push(RemindersScreen())
 
     }
 
@@ -492,7 +493,7 @@ class Ui(
     fun lookBack() = send(ShellEvent.Due(DueEvent.LookBack))
 
     /** A reminder that went off and brought the app to the front, until the app holds it, and when it came. */
-    private var ringing: Pair<OrbitApplication.Ringing, Long>? = null
+    private var ringing: Pair<dev.emassey0135.lumenna.Ringing, Long>? = null
 
     /**
      * A reminder went off and brought the app to the front: the app looks over the moments the
@@ -502,7 +503,7 @@ class Ui(
      * with on another device meanwhile) is let go, the while counted on a clock that runs on as the
      * device sleeps, so a ring is never said when the device next wakes.
      */
-    fun ring(firing: OrbitApplication.Ringing) {
+    fun ring(firing: dev.emassey0135.lumenna.Ringing) {
         ringing = firing to SystemClock.elapsedRealtime()
         send(ShellEvent.Due(DueEvent.Look(firing.since, firing.now)))
     }
@@ -520,6 +521,9 @@ class Ui(
 
     /** Settings were left here, and the app has not yet said they are closed. */
     var settingsClosed = false
+
+    /** A reminder list was left here, and the app has not yet said it is closed: a turn made before it heard is no reason to open it again. */
+    var remindersClosed = false
 
     // ---- what a key opens ---------------------------------------------------------------------
 
@@ -578,6 +582,12 @@ class Ui(
      * and set to the folder chosen.
      */
     var chooseFolder: (key: String, current: String) -> Unit = { _, _ -> refuse() }
+
+    /** Set by the activity: what Android allows reminders here, asked of the system each time. */
+    var reminderAccess: () -> dev.emassey0135.lumenna.ReminderAccess = { dev.emassey0135.lumenna.ReminderAccess(true, true, null) }
+
+    /** Set by the activity: opens the app's own page in Android's settings, where its background use is allowed. */
+    var allowBackground: () -> Unit = { refuse() }
 }
 
 /** Verbose logging for debug builds. */

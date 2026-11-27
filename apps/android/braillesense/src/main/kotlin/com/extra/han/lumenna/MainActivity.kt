@@ -22,6 +22,7 @@ import dev.emassey0135.braillesense.edit.SystemClipboard
 import dev.emassey0135.braillesense.files.FilePicker
 import dev.emassey0135.braillesense.files.FileRequest
 import dev.emassey0135.braillesense.files.PickKind
+import dev.emassey0135.braillesense.session.Foreground
 import dev.emassey0135.braillesense.files.PickedFile
 import dev.emassey0135.braillesense.session.BrailleSenseSession
 import dev.emassey0135.braillesense.ui.SettingsReadings
@@ -149,6 +150,11 @@ class MainActivity : ComponentActivity(), Host {
             null -> {}
         }
         Launching.id(intent)?.let { app.send(ShellEvent.Launch(it)) }
+        // Brought to the front by a reminder going off: said as its dialog once the app holds it.
+        dev.emassey0135.lumenna.Ringing.of(intent)?.let { ringing ->
+            dev.emassey0135.lumenna.Ringing.heard(intent)
+            shell?.ring(ringing)
+        }
     }
 
     override fun onResume() {
@@ -272,6 +278,16 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun deviceName(): String = deviceName(this)
+
+    override fun comesToFront(): Boolean = Foreground.allowed(this)
+
+    override fun allowFront() {
+        runCatching { startActivity(Foreground.settings(this)) }
+    }
+
+    override fun allowBackground() {
+        runCatching { startActivity(Reminders.appSettings(this)) }
+    }
 
     companion object {
         const val PLATFORM = "android"

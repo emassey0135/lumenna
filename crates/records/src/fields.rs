@@ -870,6 +870,16 @@ pub struct NotificationWords {
     pub late: String,
     /// The button that asks to allow exact alarms.
     pub allow_exact: String,
+    /// The platform holds Lumenna back while it is in the background, so no reminder goes off
+    /// until it is opened.
+    pub held_back: String,
+    /// The button that opens where its background use is allowed.
+    pub allow_background: String,
+    /// A reminder is a notification alone, which this device does not read as it comes: Lumenna is
+    /// not allowed to come to the front with it.
+    pub not_in_front: String,
+    /// The button that opens where it is allowed to come to the front.
+    pub allow_front: String,
     /// The notification channel's name.
     pub channel: String,
     /// The notification channel's description.
@@ -886,6 +896,14 @@ pub fn notification_words(this_device: &str, sentence: bool) -> NotificationWord
         allow: c("Allow Notifications"),
         late: "Reminders may come a few minutes late: Lumenna is not allowed to set alarms for an exact time.".to_owned(),
         allow_exact: c("Allow Exact Alarms"),
+        held_back: format!(
+            "No reminder can go off on {this_device} while Lumenna is in the background: its background use is restricted."
+        ),
+        allow_background: c("Allow Background Use"),
+        not_in_front: format!(
+            "A reminder going off on {this_device} only sounds and vibrates: Lumenna is not allowed to come to the front to read it."
+        ),
+        allow_front: c("Allow Lumenna to Come to the Front"),
         channel: "Reminders".to_owned(),
         channel_description: "Tasks coming due and blocks starting or ending, as you set them.".to_owned(),
     }

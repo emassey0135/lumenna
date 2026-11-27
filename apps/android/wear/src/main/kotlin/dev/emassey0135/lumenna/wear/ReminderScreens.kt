@@ -95,7 +95,7 @@ fun ReminderSettingsScreen(core: Core, changes: Long) {
     val all = appSettings(core)
     val words = remember { appWords.notifications }
     val access = dev.emassey0135.lumenna.LocalReminderAccess.current
-    val (allowed, exact, grant) = remember(changes) { access(context) }
+    val (allowed, exact, grant, background, grantBackground) = remember(changes) { access(context) }
     val ask = rememberNotificationAsk()
     WearList {
         item { Heading(page?.title.orEmpty()) }
@@ -133,6 +133,12 @@ fun ReminderSettingsScreen(core: Core, changes: Long) {
             item { Text(words.late) }
             grant?.let { intent ->
                 item { Button(onClick = { context.startActivity(intent) }, modifier = Modifier.fillMaxWidth(), label = { Text(words.allowExact) }) }
+            }
+        }
+        if (!background) {
+            item { Text(words.heldBack) }
+            grantBackground?.let { intent ->
+                item { Button(onClick = { context.startActivity(intent) }, modifier = Modifier.fillMaxWidth(), label = { Text(words.allowBackground) }) }
             }
         }
         page?.caption?.takeIf { it.isNotEmpty() }?.let { item { Text(it) } }

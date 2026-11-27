@@ -86,6 +86,15 @@ interface Host {
     fun requestNotifications()
     fun openNotificationSettings()
     fun deviceName(): String
+
+    /** Whether the app may come to the front as a reminder goes off (the SDK's `Foreground.allowed`). */
+    fun comesToFront(): Boolean
+
+    /** Android's page where the app is allowed to come to the front. */
+    fun allowFront()
+
+    /** The app's own page in Android's settings, where its background use is allowed. */
+    fun allowBackground()
 }
 
 /** A page the person went to, on the way back from which Escape walks. */
@@ -100,6 +109,9 @@ private sealed interface Page {
     data object Due : Page
     data object Help : Page
     data object About : Page
+
+    /** A reminder that has just gone off and brought the app to the front, by its `Due::id`. */
+    data class Ringing(val id: String) : Page
 }
 
 /**
@@ -249,6 +261,7 @@ class Shell(
         if (model != null) {
             lastLanding = model.landing
             follow(model)
+            followRinging(model)
             if (opens(model) && ui.screens.none { it is OpenedScreen }) ui.push(OpenedScreen())
         }
         if (landed) ui.land() else ui.refresh()
@@ -410,6 +423,7 @@ class Shell(
                 Page.Due -> due(model)
                 Page.Help -> help()
                 Page.About -> about()
+                is Page.Ringing -> ringing(model, page.id)
             }
         }
 
@@ -420,7 +434,12 @@ class Shell(
         }
 
         // The last reminder dealt with leaves nothing on its page.
-        override fun stands(): Boolean = page != Page.Due || !(dueShown && view?.due.isNullOrEmpty())
+        override fun stands(): Boolean = when (page) {
+            Page.Due -> !(dueShown && view?.due.isNullOrEmpty())
+            // A reminder dealt with, here or anywhere, takes its dialog with it.
+            is Page.Ringing -> view?.due?.any { it.id == page.id } != false
+            else -> true
+        }
 
         override fun closed() = leaving(page, cancelled)
     }
@@ -903,6 +922,52 @@ class Shell(
     }
 
 
+    /** A reminder that went off and brought the app to the front, until the app holds it, and when it came. */
+    private var ringing: Pair<dev.emassey0135.lumenna.Ringing, Long>? = null
+
+    /**
+     * A reminder went off and brought the app to the front, as the Schedule Manager rings: the app
+     * looks over the moments the alarm found it between, not by its own clock, which does not tick
+     * in the background; once the app's reminders due hold it, it is said as its dialog. One not
+     * found within a while (dealt with on another device meanwhile) is let go, the while counted on
+     * a clock that runs on as the device sleeps.
+     */
+    fun ring(firing: dev.emassey0135.lumenna.Ringing) {
+        ringing = firing to android.os.SystemClock.elapsedRealtime()
+        send(ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Look(firing.since, firing.now)))
+    }
+
+    private fun followRinging(model: ViewModel) {
+        val (firing, came) = ringing ?: return
+        if (android.os.SystemClock.elapsedRealtime() - came > RINGING_MS) {
+            ringing = null
+            return
+        }
+        val due = model.due.firstOrNull { due -> due.firings.any { it.key == firing.key && it.occurrence == firing.occurrence } } ?: return
+        ringing = null
+        if (ui.screens.none { it is PageScreen && it.page == Page.Ringing(due.id) }) pushPage(Page.Ringing(due.id))
+    }
+
+    /**
+     * A reminder that has just gone off, said as the device says a dialog: named by the reminder, its
+     * message read ahead of its buttons, which are in the core's order and words with their letters,
+     * each handed back by its id. It rings no more than its notification did; Escape leaves it due.
+     */
+    private fun ringing(model: ViewModel, id: String): Frame {
+        val due = model.due.firstOrNull { it.id == id } ?: return Rendering("")
+        val buttons = due.buttons.map { button ->
+            pressing(button.id, button.title, ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Press(due.id, button.id)))
+                .copy(letter = dueLetter(button.id).orEmpty())
+        }
+        // Its message first, as a line to read, then its buttons, the first in hand.
+        val shown = DialogShown(
+            id = "ringing:$id", title = due.title, prompt = due.title,
+            controls = listOf(text("message", due.text)) + buttons,
+            focus = if (buttons.isEmpty()) 0u else 1u, cancel = emptyList(),
+        )
+        return dialog(shown)
+    }
+
     /** The reminders due, looked back for over the last day by the app's own clock as the list opens. */
     private fun openDue() {
         dueShown = false
@@ -953,6 +1018,8 @@ class Shell(
                 "back-up" -> send(ShellEvent.Key("back-up"))
                 "pair" -> pushPage(Page.Devices)
                 "allow-notifications" -> host.requestNotifications()
+                "allow-background" -> host.allowBackground()
+                "allow-front" -> host.allowFront()
                 "import", "restore-backup" -> host.importFile()
                 // A folder setting (`backup-dir`): chosen in the File Manager, starting where it is.
                 else -> core.controls.firstOrNull { it.key == "setting:$what" }?.let { host.chooseFolder(what, it.value) }
@@ -970,6 +1037,14 @@ class Shell(
             controls += control("allow-notifications", ControlType.BUTTON, words.allow, sends = ControlSends.Shell("allow-notifications"))
         }
         if (!access.exact) controls += text("exact-late", words.late)
+        if (!access.background) {
+            controls += text("held-back", words.heldBack)
+            controls += control("allow-background", ControlType.BUTTON, words.allowBackground, sends = ControlSends.Shell("allow-background"))
+        }
+        if (!host.comesToFront()) {
+            controls += text("not-in-front", words.notInFront)
+            controls += control("allow-front", ControlType.BUTTON, words.allowFront, sends = ControlSends.Shell("allow-front"))
+        }
         return controls
     }
 
@@ -1061,5 +1136,8 @@ class Shell(
 
         /** The filter's line, and its text kept as it is typed. */
         private const val FILTER = "filter"
+
+        /** How long a reminder that brought the app to the front is waited for among the reminders due. */
+        private const val RINGING_MS = 15_000L
     }
 }
