@@ -148,13 +148,12 @@ A day or less each, for between the larger pieces, except the first.
 - **The Orbit Speak and the Orbit Player**, tried by hand: CI has no Orbit, and all of it rests
   on unofficial behaviour that an Orbit update, or Orbit's own SDK (promised with no date), may
   change.
-  - The keys pressed by hand on both devices, so far only sent over adb.
+  - The keys pressed by hand on the Speak, so far only sent over adb (the Player's are tried).
   - Syncing over Iroh on Wi-Fi.
   - Whether DuraSpeed keeps Lumenna's background use allowed once set on its page in Android's
     settings (DuraSpeed's own list is closed to other apps; every alarm is held back while it is off).
-  - A reminder firing: its dialog coming to the front, the notification's sound and vibration
-    through Do Not Disturb (which Satellite lets notifications through), and BackTalk reading it
-    in the shade.
+  - A reminder's notification: its sound and vibration through Do Not Disturb (which Satellite lets
+    notifications through), and BackTalk reading it in the shade.
   - Dates: the default locale is en-IN, so they read as India writes them unless it is set.
   - A backup folder outside the shared folders, which Android lets an app without all-files
     access write only there.
@@ -162,10 +161,9 @@ A day or less each, for between the larger pieces, except the first.
 - **The BrailleSense 7**, tried by a person at the device, since CI has none:
   - The F-keys and routing keys, read so far only from the shell's injection.
   - Where the Programs menu puts the app, and its Quick Launch letters.
-  - Whether a 32-cell H732B reads the 40-cell wrap correctly.
+  - A 32-cell (H732B) or 20-cell display: measured from the service, and its line laid out again
+    once it is; tried on 40 cells alone.
   - Syncing over Iroh on Wi-Fi.
-  - A reminder going off coming to the front as its dialog, once "Display over other apps" is
-    allowed, as the Schedule Manager rings.
   - Whether the File Manager's picker is open to another app.
 
 ## 6. Integrations
