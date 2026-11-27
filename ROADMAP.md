@@ -160,7 +160,7 @@ A day or less each, for between the larger pieces, except the first.
     access write only there.
 - **Orbit's Strata**, which has cells: its output API is unknown.
 - **The BrailleSense 7**, tried by a person at the device, since CI has none:
-  - The F-keys, scroll keys and routing keys, read so far only from the shell's injection.
+  - The F-keys and routing keys, read so far only from the shell's injection.
   - Where the Programs menu puts the app, and its Quick Launch letters.
   - Whether a 32-cell H732B reads the 40-cell wrap correctly.
   - Syncing over Iroh on Wi-Fi.
