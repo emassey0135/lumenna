@@ -150,8 +150,8 @@ A day or less each, for between the larger pieces, except the first.
   change.
   - The keys pressed by hand on both devices, so far only sent over adb.
   - Syncing over Iroh on Wi-Fi.
-  - What restricted Lumenna's background use on both (and on the BrailleSense), which holds back
-    every alarm until the app is opened.
+  - DuraSpeed's list as the button opens it, and whether Lumenna switched on there stays so
+    (every alarm is held back until the app is opened while it is off).
   - A reminder firing: its dialog coming to the front, the notification's sound and vibration
     through Do Not Disturb (which Satellite lets notifications through), and BackTalk reading it
     in the shade.

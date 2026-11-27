@@ -96,9 +96,13 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   and exact alarms are allowed, whether the app's background use is restricted, and on the
   BrailleSense whether it may come to the front), the words are `notification_words`. **A
   restricted app's alarms never go off**: Android holds them ("Pending user blocked background
-  alarms") until the app is opened. Lumenna was found restricted on the BrailleSense and both Orbits
-  (by what, not yet known), so the Reminders page says so (`ReminderAccess.background`) with a button to the
-  app's own page in Android's settings.
+  alarms") until the app is opened. MediaTek's DuraSpeed, on the BrailleSense and both Orbits,
+  restricts every app not switched on in its own list, and puts the restriction back over a change
+  made anywhere else, so the button opens DuraSpeed's list where the device has it, else the app's
+  own page in Android's settings (`Reminders.backgroundSettings`). Reminders are often added by
+  themselves, so it is asked once as the app opens (`shouldAskHeldBack`: the phone's `HeldBackAsk`,
+  the Orbit's `HeldBackScreen`, the BrailleSense's `Page.HeldBack`, which asks about coming to the
+  front too), with Not Now; after that the Reminders page says it (`ReminderAccess.background`).
 - **A place's own actions are the core's** (`ViewModel.screenActions`, `ScreenButtons`,
   `ScreenActions.kt`): Today's, Blocks' and a task list's top bar draws them in the core's order,
   named by its titles and disabled while not `enabled`, as icons while they fit (`iconRoom`, by

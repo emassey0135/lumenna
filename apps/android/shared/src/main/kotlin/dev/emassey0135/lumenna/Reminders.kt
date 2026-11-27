@@ -646,21 +646,44 @@ object Reminders {
     fun access(context: Context): ReminderAccess =
         ReminderAccess(
             notificationsAllowed(context), exactAllowed(context), exactAlarmSettings(context),
-            !backgroundRestricted(context), appSettings(context),
+            !backgroundRestricted(context), backgroundSettings(context),
         )
 
     /**
-     * Whether Android holds the app back in the background (its battery use restricted, as it was
-     * found on the BrailleSense and both Orbits): its alarms then wait, undelivered, until the app
-     * is opened, so no reminder goes off.
+     * Whether Android holds the app back in the background (its battery use restricted; MediaTek's
+     * DuraSpeed restricts every app not switched on in its own list, as on the BrailleSense and both
+     * Orbits): its alarms then wait, undelivered, until the app is opened, so no reminder goes off.
      */
     fun backgroundRestricted(context: Context): Boolean =
         context.getSystemService(android.app.ActivityManager::class.java)?.isBackgroundRestricted == true
 
-    /** The app's own page in Android's settings, where its battery use is set. */
-    fun appSettings(context: Context): Intent =
-        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+    /**
+     * Where the app's background use is allowed: DuraSpeed's own list where the device has it, which
+     * puts its restriction back over a change made anywhere else; else the app's own page in
+     * Android's settings, where its battery use is set.
+     */
+    fun backgroundSettings(context: Context): Intent {
+        val duraSpeed = Intent(Intent.ACTION_MAIN).setComponent(android.content.ComponentName(DURASPEED, "$DURASPEED.DuraSpeedMainActivity"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (duraSpeed.resolveActivity(context.packageManager) != null) return duraSpeed
+        return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    private const val DURASPEED = "com.mediatek.duraspeed"
+
+    /**
+     * Whether to ask, as the app comes to the front, about what holds reminders back: asked once for
+     * each thing ([held]: `background`, or a shell's own such as `front`), and after that only the
+     * Reminders page says it.
+     */
+    fun shouldAskHeldBack(context: Context, held: String): Boolean =
+        !context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).getBoolean("asked-held-back:$held", false)
+
+    /** Notes that what holds reminders back ([held]) has been asked about. */
+    fun askedHeldBack(context: Context, held: String) {
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit().putBoolean("asked-held-back:$held", true).apply()
+    }
 
     /** Whether alarms may be exact: always before Android 12, else as the person allows. */
     fun exactAllowed(context: Context): Boolean =

@@ -112,6 +112,9 @@ private sealed interface Page {
 
     /** A reminder that has just gone off and brought the app to the front, by its `Due::id`. */
     data class Ringing(val id: String) : Page
+
+    /** Asked once as the app opens: what holds its reminders back, [background] use restricted, not allowed to come to the [front]. */
+    data class HeldBack(val background: Boolean, val front: Boolean) : Page
 }
 
 /**
@@ -424,6 +427,7 @@ class Shell(
                 Page.Help -> help()
                 Page.About -> about()
                 is Page.Ringing -> ringing(model, page.id)
+                is Page.HeldBack -> heldBack(page)
             }
         }
 
@@ -921,6 +925,39 @@ class Shell(
         return list("reminders", title, rows, model.remindersHeld.focus, "", side = Side.REMINDERS)
     }
 
+
+    /**
+     * Asked once, as the app opens, about what holds its reminders back: Android restricting it in
+     * the background (DuraSpeed here), so no reminder goes off until it is opened, and not being
+     * allowed to come to the front, so one that goes off only sounds and vibrates. Reminders are
+     * often added by themselves, so the Reminders page alone is not enough; after this only it says so.
+     */
+    fun askHeldBack(background: Boolean, front: Boolean) {
+        if (background || front) pushPage(Page.HeldBack(background, front))
+    }
+
+    /** What holds reminders back, in the core's words, each with its button to where it is allowed, then Not Now. */
+    private fun heldBack(page: Page.HeldBack): Frame {
+        val words = appWords.notifications
+        val controls = mutableListOf<ControlShown>()
+        if (page.background) {
+            controls += text("held-back", words.heldBack)
+            controls += control("allow-background", ControlType.BUTTON, words.allowBackground, sends = ControlSends.Shell("allow-background"), default = true)
+        }
+        if (page.front) {
+            controls += text("not-in-front", words.notInFront)
+            controls += control("allow-front", ControlType.BUTTON, words.allowFront, sends = ControlSends.Shell("allow-front"), default = !page.background)
+        }
+        controls += control("not-now", ControlType.BUTTON, words.notNow, sends = ControlSends.Shell("not-now"))
+        val shown = DialogShown(id = "held-back", title = words.channel, prompt = words.channel, controls = controls, focus = 1u, cancel = emptyList())
+        return dialog(shown) { what ->
+            when (what) {
+                "allow-background" -> host.allowBackground()
+                "allow-front" -> host.allowFront()
+            }
+            ui.screens.lastOrNull { it is PageScreen && it.page == page }?.let(ui::close)
+        }
+    }
 
     /** A reminder that went off and brought the app to the front, until the app holds it, and when it came. */
     private var ringing: Pair<dev.emassey0135.lumenna.Ringing, Long>? = null

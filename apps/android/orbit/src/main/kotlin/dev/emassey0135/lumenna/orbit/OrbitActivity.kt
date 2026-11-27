@@ -78,12 +78,17 @@ class OrbitActivity : ComponentActivity() {
         ui.chooseFile = { pick(FileRequest(PickKind.OPEN_FILE, startIn = folder), ::importFrom) }
         ui.chooseFolder = { key, current -> chooseFolder(key, current) }
         ui.reminderAccess = { Reminders.access(this) }
-        ui.allowBackground = { runCatching { startActivity(Reminders.appSettings(this)) } }
+        ui.allowBackground = { runCatching { startActivity(Reminders.backgroundSettings(this)) } }
         this.ui = ui
         front = Front(this, core, "android").also { it.created() }
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
         session.created()
         ui.push(HomeScreen())
+        // Held back in the background, no reminder goes off: asked once, over Home.
+        if (Reminders.backgroundRestricted(this) && Reminders.shouldAskHeldBack(this, HELD_BACKGROUND)) {
+            Reminders.askedHeldBack(this, HELD_BACKGROUND)
+            ui.push(HeldBackScreen())
+        }
         reminderTapped(intent)
         app.described = ui::turned
         lifecycleScope.launch { core.announcements.collect { ui.announce(it) } }
@@ -145,6 +150,9 @@ class OrbitActivity : ComponentActivity() {
 
     private companion object {
         const val DEBUG_KEY = "dev.emassey0135.lumenna.orbit.DEBUG_KEY"
+
+        /** What [Reminders.shouldAskHeldBack] asks about here: background use. */
+        const val HELD_BACKGROUND = "background"
     }
 
     // ---- files ----------------------------------------------------------------------------

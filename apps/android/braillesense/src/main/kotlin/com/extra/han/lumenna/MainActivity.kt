@@ -129,6 +129,12 @@ class MainActivity : ComponentActivity(), Host {
             reminderAccess = { Reminders.access(this@MainActivity) }
         }
         shell = shown
+        // What holds reminders back, asked once each, over Home.
+        val background = Reminders.backgroundRestricted(this) && Reminders.shouldAskHeldBack(this, HELD_BACKGROUND)
+        val front = !Foreground.allowed(this) && Reminders.shouldAskHeldBack(this, HELD_FRONT)
+        if (background) Reminders.askedHeldBack(this, HELD_BACKGROUND)
+        if (front) Reminders.askedHeldBack(this, HELD_FRONT)
+        shown.askHeldBack(background, front)
         syncing?.created()
         shown.drawn = { screen.text = it }
         lifecycleScope.launch { opened.announcements.collect { shown.announce(it) } }
@@ -286,7 +292,7 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun allowBackground() {
-        runCatching { startActivity(Reminders.appSettings(this)) }
+        runCatching { startActivity(Reminders.backgroundSettings(this)) }
     }
 
     companion object {
@@ -295,5 +301,9 @@ class MainActivity : ComponentActivity(), Host {
         // Where it is kept that the person was sent to allow all-files access once.
         private const val FILES = "files"
         private const val ASKED_ACCESS = "asked-all-files-access"
+
+        // What [Reminders.shouldAskHeldBack] asks about here: background use, and coming to the front.
+        private const val HELD_BACKGROUND = "background"
+        private const val HELD_FRONT = "front"
     }
 }

@@ -880,6 +880,9 @@ pub struct NotificationWords {
     pub not_in_front: String,
     /// The button that opens where it is allowed to come to the front.
     pub allow_front: String,
+    /// The button that leaves what is asked once, as the app first finds itself held back, for the
+    /// Reminders page, which goes on saying it.
+    pub not_now: String,
     /// The notification channel's name.
     pub channel: String,
     /// The notification channel's description.
@@ -904,6 +907,7 @@ pub fn notification_words(this_device: &str, sentence: bool) -> NotificationWord
             "A reminder going off on {this_device} only sounds and vibrates: Lumenna is not allowed to come to the front to read it."
         ),
         allow_front: c("Allow Lumenna to Come to the Front"),
+        not_now: c("Not Now"),
         channel: "Reminders".to_owned(),
         channel_description: "Tasks coming due and blocks starting or ending, as you set them.".to_owned(),
     }

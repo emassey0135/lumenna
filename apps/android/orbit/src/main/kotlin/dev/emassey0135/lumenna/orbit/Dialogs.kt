@@ -338,3 +338,44 @@ class RingingScreen(val id: String) : DialogScreen(), AppScreen {
         const val MESSAGE = "message"
     }
 }
+
+/**
+ * Asked once, as the app opens and first finds Android holding it back in the background (on these
+ * devices DuraSpeed, which restricts every app not switched on in its list): no reminder goes off
+ * until the app is opened, and reminders are often added by themselves, so the Reminders page alone
+ * is not enough. Its message in the core's words, then a button to where background use is allowed
+ * and Not Now; after it only the Reminders page says so.
+ */
+class HeldBackScreen : CoreDialog() {
+    private val shown: DialogShown by lazy {
+        val words = appWords.notifications
+        DialogShown(
+            id = "held-back", title = words.channel, prompt = words.channel,
+            controls = listOf(
+                own(MESSAGE, ControlType.TEXT, value = words.heldBack),
+                own(ALLOW, ControlType.BUTTON, label = words.allowBackground).copy(default = true),
+                own(NOT_NOW, ControlType.BUTTON, label = words.notNow).copy(cancel = true),
+            ),
+            focus = 0u, cancel = emptyList(),
+        )
+    }
+
+    override fun shown(): DialogShown = shown
+
+    override fun shell(control: ControlShown) {
+        if (control.key == ALLOW) host.allowBackground()
+        host.remove(this)
+    }
+
+    private fun own(key: String, kind: ControlType, label: String = "", value: String = "") = ControlShown(
+        key = key, kind = kind, label = label, value = value, hint = "", example = "", options = emptyList(), selected = null,
+        checked = false, `field` = null, syntax = null, letter = "", asks = false, default = false, cancel = false,
+        sends = ControlSends.Shell(key), line = "", optionLines = emptyList(),
+    )
+
+    private companion object {
+        const val MESSAGE = "message"
+        const val ALLOW = "allow-background"
+        const val NOT_NOW = "not-now"
+    }
+}
