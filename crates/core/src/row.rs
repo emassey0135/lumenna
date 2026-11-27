@@ -50,6 +50,8 @@ pub enum RowId {
     Label(LabelId),
     /// One occurrence of a block series, on a date.
     Occurrence(SeriesId, jiff::civil::Date),
+    /// A day, heading what falls on it in a view of the days ahead.
+    Day(jiff::civil::Date),
 }
 
 /// The kind of thing a row is, structured rather than a string.
@@ -267,44 +269,53 @@ fn push_task_rows(
     let count = u32::try_from(group.len()).unwrap_or(u32::MAX);
     for (index, task) in group.iter().enumerate() {
         let has_children = children.contains_key(&Some(task.id));
-        rows.push(Row {
-            id: RowId::Task(task.id),
-            role: Role::Task,
-            depth,
-            index: u32::try_from(index).unwrap_or(u32::MAX) + 1,
-            count,
-            expanded: has_children.then_some(true),
-            checked: Some(cx.facts().is_completed(task)),
-            title: task.title.clone(),
-            state: cx.facts().notable_states_of(task, cx.now),
-            due: task.due.as_ref().map(|due| crate::time::due_words(due.date, cx.now.date())),
-            due_time: task.due.as_ref().and_then(|due| due.time),
-            value: {
-                // "2 of 5 subtasks done": what a parent's row holds, whether or not they show.
-                // A due time held to one place's zone says so: its time is that zone's.
-                let zone = task.due.as_ref().and_then(|due| due.timezone.as_ref()).map(|zone| format!("{zone} time"));
-                // A start still to come and a deadline, after the due date they stand beside.
-                let today = cx.now.date();
-                let start = task
-                    .start
-                    .and_then(crate::model::Start::date)
-                    .filter(|start| *start > today)
-                    .map(|start| crate::time::start_words(start, today));
-                let deadline = task.deadline.map(|date| crate::time::deadline_words(date, today));
-                let parts: Vec<String> = zone
-                    .into_iter()
-                    .chain(start)
-                    .chain(deadline)
-                    .chain(priority_words(task.priority).map(str::to_owned))
-                    .chain(done.get(&task.id).map(|(finished, all)| {
-                        format!("{finished} of {all} {} done", if *all == 1 { "subtask" } else { "subtasks" })
-                    }))
-                    .collect();
-                (!parts.is_empty()).then(|| parts.join(", "))
-            },
-            hint: None,
-            priority: (task.priority != crate::model::Priority::P4).then(|| task.priority.as_u8()),
-        });
+        let mut row = task_row(cx, task, depth, u32::try_from(index).unwrap_or(u32::MAX) + 1, count, done.get(&task.id).copied());
+        row.expanded = has_children.then_some(true);
+        rows.push(row);
         push_task_rows(cx, children, done, Some(task.id), depth + 1, rows);
+    }
+}
+
+/// One task's row, `index` of `count` at `depth`, with `done` of its subtasks finished (done,
+/// all) where it has any: what every listing of tasks shows of it.
+#[must_use]
+pub fn task_row(cx: &Context<'_>, task: &crate::model::Task, depth: u32, index: u32, count: u32, done: Option<(usize, usize)>) -> Row {
+    Row {
+        id: RowId::Task(task.id),
+        role: Role::Task,
+        depth,
+        index,
+        count,
+        expanded: None,
+        checked: Some(cx.facts().is_completed(task)),
+        title: task.title.clone(),
+        state: cx.facts().notable_states_of(task, cx.now),
+        due: task.due.as_ref().map(|due| crate::time::due_words(due.date, cx.now.date())),
+        due_time: task.due.as_ref().and_then(|due| due.time),
+        value: {
+            // "2 of 5 subtasks done": what a parent's row holds, whether or not they show.
+            // A due time held to one place's zone says so: its time is that zone's.
+            let zone = task.due.as_ref().and_then(|due| due.timezone.as_ref()).map(|zone| format!("{zone} time"));
+            // A start still to come and a deadline, after the due date they stand beside.
+            let today = cx.now.date();
+            let start = task
+                .start
+                .and_then(crate::model::Start::date)
+                .filter(|start| *start > today)
+                .map(|start| crate::time::start_words(start, today));
+            let deadline = task.deadline.map(|date| crate::time::deadline_words(date, today));
+            let parts: Vec<String> = zone
+                .into_iter()
+                .chain(start)
+                .chain(deadline)
+                .chain(priority_words(task.priority).map(str::to_owned))
+                .chain(done.map(|(finished, all)| {
+                    format!("{finished} of {all} {} done", if all == 1 { "subtask" } else { "subtasks" })
+                }))
+                .collect();
+            (!parts.is_empty()).then(|| parts.join(", "))
+        },
+        hint: None,
+        priority: (task.priority != crate::model::Priority::P4).then(|| task.priority.as_u8()),
     }
 }

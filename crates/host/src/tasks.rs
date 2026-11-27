@@ -121,6 +121,8 @@ impl Lumenna {
             task.priority = preview.priority;
             task.estimate_mins = preview.estimate_mins;
             task.sitting_mins = preview.sitting_mins;
+            task.start = preview.start;
+            task.deadline = preview.deadline;
             task.labels = labels;
             let task_id = task.id;
             changes.extend(edit::create_task(task).changes);
@@ -189,6 +191,17 @@ impl Lumenna {
     pub fn history(&self) -> Result<Rows> {
         let now = Zoned::now();
         self.told(|store| crate::lists::history(&repaired(store), &now))
+    }
+
+    /// The days ahead at once, today first: each day's blocks, then the tasks due, starting or
+    /// with their deadline that day.
+    ///
+    /// # Errors
+    ///
+    /// If a block's repetition cannot be read.
+    pub fn upcoming(&self) -> Result<Rows> {
+        let now = Zoned::now();
+        self.told(|store| crate::lists::upcoming(&repaired(store), &now))
     }
 
     /// Tasks whose title or notes contain `text`.
@@ -339,6 +352,15 @@ impl Lumenna {
                     }
                 };
             }
+            if let Some(start) = &edit.start {
+                after.start = resolve::start(start, &now, snapshot.settings.week_start)?;
+            }
+            if let Some(deadline) = &edit.deadline {
+                after.deadline = resolve::day(deadline, &now, snapshot.settings.week_start)?;
+            }
+            // Someday lasts until it is given a date, however the edit reaches the store.
+            let after = lumenna_core::when::given_a_date(&before, after);
+            let mut after = after;
             if let Some(notes) = edit.notes {
                 after.notes = notes;
             }

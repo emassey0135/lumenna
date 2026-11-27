@@ -38,6 +38,8 @@ pub struct Detail {
     priority: gtk::DropDown,
     estimate: gtk::Entry,
     sittings: gtk::Entry,
+    start: gtk::Entry,
+    deadline: gtk::Entry,
     project: gtk::DropDown,
     projects: gtk::StringList,
     /// What the core says of each of `projects`: how deep it sits, for indenting it in the
@@ -131,6 +133,8 @@ impl Detail {
         let priority = gtk::DropDown::from_strings(&titles.iter().map(String::as_str).collect::<Vec<_>>());
         let estimate = gtk::Entry::new();
         let sittings = gtk::Entry::new();
+        let start = gtk::Entry::new();
+        let deadline = gtk::Entry::new();
         let projects = gtk::StringList::new(&[]);
         // Chosen from the projects there are, so a typo cannot make one; typing finds one.
         let project = gtk::DropDown::builder()
@@ -180,25 +184,28 @@ impl Detail {
             grid.attach(right.1, 1, row + 1, 1, 1);
         };
         pair(&grid, 2, (words("due", 'u'), due.upcast_ref()), (words("repeat", 'p'), repeat.upcast_ref()));
+        // The start and the deadline, under the due date they stand apart from. Every letter of
+        // "Deadline" is another field's or a menu's, so it has no mnemonic.
+        pair(&grid, 4, (words("start", 'r'), start.upcast_ref()), (words("deadline", '\0'), deadline.upcast_ref()));
         // The sitting length beside the estimate it divides.
-        pair(&grid, 4, (words("estimate", 'm'), estimate.upcast_ref()), (words("sittings", 'g'), sittings.upcast_ref()));
-        pair(&grid, 6, (words("priority", 'o'), priority.upcast_ref()), (words("project", 'j'), project.upcast_ref()));
+        pair(&grid, 6, (words("estimate", 'm'), estimate.upcast_ref()), (words("sittings", 'g'), sittings.upcast_ref()));
+        pair(&grid, 8, (words("priority", 'o'), priority.upcast_ref()), (words("project", 'j'), project.upcast_ref()));
         let labels_words = words("labels", 'L');
-        grid.attach(&named(labels.upcast_ref(), &labels_words), 0, 8, 2, 1);
-        grid.attach(&labels, 0, 9, 2, 1);
+        grid.attach(&named(labels.upcast_ref(), &labels_words), 0, 10, 2, 1);
+        grid.attach(&labels, 0, 11, 2, 1);
         let notes_scroll = gtk::ScrolledWindow::builder()
             .child(&notes)
             .min_content_height(96)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .has_frame(true)
             .build();
-        grid.attach(&named(notes.upcast_ref(), &words("notes", 'N')), 0, 10, 2, 1);
-        grid.attach(&notes_scroll, 0, 11, 2, 1);
+        grid.attach(&named(notes.upcast_ref(), &words("notes", 'N')), 0, 12, 2, 1);
+        grid.attach(&notes_scroll, 0, 13, 2, 1);
         let waits_label = label(&lumenna_app::devices::marked(&said.waits, 'W', '_'), &waits.view);
-        grid.attach(&waits_label, 0, 12, 2, 1);
-        grid.attach(&waits.widget, 0, 13, 2, 1);
-        grid.attach(&add_wait, 0, 14, 1, 1);
-        grid.attach(&stop_waiting, 1, 14, 1, 1);
+        grid.attach(&waits_label, 0, 14, 2, 1);
+        grid.attach(&waits.widget, 0, 15, 2, 1);
+        grid.attach(&add_wait, 0, 16, 1, 1);
+        grid.attach(&stop_waiting, 1, 16, 1, 1);
         // What the core says of the task, a read-only line each, named by its label: Tab
         // reaches them, the arrows read a long one a line at a time.
         let about_heading = gtk::Label::builder()
@@ -209,8 +216,8 @@ impl Detail {
             .build();
         about_heading.add_css_class("heading");
         let about = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).build();
-        grid.attach(&about_heading, 0, 15, 2, 1);
-        grid.attach(&about, 0, 16, 2, 1);
+        grid.attach(&about_heading, 0, 17, 2, 1);
+        grid.attach(&about, 0, 18, 2, 1);
         let buttons = gtk::Box::builder().spacing(6).build();
         let bar = gtk::Box::builder().spacing(6).build();
         bar.append(&save);
@@ -245,6 +252,8 @@ impl Detail {
             priority,
             estimate,
             sittings,
+            start,
+            deadline,
             project,
             projects,
             choices,
@@ -269,7 +278,7 @@ impl Detail {
 
     fn connect(self: &Rc<Self>, form: &gtk::Box) {
         // Enter in a one-line field saves, as a form's default button would.
-        for entry in [&self.title, &self.due, &self.repeat, &self.estimate, &self.sittings, &self.labels] {
+        for entry in [&self.title, &self.due, &self.start, &self.deadline, &self.repeat, &self.estimate, &self.sittings, &self.labels] {
             entry.connect_activate(|entry| {
                 let _ = entry.activate_action("win.save-task", None);
             });
@@ -308,6 +317,8 @@ impl Detail {
                     "priority" => fields.priority.to_string(),
                     "estimate" => fields.estimate,
                     "sittings" => fields.sittings,
+                    "start" => fields.start,
+                    "deadline" => fields.deadline,
                     "project" => fields.project,
                     "labels" => fields.labels,
                     _ => fields.notes,
@@ -315,7 +326,7 @@ impl Detail {
                 app.model.send(ShellEvent::Details(DetailsEvent::Field { key: key.to_owned(), value }));
             }
         };
-        for (entry, key) in [(&self.title, "title"), (&self.due, "due"), (&self.repeat, "repeat"), (&self.estimate, "estimate"), (&self.sittings, "sittings"), (&self.labels, "labels")] {
+        for (entry, key) in [(&self.title, "title"), (&self.due, "due"), (&self.start, "start"), (&self.deadline, "deadline"), (&self.repeat, "repeat"), (&self.estimate, "estimate"), (&self.sittings, "sittings"), (&self.labels, "labels")] {
             let send = typed(self, key);
             entry.connect_changed(move |_| send());
         }
@@ -412,6 +423,8 @@ impl Detail {
         refill(&self.repeat, &fields.repeat);
         refill(&self.estimate, &fields.estimate);
         refill(&self.sittings, &fields.sittings);
+        refill(&self.start, &fields.start);
+        refill(&self.deadline, &fields.deadline);
         refill(&self.labels, &fields.labels);
         let position = lumenna_records::priorities().iter().position(|p| p.id == fields.priority.to_string()).unwrap_or(0) as u32;
         if self.priority.selected() != position && !within(&self.priority) {
@@ -554,6 +567,8 @@ impl Detail {
                 .unwrap_or(4),
             estimate: self.estimate.text().to_string(),
             sittings: self.sittings.text().to_string(),
+            start: self.start.text().to_string(),
+            deadline: self.deadline.text().to_string(),
             project: self.projects.string(self.project.selected()).map(|s| s.to_string()).unwrap_or_default(),
             labels: self.labels.text().to_string(),
             notes: buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string(),

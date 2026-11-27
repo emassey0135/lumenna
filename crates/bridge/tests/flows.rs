@@ -2968,9 +2968,9 @@ fn a_phones_browse_and_a_watchs_root_come_from_the_sidebar() {
     app.session.tick();
     let arranged = lumenna_app::arrangement::arrangement(&app.view().sidebar, lumenna_app::arrangement::WatchKind::SyncsItself, true);
     let browse: Vec<&str> = arranged.browse.iter().map(|row| row.title.as_str()).collect();
-    assert_eq!(browse, ["Projects", "Labels", "Saved Filters", "Blocks", "History", "Trash"], "in the view's own capitals");
+    assert_eq!(browse, ["Upcoming", "Projects", "Labels", "Saved Filters", "Blocks", "History", "Trash"], "in the view's own capitals");
     let projects = arranged.groups.iter().find(|group| group.group == lumenna_records::places::SidebarGroup::Projects).unwrap();
-    assert_eq!(arranged.browse[0].detail, lumenna_records::places::SidebarGroup::Projects.count(projects.entries.len()), "counts what it holds");
+    assert_eq!(arranged.browse[1].detail, lumenna_records::places::SidebarGroup::Projects.count(projects.entries.len()), "counts what it holds");
     assert!(projects.entries.iter().any(|place| place.title == "Work"));
     assert!(projects.heading.offered.iter().any(|action| action.kind == ActionKind::New), "its New is the heading's");
     assert!(arranged.watch.iter().any(|row| matches!(row, lumenna_app::arrangement::RootRow::Place(place) if place.title == "Work")));
@@ -2991,4 +2991,90 @@ fn about_is_a_settings_page_only_where_the_shell_has_none_of_its_own() {
     let dialog = lumenna_app::dialog::settings_page(&view, "about").unwrap();
     assert!(dialog.controls.iter().all(|control| control.kind == ControlType::Text), "lines to read and nothing else");
     assert_eq!(dialog.controls.len(), about.lines.len());
+}
+
+#[test]
+fn upcoming_lists_each_day_ahead_with_its_blocks_then_the_tasks_falling_on_it() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.add("Draft the essay from tomorrow");
+    app.add("Pay rent tomorrow");
+    app.add("Learn the cello someday");
+    app.send(Event::Open(Place::Upcoming));
+    let view = app.view();
+    let list = view.list.unwrap();
+    assert_eq!(list.announcement, "7 days");
+    let rows: Vec<(String, String, u32)> = list.items.iter().map(|i| (i.row.role.clone(), i.row.title.clone(), i.row.depth)).collect();
+    assert_eq!(rows[0], ("group".to_owned(), "Today".to_owned(), 0));
+    assert_eq!(list.items[0].row.value.as_deref(), Some("nothing planned"));
+    assert_eq!(rows[1], ("group".to_owned(), "Tomorrow".to_owned(), 0));
+    assert_eq!(list.items[1].row.value.as_deref(), Some("1 block and 2 tasks"));
+    assert_eq!((rows[2].0.as_str(), rows[2].1.as_str(), rows[2].2), ("block", "Deep work", 1), "the day's blocks first");
+    let block = &list.items[2].row;
+    assert_eq!((block.due_time.as_deref(), block.ends.as_deref()), (Some("09:00"), Some("10:00")));
+    let tasks: Vec<&str> = rows[3..5].iter().map(|(_, title, _)| title.as_str()).collect();
+    assert!(tasks.contains(&"Draft the essay") && tasks.contains(&"Pay rent"), "{rows:?}");
+    assert!(!rows.iter().any(|(_, title, _)| title == "Learn the cello"), "Someday is on no day");
+    assert_eq!(rows.iter().filter(|(role, ..)| role == "group").count(), 7);
+    let lines = lumenna_app::lines::lines(&app.view(), &PlainClock);
+    assert!(lines.list[2].text().starts_with("09:00 to 10:00, Deep work"), "{}", lines.list[2].text());
+    assert_eq!(lines.list[0].title, list.items[0].row.id, "a day is said in the device's own words");
+}
+
+#[test]
+fn enter_on_a_day_of_upcoming_shows_that_day_and_on_a_block_puts_it_in_hand_there() {
+    let mut app = App::new();
+    block(&mut app, "Deep work", "09:00", "tomorrow", None);
+    app.send(Event::Open(Place::Upcoming));
+    let tomorrow = app.items()[1].row.id.clone();
+    app.send(Event::Focus(tomorrow.clone()));
+    app.send(Event::Key("open".to_owned()));
+    let view = app.view();
+    assert_eq!(view.place, Some(Place::Today));
+    assert_eq!(view.day.as_ref().map(|d| d.date.clone()), Some(tomorrow.clone()), "that day is shown");
+    app.send(Event::Open(Place::Upcoming));
+    let block = app.items()[2].row.id.clone();
+    app.send(Event::Focus(block.clone()));
+    app.send(Event::Key("open".to_owned()));
+    let view = app.view();
+    assert_eq!(view.day.map(|d| d.date), Some(tomorrow));
+    assert_eq!(view.focus, Some(format!("block:{block}")), "the block in hand on its day");
+}
+
+#[test]
+fn a_task_not_yet_started_or_someday_is_left_out_of_tasks_but_kept_in_its_project() {
+    let mut app = App::new();
+    app.add("Draft the essay from next week");
+    app.add("Learn the cello someday");
+    app.add("Buy milk");
+    app.send(Event::Open(Place::Tasks));
+    assert_eq!(app.titles(), ["Buy milk"]);
+    app.send(Event::Open(Place::Project("Inbox".to_owned())));
+    let titles = app.titles();
+    assert!(titles.contains(&"Draft the essay".to_owned()) && titles.contains(&"Learn the cello".to_owned()), "{titles:?}");
+    let cello = app.items().into_iter().find(|i| i.row.title == "Learn the cello").unwrap();
+    assert!(cello.row.state.contains(&"someday".to_owned()));
+    let essay = app.items().into_iter().find(|i| i.row.title == "Draft the essay").unwrap();
+    assert!(essay.row.value.as_deref().is_some_and(|v| v.starts_with("starts ")), "{:?}", essay.row.value);
+}
+
+#[test]
+fn the_task_form_saves_a_start_and_a_deadline_and_a_date_ends_someday() {
+    let mut app = App::new();
+    app.add("Learn the cello someday");
+    let id = Lumenna::open(app.profile.to_str().unwrap()).unwrap().list_tasks("someday").unwrap().rows[0].id.clone();
+    let store = Lumenna::open(app.profile.to_str().unwrap()).unwrap();
+    let shown = store.show_task(&id).unwrap().task;
+    assert_eq!(shown.start.as_deref(), Some("someday"));
+    let fields = lumenna_records::form::task_fields(shown.clone());
+    assert_eq!(fields.start, "someday");
+    let edit = lumenna_records::form::task_edit(shown, lumenna_records::form::TaskFields { due: "friday".to_owned(), ..fields }).unwrap();
+    store.edit_task(&id, edit).unwrap();
+    let after = store.show_task(&id).unwrap().task;
+    assert_eq!(after.start, None, "given a date, it is Someday no longer");
+    let edit = lumenna_records::TaskEdit { start: Some("next monday".to_owned()), deadline: Some("2027-01-15".to_owned()), ..Default::default() };
+    store.edit_task(&id, edit).unwrap();
+    let after = store.show_task(&id).unwrap().task;
+    assert!(after.start.as_deref().is_some_and(|s| s.parse::<jiff::civil::Date>().is_ok()), "{:?}", after.start);
+    assert_eq!(after.deadline.as_deref(), Some("2027-01-15"));
 }

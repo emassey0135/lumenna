@@ -313,9 +313,24 @@ fn list(rows: &Rows, announcement: &str, clock: Clock) {
     }
     println!("{announcement}");
     let width = rows.rows.len().to_string().len();
+    // Numbered within each kind, as `lum` takes a number (Upcoming lists blocks and tasks
+    // together); a heading, which no command takes, is not numbered.
+    let mut counted: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
     for row in &rows.rows {
         let indent = "  ".repeat(row.depth as usize);
-        let mut line = format!("{:>width$}  {indent}{}", row.row, row.title, width = width);
+        let number = if row.role == "group" {
+            String::new()
+        } else {
+            let count = counted.entry(row.role.as_str()).or_default();
+            *count += 1;
+            count.to_string()
+        };
+        // A block on a day reads as the day reads it: its times, then its name.
+        let title = match (&row.due_time, &row.ends) {
+            (Some(start), Some(end)) => format!("{} to {}, {}", clock.time(start), clock.time(end), row.title),
+            _ => row.title.clone(),
+        };
+        let mut line = format!("{number:>width$}  {indent}{title}");
         let mut trailing: Vec<String> = Vec::new();
         if row.checked == Some(true) {
             trailing.push("done".to_owned());

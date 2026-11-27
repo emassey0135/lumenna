@@ -34,18 +34,6 @@ The order, and why:
 
 - **A staleness question**, if a task becomes permanent furniture at the top: "this has been at
   the top for three weeks; is it real?", rather than a bigger formula.
-- **When to start, apart from when it is due**: a task's one date says both "do it Monday" and
-  "it must be done Friday", which Things (When and Deadline), OmniFocus (defer, planned and due),
-  Taskwarrior (`wait`, `scheduled`, `due`) and Todoist (due and, since 2025, deadlines) keep
-  apart. A start date that keeps a task out of the listings and the planner until it comes, a
-  deadline the urgency ranks by, and the due date as now; quick add says each ("from monday",
-  "by friday"). And **Someday**: a task kept but never offered until it is given a date, so the
-  planner and What Should I Work On? leave it alone. The planner's rule for which date it
-  reads is the core's; what each list shows by it too.
-- **A view of several days**: the days ahead at once, each day's blocks and the tasks due or
-  starting then, as Todoist's and Things' Upcoming and OmniFocus' Forecast are; today the day
-  is shown one at a time (Go to Day). A listing, worded as every line is, so it reads as well
-  as it looks.
 - **Sections within a project**: named headings a project's tasks sit under (Todoist's
   sections, Things' headings, Reminders' sections), lighter than a subproject. A record of
   their own, with the care in `crates/store/CLAUDE.md` for records two devices make alone.

@@ -83,6 +83,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::View, "go-blocks", "Blocks", &["Ctrl+3"]),
     key(Group::View, "go-trash", "Trash", &["Ctrl+4"]),
     key(Group::View, "go-history", "History", &["Ctrl+5"]),
+    key(Group::View, "go-upcoming", "Upcoming", &["Ctrl+6"]),
     key(Group::View, "next-pane", "Next Pane", &["F6"]),
     key(Group::View, "previous-pane", "Previous Pane", &["Shift+F6"]),
     key(Group::Task, "mark-done", "Mark Done or Not Done", &["Ctrl+K"]),
@@ -126,7 +127,7 @@ pub fn what_runs(id: &str) -> Runs {
         // Enter, the same on every row of every platform: a task's details, a block's form, free
         // time's new block, a cancelled day back, a trashed task restored, a device renamed. A
         // place in the sidebar or on Home opens (`Lumenna::command`).
-        "open" => Runs::Row(&[K::Edit, K::EditTask, K::AddBlock, K::RestoreDay, K::Restore, K::Rename]),
+        "open" => Runs::Row(&[K::ShowDay, K::Edit, K::EditTask, K::AddBlock, K::RestoreDay, K::Restore, K::Rename]),
         "open-task" | "properties" => Runs::Row(&[K::Edit, K::EditTask]),
         "mark-done" => Runs::Row(&[K::MarkDone, K::MarkNotDone]),
         "put-in-block" => Runs::Row(&[K::PutInBlock]),
@@ -149,7 +150,7 @@ pub fn what_runs(id: &str) -> Runs {
         "end-day" => Runs::Day(&[K::EndDay]),
         "clear-day" => Runs::Day(&[K::ClearDay]),
         "new-task" | "new-block" | "new-project" | "new-label" | "new-filter" | "sync-now" | "settings" | "undo" | "redo"
-        | "go-today" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "save-task" | "previous-day" | "next-day"
+        | "go-today" | "go-upcoming" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "save-task" | "previous-day" | "next-day"
         | "go-to-now" | "go-to-day" | "back-up" | "home" | "new-project-inside" => Runs::App,
         _ => Runs::Shell,
     }
@@ -221,6 +222,7 @@ pub const COMMANDS: &[Command] = &[
     command("go-blocks", "Blocks", false),
     command("go-trash", "Trash", false),
     command("go-history", "History", false),
+    command("go-upcoming", "Upcoming", false),
     command("next-pane", "Next Pane", false),
     command("previous-pane", "Previous Pane", false),
     command("mark-done", "Mark Done", false),
@@ -294,7 +296,7 @@ pub const MENUS: &[Menu] = &[
     Menu { group: Group::Edit, items: &["undo", "redo", SEPARATOR, "filter"] },
     Menu {
         group: Group::View,
-        items: &["go-today", "go-tasks", "go-blocks", "go-trash", "go-history", SEPARATOR, "next-pane", "previous-pane"],
+        items: &["go-today", "go-upcoming", "go-tasks", "go-blocks", "go-trash", "go-history", SEPARATOR, "next-pane", "previous-pane"],
     },
     Menu {
         group: Group::Task,

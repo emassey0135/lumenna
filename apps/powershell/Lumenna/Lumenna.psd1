@@ -17,6 +17,7 @@
         'Get-LumennaTaskDetail'
         'Get-LumennaDay'
         'Get-LumennaBlock'
+        'Get-LumennaUpcoming'
         'Get-LumennaProject'
         'Get-LumennaLabel'
         'Get-LumennaFilter'

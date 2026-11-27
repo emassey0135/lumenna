@@ -194,3 +194,28 @@ fn a_task_past_its_estimate_is_planned_at_the_assumed_length_and_says_so() {
     assert!(proposal.sittings[0].assumed);
     assert_eq!(proposal.sittings[0].minutes, UNESTIMATED_MINS);
 }
+
+#[test]
+fn a_task_starting_later_or_someday_is_not_planned_and_one_starting_today_is() {
+    let mut world = World::new();
+    let morning = world.block("Morning", BlockKind::Work, 9, 120);
+    let later = world.task("Later", 1, Some(30));
+    let someday = world.task("Someday", 1, Some(30));
+    let today = world.task("Today", 2, Some(30));
+    world.snapshot.tasks.get_mut(&later).unwrap().start = Some(lumenna_core::model::Start::On(date(2026, 5, 7)));
+    world.snapshot.tasks.get_mut(&someday).unwrap().start = Some(lumenna_core::model::Start::Someday);
+    world.snapshot.tasks.get_mut(&today).unwrap().start = Some(lumenna_core::model::Start::On(date(2026, 5, 6)));
+    let proposal = world.plan("2026-05-06T08:00");
+    assert_eq!(world.titles(&proposal, morning), ["Today"]);
+}
+
+#[test]
+fn a_deadline_today_is_named_when_nothing_has_room_for_it() {
+    let mut world = World::new();
+    world.block("Morning", BlockKind::Work, 9, 30);
+    world.task("Filler", 1, Some(30));
+    let report = world.task("Report", 4, Some(60));
+    world.snapshot.tasks.get_mut(&report).unwrap().deadline = Some(date(2026, 5, 6));
+    let proposal = world.plan("2026-05-06T08:00");
+    assert!(proposal.unfit.contains(&report) || proposal.short.iter().any(|(id, _)| *id == report), "{proposal:?}");
+}

@@ -1223,6 +1223,7 @@ impl App {
             "go-blocks" => self.go(Place::Blocks, true),
             "go-trash" => self.go(Place::Trash, true),
             "go-history" => self.go(Place::History, true),
+            "go-upcoming" => self.go(Place::Upcoming, true),
             "new-block" => {
                 // Added where blocks are shown, to land on: the day, or the Blocks list; else
                 // today.

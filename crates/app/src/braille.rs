@@ -119,6 +119,7 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-tasks", "k"),
     ("go-blocks", "b"),
     ("go-history", "h"),
+    ("go-upcoming", "c"),
     ("go-trash", "x"),
     ("projects", "p"),
     ("labels", "l"),
@@ -253,7 +254,7 @@ const DAY_MOVES: &[&str] = &["previous-day", "next-day", "go-to-now", "go-to-day
 const BRAILLE_VIEW_EXTRAS: &[&str] = &["projects", "labels", "filters", "reminders-due"];
 
 /// What Home's places run, by their letters' ids: they are hot keys on Home.
-const HOME_PLACES: &[&str] = &["go-today", "go-tasks", "go-blocks", "go-history", "go-trash", "projects", "labels", "filters"];
+const HOME_PLACES: &[&str] = &["go-today", "go-upcoming", "go-tasks", "go-blocks", "go-history", "go-trash", "projects", "labels", "filters"];
 
 /// The id of the braille menu bar's first menu: the screen's own actions (`screen_actions`).
 pub const SCREEN_MENU: &str = "screen";

@@ -574,6 +574,7 @@ impl Lumenna {
                         "go-blocks" => Place::Blocks,
                         "go-trash" => Place::Trash,
                         "go-history" => Place::History,
+                        "go-upcoming" => Place::Upcoming,
                         _ => return Command::done(),
                     };
                     model.open = None;

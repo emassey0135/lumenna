@@ -710,6 +710,7 @@ pub fn kind_title(kind: ActionKind) -> String {
         K::TimeZone => "Time Zone",
         K::ErasePermanently => "Erase Permanently",
         K::EraseEverythingDeleted => "Erase Everything Deleted",
+        K::ShowDay => "Show the Day",
     };
     title.to_owned()
 }
@@ -726,6 +727,7 @@ pub const ACTION_KINDS: &[ActionKind] = {
         K::EndNow, K::Extend, K::EndDay, K::ClearDay, K::CarryForward, K::WhatNow, K::CarryRest, K::Replan,
         K::PlanDay, K::Expand, K::Collapse, K::Skip, K::Unskip, K::DeliverOn, K::TimeZone, K::ErasePermanently,
         K::EraseEverythingDeleted,
+        K::ShowDay,
     ]
 };
 

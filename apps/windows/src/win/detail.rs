@@ -50,6 +50,8 @@ const NOTES: u16 = 307;
 const WAITS: u16 = 308;
 const ABOUT: u16 = 309;
 const SITTINGS: u16 = 310;
+const START: u16 = 311;
+const DEADLINE: u16 = 312;
 
 /// Where a field sits: across the pane, or in one of its two columns.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -79,6 +81,8 @@ pub struct Detail {
     priority: HWND,
     estimate: HWND,
     sittings: HWND,
+    start: HWND,
+    deadline: HWND,
     project: HWND,
     labels: HWND,
     notes: HWND,
@@ -135,6 +139,12 @@ impl Detail {
         let due = field(&label, WC_EDITW, line, DUE, Column::Left, 1, &hint);
         let (label, hint) = named("repeat", 'p');
         let repeat = field(&label, WC_EDITW, line, REPEAT, Column::Right, 1, &hint);
+        // The start and the deadline, under the due date they stand apart from. Every letter of
+        // "Deadline" is another field's or a menu's, so it has no access key.
+        let (label, hint) = named("start", 'r');
+        let start = field(&label, WC_EDITW, line, START, Column::Left, 1, &hint);
+        let (label, hint) = named("deadline", '\0');
+        let deadline = field(&label, WC_EDITW, line, DEADLINE, Column::Right, 1, &hint);
         let (label, hint) = named("estimate", 'm');
         let estimate = field(&label, WC_EDITW, line, ESTIMATE, Column::Left, 1, &hint);
         // Beside the estimate it divides.
@@ -162,7 +172,7 @@ impl Detail {
         let more = button(&format!("{}...", devices::marked(&words.actions, 'A', '&')));
 
         // An example of what each line takes, greyed while it is empty.
-        for (key, edit) in [("title", title), ("due", due), ("repeat", repeat), ("estimate", estimate), ("sittings", sittings), ("labels", labels)] {
+        for (key, edit) in [("title", title), ("due", due), ("start", start), ("deadline", deadline), ("repeat", repeat), ("estimate", estimate), ("sittings", sittings), ("labels", labels)] {
             if let Some(field) = form.iter().find(|f| f.key == key) {
                 controls::cue(edit, &field.example);
             }
@@ -186,6 +196,8 @@ impl Detail {
             priority,
             estimate,
             sittings,
+            start,
+            deadline,
             project,
             labels,
             notes,
@@ -308,6 +320,8 @@ impl Detail {
         let task = &details.task;
         held |= controls::write_typed(self.title, &fields.title, still);
         held |= controls::write_typed(self.due, &fields.due, still);
+        held |= controls::write_typed(self.start, &fields.start, still);
+        held |= controls::write_typed(self.deadline, &fields.deadline, still);
         held |= controls::write_typed(self.repeat, &fields.repeat, still);
         let position = priorities().iter().position(|p| p.id == fields.priority.to_string());
         if usize::try_from(controls::send(self.priority, CB_GETCURSEL, 0, 0)).ok() != position {
@@ -385,6 +399,8 @@ impl Detail {
         let edits = [
             (self.title, "title"),
             (self.due, "due"),
+            (self.start, "start"),
+            (self.deadline, "deadline"),
             (self.repeat, "repeat"),
             (self.estimate, "estimate"),
             (self.sittings, "sittings"),

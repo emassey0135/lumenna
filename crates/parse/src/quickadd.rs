@@ -212,7 +212,8 @@ pub fn parse_quick_add(input: &str, known: &Known) -> QuickAdd {
             index += used + 1;
             continue;
         }
-        if word.is(lumenna_core::model::Start::SOMEDAY) {
+        // "someday" alone is a title: there would be nothing left to put off.
+        if word.is(lumenna_core::model::Start::SOMEDAY) && tokens.len() > 1 {
             if out.someday.is_some() || out.start.is_some() {
                 out.duplicates.push(spanned_text(input, word.start, word.end));
             } else {

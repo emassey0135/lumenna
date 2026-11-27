@@ -1507,6 +1507,8 @@ fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static 
         K::TimeZone => &[&["task", "zone", "{essay}", "Asia/Tokyo"], &["block", "zone", "{now}", "Europe/London"]],
         // Folding is a view's, and stores nothing: a listing shows every row.
         K::Expand | K::Collapse => &[],
+        // A day of Upcoming, or a block on its day: the day shown.
+        K::ShowDay => &[&["plan", "tomorrow"], &["upcoming"]],
     }
 }
 
@@ -1611,7 +1613,7 @@ fn every_action_the_app_offers_has_a_command_that_does_it() {
         K::Weight, K::Archive, K::Unarchive, K::MergeInto, K::Colour, K::ChangeQuery, K::New, K::Unpair,
         K::Reminders, K::EndNow, K::Extend, K::EndDay, K::ClearDay, K::CarryForward, K::WhatNow, K::CarryRest,
         K::Replan, K::PlanDay, K::Expand, K::Collapse, K::Skip, K::Unskip, K::DeliverOn, K::TimeZone,
-        K::ErasePermanently, K::EraseEverythingDeleted,
+        K::ErasePermanently, K::EraseEverythingDeleted, K::ShowDay,
     ];
     let seeded = Seeded::new();
     for kind in kinds {

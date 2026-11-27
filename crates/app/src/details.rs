@@ -113,6 +113,8 @@ pub fn get(fields: &TaskFields, key: &str) -> String {
         "labels" => fields.labels.clone(),
         "notes" => fields.notes.clone(),
         "sittings" => fields.sittings.clone(),
+        "start" => fields.start.clone(),
+        "deadline" => fields.deadline.clone(),
         _ => String::new(),
     }
 }
@@ -144,6 +146,8 @@ pub fn set(mut fields: TaskFields, key: &str, value: String) -> TaskFields {
         "labels" => fields.labels = value,
         "notes" => fields.notes = value,
         "sittings" => fields.sittings = value,
+        "start" => fields.start = value,
+        "deadline" => fields.deadline = value,
         _ => {}
     }
     fields

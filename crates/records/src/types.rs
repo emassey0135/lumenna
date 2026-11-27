@@ -292,6 +292,7 @@ impl Rows {
                     state: row.state.iter().map(|state| state.keyword().to_owned()).collect(),
                     due: row.due.clone(),
                     due_time: row.due_time.map(time_text),
+                    ends: None,
                     value: row.value.clone(),
                     hint: row.hint.clone(),
                     priority: row.priority,
@@ -389,6 +390,10 @@ pub struct RowView {
     /// *"due tomorrow at 3:00 PM"*.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub due_time: Option<String>,
+    /// When a block on a day ends, `HH:MM`, its start being `due_time`: a block as a view of the
+    /// days ahead shows it, "<start> to <end>, <title>", as the day does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ends: Option<String>,
     /// What else the row says, after when it is due: a task's priority, a project's count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
@@ -423,6 +428,7 @@ pub fn row_id(id: &RowId) -> String {
         RowId::Project(id) => id.to_string(),
         RowId::Label(id) => id.to_string(),
         RowId::Occurrence(id, date) => format!("{id}@{date}"),
+        RowId::Day(date) => date.to_string(),
     }
 }
 
@@ -507,6 +513,12 @@ pub struct TaskDetail {
     /// How long one sitting of it should be, when it is planned in sittings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sitting_mins: Option<u32>,
+    /// When it may be begun: a day, ISO, or `someday`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start: Option<String>,
+    /// The day it must be done by, ISO.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline: Option<String>,
     /// Computed states, the full set — a detail view is where the near-universal ones are
     /// worth having.
     pub state: Vec<String>,
@@ -573,6 +585,8 @@ impl TaskDetail {
                 .and_then(|r| repetition_phrase(&r.rrule, r.from_completion)),
             estimate_mins: task.estimate_mins,
             sitting_mins: task.sitting_mins,
+            start: task.start.map(|start| start.to_string()),
+            deadline: task.deadline.map(|date| date.to_string()),
             state: snapshot.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
             created_at: task.created_at.to_string(),
             actions: crate::actions::task(snapshot, task, snapshot.facts().is_completed(task), true),
@@ -1356,6 +1370,13 @@ pub struct TaskEdit {
     /// whole.
     #[serde(default)]
     pub sittings: Option<String>,
+    /// When it may be begun: a date phrase (`next monday`), `someday` to keep it until it is
+    /// given a date, or `none` to start now.
+    #[serde(default)]
+    pub start: Option<String>,
+    /// The day it must be done by, a date phrase (`friday`), or `none`.
+    #[serde(default)]
+    pub deadline: Option<String>,
 }
 
 /// Where to move a task.
