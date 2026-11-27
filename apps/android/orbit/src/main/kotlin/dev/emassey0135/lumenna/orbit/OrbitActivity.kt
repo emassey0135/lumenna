@@ -78,7 +78,7 @@ class OrbitActivity : ComponentActivity() {
         ui.chooseFile = { pick(FileRequest(PickKind.OPEN_FILE, startIn = folder), ::importFrom) }
         ui.chooseFolder = { key, current -> chooseFolder(key, current) }
         ui.reminderAccess = { Reminders.access(this) }
-        ui.allowBackground = { runCatching { startActivity(Reminders.backgroundSettings(this)) } }
+        ui.allowBackground = { Reminders.openBackgroundSettings(this) }
         this.ui = ui
         front = Front(this, core, "android").also { it.created() }
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))

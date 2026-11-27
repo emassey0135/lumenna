@@ -677,6 +677,23 @@ object Reminders {
     private const val DURASPEED = "com.mediatek.duraspeed"
 
     /**
+     * Opens where the app's background use is allowed, as close to it as Android lets another app
+     * go: the app's own battery page (Android 11 names it `APP_BATTERY_SETTINGS` on the Orbits, 15
+     * `VIEW_ADVANCED_POWER_USAGE_DETAIL` on the BrailleSense; neither is published), else
+     * [backgroundSettings]. Each is tried in turn, a refusal going on to the next. Whether one opened.
+     */
+    fun openBackgroundSettings(context: Context): Boolean {
+        val app = Uri.parse("package:${context.packageName}")
+        return (listOf(Intent(APP_BATTERY, app), Intent(POWER_USAGE_DETAIL, app)) + backgroundSettings(context)).any { intent ->
+            intent.resolveActivity(context.packageManager) != null &&
+                runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+        }
+    }
+
+    private const val APP_BATTERY = "android.settings.APP_BATTERY_SETTINGS"
+    private const val POWER_USAGE_DETAIL = "android.settings.VIEW_ADVANCED_POWER_USAGE_DETAIL"
+
+    /**
      * Whether to ask, as the app comes to the front, about what holds reminders back: asked once for
      * each thing ([held]: `background`, or a shell's own such as `front`), and after that only the
      * Reminders page says it.

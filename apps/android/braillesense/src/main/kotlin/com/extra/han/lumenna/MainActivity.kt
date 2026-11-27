@@ -113,6 +113,7 @@ class MainActivity : ComponentActivity(), Host {
         device.beforeSettings = { shell?.settle() }
         device.onTableChanged = { shell?.retable() }
         device.onSettingsChanged = { shell?.redraw() }
+        device.onMeasured = { shell?.redraw() }
         device.created()
         val opened = core.getOrElse { error ->
             device.display.say(storeUnopened(error.message.orEmpty()))
@@ -288,11 +289,11 @@ class MainActivity : ComponentActivity(), Host {
     override fun comesToFront(): Boolean = Foreground.allowed(this)
 
     override fun allowFront() {
-        runCatching { startActivity(Foreground.settings(this)) }
+        Foreground.openSettings(this)
     }
 
     override fun allowBackground() {
-        runCatching { startActivity(Reminders.backgroundSettings(this)) }
+        Reminders.openBackgroundSettings(this)
     }
 
     companion object {

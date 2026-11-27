@@ -33,7 +33,7 @@ fun HeldBackAsk() {
         confirmButton = {
             TextButton(modifier = Target, onClick = {
                 asking = false
-                runCatching { context.startActivity(Reminders.backgroundSettings(context)) }
+                Reminders.openBackgroundSettings(context)
             }) { Text(words.allowBackground) }
         },
         dismissButton = {
