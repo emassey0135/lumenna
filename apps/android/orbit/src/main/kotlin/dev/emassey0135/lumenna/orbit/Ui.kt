@@ -499,7 +499,7 @@ class Ui(
     fun lookBack() = send(ShellEvent.Due(DueEvent.LookBack))
 
     /** A reminder that went off and brought the app to the front, until the app holds it, and when it came. */
-    private var ringing: Pair<dev.emassey0135.lumenna.Ringing, Long>? = null
+    private var ringing: Triple<dev.emassey0135.lumenna.Ringing, Long, Boolean>? = null
 
     /**
      * A reminder went off and brought the app to the front: the app looks over the moments the
@@ -509,20 +509,20 @@ class Ui(
      * with on another device meanwhile) is let go, the while counted on a clock that runs on as the
      * device sleeps, so a ring is never said when the device next wakes.
      */
-    fun ring(firing: dev.emassey0135.lumenna.Ringing) {
-        ringing = firing to SystemClock.elapsedRealtime()
+    fun ring(firing: dev.emassey0135.lumenna.Ringing, fromBackground: Boolean = false) {
+        ringing = Triple(firing, SystemClock.elapsedRealtime(), fromBackground)
         send(ShellEvent.Due(DueEvent.Look(firing.since, firing.now)))
     }
 
     private fun followRinging(v: ViewModel) {
-        val (firing, came) = ringing ?: return
+        val (firing, came, fromBackground) = ringing ?: return
         if (SystemClock.elapsedRealtime() - came > RINGING_MS) {
             ringing = null
             return
         }
         val due = v.due.firstOrNull { due -> due.firings.any { it.key == firing.key && it.occurrence == firing.occurrence } } ?: return
         ringing = null
-        if (stack.screens.none { it is RingingScreen && it.id == due.id }) push(RingingScreen(due.id))
+        if (stack.screens.none { it is RingingScreen && it.id == due.id }) push(RingingScreen(due.id, fromBackground))
     }
 
     /** Settings were left here, and the app has not yet said they are closed. */
@@ -591,6 +591,9 @@ class Ui(
 
     /** Set by the activity: opens the app's own page in Android's settings, where its background use is allowed. */
     var allowBackground: () -> Unit = { refuse() }
+
+    /** Set by the activity: back to the app that was in front before a reminder brought this one to the front. */
+    var returnToPrevious: () -> Unit = {}
 }
 
 /** Verbose logging for debug builds. */

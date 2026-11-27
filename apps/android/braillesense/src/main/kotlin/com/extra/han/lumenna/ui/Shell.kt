@@ -95,6 +95,9 @@ interface Host {
 
     /** The app's own page in Android's settings, where its background use is allowed. */
     fun allowBackground()
+
+    /** Back to the app that was in front before a reminder brought this one to the front. */
+    fun returnToPrevious()
 }
 
 /** A page the person went to, on the way back from which Escape walks. */
@@ -111,7 +114,7 @@ private sealed interface Page {
     data object About : Page
 
     /** A reminder that has just gone off and brought the app to the front, by its `Due::id`. */
-    data class Ringing(val id: String) : Page
+    data class Ringing(val id: String, val fromBackground: Boolean = false) : Page
 
     /** Asked once as the app opens: what holds its reminders back, [background] use restricted, not allowed to come to the [front]. */
     data class HeldBack(val background: Boolean, val front: Boolean) : Page
@@ -339,6 +342,12 @@ class Shell(
         when (page) {
             // Leaving the task's form throws away what was not saved, as its Cancel does.
             is Page.Task -> if (!cancelled) send(ShellEvent.Details(DetailsEvent.Discard))
+            // Brought to the front over another app for it, back there once it is dealt with or Escape
+            // pressed on it, as the Schedule Manager leaves; not after Replan, which goes on here.
+            is Page.Ringing -> {
+                if (page.fromBackground && ringButton != "replan" && !leavingAll) host.returnToPrevious()
+                ringButton = null
+            }
             is Page.SettingsPage -> forget("setting:", "settings:${page.id}")
             Page.Devices -> {
                 send(ShellEvent.Devices(DevicesEvent.Pair(PairEvent.Cancel)))
@@ -963,7 +972,10 @@ class Shell(
     }
 
     /** A reminder that went off and brought the app to the front, until the app holds it, and when it came. */
-    private var ringing: Pair<dev.emassey0135.lumenna.Ringing, Long>? = null
+    private var ringing: Triple<dev.emassey0135.lumenna.Ringing, Long, Boolean>? = null
+
+    /** The button last pressed on a ringing reminder's dialog. */
+    private var ringButton: String? = null
 
     /**
      * A reminder went off and brought the app to the front, as the Schedule Manager rings: the app
@@ -972,20 +984,20 @@ class Shell(
      * found within a while (dealt with on another device meanwhile) is let go, the while counted on
      * a clock that runs on as the device sleeps.
      */
-    fun ring(firing: dev.emassey0135.lumenna.Ringing) {
-        ringing = firing to android.os.SystemClock.elapsedRealtime()
+    fun ring(firing: dev.emassey0135.lumenna.Ringing, fromBackground: Boolean = false) {
+        ringing = Triple(firing, android.os.SystemClock.elapsedRealtime(), fromBackground)
         send(ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Look(firing.since, firing.now)))
     }
 
     private fun followRinging(model: ViewModel) {
-        val (firing, came) = ringing ?: return
+        val (firing, came, fromBackground) = ringing ?: return
         if (android.os.SystemClock.elapsedRealtime() - came > RINGING_MS) {
             ringing = null
             return
         }
         val due = model.due.firstOrNull { due -> due.firings.any { it.key == firing.key && it.occurrence == firing.occurrence } } ?: return
         ringing = null
-        if (ui.screens.none { it is PageScreen && it.page == Page.Ringing(due.id) }) pushPage(Page.Ringing(due.id))
+        if (ui.screens.none { it is PageScreen && (it.page as? Page.Ringing)?.id == due.id }) pushPage(Page.Ringing(due.id, fromBackground))
     }
 
     /**
@@ -996,7 +1008,7 @@ class Shell(
     private fun ringing(model: ViewModel, id: String): Frame {
         val due = model.due.firstOrNull { it.id == id } ?: return Rendering("")
         val buttons = due.buttons.map { button ->
-            pressing(button.id, button.title, ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Press(due.id, button.id)))
+            control(button.id, ControlType.BUTTON, button.title, sends = ControlSends.Shell(button.id))
                 .copy(letter = dueLetter(button.id).orEmpty())
         }
         // Its message first, as a line to read, then its buttons, the first in hand.
@@ -1005,7 +1017,11 @@ class Shell(
             controls = listOf(text("message", due.text)) + buttons,
             focus = if (buttons.isEmpty()) 0u else 1u, cancel = emptyList(),
         )
-        return dialog(shown)
+        // Each button handed back by its id, and kept: Replan carries on in the app, so the person stays.
+        return dialog(shown) { button ->
+            ringButton = button
+            send(ShellEvent.Due(dev.emassey0135.lumenna.app.DueEvent.Press(due.id, button)))
+        }
     }
 
     /** The reminders due, looked back for over the last day by the app's own clock as the list opens. */

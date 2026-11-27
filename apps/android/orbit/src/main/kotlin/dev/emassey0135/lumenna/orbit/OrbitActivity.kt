@@ -79,6 +79,7 @@ class OrbitActivity : ComponentActivity() {
         ui.chooseFolder = { key, current -> chooseFolder(key, current) }
         ui.reminderAccess = { Reminders.access(this) }
         ui.allowBackground = { Reminders.openBackgroundSettings(this) }
+        ui.returnToPrevious = { dev.emassey0135.orbit.Foreground.returnToPrevious(this) }
         this.ui = ui
         front = Front(this, core, "android").also { it.created() }
         app.send(ShellEvent.PairingAs(appWords.thisDevice, true))
@@ -133,7 +134,10 @@ class OrbitActivity : ComponentActivity() {
         Reminders.opened(this, intent)?.reminded?.let { ui?.reminded(it) }
         dev.emassey0135.lumenna.Ringing.of(intent)?.let { ringing ->
             dev.emassey0135.lumenna.Ringing.heard(intent)
-            ui?.ring(ringing)
+            // Come to the front over another app for it: back to that app once it is dealt with.
+            val fromBackground = dev.emassey0135.orbit.Foreground.openedFromBackground(intent)
+            dev.emassey0135.orbit.Foreground.heard(intent)
+            ui?.ring(ringing, fromBackground)
         }
     }
 
