@@ -18,6 +18,9 @@ pub struct Project {
     /// Presentation only. Never the sole carrier of meaning, since a screen reader does not
     /// say it.
     pub color: Option<String>,
+    /// One emoji drawn beside its name, chosen to be seen and never said or brailled
+    /// ([`crate::emoji`]).
+    pub emoji: Option<String>,
     /// Position among siblings.
     pub order: OrderKey,
     /// Archived projects keep their tasks but leave the active views.
@@ -71,6 +74,7 @@ impl Project {
             name: name.into(),
             parent_id: None,
             color: None,
+            emoji: None,
             order,
             archived: false,
             is_inbox: false,

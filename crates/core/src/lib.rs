@@ -11,6 +11,7 @@
 
 pub mod colour;
 pub mod edit;
+pub mod emoji;
 pub mod filter;
 pub mod history;
 pub mod id;

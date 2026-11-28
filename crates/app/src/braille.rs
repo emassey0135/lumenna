@@ -76,6 +76,8 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::MarkReviewed, "v"),
     (K::ReviewEvery, "i"),
     (K::OpenProject, "o"),
+    // A project's: no row with an Edit offers it.
+    (K::Emoji, "e"),
     (K::Reconsider, "q"),
 ];
 

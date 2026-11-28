@@ -21,7 +21,7 @@ $script:Operations = [ordered]@{
     'report' = @{ Cmdlet = 'Get-LumennaTimeReport'; Switch = $null; Title = 'Show the Time Report'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'propose_day_plan' = @{ Cmdlet = 'Get-LumennaDayPlan'; Switch = $null; Title = 'Propose a Plan for a Day'; Writes = $false; Confirms = $false; Target = $null; Names = @{ 'Date' = 'date' } }
     'add_task' = @{ Cmdlet = 'Add-LumennaTask'; Switch = $null; Title = 'Add a Task'; Writes = $true; Confirms = $false; Target = 'Text'; Names = @{ 'Text' = 'text' } }
-    'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Sittings' = 'sittings'; 'Start' = 'start'; 'Deadline' = 'deadline'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
+    'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Sittings' = 'sittings'; 'Start' = 'start'; 'Deadline' = 'deadline'; 'Emoji' = 'emoji'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
     'complete_task' = @{ Cmdlet = 'Complete-LumennaTask'; Switch = $null; Title = 'Complete a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'uncomplete_task' = @{ Cmdlet = 'Undo-LumennaTaskCompletion'; Switch = $null; Title = 'Mark a Task Not Done'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'trash_task' = @{ Cmdlet = 'Remove-LumennaTask'; Switch = $null; Title = 'Move a Task to the Trash'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
@@ -610,6 +610,9 @@ function Set-LumennaTask {
     .PARAMETER Deadline
     The day it must be done by ("friday"), or `none`.
 
+    .PARAMETER Emoji
+    One emoji to draw beside its title ("🎯"), never read aloud, or `none` to take it off.
+
     .PARAMETER Notes
     Its notes, whole.
 
@@ -665,6 +668,10 @@ function Set-LumennaTask {
         [Parameter()]
         [string]
         $Deadline,
+
+        [Parameter()]
+        [string]
+        $Emoji,
 
         [Parameter()]
         [string]

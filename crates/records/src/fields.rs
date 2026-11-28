@@ -128,6 +128,8 @@ pub fn task_form() -> Vec<FormField> {
         // that exists, so a list cannot hold a typo, and typing still finds one.
         field("project", "Project", K::Choice, "", ""),
         field("labels", "Labels", K::Line, "Names separated by commas. A new name becomes a label.", "calls, errands"),
+        // Last but the notes: it is only ever seen.
+        field("emoji", "Emoji", K::Line, crate::actions::EMOJI, ""),
         field("notes", "Notes", K::Lines, "", ""),
     ]
 }
@@ -172,6 +174,8 @@ pub fn block_form() -> Vec<FormField> {
             ..field("task_filter", "Tasks from", K::Line, "Which tasks it is offered, such as #Work. Empty for all.", "#Work")
         },
         FormField { options: crate::colours::colour_choices(None), ..field("colour", "Colour", K::Choice, crate::actions::COLOUR, "") },
+        // Beside the colour, the other thing drawn beside its name.
+        field("emoji", "Emoji", K::Line, crate::actions::EMOJI, ""),
         field("notes", "Notes", K::Lines, "", ""),
     ]
 }

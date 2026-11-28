@@ -222,6 +222,14 @@ crosses the FFI.
   carries a `Swatch`: a client draws it beside the name in the platform's light or dark
   appearance, never in place of it, since the name is said and shown too. A stored name the
   palette lacks is said, not drawn.
+- **An emoji is drawn, never said** (`lumenna_core::emoji`): a task, a block or a project wears
+  one (`emoji`, a single grapheme the core checks, `colours::emoji_given` refusing anything else
+  in its words), chosen with the platform's own picker through the forms' Emoji line and a
+  project's Emoji action. What is drawn carries it apart from the line, as a swatch
+  (`RowView`, `SidebarEntry`, `PlanBlock`, `PlanAssignment`, the glance's parts and
+  `GlanceEntry::headline_emoji`); no `Line`, `text`, `braille`, announcement or glance sentence
+  holds it, and a change of it alone is said without it ("Gave project Work an emoji"). A shell
+  draws it before the name, hidden from the screen reader; the CLI, Emacs and BTSpeak show none.
 - **Terse announcements** (the synced `verbosity`, `terse` or `full`) leave out what the person
   knows already, never what the change was. Rows are components either way.
 - **Every assistant does what `lum mcp` does, from one table** (`records::assistant`): each

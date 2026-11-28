@@ -77,6 +77,7 @@ pub const METHODS: &[&str] = &[
     "project.reviewed",
     "project.review_every",
     "project.colour",
+    "project.emoji",
     "section.add",
     "section.list",
     "section.rename",
@@ -162,8 +163,8 @@ pub const METHODS: &[&str] = &[
 ];
 
 /// What a block's add and edit take beyond their own.
-const EXTRAS: [&str; 8] =
-    ["notes", "accepts_tasks", "counts_capacity", "anchored", "min_minutes", "task_filter", "until", "colour"];
+const EXTRAS: [&str; 9] =
+    ["notes", "accepts_tasks", "counts_capacity", "anchored", "min_minutes", "task_filter", "until", "colour", "emoji"];
 
 /// The parameters each method takes, every one of [`METHODS`] but the app's (whose are the
 /// app's to read). A name a method does not take is refused, as `assist` refuses one: a
@@ -176,7 +177,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("task.show", &["id"]),
     ("task.history", &["id"]),
     ("task.reconsider", &["id", "answer"]),
-    ("task.edit", &["id", "title", "due", "repeat", "priority", "estimate", "notes", "project", "labels", "sittings", "start", "deadline"]),
+    ("task.edit", &["id", "title", "due", "repeat", "priority", "estimate", "notes", "project", "labels", "sittings", "start", "deadline", "emoji"]),
     ("task.done", &["id"]),
     ("task.undone", &["id"]),
     ("task.rm", &["id"]),
@@ -200,6 +201,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("project.reviewed", &["name"]),
     ("project.review_every", &["name", "every"]),
     ("project.colour", &["name", "colour"]),
+    ("project.emoji", &["name", "emoji"]),
     ("section.add", &["project", "name"]),
     ("section.list", &["project"]),
     ("section.rename", &["section", "to"]),
@@ -733,6 +735,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             sittings: maybe_text(params, "sittings"),
             start: maybe_text(params, "start"),
             deadline: maybe_text(params, "deadline"),
+            emoji: maybe_text(params, "emoji"),
         })?),
         "task.done" => Response::new(l.complete_task(&id()?)?),
         "task.undone" => Response::new(l.uncomplete_task(&id()?)?),
@@ -785,6 +788,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "project.move" => Response::new(l.move_project(&name()?, maybe_text(params, "parent"))?),
         "project.order" => Response::new(l.reorder_project(&name()?, way(params)?)?),
         "project.colour" => Response::new(l.recolour_project(&name()?, colour(params))?),
+        "project.emoji" => Response::new(l.set_project_emoji(&name()?, &maybe_text(params, "emoji").unwrap_or_default())?),
         "project.reviewed" => Response::new(l.mark_reviewed(&name()?)?),
         "project.review_every" => Response::new(l.review_every(&name()?, &text_of(params, "every")?)?),
         "project.weight" => {
@@ -838,6 +842,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
                 task_filter: extras.task_filter,
                 until: extras.until,
                 colour: extras.colour,
+                emoji: extras.emoji,
             })?)
         }
         "block.list" => Response::new(l.list_blocks()?),
@@ -861,6 +866,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
                 task_filter: extras.task_filter,
                 until: extras.until,
                 colour: extras.colour,
+                emoji: extras.emoji,
             }, scope)?)
         }
         "block.cancel" => Response::new(l.cancel_occurrence(&id()?, &text_of(params, "date")?)?),
@@ -1166,6 +1172,7 @@ struct Extras {
     task_filter: Option<String>,
     until: Option<String>,
     colour: Option<String>,
+    emoji: Option<String>,
 }
 
 fn extras(params: &Value) -> std::result::Result<Extras, RpcError> {
@@ -1178,6 +1185,7 @@ fn extras(params: &Value) -> std::result::Result<Extras, RpcError> {
         task_filter: maybe_text(params, "task_filter"),
         until: maybe_text(params, "until"),
         colour: maybe_text(params, "colour"),
+        emoji: maybe_text(params, "emoji"),
     })
 }
 

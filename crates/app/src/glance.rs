@@ -16,6 +16,11 @@ pub struct GlanceEntry {
     /// What is happening now: the timer running, else the block under way, else the free time
     /// before the next block, else that nothing more is planned. A complication's one line.
     pub headline: Line,
+    /// The emoji of what the headline names first (the task timed, the block under way), to
+    /// draw before it: never in a line, nor in `spoken`. The next block's is `moment.next`'s,
+    /// and each task's `moment.tasks`', in the order of `tasks`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headline_emoji: Option<String>,
     /// The next block, as the day says one: its times, then its name.
     pub next: Option<Line>,
     /// What is due: how many tasks, and how many overdue.
@@ -43,6 +48,11 @@ pub fn worded(moment: GlanceMoment, clock: &dyn Clock) -> GlanceEntry {
             Line::of(words::free(), vec![words::until(&clock.time(&next.start)), words::then(&next.title)])
         }
         (None, None, None) => Line::of(words::nothing_more_planned(), Vec::new()),
+    };
+    let headline_emoji = match (&moment.timer, &moment.current) {
+        (Some(timer), _) => timer.emoji.clone(),
+        (None, Some(block)) => block.emoji.clone(),
+        (None, None) => None,
     };
     let next = moment.next.as_ref().map(|block| block_line(block, clock));
     let due = match (moment.due, moment.overdue) {
@@ -77,6 +87,7 @@ pub fn worded(moment: GlanceMoment, clock: &dyn Clock) -> GlanceEntry {
         spoken: said.join(". ") + ".",
         moment,
         headline,
+        headline_emoji,
         next,
         due,
         tasks,
@@ -198,6 +209,8 @@ mod tests {
             ends_at: String::new(),
             kind: "work".to_owned(),
             colour: None,
+            // Every block here wears one, so every line below is seen to leave it out.
+            emoji: Some("🧠".to_owned()),
             tasks: Vec::new(),
         }
     }
@@ -226,6 +239,7 @@ mod tests {
         assert_eq!(entry.next.unwrap().text, "12:00 to 13:00, Lunch");
         assert_eq!(entry.due.text, "3 tasks due, 1 overdue");
         assert_eq!(entry.spoken, "Deep work, until 11:00. Next, 12:00 to 13:00, Lunch. 3 tasks due, 1 overdue.");
+        assert_eq!(entry.headline_emoji.as_deref(), Some("🧠"), "drawn beside the headline, said nowhere");
     }
 
     #[test]
@@ -237,6 +251,7 @@ mod tests {
             due_time: time.map(str::to_owned),
             overdue,
             streak: None,
+            emoji: Some("📞".to_owned()),
         };
         let entry = worded(
             GlanceMoment { tasks: vec![task("Call the bank", Some("15:00"), false), task("Pay rent", None, true)], due: 2, overdue: 1, ..moment() },
@@ -256,6 +271,7 @@ mod tests {
             due_time: None,
             overdue: false,
             streak: Some("done 12 times running".to_owned()),
+            emoji: None,
         };
         let entry = worded(GlanceMoment { tasks: vec![stretch], due: 1, ..moment() }, &TwentyFour);
         assert_eq!(entry.tasks[0].text, "Stretch, due today, done 12 times running");
@@ -283,6 +299,7 @@ mod tests {
             counting_from: "2026-10-25T09:00:00Z".to_owned(),
             planned_mins: Some(25),
             runs_out_at: Some("2026-10-25T09:25:00Z".to_owned()),
+            emoji: None,
         };
         assert_eq!(countdown(&timer, now("2026-10-25T09:12:30Z")).as_deref(), Some("13 minutes left"));
         assert_eq!(countdown(&timer, now("2026-10-25T09:25:20Z")).as_deref(), Some("time is up"));
@@ -297,6 +314,7 @@ mod tests {
                 timer: Some(lumenna_records::glance::GlanceTimer {
                     planned_mins: Some(25),
                     runs_out_at: Some("2026-10-25T09:25:30Z".to_owned()),
+                    emoji: None,
                     ..timer
                 }),
                 ..moment()
@@ -322,6 +340,7 @@ mod tests {
                 counting_from: "2026-10-25T09:00:00Z".to_owned(),
                 planned_mins: Some(25),
                 runs_out_at: Some("2026-10-25T09:25:00Z".to_owned()),
+                emoji: None,
             }),
         };
         assert_eq!(control_line(&control, now, false), "Stop Timer, Essay, 13 minutes left");

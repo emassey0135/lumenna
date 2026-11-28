@@ -151,6 +151,10 @@ pub struct SidebarEntry {
     /// A project's, label's or saved filter's colour, to draw beside its name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swatch: Option<crate::types::Swatch>,
+    /// A project's emoji, to draw beside its name and never to say: neither `text` nor `title`
+    /// holds it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
     /// What can be done to it: a project's, label's or saved filter's own, a heading's New.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<crate::actions::Action>,
@@ -185,6 +189,7 @@ impl SidebarEntry {
             depth,
             archived: false,
             swatch: None,
+            emoji: None,
             actions,
             offered: Vec::new(),
             hidden: false,
@@ -272,6 +277,7 @@ pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
         let mut entry = place(Place::Project(row.title.clone()), &detail(&row), row.depth + 1);
         entry.archived = row.state.iter().any(|s| s == "archived");
         entry.swatch = row.swatch;
+        entry.emoji = row.emoji;
         entry.actions = row.actions;
         entries.push(entry);
     }

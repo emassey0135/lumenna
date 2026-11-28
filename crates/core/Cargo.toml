@@ -19,6 +19,7 @@ jiff.workspace = true
 rrule.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
+unicode-segmentation.workspace = true
 
 # In the browser, randomness and the clock come from JavaScript; elsewhere these
 # features are not wanted.

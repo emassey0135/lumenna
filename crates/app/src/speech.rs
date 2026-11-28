@@ -313,6 +313,8 @@ mod tests {
             hint: None,
             priority: None,
             swatch: None,
+            // Every row here wears one, so every line below is seen to leave it out.
+            emoji: Some("📞".to_owned()),
             actions: Vec::new(),
         }
     }
@@ -330,6 +332,7 @@ mod tests {
             running: false,
             left_secs: None,
             details: Vec::new(),
+            emoji: Some("📝".to_owned()),
             actions: Vec::new(),
         };
         PlanAssignment { details: lumenna_records::words::sitting_details(&sitting), ..sitting }
@@ -399,6 +402,7 @@ mod tests {
             anchored: false,
             colour: None,
             swatch: None,
+            emoji: Some("🧠".to_owned()),
             timezone: None,
             notes: String::new(),
             details: Vec::new(),
@@ -477,6 +481,7 @@ mod tests {
             anchored: false,
             colour: None,
             swatch: None,
+            emoji: Some("🧠".to_owned()),
             timezone: None,
             notes: String::new(),
             details: Vec::new(),

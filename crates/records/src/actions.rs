@@ -152,6 +152,9 @@ pub enum ActionKind {
     /// Open a project's own list, from where it is listed beside other things (the review): the
     /// app's, which changes nothing stored.
     OpenProject,
+    /// Give a project an emoji to draw beside its name, or take it off: a line the platform's
+    /// own emoji picker fills.
+    Emoji,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -461,6 +464,9 @@ pub const LOGGING: &str = "The whole of this sitting, replacing what is logged."
 pub const LENGTH: &str = "How long is it meant to take? Such as 45m or 1h 30m; empty for no planned length.";
 /// What a block's colour is for, under the block form's choice.
 pub const COLOUR: &str = "Drawn beside its name, which is always said too.";
+/// What an emoji's line takes, in the task and block forms and a project's Emoji: one chosen
+/// with the platform's own picker, whatever that is, and never said.
+pub const EMOJI: &str = "One emoji, from your keyboard's emoji picker, drawn beside the name and never read aloud. Empty for none.";
 /// What a project's weight takes.
 pub const WEIGHT: &str =
     "How much this whole area matters now, roughly 0.5 to 2. Type inherit to take the parent's again.";
@@ -799,6 +805,13 @@ pub fn project(snapshot: &Snapshot, project: &Project) -> Vec<Action> {
     reorder(&mut actions, Subject::Project, &target, position_of(&ids, &project.id), ids.len());
     actions.push(weight);
     actions.push(colour(Subject::Project, &target, &name));
+    actions.push(a(K::Emoji, "Emoji").asking(text(
+        format!("Emoji of {name}"),
+        "Emoji",
+        project.emoji.clone().unwrap_or_default(),
+        EMOJI,
+        true,
+    )));
     actions.push(crate::review::mark_reviewed_action(project));
     actions.push(crate::review::review_every_action(project));
     actions.push(if project.archived { a(K::Unarchive, "Unarchive") } else { a(K::Archive, "Archive") });
@@ -1086,6 +1099,12 @@ pub fn fill_rows(rows: &mut Rows, snapshot: &Snapshot) {
             _ => None,
         };
         row.swatch = crate::types::Swatch::of(colour);
+        row.emoji = lumenna_core::emoji::shown(match &id {
+            Some(RowId::Task(id)) => snapshot.tasks.get(id).and_then(|t| t.emoji.as_deref()),
+            Some(RowId::Project(id)) => snapshot.projects.get(id).and_then(|p| p.emoji.as_deref()),
+            Some(RowId::Occurrence(id, _)) => snapshot.series.get(id).and_then(|s| s.emoji.as_deref()),
+            _ => None,
+        });
         row.actions = match id {
             Some(RowId::Task(id)) => snapshot
                 .tasks

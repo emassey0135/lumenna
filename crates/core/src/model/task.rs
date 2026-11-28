@@ -57,6 +57,9 @@ pub struct Task {
     /// essay): the planner plans it a sitting of this at a time, one a day unless its due
     /// date needs more. Absent, it is planned whole where it fits.
     pub sitting_mins: Option<u32>,
+    /// One emoji drawn beside its title, chosen to be seen and never said or brailled
+    /// ([`crate::emoji`]).
+    pub emoji: Option<String>,
     /// When the person last kept it, answering the planner's question about it
     /// ([`crate::review`]): it is not asked about as stale again for
     /// [`crate::review::STALE_DAYS`].
@@ -94,6 +97,7 @@ impl Task {
             deadline: None,
             estimate_mins: None,
             sitting_mins: None,
+            emoji: None,
             kept_at: None,
             kept_put_off: None,
             order,

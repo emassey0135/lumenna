@@ -39,6 +39,9 @@ pub struct GlanceBlock {
     pub kind: String,
     /// Its colour, by name, drawn beside its name, never in place of it.
     pub colour: Option<String>,
+    /// Its emoji, drawn beside its name and never said: no line of the glance holds it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
     /// The titles of the tasks in it, in order.
     pub tasks: Vec<String>,
 }
@@ -64,6 +67,9 @@ pub struct GlanceTimer {
     /// counts up from `counting_from` without one. The core says once when it comes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runs_out_at: Option<String>,
+    /// The task's emoji, drawn beside its title and never said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
 }
 
 /// A task a glance names.
@@ -83,6 +89,9 @@ pub struct GlanceTask {
     /// A repeating task's streak, in words: "done 12 times running", "missed Tuesday".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub streak: Option<String>,
+    /// Its emoji, drawn beside its title and never said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
 }
 
 /// What a glance shows from one moment until the next.
@@ -249,6 +258,7 @@ fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
         ends_at: span_of(b, today, now).map(|(_, ends)| ends.to_string()).unwrap_or_default(),
         kind: b.kind.clone(),
         colour: b.colour.clone(),
+        emoji: b.emoji.clone(),
         tasks: b.assignments.iter().map(|a| a.title.clone()).collect(),
     };
     let current = plan.blocks.iter().find(|b| b.when == "now");
@@ -264,6 +274,7 @@ fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
             counting_from: counting_from.to_string(),
             planned_mins: a.planned_mins,
             runs_out_at: a.runs_out_at().map(|at| at.to_string()),
+            emoji: lumenna_core::emoji::shown(snapshot.tasks.get(&a.task_id).and_then(|t| t.emoji.as_deref())),
         })
     });
     let rows = crate::lists::tasks(snapshot, "overdue | today", now)?;
@@ -286,6 +297,7 @@ fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
             due_time: row.due_time.clone(),
             overdue: overdue_of(&row.id),
             streak: row.id.parse().ok().and_then(|id| snapshot.tasks.get(&id)).and_then(|task| crate::review::streak_of(snapshot, task, now)),
+            emoji: row.emoji.clone(),
         })
         .collect();
     let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);

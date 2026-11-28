@@ -45,13 +45,6 @@ The order, and why:
     saying one is low offers a lighter Replan from Now of the rest of the day. What it weighs
     is said in the proposal's reasons, in words.
   - Optional throughout: worth having with a few tasks rated, never a chore of rating them all.
-- **An emoji on a task, a block or a project**, drawn beside its name, as Structured and Tiimo
-  draw icons: any emoji, chosen with the platform's own picker (Win+. on Windows,
-  Control-Command-Space on a Mac, the keyboard on a phone, Ctrl+. in GNOME), so no app keeps a
-  set of icons of its own. The core keeps one emoji (a single grapheme it checks) and words it
-  nowhere: **left out of speech and braille**, since it is chosen to be seen and its name read
-  aloud before every title is noise; the details may name it. The CLI, Emacs and BTSpeak show
-  none.
 
 ## 4. Smaller gaps
 

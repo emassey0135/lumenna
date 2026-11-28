@@ -412,6 +412,25 @@ impl Lumenna {
         })
     }
 
+    /// Gives a project one emoji to draw beside its name, or takes it off with an empty line
+    /// or `none`. It is never said: the name is.
+    ///
+    /// # Errors
+    ///
+    /// If there is no project by that name, or what is given is not one emoji.
+    pub fn set_project_emoji(&self, name: &str, emoji: &str) -> Result<Change> {
+        let emoji = lumenna_records::colours::emoji_given(emoji)?;
+        self.told(|store| {
+            let snapshot = repaired(store);
+            let before = resolve::project(&snapshot, name)?.clone();
+            let mut after = before.clone();
+            let unchanged = if emoji.is_none() { "it has no emoji" } else { "it already has that emoji" };
+            after.emoji = emoji;
+            let change = edit::update_project(before, after);
+            record_or(store, &change, unchanged)
+        })
+    }
+
     /// Gives a saved filter a colour, by name, or clears it with `None`.
     ///
     /// # Errors
