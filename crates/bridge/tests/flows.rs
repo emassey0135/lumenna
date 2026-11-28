@@ -2829,6 +2829,8 @@ fn an_emoji_typed_in_the_task_form_is_drawn_on_its_row_and_said_in_no_line() {
     let lines = lumenna_app::lines::lines(&view, &PlainClock);
     assert_eq!(lines.list[0].text(), "Water the plants");
     assert!(!lines.list[0].braille.contains('🪴'));
+    let details = view.details.unwrap();
+    assert!(!details.field_lines.iter().any(|line| line.contains('🪴')), "the details read aloud leave it out: {:?}", details.field_lines);
 }
 
 #[test]

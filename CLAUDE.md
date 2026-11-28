@@ -227,8 +227,9 @@ crosses the FFI.
   in its words), chosen with the platform's own picker through the forms' Emoji line and a
   project's Emoji action. What is drawn carries it apart from the line, as a swatch
   (`RowView`, `SidebarEntry`, `PlanBlock`, `PlanAssignment`, the glance's parts and
-  `GlanceEntry::headline_emoji`); no `Line`, `text`, `braille`, announcement or glance sentence
-  holds it, and a change of it alone is said without it ("Gave project Work an emoji"). A shell
+  `GlanceEntry::headline_emoji`); no `Line`, `text`, `braille`, announcement, glance sentence or
+  details' `field_lines` holds it, and a change of it alone is said without it ("Gave project
+  Work an emoji"). A shell
   draws it before the name, hidden from the screen reader; the CLI, Emacs and BTSpeak show none.
 - **Terse announcements** (the synced `verbosity`, `terse` or `full`) leave out what the person
   knows already, never what the change was. Rows are components either way.
