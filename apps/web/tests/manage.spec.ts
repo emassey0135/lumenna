@@ -78,7 +78,8 @@ test("an emoji is drawn beside a project's and a task's name, and never in what 
   await expect(project).not.toHaveAccessibleName(/🌱/u);
   await expect(project.locator(".emoji")).toHaveText("🌱");
   await expect(project.locator(".emoji")).toHaveAttribute("aria-hidden", "true");
-  await add(page, "Plant beans");
+  // Filling the line replaces the "#Garden " it opens with, so the line names the project again.
+  await add(page, "Plant beans #Garden");
   const task = page.getByRole("main").getByRole("row", { name: /^Plant beans/ });
   await task.click();
   const details = page.getByRole("complementary", { name: "Task details" });
