@@ -976,9 +976,9 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (should (equal (lumenna-test--line) "Home"))
     ;; The places, at their levels, then what can be done from anywhere, in the app's order.
     (should (equal (mapcar (lambda (text) (and (search-forward text nil t) (line-number-at-pos)))
-                           '("Upcoming" "  Garden" "Review" "Time Report" "New Task" "Undo" "Redo" "What Should I Work On?" "Time Left"
+                           '("Upcoming" "  Garden" "Review" "Time Report" "New Task" "Undo" "Redo" "What Should I Work On?" "Time Left" "Energy Today"
                              "Sync Now" "Settings" "Keyboard Shortcuts" "About Lumenna"))
-                   (append '(3 7 11 13) (number-sequence 15 23))))
+                   (append '(3 7 11 13) (number-sequence 15 24))))
     (lumenna-test--goto "  Garden")
     (should (= (funcall outline-level) 3))
     ;; A heading folds, as the app folds it.
