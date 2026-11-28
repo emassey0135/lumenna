@@ -1151,7 +1151,7 @@ script refuses to install while the file `refuse' exists, as `lum' would say."
     (lumenna-today)
     (goto-char (point-min))
     (let ((kinds (mapcar (lambda (a) (plist-get a :kind)) (lumenna-actions))))
-      (should (equal (seq-take kinds 4) '("plan_day" "replan" "what_now" "end_day"))))
+      (should (equal (seq-take kinds 5) '("plan_day" "replan" "check_in" "what_now" "end_day"))))
     (let (annotated)
       (cl-letf (((symbol-function 'completing-read)
                  (lambda (_prompt choices &rest _)

@@ -104,7 +104,7 @@ const ACTION_COMMANDS: &[(ActionKind, &str)] = &[
 
 /// The letter of each settings page, by `SettingsPage::id`.
 const PAGE_LETTERS: &[(&str, &str)] =
-    &[("general", "g"), ("planning", "p"), ("reminders", "m"), ("devices", "d"), ("backups", "b"), ("export", "e")];
+    &[("general", "g"), ("planning", "p"), ("energy", "n"), ("reminders", "m"), ("devices", "d"), ("backups", "b"), ("export", "e")];
 
 /// The letter of each settings page's button, by `SettingsButton::id`.
 const BUTTON_LETTERS: &[(&str, &str)] =

@@ -42,7 +42,7 @@ final class AppBlockFormModel: ObservableObject {
         let form = core.app.view.blockForm
         let values = form?.values ?? LumennaApp.BlockFields(
             title: "", start: "09:00", minutes: "60", kind: "work", acceptsTasks: true, countsCapacity: true,
-            anchored: false, repeat: "", until: "", minMinutes: "", taskFilter: "", colour: "", notes: ""
+            anchored: false, repeat: "", until: "", minMinutes: "", taskFilter: "", colour: "", hours: "", notes: ""
         )
         fields = values
         start = Self.date(values.start)

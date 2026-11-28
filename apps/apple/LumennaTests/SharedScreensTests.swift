@@ -168,7 +168,7 @@ final class SharedScreensTests: XCTestCase {
             LumennaApp.DueReminder(
                 key: key, occurrence: occurrence, at: "2026-10-10T09:00:00Z", target: "t", kind: "block", title: "T",
                 text: "T starts", missed: "T started", dismiss: "Dismiss", snooze: "Snooze", carry: "", replan: "",
-                stop: "", sitting: ""
+                stop: "", sitting: "", low: ""
             )
         }
         XCTAssertEqual(Reminders.missedIdentifier(missed), Reminders.missedIdentifier(missed), "the same each time, on every device")

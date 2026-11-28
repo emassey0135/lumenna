@@ -680,7 +680,7 @@ pub struct SettingsPage {
     #[serde(default)]
     pub devices: bool,
     /// Its title then its description, as one row of a list of pages that reads a line each:
-    /// "Planning. The day, the week, your energy, completing subtasks, announcements".
+    /// "Planning. The day, the week, completing subtasks, announcements".
     #[serde(default)]
     pub line: String,
     /// Its title then its caption, as one heading over its settings for a device whose screens
@@ -714,7 +714,7 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
         page(
             "planning",
             "Planning",
-            "The day, the week, your energy, completing subtasks, announcements",
+            "The day, the week, completing subtasks, announcements",
             "These sync to all your devices.",
             keys(&[
                 "day-start",
@@ -725,11 +725,15 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
                 "cascade-complete-subtasks",
                 "verbosity",
                 "urgency-weights",
-                "energy-capacity",
-                "best-hours",
-                "worst-hours",
-                "energy-check-in",
             ]),
+            Vec::new(),
+        ),
+        page(
+            "energy",
+            "Energy",
+            "What a usual day has room for, your best and worst hours, asking each day",
+            "These sync to all your devices. Planning weighs them only where you rate a task's energy or say how you are.",
+            keys(&["energy-capacity", "best-hours", "worst-hours", "energy-check-in"]),
             Vec::new(),
         ),
         page(

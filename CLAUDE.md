@@ -264,7 +264,7 @@ crosses the FFI.
   timer on request from anywhere.
 - **Energy is the person's, weighed where they gave it** (`core::energy`, `records::energy`): a
   task's Energy (its row's Energy, letter g, and the task form's field), a block's "Energy then"
-  (the block form's `hours`), four Planning settings, and Energy Today (`Key("energy-today")`,
+  (the block form's `hours`), the Energy settings page (its letter n), and Energy Today (`Key("energy-today")`,
   letter z, Ctrl+Shift+E, a day action, on Home and every watch, a launch shortcut, a control
   and the Today widget's `GlancePart::Energy`), whose answered low opens Replan from Now where it
   has something to lighten. Its daily reminder is `kind` `day` with `DueReminder::low` (I'm Low
