@@ -183,9 +183,9 @@ pub fn block_form() -> Vec<FormField> {
             ..field("task_filter", "Tasks from", K::Line, "Which tasks it is offered, such as #Work. Empty for all.", "#Work")
         },
         FormField { options: crate::colours::colour_choices(None), ..field("colour", "Colour", K::Choice, crate::actions::COLOUR, "") },
-        FormField { options: crate::energy::hours_choices(), ..field("hours", "Energy then", K::Choice, crate::energy::HOURS_HINT, "") },
         // Beside the colour, the other thing drawn beside its name.
         field("emoji", "Emoji", K::Line, crate::actions::EMOJI, ""),
+        FormField { options: crate::energy::hours_choices(), ..field("hours", "Energy then", K::Choice, crate::energy::HOURS_HINT, "") },
         field("notes", "Notes", K::Lines, "", ""),
     ]
 }
