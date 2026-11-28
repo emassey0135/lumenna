@@ -50,6 +50,8 @@ export const WEB: Record<string, string[]> = {
   "go-to-day": ["Alt+Shift+G"],
   // R for remaining: T and L are the browser's. Ctrl+Shift+T reopens a closed tab.
   "time-left": ["Alt+Shift+R"],
+  // H for how one is today: E is Settings', N the browser's.
+  "energy-today": ["Alt+Shift+H"],
   "keyboard-help": ["?"],
 };
 

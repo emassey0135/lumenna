@@ -92,7 +92,7 @@ def reminders_of(session: Session, row=None) -> str:
 
 
 #: A reminder's buttons, by the ids the core gives them (`DueButton::id`), for their letters.
-BUTTONS = ("carry", "replan", "stop", "dismiss", "snooze")
+BUTTONS = ("carry", "replan", "stop", "low", "dismiss", "snooze")
 
 
 def due(session: Session) -> str:
