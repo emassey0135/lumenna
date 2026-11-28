@@ -198,14 +198,15 @@ struct RootView: View {
 
     /// One of what can be done from anywhere, as a button named by the core: New Task brings up
     /// quick add, which opens the app's line itself; Settings is the watch's own screen of them;
-    /// any other is the core's key. What Should I Work On? takes the app to today with its pick
-    /// asked, as its launch does: the day is pushed under the asker's sheet, as a launch's is.
+    /// any other is the core's key. What Should I Work On? and Energy Today take the app to today
+    /// with their question asked, as their launches do: the day is pushed under the asker's
+    /// sheet, as a launch's is.
     @ViewBuilder
     private func action(_ action: LumennaApp.ScreenAction) -> some View {
         switch action.id {
         case "new-task": Button(action.title) { adding = true }
         case "settings": NavigationLink(action.title) { SettingsView() }
-        case "what-now":
+        case "what-now", "energy-today":
             ScreenActionButton(action: action) {
                 core.app.perform($0)
                 core.app.whenStill { launched = core.app.view.place }

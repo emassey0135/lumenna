@@ -45,6 +45,7 @@
         'Start-LumennaChoice'
         'Approve-LumennaReplan'
         'Approve-LumennaDayPlan'
+        'Set-LumennaEnergy'
         'Get-LumennaReview'
         'Complete-LumennaProjectReview'
         'Set-LumennaProjectReview'

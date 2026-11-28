@@ -12,6 +12,8 @@ enum Controls {
     static let timer = "timer"
     /// New Task's control: its kind is the core's id, its launch shortcut's.
     static let newTask = "new-task"
+    /// Energy Today's control: its kind is the core's id, its launch shortcut's.
+    static let energyToday = "energy-today"
 
     /// The core's control `id`: its name and description in the gallery.
     static func control(_ id: String) -> LumennaApp.Control? {

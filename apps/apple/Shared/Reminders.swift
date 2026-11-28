@@ -39,6 +39,11 @@ enum Reminders {
     /// and never again (its `snooze` is empty). An ordinary notification: nothing rings on.
     static let stopCategory = "dev.emassey0135.lumenna.reminder.time-up"
     static let stopAction = "dev.emassey0135.lumenna.reminder.stop-timer"
+    /// The category of the day's energy check-in (`DueReminder.low`, its `kind` `day`): the
+    /// core's I'm Low Today, then Dismiss and Snooze. Chosen itself, it opens Today with the
+    /// check-in asked (the core's `energy-today` launch).
+    static let energyCategory = "dev.emassey0135.lumenna.reminder.energy"
+    static let lowAction = "dev.emassey0135.lumenna.reminder.low-today"
     /// What every reminder's identifier starts with, so re-arming cancels only its own.
     static let prefix = "reminder "
     /// How far ahead to schedule: the system holds 64 pending, so not a week of blocks.
@@ -68,6 +73,7 @@ enum Reminders {
         content.body = reminder.text
         content.sound = .default
         content.categoryIdentifier = !reminder.stop.isEmpty ? stopCategory
+            : !reminder.low.isEmpty ? energyCategory
             : !reminder.carry.isEmpty ? carryCategory : !reminder.replan.isEmpty ? replanCategory : category
         // The reminders of one task or block group together.
         content.threadIdentifier = reminder.target
@@ -87,6 +93,21 @@ enum Reminders {
             actions: [
                 UNNotificationAction(identifier: stopAction, title: reminder.stop, options: []),
                 UNNotificationAction(identifier: dismissAction, title: reminder.dismiss, options: []),
+            ],
+            intentIdentifiers: [],
+            options: []
+        )
+    }
+
+    /// The check-in's category: the core's I'm Low Today, then Dismiss and Snooze, in the core's
+    /// order (`Due::buttons`).
+    static func energyCategory(for reminder: LumennaApp.DueReminder) -> UNNotificationCategory {
+        UNNotificationCategory(
+            identifier: energyCategory,
+            actions: [
+                UNNotificationAction(identifier: lowAction, title: reminder.low, options: []),
+                UNNotificationAction(identifier: dismissAction, title: reminder.dismiss, options: []),
+                UNNotificationAction(identifier: snoozeAction, title: reminder.snooze, options: []),
             ],
             intentIdentifiers: [],
             options: []
@@ -146,6 +167,8 @@ enum Reminders {
 
     /// The last reminder seen offering Stop Timer, for the same reason as `lastCarried`.
     private static var lastStopped: LumennaApp.DueReminder?
+    /// The last check-in seen, for the same reason as `lastCarried`.
+    private static var lastChecked: LumennaApp.DueReminder?
     /// The last reminder seen that snoozes, which names the ordinary category's buttons when
     /// what is handed over now is only a time running out.
     private static var lastSnoozed: LumennaApp.DueReminder?
@@ -156,12 +179,14 @@ enum Reminders {
         if let carried = due.first(where: { !$0.carry.isEmpty }) { lastCarried = carried }
         if let replanned = due.first(where: { !$0.replan.isEmpty }) { lastReplanned = replanned }
         if let stopped = due.first(where: { !$0.stop.isEmpty }) { lastStopped = stopped }
+        if let checked = due.first(where: { !$0.low.isEmpty }) { lastChecked = checked }
         if let snoozed = due.first(where: { !$0.snooze.isEmpty }) { lastSnoozed = snoozed }
         var categories = Set<UNNotificationCategory>()
         if let lastSnoozed { categories.insert(category(for: lastSnoozed)) }
         if let lastCarried { categories.insert(carryCategory(for: lastCarried)) }
         if let lastReplanned { categories.insert(replanCategory(for: lastReplanned)) }
         if let lastStopped { categories.insert(stopCategory(for: lastStopped)) }
+        if let lastChecked { categories.insert(energyCategory(for: lastChecked)) }
         return categories
     }
 
@@ -572,6 +597,14 @@ final class ReminderResponder: NSObject, UNUserNotificationCenterDelegate {
                 case let .success(timer): Announcer.say(timer.announcement, notices: timer.notices)
                 case let .failure(error): Announcer.say(error.sentence)
                 }
+                return
+            case Reminders.lowAction:
+                // Low today, said as the core says it, and the check-in dismissed on every device.
+                change = try device.checkInEnergy(level: "low")
+                _ = try? device.dismissReminder(key: key, occurrence: occurrence)
+            case UNNotificationDefaultActionIdentifier where info["kind"] as? String == "day":
+                // The day's energy check-in: Today, with its question asked, the core's launch.
+                Task { @MainActor in Launches.shared.ask("energy-today") }
                 return
             case Reminders.replanAction:
                 open(RemindedOf(kind: info["kind"] as? String ?? "block", target: info["target"] as? String ?? "", day: occurrence, replan: true, key: key))

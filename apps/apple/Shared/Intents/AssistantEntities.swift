@@ -51,6 +51,8 @@ struct TaskEntity: AppEntity {
     @Property(title: "Starts") var start: Date?
     /// The day it must be done by.
     @Property(title: "Deadline") var deadline: Date?
+    /// What it takes of the person's energy, `low`, `medium` or `high`; none when not rated.
+    @Property(title: "Energy") var energy: String?
     /// How it repeats, in the core's words ("every weekday").
     @Property(title: "Repeats") var repeats: String?
     /// A repeating task's streak, in the core's words ("done 12 times running").
@@ -86,6 +88,7 @@ struct TaskEntity: AppEntity {
         // A day, ISO; Someday is no day, and is said among its states.
         start = task.start.flatMap { moment($0) }
         deadline = task.deadline.flatMap { moment($0) }
+        energy = task.energy
         repeats = task.repetition
         streak = task.streak
         states = task.states
@@ -116,6 +119,7 @@ struct TaskEntity: AppEntity {
         sittings = nil
         start = nil
         deadline = nil
+        energy = nil
         repeats = nil
         streak = nil
         states = []

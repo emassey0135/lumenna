@@ -17,9 +17,19 @@ final class ControlTests: XCTestCase {
 
     func testEveryControlTheCoreOffersIsOneHereInItsKind() {
         let offered = LumennaApp.controls()
-        XCTAssertEqual(offered.map(\.id), [Controls.timer, Controls.newTask], "a control the core adds needs one here")
+        XCTAssertEqual(offered.map(\.id), [Controls.timer, Controls.newTask, Controls.energyToday], "a control the core adds needs one here")
         XCTAssertEqual(Controls.control(Controls.timer)?.kind, .toggle)
         XCTAssertEqual(Controls.control(Controls.newTask)?.kind, .button)
+        XCTAssertEqual(Controls.control(Controls.energyToday)?.kind, .button)
+    }
+
+    func testEnergyTodaysControlIsItsLaunchShortcutInItsWords() throws {
+        let energy = try XCTUnwrap(Controls.control(Controls.energyToday))
+        let shortcut = try XCTUnwrap(LumennaApp.launchShortcuts().first { $0.id == Controls.energyToday })
+        XCTAssertEqual(energy.name, shortcut.title)
+        // App Intents' titles are literals, read at build time: kept the core's by this test.
+        XCTAssertEqual(String(localized: EnergyTodayControlIntent.title), energy.name)
+        XCTAssertEqual(EnergyTodayControlIntent.launch, energy.id)
     }
 
     func testTheControlsAreNamedInTheCoresWords() throws {

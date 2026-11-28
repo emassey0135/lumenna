@@ -120,6 +120,8 @@ private struct Parts: View {
                         .accessibilityHidden(true)
                 case .tasks:
                     Tasks(entry: entry)
+                case .energy:
+                    Energy(entry: entry)
                 case .newTask:
                     NewTask()
                 }
@@ -179,6 +181,31 @@ private struct NewTask: View {
             }
             // The link is one element already: its name is the shortcut's alone, not the symbol's.
             .accessibilityLabel(shortcut.title)
+        }
+        #endif
+    }
+}
+
+/// How the person said their energy is today, the core's line, beside a link to the day's
+/// check-in (the core's `energy-today` launch shortcut), which is its one element to VoiceOver,
+/// named by the shortcut and the line; the line itself is in the widget's spoken whole.
+private struct Energy: View {
+    let entry: GlanceTimelineEntry
+
+    var body: some View {
+        #if !os(watchOS)
+        if let shortcut = LumennaApp.launchShortcuts().first(where: { $0.id == "energy-today" }) {
+            Link(destination: LaunchURL.of(shortcut.id)) {
+                HStack(spacing: 6) {
+                    Text(entry.glance.energy.text).font(.caption).foregroundStyle(Color.quietLabel).lineLimit(1)
+                    Label(shortcut.title, systemImage: Launches.symbol(shortcut.icon))
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(Color.lumennaTint)
+                        .widgetAccentable()
+                }
+            }
+            .accessibilityLabel("\(shortcut.title), \(entry.glance.energy.text)")
         }
         #endif
     }

@@ -42,6 +42,8 @@ import UIKit
     @objc optional func planTheDay()
     @objc optional func replanFromNow()
     @objc optional func whatNow()
+    /// Energy Today: the day's check-in, asked on today (the core's `energy-today`).
+    @objc optional func energyToday()
     @objc optional func endTheDay()
     @objc optional func clearTheDay()
     /// A reminder's notification, chosen: its task, or its block on `day`.
@@ -137,6 +139,8 @@ enum KeyboardCommands {
             item(Commands.asking("what-now"), #selector(CommandActions.whatNow)),
             // The shared table's Ctrl+Shift+T, a Mac keyboard's Command for Control.
             command(Commands.asking("time-left"), #selector(CommandActions.timeLeft), "t", [.command, .shift]),
+            // The shared table's Ctrl+Shift+E.
+            command(Commands.asking("energy-today"), #selector(CommandActions.energyToday), "e", [.command, .shift]),
             item(Commands.asking("end-day"), #selector(CommandActions.endTheDay)),
             item(Commands.asking("clear-day"), #selector(CommandActions.clearTheDay)),
         ]

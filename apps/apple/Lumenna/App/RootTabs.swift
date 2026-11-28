@@ -137,6 +137,7 @@ final class RootTabs: UITabBarController, CommandActions, PlaceFollowing {
     @objc func planTheDay() { select(.place(.today)) { $0.day.runDay("plan-day") } }
     @objc func replanFromNow() { select(.place(.today)) { $0.day.runDay("replan") } }
     @objc func whatNow() { select(.place(.today)) { $0.day.runDay("what-now") } }
+    @objc func energyToday() { select(.place(.today)) { $0.day.runDay("energy-today") } }
     @objc func endTheDay() { select(.place(.today)) { $0.day.runDay("end-day") } }
     @objc func clearTheDay() { select(.place(.today)) { $0.day.runDay("clear-day") } }
 

@@ -284,6 +284,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         core.app.key("time-left")
     }
 
+    /// Energy Today: Today, the day's check-in asked (the core's `energy-today`).
+    @objc func energyToday(_ sender: Any?) {
+        go(.today) { [weak self] in self?.core.app.key("energy-today") }
+    }
+
     /// Goes to `place`, then `then` on its pane once the window shows it (`MainWindowController.go`).
     private func go(_ place: LumennaApp.Place, then: (() -> Void)? = nil) {
         showMainWindow(nil)

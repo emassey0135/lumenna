@@ -42,6 +42,7 @@ final class Launches {
         case "add": "plus"
         case "today": "calendar"
         case "next": "arrow.forward.circle"
+        case "energy": "bolt.heart"
         default: "circle"
         }
     }
@@ -51,6 +52,26 @@ final class Launches {
 /// app on the core's `new-task` launch, quick add. Compiled into the app as well as the widgets,
 /// since an intent that opens its app runs in the app: a control cannot open an app by a URL
 /// scheme of its own (Apple's engineers: only a universal link, which this app has none of).
+/// Energy Today, Control Center's button (`controls()`, whose id is the launch shortcut's): opens
+/// the app on the core's launch, Today with its check-in asked.
+struct EnergyTodayControlIntent: AppIntent {
+    static let title: LocalizedStringResource = "Energy Today"
+    static let openAppWhenRun = true
+    /// The control's alone: Shortcuts and Siri offer Say How Your Energy Is Today.
+    static let isDiscoverable = false
+
+    /// The launch it opens.
+    static let launch = "energy-today"
+
+    init() {}
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        Launches.shared.ask(Self.launch)
+        return .result()
+    }
+}
+
 struct NewTaskControlIntent: AppIntent {
     static let title: LocalizedStringResource = "New Task"
     static let openAppWhenRun = true

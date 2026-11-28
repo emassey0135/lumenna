@@ -71,6 +71,21 @@ struct NewTaskControlWidget: ControlWidget {
     }
 }
 
+/// Energy Today: opens the app on the core's launch, Today with its check-in asked
+/// (`EnergyTodayControlIntent`).
+@available(iOS 18.0, macOS 26.0, watchOS 26.0, *)
+struct EnergyTodayControlWidget: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Controls.energyToday) {
+            ControlWidgetButton(action: EnergyTodayControlIntent()) {
+                Label(Controls.name(Controls.energyToday), systemImage: Launches.symbol("energy"))
+            }
+        }
+        .displayName("\(Controls.name(Controls.energyToday))")
+        .description("\(Controls.control(Controls.energyToday)?.description ?? "")")
+    }
+}
+
 /// Where the timer's control finds the store, as the widgets find it (apps/apple/CLAUDE.md, "The
 /// controls").
 enum TimerControlSource {

@@ -117,6 +117,7 @@ final class AppBlockFormModel: ObservableObject {
             ("min_minutes", old.minMinutes, new.minMinutes),
             ("task_filter", old.taskFilter, new.taskFilter),
             ("colour", old.colour, new.colour),
+            ("hours", old.hours, new.hours),
             ("notes", old.notes, new.notes),
         ]
         for (key, before, after) in changes where before != after {
@@ -216,6 +217,7 @@ struct AppBlockForm: View {
                     }
                     #endif
                     colour
+                    hours
                     text("notes", $model.fields.notes, axis: .vertical)
                 } header: {
                     FormParts.heading(Wording.more)
@@ -252,7 +254,7 @@ struct AppBlockForm: View {
     }
 
     /// The fields under More.
-    private let more = ["until", "min_minutes", "task_filter", "colour", "notes"]
+    private let more = ["until", "min_minutes", "task_filter", "colour", "hours", "notes"]
 
     /// A text field for one of the app's fields, if the form shows it.
     @ViewBuilder private func text(_ key: String, _ value: Binding<String>, axis: Axis = .horizontal) -> some View {
@@ -274,6 +276,23 @@ struct AppBlockForm: View {
                 .pickerStyle(.menu)
                 #endif
             }
+        }
+    }
+
+    /// Whether it is the person's best or worst hours for energy, or ordinary: the core's choices.
+    @ViewBuilder private var hours: some View {
+        if let field = model.field("hours") {
+            Labelled(field.label) {
+                Picker(field.label, selection: $model.fields.hours) {
+                    ForEach(field.options, id: \.id) { choice in
+                        Text(choice.title).tag(choice.id)
+                    }
+                }
+                #if !os(watchOS)
+                .pickerStyle(.menu)
+                #endif
+            }
+            .accessibilityHint(field.hint)
         }
     }
 
