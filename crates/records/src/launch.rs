@@ -31,6 +31,7 @@ pub fn launch_shortcuts() -> Vec<LaunchShortcut> {
         ("new-task", "New Task", "Add a task with one line", "add"),
         ("today", "Today", "The day's blocks and what is in them", "today"),
         ("what-now", "What Should I Work On?", "What to work on now, and starting on it", "next"),
+        ("energy-today", crate::energy::CHECK_IN, "Say how your energy is today, for planning to weigh", "energy"),
     ]
     .into_iter()
     .map(|(id, title, description, icon)| LaunchShortcut {
@@ -66,7 +67,7 @@ pub fn menu_entry_words() -> MenuEntryWords {
     MenuEntryWords {
         heading: "Add Lumenna to the applications menu?".to_owned(),
         detail: "Lumenna runs from the file you downloaded, so the applications menu does not list it yet. Added, \
-                 it opens from there like any other app, with New Task, Today and What Should I Work On? beside \
+                 it opens from there like any other app, with New Task, Today, What Should I Work On? and Energy Today beside \
                  it, and the desktop can offer its shortcuts from anywhere. This is asked once."
             .to_owned(),
         yes: "Add to Menu".to_owned(),

@@ -271,6 +271,13 @@ crosses the FFI.
   said once where the platform notifies, its Stop Timer pressed as `DueEvent::Press` `stop`.
   Inside the app a sitting's line says what is left, and Time Left (`Key("time-left")`) says the
   timer on request from anywhere.
+- **Energy is the person's, weighed where they gave it** (`core::energy`, `records::energy`): a
+  task's Energy (its row's Energy, letter g, and the task form's field), a block's "Energy then"
+  (the block form's `hours`), the Energy settings page (the last but About, its letter n), and Energy Today (`Key("energy-today")`,
+  letter z, Ctrl+Shift+E, a day action, on Home and every watch, a launch shortcut, a control
+  and the Today widget's `GlancePart::Energy`), whose answered low opens Replan from Now where it
+  has something to lighten. Its daily reminder is `kind` `day` with `DueReminder::low` (I'm Low
+  Today, `Device::check_in_energy`), opened as the `energy-today` launch. A platform words none of it.
 - **The time report is a place** (`Place::Report`, `records::report`, `lum report`, the
   assistants' `report`): headings By Week, By Project and By Label over their sums, each row
   "<what>, <logged>, <estimated>", read as any listing is.

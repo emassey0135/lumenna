@@ -262,6 +262,7 @@ test("a task row's menu offers the core's actions, in order, and runs them after
     "Move to project",
     "Make subtask of",
     "Wait for",
+    "Energy",
     "Reminders",
     "Move to trash",
   ]);

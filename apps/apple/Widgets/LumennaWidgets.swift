@@ -36,6 +36,9 @@ struct LumennaWidgets: WidgetBundle {
         if #available(iOS 18.0, macOS 26.0, watchOS 26.0, *) {
             NewTaskControlWidget()
         }
+        if #available(iOS 18.0, macOS 26.0, watchOS 26.0, *) {
+            EnergyTodayControlWidget()
+        }
     }
 }
 

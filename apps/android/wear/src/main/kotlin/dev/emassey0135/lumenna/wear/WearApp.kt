@@ -211,6 +211,11 @@ fun WearApp(
             is Reminded.Task -> navigator.open(Screen.Task(reminded.id))
             is Reminded.Block -> navigator.open(Screen.Day(reminded.on))
             is Reminded.Replan -> core.app.replan(reminded)
+            // The day's energy check-in: today, its question asked by the app over it.
+            is Reminded.Launch -> {
+                core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Launch(reminded.id))
+                navigator.open(Screen.Day(null))
+            }
             null -> {}
         }
     }

@@ -541,6 +541,9 @@ pub struct TaskDetail {
     /// The day it must be done by, ISO.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline: Option<String>,
+    /// What it takes of the person's energy, `low`, `medium` or `high`; absent when not rated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub energy: Option<String>,
     /// Computed states, the full set — a detail view is where the near-universal ones are
     /// worth having.
     pub state: Vec<String>,
@@ -626,6 +629,7 @@ impl TaskDetail {
             emoji: task.emoji.clone(),
             start: task.start.map(|start| start.to_string()),
             deadline: task.deadline.map(|date| date.to_string()),
+            energy: task.energy.map(|e| e.as_str().to_owned()),
             state: snapshot.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
             created_at: task.created_at.to_string(),
             actions,
@@ -678,6 +682,10 @@ pub struct Plan {
     /// today while something is left of it.
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
+    /// How the person said their energy is that day, `low`, `medium` or `high`; absent if they
+    /// did not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub energy: Option<String>,
 }
 
 /// The work blocks a task could be put in, from a task itself rather than from a day.
@@ -831,6 +839,10 @@ pub struct PlanBlock {
     /// The time zone it is held to, when it is one place's: its times are that zone's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
+    /// Whether it is the person's best or worst hours for energy, `best` or `worst`: its own
+    /// mark, else the settings' time of day.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hours: Option<String>,
     /// Its notes.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
@@ -894,6 +906,9 @@ pub struct BlockShown {
     /// Its colour, by name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// Whether it is the person's best or worst hours for energy, `best` or `worst`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hours: Option<String>,
     /// Its emoji, as stored, for the form.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emoji: Option<String>,
@@ -1440,6 +1455,9 @@ pub struct TaskEdit {
     /// The day it must be done by, a date phrase (`friday`), or `none`.
     #[serde(default)]
     pub deadline: Option<String>,
+    /// What it takes of the person's energy: `low`, `medium`, `high`, or `none` for not rated.
+    #[serde(default)]
+    pub energy: Option<String>,
     /// One emoji to draw beside its title, or `none` to take it off.
     #[serde(default)]
     pub emoji: Option<String>,
@@ -1518,6 +1536,9 @@ pub struct BlockEdit {
     /// A colour, by name; empty clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// Whether it is the person's best or worst hours: `best`, `worst`, or `none` for ordinary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hours: Option<String>,
     /// One emoji to draw beside its title; empty clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emoji: Option<String>,
@@ -1589,6 +1610,9 @@ pub struct NewBlock {
     /// A colour, by name. Presentation only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// Whether it is the person's best or worst hours for energy, `best` or `worst`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hours: Option<String>,
     /// One emoji to draw beside its title. Presentation only, and never said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emoji: Option<String>,

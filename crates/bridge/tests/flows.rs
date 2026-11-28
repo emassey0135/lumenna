@@ -1845,6 +1845,7 @@ fn a_failed_dismiss_says_why_and_leaves_the_reminder_listed_and_the_question_alo
         replan: String::new(),
         stop: String::new(),
         sitting: String::new(),
+        low: String::new(),
     };
     app.send(Event::Answered(lumenna_app::HostAnswer::Found(Ok(lumenna_records::reminders::DueReminders {
         announcement: String::new(),
@@ -1933,6 +1934,7 @@ fn an_overruns_replan_opens_on_today_and_its_warning_stays_when_nothing_is_repla
         replan: "Replan".to_owned(),
         stop: String::new(),
         sitting: String::new(),
+        low: String::new(),
     };
     app.send(Event::Answered(lumenna_app::HostAnswer::Found(Ok(lumenna_records::reminders::DueReminders {
         announcement: String::new(),
@@ -2293,6 +2295,7 @@ fn a_summary_of_missed_reminders_refuses_snooze_in_the_cores_words() {
         replan: String::new(),
         stop: String::new(),
         sitting: String::new(),
+        low: String::new(),
     };
     app.send(Event::Answered(lumenna_app::HostAnswer::Found(
         Ok(lumenna_records::reminders::DueReminders {
@@ -2551,7 +2554,7 @@ fn home_lists_the_places_then_what_is_done_from_anywhere_and_enter_opens_the_pla
     assert_eq!(home.places[0].entry.title, "Today");
     assert_eq!(home.places[0].letter, "t");
     let ids: Vec<&str> = home.actions.iter().map(|action| action.id.as_str()).collect();
-    assert_eq!(ids, ["new-task", "undo", "redo", "what-now", "time-left", "sync-now", "settings", "keyboard-help", "about"]);
+    assert_eq!(ids, ["new-task", "undo", "redo", "what-now", "time-left", "energy-today", "sync-now", "settings", "keyboard-help", "about"]);
     assert_eq!(view.screen_actions, home.actions, "Home's own actions are the screen's");
     assert_eq!(view.sidebar_held.focus.as_ref(), Some(&home.places[0].entry.key), "Home opens on its first place");
     let tasks = home.places.iter().find(|place| place.entry.title == "Tasks").unwrap().entry.key.clone();
@@ -3247,4 +3250,38 @@ fn the_time_report_is_a_place_after_history_reading_what_sittings_logged_by_week
     app.send(Event::Capitals(lumenna_app::Capitals::Sentence));
     let view = app.view();
     assert_eq!((view.title.as_str(), view.list.unwrap().items[0].row.title.as_str()), ("Time report", "By week"));
+}
+
+#[test]
+fn energy_today_asks_from_any_place_and_the_answer_is_said_and_marked() {
+    let mut app = App::new();
+    app.send(Event::Open(Place::Trash));
+    app.send(Event::Key("energy-today".to_owned()));
+    assert_eq!(app.view().place, Some(Place::Today));
+    let asked = app.view().asking.expect("the check-in is asked");
+    let Question::Choose { title, answers, .. } = asked.question else { panic!("a choice: {:?}", asked.question) };
+    assert_eq!(title, "How Is Your Energy Today?");
+    assert_eq!(answers.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["low", "medium", "high"]);
+    let shell = app.send(Event::Answer(Answer::Picked { id: "low".to_owned(), length: None }));
+    assert!(said(&shell).iter().any(|s| s.starts_with("You are low today.")), "{shell:?}");
+    assert!(app.view().asking.is_none(), "answered, it closes");
+    // Asked again, what was said is marked.
+    app.send(Event::Key("energy-today".to_owned()));
+    let Question::Choose { answers, .. } = app.view().asking.unwrap().question else { panic!("a choice") };
+    assert_eq!(answers[0].detail.as_deref(), Some("as you said"));
+}
+
+#[test]
+fn a_tasks_energy_is_rated_from_its_row() {
+    let mut app = App::new();
+    app.add("Write the essay");
+    let id = app.id_of("Write the essay");
+    let list = app.view().list.unwrap();
+    let energy = list.items[0].actions.iter().map(|at| list.offered[*at as usize].clone()).find(|o| o.kind == ActionKind::Energy).expect("offered");
+    app.send(Event::ActOn(ActingOn::Row(id.clone()), energy));
+    let Question::Choose { answers, .. } = app.view().asking.unwrap().question else { panic!("a choice") };
+    assert_eq!(answers.iter().map(|a| a.title.as_str()).collect::<Vec<_>>(), ["Not Rated", "Low", "Medium", "High"]);
+    app.send(Event::Answer(Answer::Picked { id: "high".to_owned(), length: None }));
+    let shown = Lumenna::open(app.profile.to_str().unwrap()).unwrap().show_task(&id).unwrap();
+    assert_eq!(shown.task.energy.as_deref(), Some("high"));
 }

@@ -153,6 +153,15 @@ The app's What Should I Work On?, as a screen's own action runs it."
     (lumenna-send (list :Key "what-now"))
     (lumenna--follow)))
 
+;;;###autoload
+(defun lumenna-energy-today ()
+  "Say how your energy is today, from anywhere: today's buffer, its question asked.
+The app's Energy Today, which planning weighs for today alone."
+  (interactive)
+  (with-current-buffer (lumenna-today)
+    (lumenna-send (list :Key "energy-today"))
+    (lumenna--follow)))
+
 (defun lumenna-day-end ()
   "End the day: the block under way ends now, the blocks after it are cleared."
   (interactive)
@@ -296,6 +305,7 @@ Refused, the core's reason is said and a field asked for again."
    ("r" (command "replan") lumenna-day-replan)
    ("w" (command "what-now") lumenna-day-what-now)
    ("T" (command "time-left") lumenna-time-left)
+   ("z" (command "energy-today") lumenna-energy-today)
    ("E" (command "end-day") lumenna-day-end)
    ("C" (command "clear-day") lumenna-day-clear))
   (:a_block

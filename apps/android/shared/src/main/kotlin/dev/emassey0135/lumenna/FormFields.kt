@@ -23,6 +23,15 @@ fun TaskFields.text(key: String): String? = when (key) {
     else -> null
 }
 
+/**
+ * A choice of the task form other than the priority, by the core's key: the option's id it
+ * holds now (the energy, empty for not rated), or null for a field that is no such choice.
+ */
+fun TaskFields.chosen(key: String): String? = when (key) {
+    "energy" -> energy
+    else -> null
+}
+
 /** The task form with [key]'s text set to [value], as shown while its typing is on its way. */
 fun TaskFields.with(key: String, value: String): TaskFields = when (key) {
     "title" -> copy(title = value)
@@ -32,6 +41,7 @@ fun TaskFields.with(key: String, value: String): TaskFields = when (key) {
     "repeat" -> copy(repeat = value)
     "estimate" -> copy(estimate = value)
     "sittings" -> copy(sittings = value)
+    "energy" -> copy(energy = value)
     "project" -> copy(project = value)
     "labels" -> copy(labels = value)
     "emoji" -> copy(emoji = value)
@@ -52,6 +62,7 @@ fun BlockFields.text(key: String): String = when (key) {
     "min_minutes" -> minMinutes
     "task_filter" -> taskFilter
     "colour" -> colour
+    "hours" -> hours
     "emoji" -> emoji
     "notes" -> notes
     "kind" -> kind

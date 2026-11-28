@@ -57,10 +57,16 @@ class TimerNotificationTest {
         assertNull(TimerNotification.shown(stopped, now, countdown, line))
     }
 
-    private fun due(snooze: String = "Snooze", stop: String = "", sitting: String = "", carry: String = "") = DueReminder(
+    private fun due(snooze: String = "Snooze", stop: String = "", sitting: String = "", carry: String = "", low: String = "") = DueReminder(
         "time-up:sitting-1", "2026-11-27", "2026-11-27T10:25:00Z", "task-1", "task", "Essay",
-        "Essay's 25 minutes are up", "Essay ran past its 25 minutes", "Dismiss", snooze, carry, "", stop, sitting,
+        "Essay's 25 minutes are up", "Essay ran past its 25 minutes", "Dismiss", snooze, carry, "", stop, sitting, low,
     )
+
+    @Test
+    fun theEnergyCheckInHasImLowTodayBeforeDismissAndSnooze() {
+        val buttons = Reminders.buttons(due(low = "I'm Low Today")) { it }
+        assertEquals(listOf(Reminders.LOW to "I'm Low Today", Reminders.DISMISS to "Dismiss", Reminders.SNOOZE to "Snooze"), buttons)
+    }
 
     @Test
     fun aTimeRunningOutHasStopTimerAndDismissAndNeverSnooze() {

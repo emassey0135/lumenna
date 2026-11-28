@@ -79,6 +79,10 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     // A project's: no row with an Edit offers it.
     (K::Emoji, "e"),
     (K::Reconsider, "q"),
+    // A task's rating, on rows no screen's own command has a G on; the day's check-in, which
+    // nothing else on Today or Home has.
+    (K::Energy, "g"),
+    (K::CheckIn, "z"),
 ];
 
 /// The shared table's command a kind runs where the table has one (`keys::what_runs`): a kind
@@ -102,14 +106,14 @@ const ACTION_COMMANDS: &[(ActionKind, &str)] = &[
 
 /// The letter of each settings page, by `SettingsPage::id`.
 const PAGE_LETTERS: &[(&str, &str)] =
-    &[("general", "g"), ("planning", "p"), ("reminders", "m"), ("devices", "d"), ("backups", "b"), ("export", "e")];
+    &[("general", "g"), ("planning", "p"), ("reminders", "m"), ("devices", "d"), ("backups", "b"), ("export", "e"), ("energy", "n")];
 
 /// The letter of each settings page's button, by `SettingsButton::id`.
 const BUTTON_LETTERS: &[(&str, &str)] =
     &[("sync-now", "n"), ("pair", "p"), ("back-up", "b"), ("restore-backup", "r"), ("import", "i")];
 
 /// The letter of each of a reminder's buttons, by `DueButton::id`. Dismiss is the delete keys'.
-const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("stop", "t"), ("snooze", "z")];
+const DUE_LETTERS: &[(&str, &str)] = &[("carry", "f"), ("replan", "p"), ("stop", "t"), ("low", "l"), ("snooze", "z")];
 
 /// The letter of each of a screen's own actions (`screen_actions`), by the shared table's `id`
 /// where it has one, and of Home's places. No two on one screen share a letter (a test holds
@@ -136,6 +140,7 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-review", "v"),
     ("go-report", "g"),
     ("time-left", "d"),
+    ("energy-today", "z"),
     ("go-trash", "x"),
     ("projects", "p"),
     ("labels", "l"),

@@ -61,6 +61,10 @@ pub fn day_actions(plan: &Plan, what_now: bool) -> Vec<Action> {
     if current.is_some() || later > 0 {
         actions.push(Action::new(ActionKind::Replan, Subject::Day, "Replan from Now", plan.date.clone()));
     }
+    // How the person's energy is today, for planning to weigh: what they said already marked.
+    let mut check_in = Action::new(ActionKind::CheckIn, Subject::Day, crate::energy::CHECK_IN, plan.date.clone());
+    check_in.question = crate::energy::check_in_question(plan.energy.as_deref().and_then(|e| e.parse().ok()));
+    actions.push(check_in);
     if what_now {
         let mut ask = Action::new(ActionKind::WhatNow, Subject::Day, "What Should I Work On?", plan.date.clone());
         ask.question = Question::Pick { title: "What should I work on?".to_owned(), length: None, yes: "Start".to_owned() };

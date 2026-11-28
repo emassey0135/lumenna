@@ -8,9 +8,9 @@ import org.junit.Test
 
 /** The forms' fields by the core's keys, which the phone's and the watch's forms draw. */
 class FormFieldsTest {
-    private val task = TaskFields("Essay", "", "", 4u, "", "Inbox", "", "", "", "", "", "🎯")
+    private val task = TaskFields("Essay", "", "", 4u, "", "Inbox", "", "", "", "", "", "", "🎯")
 
-    private val block = BlockFields("Deep work", "09:00", "60", "work", true, true, false, "", "", "", "", "teal", "🧠", "")
+    private val block = BlockFields("Deep work", "09:00", "60", "work", true, true, false, "", "", "", "", "teal", "", "🧠", "")
 
     @Test
     fun theEmojiIsALineOfTheTaskFormHeldAndChangedByItsKey() {

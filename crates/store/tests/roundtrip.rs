@@ -41,6 +41,7 @@ fn full_task(project: ProjectId) -> Task {
     });
     task.estimate_mins = Some(90);
     task.sitting_mins = Some(45);
+    task.energy = Some(lumenna_core::energy::Energy::Low);
     task.emoji = Some("🇬🇧".to_owned());
     task.start = Some(lumenna_core::model::Start::Someday);
     task.deadline = Some(date(2026, 9, 11));
@@ -139,6 +140,11 @@ fn every_core_record_round_trips() {
         },
         task_order: lumenna_core::filter::Sort::Added,
         show_completed_subtasks: true,
+        energy_capacity: Some(300),
+        energy_today: Some(lumenna_core::energy::CheckIn { date: date(2026, 9, 2), level: lumenna_core::energy::Energy::Low }),
+        best_hours: Some(lumenna_core::energy::TimeRange { start: time(9, 0, 0, 0), end: time(12, 0, 0, 0) }),
+        worst_hours: Some(lumenna_core::energy::TimeRange { start: time(14, 0, 0, 0), end: time(16, 30, 0, 0) }),
+        energy_check_in: Some(time(8, 15, 0, 0)),
     };
 
     let mut docs = Documents::new();
@@ -171,6 +177,7 @@ fn every_block_record_round_trips() {
         notes: "Focus".to_owned(),
         rrule: Some("FREQ=DAILY".to_owned()),
         task_filter: Some("#work".to_owned()),
+        hours: Some(lumenna_core::energy::Hours::Worst),
         timezone: Some(TzName::new("Europe/London")),
         emoji: Some("🧠".to_owned()),
         ..BlockSeries::one_off(

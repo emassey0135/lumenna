@@ -23,7 +23,7 @@ let assistantIntents: [any OperationIntent.Type] = [
     TrashTaskIntent.self, EraseTaskPermanentlyIntent.self, EraseEverythingDeletedIntent.self, RestoreTaskIntent.self,
     MoveTaskIntent.self, AddSectionIntent.self, AssignIntent.self, UnassignIntent.self, StartTimerIntent.self,
     PauseTimerIntent.self, StopTimerIntent.self, ToggleTimerIntent.self, StartOnIntent.self,
-    ApplyReplanIntent.self, ApplyDayPlanIntent.self, ShowReviewIntent.self, MarkReviewedIntent.self,
+    ApplyReplanIntent.self, ApplyDayPlanIntent.self, CheckInEnergyIntent.self, ShowReviewIntent.self, MarkReviewedIntent.self,
     ReviewEveryIntent.self, ReconsiderTaskIntent.self, UndoIntent.self, RedoIntent.self,
 ]
 
@@ -219,6 +219,8 @@ struct EditTaskIntent: OperationIntent {
     var start: String?
     @Parameter(title: "Deadline", description: "The day it must be done by (\"friday\"), or `none`.")
     var deadline: String?
+    @Parameter(title: "Energy", description: "What it takes of the person's energy: `low`, `medium` or `high`, or `none` for not rated. Planning puts demanding work in their best hours and plans less on a day they are low.")
+    var energy: String?
     @Parameter(title: "Emoji", description: "One emoji to draw beside its title (\"🎯\"), never read aloud, or `none` to take it off.")
     var emoji: String?
     @Parameter(title: "Notes", description: "Its notes, whole.")
@@ -241,6 +243,7 @@ struct EditTaskIntent: OperationIntent {
             "sittings": sittings.map(ArgumentValue.text),
             "start": start.map(ArgumentValue.text),
             "deadline": deadline.map(ArgumentValue.text),
+            "energy": energy.map(ArgumentValue.text),
             "emoji": emoji.map(ArgumentValue.text),
             "notes": notes.map(ArgumentValue.text),
             "project": project.map { .text($0.name) },
@@ -820,6 +823,25 @@ struct MarkReviewedIntent: OperationIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         said(try store.assist(Self.persistentIdentifier, ["project": .text(project.name)]))
+    }
+}
+
+struct CheckInEnergyIntent: OperationIntent {
+    static let persistentIdentifier = "check_in_energy"
+    static let title: LocalizedStringResource = "Say How Your Energy Is Today"
+    static let description: IntentDescription? = IntentDescription(
+        "Says how the person's energy is today, which planning weighs for today alone: low plans less and leaves what takes the most for another day, high plans more. On a low day, `propose_replan` then proposes a lighter rest of the day.",
+        categoryName: "Planning",
+        searchKeywords: ["energy", "tired", "low", "check in", "capacity", "spoons", "exhausted"]
+    )
+
+    @Parameter(title: "Energy", description: "How the person says they are today: `low`, `usual` or `high`. Left out, says what they said today.")
+    var level: String?
+
+    @AppDependency private var store: AssistantStore
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        said(try store.assist(Self.persistentIdentifier, ["level": level.map(ArgumentValue.text)]))
     }
 }
 

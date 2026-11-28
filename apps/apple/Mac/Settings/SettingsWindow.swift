@@ -40,6 +40,7 @@ final class SettingsWindowController: NSWindowController {
         switch page {
         case "general": "gearshape"
         case "planning": "calendar"
+        case "energy": "bolt.heart"
         case "reminders": "bell"
         case "devices": "laptopcomputer.and.iphone"
         case "backups": "externaldrive"

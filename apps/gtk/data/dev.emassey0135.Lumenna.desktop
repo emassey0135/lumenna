@@ -11,7 +11,7 @@ Keywords=tasks;todo;planner;time blocks;
 StartupNotify=true
 DBusActivatable=false
 X-GNOME-UsesNotifications=true
-Actions=new-task;today;what-now;
+Actions=new-task;today;what-now;energy-today;
 
 [Desktop Action new-task]
 Name=New Task
@@ -24,3 +24,7 @@ Exec=lumenna-gtk --launch today
 [Desktop Action what-now]
 Name=What Should I Work On?
 Exec=lumenna-gtk --launch what-now
+
+[Desktop Action energy-today]
+Name=Energy Today
+Exec=lumenna-gtk --launch energy-today

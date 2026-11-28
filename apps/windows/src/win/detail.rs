@@ -52,6 +52,7 @@ const ABOUT: u16 = 309;
 const SITTINGS: u16 = 310;
 const START: u16 = 311;
 const DEADLINE: u16 = 312;
+const ENERGY: u16 = 313;
 const EMOJI: u16 = 313;
 
 /// Where a field sits: across the pane, or in one of its two columns.
@@ -80,6 +81,8 @@ pub struct Detail {
     due: HWND,
     repeat: HWND,
     priority: HWND,
+    /// What it takes of the person's energy: the form's own choices, Not Rated first.
+    energy: HWND,
     estimate: HWND,
     sittings: HWND,
     start: HWND,
@@ -162,6 +165,9 @@ impl Detail {
         // field's or a menu's, so it has no access key.
         let (label, hint) = named("emoji", '\0');
         let emoji = field(&label, WC_EDITW, line, EMOJI, Column::Right, 1, &hint);
+        // What it takes of the person's energy, a choice of the core's, under them.
+        let (label, hint) = named("energy", 'y');
+        let energy = field(&label, WC_COMBOBOXW, list, ENERGY, Column::Full, 1, &hint);
         let multiline = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
         let (label, hint) = named("notes", 'N');
         let notes = field(&label, WC_EDITW, multiline, NOTES, Column::Full, 4, &hint);
@@ -187,6 +193,10 @@ impl Detail {
             let text = HSTRING::from(choice.title);
             controls::send(priority, CB_ADDSTRING, 0, text.as_ptr() as isize);
         }
+        for choice in energy_choices() {
+            let text = HSTRING::from(choice.title);
+            controls::send(energy, CB_ADDSTRING, 0, text.as_ptr() as isize);
+        }
         unsafe {
             let _ = SetWindowSubclass(notes, Some(leaves_on_tab), 1, 0);
             let _ = SetWindowSubclass(about, Some(leaves_on_tab), 1, 0);
@@ -200,6 +210,7 @@ impl Detail {
             due,
             repeat,
             priority,
+            energy,
             estimate,
             sittings,
             start,
@@ -336,6 +347,10 @@ impl Detail {
         }
         held |= controls::write_typed(self.estimate, &fields.estimate, still);
         held |= controls::write_typed(self.sittings, &fields.sittings, still);
+        let position = energy_choices().iter().position(|c| c.id == fields.energy);
+        if usize::try_from(controls::send(self.energy, CB_GETCURSEL, 0, 0)).ok() != position {
+            controls::send(self.energy, CB_SETCURSEL, position.unwrap_or(usize::MAX), 0);
+        }
         if *self.projects.borrow() != details.projects || self.chosen_project() != fields.project {
             self.fill_projects(&details.projects, &lines.projects, &fields.project);
         }
@@ -423,11 +438,14 @@ impl Detail {
             }
             return true;
         }
-        if control == self.priority || control == self.project {
+        if control == self.priority || control == self.project || control == self.energy {
             if code == CBN_SELCHANGE && !self.filling.get() {
                 let (key, value) = if control == self.priority {
                     let chosen = usize::try_from(controls::send(self.priority, CB_GETCURSEL, 0, 0)).ok();
                     ("priority", chosen.and_then(|i| priorities().get(i).map(|p| p.id.clone())).unwrap_or_default())
+                } else if control == self.energy {
+                    let chosen = usize::try_from(controls::send(self.energy, CB_GETCURSEL, 0, 0)).ok();
+                    ("energy", chosen.and_then(|i| energy_choices().get(i).map(|c| c.id.clone())).unwrap_or_default())
                 } else {
                     ("project", self.chosen_project())
                 };
@@ -497,7 +515,7 @@ impl Detail {
             let tall = if field.lines > 1 { m.line * field.lines + m.px(8) } else { m.field };
             controls::place(field.label, rect(x, y, w, m.line));
             // A drop-down list's height includes its list.
-            let list = if [self.priority, self.project].contains(&field.control) { m.line * 8 } else { 0 };
+            let list = if [self.priority, self.project, self.energy].contains(&field.control) { m.line * 8 } else { 0 };
             controls::place(field.control, rect(x, y + m.line + m.px(2), w, tall + list));
             // A left field shares its row with the right one after it.
             if field.column != Column::Left {
@@ -521,6 +539,11 @@ impl Detail {
 }
 
 /// Writes a control's text only when it differs, so the caret in a field being typed in stays.
+/// The task form's energy choices, Not Rated first: the core's, as the form names them.
+fn energy_choices() -> Vec<Choice> {
+    task_form().into_iter().find(|f| f.key == "energy").map(|f| f.options).unwrap_or_default()
+}
+
 fn set_if_changed(control: HWND, text: &str) {
     if controls::text(control) != text {
         controls::set_text(control, text);

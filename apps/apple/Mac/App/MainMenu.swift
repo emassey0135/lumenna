@@ -124,6 +124,8 @@ enum MainMenu {
         menu.addItem(item(Commands.asking("go-to-day"), #selector(AppDelegate.goToDay(_:)), "j"))
         // The timer as it is, said, from anywhere: the shared table's Ctrl+Shift+T.
         menu.addItem(item(Commands.asking("time-left"), #selector(AppDelegate.timeLeft(_:)), "t", [.command, .shift]))
+        // The day's check-in, asked on today, from anywhere: the shared table's Ctrl+Shift+E.
+        menu.addItem(item(Commands.asking("energy-today"), #selector(AppDelegate.energyToday(_:)), "e", [.command, .shift]))
         // Then the day's own actions, the core's, as the menu opens.
         menu.delegate = DayMenu.shared
         return menu

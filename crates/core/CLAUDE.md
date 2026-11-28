@@ -192,6 +192,21 @@ move made by the change that completed a repeating task is not counted).
   is one undo, refused where a task was done or put in that block since (a sitting already
   worked there is no obstacle), and plans again
   (`DayPlanned::next`), each sitting turned down kept out of its block alone.
+- **Energy is the person's own estimate, weighed only where they gave one** (`core::energy`): a
+  task's `energy` (low, medium, high; unrated is medium), a block's `hours` (best or worst, else
+  the `best_hours`/`worst_hours` settings' time of day holding its start), a usual day's room
+  (`energy_capacity`, none by default) and a check-in for one day (`energy_today`, a
+  `CheckIn` naming its date, so it lapses by itself). Rating nothing, marking nothing and
+  setting nothing changes no proposal: a test holds it. A low day has half the usual room, or
+  with none half its work blocks' time; a high one half again. A sitting spends its minutes
+  times its task's weight (high double, low half: `energy::cost`). Suggestions raise and lower
+  by `Fit`, each a `Reason::Energy` said in words (`records::energy::fit_words`); Plan the Day
+  fills the best blocks first, says its sittings in the order of the day, and leaves out
+  (`spared`) what the day's room cannot take; Replan from Now lightens only a day checked in
+  low (`Proposed::Lighten`, the most demanding sitting first, then the latest), to a block from
+  tomorrow or back to the list, said as a `sitting` change. The check-in's daily question is a
+  firing of the day itself (`ReminderTarget::Day`, `check_in_key`, `Firing::check_in`), at
+  `energy_check_in` until the person says, never a reminder record's.
 - **A task's history is said only when asked about that task** (`task_history`,
   `TaskDetail::history`), never in a list or a live region.
 - **History is a place** (`Place::History`, `lists::history`, `lum history`): each task once,

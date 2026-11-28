@@ -150,6 +150,6 @@ final class BrowseTests: XCTestCase {
         let actions = core.app.arrangement.watch.compactMap { row -> String? in
             if case let .action(action) = row { action.id } else { nil }
         }
-        XCTAssertEqual(actions, ["new-task", "undo", "redo", "what-now", "time-left", "settings"], "its iPhone section syncs it")
+        XCTAssertEqual(actions, ["new-task", "undo", "redo", "what-now", "time-left", "energy-today", "settings"], "its iPhone section syncs it")
     }
 }

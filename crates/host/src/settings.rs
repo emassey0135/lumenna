@@ -49,6 +49,10 @@ impl Lumenna {
                 },
             ),
             ("urgency-weights", weights_phrase(&settings.urgency)),
+            ("energy-capacity", settings.energy_capacity.map_or_else(|| "none".to_owned(), length_text)),
+            ("best-hours", settings.best_hours.map(range_text).unwrap_or_default()),
+            ("worst-hours", settings.worst_hours.map(range_text).unwrap_or_default()),
+            ("energy-check-in", settings.energy_check_in.map(time_text).unwrap_or_default()),
         ]
         .into_iter()
         .map(|(key, value)| described(key, value))
@@ -112,6 +116,23 @@ impl Lumenna {
                 "default-task-reminders" => after.default_task_reminders = triggers(value, false)?,
                 "default-block-reminders" => after.default_block_reminders = triggers(value, true)?,
                 "urgency-weights" => after.urgency = weights(value)?,
+                "energy-capacity" => {
+                    after.energy_capacity = match value.trim().to_lowercase().as_str() {
+                        "" | "none" | "no limit" | "off" => None,
+                        _ => match resolve::minutes(value)? {
+                            0 => None,
+                            minutes => Some(minutes),
+                        },
+                    };
+                }
+                "best-hours" => after.best_hours = range(value)?,
+                "worst-hours" => after.worst_hours = range(value)?,
+                "energy-check-in" => {
+                    after.energy_check_in = match value.trim().to_lowercase().as_str() {
+                        "" | "off" | "never" | "none" => None,
+                        _ => Some(resolve::time(value)?),
+                    };
+                }
                 "task-order" => {
                     after.task_order = match value.to_lowercase().as_str() {
                         "urgency" => lumenna_core::filter::Sort::Urgency,
@@ -473,6 +494,33 @@ fn described(key: &str, value: String) -> Setting {
             "What each part adds to a task's urgency, which orders suggestions: due (the most, at a week overdue), priority (p1 to p4), age (the most, at a year), started, blocking, blocked, in a block today. A part left out, or the whole line empty, takes its default.",
         ),
         "clock" => ("Clock", K::Choice, options(&[("12-hour", "12-hour"), ("24-hour", "24-hour")]), ""),
+        "energy-capacity" => (
+            "A usual day has room for",
+            K::Choice,
+            lumenna_records::energy::capacity_options()
+                .into_iter()
+                .map(|(id, title)| crate::actions::Choice { id, title, ..Default::default() })
+                .collect(),
+            "How much work Plan the Day plans on a usual day: a task rated high energy counts double, low half. Half of it on a day you say you are low, half again on a high one. No limit plans as much as your blocks hold.",
+        ),
+        "best-hours" => (
+            "Your energy is best",
+            K::Line,
+            Vec::new(),
+            "A time of day, such as 9am to noon: demanding work is planned in the blocks that start then. Empty for none. A block marked best or worst says so itself.",
+        ),
+        "worst-hours" => (
+            "Your energy is worst",
+            K::Line,
+            Vec::new(),
+            "A time of day, such as 2pm to 4pm: light work is planned in the blocks that start then. Empty for none.",
+        ),
+        "energy-check-in" => (
+            "Ask how your energy is at",
+            K::Line,
+            Vec::new(),
+            "A time, such as 8:30am, to be asked each day, until you say. Empty never asks.",
+        ),
         _ => ("", K::Choice, Vec::new(), ""),
     };
     Setting {
@@ -484,6 +532,35 @@ fn described(key: &str, value: String) -> Setting {
         syncs: !DEVICE_KEYS.contains(&key),
         hint: hint.to_owned(),
     }
+}
+
+/// A length as a setting shows it: `4h`, `90m`.
+fn length_text(minutes: u32) -> String {
+    if minutes.is_multiple_of(60) { format!("{}h", minutes / 60) } else { format!("{minutes}m") }
+}
+
+/// A time of day as its setting shows it: "09:00 to 12:00".
+fn range_text(range: lumenna_core::energy::TimeRange) -> String {
+    format!("{} to {}", time_text(range.start), time_text(range.end))
+}
+
+/// A time of day as typed: "9am to noon", "09:00-12:00", or empty for none.
+fn range(text: &str) -> Result<Option<lumenna_core::energy::TimeRange>> {
+    let text = text.trim();
+    if text.is_empty() || text.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+    let lower = text.to_lowercase();
+    let (start, end) = lower
+        .split_once(" to ")
+        .or_else(|| lower.split_once(" - "))
+        .or_else(|| lower.split_once('-'))
+        .ok_or_else(|| LumennaError::new(format!("'{text}' is not a time of day; say something like 9am to noon")))?;
+    let (start, end) = (resolve::time(start)?, resolve::time(end)?);
+    if end <= start {
+        return Err(LumennaError::new(format!("'{text}' ends before it starts")));
+    }
+    Ok(Some(lumenna_core::energy::TimeRange { start, end }))
 }
 
 /// Triggers as the defaults' setting shows them: "5m before start, at end".

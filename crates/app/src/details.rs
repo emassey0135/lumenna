@@ -115,6 +115,7 @@ pub fn get(fields: &TaskFields, key: &str) -> String {
         "sittings" => fields.sittings.clone(),
         "start" => fields.start.clone(),
         "deadline" => fields.deadline.clone(),
+        "energy" => fields.energy.clone(),
         "emoji" => fields.emoji.clone(),
         _ => String::new(),
     }
@@ -150,6 +151,7 @@ pub fn set(mut fields: TaskFields, key: &str, value: String) -> TaskFields {
         "sittings" => fields.sittings = value,
         "start" => fields.start = value,
         "deadline" => fields.deadline = value,
+        "energy" => fields.energy = value,
         "emoji" => fields.emoji = value,
         _ => {}
     }

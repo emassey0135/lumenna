@@ -213,6 +213,9 @@ pub fn markdown(snapshot: &Snapshot, now: &Zoned) -> String {
             if let Some(minutes) = task.sitting_mins {
                 details.push(format!("in sittings of {minutes} minutes"));
             }
+            if let Some(energy) = task.energy {
+                details.push(format!("{energy} energy"));
+            }
             match task.start {
                 Some(lumenna_core::model::Start::Someday) => details.push("someday".to_owned()),
                 Some(lumenna_core::model::Start::On(date)) => details.push(format!("starts {date}")),

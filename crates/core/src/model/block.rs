@@ -53,6 +53,10 @@ pub struct BlockSeries {
     /// This is what makes auto-suggestion useful rather than noisy, and it is why the
     /// filter query language is load-bearing rather than a nice-to-have.
     pub task_filter: Option<String>,
+    /// Whether it is the person's best or worst hours for energy ([`crate::energy`]), which
+    /// the planner weighs: demanding work goes to the best. Absent, the settings' time of day
+    /// decides, else neither.
+    pub hours: Option<crate::energy::Hours>,
     /// Set when imported from a calendar.
     ///
     /// A day planner that does not know about real meetings will schedule work on top of
@@ -94,6 +98,7 @@ impl BlockSeries {
             color: None,
             emoji: None,
             task_filter: None,
+            hours: None,
             external: None,
             deleted_at: None,
         })

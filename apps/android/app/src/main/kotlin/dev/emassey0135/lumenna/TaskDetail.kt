@@ -122,6 +122,28 @@ fun TaskDetailScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
                     }
                     return@forEach
                 }
+                // Another choice (the energy): its options, the one it holds now chosen.
+                val chosenNow = form.chosen(field.key)
+                if (chosenNow != null) {
+                    Heading(field.label)
+                    Column(Modifier.selectableGroup()) {
+                        field.options.forEach { option ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .selectable(chosenNow == option.id, role = Role.RadioButton) { set(field.key, option.id, form.with(field.key, option.id)) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(selected = chosenNow == option.id, onClick = null)
+                                Text(option.title, Modifier.padding(start = 12.dp))
+                            }
+                        }
+                    }
+                    if (field.hint.isNotEmpty()) Text(field.hint, color = quiet())
+                    return@forEach
+                }
                 Heading(field.label)
                 Column(Modifier.selectableGroup()) {
                     field.options.forEach { option ->

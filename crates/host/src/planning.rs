@@ -119,6 +119,7 @@ impl Lumenna {
                     task_filter: block.task_filter.as_deref(),
                     until: block.until.as_deref(),
                     colour: block.colour.as_deref(),
+                    hours: block.hours.as_deref(),
                     emoji: block.emoji.as_deref(),
                 },
                 &now,
@@ -215,6 +216,7 @@ impl Lumenna {
                             task_filter: edit.task_filter.as_deref(),
                             until: edit.until.as_deref(),
                             colour: edit.colour.as_deref(),
+                            hours: edit.hours.as_deref(),
                             emoji: edit.emoji.as_deref(),
                         },
                         &now,
@@ -235,11 +237,12 @@ impl Lumenna {
                         || edit.task_filter.is_some()
                         || edit.until.is_some()
                         || edit.colour.is_some()
+                        || edit.hours.is_some()
                         || edit.emoji.is_some()
                     {
                         return Err(LumennaError::new(
-                            "notes, a task filter, a shortest length, a last day, a colour and an \
-                             emoji belong to every occurrence; change every occurrence to change them",
+                            "notes, a task filter, a shortest length, a last day, a colour, an emoji \
+                             and its hours belong to every occurrence; change every occurrence to change them",
                         ));
                     }
                     let day = resolve::date(Some(&date), &now, repaired(store).settings.week_start)?;
@@ -711,6 +714,7 @@ struct Extras<'a> {
     task_filter: Option<&'a str>,
     until: Option<&'a str>,
     colour: Option<&'a str>,
+    hours: Option<&'a str>,
     emoji: Option<&'a str>,
 }
 
@@ -772,6 +776,9 @@ fn apply_extras(snapshot: &Snapshot, series: &mut BlockSeries, extras: &Extras<'
     }
     if let Some(colour) = extras.colour {
         series.color = lumenna_records::colours::colour_named(colour)?;
+    }
+    if let Some(hours) = extras.hours {
+        series.hours = resolve::hours(hours)?;
     }
     if let Some(emoji) = extras.emoji {
         series.emoji = lumenna_records::colours::emoji_given(emoji)?;

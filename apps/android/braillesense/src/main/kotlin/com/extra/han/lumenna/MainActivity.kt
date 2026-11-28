@@ -155,6 +155,8 @@ class MainActivity : ComponentActivity(), Host {
             is Reminded.Task -> shell?.openTask(reminded.id)
             is Reminded.Block -> reminded.on?.let { app.send(ShellEvent.ShowBlock(it.series, it.date)) }
             is Reminded.Replan -> app.replan(reminded)
+            // The day's energy check-in: the app's launch, which the shell follows off Home.
+            is Reminded.Launch -> app.send(ShellEvent.Launch(reminded.id))
             null -> {}
         }
         Launching.id(intent)?.let { app.send(ShellEvent.Launch(it)) }

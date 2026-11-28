@@ -271,7 +271,7 @@ mod tests {
         let main = &text[..text.find("[Desktop Action").unwrap()];
         assert!(main.contains("TryExec=/home/someone/Applications/Lumenna-1.0-x86_64.AppImage\n"));
         assert!(main.contains(MARK));
-        assert!(text.contains("Actions=new-task;today;what-now;"));
+        assert!(text.contains("Actions=new-task;today;what-now;energy-today;"));
     }
 
     #[test]

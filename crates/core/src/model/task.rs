@@ -57,6 +57,9 @@ pub struct Task {
     /// essay): the planner plans it a sitting of this at a time, one a day unless its due
     /// date needs more. Absent, it is planned whole where it fits.
     pub sitting_mins: Option<u32>,
+    /// What it takes of the person's energy, as they rate it: low, medium or high
+    /// ([`crate::energy`]). Unrated counts as medium, so rating nothing changes nothing.
+    pub energy: Option<crate::energy::Energy>,
     /// One emoji drawn beside its title, chosen to be seen and never said or brailled
     /// ([`crate::emoji`]).
     pub emoji: Option<String>,
@@ -97,6 +100,7 @@ impl Task {
             deadline: None,
             estimate_mins: None,
             sitting_mins: None,
+            energy: None,
             emoji: None,
             kept_at: None,
             kept_put_off: None,

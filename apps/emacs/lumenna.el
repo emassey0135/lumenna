@@ -1047,6 +1047,7 @@ would start."
 (declare-function lumenna-sync-now "lumenna-settings" ())
 (declare-function lumenna-reminders-due "lumenna-reminders" ())
 (declare-function lumenna-what-now "lumenna-day" ())
+(declare-function lumenna-energy-today "lumenna-day" ())
 
 (defvar lumenna-screen-action-commands
   '(;; The line is read in the minibuffer: after the same `Typing' the key opens.
@@ -1056,6 +1057,7 @@ would start."
     ("settings" . lumenna-settings)
     ("sync-now" . lumenna-sync-now)
     ("what-now" . lumenna-what-now)
+    ("energy-today" . lumenna-energy-today)
     ;; The shell's own (`shell').
     ("filter" . lumenna-tasks-filter)
     ("keyboard-help" . lumenna-help)
@@ -1576,6 +1578,7 @@ RET opens a place or does an action; ? shows every command."
    ("y" (command "redo") lumenna-redo)
    ("n" (command "sync-now") lumenna-sync-now)
    ("T" (command "time-left") lumenna-time-left)
+   ("z" (command "energy-today") lumenna-energy-today)
    ("r" (word :reminders_due) lumenna-reminders-due))
   ((command "settings")
    ("d" (command "devices") lumenna-devices)

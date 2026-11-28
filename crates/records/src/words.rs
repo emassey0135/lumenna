@@ -83,6 +83,9 @@ fn block_parts(block: &crate::types::PlanBlock, length: String, kind: String, as
     if let Some(zone) = &block.timezone {
         parts.push(format!("{zone} time"));
     }
+    if let Some(hours) = block.hours.as_deref().and_then(|h| h.parse().ok()) {
+        parts.push(crate::energy::hours_phrase(hours).to_owned());
+    }
     // An unknown kind is taken as an event.
     let kind = crate::form::block_defaults(block.kind.clone())
         .unwrap_or(crate::form::BlockDefaults { accepts_tasks: false, counts_capacity: false, anchored: true });
@@ -253,6 +256,10 @@ pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason], terse: b
             }
             R::Blocked => against.push("it waits on another task".to_owned()),
             R::AssignedToday => against.push("it is in a block already today".to_owned()),
+            R::Energy(fit) => match crate::energy::fit_words(*fit) {
+                (true, words) => for_it.push(words.to_owned()),
+                (false, words) => against.push(words.to_owned()),
+            },
         }
     }
     if terse {

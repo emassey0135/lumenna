@@ -13,6 +13,7 @@
   "shortcuts": [
     { "name": "New task", "description": "Add a task with one line", "url": "/?launch=new-task" },
     { "name": "Today", "description": "The day's blocks and what is in them", "url": "/?launch=today" },
-    { "name": "What should I work on?", "description": "What to work on now, and starting on it", "url": "/?launch=what-now" }
+    { "name": "What should I work on?", "description": "What to work on now, and starting on it", "url": "/?launch=what-now" },
+    { "name": "Energy today", "description": "Say how your energy is today, for planning to weigh", "url": "/?launch=energy-today" }
   ]
 }

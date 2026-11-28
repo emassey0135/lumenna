@@ -27,6 +27,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
     @Published var priority: UInt8 = 4 { didSet { typed("priority", String(priority)) } }
     @Published var estimate = "" { didSet { typed("estimate", estimate) } }
     @Published var sittings = "" { didSet { typed("sittings", sittings) } }
+    @Published var energy = "" { didSet { typed("energy", energy) } }
     @Published var project = "" { didSet { typed("project", project) } }
     @Published var notes = "" { didSet { typed("notes", notes) } }
     @Published var labels = "" { didSet { typed("labels", labels) } }
@@ -108,6 +109,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
         if priority != fields.priority { priority = fields.priority }
         if estimate != fields.estimate { estimate = fields.estimate }
         if sittings != fields.sittings { sittings = fields.sittings }
+        if energy != fields.energy { energy = fields.energy }
         if project != fields.project { project = fields.project }
         if notes != fields.notes { notes = fields.notes }
         if labels != fields.labels { labels = fields.labels }
@@ -185,6 +187,8 @@ struct TaskDetailView: View {
             ChoiceSection(words["priority"].label, selection: $model.priority, choices: words["priority"].options.compactMap { choice in
                 UInt8(choice.id).map { (choice.title, $0) }
             })
+            // What it takes of the person's energy, Not Rated first: the core's choices and words.
+            ChoiceSection(words["energy"].label, selection: $model.energy, choices: words["energy"].options.map { ($0.title, $0.id) }, footer: words["energy"].hint)
             Section {
                 #if os(iOS) || os(watchOS)
                 TextField(words["notes"].label, text: $model.notes, prompt: words["notes"].example.isEmpty ? nil : example(words["notes"].example), axis: .vertical)

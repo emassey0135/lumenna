@@ -144,6 +144,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func planTheDay() { onToday("plan-day") }
     @objc func replanFromNow() { onToday("replan") }
     @objc func whatNow() { onToday("what-now") }
+    @objc func energyToday() { onToday("energy-today") }
     @objc func endTheDay() { onToday("end-day") }
     @objc func clearTheDay() { onToday("clear-day") }
 

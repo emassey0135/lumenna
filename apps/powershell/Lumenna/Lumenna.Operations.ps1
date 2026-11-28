@@ -21,7 +21,7 @@ $script:Operations = [ordered]@{
     'report' = @{ Cmdlet = 'Get-LumennaTimeReport'; Switch = $null; Title = 'Show the Time Report'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'propose_day_plan' = @{ Cmdlet = 'Get-LumennaDayPlan'; Switch = $null; Title = 'Propose a Plan for a Day'; Writes = $false; Confirms = $false; Target = $null; Names = @{ 'Date' = 'date' } }
     'add_task' = @{ Cmdlet = 'Add-LumennaTask'; Switch = $null; Title = 'Add a Task'; Writes = $true; Confirms = $false; Target = 'Text'; Names = @{ 'Text' = 'text' } }
-    'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Sittings' = 'sittings'; 'Start' = 'start'; 'Deadline' = 'deadline'; 'Emoji' = 'emoji'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
+    'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Sittings' = 'sittings'; 'Start' = 'start'; 'Deadline' = 'deadline'; 'Energy' = 'energy'; 'Emoji' = 'emoji'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
     'complete_task' = @{ Cmdlet = 'Complete-LumennaTask'; Switch = $null; Title = 'Complete a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'uncomplete_task' = @{ Cmdlet = 'Undo-LumennaTaskCompletion'; Switch = $null; Title = 'Mark a Task Not Done'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'trash_task' = @{ Cmdlet = 'Remove-LumennaTask'; Switch = $null; Title = 'Move a Task to the Trash'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
@@ -39,6 +39,7 @@ $script:Operations = [ordered]@{
     'start_on' = @{ Cmdlet = 'Start-LumennaChoice'; Switch = $null; Title = 'Start on a Choice'; Writes = $true; Confirms = $false; Target = 'Choice'; Names = @{ 'Choice' = 'choice' } }
     'apply_replan' = @{ Cmdlet = 'Approve-LumennaReplan'; Switch = $null; Title = 'Apply a Replan'; Writes = $true; Confirms = $false; Target = 'Proposal'; Names = @{ 'Proposal' = 'proposal'; 'Accepted' = 'accepted' } }
     'apply_day_plan' = @{ Cmdlet = 'Approve-LumennaDayPlan'; Switch = $null; Title = 'Apply a Day Plan'; Writes = $true; Confirms = $false; Target = 'Proposal'; Names = @{ 'Proposal' = 'proposal'; 'Accepted' = 'accepted' } }
+    'check_in_energy' = @{ Cmdlet = 'Set-LumennaEnergy'; Switch = $null; Title = 'Say How Your Energy Is Today'; Writes = $true; Confirms = $false; Target = $null; Names = @{ 'Level' = 'level' } }
     'review' = @{ Cmdlet = 'Get-LumennaReview'; Switch = $null; Title = 'Show the Review'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'mark_reviewed' = @{ Cmdlet = 'Complete-LumennaProjectReview'; Switch = $null; Title = 'Mark a Project Reviewed'; Writes = $true; Confirms = $false; Target = 'Project'; Names = @{ 'Project' = 'project' } }
     'review_every' = @{ Cmdlet = 'Set-LumennaProjectReview'; Switch = $null; Title = 'Set How Often a Project Is Reviewed'; Writes = $true; Confirms = $false; Target = 'Project'; Names = @{ 'Project' = 'project'; 'Every' = 'every' } }
@@ -610,6 +611,9 @@ function Set-LumennaTask {
     .PARAMETER Deadline
     The day it must be done by ("friday"), or `none`.
 
+    .PARAMETER Energy
+    What it takes of the person's energy: `low`, `medium` or `high`, or `none` for not rated. Planning puts demanding work in their best hours and plans less on a day they are low.
+
     .PARAMETER Emoji
     One emoji to draw beside its title ("🎯"), never read aloud, or `none` to take it off.
 
@@ -668,6 +672,10 @@ function Set-LumennaTask {
         [Parameter()]
         [string]
         $Deadline,
+
+        [Parameter()]
+        [string]
+        $Energy,
 
         [Parameter()]
         [string]
@@ -1351,6 +1359,42 @@ function Approve-LumennaDayPlan {
 
     process {
         Invoke-LumennaAssist $PSCmdlet 'apply_day_plan' $PSBoundParameters
+    }
+}
+
+function Set-LumennaEnergy {
+    <#
+    .SYNOPSIS
+    Say How Your Energy Is Today
+
+    .DESCRIPTION
+    Says how the person's energy is today, which planning weighs for today alone: low plans less and leaves what takes the most for another day, high plans more. On a low day, Get-LumennaReplan then proposes a lighter rest of the day.
+
+    .PARAMETER Level
+    How the person says they are today: `low`, `usual` or `high`. Left out, says what they said today.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Set-LumennaEnergy is the assistant operation check_in_energy (lum assist check_in_energy), also found by: energy, tired, low, check in, capacity, spoons, exhausted.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
+    param(
+        [Parameter(Position = 0)]
+        [string]
+        $Level,
+
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'check_in_energy' $PSBoundParameters
     }
 }
 

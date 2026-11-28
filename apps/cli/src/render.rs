@@ -386,6 +386,9 @@ fn detail(task: &TaskDetail, clock: Clock) {
     if let Some(minutes) = task.sitting_mins {
         fields.push(("sittings", format!("{minutes} minutes each")));
     }
+    if let Some(energy) = &task.energy {
+        fields.push(("energy", energy.clone()));
+    }
     if !task.labels.is_empty() {
         fields.push(("labels", task.labels.join(", ")));
     }

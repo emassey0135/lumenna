@@ -195,8 +195,49 @@ pub fn propose(snapshot: &Snapshot, style: TimeStyle, pins: ReplanPins, now: &Zo
                     destination: destination.map(|d| d.id).unwrap_or_default(),
                 });
             }
+            // Said with the others, first, below.
+            Proposed::Lighten { .. } => {}
         }
     }
+    // A low day lightened: what leaves goes to another day, else back to the list. Said first,
+    // with why, as the proposal's own changes are.
+    let mut lighter = Vec::new();
+    for change in &proposal.changes {
+        let Proposed::Lighten { assignment, task, from } = change else { continue };
+        let found = snapshot.tasks.get(task);
+        let name = found.map(|t| t.title.clone()).unwrap_or_default();
+        let why = match found.and_then(|t| t.energy) {
+            Some(lumenna_core::energy::Energy::High) => "it takes high energy, and you are low today".to_owned(),
+            _ => "you are low today".to_owned(),
+        };
+        let destination = match now.date().tomorrow() {
+            Ok(tomorrow) => crate::choices::blocks_for(snapshot, Some(&task.to_string()), Some(&tomorrow.to_string()), Some(7), &now)?
+                .choices
+                .into_iter()
+                .next(),
+            Err(_) => None,
+        };
+        let sentence = match &destination {
+            Some(to) => {
+                let day = to.date.as_deref().and_then(|d| d.parse().ok()).map(|d| crate::words::on_day(d, now.date())).unwrap_or_default();
+                let at = to.start.as_deref().and_then(|t| t.parse::<jiff::civil::Time>().ok()).map(minutes_of);
+                let at = at.map_or_else(String::new, |at| format!(" at {}", clock(at, style)));
+                format!("{name} leaves {} to lighten today, since {why}, and moves to {} {day}{at}", title(snapshot, *from), to.title)
+            }
+            None => format!("{name} leaves {} to lighten today, since {why}, and goes back to the list", title(snapshot, *from)),
+        };
+        lighter.push(ReplanChange {
+            sentence,
+            kind: "sitting".to_owned(),
+            target: assignment.to_string(),
+            from_start: 0,
+            to_start: 0,
+            from_mins: 0,
+            to_mins: 0,
+            destination: destination.map(|d| d.id).unwrap_or_default(),
+        });
+    }
+    changes.splice(0..0, lighter);
     let unplaceable: Vec<String> = proposal
         .unplaceable
         .iter()

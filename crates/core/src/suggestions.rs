@@ -49,6 +49,8 @@ pub enum Reason {
     Blocked,
     /// It is in a block already today.
     AssignedToday,
+    /// How its energy meets the block's hours or the day's check-in ([`crate::energy`]).
+    Energy(crate::energy::Fit),
 }
 
 /// A task suggested for a block.
@@ -105,6 +107,9 @@ pub fn suggest(
     let coefficients = snapshot.settings.urgency;
     // Nothing is offered before its start, nor while it is Someday: on the block's own day.
     let day = snapshot.block_date(block).unwrap_or_else(|| now.date());
+    // When energy is good, and how the person said it is that day: weighed only for a task rated.
+    let hours = crate::energy::hours_of(snapshot, block);
+    let level = crate::energy::checked_in(&snapshot.settings, day);
     let mut found: Vec<Suggestion> = snapshot
         .tasks
         .values()
@@ -149,6 +154,10 @@ pub fn suggest(
                 } else {
                     reasons.push(Reason::Longer { estimate, remaining: left });
                 }
+            }
+            for fit in crate::energy::fits(task, hours, level) {
+                score += fit.score();
+                reasons.push(Reason::Energy(fit));
             }
             for (term, _) in &scored.terms {
                 match term {

@@ -36,6 +36,8 @@ pub struct Detail {
     due: gtk::Entry,
     repeat: gtk::Entry,
     priority: gtk::DropDown,
+    /// What it takes of the person's energy, the form's own choices (`task_form`'s `energy`).
+    energy: gtk::DropDown,
     estimate: gtk::Entry,
     sittings: gtk::Entry,
     start: gtk::Entry,
@@ -132,6 +134,8 @@ impl Detail {
         let repeat = gtk::Entry::new();
         let titles: Vec<String> = lumenna_records::priorities().into_iter().map(|p| p.title).collect();
         let priority = gtk::DropDown::from_strings(&titles.iter().map(String::as_str).collect::<Vec<_>>());
+        let energies: Vec<String> = energy_choices().into_iter().map(|c| c.title).collect();
+        let energy = gtk::DropDown::from_strings(&energies.iter().map(String::as_str).collect::<Vec<_>>());
         let estimate = gtk::Entry::new();
         let sittings = gtk::Entry::new();
         let start = gtk::Entry::new();
@@ -195,19 +199,23 @@ impl Detail {
         // The emoji beside the labels, one emoji from GNOME's own picker (Ctrl+.). Every letter
         // of "Emoji" is another field's or a menu's, so it has no mnemonic.
         pair(&grid, 10, (words("labels", 'L'), labels.upcast_ref()), (words("emoji", '\0'), emoji.upcast_ref()));
+        // What it takes of the person's energy, a choice of the core's, under them.
+        let energy_words = words("energy", 'y');
+        grid.attach(&named(energy.upcast_ref(), &energy_words), 0, 12, 2, 1);
+        grid.attach(&energy, 0, 13, 2, 1);
         let notes_scroll = gtk::ScrolledWindow::builder()
             .child(&notes)
             .min_content_height(96)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .has_frame(true)
             .build();
-        grid.attach(&named(notes.upcast_ref(), &words("notes", 'N')), 0, 12, 2, 1);
-        grid.attach(&notes_scroll, 0, 13, 2, 1);
+        grid.attach(&named(notes.upcast_ref(), &words("notes", 'N')), 0, 14, 2, 1);
+        grid.attach(&notes_scroll, 0, 15, 2, 1);
         let waits_label = label(&lumenna_app::devices::marked(&said.waits, 'W', '_'), &waits.view);
-        grid.attach(&waits_label, 0, 14, 2, 1);
-        grid.attach(&waits.widget, 0, 15, 2, 1);
-        grid.attach(&add_wait, 0, 16, 1, 1);
-        grid.attach(&stop_waiting, 1, 16, 1, 1);
+        grid.attach(&waits_label, 0, 16, 2, 1);
+        grid.attach(&waits.widget, 0, 17, 2, 1);
+        grid.attach(&add_wait, 0, 18, 1, 1);
+        grid.attach(&stop_waiting, 1, 18, 1, 1);
         // What the core says of the task, a read-only line each, named by its label: Tab
         // reaches them, the arrows read a long one a line at a time.
         let about_heading = gtk::Label::builder()
@@ -218,8 +226,8 @@ impl Detail {
             .build();
         about_heading.add_css_class("heading");
         let about = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(4).build();
-        grid.attach(&about_heading, 0, 17, 2, 1);
-        grid.attach(&about, 0, 18, 2, 1);
+        grid.attach(&about_heading, 0, 19, 2, 1);
+        grid.attach(&about, 0, 20, 2, 1);
         let buttons = gtk::Box::builder().spacing(6).build();
         let bar = gtk::Box::builder().spacing(6).build();
         bar.append(&save);
@@ -252,6 +260,7 @@ impl Detail {
             due,
             repeat,
             priority,
+            energy,
             estimate,
             sittings,
             start,
@@ -322,6 +331,7 @@ impl Detail {
                     "sittings" => fields.sittings,
                     "start" => fields.start,
                     "deadline" => fields.deadline,
+                    "energy" => fields.energy,
                     "project" => fields.project,
                     "labels" => fields.labels,
                     "emoji" => fields.emoji,
@@ -336,6 +346,8 @@ impl Detail {
         }
         let send = typed(self, "priority");
         self.priority.connect_selected_notify(move |_| send());
+        let send = typed(self, "energy");
+        self.energy.connect_selected_notify(move |_| send());
         let send = typed(self, "project");
         self.project.connect_selected_notify(move |_| send());
         let send = typed(self, "notes");
@@ -434,6 +446,10 @@ impl Detail {
         let position = lumenna_records::priorities().iter().position(|p| p.id == fields.priority.to_string()).unwrap_or(0) as u32;
         if self.priority.selected() != position && !within(&self.priority) {
             self.priority.set_selected(position);
+        }
+        let position = energy_choices().iter().position(|c| c.id == fields.energy).unwrap_or(0) as u32;
+        if self.energy.selected() != position && !within(&self.energy) {
+            self.energy.set_selected(position);
         }
         if self.projects.string(self.project.selected()).is_none_or(|s| s != fields.project.as_str()) && !within(&self.project) {
             self.select_project(&fields.project);
@@ -574,6 +590,7 @@ impl Detail {
             sittings: self.sittings.text().to_string(),
             start: self.start.text().to_string(),
             deadline: self.deadline.text().to_string(),
+            energy: energy_choices().get(self.energy.selected() as usize).map(|c| c.id.clone()).unwrap_or_default(),
             project: self.projects.string(self.project.selected()).map(|s| s.to_string()).unwrap_or_default(),
             labels: self.labels.text().to_string(),
             emoji: self.emoji.text().to_string(),
@@ -599,6 +616,11 @@ fn set_destructive(button: &gtk::Button, destructive: bool) {
 }
 
 /// Whether focus is in `widget`, or in what it holds.
+/// The task form's energy choices, Not Rated first: the core's, as the form names them.
+fn energy_choices() -> Vec<Choice> {
+    lumenna_records::task_form().into_iter().find(|f| f.key == "energy").map(|f| f.options).unwrap_or_default()
+}
+
 fn within(widget: &impl IsA<gtk::Widget>) -> bool {
     widget.root().and_then(|root| root.focus()).is_some_and(|focus| &focus == widget.as_ref() || focus.is_ancestor(widget))
 }

@@ -42,7 +42,7 @@ final class AppBlockFormModel: ObservableObject {
         let form = core.app.view.blockForm
         let values = form?.values ?? LumennaApp.BlockFields(
             title: "", start: "09:00", minutes: "60", kind: "work", acceptsTasks: true, countsCapacity: true,
-            anchored: false, repeat: "", until: "", minMinutes: "", taskFilter: "", colour: "", emoji: "", notes: ""
+            anchored: false, repeat: "", until: "", minMinutes: "", taskFilter: "", colour: "", hours: "", emoji: "", notes: ""
         )
         fields = values
         start = Self.date(values.start)
@@ -117,6 +117,7 @@ final class AppBlockFormModel: ObservableObject {
             ("min_minutes", old.minMinutes, new.minMinutes),
             ("task_filter", old.taskFilter, new.taskFilter),
             ("colour", old.colour, new.colour),
+            ("hours", old.hours, new.hours),
             ("emoji", old.emoji, new.emoji),
             ("notes", old.notes, new.notes),
         ]
@@ -217,6 +218,7 @@ struct AppBlockForm: View {
                     }
                     #endif
                     colour
+                    hours
                     // Beside the colour, the other thing drawn beside its name and never said:
                     // the platform's own picker fills it.
                     text("emoji", $model.fields.emoji)
@@ -256,7 +258,7 @@ struct AppBlockForm: View {
     }
 
     /// The fields under More.
-    private let more = ["until", "min_minutes", "task_filter", "colour", "emoji", "notes"]
+    private let more = ["until", "min_minutes", "task_filter", "colour", "hours", "emoji", "notes"]
 
     /// A text field for one of the app's fields, if the form shows it.
     @ViewBuilder private func text(_ key: String, _ value: Binding<String>, axis: Axis = .horizontal) -> some View {
@@ -278,6 +280,23 @@ struct AppBlockForm: View {
                 .pickerStyle(.menu)
                 #endif
             }
+        }
+    }
+
+    /// Whether it is the person's best or worst hours for energy, or ordinary: the core's choices.
+    @ViewBuilder private var hours: some View {
+        if let field = model.field("hours") {
+            Labelled(field.label) {
+                Picker(field.label, selection: $model.fields.hours) {
+                    ForEach(field.options, id: \.id) { choice in
+                        Text(choice.title).tag(choice.id)
+                    }
+                }
+                #if !os(watchOS)
+                .pickerStyle(.menu)
+                #endif
+            }
+            .accessibilityHint(field.hint)
         }
     }
 

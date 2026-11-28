@@ -116,6 +116,10 @@ pub struct GlanceMoment {
     pub overdue: u32,
     /// How many blocks that day are still to come, the one under way included.
     pub blocks_left: u32,
+    /// How the person said their energy is that day, `low`, `medium` or `high`; empty if they
+    /// did not say.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub energy: String,
 }
 
 /// A part of a worded glance (`lumenna_app::glance::GlanceEntry`) a widget shows.
@@ -131,6 +135,9 @@ pub enum GlancePart {
     Due,
     /// The tasks due named, each with its Mark Done.
     Tasks,
+    /// How the person said their energy is today, and a button opening the app on the day's
+    /// check-in: the `energy-today` launch shortcut, in its words.
+    Energy,
     /// A button opening the app on quick add: the `new-task` launch shortcut, in its words.
     /// Last, so a size short of room drops it first; never the whole widget's tap, which opens
     /// the day.
@@ -159,10 +166,10 @@ pub struct GlanceWidget {
 /// Every widget, smallest first.
 #[must_use]
 pub fn widgets() -> Vec<GlanceWidget> {
-    use GlancePart::{Due, Headline, NewTask, Next, Tasks};
+    use GlancePart::{Due, Energy, Headline, NewTask, Next, Tasks};
     [
         ("now", "Now", "What is happening now, and the timer running", vec![Headline]),
-        ("today", "Today", "What is happening now, what is next, and the tasks due", vec![Headline, Next, Due, Tasks, NewTask]),
+        ("today", "Today", "What is happening now, what is next, and the tasks due", vec![Headline, Next, Due, Tasks, Energy, NewTask]),
     ]
     .into_iter()
     .map(|(id, name, description, parts)| GlanceWidget {
@@ -242,6 +249,7 @@ pub fn empty(now: &Zoned) -> GlanceMoment {
         due: 0,
         overdue: 0,
         blocks_left: 0,
+        energy: String::new(),
     }
 }
 
@@ -311,6 +319,7 @@ fn moment(snapshot: &Snapshot, now: &Zoned) -> Result<GlanceMoment> {
         overdue: count(tasks.iter().filter(|t| t.overdue).count()),
         tasks: tasks.into_iter().take(TASKS_NAMED).collect(),
         blocks_left: count(upcoming.len() + usize::from(current.is_some())),
+        energy: lumenna_core::energy::checked_in(&snapshot.settings, today).map(|e| e.as_str().to_owned()).unwrap_or_default(),
     })
 }
 

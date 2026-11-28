@@ -32,6 +32,7 @@ mod actions_ops;
 mod assist;
 pub mod day;
 mod durability;
+mod energy;
 mod fields_ops;
 #[cfg(feature = "link")]
 mod devices;

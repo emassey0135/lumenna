@@ -56,6 +56,11 @@ pub struct DueReminder {
     /// The sitting whose time ran out, which Stop Timer stops. Empty but for a time running out.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sitting: String,
+    /// The day's energy check-in (`kind` `day`): the button that says the person is low today,
+    /// the core's I'm Low Today (`Lumenna::check_in_energy` of `low`); opening it asks the whole
+    /// question (Energy Today). Empty for every other reminder.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub low: String,
 }
 
 /// What reminders to give now, or over a while.
@@ -288,6 +293,7 @@ pub fn target_name(snapshot: &Snapshot, target: ReminderTarget) -> String {
     match target {
         ReminderTarget::Task(id) => snapshot.tasks.get(&id).map(|t| t.title.clone()),
         ReminderTarget::Block(id) => snapshot.series.get(&id).map(|s| s.title.clone()),
+        ReminderTarget::Day => Some(crate::energy::reminder_words().0),
     }
     .unwrap_or_default()
 }
@@ -316,6 +322,7 @@ pub fn reminders_of(snapshot: &Snapshot, target: &str) -> Result<ReminderList> {
     let due = match target {
         ReminderTarget::Task(id) => snapshot.tasks.get(&id).is_some_and(|t| t.due.is_some()),
         ReminderTarget::Block(_) => true,
+        ReminderTarget::Day => false,
     };
     let views: Vec<ReminderView> = if own.is_empty() {
         let none = Vec::new();
@@ -323,6 +330,7 @@ pub fn reminders_of(snapshot: &Snapshot, target: &str) -> Result<ReminderList> {
             ReminderTarget::Task(_) if !due => &none,
             ReminderTarget::Task(_) => &snapshot.settings.default_task_reminders,
             ReminderTarget::Block(_) => &snapshot.settings.default_block_reminders,
+            ReminderTarget::Day => &none,
         };
         defaults
             .iter()
@@ -335,6 +343,7 @@ pub fn reminders_of(snapshot: &Snapshot, target: &str) -> Result<ReminderList> {
     let target_id = match target {
         ReminderTarget::Task(id) => id.to_string(),
         ReminderTarget::Block(id) => id.to_string(),
+        ReminderTarget::Day => String::new(),
     };
     let block = matches!(target, ReminderTarget::Block(_));
     Ok(ReminderList {

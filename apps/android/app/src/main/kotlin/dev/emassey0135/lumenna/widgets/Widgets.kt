@@ -123,6 +123,12 @@ object Widgets {
 
     /** New Task's words, the core's launch shortcut's, in sentence case. */
     fun newTaskWords(): String = Launches.shortcut(Launches.NEW_TASK)?.sentence.orEmpty()
+
+    /** What opens the app on the day's energy check-in, Energy today's launch shortcut. */
+    fun energyToday(context: Context): Intent = Launches.intent(context, Launches.ENERGY_TODAY)
+
+    /** Energy today's name, the launch shortcut's sentence. */
+    fun energyTodayWords(): String = Launches.shortcut(Launches.ENERGY_TODAY)?.sentence.orEmpty()
 }
 
 /** The widget's frame: the background, Today when tapped, and the glance said as one sentence. */
@@ -208,6 +214,7 @@ private fun Parts(context: Context, entry: GlanceEntry, parts: List<GlancePart>)
                 Text(entry.due.text, style = TextStyle(color = Widgets.quiet, fontSize = 14.sp), maxLines = 1)
             }
             GlancePart.TASKS -> Tasks(entry)
+            GlancePart.ENERGY -> Energy(context, entry)
             GlancePart.NEW_TASK -> NewTask(context)
         }
     }
@@ -234,6 +241,24 @@ private fun Tasks(entry: GlanceEntry) {
                 modifier = GlanceModifier.semantics { contentDescription = dev.emassey0135.lumenna.app.markDoneDescribed(entry.markDoneSentence, line.title) },
             )
         }
+    }
+}
+
+/**
+ * How the person said their energy is today, the core's line, then Energy today's button opening
+ * the app on the day's check-in, named with the line so TalkBack says both.
+ */
+@Composable
+private fun Energy(context: Context, entry: GlanceEntry) {
+    val words = Widgets.energyTodayWords()
+    Spacer(GlanceModifier.height(8.dp))
+    Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(entry.energy.text, style = TextStyle(color = Widgets.quiet, fontSize = 12.sp), maxLines = 1, modifier = GlanceModifier.defaultWeight())
+        Button(
+            text = words,
+            onClick = actionStartActivity(Widgets.energyToday(context)),
+            modifier = GlanceModifier.semantics { contentDescription = "$words, ${entry.energy.text}" },
+        )
     }
 }
 

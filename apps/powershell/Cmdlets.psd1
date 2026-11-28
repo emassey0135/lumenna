@@ -45,6 +45,7 @@
     review                   = @{ Cmdlet = 'Get-LumennaReview' }
     mark_reviewed            = @{ Cmdlet = 'Complete-LumennaProjectReview' }
     review_every             = @{ Cmdlet = 'Set-LumennaProjectReview' }
+    check_in_energy          = @{ Cmdlet = 'Set-LumennaEnergy' }
     reconsider_task          = @{ Cmdlet = 'Resolve-LumennaTask' }
     undo                     = @{ Cmdlet = 'Undo-LumennaChange' }
     redo                     = @{ Cmdlet = 'Redo-LumennaChange' }

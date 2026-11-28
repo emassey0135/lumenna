@@ -29,6 +29,9 @@ object Launches {
     /** New Task's `id`, which the Quick Settings tile opens. */
     const val NEW_TASK = "new-task"
 
+    /** The day's energy check-in's launch shortcut: Today, its question asked. */
+    const val ENERGY_TODAY = "energy-today"
+
     /** The core's shortcut called [id]. */
     fun shortcut(id: String): LaunchShortcut? = launchShortcuts().firstOrNull { it.id == id }
 
@@ -52,6 +55,7 @@ object Launches {
     private fun icon(name: String): Int = when (name) {
         "today" -> R.drawable.ic_today
         "next" -> R.drawable.ic_next
+        "energy" -> R.drawable.ic_energy
         else -> R.drawable.ic_new_task
     }
 }

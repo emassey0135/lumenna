@@ -323,6 +323,14 @@ pub(crate) enum Command {
     /// label, with the estimates of the tasks worked beside it.
     Report,
 
+    /// How your energy is today, which planning weighs for today alone: `low` plans less and
+    /// leaves what takes the most for another day, `high` plans more, `usual` as usual. With
+    /// nothing, says what you said today.
+    Energy {
+        /// `low`, `usual` or `high`.
+        level: Option<String>,
+    },
+
     /// Undo the last change made on this device.
     ///
     /// The history is this device's alone and survives between commands, so `lum undo`
@@ -478,6 +486,7 @@ pub(crate) enum McpCommand {
 }
 
 #[derive(Debug, Subcommand)]
+#[allow(clippy::large_enum_variant, reason = "parsed once a run from the command line: boxing Edit would buy nothing")]
 pub(crate) enum TaskCommand {
     /// Add a task, written the way you would say it.
     ///
@@ -548,6 +557,10 @@ pub(crate) enum TaskCommand {
         /// The day it must be done by, such as `friday`, or `none`.
         #[arg(long)]
         deadline: Option<String>,
+        /// What it takes of your energy: `low`, `medium`, `high`, or `none` for not rated.
+        /// Planning puts demanding work in your best hours and plans less on a low day.
+        #[arg(long)]
+        energy: Option<String>,
         /// One emoji the apps draw beside its title, or `none`. `lum` shows none.
         #[arg(long)]
         emoji: Option<String>,
@@ -1014,6 +1027,9 @@ pub(crate) struct BlockExtras {
     /// A colour, by name; empty clears it.
     #[arg(long)]
     colour: Option<String>,
+    /// Whether it is your best or worst hours for energy: `best`, `worst`, or `none`.
+    #[arg(long)]
+    hours: Option<String>,
     /// One emoji the apps draw beside its title; empty or `none` clears it. `lum` shows none.
     #[arg(long)]
     emoji: Option<String>,
@@ -1396,6 +1412,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                     task_filter: extras.task_filter.clone(),
                     until: extras.until.clone(),
                     colour: extras.colour.clone(),
+                    hours: extras.hours.clone(),
                     emoji: extras.emoji.clone(),
                 })?)
             }
@@ -1418,6 +1435,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                     task_filter: extras.task_filter.clone(),
                     until: extras.until.clone(),
                     colour: extras.colour.clone(),
+                    hours: extras.hours.clone(),
                     emoji: extras.emoji.clone(),
                 };
                 Response::new(profile.edit_block(&id, edit, scope)?)
@@ -1606,6 +1624,8 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
         Command::History => Response::new(profile.history()?),
         Command::Review => Response::new(profile.review()?),
         Command::Report => Response::new(profile.report()?),
+        Command::Energy { level: None } => Response::unchanged(profile.energy_today()?.announcement),
+        Command::Energy { level: Some(level) } => Response::new(profile.check_in_energy(level, None)?),
         Command::Undo => Response::new(profile.undo()?),
         Command::Redo => Response::new(profile.redo()?),
         Command::Backup { to } => {
@@ -1641,7 +1661,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         }
         TaskCommand::List { query } => Response::new(profile.list_tasks(&query.join(" "))?),
         TaskCommand::Show { id: input } => Response::new(profile.show_task(&id(input)?)?),
-        TaskCommand::Edit { id: input, title, due, repeat, priority, estimate, notes, project, labels, sittings, start, deadline, emoji } => {
+        TaskCommand::Edit { id: input, title, due, repeat, priority, estimate, notes, project, labels, sittings, start, deadline, energy, emoji } => {
             Response::new(profile.edit_task(&id(input)?, TaskEdit {
                 title: title.clone(),
                 due: due.clone(),
@@ -1656,6 +1676,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
                 sittings: sittings.clone(),
                 start: start.clone(),
                 deadline: deadline.clone(),
+                energy: energy.clone(),
                 emoji: emoji.clone(),
             })?)
         }

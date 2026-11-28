@@ -71,6 +71,7 @@ const MNEMONICS: &[(&str, char)] = &[
     ("replan", 'R'),
     ("what-now", 'W'),
     ("time-left", 'T'),
+    ("energy-today", 'y'),
     ("end-day", 'E'),
     ("clear-day", 'C'),
     ("keyboard-help", 'K'),

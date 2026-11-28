@@ -54,6 +54,8 @@ data class TaskWhole(
     val start: String?,
     /** The day it must be done by, `YYYY-MM-DD`. */
     val deadline: String?,
+    /** What it takes of the person's energy: `low`, `medium` or `high`; absent when not rated. */
+    val energy: String?,
     /** What is true of it, in words: done, overdue, blocked. */
     val state: List<String>,
     /** Its history: sittings, time worked, completions, postponements. */

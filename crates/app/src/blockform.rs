@@ -194,6 +194,7 @@ impl Form {
             "min_minutes" => fields.min_minutes = value,
             "task_filter" => fields.task_filter = value,
             "colour" => fields.colour = value,
+            "hours" => fields.hours = value,
             "emoji" => fields.emoji = value,
             "notes" => fields.notes = value,
             "date" => {

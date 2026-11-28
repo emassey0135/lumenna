@@ -61,6 +61,9 @@ pub struct SearchTask {
     pub start: Option<String>,
     /// The day it must be done by, ISO.
     pub deadline: Option<String>,
+    /// What it takes of the person's energy, `low`, `medium` or `high`; absent when not rated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub energy: Option<String>,
     /// How it repeats, in the words quick add takes ("every weekday").
     pub repetition: Option<String>,
     /// A repeating task's streak, in words: "done 12 times running", "missed Tuesday".
@@ -216,6 +219,7 @@ fn task_document(snapshot: &Snapshot, facts: &lumenna_core::state::Facts<'_>, ta
             sitting_mins: task.sitting_mins,
             start: task.start.map(|start| start.to_string()),
             deadline: task.deadline.map(|date| date.to_string()),
+            energy: task.energy.map(|e| e.as_str().to_owned()),
             repetition,
             streak: crate::review::streak_of(snapshot, task, now),
             states: facts.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),

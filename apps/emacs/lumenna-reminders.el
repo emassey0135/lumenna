@@ -227,10 +227,14 @@ there."
       (lumenna-send (lumenna-reminders--pressed id button) 0)
       (lumenna--follow))))
 
+(declare-function lumenna-energy-today "lumenna-day" ())
+
 (defun lumenna-reminders--open (firing)
-  "Open what FIRING, a reminder's, is about: its task, or its block's day."
+  "Open what FIRING, a reminder's, is about: its task, or its block's day.
+The day's energy check-in opens today with its question asked."
   (pcase (plist-get firing :kind)
     ("task" (lumenna-task-show (plist-get firing :target)))
+    ("day" (lumenna-energy-today))
     (_ (with-current-buffer (lumenna-today)
          (lumenna-send (list :ShowBlock (list :series (plist-get firing :target) :date (plist-get firing :occurrence))))
          (lumenna--follow)))))
@@ -313,6 +317,12 @@ The app stops that sitting's timer and dismisses the reminder."
   (interactive)
   (lumenna-reminders--press "stop"))
 
+(defun lumenna-reminders-low ()
+  "Say you are low today, as the day's energy check-in at point offers.
+The app says what planning makes of it and dismisses the check-in."
+  (interactive)
+  (lumenna-reminders--press "low"))
+
 (defun lumenna-reminders-replan ()
   "Open Replan from Now, as the reminder at point offers to.
 Once something is replanned, the app dismisses the warning."
@@ -394,6 +404,7 @@ One the core cannot read is asked again, with the core's sentence first."
    ("z" :snooze lumenna-reminders-snooze)
    ("c" (kinds "carry_rest") lumenna-reminders-carry)
    ("t" (kinds "stop_timer") lumenna-reminders-stop)
+   ("l" (kinds "check_in") lumenna-reminders-low)
    ("r" (kinds "replan") lumenna-reminders-replan)))
 
 (lumenna-define-keys lumenna-reminder-list-mode

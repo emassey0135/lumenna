@@ -111,7 +111,7 @@ final class ReminderScheduleTests: XCTestCase {
             LumennaApp.DueReminder(
                 key: "key\(minutes)", occurrence: "2026-10-10", at: Instant.rfc3339(now.addingTimeInterval(TimeInterval(minutes * 60 + 30))),
                 target: "t", kind: "block", title: "T", text: "T starts", missed: "T started", dismiss: "Dismiss", snooze: "Snooze",
-                carry: "", replan: "", stop: "", sitting: ""
+                carry: "", replan: "", stop: "", sitting: "", low: ""
             )
         }.reversed()
         let requests = Reminders.requests(Array(due), after: now)
@@ -224,7 +224,7 @@ final class ReminderScheduleTests: XCTestCase {
         LumennaApp.DueReminder(
             key: "k", occurrence: day, at: "\(day)T10:00:00Z", target: "series", kind: "block", title: "Deep work",
             text: "Deep work ends now. Carry the rest forward?", missed: "Deep work ended", dismiss: "Dismiss",
-            snooze: "Snooze", carry: carry, replan: replan, stop: "", sitting: ""
+            snooze: "Snooze", carry: carry, replan: replan, stop: "", sitting: "", low: ""
         )
     }
 
@@ -273,7 +273,7 @@ final class ReminderScheduleTests: XCTestCase {
         let up = LumennaApp.DueReminder(
             key: "time-up s", occurrence: day, at: "\(day)T10:25:00Z", target: "task", kind: "task", title: "Essay",
             text: "Essay's 25 minutes are up", missed: "Essay's 25 minutes ran out", dismiss: "Dismiss", snooze: "",
-            carry: "", replan: "", stop: "Stop Timer", sitting: "s"
+            carry: "", replan: "", stop: "Stop Timer", sitting: "s", low: ""
         )
         let content = Reminders.content(up)
         XCTAssertEqual(content.categoryIdentifier, Reminders.stopCategory)

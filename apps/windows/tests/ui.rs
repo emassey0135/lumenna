@@ -1338,6 +1338,7 @@ fn a_rows_menu_is_the_cores_and_never_offers_a_task_as_its_own_parent() {
             "Move to Project...",
             "Make Subtask Of...",
             "Wait For...",
+            "Energy...",
             "Reminders...",
             "Move to Trash",
             "Collapse"

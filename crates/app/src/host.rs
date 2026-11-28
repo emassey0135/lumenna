@@ -133,6 +133,14 @@ pub enum HostRequest {
         /// The firings, dismissed once it is stopped.
         firings: Vec<(String, String)>,
     },
+    /// Say how the person's energy is today, answering the day's check-in, and dismiss the
+    /// firings that asked.
+    CheckIn {
+        /// `low`, `usual` or `high`.
+        level: String,
+        /// The firings, dismissed once it is said.
+        firings: Vec<(String, String)>,
+    },
     /// Undo the last change made on this device.
     Undo,
     /// Redo the last change undone.

@@ -54,6 +54,15 @@ pub struct DayProposal {
     /// Tasks due by the day planned that were given only part of what they need, with the
     /// minutes no block had room for.
     pub short: Vec<(TaskId, u32)>,
+    /// What the day has room for ([`crate::energy::capacity`]), if it has a limit.
+    pub capacity: Option<crate::energy::Capacity>,
+    /// What the day had spent of it before this plan, in its sittings already there.
+    pub spent: u32,
+    /// What this plan's sittings spend of it, each weighed by its task's energy.
+    pub planned: u32,
+    /// Tasks a block would have taken but the day's energy had no room for, in the order they
+    /// were left out: the plan stops before the day's capacity is spent.
+    pub spared: Vec<TaskId>,
 }
 
 fn minutes(time: jiff::civil::Time) -> i64 {
@@ -64,6 +73,11 @@ fn minutes(time: jiff::civil::Time) -> i64 {
 /// `filters`, read by the caller; a block absent from it takes any task) admits, best first,
 /// leaving out `excluded` (tasks the person said not to plan today) and each of `declined`
 /// in that block (a sitting the person turned down, which may still go elsewhere).
+///
+/// Energy ([`crate::energy`]) is weighed where the person rated it: the blocks in their best
+/// hours are filled first, so demanding work goes there, and their worst last; and the plan
+/// stops before the day's capacity is spent, a sitting of a demanding task counting double and
+/// of a light one half. Rating nothing changes nothing.
 ///
 /// # Errors
 ///
@@ -91,6 +105,10 @@ pub fn propose_day(
         }
     }
     let facts = snapshot.facts();
+    let work: u32 = occurrences.iter().filter(|o| o.flags.accepts_tasks).map(|o| o.duration_mins).sum();
+    let capacity = crate::energy::capacity(&snapshot.settings, day, work);
+    let spent = crate::energy::spent(snapshot, day);
+    let mut energy_left = capacity.map(|c| c.minutes.saturating_sub(spent));
     // Each block that takes tasks, with the time it has free: only the time still to come,
     // none of a day gone, what is left of the block under way, less the work already in it.
     let mut rooms: Vec<(&Occurrence, BlockRef, u32)> = Vec::new();
@@ -117,6 +135,17 @@ pub fn propose_day(
             rooms.push((occurrence, block, left));
         }
     }
+    // The best hours are filled first, so demanding work goes there before an ordinary block
+    // takes it, and the worst last; the plan is said in the order of the day all the same.
+    let place: BTreeMap<BlockRef, usize> = rooms.iter().enumerate().map(|(i, (_, block, _))| (*block, i)).collect();
+    rooms.sort_by_key(|(occurrence, _, _)| {
+        match crate::energy::hours_at(&snapshot.settings, snapshot.series.get(&occurrence.series_id), occurrence.start_time) {
+            Some(crate::energy::Hours::Best) => 0,
+            None => 1,
+            Some(crate::energy::Hours::Worst) => 2,
+        }
+    });
+    let mut spared: Vec<TaskId> = Vec::new();
     // A task bigger than every block is given its first part where there is the most room, not
     // a scrap of whichever block comes first: only where no later block has more free.
     let most_room = rooms.iter().map(|(_, _, left)| *left).max().unwrap_or(0);
@@ -159,6 +188,18 @@ pub fn propose_day(
                     continue;
                 }
             }
+            // The day's energy: what it has room for, a demanding task's minutes counting double.
+            let cost = crate::energy::cost(task, length);
+            if let Some(room) = energy_left {
+                if cost > room {
+                    if !spared.contains(&task.id) {
+                        spared.push(task.id);
+                    }
+                    continue;
+                }
+                energy_left = Some(room - cost);
+            }
+            proposal.planned += cost;
             left -= length;
             given.insert(task.id, (sittings + 1, planned + length));
             let part = length < need;
@@ -185,6 +226,12 @@ pub fn propose_day(
             });
         }
     }
+    proposal.sittings.sort_by_key(|s| place.get(&s.block).copied().unwrap_or(usize::MAX));
+    // A task given a sitting after all was not left out.
+    spared.retain(|id| !given.contains_key(id));
+    proposal.capacity = capacity;
+    proposal.spent = spent;
+    proposal.spared = spared;
     for task in snapshot.tasks.values() {
         if task.is_deleted()
             || facts.is_completed(task)

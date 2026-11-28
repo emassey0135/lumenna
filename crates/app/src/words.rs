@@ -729,6 +729,8 @@ pub fn kind_title(kind: ActionKind) -> String {
         K::ReviewEvery => "Review Every",
         K::Reconsider => "Reconsider",
         K::OpenProject => "Open Project",
+        K::Energy => "Energy",
+        K::CheckIn => lumenna_records::energy::CHECK_IN,
         K::Emoji => "Emoji",
     };
     title.to_owned()
@@ -746,6 +748,7 @@ pub const ACTION_KINDS: &[ActionKind] = {
         K::EndNow, K::Extend, K::EndDay, K::ClearDay, K::CarryForward, K::WhatNow, K::CarryRest, K::Replan,
         K::PlanDay, K::Expand, K::Collapse, K::Skip, K::Unskip, K::DeliverOn, K::TimeZone, K::ErasePermanently,
         K::EraseEverythingDeleted, K::ShowDay, K::MarkReviewed, K::ReviewEvery, K::Reconsider, K::OpenProject,
+        K::Energy, K::CheckIn,
         K::Emoji,
     ]
 };

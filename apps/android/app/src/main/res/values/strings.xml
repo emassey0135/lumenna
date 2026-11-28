@@ -4,6 +4,7 @@
          (`controls()`), which a test of the core checks these against. -->
     <string name="control_timer">Timer</string>
     <string name="control_new_task">New task</string>
+    <string name="control_energy_today">Energy today</string>
     <!-- The widgets as the widget picker lists them, which a manifest names ahead. -->
     <string name="widget_now">Now</string>
     <string name="widget_now_description">What is happening now, and the timer running</string>

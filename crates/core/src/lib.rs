@@ -11,6 +11,7 @@
 
 pub mod colour;
 pub mod edit;
+pub mod energy;
 pub mod emoji;
 pub mod filter;
 pub mod history;

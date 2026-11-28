@@ -176,7 +176,7 @@ final class VoiceOverUITests: XCTestCase {
         try move(to: "call the bank")
         let offered = actionsOffered()
         // Reminders too: a task with a due date has something for a reminder to count from.
-        let actions = ["Mark Done", "Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Reminders", "Move to Trash"]
+        let actions = ["Mark Done", "Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Energy", "Reminders", "Move to Trash"]
         for action in actions {
             XCTAssertEqual(offered.filter { $0 == action }.count, 1, "\(action) once among \(offered)")
         }

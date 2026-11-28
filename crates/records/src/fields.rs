@@ -124,6 +124,15 @@ pub fn task_form() -> Vec<FormField> {
             "For work better done in pieces, how long one sitting is, such as 45m: planning gives it a sitting at a time. Empty to plan it whole.",
             "45m",
         ),
+        // Beside the estimate: what it takes, as a length is how long.
+        FormField {
+            // Not rated is empty, as the form holds it, as No colour is.
+            options: crate::energy::energy_choices(None)
+                .into_iter()
+                .map(|c| Choice { id: if c.id == "none" { String::new() } else { c.id }, detail: None, ..c })
+                .collect(),
+            ..field("energy", "Energy", K::Choice, crate::energy::ENERGY_HINT, "")
+        },
         // A list, filled from `Lumenna::project_options`: a task only ever moves to a project
         // that exists, so a list cannot hold a typo, and typing still finds one.
         field("project", "Project", K::Choice, "", ""),
@@ -176,6 +185,7 @@ pub fn block_form() -> Vec<FormField> {
         FormField { options: crate::colours::colour_choices(None), ..field("colour", "Colour", K::Choice, crate::actions::COLOUR, "") },
         // Beside the colour, the other thing drawn beside its name.
         field("emoji", "Emoji", K::Line, crate::actions::EMOJI, ""),
+        FormField { options: crate::energy::hours_choices(), ..field("hours", "Energy then", K::Choice, crate::energy::HOURS_HINT, "") },
         field("notes", "Notes", K::Lines, "", ""),
     ]
 }
@@ -746,6 +756,16 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
             &export_caption(),
             Vec::new(),
             vec![button("import", "Import or Restore", true)],
+        ),
+        // After every page that was there before it, so a device's own settings screen keeps its
+        // pages where they were.
+        page(
+            "energy",
+            "Energy",
+            "What a usual day has room for, your best and worst hours, asking each day",
+            "These sync to all your devices. Planning weighs them only where you rate a task's energy or say how you are.",
+            keys(&["energy-capacity", "best-hours", "worst-hours", "energy-check-in"]),
+            Vec::new(),
         ),
         // About, for a device with no About of its own (no menu bar's, no Home's): what Lumenna
         // is, a line each.

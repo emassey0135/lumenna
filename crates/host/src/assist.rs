@@ -135,6 +135,7 @@ impl Lumenna {
                     sittings: given.text("sittings")?,
                     start: given.text("start")?,
                     deadline: given.text("deadline")?,
+                    energy: given.text("energy")?,
                     emoji: given.text("emoji")?,
                 };
                 Assisted::Change(self.edit_task(&task, edit)?)
@@ -186,6 +187,10 @@ impl Lumenna {
             }
             "timer" => Assisted::Timer(self.timer_now(None)?),
             "report" => Assisted::Rows(self.report()?),
+            "check_in_energy" => Assisted::Change(match given.text("level")? {
+                Some(level) => self.check_in_energy(&level, None)?,
+                None => crate::types::Change::unchanged(self.energy_today()?.announcement),
+            }),
             "toggle_timer" => Assisted::Change(self.toggle_timer(None)?),
             "start_on" => Assisted::Change(self.start_on(&given.required("choice")?, None)?),
             "apply_replan" => {

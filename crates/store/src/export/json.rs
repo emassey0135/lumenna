@@ -155,6 +155,7 @@ pub fn export_json_keeping(snapshot: &Snapshot, now: Timestamp, docs: &crate::Do
             .filter(|r| match r.target {
                 ReminderTarget::Task(id) => live_task(&id),
                 ReminderTarget::Block(id) => snapshot.series.get(&id).is_some_and(|s| s.deleted_at.is_none()),
+                ReminderTarget::Day => false,
             })
             .filter_map(|r| docs.unknown_in(DocId::Core, r)),
     );
@@ -247,6 +248,7 @@ fn file_of(snapshot: &Snapshot, now: Timestamp) -> File {
             .filter(|r| match r.target {
                 ReminderTarget::Task(id) => live_task(&id),
                 ReminderTarget::Block(id) => live_series(&id),
+                ReminderTarget::Day => false,
             })
             .map(ReminderOut::from)
             .collect(),
@@ -452,6 +454,18 @@ struct SettingsOut {
     task_order: lumenna_core::filter::Sort,
     #[serde(default)]
     show_completed_subtasks: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    energy_capacity: Option<u32>,
+    /// `YYYY-MM-DD level`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    energy_today: Option<String>,
+    /// `HH:MM-HH:MM`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    best_hours: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    worst_hours: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    energy_check_in: Option<String>,
 }
 
 impl From<&Settings> for SettingsOut {
@@ -476,6 +490,11 @@ impl From<&Settings> for SettingsOut {
             urgency: s.urgency,
             task_order: s.task_order,
             show_completed_subtasks: s.show_completed_subtasks,
+            energy_capacity: s.energy_capacity,
+            energy_today: s.energy_today.map(|c| c.to_string()),
+            best_hours: s.best_hours.map(|r| r.to_string()),
+            worst_hours: s.worst_hours.map(|r| r.to_string()),
+            energy_check_in: s.energy_check_in.map(|t| t.to_string()),
         }
     }
 }
@@ -502,6 +521,11 @@ impl SettingsOut {
             urgency: self.urgency,
             task_order: self.task_order,
             show_completed_subtasks: self.show_completed_subtasks,
+            energy_capacity: self.energy_capacity,
+            energy_today: optional(record, "check-in", self.energy_today.as_ref())?,
+            best_hours: optional(record, "time of day", self.best_hours.as_ref())?,
+            worst_hours: optional(record, "time of day", self.worst_hours.as_ref())?,
+            energy_check_in: optional(record, "time", self.energy_check_in.as_ref())?,
         })
     }
 }
@@ -733,6 +757,9 @@ struct TaskOut {
     estimate_mins: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sitting_mins: Option<u32>,
+    /// `low`, `medium` or `high`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    energy: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     emoji: Option<String>,
     /// A day, ISO, or `someday`.
@@ -765,6 +792,7 @@ impl From<&Task> for TaskOut {
             due: t.due.as_ref().map(DueOut::from),
             estimate_mins: t.estimate_mins,
             sitting_mins: t.sitting_mins,
+            energy: t.energy.map(|e| e.to_string()),
             emoji: t.emoji.clone(),
             start: t.start.map(|s| s.to_string()),
             deadline: t.deadline.map(|d| d.to_string()),
@@ -799,6 +827,7 @@ impl TaskOut {
             due: self.due.map(|due| due.into_model(&record)).transpose()?,
             estimate_mins: self.estimate_mins,
             sitting_mins: self.sitting_mins,
+            energy: optional(&record, "energy", self.energy.as_ref())?,
             emoji: self.emoji,
             start: optional(&record, "start", self.start.as_ref())?,
             deadline: optional(&record, "date", self.deadline.as_ref())?,
@@ -879,6 +908,9 @@ struct BlockOut {
     emoji: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     task_filter: Option<String>,
+    /// `best` or `worst`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hours: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     external: Option<ExternalOut>,
 }
@@ -901,6 +933,7 @@ impl From<&BlockSeries> for BlockOut {
             color: s.color.clone(),
             emoji: s.emoji.clone(),
             task_filter: s.task_filter.clone(),
+            hours: s.hours.map(|h| h.to_string()),
             external: s.external.as_ref().map(ExternalOut::from),
         }
     }
@@ -923,6 +956,7 @@ impl BlockOut {
             color: self.color,
             emoji: self.emoji,
             task_filter: self.task_filter,
+            hours: optional(&record, "hours", self.hours.as_ref())?,
             external: self.external.map(|e| e.into_model(&record)).transpose()?,
             title: self.title,
             notes: self.notes,
@@ -1099,6 +1133,7 @@ impl From<&Reminder> for ReminderOut {
         let (task, block) = match r.target {
             ReminderTarget::Task(id) => (Some(id.to_string()), None),
             ReminderTarget::Block(id) => (None, Some(id.to_string())),
+            ReminderTarget::Day => (None, None),
         };
         let (delivery, devices) = match &r.delivery {
             Delivery::AllDevices => ("all", Vec::new()),

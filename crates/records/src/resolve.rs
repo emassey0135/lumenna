@@ -269,6 +269,36 @@ pub fn minutes(text: &str) -> Result<u32> {
         .ok_or_else(|| LumennaError::new(format!("could not read a duration from '{text}'")))
 }
 
+/// A task's energy as typed: `low`, `medium`, `high`, or `none` (also empty) for not rated.
+///
+/// # Errors
+///
+/// If it is none of those.
+pub fn energy(text: &str) -> Result<Option<lumenna_core::energy::Energy>> {
+    let text = text.trim();
+    if text.is_empty() || text.eq_ignore_ascii_case("none") || text.eq_ignore_ascii_case("not rated") {
+        return Ok(None);
+    }
+    text.parse()
+        .map(Some)
+        .map_err(|()| LumennaError::new(format!("'{text}' is not an energy; say low, medium, high, or none")))
+}
+
+/// A block's hours as typed: `best`, `worst`, or `none` (also empty) for ordinary.
+///
+/// # Errors
+///
+/// If it is none of those.
+pub fn hours(text: &str) -> Result<Option<lumenna_core::energy::Hours>> {
+    let text = text.trim();
+    if text.is_empty() || text.eq_ignore_ascii_case("none") || text.eq_ignore_ascii_case("ordinary") {
+        return Ok(None);
+    }
+    text.parse()
+        .map(Some)
+        .map_err(|()| LumennaError::new(format!("'{text}' is not a block's hours; say best, worst, or none")))
+}
+
 /// A yes or a no, in the words a person types for one.
 pub fn yes_or_no(text: &str) -> Result<bool> {
     match text.to_lowercase().as_str() {

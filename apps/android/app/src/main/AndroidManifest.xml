@@ -55,6 +55,18 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+        <!-- Energy today in Quick Settings (EnergyTodayTile): the core's control, opening the app
+             on the day's energy check-in. -->
+        <service
+            android:name=".EnergyTodayTile"
+            android:exported="true"
+            android:icon="@drawable/ic_energy"
+            android:label="@string/control_energy_today"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
         <!-- The timer in Quick Settings (TimerTile): the core's control, on while a timer runs.
              Active: it draws itself when asked (requestListeningState) as the store changes,
              not only when Quick Settings opens. -->

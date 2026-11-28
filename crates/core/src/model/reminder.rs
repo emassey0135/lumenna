@@ -16,6 +16,9 @@ pub enum ReminderTarget {
     Task(TaskId),
     /// A block series, anchored to the start or end of each occurrence.
     Block(SeriesId),
+    /// The day itself: the daily question of how the person's energy is
+    /// ([`crate::energy`], [`crate::remind::check_in_key`]). Never a reminder record's.
+    Day,
 }
 
 /// What a reminder's offset is measured from.
@@ -48,6 +51,7 @@ impl ReminderAnchor {
             ReminderTarget::Block(_) => {
                 matches!(self, Self::BlockStart | Self::BlockEnd | Self::Absolute(_))
             }
+            ReminderTarget::Day => false,
         }
     }
 }

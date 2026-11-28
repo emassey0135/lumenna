@@ -491,6 +491,12 @@ impl Lumenna {
                 let actions = model.day_view().map(|day| day.actions).unwrap_or_default();
                 render().and(self.run_among(&actions, &[ActionKind::WhatNow], lumenna_records::Subject::Day, model))
             }
+            // Today, its check-in asked: from Home, a menu, a widget, a control or a notification.
+            "energy-today" => {
+                model.go(Place::Today);
+                let actions = model.day_view().map(|day| day.actions).unwrap_or_default();
+                render().and(self.run_among(&actions, &[ActionKind::CheckIn], lumenna_records::Subject::Day, model))
+            }
             // A search result chosen (`lumenna_records::search`): what it names, opened.
             other => match other.split_once(':') {
                 Some(("task", id)) => {
@@ -532,6 +538,7 @@ impl Lumenna {
         match id {
             // From any place: today, its question asked, as the launch shortcut does.
             "what-now" => return self.launch("what-now", model),
+            "energy-today" => return self.launch("energy-today", model),
             // The timer as it is, said on request, its countdown among it: never a live region.
             "time-left" => {
                 let Some(store) = &model.store else { return Command::done() };
