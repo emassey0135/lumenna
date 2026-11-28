@@ -106,7 +106,7 @@ test("the day's own actions are offered on its summary row and in Day actions, i
   await add(page, "Write report p1 30m");
   await crowdedDay(page);
   const day = page.getByRole("treegrid", { name: "The day" });
-  const expected = ["Plan the day", "Replan from now", "What should I work on?", "End the day", "Clear the rest of the day"];
+  const expected = ["Plan the day", "Replan from now", "Energy today", "What should I work on?", "End the day", "Clear the rest of the day"];
   await day.getByRole("row").first().click();
   await expect(day.getByRole("row").first()).toBeFocused();
   await page.keyboard.press("Shift+F10");
