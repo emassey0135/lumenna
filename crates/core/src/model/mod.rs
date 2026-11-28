@@ -56,7 +56,7 @@ pub use reminder::{
     Delivery, Reminder, ReminderAck, ReminderAction, ReminderAnchor, ReminderTarget, Trigger,
 };
 pub use settings::{Settings, Verbosity};
-pub use task::{Due, Priority, Recurrence, Task, TaskCompletion};
+pub use task::{Due, Priority, Recurrence, Start, Task, TaskCompletion};
 
 /// A rule the model enforces at construction, because merge cannot violate it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

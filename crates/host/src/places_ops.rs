@@ -48,7 +48,8 @@ mod tests {
         let keys: Vec<(String, u32)> = entries.iter().map(|e| (e.text.clone(), e.depth)).collect();
         let position = |text: &str| keys.iter().position(|(t, _)| t.starts_with(text)).unwrap();
         assert_eq!(keys[0].0, "Today");
-        assert_eq!(keys[1].0, "Tasks");
+        assert_eq!(keys[1].0, "Upcoming", "the days after Today");
+        assert_eq!(keys[2].0, "Tasks");
         assert!(position("Projects") < position("Work"));
         assert_eq!(keys[position("Reports")].1, keys[position("Work")].1 + 1, "subprojects nest");
         assert!(position("Labels") < position("calls"));

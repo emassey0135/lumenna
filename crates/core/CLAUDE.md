@@ -197,6 +197,22 @@ move made by the change that completed a repeating task is not counted).
 - **History is a place** (`Place::History`, `lists::history`, `lum history`): each task once,
   at its last completion or sitting in two weeks, newest first, its row a task's row, so the
   details, a row's actions and focus by identifier work as on any list.
+- **A task's three dates say three things** (`core::when`): its start (`Task::start`, quick
+  add's "from monday"), before which it is kept out, or Someday ("someday"), kept but never
+  offered until it is given a date (`given_a_date`, in `edit::update_task` and the host's edit);
+  its due date, when it is meant to be done; its deadline ("by friday"), when it can wait no
+  longer. Neither a start to come nor Someday is in a listing (states `later` and `someday`,
+  out unless a query names them or `starts:`, as `completed` is), but a project's own listing
+  shows everything not done in it (`Expr::select_shown`), and a pick of tasks offers them.
+  Neither is suggested for a block, What Should I Work On? or Plan the Day (`offered_on`, on
+  the block's own day). The urgency's due term is the nearer of the due date and the deadline;
+  the planner spreads sittings to, and names what is due by, the first of the two (`done_by`).
+  A deadline passed is overdue.
+- **Upcoming is a place** (`Place::Upcoming`, `lists::upcoming`, `lum upcoming`): a week, today
+  first, each day a heading (`RowId::Day`, role `group`, said in the device's own day words),
+  under it its blocks (`RowView::ends` with `due_time`, said as the day says a block) then the
+  open tasks due, starting or with their deadline then (`falls_on`). Enter on a day shows it;
+  on a block, shows it on its day in hand (`ActionKind::ShowDay`).
 - **The planner asks, never acts** (`core::review`, `records::review`): a task among the five
   most urgent with nothing done on it for three weeks is stale; one put off five times (its date
   moved later by hand, or planned and left) since last answered is asked about, a repeating one

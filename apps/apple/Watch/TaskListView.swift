@@ -16,6 +16,8 @@ struct TaskListView: View {
     /// Whether one of the place's own actions ran here: when the app then goes on to another
     /// place — renamed, merged, deleted — this list goes back to the places.
     @State private var acted = false
+    /// Where a row's action took the app (Upcoming's Show the Day: the day), shown over this list.
+    @State private var elsewhere: LumennaApp.Place?
     @AccessibilityFocusState private var spoken: String?
 
     init(core: Core, place: LumennaApp.Place) {
@@ -56,12 +58,18 @@ struct TaskListView: View {
             .navigationDestination(for: TaskOpened.self) { opened in
                 TaskView(id: opened.id)
             }
+            .navigationDestination(item: $elsewhere) { place in
+                PlaceView(core: core, place: place)
+            }
             .sheet(isPresented: $adding) {
                 QuickAddView().showsWhatIsSaid()
             }
             // Coming back from a task's details keeps the place, its filter and the row in hand;
             // from anywhere else it opens again with them.
-            .onAppear { model.appear() }
+            .onAppear {
+                model.left = { elsewhere = $0 }
+                model.appear()
+            }
             .onChange(of: core.app.view.place) { _, shown in
                 if acted, shown != place {
                     acted = false
@@ -100,10 +108,13 @@ struct TaskListView: View {
         .accessibilityLabel(row.title)
         .accessibilityValue(AppModel.spoken(detail: shown.line?.detail, expanded: row.expanded, level: shown.item.level))
         return Group {
-            // A task opens its own screen; a row that is no task (the Time Report's sums and
-            // their headings) is read where it is, its folding its swipe.
+            // A task opens its own screen; Upcoming's day or block the core's Open, which shows it on
+            // its day, the list following the app there (`left`); a row that is neither (the Time
+            // Report's sums and their headings) is read where it is, its folding its swipe.
             if row.role == "task" {
                 NavigationLink(value: TaskOpened(id: row.id)) { line }
+            } else if model.place == .upcoming {
+                Button { model.key("open", on: row) } label: { line }
             } else {
                 line
             }

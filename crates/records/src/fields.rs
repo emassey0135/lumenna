@@ -92,6 +92,21 @@ pub fn task_form() -> Vec<FormField> {
             "A date, such as tomorrow or next Friday, with a time if it has one. Empty for none. A new date keeps how it repeats.",
             "tomorrow",
         ),
+        // Beside the due date they stand apart from.
+        field(
+            "start",
+            "Starts",
+            K::Line,
+            "The day it may be begun, such as next Monday: until then it is left out of the lists and the planner. Someday keeps it until it is given a date. Empty to start now.",
+            "next monday",
+        ),
+        field(
+            "deadline",
+            "Deadline",
+            K::Line,
+            "The day it must be done by, such as Friday, if that is later than it is due. Empty for none.",
+            "friday",
+        ),
         field(
             "repeat",
             "Repeats",

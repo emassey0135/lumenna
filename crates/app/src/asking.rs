@@ -184,6 +184,19 @@ impl Lumenna {
                 model.settle();
                 return render().and(say(said));
             }
+            // Moving to a day is the app's: a block on its day, put in hand, or the day itself.
+            ActionKind::ShowDay => {
+                model.open = None;
+                if let Some((series, date)) = action.target.split_once('@') {
+                    return self.show_block(series, date, model);
+                }
+                let Some(store) = &model.store else { return Command::done() };
+                let today = store.now.date();
+                return match action.target.parse::<jiff::civil::Date>() {
+                    Ok(day) => model.show_day((day != today).then_some(day)),
+                    Err(_) => Command::done(),
+                };
+            }
             _ => {}
         }
         // The block form is the app's: changing a block, and a new one in free time.

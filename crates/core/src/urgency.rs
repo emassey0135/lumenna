@@ -96,15 +96,21 @@ pub fn urgency(snapshot: &Snapshot, facts: &Facts<'_>, task: &Task, now: &Zoned,
         }
     };
 
-    if let Some(due) = &task.due {
-        // A date without a time is due by the end of that day.
-        let time = due.time.unwrap_or(civil::time(23, 59, 0, 0));
+    // A date without a time is due by the end of that day.
+    let days_to = |date: civil::Date, time: Option<civil::Time>, zone: Option<&crate::model::TzName>| {
         // In the zone it is held to, if any: 9:00 in London is not 9:00 here.
-        let zone = crate::remind::zone_of(due.timezone.as_ref(), now.time_zone());
-        let at = crate::remind::instant(due.date, time, &zone);
-        let days = at.duration_since(now.timestamp()).as_secs_f64() / 86_400.0;
+        let zone = crate::remind::zone_of(zone, now.time_zone());
+        let at = crate::remind::instant(date, time.unwrap_or(civil::time(23, 59, 0, 0)), &zone);
         #[expect(clippy::cast_possible_truncation, reason = "a day count, rounded by far less than it means")]
-        add(Term::Due, c.due * due_scale(days as f32));
+        let days = (at.duration_since(now.timestamp()).as_secs_f64() / 86_400.0) as f32;
+        due_scale(days)
+    };
+    // The due date and the deadline both count, whichever is nearer: the deadline ranks a task
+    // the due date has not yet brought forward.
+    let due = task.due.as_ref().map(|due| days_to(due.date, due.time, due.timezone.as_ref()));
+    let deadline = task.deadline.map(|date| days_to(date, None, None));
+    if let Some(scale) = due.into_iter().chain(deadline).reduce(f32::max) {
+        add(Term::Due, c.due * scale);
     }
 
     let priority = usize::from(task.priority.as_u8().clamp(1, 4)) - 1;

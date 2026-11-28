@@ -35,6 +35,7 @@ export const WEB: Record<string, string[]> = {
   "go-history": ["Alt+Shift+5"],
   "go-review": ["Alt+Shift+6"],
   "go-report": ["Alt+Shift+7"],
+  "go-upcoming": ["Alt+Shift+8"],
   "next-pane": ["Alt+Shift+Period"],
   "previous-pane": ["Alt+Shift+Comma"],
   "mark-done": ["Alt+Shift+K"],

@@ -236,6 +236,10 @@ pub struct ShellWords {
     pub shows_details: String,
     /// A repeating block's hint: "Edits every occurrence".
     pub edits_every_occurrence: String,
+    /// A day's hint in a view of the days ahead (Upcoming): "Shows the day".
+    pub shows_the_day: String,
+    /// A block's hint there: "Shows it on its day".
+    pub shows_it_on_its_day: String,
 
     // Sentences and lines.
     /// Which of several: "Which?"
@@ -720,6 +724,7 @@ pub fn kind_title(kind: ActionKind) -> String {
         K::TimeZone => "Time Zone",
         K::ErasePermanently => "Erase Permanently",
         K::EraseEverythingDeleted => "Erase Everything Deleted",
+        K::ShowDay => "Show the Day",
         K::MarkReviewed => "Mark Reviewed",
         K::ReviewEvery => "Review Every",
         K::Reconsider => "Reconsider",
@@ -739,7 +744,7 @@ pub const ACTION_KINDS: &[ActionKind] = {
         K::Weight, K::Archive, K::Unarchive, K::MergeInto, K::Colour, K::ChangeQuery, K::New, K::Unpair, K::Reminders,
         K::EndNow, K::Extend, K::EndDay, K::ClearDay, K::CarryForward, K::WhatNow, K::CarryRest, K::Replan,
         K::PlanDay, K::Expand, K::Collapse, K::Skip, K::Unskip, K::DeliverOn, K::TimeZone, K::ErasePermanently,
-        K::EraseEverythingDeleted, K::MarkReviewed, K::ReviewEvery, K::Reconsider, K::OpenProject,
+        K::EraseEverythingDeleted, K::ShowDay, K::MarkReviewed, K::ReviewEvery, K::Reconsider, K::OpenProject,
     ]
 };
 
@@ -943,6 +948,8 @@ pub fn shell_words(capitals: Capitals, device: ThisDevice) -> ShellWords {
         add_task_wearing_it: c("Add a Task Wearing It"),
         shows_details: "Shows details".to_owned(),
         edits_every_occurrence: "Edits every occurrence".to_owned(),
+        shows_the_day: "Shows the day".to_owned(),
+        shows_it_on_its_day: "Shows it on its day".to_owned(),
 
         which: core::which(),
         nothing_to_choose: core::nothing_to_choose(),

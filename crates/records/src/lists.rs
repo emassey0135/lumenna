@@ -45,7 +45,9 @@ pub fn tasks(snapshot: &Snapshot, query: &str, now: &Zoned) -> Result<Rows> {
         .collect();
 
     let order = sort.unwrap_or(snapshot.settings.task_order);
-    // A project's own listing is headed by its sections; any other query lists tasks alone.
+    // A project's own listing is headed by its sections, and shows everything not done in it,
+    // Someday and a start still to come with the rest; any other query lists tasks alone, and
+    // leaves those out unless it asks for them.
     let project = snapshot
         .projects
         .values()
@@ -327,6 +329,109 @@ pub fn history(snapshot: &Snapshot, now: &Zoned) -> Result<Rows> {
         n => format!("{} done in the last two weeks", crate::words::capitalised(&count_line(n, "task"))),
     };
     listed.empty = "Nothing done in the last two weeks.".to_owned();
+    crate::actions::fill_rows(&mut listed, snapshot);
+    Ok(listed)
+}
+
+/// How many days Upcoming shows, today the first of them: a week.
+pub const UPCOMING_DAYS: i16 = 7;
+
+/// The days ahead at once, today first (`UPCOMING_DAYS`): each day a heading, under it its
+/// blocks in time order (each with its start as `due_time` and its end as `ends`, said as the
+/// day says a block), then the open tasks due, starting or with their deadline that day, most
+/// urgent first. A task starting later or Someday is not left out here: its start is what
+/// puts it on its day. A day with nothing on it says so.
+///
+/// # Errors
+///
+/// If a block's repetition cannot be read.
+pub fn upcoming(snapshot: &Snapshot, now: &Zoned) -> Result<Rows> {
+    use lumenna_core::model::Task;
+    let today = now.date();
+    let cx = Context::new(snapshot, now);
+    let facts = cx.facts();
+    let open: Vec<&Task> = snapshot.tasks.values().filter(|t| !t.is_deleted() && !facts.is_completed(t)).collect();
+    let mut rows: Vec<Row> = Vec::new();
+    // Each block's end, by its row's place, set once the rows are numbered.
+    let mut ends: Vec<(usize, String)> = Vec::new();
+    for offset in 0..UPCOMING_DAYS {
+        let Some(day) = today.checked_add(jiff::Span::new().days(offset)).ok() else { break };
+        let plan = crate::plan::plan(snapshot, day, now)?;
+        let mut tasks: Vec<&Task> = open.iter().copied().filter(|t| lumenna_core::when::falls_on(t, day)).collect();
+        // A time due that day first, in time order; then the rest most urgent first.
+        let urgency = |t: &Task| lumenna_core::urgency::urgency(snapshot, facts, t, now, &snapshot.settings.urgency).score;
+        let timed = |t: &Task| t.due.as_ref().filter(|due| due.date == day).and_then(|due| due.time);
+        tasks.sort_by(|a, b| match (timed(a), timed(b)) {
+            (Some(x), Some(y)) => x.cmp(&y),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => urgency(b).total_cmp(&urgency(a)).then(a.id.cmp(&b.id)),
+        });
+        let under = plan.blocks.len() + tasks.len();
+        let said: Vec<String> = [(plan.blocks.len(), "block"), (tasks.len(), "task")]
+            .into_iter()
+            .filter(|(n, _)| *n > 0)
+            .map(|(n, noun)| count_line(n, noun))
+            .collect();
+        rows.push(Row {
+            id: RowId::Day(day),
+            role: Role::Group,
+            depth: 0,
+            index: u32::try_from(offset).unwrap_or(0) + 1,
+            count: u32::try_from(UPCOMING_DAYS).unwrap_or(0),
+            expanded: (under > 0).then_some(true),
+            checked: None,
+            title: crate::words::capitalised(&lumenna_core::time::day_words(day, today)),
+            state: Vec::new(),
+            due: None,
+            due_time: None,
+            value: Some(if said.is_empty() { "nothing planned".to_owned() } else { lumenna_core::words::listed(&said) }),
+            hint: None,
+            priority: None,
+        });
+        let count = to_u32(under);
+        for (index, block) in plan.blocks.iter().enumerate() {
+            let Ok(series) = block.series.parse() else { continue };
+            ends.push((rows.len(), block.end.clone()));
+            rows.push(Row {
+                id: RowId::Occurrence(series, day),
+                role: Role::Block,
+                depth: 1,
+                index: to_u32(index) + 1,
+                count,
+                expanded: None,
+                checked: None,
+                title: block.title.clone(),
+                state: Vec::new(),
+                due: None,
+                due_time: block.start.parse().ok(),
+                value: (!block.details.is_empty()).then(|| block.details.join(", ")),
+                hint: None,
+                priority: None,
+            });
+        }
+        for (index, task) in tasks.iter().enumerate() {
+            rows.push(lumenna_core::row::task_row(&cx, task, 1, to_u32(plan.blocks.len() + index) + 1, count, None));
+        }
+    }
+    let days = rows.iter().filter(|row| row.role == Role::Group).count();
+    let mut listed = Rows::new(&rows, "day");
+    // What the days hold in all, said with how many: "7 days, 3 blocks and 5 tasks".
+    let blocks = rows.iter().filter(|row| row.role == Role::Block).count();
+    let tasks = rows.iter().filter(|row| row.role == Role::Task).count();
+    let held: Vec<String> =
+        [(blocks, "block"), (tasks, "task")].into_iter().filter(|(n, _)| *n > 0).map(|(n, noun)| count_line(n, noun)).collect();
+    listed.announcement = if held.is_empty() {
+        format!("{}, nothing planned", count_line(days, "day"))
+    } else {
+        format!("{}, {}", count_line(days, "day"), lumenna_core::words::listed(&held))
+    };
+    listed.empty = "Nothing is coming up.".to_owned();
+    for (at, end) in ends {
+        if let Some(row) = listed.rows.get_mut(at) {
+            row.ends = Some(end);
+        }
+    }
     crate::actions::fill_rows(&mut listed, snapshot);
     Ok(listed)
 }

@@ -52,6 +52,8 @@ pub enum RowId {
     Section(SectionId),
     /// One occurrence of a block series, on a date.
     Occurrence(SeriesId, jiff::civil::Date),
+    /// A day, heading what falls on it in a view of the days ahead.
+    Day(jiff::civil::Date),
 }
 
 /// The kind of thing a row is, structured rather than a string.
@@ -161,7 +163,14 @@ impl Snapshot {
     /// the order: urgency ranks within each level, never across it.
     #[must_use]
     pub fn task_rows_sorted(&self, expr: &Expr, cx: &Context<'_>, sort: crate::filter::Sort) -> Vec<Row> {
-        let mut selected = expr.select(cx);
+        self.task_rows_shown(expr, cx, sort, false)
+    }
+
+    /// The same rows, with what has not started kept in where `unstarted` says
+    /// ([`Expr::select_shown`]): a project's own listing, and a pick of every open task.
+    #[must_use]
+    pub fn task_rows_shown(&self, expr: &Expr, cx: &Context<'_>, sort: crate::filter::Sort, unstarted: bool) -> Vec<Row> {
+        let mut selected = expr.select_shown(cx, unstarted);
         let mut included: std::collections::BTreeSet<TaskId> =
             selected.iter().map(|task| task.id).collect();
 
@@ -224,10 +233,11 @@ impl Snapshot {
     /// goes where its parent does; a task naming a section that is gone, or another project's,
     /// is under none ([`Snapshot::section_of`]).
     ///
-    /// The headings and the tasks under no section are siblings at the top: "2 of 5".
+    /// The headings and the tasks under no section are siblings at the top: "2 of 5". What has
+    /// not started is kept in, as a project's own listing shows it ([`Expr::select_shown`]).
     #[must_use]
     pub fn project_rows(&self, project: ProjectId, expr: &Expr, cx: &Context<'_>, sort: crate::filter::Sort) -> Vec<Row> {
-        let rows = self.task_rows_sorted(expr, cx, sort);
+        let rows = self.task_rows_shown(expr, cx, sort, true);
         let sections = self.sections_of(project);
         if sections.is_empty() {
             return rows;
@@ -346,34 +356,53 @@ fn push_task_rows(
     let count = u32::try_from(group.len()).unwrap_or(u32::MAX);
     for (index, task) in group.iter().enumerate() {
         let has_children = children.contains_key(&Some(task.id));
-        rows.push(Row {
-            id: RowId::Task(task.id),
-            role: Role::Task,
-            depth,
-            index: u32::try_from(index).unwrap_or(u32::MAX) + 1,
-            count,
-            expanded: has_children.then_some(true),
-            checked: Some(cx.facts().is_completed(task)),
-            title: task.title.clone(),
-            state: cx.facts().notable_states_of(task, cx.now),
-            due: task.due.as_ref().map(|due| crate::time::due_words(due.date, cx.now.date())),
-            due_time: task.due.as_ref().and_then(|due| due.time),
-            value: {
-                // "2 of 5 subtasks done": what a parent's row holds, whether or not they show.
-                // A due time held to one place's zone says so: its time is that zone's.
-                let zone = task.due.as_ref().and_then(|due| due.timezone.as_ref()).map(|zone| format!("{zone} time"));
-                let parts: Vec<String> = zone
-                    .into_iter()
-                    .chain(priority_words(task.priority).map(str::to_owned))
-                    .chain(done.get(&task.id).map(|(finished, all)| {
-                        format!("{finished} of {all} {} done", if *all == 1 { "subtask" } else { "subtasks" })
-                    }))
-                    .collect();
-                (!parts.is_empty()).then(|| parts.join(", "))
-            },
-            hint: None,
-            priority: (task.priority != crate::model::Priority::P4).then(|| task.priority.as_u8()),
-        });
+        let mut row = task_row(cx, task, depth, u32::try_from(index).unwrap_or(u32::MAX) + 1, count, done.get(&task.id).copied());
+        row.expanded = has_children.then_some(true);
+        rows.push(row);
         push_task_rows(cx, children, done, Some(task.id), depth + 1, rows);
+    }
+}
+
+/// One task's row, `index` of `count` at `depth`, with `done` of its subtasks finished (done,
+/// all) where it has any: what every listing of tasks shows of it.
+#[must_use]
+pub fn task_row(cx: &Context<'_>, task: &crate::model::Task, depth: u32, index: u32, count: u32, done: Option<(usize, usize)>) -> Row {
+    Row {
+        id: RowId::Task(task.id),
+        role: Role::Task,
+        depth,
+        index,
+        count,
+        expanded: None,
+        checked: Some(cx.facts().is_completed(task)),
+        title: task.title.clone(),
+        state: cx.facts().notable_states_of(task, cx.now),
+        due: task.due.as_ref().map(|due| crate::time::due_words(due.date, cx.now.date())),
+        due_time: task.due.as_ref().and_then(|due| due.time),
+        value: {
+            // "2 of 5 subtasks done": what a parent's row holds, whether or not they show.
+            // A due time held to one place's zone says so: its time is that zone's.
+            let zone = task.due.as_ref().and_then(|due| due.timezone.as_ref()).map(|zone| format!("{zone} time"));
+            // A start still to come and a deadline, after the due date they stand beside.
+            let today = cx.now.date();
+            let start = task
+                .start
+                .and_then(crate::model::Start::date)
+                .filter(|start| *start > today)
+                .map(|start| crate::time::start_words(start, today));
+            let deadline = task.deadline.map(|date| crate::time::deadline_words(date, today));
+            let parts: Vec<String> = zone
+                .into_iter()
+                .chain(start)
+                .chain(deadline)
+                .chain(priority_words(task.priority).map(str::to_owned))
+                .chain(done.map(|(finished, all)| {
+                    format!("{finished} of {all} {} done", if all == 1 { "subtask" } else { "subtasks" })
+                }))
+                .collect();
+            (!parts.is_empty()).then(|| parts.join(", "))
+        },
+        hint: None,
+        priority: (task.priority != crate::model::Priority::P4).then(|| task.priority.as_u8()),
     }
 }

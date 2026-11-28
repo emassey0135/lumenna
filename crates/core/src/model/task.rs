@@ -42,8 +42,14 @@ pub struct Task {
     /// nothing else in the model catches that. It is also what gives `blocked` and `ready`
     /// their meaning.
     pub depends: BTreeSet<TaskId>,
-    /// When it is due, and whether it recurs.
+    /// When it is due, and whether it recurs: the day it is meant to be done.
     pub due: Option<Due>,
+    /// When it may be begun: a day before which it is kept out of the listings and the planner,
+    /// or [`Start::Someday`], kept but never offered until it is given a date ([`crate::when`]).
+    pub start: Option<Start>,
+    /// The day it must be done by, which the urgency ranks by beside the due date: the due date
+    /// says when it is meant to be done, the deadline when it can wait no longer.
+    pub deadline: Option<civil::Date>,
     /// What makes multi-sitting work legible: remaining effort is this minus the time
     /// logged across assignments.
     pub estimate_mins: Option<u32>,
@@ -84,6 +90,8 @@ impl Task {
             labels: BTreeSet::new(),
             depends: BTreeSet::new(),
             due: None,
+            start: None,
+            deadline: None,
             estimate_mins: None,
             sitting_mins: None,
             kept_at: None,
@@ -174,6 +182,47 @@ impl Due {
     #[must_use]
     pub const fn at(date: civil::Date, time: civil::Time) -> Self {
         Self { date, time: Some(time), timezone: None, recurrence: None }
+    }
+}
+
+/// When a task may be begun.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Start {
+    /// Not before this day.
+    On(civil::Date),
+    /// Kept, but never offered until it is given a date.
+    Someday,
+}
+
+impl Start {
+    /// The word Someday is stored, typed and filtered as.
+    pub const SOMEDAY: &'static str = "someday";
+
+    /// The day it starts, if it has one.
+    #[must_use]
+    pub const fn date(self) -> Option<civil::Date> {
+        match self {
+            Self::On(date) => Some(date),
+            Self::Someday => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Start {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::On(date) => write!(f, "{date}"),
+            Self::Someday => f.write_str(Self::SOMEDAY),
+        }
+    }
+}
+
+impl std::str::FromStr for Start {
+    type Err = jiff::Error;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        if text.trim().eq_ignore_ascii_case(Self::SOMEDAY) { Ok(Self::Someday) } else { text.trim().parse().map(Self::On) }
     }
 }
 

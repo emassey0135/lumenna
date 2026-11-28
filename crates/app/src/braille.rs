@@ -46,6 +46,8 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::AssignTask, "i"),
     (K::CancelDay, "x"),
     (K::RestoreDay, "o"),
+    // Only Upcoming's days and blocks offer it, and no cancelled day there.
+    (K::ShowDay, "o"),
     (K::StartTimer, "s"),
     (K::PauseTimer, "s"),
     (K::ResumeTimer, "s"),
@@ -128,6 +130,7 @@ const COMMAND_LETTERS: &[(&str, &str)] = &[
     ("go-tasks", "k"),
     ("go-blocks", "b"),
     ("go-history", "h"),
+    ("go-upcoming", "j"),
     ("go-review", "v"),
     ("go-report", "g"),
     ("time-left", "d"),
@@ -266,7 +269,7 @@ const BRAILLE_VIEW_EXTRAS: &[&str] = &["projects", "labels", "filters", "reminde
 
 /// What Home's places run, by their letters' ids: they are hot keys on Home.
 const HOME_PLACES: &[&str] =
-    &["go-today", "go-tasks", "go-blocks", "go-review", "go-history", "go-report", "go-trash", "projects", "labels", "filters"];
+    &["go-today", "go-upcoming", "go-tasks", "go-blocks", "go-review", "go-history", "go-report", "go-trash", "projects", "labels", "filters"];
 
 /// The id of the braille menu bar's first menu: the screen's own actions (`screen_actions`).
 pub const SCREEN_MENU: &str = "screen";

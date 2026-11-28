@@ -13,6 +13,7 @@
     show_task                = @{ Cmdlet = 'Get-LumennaTaskDetail' }
     day                      = @{ Cmdlet = 'Get-LumennaDay' }
     list_blocks              = @{ Cmdlet = 'Get-LumennaBlock' }
+    list_upcoming            = @{ Cmdlet = 'Get-LumennaUpcoming' }
     list_projects            = @{ Cmdlet = 'Get-LumennaProject' }
     list_sections            = @{ Cmdlet = 'Get-LumennaSection' }
     list_labels              = @{ Cmdlet = 'Get-LumennaLabel' }

@@ -85,6 +85,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::View, "go-history", "History", &["Ctrl+5"]),
     key(Group::View, "go-review", "Review", &["Ctrl+6"]),
     key(Group::View, "go-report", "Time Report", &["Ctrl+7"]),
+    key(Group::View, "go-upcoming", "Upcoming", &["Ctrl+8"]),
     key(Group::View, "next-pane", "Next Pane", &["F6"]),
     key(Group::View, "previous-pane", "Previous Pane", &["Shift+F6"]),
     key(Group::Task, "mark-done", "Mark Done or Not Done", &["Ctrl+K"]),
@@ -96,7 +97,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::Day, "go-to-now", "Go to Now", &["Ctrl+T"]),
     key(Group::Day, "go-to-day", "Go to Day", &["Ctrl+G"]),
     key(Group::Day, "time-left", "Time Left", &["Ctrl+Shift+T"]),
-    key(Group::Lists, "open", "Open the Task, Place or Block, or Restore from the Trash", &["Enter"]),
+    key(Group::Lists, "open", "Open the Task, Place or Block, Show a Day, or Restore from the Trash", &["Enter"]),
     key(Group::Lists, "toggle", "Mark Done, Restore from the Trash, or Start, Pause or Resume a Timer", &["Space"]),
     key(Group::Lists, "delete", "Delete, Move to Trash, Delete from the Trash, or Unassign", &["Delete"]),
     key(Group::Lists, "actions", "Everything That Can Be Done to the Row", &["Shift+F10", "Applications key"]),
@@ -130,8 +131,8 @@ pub fn what_runs(id: &str) -> Runs {
         // time's new block, a cancelled day back, a trashed task restored, a device renamed. A
         // place in the sidebar or on Home opens (`Lumenna::command`), and a project the review lists.
         // A section heading folds, as a heading of the sidebar does; one with nothing under it
-        // is renamed.
-        "open" => Runs::Row(&[K::OpenProject, K::Edit, K::EditTask, K::AddBlock, K::RestoreDay, K::Restore, K::Collapse, K::Expand, K::Rename]),
+        // is renamed. A day of Upcoming, or a block there, is shown on its day.
+        "open" => Runs::Row(&[K::OpenProject, K::ShowDay, K::Edit, K::EditTask, K::AddBlock, K::RestoreDay, K::Restore, K::Collapse, K::Expand, K::Rename]),
         "open-task" | "properties" => Runs::Row(&[K::Edit, K::EditTask]),
         "mark-done" => Runs::Row(&[K::MarkDone, K::MarkNotDone]),
         "put-in-block" => Runs::Row(&[K::PutInBlock]),
@@ -156,7 +157,8 @@ pub fn what_runs(id: &str) -> Runs {
         "end-day" => Runs::Day(&[K::EndDay]),
         "clear-day" => Runs::Day(&[K::ClearDay]),
         "new-task" | "new-block" | "new-project" | "new-label" | "new-filter" | "sync-now" | "settings" | "undo" | "redo"
-        | "go-today" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "go-review" | "go-report" | "save-task"
+        | "go-today" | "go-upcoming" | "go-tasks" | "go-blocks" | "go-trash" | "go-history" | "go-review" | "go-report"
+        | "save-task"
         | "previous-day" | "next-day" | "go-to-now" | "go-to-day" | "time-left" | "back-up" | "home" | "new-project-inside"
         | "new-section" => Runs::App,
         _ => Runs::Shell,
@@ -229,6 +231,7 @@ pub const COMMANDS: &[Command] = &[
     command("go-blocks", "Blocks", false),
     command("go-trash", "Trash", false),
     command("go-history", "History", false),
+    command("go-upcoming", "Upcoming", false),
     command("go-review", "Review", false),
     command("go-report", "Time Report", false),
     command("next-pane", "Next Pane", false),
@@ -307,7 +310,7 @@ pub const MENUS: &[Menu] = &[
     Menu { group: Group::Edit, items: &["undo", "redo", SEPARATOR, "filter"] },
     Menu {
         group: Group::View,
-        items: &["go-today", "go-tasks", "go-blocks", "go-trash", "go-history", "go-review", "go-report", SEPARATOR, "next-pane", "previous-pane"],
+        items: &["go-today", "go-upcoming", "go-tasks", "go-blocks", "go-trash", "go-history", "go-review", "go-report", SEPARATOR, "next-pane", "previous-pane"],
     },
     Menu {
         group: Group::Task,

@@ -478,3 +478,38 @@ fn a_name_is_found_whatever_its_case_beyond_ascii() {
     assert!(world.snapshot.project_by_name("école").is_some());
     assert!(world.snapshot.label_by_name("LAPTOP").is_some());
 }
+
+#[test]
+fn a_task_not_yet_started_or_someday_is_listed_only_when_the_query_asks_for_it() {
+    let mut world = World::new();
+    let later = world.add(world.inbox, "later");
+    let someday = world.add(world.inbox, "someday");
+    let started = world.add(world.inbox, "started");
+    world.add(world.inbox, "plain");
+    world.snapshot.tasks.get_mut(&later).unwrap().start = Some(lumenna_core::model::Start::On(date(2026, 5, 11)));
+    world.snapshot.tasks.get_mut(&someday).unwrap().start = Some(lumenna_core::model::Start::Someday);
+    world.snapshot.tasks.get_mut(&started).unwrap().start = Some(lumenna_core::model::Start::On(date(2026, 5, 6)));
+    let mut all = world.titles(&Expr::All);
+    all.sort();
+    assert_eq!(all, expect(&["plain", "started"]), "a start come is started");
+    assert_eq!(world.titles(&Expr::Predicate(Predicate::State(State::Someday))), expect(&["someday"]));
+    assert_eq!(world.titles(&Expr::Predicate(Predicate::State(State::Later))), expect(&["later"]));
+    let starts = Expr::Predicate(Predicate::Starts(DueFilter::After(lumenna_core::time::DateSpec::Today)));
+    assert_eq!(world.titles(&starts), expect(&["later"]), "asking about the start asks for what starts later");
+    let now = now();
+    let cx = Context::new(&world.snapshot, &now);
+    assert_eq!(Expr::All.select_shown(&cx, true).len(), 4, "a project's own listing keeps them");
+}
+
+#[test]
+fn a_deadline_passed_is_overdue_and_counts_toward_urgency() {
+    let mut world = World::new();
+    let id = world.add(world.inbox, "report");
+    let plain = world.add(world.inbox, "plain");
+    world.snapshot.tasks.get_mut(&id).unwrap().deadline = Some(date(2026, 5, 5));
+    assert_eq!(world.titles(&Expr::Predicate(Predicate::State(State::Overdue))), expect(&["report"]));
+    let now = now();
+    let facts = world.snapshot.facts();
+    let score = |id| lumenna_core::urgency::urgency(&world.snapshot, &facts, &world.snapshot.tasks[&id], &now, &world.snapshot.settings.urgency).score;
+    assert!(score(id) > score(plain));
+}

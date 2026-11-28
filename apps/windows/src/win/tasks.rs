@@ -33,8 +33,8 @@ const TREE: u16 = 401;
 pub struct TaskList {
     pub place: Place,
     trash: bool,
-    /// Whether the place lists under a filter: not the trash, History, the review or the time
-    /// report, which list what they hold.
+    /// Whether the place lists under a filter: not the trash, History, Upcoming, the review or the
+    /// time report, which list what they hold.
     filtered: bool,
     label: HWND,
     filter: HWND,
@@ -50,7 +50,7 @@ pub struct TaskList {
 impl TaskList {
     pub fn create(_app: &App, pane: HWND, place: Place) -> Rc<Self> {
         let trash = place == Place::Trash;
-        let filtered = !matches!(place, Place::Trash | Place::History | Place::Review | Place::Report);
+        let filtered = !matches!(place, Place::Trash | Place::History | Place::Upcoming | Place::Review | Place::Report);
         // The core's words, with an access key clear of the menu bar's letters.
         let words = lumenna_records::fields::quick_add_words(false);
         let label = controls::create(pane, WC_STATICW, &format!("{}:", crate::devices::marked(&words.filter, 'r', '&')), 0, 0, 0);
@@ -61,8 +61,8 @@ impl TaskList {
         completion::attach(filter, Syntax::Filter);
         let readback = controls::create(pane, WC_STATICW, "", SS_NOPREFIX.0, 0, 0);
         let rows = Rows::create(pane, TREE, &place.title(), !trash);
-        // The trash is everything deleted, History everything done lately, the review what is due
-        // for a second look, and nothing else:
+        // The trash is everything deleted, History everything done lately, Upcoming the days ahead,
+        // the review what is due for a second look, and nothing else:
         // there is no filter to change.
         controls::show(label, filtered);
         controls::show(filter, filtered);
@@ -89,7 +89,8 @@ impl TaskList {
                     // (`Checkboxes`).
                     text: line.text.clone(),
                     depth: item.row.depth,
-                    // A task's row has its box; a project the review lists, none.
+                    // A task's row has its box; Upcoming's days and blocks, and a project the review
+                    // lists, none.
                     checked: (!self.trash && item.row.checked.is_some()).then_some(item.row.checked == Some(true)),
                     expanded: item.row.expanded,
                     swatch: item.row.swatch.clone(),
@@ -101,7 +102,7 @@ impl TaskList {
         self.rows.draw(app, shown, view.focus.as_deref(), landed);
     }
 
-    /// Whether it has a filter to change: not the trash, History or the review.
+    /// Whether it has a filter to change: not the trash, History, Upcoming or the review.
     pub fn has_filter(&self) -> bool {
         self.filtered
     }

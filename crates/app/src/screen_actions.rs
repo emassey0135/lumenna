@@ -74,6 +74,8 @@ pub(crate) fn place_action_ids(place: &Place) -> &'static [&'static str] {
         // What Should I Work On? is the day's own action here (`DayView::offered`), never a second time.
         Place::Today => &["new-block", "previous-day", "next-day", "go-to-day", "go-to-now", "time-left", "undo", "redo"],
         Place::Blocks => &["new-block", "undo", "redo"],
+        // A task added here goes to the Inbox; the days ahead are not filtered.
+        Place::Upcoming => &["new-task", "undo", "redo"],
         // Nothing is added to the trash or the history, and a filter there shows nothing useful.
         Place::Trash | Place::History | Place::Report => &["undo", "redo"],
         // The review lists what is due for a second look; nothing is added to it.
@@ -96,6 +98,7 @@ const SHELLS: &[&str] = &["filter", "keyboard-help", "about", "reminders-due"];
 pub fn every_kind_of_place() -> Vec<Place> {
     vec![
         Place::Today,
+        Place::Upcoming,
         Place::Tasks,
         Place::Blocks,
         Place::History,
@@ -157,6 +160,7 @@ pub fn place_letter(kind: &SidebarKind) -> Option<&'static str> {
         SidebarKind::Place(Place::Tasks) => "go-tasks",
         SidebarKind::Place(Place::Blocks) => "go-blocks",
         SidebarKind::Place(Place::History) => "go-history",
+        SidebarKind::Place(Place::Upcoming) => "go-upcoming",
         SidebarKind::Place(Place::Review) => "go-review",
         SidebarKind::Place(Place::Report) => "go-report",
         SidebarKind::Place(Place::Trash) => "go-trash",
@@ -257,7 +261,7 @@ mod tests {
 
     /// The places Home lists by a letter of their own, as the ids those letters are.
     fn home_places() -> Vec<&'static str> {
-        vec!["go-today", "go-tasks", "go-blocks", "go-review", "go-history", "go-report", "go-trash"]
+        vec!["go-today", "go-upcoming", "go-tasks", "go-blocks", "go-review", "go-history", "go-report", "go-trash"]
     }
 
     /// The heading whose New a command is.

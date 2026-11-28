@@ -109,11 +109,17 @@ final class RootTabs: UITabBarController, CommandActions, PlaceFollowing {
     /// The tab showing the app's place: a tab's own, any other in Browse.
     func showAppPlace() {
         guard let place = core.app.view.place else { return }
+        go(to: place)
+    }
+
+    /// The tab showing `place`: its own, else Browse's, wherever the core's arrangement puts it.
+    private func go(to place: LumennaApp.Place) {
         if kinds.contains(.place(place)) { select(.place(place)) } else { openFromBrowse(.place(place)) }
     }
 
     @objc func filterTasks() { select(.place(.tasks)) { $0.tasks.focusFilter() } }
     @objc func goToToday() { select(.place(.today)) }
+    @objc func goToUpcoming() { go(to: .upcoming) }
     @objc func goToTasks() { select(.place(.tasks)) }
     @objc func goToBlocks() { openFromBrowse(.place(.blocks)) }
     @objc func goToTrash() { openFromBrowse(.place(.trash)) }

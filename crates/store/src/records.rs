@@ -328,6 +328,8 @@ impl Record for Task {
             due: r.map("due").and_then(|due| read_due(&due)),
             estimate_mins: r.u32("estimate_mins"),
             sitting_mins: r.u32("sitting_mins"),
+            start: r.parsed("start"),
+            deadline: r.parsed("deadline"),
             kept_at: r.timestamp("kept_at"),
             kept_put_off: r.u32("kept_put_off"),
             // Position is not something this device may invent: a locally generated order
@@ -355,6 +357,8 @@ impl Record for Task {
         w.set_nested("due", was.map(|b| b.due.as_ref()), self.due.as_ref())?;
         w.set_opt_u32("estimate_mins", was.map(|b| b.estimate_mins), self.estimate_mins)?;
         w.set_opt_u32("sitting_mins", was.map(|b| b.sitting_mins), self.sitting_mins)?;
+        w.set_opt_str("start", was.map(|b| b.start.as_ref()), self.start.as_ref())?;
+        w.set_opt_str("deadline", was.map(|b| b.deadline.as_ref()), self.deadline.as_ref())?;
         w.set_opt_time("kept_at", was.map(|b| b.kept_at.as_ref()), self.kept_at.as_ref())?;
         w.set_opt_u32("kept_put_off", was.map(|b| b.kept_put_off), self.kept_put_off)?;
         w.set_str("order", was.map(|b| &b.order), &self.order)?;

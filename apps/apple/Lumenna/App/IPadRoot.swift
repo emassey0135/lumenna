@@ -88,7 +88,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
         switch place {
         case .today: return day
         case .tasks: return tasks
-        case .blocks, .trash, .history, .review, .report, .project, .label, .filter:
+        case .upcoming, .blocks, .trash, .history, .review, .report, .project, .label, .filter:
             return TaskListViewController(core: core, place: place)
         }
     }
@@ -126,6 +126,7 @@ final class IPadRoot: UISplitViewController, UISplitViewControllerDelegate, Comm
     @objc func newFilter() { sidebar.newFilter() }
     @objc func filterTasks() { show(.place(.tasks)) { ($0 as? TaskListViewController)?.focusFilter() } }
     @objc func goToToday() { show(.place(.today)) }
+    @objc func goToUpcoming() { show(.place(.upcoming)) }
     @objc func goToTasks() { show(.place(.tasks)) }
     @objc func goToBlocks() { show(.place(.blocks)) }
     @objc func goToTrash() { show(.place(.trash)) }

@@ -333,6 +333,7 @@ fn field_words(key: &str) -> String {
         "due" => "due date".to_owned(),
         "estimate_mins" => "estimate".to_owned(),
         "sitting_mins" => "sitting length".to_owned(),
+        "start" => "start date".to_owned(),
         "kept_at" | "kept_put_off" => "keeping".to_owned(),
         "review_every_days" => "review interval".to_owned(),
         "reviewed_at" => "last review".to_owned(),

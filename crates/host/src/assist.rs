@@ -104,6 +104,7 @@ impl Lumenna {
             "show_task" => Assisted::Task(self.show_task(&given.required("id")?)?),
             "day" => Assisted::Plan(self.plan(given.text("date")?.filter(|d| !d.trim().is_empty()))?),
             "list_blocks" => Assisted::Rows(self.list_blocks()?),
+            "list_upcoming" => Assisted::Rows(self.upcoming()?),
             "list_projects" => Assisted::Rows(self.list_projects()?),
             "list_sections" => Assisted::Rows(self.list_sections(&given.required("project")?)?),
             "list_labels" => Assisted::Rows(self.list_labels()?),
@@ -132,6 +133,8 @@ impl Lumenna {
                     project: given.text("project")?,
                     labels: given.texts("labels")?,
                     sittings: given.text("sittings")?,
+                    start: given.text("start")?,
+                    deadline: given.text("deadline")?,
                 };
                 Assisted::Change(self.edit_task(&task, edit)?)
             }

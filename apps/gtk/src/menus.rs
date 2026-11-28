@@ -44,6 +44,7 @@ const MNEMONICS: &[(&str, char)] = &[
     ("go-blocks", 'B'),
     ("go-trash", 'r'),
     ("go-history", 'H'),
+    ("go-upcoming", 'U'),
     ("go-review", 'v'),
     ("go-report", 'i'),
     ("next-pane", 'N'),

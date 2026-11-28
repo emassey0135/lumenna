@@ -141,6 +141,8 @@ pub enum ActionKind {
     ErasePermanently,
     /// Erase everything deleted for good: the trash, and every deleted thing's history.
     EraseEverythingDeleted,
+    /// Show a day, or a block on its day, from a view of the days ahead: Enter there.
+    ShowDay,
     /// Mark a project reviewed: it leaves the review until its interval comes round.
     MarkReviewed,
     /// Set how often a project is reviewed.
@@ -505,7 +507,7 @@ const fn is_primary(kind: ActionKind, subject: Subject) -> bool {
     use ActionKind as K;
     match kind {
         K::MarkDone | K::MarkNotDone | K::Restore | K::DeleteForGood | K::Delete | K::AssignTask | K::StartTimer
-        | K::PauseTimer | K::ResumeTimer | K::StopTimer | K::AddBlock | K::RestoreDay | K::Unpair => true,
+        | K::PauseTimer | K::ResumeTimer | K::StopTimer | K::AddBlock | K::RestoreDay | K::Unpair | K::ShowDay => true,
         // A project's New Section is a menu away; a heading's New, and a section's New Task, show.
         K::New => !matches!(subject, Subject::Section),
         K::Rename => matches!(subject, Subject::Project | Subject::Label | Subject::Filter | Subject::Device | Subject::Section),
@@ -1092,11 +1094,24 @@ pub fn fill_rows(rows: &mut Rows, snapshot: &Snapshot) {
                 .unwrap_or_default(),
             Some(RowId::Project(id)) => snapshot.projects.get(&id).map(|p| project(snapshot, p)).unwrap_or_default(),
             Some(RowId::Label(id)) => snapshot.labels.get(&id).map(|l| label(snapshot, l)).unwrap_or_default(),
+            // A block on a day of its own (a view of the days ahead shows it with its end): shown
+            // on that day first, then what is done to its series.
+            Some(RowId::Occurrence(id, date)) if row.ends.is_some() => std::iter::once(show_day(Subject::Block, &format!("{id}@{date}")))
+                .chain(snapshot.series.get(&id).map(series).unwrap_or_default())
+                .collect(),
             Some(RowId::Occurrence(id, _)) => snapshot.series.get(&id).map(series).unwrap_or_default(),
+            Some(RowId::Day(date)) => vec![show_day(Subject::Day, &date.to_string())],
             Some(RowId::Section(id)) => snapshot.sections.get(&id).map(|s| section(snapshot, s)).unwrap_or_default(),
             None => Vec::new(),
         };
     }
+}
+
+/// Show a Day, from a view of the days ahead: a day (`Subject::Day`, its ISO date) shown, or a
+/// block (`Subject::Block`, `<series>@<date>`) shown on its day and put in hand.
+fn show_day(subject: Subject, target: &str) -> Action {
+    let title = if subject == Subject::Block { "Show on Its Day" } else { "Show the Day" };
+    action(ActionKind::ShowDay, subject, title, target)
 }
 
 /// Each row's identifier read back from its text, by its role.
@@ -1107,6 +1122,7 @@ fn rows_ids(rows: &Rows) -> Vec<Option<RowId>> {
             "task" => row.id.parse().ok().map(RowId::Task),
             "project" => row.id.parse().ok().map(RowId::Project),
             "label" => row.id.parse().ok().map(RowId::Label),
+            "group" => row.id.parse().ok().map(RowId::Day),
             "section" => row.id.parse().ok().map(RowId::Section),
             "block" => {
                 let (series, date) = row.id.split_once('@')?;

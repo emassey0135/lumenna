@@ -15,7 +15,7 @@ import LumennaApp
 
 /// Every operation's intent, in the table's order: what the tests compare with the table.
 let assistantIntents: [any OperationIntent.Type] = [
-    ListTasksIntent.self, SearchTasksIntent.self, ShowTaskIntent.self, ShowDayIntent.self,
+    ListTasksIntent.self, SearchTasksIntent.self, ShowTaskIntent.self, ShowDayIntent.self, ListUpcomingIntent.self,
     ListBlocksIntent.self, ListProjectsIntent.self, ListSectionsIntent.self, ListLabelsIntent.self, ListSavedFiltersIntent.self,
     WhatShouldIWorkOnIntent.self, ProposeReplanIntent.self, ShowTimerIntent.self, ShowReportIntent.self,
     ProposeDayPlanIntent.self,
@@ -181,7 +181,7 @@ struct AddTaskIntent: OperationIntent {
         searchKeywords: ["new", "create", "remember", "capture", "remind"]
     )
 
-    @Parameter(title: "Line", description: "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\") and a section of it (/Errands), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
+    @Parameter(title: "Line", description: "A quick-add line, read as a person's would be: the title, then any of a due date or time (\"tomorrow at 3pm\", \"every weekday\"), a priority (p1 to p4), labels (@calls), a project (#Work, #\"Home Office\") and a section of it (/Errands), an estimate (~30m), how long a sitting of it is (\"3h in 45m sittings\"), when it may be begun (\"from monday\", or \"someday\"), the day it must be done by (\"by friday\"). A line starting with `block` makes a time block instead (\"block Deep work 9-11am weekdays\"). The answer says how it was read.")
     var text: String
 
     @AppDependency private var store: AssistantStore
@@ -215,6 +215,10 @@ struct EditTaskIntent: OperationIntent {
     var estimate: String?
     @Parameter(title: "Sitting Length", description: "How long one sitting of it is (\"45m\"), for work better done in pieces: planning gives it a sitting at a time. `none` to plan it whole.")
     var sittings: String?
+    @Parameter(title: "Starts", description: "When it may be begun, as a person says a day (\"next monday\"): until then it is left out of the lists and the planner. `someday` keeps it until it is given a date; `none` starts it now.")
+    var start: String?
+    @Parameter(title: "Deadline", description: "The day it must be done by (\"friday\"), or `none`.")
+    var deadline: String?
     @Parameter(title: "Notes", description: "Its notes, whole.")
     var notes: String?
     @Parameter(title: "Project", description: "The project to move it to, by name.")
@@ -233,6 +237,8 @@ struct EditTaskIntent: OperationIntent {
             "priority": priority.map { .number(Int64($0)) },
             "estimate": estimate.map(ArgumentValue.text),
             "sittings": sittings.map(ArgumentValue.text),
+            "start": start.map(ArgumentValue.text),
+            "deadline": deadline.map(ArgumentValue.text),
             "notes": notes.map(ArgumentValue.text),
             "project": project.map { .text($0.name) },
             "labels": labels.map { .texts($0.map(\.name)) },
@@ -433,6 +439,25 @@ struct ShowDayIntent: OperationIntent {
         let day = try store.assist(Self.persistentIdentifier, ["date": date.map(ArgumentValue.text)])
         guard case let .plan(plan) = day else { return .result(value: [], dialog: IntentDialog(said: day.said)) }
         return .result(value: plan.blockEntities, dialog: IntentDialog(said: day.said))
+    }
+}
+
+struct ListUpcomingIntent: OperationIntent {
+    static let persistentIdentifier = "list_upcoming"
+    static let title: LocalizedStringResource = "Show What Is Coming Up"
+    static let description: IntentDescription? = IntentDescription(
+        "The days ahead at once, today first: each day's blocks in time order, then the tasks due, starting or with their deadline that day.",
+        categoryName: "The Day",
+        searchKeywords: ["upcoming", "this week", "coming up", "ahead", "forecast"]
+    )
+
+    @AppDependency private var store: AssistantStore
+
+    /// The tasks falling on the days ahead, in the listing's order, so a found task passes on to
+    /// the next action; the days and their blocks are the listing's to say.
+    func perform() async throws -> some IntentResult & ReturnsValue<[TaskEntity]> & ProvidesDialog {
+        let listed = try store.assist(Self.persistentIdentifier)
+        return .result(value: store.tasks(listed), dialog: IntentDialog(said: listed.said))
     }
 }
 

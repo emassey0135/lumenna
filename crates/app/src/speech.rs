@@ -114,6 +114,17 @@ pub fn row(row: &RowView, checkbox: bool, clock: &dyn Clock) -> String {
 
 /// [`row`], as its title and the rest.
 pub fn row_line(row: &RowView, checkbox: bool, clock: &dyn Clock) -> Line {
+    // A day heading what falls on it (Upcoming's): the day as this device says one, then what
+    // is on it.
+    if row.role == "group" && row.id.parse::<jiff::civil::Date>().is_ok() {
+        return Line::of(clock.day(&row.id), row.value.iter().cloned().collect());
+    }
+    // A block on a day, as the day says one: "<start> to <end>, <title>, <details>".
+    if let (Some(start), Some(end)) = (&row.due_time, &row.ends) {
+        let first = format!("{} to {}, {}", clock.time(start), clock.time(end), row.title);
+        let rest: Vec<String> = row.value.iter().cloned().collect();
+        return Line { braille: join(vec![first.clone(), join(rest.clone())]), ..Line::of(first, rest) };
+    }
     let states: Vec<&str> = row.trailing_states().filter(|state| !(checkbox && *state == "completed")).collect();
     stated(row, clock, &states)
 }
@@ -297,6 +308,7 @@ mod tests {
             state: state.iter().map(|s| (*s).to_owned()).collect(),
             due: None,
             due_time: None,
+            ends: None,
             value: value.map(str::to_owned),
             hint: None,
             priority: None,

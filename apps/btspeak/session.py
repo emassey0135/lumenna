@@ -194,6 +194,16 @@ class Session:
         self.app.tick()
         return self.send()
 
+    def went_on(self) -> None:
+        """The app went on to another place, or Home, itself (a place from the menu bar, a day
+        shown from Upcoming): every screen closes for Home to show where it is now, and the
+        screen shown for that place takes it as the app has it rather than opening it afresh,
+        which would put a day shown back on today."""
+        self.moved_on = True
+        view = self.view()
+        if view.home is None and view.place is not None:
+            self._shown = (view.place, None)
+
     def show(self, place, query: str | None = None) -> None:
         """Makes `place` the one the app shows, with `query` typed over it: a screen opening, or
         coming back from one opened from it."""

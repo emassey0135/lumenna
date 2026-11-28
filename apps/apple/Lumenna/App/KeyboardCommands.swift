@@ -16,6 +16,7 @@ import UIKit
     @objc optional func redoChange()
     @objc optional func filterTasks()
     @objc optional func goToToday()
+    @objc optional func goToUpcoming()
     @objc optional func goToTasks()
     @objc optional func goToBlocks()
     @objc optional func goToTrash()
@@ -93,6 +94,7 @@ enum KeyboardCommands {
     static var viewItems: [UIMenuElement] {
         [
             command(Commands.asking("go-today"), #selector(CommandActions.goToToday), "1"),
+            command(Commands.asking("go-upcoming"), #selector(CommandActions.goToUpcoming), "8"),
             command(Commands.asking("go-tasks"), #selector(CommandActions.goToTasks), "2"),
             command(Commands.asking("go-blocks"), #selector(CommandActions.goToBlocks), "3"),
             command(Commands.asking("go-trash"), #selector(CommandActions.goToTrash), "4"),

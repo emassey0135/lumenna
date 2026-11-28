@@ -71,6 +71,8 @@ def place_screen(place):
         return day.blocks
     if isinstance(place, L.PlaceHistory):
         return tasks.history
+    if isinstance(place, L.PlaceUpcoming):
+        return tasks.upcoming
     if isinstance(place, L.PlaceReport):
         return tasks.report
     if isinstance(place, L.PlaceTrash):

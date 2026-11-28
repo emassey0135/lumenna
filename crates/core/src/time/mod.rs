@@ -138,6 +138,18 @@ pub fn due_words(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
     format!("due {}", day_words(date, today))
 }
 
+/// When a task may be begun, as [`due_words`] says when it is due: *"starts Monday"*.
+#[must_use]
+pub fn start_words(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
+    format!("starts {}", day_words(date, today))
+}
+
+/// A task's deadline, as [`due_words`] says when it is due: *"deadline Friday"*.
+#[must_use]
+pub fn deadline_words(date: jiff::civil::Date, today: jiff::civil::Date) -> String {
+    format!("deadline {}", day_words(date, today))
+}
+
 /// A day as a person says it, as [`due_words`] does without "due": *"tomorrow"*,
 /// *"Friday"*, *"Friday 23 October"*.
 #[must_use]

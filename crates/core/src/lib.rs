@@ -31,6 +31,7 @@ pub mod state;
 pub mod streak;
 pub mod time;
 pub mod urgency;
+pub mod when;
 pub mod words;
 
 pub use id::{

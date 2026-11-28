@@ -173,11 +173,11 @@ class TaskListTest(unittest.TestCase):
         self.session.press("F6")
         self.assertEqual(self.session.focus(), "[text] 'Title'")
         self.session.press("F6")
-        self.assertEqual(self.session.focus(), "[tree item] 'Tasks' level 1 2 of 10")
+        self.assertEqual(self.session.focus(), "[tree item] 'Tasks' level 1 3 of 11")
         self.session.press("F6")
         self.assertEqual(self.session.focus(), "[tree item] 'Buy milk' level 1 1 of 2")
         self.session.press("Shift+F6")
-        self.assertEqual(self.session.focus(), "[tree item] 'Tasks' level 1 2 of 10")
+        self.assertEqual(self.session.focus(), "[tree item] 'Tasks' level 1 3 of 11")
 
     def test_the_filter_narrows_the_list_and_enter_says_what_it_found(self):
         self.session.press("Control+f")

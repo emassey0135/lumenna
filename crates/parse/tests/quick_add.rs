@@ -464,10 +464,11 @@ fn next_week_and_the_end_of_the_week_follow_the_week_start_setting() {
     snapshot.settings.week_start = jiff::civil::Weekday::Sunday;
     let sunday = due(&snapshot, "plan the trip next week").unwrap();
     assert_eq!(sunday.weekday(), jiff::civil::Weekday::Sunday);
-    let end = due(&snapshot, "file the report by end of the week").unwrap();
+    let deadline = |snapshot: &Snapshot, line: &str| parse_quick_add(line, &Known::from_snapshot(snapshot)).resolve(snapshot, &now()).deadline;
+    let end = deadline(&snapshot, "file the report by end of the week").unwrap();
     assert_eq!(end.weekday(), jiff::civil::Weekday::Saturday, "a week from Sunday ends on Saturday");
     let preview = parse_quick_add("file the report by end of the week", &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now());
-    assert_eq!(preview.title, "file the report by");
+    assert_eq!(preview.title, "file the report");
 }
 
 #[test]
@@ -571,6 +572,30 @@ fn a_sitting_length_is_read_after_the_estimate_and_read_back() {
 fn in_before_anything_but_a_sitting_length_is_left_alone() {
     let p = preview("read in the garden");
     assert_eq!((p.title.as_str(), p.sitting_mins), ("read in the garden", None));
+}
+
+#[test]
+fn from_names_the_start_by_the_deadline_and_the_due_date_stays_the_due_date() {
+    let snapshot = Snapshot::default();
+    let preview = parse_quick_add("draft the essay from monday by friday tomorrow", &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now());
+    assert_eq!(preview.title, "draft the essay");
+    assert!(matches!(preview.start, Some(lumenna_core::model::Start::On(day)) if day.weekday() == jiff::civil::Weekday::Monday));
+    assert_eq!(preview.deadline.map(|d| d.weekday()), Some(jiff::civil::Weekday::Friday));
+    assert_eq!(preview.due.as_ref().map(|d| d.date), Some(now().date().tomorrow().unwrap()));
+    let said = preview.announcement();
+    assert!(said.contains("starts Monday") && said.contains("deadline Friday"), "{said}");
+}
+
+#[test]
+fn someday_puts_a_task_off_and_a_from_with_no_day_after_it_stays_in_the_title() {
+    let snapshot = Snapshot::default();
+    let preview = parse_quick_add("learn the cello someday", &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now());
+    assert_eq!(preview.title, "learn the cello");
+    assert_eq!(preview.start, Some(lumenna_core::model::Start::Someday));
+    assert!(preview.announcement().contains("someday"));
+    let preview = parse_quick_add("email from bob", &Known::from_snapshot(&snapshot)).resolve(&snapshot, &now());
+    assert_eq!(preview.title, "email from bob");
+    assert_eq!(preview.start, None);
 }
 
 /// The store with a section of Work's, "Errands", and one of the same name in My Big Project.

@@ -75,6 +75,15 @@ proptest! {
         if let Some(s) = &parsed.sitting_mins {
             mark(s.start, s.end);
         }
+        if let Some(s) = &parsed.start {
+            mark(s.start, s.end);
+        }
+        if let Some(s) = &parsed.deadline {
+            mark(s.start, s.end);
+        }
+        if let Some(s) = &parsed.someday {
+            mark(s.start, s.end);
+        }
         if let Some(s) = &parsed.estimate_mins {
             mark(s.start, s.end);
         }

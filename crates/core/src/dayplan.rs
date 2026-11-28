@@ -190,7 +190,8 @@ pub fn propose_day(
             || facts.is_completed(task)
             || taken.contains(&task.id)
             || day < today
-            || !task.due.as_ref().is_some_and(|due| due.date <= day)
+            || !crate::when::offered_on(task, day)
+            || !crate::when::done_by(task).is_some_and(|by| by <= day)
         {
             continue;
         }
@@ -219,7 +220,8 @@ fn needs(task: &crate::model::Task, spent: u32) -> (u32, bool) {
 fn sittings_today(task: &crate::model::Task, rest: u32, most_room: u32, day: jiff::civil::Date) -> u32 {
     let length = task.sitting_mins.filter(|s| *s > 0).unwrap_or(if rest <= most_room { rest } else { most_room }).max(1);
     let needed = rest.div_ceil(length);
-    let Some(due) = task.due.as_ref().map(|due| due.date) else { return 1 };
+    // The day it must be done by: its deadline where that comes before its due date.
+    let Some(due) = crate::when::done_by(task) else { return 1 };
     if due <= day {
         return needed.max(1);
     }

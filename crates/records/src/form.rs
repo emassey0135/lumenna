@@ -37,6 +37,11 @@ pub struct TaskFields {
     pub notes: String,
     /// How long one sitting of it is, `45m`, for work planned in pieces. Empty to plan it whole.
     pub sittings: String,
+    /// When it may be begun, as a date phrase the core reads back in (`2026-10-12`), or
+    /// `someday`. Empty to start now.
+    pub start: String,
+    /// The day it must be done by, `2026-10-16`. Empty for none.
+    pub deadline: String,
 }
 
 /// A task's fields as a form starts from them.
@@ -52,6 +57,8 @@ pub fn task_fields(task: TaskDetail) -> TaskFields {
         labels: task.labels.join(", "),
         notes: task.notes,
         sittings: task.sitting_mins.map(|m| format!("{m}m")).unwrap_or_default(),
+        start: task.start.unwrap_or_default(),
+        deadline: task.deadline.unwrap_or_default(),
     }
 }
 
@@ -75,6 +82,8 @@ pub fn task_edit(task: TaskDetail, fields: TaskFields) -> Option<TaskEdit> {
         priority: (fields.priority != before.priority).then_some(fields.priority),
         estimate: changed(&fields.estimate, &before.estimate).then(|| or_none(&fields.estimate)),
         sittings: changed(&fields.sittings, &before.sittings).then(|| or_none(&fields.sittings)),
+        start: changed(&fields.start, &before.start).then(|| or_none(&fields.start)),
+        deadline: changed(&fields.deadline, &before.deadline).then(|| or_none(&fields.deadline)),
         notes: (fields.notes != before.notes).then(|| fields.notes.clone()),
         project: (changed(&fields.project, &before.project) && !fields.project.trim().is_empty())
             .then(|| fields.project.trim().to_owned()),
@@ -347,6 +356,8 @@ mod tests {
             repetition: None,
             estimate_mins: Some(45),
             sitting_mins: None,
+            start: None,
+            deadline: None,
             state: vec!["ready".to_owned()],
             created_at: "2026-10-01T09:00:00Z".to_owned(),
             actions: Vec::new(),

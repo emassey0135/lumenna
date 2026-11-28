@@ -331,7 +331,7 @@ impl Answers {
     #[must_use]
     pub fn to(id: &str) -> Option<Answers> {
         Some(match id {
-            "list_tasks" | "search_tasks" | "list_blocks" | "list_projects" | "list_sections" | "list_labels" | "review" | "report" => {
+            "list_tasks" | "search_tasks" | "list_blocks" | "list_upcoming" | "list_projects" | "list_sections" | "list_labels" | "review" | "report" => {
                 Answers::Rows
             }
             "show_task" => Answers::Task,

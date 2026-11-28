@@ -74,6 +74,8 @@ fn populated() -> Populated {
     });
     parent.estimate_mins = Some(90);
     parent.sitting_mins = Some(45);
+    parent.start = Some(lumenna_core::model::Start::On(date(2026, 9, 3)));
+    parent.deadline = Some(date(2026, 9, 11));
     parent.kept_at = Some(now());
     parent.kept_put_off = Some(5);
     parent.external = Some(ExternalRef {
@@ -460,6 +462,8 @@ prop_compose! {
         due in arbitrary_due(),
         estimate in prop::option::of(1u32..10_000),
         sitting in prop::option::of(1u32..600),
+        start in prop::option::of(0i64..400),
+        deadline in prop::option::of(0i64..400),
         steps in 0usize..20,
         millis in 0i64..4_000_000_000_000,
         labels in 0usize..3,
@@ -474,6 +478,8 @@ prop_compose! {
         task.due = due;
         task.estimate_mins = estimate;
         task.sitting_mins = sitting;
+        task.start = start.map(|day| if day == 0 { lumenna_core::model::Start::Someday } else { lumenna_core::model::Start::On(date(2026, 1, 1) + jiff::Span::new().days(day)) });
+        task.deadline = deadline.map(|day| date(2026, 1, 1) + jiff::Span::new().days(day));
         task.created_at = Timestamp::from_millisecond(millis).unwrap();
         task.labels = (0..labels).map(|_| lumenna_core::id::LabelId::new()).collect();
         task

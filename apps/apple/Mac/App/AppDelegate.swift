@@ -271,6 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: - Places and the selected task
 
     @objc func goToToday(_ sender: Any?) { go(.today) }
+    @objc func goToUpcoming(_ sender: Any?) { go(.upcoming) }
     @objc func goToTasks(_ sender: Any?) { go(.tasks) }
     @objc func goToBlocks(_ sender: Any?) { go(.blocks) }
     @objc func goToTrash(_ sender: Any?) { go(.trash) }

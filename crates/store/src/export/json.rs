@@ -729,6 +729,11 @@ struct TaskOut {
     estimate_mins: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sitting_mins: Option<u32>,
+    /// A day, ISO, or `someday`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    start: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    deadline: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     kept_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -754,6 +759,8 @@ impl From<&Task> for TaskOut {
             due: t.due.as_ref().map(DueOut::from),
             estimate_mins: t.estimate_mins,
             sitting_mins: t.sitting_mins,
+            start: t.start.map(|s| s.to_string()),
+            deadline: t.deadline.map(|d| d.to_string()),
             kept_at: t.kept_at.map(|t| t.to_string()),
             kept_put_off: t.kept_put_off,
             order: t.order.to_string(),
@@ -785,6 +792,8 @@ impl TaskOut {
             due: self.due.map(|due| due.into_model(&record)).transpose()?,
             estimate_mins: self.estimate_mins,
             sitting_mins: self.sitting_mins,
+            start: optional(&record, "start", self.start.as_ref())?,
+            deadline: optional(&record, "date", self.deadline.as_ref())?,
             kept_at: optional(&record, "timestamp", self.kept_at.as_ref())?,
             kept_put_off: self.kept_put_off,
             order: field(&record, "order key", &self.order)?,

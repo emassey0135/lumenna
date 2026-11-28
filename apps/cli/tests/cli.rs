@@ -1524,6 +1524,8 @@ fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static 
         K::TimeZone => &[&["task", "zone", "{essay}", "Asia/Tokyo"], &["block", "zone", "{now}", "Europe/London"]],
         // Folding is a view's, and stores nothing: a listing shows every row.
         K::Expand | K::Collapse => &[],
+        // A day of Upcoming, or a block on its day: the day shown.
+        K::ShowDay => &[&["plan", "tomorrow"], &["upcoming"]],
     }
 }
 
@@ -1630,7 +1632,7 @@ fn every_action_the_app_offers_has_a_command_that_does_it() {
         K::Weight, K::Archive, K::Unarchive, K::MergeInto, K::Colour, K::ChangeQuery, K::New, K::Unpair,
         K::Reminders, K::EndNow, K::Extend, K::EndDay, K::ClearDay, K::CarryForward, K::WhatNow, K::CarryRest,
         K::Replan, K::PlanDay, K::Expand, K::Collapse, K::Skip, K::Unskip, K::DeliverOn, K::TimeZone,
-        K::ErasePermanently, K::EraseEverythingDeleted,
+        K::ErasePermanently, K::EraseEverythingDeleted, K::ShowDay,
     ];
     let seeded = Seeded::new();
     for kind in kinds {
@@ -1678,4 +1680,23 @@ fn the_timer_is_read_pressed_and_stopped_without_naming_a_sitting() {
     assert!(lum.ok(&["timer"]).contains("The timer is running on Email"));
     lum.ok(&["pause"]);
     assert!(lum.ok(&["timer"]).contains("No timer is running"));
+}
+
+#[test]
+fn upcoming_lists_the_week_and_a_task_put_off_waits_for_its_start() {
+    let lum = Lum::new();
+    lum.ok(&["task", "add", "pay rent tomorrow"]);
+    lum.ok(&["task", "add", "draft the essay from tomorrow by next friday"]);
+    lum.ok(&["task", "add", "learn the cello someday"]);
+    let list = lum.ok(&["task", "list"]);
+    assert!(list.contains("pay rent") && !list.contains("draft the essay") && !list.contains("cello"), "{list}");
+    let upcoming = lum.ok(&["upcoming"]);
+    assert!(upcoming.starts_with("7 days, 2 tasks"), "{upcoming}");
+    assert!(upcoming.contains("Tomorrow") && upcoming.contains("draft the essay") && upcoming.contains("pay rent"), "{upcoming}");
+    assert!(!upcoming.contains("cello"), "Someday falls on no day: {upcoming}");
+    let someday = lum.ok(&["task", "list", "someday"]);
+    assert!(someday.contains("learn the cello"), "{someday}");
+    lum.ok(&["task", "edit", "1", "--start", "none", "--deadline", "2027-01-15"]);
+    let shown = lum.ok(&["task", "show", "1"]);
+    assert!(shown.contains("2027-01-15") && !shown.contains("someday"), "{shown}");
 }

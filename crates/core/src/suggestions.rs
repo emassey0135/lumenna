@@ -23,6 +23,8 @@ pub enum Reason {
     Overdue(i64),
     /// Due in this many days (zero: today).
     DueIn(i64),
+    /// Its deadline is in this many days (zero: today; below zero: passed).
+    Deadline(i64),
     /// Its priority, when above the lowest.
     Priority(u8),
     /// Time has gone into it already.
@@ -101,10 +103,13 @@ pub fn suggest(
     let inside: std::collections::BTreeSet<TaskId> =
         snapshot.assignments.values().filter(|a| a.block_ref == block && a.status != AssignmentStatus::Worked).map(|a| a.task_id).collect();
     let coefficients = snapshot.settings.urgency;
+    // Nothing is offered before its start, nor while it is Someday: on the block's own day.
+    let day = snapshot.block_date(block).unwrap_or_else(|| now.date());
     let mut found: Vec<Suggestion> = snapshot
         .tasks
         .values()
         .filter(|t| !t.is_deleted() && !facts.is_completed(t) && !inside.contains(&t.id))
+        .filter(|t| crate::when::offered_on(t, day))
         .filter(|t| filter.is_none_or(|expr| expr.matches(t, &cx)))
         .map(|task| {
             let scored = urgency(snapshot, &facts, task, now, &coefficients);
@@ -117,6 +122,11 @@ pub fn suggest(
                             // Due at nine and now noon is overdue, by no whole day.
                             let overdue = days < 0 || facts.has_state(task, State::Overdue, now);
                             reasons.push(if overdue { Reason::Overdue(-days.min(0)) } else { Reason::DueIn(days) });
+                        }
+                        if let Some(deadline) = task.deadline
+                            && let Ok(span) = now.date().until(deadline)
+                        {
+                            reasons.push(Reason::Deadline(i64::from(span.get_days())));
                         }
                     }
                     Term::Priority if task.priority.as_u8() < 4 => reasons.push(Reason::Priority(task.priority.as_u8())),

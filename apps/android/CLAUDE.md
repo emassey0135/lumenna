@@ -111,10 +111,13 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   that `asks` ends in "…". The icon for each `id` is Android's look (`iconOf`); an `id` with none
   goes to the menu. Each is `ShellEvent.Key(id)`, but what is the shell's (`shell`): the filter is
   the field above the list, which the action focuses, on every list whose place the core offers it
-  on (not the trash, the history or the time report). A row the core offers nothing on (the time
-  report's headings, role `group`, and totals) opens nothing on the phone or the watch: it is a
-  line to read, a group's a heading. The screens follow what the app opens: quick add as its
-  line opens (`FollowLine`, only as it opens, so a line closing as the person comes back does not
+  on (not the trash, the history, Upcoming or the time report). A row the core offers nothing
+  on (the time report's headings, role `group`, and totals) opens nothing on the phone or the
+  watch: it is a line to read, a group's a heading. A day or a block of Upcoming opens with its
+  Enter, the core's `Key("open")` (Show the day), named by `keyRunsOn`; the day it shows is pushed
+  over the list, on the phone, the watch and the Orbit, so Back comes back to it, where a place
+  the app moves to otherwise takes the place left. The screens follow what the app opens: quick
+  add as its line opens (`FollowLine`, only as it opens, so a line closing as the person comes back does not
   reopen it), the block form and the question as before. A screen that is no place (the details,
   a form, settings, Browse) has Undo and Redo in its bar, Android's own, since the core lists
   screen actions for places alone. Home (`ShellEvent.Home`) is never shown: the tabs and the

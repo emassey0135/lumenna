@@ -32,18 +32,6 @@ The order, and why:
 
 ## 3. Planning
 
-- **When to start, apart from when it is due**: a task's one date says both "do it Monday" and
-  "it must be done Friday", which Things (When and Deadline), OmniFocus (defer, planned and due),
-  Taskwarrior (`wait`, `scheduled`, `due`) and Todoist (due and, since 2025, deadlines) keep
-  apart. A start date that keeps a task out of the listings and the planner until it comes, a
-  deadline the urgency ranks by, and the due date as now; quick add says each ("from monday",
-  "by friday"). And **Someday**: a task kept but never offered until it is given a date, so the
-  planner and What Should I Work On? leave it alone. The planner's rule for which date it
-  reads is the core's; what each list shows by it too.
-- **A view of several days**: the days ahead at once, each day's blocks and the tasks due or
-  starting then, as Todoist's and Things' Upcoming and OmniFocus' Forecast are; today the day
-  is shown one at a time (Go to Day). A listing, worded as every line is, so it reads as well
-  as it looks.
 - **Energy, as the person rates it**: capacity for focus and for starting things, which ADHD
   and other conditions make uneven, not calories, so it is estimated, as a length is, never
   measured.
@@ -268,7 +256,7 @@ Each is a thin adapter over the command surface.
     Todoist's settings, so nothing needs registering (check the current API version when
     building; its priority 4 is P1); its CSV backups (a ZIP of a CSV per project, completed
     tasks left out) for someone without a token.
-  - **Taskwarrior**, from `task export`'s JSON: `wait` and `scheduled` to the start date above,
+  - **Taskwarrior**, from `task export`'s JSON: `wait` and `scheduled` to the start date,
     annotations into notes, its user-defined attributes kept in the notes as `name: value`
     rather than dropped.
   - **OmniFocus**, from its CSV or its plain-text (TaskPaper-style) export: defer dates to the

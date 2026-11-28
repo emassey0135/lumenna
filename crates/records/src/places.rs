@@ -37,6 +37,9 @@ pub enum Place {
     Trash,
     /// What was done lately: tasks completed and worked on, newest first.
     History,
+    /// The days ahead at once: each day's blocks, and the tasks due, starting or with their
+    /// deadline then.
+    Upcoming,
     /// What is due for a second look: the projects due for review, and the tasks the planner
     /// asks about.
     Review,
@@ -55,6 +58,7 @@ impl Place {
             Self::Blocks => "Blocks".to_owned(),
             Self::Trash => "Trash".to_owned(),
             Self::History => "History".to_owned(),
+            Self::Upcoming => "Upcoming".to_owned(),
             Self::Review => "Review".to_owned(),
             Self::Report => "Time Report".to_owned(),
         }
@@ -67,7 +71,7 @@ impl Place {
             Self::Label(name) => label_reference(name.clone()),
             Self::Filter { query, .. } => query.clone(),
             Self::Trash => "deleted".to_owned(),
-            Self::Today | Self::Tasks | Self::Blocks | Self::History | Self::Review | Self::Report => String::new(),
+            Self::Today | Self::Tasks | Self::Blocks | Self::History | Self::Review | Self::Report | Self::Upcoming => String::new(),
         }
     }
 
@@ -243,7 +247,7 @@ pub fn place_quick_add_prefix(place: &Place) -> String {
     place.quick_add_prefix()
 }
 
-/// Every place, as the sidebar lists them: Today, Tasks, the project tree, labels, saved
+/// Every place, as the sidebar lists them: Today, Upcoming, Tasks, the project tree, labels, saved
 /// filters, blocks, history, the time report, the trash.
 ///
 /// A listing that fails leaves its group empty rather than the whole sidebar: the places
@@ -260,7 +264,8 @@ pub fn sidebar(snapshot: &Snapshot, now: &Zoned) -> Vec<SidebarEntry> {
         row.value.iter().cloned().chain(row.state.iter().cloned()).collect::<Vec<_>>().join(", ")
     };
 
-    let mut entries = vec![place(Place::Today, "", 0), place(Place::Tasks, "", 0)];
+    // Upcoming beside Today, the days after it.
+    let mut entries = vec![place(Place::Today, "", 0), place(Place::Upcoming, "", 0), place(Place::Tasks, "", 0)];
 
     entries.push(group(SidebarGroup::Projects, "Projects"));
     for row in crate::lists::projects(snapshot).map(|r| r.rows).unwrap_or_default() {

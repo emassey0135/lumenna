@@ -34,6 +34,7 @@ const SETTINGS: &str = "cmd:111";
 const GO_TASKS: &str = "cmd:141";
 const GO_TRASH: &str = "cmd:143";
 const GO_HISTORY: &str = "cmd:146";
+const GO_UPCOMING: &str = "cmd:149";
 const PUT_IN_BLOCK: &str = "cmd:169";
 const ERASE_PERMANENTLY: &str = "cmd:171";
 
@@ -389,8 +390,8 @@ fn delete_in_the_sidebar_asks_before_deleting_a_project() {
     let app = App::launch(|lumenna| {
         lumenna.add_project("Garden", None).unwrap();
     });
-    // Today, Tasks, Projects, Inbox, Garden.
-    app.post(&["f6", "home", "down", "down", "down", "down"]);
+    // Today, Upcoming, Tasks, Projects, Inbox, Garden.
+    app.post(&["f6", "home", "down", "down", "down", "down", "down"]);
     assert!(app.focus().contains("TreeItem 'Garden"), "{}", app.focus());
     app.post(&["delete"]);
     let dialog = app.front();
@@ -409,8 +410,8 @@ fn a_project_renamed_from_the_sidebar_is_shown_under_its_new_name_its_row_still_
     let app = App::launch(|lumenna| {
         lumenna.add_project("Garden", None).unwrap();
     });
-    // Today, Tasks, Projects, Inbox, Garden.
-    app.post(&["f6", "home", "down", "down", "down", "down", "f2"]);
+    // Today, Upcoming, Tasks, Projects, Inbox, Garden.
+    app.post(&["f6", "home", "down", "down", "down", "down", "down", "f2"]);
     assert!(app.front().iter().any(|l| l.contains("Edit") && l.contains("FOCUSED")), "F2 asks for the name: {:#?}", app.front());
     app.post(&["text:Allotment", "enter"]);
     let renamed = automation::wait(Duration::from_secs(5), || app.focus().contains("TreeItem 'Allotment").then_some(()));
@@ -430,8 +431,8 @@ fn a_projects_colour_is_picked_from_the_palette_and_drawn_beside_its_name_never_
     let app = App::launch_with(&[("LUMENNA_DARK", "0")], |lumenna| {
         lumenna.add_project("Garden", None).unwrap();
     });
-    // Today, Tasks, Projects, Inbox, Garden.
-    app.post(&["f6", "home", "down", "down", "down", "down", "context"]);
+    // Today, Upcoming, Tasks, Projects, Inbox, Garden.
+    app.post(&["f6", "home", "down", "down", "down", "down", "down", "context"]);
     choose_from_menu(&app, "Colour...");
     let pick = automation::wait(Duration::from_secs(5), || {
         let front = app.front();
@@ -576,8 +577,8 @@ fn a_saved_filters_query_and_a_blocks_tasks_from_complete_as_the_filter_does() {
         lumenna.add_project("Work", None).unwrap();
         lumenna.add_filter("Urgent", "p1").unwrap();
     });
-    // Today, Tasks, Projects, Inbox, Work, Labels, Saved Filters, Urgent.
-    app.post(&["f6", "home", "down", "down", "down", "down", "down", "down", "down"]);
+    // Today, Upcoming, Tasks, Projects, Inbox, Work, Labels, Saved Filters, Urgent.
+    app.post(&["f6", "home", "down", "down", "down", "down", "down", "down", "down", "down"]);
     assert!(app.focus().contains("TreeItem 'Urgent"), "{}", app.focus());
     app.post(&["context"]);
     choose_from_menu(&app, "Change Query...");
@@ -1919,4 +1920,28 @@ fn the_toolbar_holds_the_screens_own_actions_in_the_cores_order_and_runs_them() 
     app.post(&[GO_TRASH]);
     let shown = automation::wait(Duration::from_secs(5), || (toolbar(&app) == ["Undo", "Redo"]).then_some(()));
     assert!(shown.is_some(), "the trash's own actions: {:?}", toolbar(&app));
+}
+
+#[test]
+#[ignore = "opens a window: cargo test -p lumenna-windows --test ui -- --ignored"]
+fn upcoming_lists_the_tasks_due_and_starting_each_day_with_no_filter() {
+    let app = App::launch(|lumenna| {
+        add(lumenna, "Pay rent tomorrow");
+        add(lumenna, "Draft the essay from tomorrow");
+    });
+    app.post(&[GO_UPCOMING]);
+    let lines = automation::wait(Duration::from_secs(5), || {
+        let lines = app.automation.dump(app.window, 10);
+        lines.iter().any(|l| l.trim_start().starts_with("Tree 'Upcoming'")).then_some(lines)
+    })
+    .expect("Upcoming is shown");
+    let rows: Vec<&String> = lines
+        .iter()
+        .skip_while(|l| !l.trim_start().starts_with("Tree 'Upcoming'"))
+        .skip(1)
+        .take_while(|l| l.contains("TreeItem"))
+        .collect();
+    assert!(rows.iter().any(|row| row.contains("Pay rent")), "the task due tomorrow: {rows:#?}");
+    assert!(rows.iter().any(|row| row.contains("Draft the essay")), "the task starting tomorrow: {rows:#?}");
+    assert!(!lines.iter().any(|l| l.contains("Edit 'Filter")), "Upcoming has no filter: {lines:#?}");
 }

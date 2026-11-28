@@ -588,6 +588,7 @@ impl Lumenna {
                         "go-blocks" => Place::Blocks,
                         "go-trash" => Place::Trash,
                         "go-history" => Place::History,
+                        "go-upcoming" => Place::Upcoming,
                         "go-review" => Place::Review,
                         "go-report" => Place::Report,
                         _ => return Command::done(),

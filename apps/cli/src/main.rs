@@ -308,6 +308,10 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Daemon(DaemonCommand),
 
+    /// The week ahead, today first: each day's blocks, then the tasks due, starting or with
+    /// their deadline that day.
+    Upcoming,
+
     /// What was done over the last two weeks, newest first.
     History,
 
@@ -537,6 +541,13 @@ pub(crate) enum TaskCommand {
         /// to plan it whole.
         #[arg(long)]
         sittings: Option<String>,
+        /// When it may be begun, such as `monday`: until then it is left out of the listings
+        /// and the planner. `someday` keeps it until it is given a date; `none` starts it now.
+        #[arg(long)]
+        start: Option<String>,
+        /// The day it must be done by, such as `friday`, or `none`.
+        #[arg(long)]
+        deadline: Option<String>,
     },
 
     /// Mark a task done.
@@ -1575,6 +1586,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
             }
         },
         Command::Notify { speak } => return notify(profile, *speak),
+        Command::Upcoming => Response::new(profile.upcoming()?),
         Command::History => Response::new(profile.history()?),
         Command::Review => Response::new(profile.review()?),
         Command::Report => Response::new(profile.report()?),
@@ -1613,7 +1625,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         }
         TaskCommand::List { query } => Response::new(profile.list_tasks(&query.join(" "))?),
         TaskCommand::Show { id: input } => Response::new(profile.show_task(&id(input)?)?),
-        TaskCommand::Edit { id: input, title, due, repeat, priority, estimate, notes, project, labels, sittings } => {
+        TaskCommand::Edit { id: input, title, due, repeat, priority, estimate, notes, project, labels, sittings, start, deadline } => {
             Response::new(profile.edit_task(&id(input)?, TaskEdit {
                 title: title.clone(),
                 due: due.clone(),
@@ -1626,6 +1638,8 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
                     l.split(',').map(str::trim).filter(|n| !n.is_empty()).map(ToOwned::to_owned).collect()
                 }),
                 sittings: sittings.clone(),
+                start: start.clone(),
+                deadline: deadline.clone(),
             })?)
         }
         TaskCommand::Done { id: input } => Response::new(profile.complete_task(&id(input)?)?),

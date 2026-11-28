@@ -312,7 +312,14 @@ impl<'a> Cursor<'a> {
 
         // `due before: friday`, `due after: today`, `due: monday`
         if word.lower.starts_with("due") {
-            return self.due_predicate();
+            return self.due_predicate("due", Predicate::Due);
+        }
+        // `starts: monday`, `starts before: friday`; `deadline: friday`, `deadline before: next week`.
+        if word.lower.starts_with("starts") {
+            return self.due_predicate("starts", Predicate::Starts);
+        }
+        if word.lower.starts_with("deadline") {
+            return self.due_predicate("deadline", Predicate::Deadline);
         }
         if let Some(rest) = keyed(&word.lower, "assigned") {
             let rest = rest.to_owned();
@@ -370,11 +377,12 @@ impl<'a> Cursor<'a> {
         ))
     }
 
-    fn due_predicate(&mut self) -> Result<Expr, ParseError> {
+    /// A condition on a date, `key` naming which: the due date, the start or the deadline.
+    fn due_predicate(&mut self, key: &str, predicate: fn(DueFilter) -> Predicate) -> Result<Expr, ParseError> {
         let word = self.tokens[self.at].clone();
         self.at += 1;
         // `due:friday` glued into one word, or `due` followed by its argument.
-        let glued = word.lower.strip_prefix("due").unwrap_or("").trim_start_matches(':');
+        let glued = word.lower.strip_prefix(key).unwrap_or("").trim_start_matches(':');
         let mut comparator = String::new();
 
         if glued.is_empty()
@@ -386,8 +394,8 @@ impl<'a> Cursor<'a> {
             self.at += 1;
         }
 
-        let spec = self.date_argument(glued, "due")?;
-        Ok(Expr::Predicate(Predicate::Due(match comparator.as_str() {
+        let spec = self.date_argument(glued, key)?;
+        Ok(Expr::Predicate(predicate(match comparator.as_str() {
             "before" => DueFilter::Before(spec),
             "after" => DueFilter::After(spec),
             _ if spec == DateSpec::Today => DueFilter::Today,

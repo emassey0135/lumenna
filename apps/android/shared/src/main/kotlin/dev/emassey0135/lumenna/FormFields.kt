@@ -11,6 +11,8 @@ import dev.emassey0135.lumenna.app.TaskFields
 fun TaskFields.text(key: String): String? = when (key) {
     "title" -> title
     "due" -> due
+    "start" -> start
+    "deadline" -> deadline
     "repeat" -> repeat
     "estimate" -> estimate
     "sittings" -> sittings
@@ -24,6 +26,8 @@ fun TaskFields.text(key: String): String? = when (key) {
 fun TaskFields.with(key: String, value: String): TaskFields = when (key) {
     "title" -> copy(title = value)
     "due" -> copy(due = value)
+    "start" -> copy(start = value)
+    "deadline" -> copy(deadline = value)
     "repeat" -> copy(repeat = value)
     "estimate" -> copy(estimate = value)
     "sittings" -> copy(sittings = value)

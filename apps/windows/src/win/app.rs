@@ -1223,6 +1223,7 @@ impl App {
             "go-blocks" => self.go(Place::Blocks, true),
             "go-trash" => self.go(Place::Trash, true),
             "go-history" => self.go(Place::History, true),
+            "go-upcoming" => self.go(Place::Upcoming, true),
             "go-review" => self.go(Place::Review, true),
             "go-report" => self.go(Place::Report, true),
             "new-block" => {

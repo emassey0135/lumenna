@@ -92,6 +92,11 @@ and the core's next proposal, around what was left unchecked, takes its place un
 more is proposed; `q` cancels. Under Other options, `RET` or `o` on one shows the core's
 proposal for it in place. A task's own buffer ends with its History.
 
+Upcoming (`lumenna-upcoming`) is the days ahead, today first, each day a line with its blocks
+and then the tasks due, starting or with their deadline that day under it. `RET` on a day
+shows it in the day's buffer, and on a block shows it there with the block in hand; on a
+task it opens the task. A task's own buffer has Starts and Deadline beside Due.
+
 Projects, labels and saved filters each have their own list (`a` add, `r` rename, `d`
 delete, `M-p`/`M-n` reorder, and the rest in `?`). Home lists the places as every
 app's sidebar does, each project, label and filter under its heading, TAB or RET on a heading

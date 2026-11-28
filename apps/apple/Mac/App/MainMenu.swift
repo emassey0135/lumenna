@@ -89,6 +89,7 @@ enum MainMenu {
     private static func view() -> NSMenu {
         let menu = NSMenu(title: Commands.menu("view"))
         menu.addItem(item(Commands.asking("go-today"), #selector(AppDelegate.goToToday(_:)), "1"))
+        menu.addItem(item(Commands.asking("go-upcoming"), #selector(AppDelegate.goToUpcoming(_:)), "8"))
         menu.addItem(item(Commands.asking("go-tasks"), #selector(AppDelegate.goToTasks(_:)), "2"))
         menu.addItem(item(Commands.asking("go-blocks"), #selector(AppDelegate.goToBlocks(_:)), "3"))
         menu.addItem(item(Commands.asking("go-trash"), #selector(AppDelegate.goToTrash(_:)), "4"))

@@ -180,6 +180,27 @@ pub fn due(text: &str, now: &Zoned, week_start: civil::Weekday) -> Result<Option
     Ok(when.spec.resolve_in(now, week_start)?)
 }
 
+/// A day alone, read as a date phrase is (`next monday`, `2026-10-12`), or `none`: a start or a
+/// deadline, which name a day and never a time or a repetition.
+pub fn day(text: &str, now: &Zoned, week_start: civil::Weekday) -> Result<Option<civil::Date>> {
+    if text.trim().eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+    let tokens = words(text);
+    let (spec, used) = lumenna_parse::date::parse_date(&tokens, 0)
+        .ok_or_else(|| LumennaError::new(format!("could not read a day from '{text}'")))?;
+    whole(text, &tokens, used, "a day")?;
+    spec.resolve_in(now, week_start).map(Some).ok_or_else(|| LumennaError::new(format!("there is no day {text}")))
+}
+
+/// When a task may be begun: a day as [`day`] reads one, `someday`, or `none`.
+pub fn start(text: &str, now: &Zoned, week_start: civil::Weekday) -> Result<Option<lumenna_core::model::Start>> {
+    if text.trim().eq_ignore_ascii_case(lumenna_core::model::Start::SOMEDAY) {
+        return Ok(Some(lumenna_core::model::Start::Someday));
+    }
+    Ok(day(text, now, week_start)?.map(lumenna_core::model::Start::On))
+}
+
 /// A repetition phrase — `every monday`, `every! 2 weeks` — as the rule and whether it counts
 /// from completion. The whole text has to be the phrase.
 pub fn repetition(text: &str) -> Result<(RecurrenceSpec, bool)> {

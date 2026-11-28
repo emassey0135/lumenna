@@ -75,6 +75,7 @@ enum class Command(
     UNDO("undo", Place.APP),
     REDO("redo", Place.APP),
     GO_TODAY("go-today", Place.APP),
+    GO_UPCOMING("go-upcoming", Place.APP),
     GO_TASKS("go-tasks", Place.APP),
     GO_BLOCKS("go-blocks", Place.APP),
     GO_TRASH("go-trash", Place.APP),

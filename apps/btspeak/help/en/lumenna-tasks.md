@@ -9,7 +9,7 @@ Press Enter on a task to open its form. Press Z-Chord to leave the list.
 It holds what can be done to the task now, as every Lumenna app offers it, then Task details:
 
 - Mark done, c; or Mark not done, for a finished one.
-- Edit details, e: the title, due date, repetition, priority, estimate, project, labels and notes, one form.
+- Edit details, e: the title, due date, start, deadline, repetition, priority, estimate, project, labels and notes, one form.
 - Put in a block, b: a work block of the coming week, or Another day for any other, and how long the sitting is meant to take.
 - Move to project, m.
 - Make subtask of, s; Move to top level, t, for a subtask.
@@ -23,11 +23,11 @@ It holds what can be done to the task now, as every Lumenna app offers it, then 
 - New task, a. In a project's or label's list, the line starts with it, so the task lands there.
 - Filter tasks, slash: a filter such as "#Work & overdue", or "search:" and words to look through titles and notes.
 - New project inside, p, in a project's list.
-- Undo, u, and Redo, y. In the Trash, History, Review and the Time report, these alone.
+- Undo, u, and Redo, y. In the Trash, History, Review and the Time report, these alone; in Upcoming, these and New task.
 
 ## The task form
 
-Edit details, e, or Enter, opens one form: the title, due date, repetition, priority, estimate, sittings, project, labels and notes. Only what you change is saved, so a change made meanwhile on another device to another field is kept.
+Edit details, e, or Enter, opens one form: the title, due date, start, deadline, repetition, priority, estimate, sittings, project, labels and notes. Only what you change is saved, so a change made meanwhile on another device to another field is kept.
 
 ## Writing a task
 

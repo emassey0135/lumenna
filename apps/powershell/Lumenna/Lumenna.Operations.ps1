@@ -9,6 +9,7 @@ $script:Operations = [ordered]@{
     'search_tasks' = @{ Cmdlet = 'Search-LumennaTask'; Switch = $null; Title = 'Search Tasks'; Writes = $false; Confirms = $false; Target = 'Text'; Names = @{ 'Text' = 'text' } }
     'show_task' = @{ Cmdlet = 'Get-LumennaTaskDetail'; Switch = $null; Title = 'Show a Task'; Writes = $false; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'day' = @{ Cmdlet = 'Get-LumennaDay'; Switch = $null; Title = 'Show the Day'; Writes = $false; Confirms = $false; Target = $null; Names = @{ 'Date' = 'date' } }
+    'list_upcoming' = @{ Cmdlet = 'Get-LumennaUpcoming'; Switch = $null; Title = 'Show What Is Coming Up'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'list_blocks' = @{ Cmdlet = 'Get-LumennaBlock'; Switch = $null; Title = 'List Blocks'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'list_projects' = @{ Cmdlet = 'Get-LumennaProject'; Switch = $null; Title = 'List Projects'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'list_sections' = @{ Cmdlet = 'Get-LumennaSection'; Switch = $null; Title = 'List a Project''s Sections'; Writes = $false; Confirms = $false; Target = 'Project'; Names = @{ 'Project' = 'project' } }
@@ -20,7 +21,7 @@ $script:Operations = [ordered]@{
     'report' = @{ Cmdlet = 'Get-LumennaTimeReport'; Switch = $null; Title = 'Show the Time Report'; Writes = $false; Confirms = $false; Target = $null; Names = @{} }
     'propose_day_plan' = @{ Cmdlet = 'Get-LumennaDayPlan'; Switch = $null; Title = 'Propose a Plan for a Day'; Writes = $false; Confirms = $false; Target = $null; Names = @{ 'Date' = 'date' } }
     'add_task' = @{ Cmdlet = 'Add-LumennaTask'; Switch = $null; Title = 'Add a Task'; Writes = $true; Confirms = $false; Target = 'Text'; Names = @{ 'Text' = 'text' } }
-    'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Sittings' = 'sittings'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
+    'edit_task' = @{ Cmdlet = 'Set-LumennaTask'; Switch = $null; Title = 'Edit a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id'; 'Title' = 'title'; 'Due' = 'due'; 'Repeat' = 'repeat'; 'Priority' = 'priority'; 'Estimate' = 'estimate'; 'Sittings' = 'sittings'; 'Start' = 'start'; 'Deadline' = 'deadline'; 'Notes' = 'notes'; 'Project' = 'project'; 'Labels' = 'labels' } }
     'complete_task' = @{ Cmdlet = 'Complete-LumennaTask'; Switch = $null; Title = 'Complete a Task'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'uncomplete_task' = @{ Cmdlet = 'Undo-LumennaTaskCompletion'; Switch = $null; Title = 'Mark a Task Not Done'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
     'trash_task' = @{ Cmdlet = 'Remove-LumennaTask'; Switch = $null; Title = 'Move a Task to the Trash'; Writes = $true; Confirms = $false; Target = 'Id'; Names = @{ 'Id' = 'id' } }
@@ -202,6 +203,35 @@ function Get-LumennaDay {
 
     process {
         Invoke-LumennaAssist $PSCmdlet 'day' $PSBoundParameters
+    }
+}
+
+function Get-LumennaUpcoming {
+    <#
+    .SYNOPSIS
+    Show What Is Coming Up
+
+    .DESCRIPTION
+    The days ahead at once, today first: each day's blocks in time order, then the tasks due, starting or with their deadline that day.
+
+    .PARAMETER Profile
+    The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
+
+    .NOTES
+    Get-LumennaUpcoming is the assistant operation list_upcoming (lum assist list_upcoming), also found by: upcoming, this week, coming up, ahead, forecast.
+
+    .LINK
+    Get-LumennaOperation
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string]
+        $Profile
+    )
+
+    process {
+        Invoke-LumennaAssist $PSCmdlet 'list_upcoming' $PSBoundParameters
     }
 }
 
@@ -518,7 +548,7 @@ function Add-LumennaTask {
     Adds a task (or, from a line starting with `block`, a time block) from one quick-add line, and says how it read it.
 
     .PARAMETER Text
-    A quick-add line, read as a person's would be: the title, then any of a due date or time ("tomorrow at 3pm", "every weekday"), a priority (p1 to p4), labels (@calls), a project (#Work, #"Home Office") and a section of it (/Errands), an estimate (~30m), how long a sitting of it is ("3h in 45m sittings"). A line starting with `block` makes a time block instead ("block Deep work 9-11am weekdays"). The answer says how it was read.
+    A quick-add line, read as a person's would be: the title, then any of a due date or time ("tomorrow at 3pm", "every weekday"), a priority (p1 to p4), labels (@calls), a project (#Work, #"Home Office") and a section of it (/Errands), an estimate (~30m), how long a sitting of it is ("3h in 45m sittings"), when it may be begun ("from monday", or "someday"), the day it must be done by ("by friday"). A line starting with `block` makes a time block instead ("block Deep work 9-11am weekdays"). The answer says how it was read.
 
     .PARAMETER Profile
     The profile directory to use, instead of $env:LUMENNA_PROFILE or the platform's own.
@@ -574,6 +604,12 @@ function Set-LumennaTask {
     .PARAMETER Sittings
     How long one sitting of it is ("45m"), for work better done in pieces: planning gives it a sitting at a time. `none` to plan it whole.
 
+    .PARAMETER Start
+    When it may be begun, as a person says a day ("next monday"): until then it is left out of the lists and the planner. `someday` keeps it until it is given a date; `none` starts it now.
+
+    .PARAMETER Deadline
+    The day it must be done by ("friday"), or `none`.
+
     .PARAMETER Notes
     Its notes, whole.
 
@@ -621,6 +657,14 @@ function Set-LumennaTask {
         [Parameter()]
         [string]
         $Sittings,
+
+        [Parameter()]
+        [string]
+        $Start,
+
+        [Parameter()]
+        [string]
+        $Deadline,
 
         [Parameter()]
         [string]
