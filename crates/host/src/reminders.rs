@@ -30,9 +30,13 @@ pub use lumenna_records::reminders::{DueReminder, DueReminders, ReminderList, Re
 /// A firing's whole message, and the same said of the past.
 fn words(firing: &Firing, snapshot: &Snapshot, verbosity: Verbosity) -> (String, String, String) {
     let (span, when) = gap(firing.trigger.offset_mins);
+    if firing.check_in {
+        return lumenna_records::energy::reminder_words();
+    }
     let title = match firing.target {
         ReminderTarget::Task(id) => snapshot.tasks.get(&id).map(|t| t.title.clone()),
         ReminderTarget::Block(id) => snapshot.series.get(&id).map(|s| s.title.clone()),
+        ReminderTarget::Day => None,
     }
     .unwrap_or_else(|| "A reminder".to_owned());
     use std::cmp::Ordering::{Equal, Greater, Less};
@@ -121,6 +125,7 @@ fn notification(firing: &Firing, snapshot: &Snapshot, verbosity: Verbosity) -> D
     let (target, kind) = match firing.target {
         ReminderTarget::Task(id) => (id.to_string(), "task"),
         ReminderTarget::Block(id) => (id.to_string(), "block"),
+        ReminderTarget::Day => (String::new(), "day"),
     };
     DueReminder {
         key: firing.key.to_string(),
@@ -141,6 +146,7 @@ fn notification(firing: &Firing, snapshot: &Snapshot, verbosity: Verbosity) -> D
         replan: if firing.overrun.is_some() { "Replan".to_owned() } else { String::new() },
         stop: if firing.time_up.is_some() { "Stop Timer".to_owned() } else { String::new() },
         sitting: firing.time_up.map(|up| up.sitting.to_string()).unwrap_or_default(),
+        low: if firing.check_in { lumenna_records::energy::LOW_TODAY.to_owned() } else { String::new() },
     }
 }
 
@@ -349,6 +355,7 @@ impl Lumenna {
                 LumennaError::new(match target {
                     ReminderTarget::Task(_) => "a task's reminder counts from when it is due, or is at a set moment",
                     ReminderTarget::Block(_) => "a block's reminder counts from when it starts or ends, or is at a set moment",
+                    ReminderTarget::Day => "the day's energy check-in is a setting, not a reminder of its own",
                 })
             })?;
             let name = target_name(&snapshot, target);

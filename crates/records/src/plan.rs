@@ -187,6 +187,7 @@ pub fn block_shown(snapshot: &Snapshot, id: &str) -> Result<BlockShown> {
         task_filter: series.task_filter.clone(),
         until: series.is_recurring().then_some(series.end_date).flatten().map(|d| d.to_string()),
         colour: series.color.clone(),
+        hours: series.hours.map(|h| h.as_str().to_owned()),
     })
 }
 

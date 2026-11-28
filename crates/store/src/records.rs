@@ -328,6 +328,9 @@ impl Record for Task {
             due: r.map("due").and_then(|due| read_due(&due)),
             estimate_mins: r.u32("estimate_mins"),
             sitting_mins: r.u32("sitting_mins"),
+            // A level a newer build added reads as unrated, and survives: a write sends only
+            // what changed.
+            energy: r.parsed("energy"),
             start: r.parsed("start"),
             deadline: r.parsed("deadline"),
             kept_at: r.timestamp("kept_at"),
@@ -357,6 +360,7 @@ impl Record for Task {
         w.set_nested("due", was.map(|b| b.due.as_ref()), self.due.as_ref())?;
         w.set_opt_u32("estimate_mins", was.map(|b| b.estimate_mins), self.estimate_mins)?;
         w.set_opt_u32("sitting_mins", was.map(|b| b.sitting_mins), self.sitting_mins)?;
+        w.set_opt_str("energy", was.map(|b| b.energy.as_ref()), self.energy.as_ref())?;
         w.set_opt_str("start", was.map(|b| b.start.as_ref()), self.start.as_ref())?;
         w.set_opt_str("deadline", was.map(|b| b.deadline.as_ref()), self.deadline.as_ref())?;
         w.set_opt_time("kept_at", was.map(|b| b.kept_at.as_ref()), self.kept_at.as_ref())?;
@@ -631,6 +635,7 @@ impl Record for BlockSeries {
             timezone: r.string("timezone").map(TzName::new),
             color: r.string("color"),
             task_filter: r.string("task_filter"),
+            hours: r.parsed("hours"),
             external: r.map("external").and_then(|e| read_external(&e)),
             deleted_at: r.timestamp("deleted_at"),
         })
@@ -665,6 +670,7 @@ impl Record for BlockSeries {
             was.map(|b| b.task_filter.as_ref()),
             self.task_filter.as_ref(),
         )?;
+        w.set_opt_str("hours", was.map(|b| b.hours.as_ref()), self.hours.as_ref())?;
         w.set_nested(
             "external",
             was.map(|b| b.external.as_ref()),
@@ -871,12 +877,14 @@ impl Record for Reminder {
         let (kind, id) = match self.target {
             ReminderTarget::Task(id) => ("task", id.to_string()),
             ReminderTarget::Block(id) => ("block", id.to_string()),
+            ReminderTarget::Day => ("day", String::new()),
         };
         // Only what changed, as every field: rewritten on every edit, these won against a
         // concurrent edit elsewhere for no reason.
         let was_target = was.map(|b| match b.target {
             ReminderTarget::Task(id) => ("task", id.to_string()),
             ReminderTarget::Block(id) => ("block", id.to_string()),
+            ReminderTarget::Day => ("day", String::new()),
         });
         w.set_string("target_kind", was_target.as_ref().map(|(kind, _)| *kind), kind)?;
         w.set_string("target_id", was_target.as_ref().map(|(_, id)| id.as_str()), &id)?;
@@ -929,6 +937,7 @@ impl Record for ReminderAck {
             target: match r.string("target_kind").as_deref() {
                 Some("task") => r.parsed("target_id").map(ReminderTarget::Task),
                 Some("block") => r.parsed("target_id").map(ReminderTarget::Block),
+                Some("day") => Some(ReminderTarget::Day),
                 _ => None,
             },
         })
@@ -953,6 +962,7 @@ impl Record for ReminderAck {
             ack.target.map(|target| match target {
                 ReminderTarget::Task(id) => ("task", id.to_string()),
                 ReminderTarget::Block(id) => ("block", id.to_string()),
+                ReminderTarget::Day => ("day", String::new()),
             })
         };
         let (was_target, target) = (was.map(target), target(self));
@@ -1072,6 +1082,11 @@ pub(crate) fn read_settings<D: ReadDoc>(r: &Reader<'_, D>) -> Settings {
                 assigned_today: w("assigned_today", d.assigned_today),
             }
         },
+        energy_capacity: r.u32("energy_capacity").filter(|m| *m > 0),
+        energy_today: r.parsed("energy_today"),
+        best_hours: r.parsed("best_hours"),
+        worst_hours: r.parsed("worst_hours"),
+        energy_check_in: r.parsed("energy_check_in"),
     }
 }
 
@@ -1139,6 +1154,11 @@ pub(crate) fn write_settings<T: Transactable>(
     for (index, (key, value)) in weights(&now.urgency).into_iter().enumerate() {
         w.set_f32(&format!("urgency_{key}"), was.map(|was| was[index].1), value)?;
     }
+    w.set_opt_u32("energy_capacity", before.map(|b| b.energy_capacity), now.energy_capacity)?;
+    w.set_opt_str("energy_today", before.map(|b| b.energy_today.as_ref()), now.energy_today.as_ref())?;
+    w.set_opt_str("best_hours", before.map(|b| b.best_hours.as_ref()), now.best_hours.as_ref())?;
+    w.set_opt_str("worst_hours", before.map(|b| b.worst_hours.as_ref()), now.worst_hours.as_ref())?;
+    w.set_opt_str("energy_check_in", before.map(|b| b.energy_check_in.as_ref()), now.energy_check_in.as_ref())?;
     Ok(())
 }
 

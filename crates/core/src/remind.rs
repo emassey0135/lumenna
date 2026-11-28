@@ -51,6 +51,10 @@ pub struct Firing {
     /// Whether this is a sitting's planned length used up by its timer running: said once, as
     /// the countdown reaches nothing.
     pub time_up: Option<TimeUp>,
+    /// Whether this is the day's question of how the person's energy is
+    /// ([`ReminderTarget::Day`]), at the `energy_check_in` setting's time, while they have not
+    /// said for that day.
+    pub check_in: bool,
 }
 
 /// A sitting's planned length used up by its timer.
@@ -106,6 +110,9 @@ pub fn target_of(snapshot: &Snapshot, id: ReminderId) -> Option<ReminderTarget> 
     if let Some(sitting) = snapshot.assignments.values().find(|a| time_up_key(a.id) == id) {
         return Some(ReminderTarget::Task(sitting.task_id));
     }
+    if id == check_in_key() {
+        return Some(ReminderTarget::Day);
+    }
     let settings = &snapshot.settings;
     let task = snapshot
         .tasks
@@ -144,6 +151,7 @@ pub fn default_key(target: &ReminderTarget, trigger: &Trigger) -> ReminderId {
             feed(b"block");
             feed(id.as_uuid().as_bytes());
         }
+        ReminderTarget::Day => feed(b"day"),
     }
     let anchor: &[u8] = match &trigger.anchor {
         ReminderAnchor::Due => b"due",
@@ -177,6 +185,18 @@ pub fn time_up_key(sitting: crate::id::AssignmentId) -> ReminderId {
     // FNV-1a, as `default_key`, over a prefix of its own so it can never meet a default's key.
     let mut hash: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
     for byte in b"time-up".iter().chain(sitting.as_uuid().as_bytes()) {
+        hash ^= u128::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0000_0100_0000_0000_0000_0000_013b);
+    }
+    ReminderId::from_uuid(Uuid::from_u128(hash))
+}
+
+/// The key the day's energy check-in fires under, the same every day (its occurrence is the
+/// day): fixed forever, so a dismissal holds on every device.
+#[must_use]
+pub fn check_in_key() -> ReminderId {
+    let mut hash: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
+    for byte in b"energy-check-in" {
         hash ^= u128::from(*byte);
         hash = hash.wrapping_mul(0x0000_0000_0100_0000_0000_0000_0000_013b);
     }
@@ -376,6 +396,7 @@ pub fn firings(
                 carry: false,
                 overrun: None,
                 time_up: None,
+                check_in: false,
             });
         }
     }
@@ -429,6 +450,7 @@ pub fn firings(
                 carry: carries,
                 overrun: None,
                 time_up: None,
+                check_in: false,
             });
         }
         // Planned work outrunning its time is said before the clock says it, unless the
@@ -457,6 +479,7 @@ pub fn firings(
                     carry: false,
                     overrun: Some(overrun),
                     time_up: None,
+                    check_in: false,
                 });
             }
         }
@@ -474,6 +497,7 @@ pub fn firings(
                 carry: true,
                 overrun: None,
                 time_up: None,
+                check_in: false,
             });
         }
     }
@@ -483,6 +507,8 @@ pub fn firings(
         let stands = match target {
             ReminderTarget::Task(id) => snapshot.tasks.get(&id).is_some_and(|t| !t.is_deleted() && !facts.is_completed(t)),
             ReminderTarget::Block(id) => snapshot.series.get(&id).is_some_and(|s| s.deleted_at.is_none()),
+            // Never a reminder record's: nothing stands behind it.
+            ReminderTarget::Day => false,
         };
         if stands {
             consider(Firing {
@@ -498,6 +524,7 @@ pub fn firings(
                 carry: false,
                 overrun: None,
                 time_up: None,
+                check_in: false,
             });
         }
     }
@@ -527,7 +554,35 @@ pub fn firings(
             carry: false,
             overrun: None,
             time_up: Some(TimeUp { sitting: sitting.id, planned }),
+            check_in: false,
         });
+    }
+
+    // The day's energy check-in, at its time each day, until the person says for that day.
+    if let Some(time) = snapshot.settings.energy_check_in {
+        let mut date = first;
+        while date <= last {
+            if crate::energy::checked_in(&snapshot.settings, date).is_none() {
+                let at = instant(date, time, local);
+                consider(Firing {
+                    key: check_in_key(),
+                    own: false,
+                    target: ReminderTarget::Day,
+                    occurrence: date,
+                    trigger: Trigger::at(ReminderAnchor::Absolute(at.to_zoned(local.clone()))),
+                    anchor_at: at,
+                    at,
+                    snoozed: false,
+                    all_day: false,
+                    carry: false,
+                    overrun: None,
+                    time_up: None,
+                    check_in: true,
+                });
+            }
+            let Some(next) = date.tomorrow().ok() else { break };
+            date = next;
+        }
     }
 
     found.sort_by_key(|f| (f.at, f.key));

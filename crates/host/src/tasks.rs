@@ -390,6 +390,9 @@ impl Lumenna {
             if let Some(deadline) = &edit.deadline {
                 after.deadline = resolve::day(deadline, &now, snapshot.settings.week_start)?;
             }
+            if let Some(energy) = &edit.energy {
+                after.energy = resolve::energy(energy)?;
+            }
             // Someday lasts until it is given a date, however the edit reaches the store.
             let mut after = lumenna_core::when::given_a_date(&before, after);
             if let Some(notes) = edit.notes {

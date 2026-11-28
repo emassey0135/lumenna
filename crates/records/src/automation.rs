@@ -345,7 +345,7 @@ impl Answers {
             "apply_day_plan" => Answers::DayPlanned,
             "add_task" | "edit_task" | "complete_task" | "uncomplete_task" | "trash_task" | "erase_task_permanently"
             | "erase_everything_deleted" | "restore_task" | "move_task" | "add_section" | "assign" | "unassign" | "start_timer" | "start_on"
-            | "toggle_timer" | "mark_reviewed" | "review_every" | "reconsider_task" | "undo" | "redo" => Answers::Change,
+            | "toggle_timer" | "mark_reviewed" | "review_every" | "reconsider_task" | "check_in_energy" | "undo" | "redo" => Answers::Change,
             _ => return None,
         })
     }

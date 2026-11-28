@@ -107,6 +107,11 @@ pub fn propose(snapshot: &Snapshot, date: Option<&str>, style: TimeStyle, pins: 
     }
     let unfit: Vec<String> =
         proposal.unfit.iter().filter_map(|t| snapshot.tasks.get(t).map(|t| t.title.clone())).collect();
+    // Of those, the ones a block had room for but the day's energy did not: said apart, since
+    // the person can do something about that (rate them, or say they are not low).
+    let (spent_out, unfit): (Vec<String>, Vec<String>) = unfit.into_iter().partition(|title| {
+        proposal.spared.iter().any(|id| snapshot.tasks.get(id).is_some_and(|t| &t.title == title))
+    });
     let mut said = Vec::new();
     if sittings.is_empty() {
         said.push("There is nothing to plan: no work block still to come has room for a task that fits it.".to_owned());
@@ -135,6 +140,15 @@ pub fn propose(snapshot: &Snapshot, date: Option<&str>, style: TimeStyle, pins: 
             said.push(format!("{} is due, and {} of it fits in no block.", task.title, duration(*minutes)));
         }
     }
+    match spent_out.as_slice() {
+        [] => {}
+        [one] => said.push(format!("{one} is due, but today's energy has no room for it.")),
+        many => said.push(format!("{} are due, but today's energy has no room for them.", listed(many))),
+    }
+    if let Some(energy) = crate::energy::plan_words(proposal.capacity.as_ref(), proposal.spent, proposal.planned, proposal.spared.len()) {
+        said.push(format!("{energy}."));
+    }
+    let unfit: Vec<String> = unfit.into_iter().chain(spent_out).collect();
     Ok(DayPlan {
         announcement: said.join(" "),
         notices: Vec::new(),

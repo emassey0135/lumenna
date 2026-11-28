@@ -42,6 +42,8 @@ pub struct TaskFields {
     pub start: String,
     /// The day it must be done by, `2026-10-16`. Empty for none.
     pub deadline: String,
+    /// What it takes of the person's energy: `low`, `medium` or `high`. Empty for not rated.
+    pub energy: String,
 }
 
 /// A task's fields as a form starts from them.
@@ -59,6 +61,7 @@ pub fn task_fields(task: TaskDetail) -> TaskFields {
         sittings: task.sitting_mins.map(|m| format!("{m}m")).unwrap_or_default(),
         start: task.start.unwrap_or_default(),
         deadline: task.deadline.unwrap_or_default(),
+        energy: task.energy.unwrap_or_default(),
     }
 }
 
@@ -84,12 +87,19 @@ pub fn task_edit(task: TaskDetail, fields: TaskFields) -> Option<TaskEdit> {
         sittings: changed(&fields.sittings, &before.sittings).then(|| or_none(&fields.sittings)),
         start: changed(&fields.start, &before.start).then(|| or_none(&fields.start)),
         deadline: changed(&fields.deadline, &before.deadline).then(|| or_none(&fields.deadline)),
+        // "none" and empty both mean not rated, as the form's choice names it.
+        energy: (energy_of(&fields.energy) != energy_of(&before.energy)).then(|| or_none(energy_of(&fields.energy))),
         notes: (fields.notes != before.notes).then(|| fields.notes.clone()),
         project: (changed(&fields.project, &before.project) && !fields.project.trim().is_empty())
             .then(|| fields.project.trim().to_owned()),
         labels: (label_names(&fields.labels) != label_names(&before.labels)).then(|| label_names(&fields.labels)),
     };
     (edit != TaskEdit::default()).then_some(edit)
+}
+
+fn energy_of(text: &str) -> &str {
+    let text = text.trim();
+    if text.eq_ignore_ascii_case("none") { "" } else { text }
 }
 
 fn label_names(text: &str) -> Vec<String> {
@@ -177,6 +187,8 @@ pub struct BlockFields {
     pub task_filter: String,
     /// A colour, by name. Empty for none.
     pub colour: String,
+    /// Whether it is the person's best or worst hours: `best` or `worst`. Empty for ordinary.
+    pub hours: String,
     /// The notes, exactly as typed.
     pub notes: String,
 }
@@ -197,6 +209,7 @@ pub fn block_fields(block: BlockShown) -> BlockFields {
         min_minutes: block.min_minutes.map(|m| m.to_string()).unwrap_or_default(),
         task_filter: block.task_filter.unwrap_or_default(),
         colour: block.colour.unwrap_or_default(),
+        hours: block.hours.unwrap_or_default(),
         notes: block.notes,
     }
 }
@@ -260,6 +273,7 @@ pub fn block_edit(before: BlockFields, after: BlockFields) -> Result<Option<Bloc
         task_filter: text(&after.task_filter, &before.task_filter),
         until: or_none(&after.until, &before.until),
         colour: text(&after.colour, &before.colour),
+        hours: changed(&after.hours, &before.hours).then(|| if after.hours.trim().is_empty() { "none".to_owned() } else { after.hours.trim().to_owned() }),
     };
     Ok((edit != BlockEdit::default()).then_some(edit))
 }
@@ -290,6 +304,7 @@ pub fn new_block(fields: BlockFields, date: Option<String>) -> Result<NewBlock> 
         task_filter: given(&fields.task_filter),
         until: given(&fields.until),
         colour: given(&fields.colour),
+        hours: given(&fields.hours).filter(|h| !h.eq_ignore_ascii_case("none")),
     })
 }
 
@@ -358,6 +373,7 @@ mod tests {
             sitting_mins: None,
             start: None,
             deadline: None,
+            energy: None,
             state: vec!["ready".to_owned()],
             created_at: "2026-10-01T09:00:00Z".to_owned(),
             actions: Vec::new(),

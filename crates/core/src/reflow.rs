@@ -9,6 +9,11 @@
 //! than being squeezed. Nothing moves before now or past the day's end. What does not fit is
 //! said: the planner cannot make time.
 //!
+//! **A day the person said they are low is lightened first** ([`crate::energy`]): while what
+//! is planned for it spends more than its capacity, the sittings still to come leave it, the most
+//! demanding first and then the latest, for the caller to find another day for. Only then is the
+//! work moved and the walk made.
+//!
 //! Times here are minutes from midnight on the day, civil: the day as the person reads it.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -77,6 +82,16 @@ pub enum Proposed {
         /// The minutes that leave.
         moved: u32,
     },
+    /// A sitting leaves a day the person said they are low, which planned more than its
+    /// capacity; where it goes, on another day, is the caller's to find.
+    Lighten {
+        /// The sitting.
+        assignment: AssignmentId,
+        /// Its task.
+        task: TaskId,
+        /// The block it leaves.
+        from: SeriesId,
+    },
 }
 
 /// What a re-flow proposes.
@@ -86,6 +101,8 @@ pub struct Proposal {
     pub changes: Vec<Proposed>,
     /// Blocks that do not fit before the day's end, even at their shortest.
     pub unplaceable: Vec<SeriesId>,
+    /// What the day has room for, on a day the person said they are low; None on any other.
+    pub capacity: Option<crate::energy::Capacity>,
 }
 
 fn minutes(time: jiff::civil::Time) -> i64 {
@@ -134,6 +151,50 @@ pub fn propose_reflow(
         .find(|o| minutes(o.start_time) <= now && now < minutes(o.start_time) + i64::from(o.duration_mins));
     let mut proposal = Proposal::default();
 
+    // A low day is lightened first: what leaves it frees its block's time too.
+    let mut lightened: BTreeSet<AssignmentId> = BTreeSet::new();
+    let work: u32 = occurrences.iter().filter(|o| o.flags.accepts_tasks).map(|o| o.duration_mins).sum();
+    if let Some(capacity) = crate::energy::capacity(&snapshot.settings, day, work)
+        .filter(|c| c.level == Some(crate::energy::Energy::Low))
+    {
+        proposal.capacity = Some(capacity);
+        let mut spent = crate::energy::spent(snapshot, day);
+        let to_come: BTreeMap<BlockRef, (i64, SeriesId)> = occurrences
+            .iter()
+            .filter(|o| minutes(o.start_time) + i64::from(o.duration_mins) > now)
+            .map(|o| (reference(o), (minutes(o.start_time), o.series_id)))
+            .collect();
+        // Sittings not begun, in blocks not over: the most demanding first, then the latest.
+        let mut candidates: Vec<(&crate::model::BlockAssignment, &crate::model::Task, i64, SeriesId)> = snapshot
+            .assignments
+            .values()
+            .filter(|a| a.status == AssignmentStatus::Planned && a.accumulated_mins == 0 && !staying.contains(&a.id))
+            .filter_map(|a| {
+                let (start, series) = *to_come.get(&a.block_ref)?;
+                if skipped.contains(&series) {
+                    return None;
+                }
+                let task = snapshot.tasks.get(&a.task_id).filter(|t| !t.is_deleted() && !snapshot.is_completed(t))?;
+                Some((a, task, start, series))
+            })
+            .collect();
+        candidates.sort_by(|a, b| {
+            crate::energy::of(b.1)
+                .cmp(&crate::energy::of(a.1))
+                .then(b.2.cmp(&a.2))
+                .then_with(|| b.0.order.cmp_with(&b.0.id, &a.0.order, &a.0.id))
+        });
+        for (sitting, task, _, series) in candidates {
+            if spent <= capacity.minutes {
+                break;
+            }
+            let length = sitting.planned_mins.or(task.estimate_mins).unwrap_or(crate::dayplan::UNESTIMATED_MINS);
+            spent = spent.saturating_sub(crate::energy::cost(task, length));
+            lightened.insert(sitting.id);
+            proposal.changes.push(Proposed::Lighten { assignment: sitting.id, task: task.id, from: series });
+        }
+    }
+
     // Move the work first: a block whose planned sittings outrun its time gives up the last.
     for occurrence in &occurrences {
         let start = minutes(occurrence.start_time);
@@ -147,6 +208,7 @@ pub fn propose_reflow(
             .assignments
             .values()
             .filter(|a| a.block_ref == block && a.status == AssignmentStatus::Planned && a.accumulated_mins == 0)
+            .filter(|a| !lightened.contains(&a.id))
             .collect();
         sittings.sort_by(|a, b| a.order.cmp_with(&a.id, &b.order, &b.id));
         let started_work: i64 = snapshot

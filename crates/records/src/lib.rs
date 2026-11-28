@@ -16,6 +16,7 @@ pub mod colours;
 pub mod controls;
 pub mod day;
 pub mod dayplan;
+pub mod energy;
 pub mod error;
 pub mod exports;
 pub mod fields;

@@ -74,6 +74,7 @@ fn populated() -> Populated {
     });
     parent.estimate_mins = Some(90);
     parent.sitting_mins = Some(45);
+    parent.energy = Some(lumenna_core::energy::Energy::High);
     parent.start = Some(lumenna_core::model::Start::On(date(2026, 9, 3)));
     parent.deadline = Some(date(2026, 9, 11));
     parent.kept_at = Some(now());
@@ -118,6 +119,7 @@ fn populated() -> Populated {
     series.timezone = Some(TzName::new("Europe/London"));
     series.color = Some("#00ff00".to_owned());
     series.task_filter = Some("#Work".to_owned());
+    series.hours = Some(lumenna_core::energy::Hours::Best);
     series.flags.anchored = true;
 
     let lunch = BlockSeries::one_off("Lunch", BlockKind::Break, date(2027, 1, 4), time(12, 0, 0, 0), 45)
@@ -180,6 +182,11 @@ fn populated() -> Populated {
         },
         task_order: lumenna_core::filter::Sort::Added,
         show_completed_subtasks: true,
+        energy_capacity: Some(300),
+        energy_today: Some(lumenna_core::energy::CheckIn { date: date(2026, 9, 2), level: lumenna_core::energy::Energy::Low }),
+        best_hours: Some(lumenna_core::energy::TimeRange { start: time(9, 0, 0, 0), end: time(12, 0, 0, 0) }),
+        worst_hours: Some(lumenna_core::energy::TimeRange { start: time(14, 0, 0, 0), end: time(16, 30, 0, 0) }),
+        energy_check_in: Some(time(8, 15, 0, 0)),
     };
 
     let before = store.snapshot().0.settings;
@@ -462,6 +469,7 @@ prop_compose! {
         due in arbitrary_due(),
         estimate in prop::option::of(1u32..10_000),
         sitting in prop::option::of(1u32..600),
+        energy in prop::option::of(0usize..3),
         start in prop::option::of(0i64..400),
         deadline in prop::option::of(0i64..400),
         steps in 0usize..20,
@@ -478,6 +486,7 @@ prop_compose! {
         task.due = due;
         task.estimate_mins = estimate;
         task.sitting_mins = sitting;
+        task.energy = energy.map(|i| lumenna_core::energy::Energy::ALL[i]);
         task.start = start.map(|day| if day == 0 { lumenna_core::model::Start::Someday } else { lumenna_core::model::Start::On(date(2026, 1, 1) + jiff::Span::new().days(day)) });
         task.deadline = deadline.map(|day| date(2026, 1, 1) + jiff::Span::new().days(day));
         task.created_at = Timestamp::from_millisecond(millis).unwrap();

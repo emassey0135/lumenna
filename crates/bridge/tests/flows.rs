@@ -1845,6 +1845,7 @@ fn a_failed_dismiss_says_why_and_leaves_the_reminder_listed_and_the_question_alo
         replan: String::new(),
         stop: String::new(),
         sitting: String::new(),
+        low: String::new(),
     };
     app.send(Event::Answered(lumenna_app::HostAnswer::Found(Ok(lumenna_records::reminders::DueReminders {
         announcement: String::new(),
@@ -1933,6 +1934,7 @@ fn an_overruns_replan_opens_on_today_and_its_warning_stays_when_nothing_is_repla
         replan: "Replan".to_owned(),
         stop: String::new(),
         sitting: String::new(),
+        low: String::new(),
     };
     app.send(Event::Answered(lumenna_app::HostAnswer::Found(Ok(lumenna_records::reminders::DueReminders {
         announcement: String::new(),
@@ -2293,6 +2295,7 @@ fn a_summary_of_missed_reminders_refuses_snooze_in_the_cores_words() {
         replan: String::new(),
         stop: String::new(),
         sitting: String::new(),
+        low: String::new(),
     };
     app.send(Event::Answered(lumenna_app::HostAnswer::Found(
         Ok(lumenna_records::reminders::DueReminders {

@@ -253,6 +253,10 @@ pub fn suggested_because(reasons: &[lumenna_core::suggestions::Reason], terse: b
             }
             R::Blocked => against.push("it waits on another task".to_owned()),
             R::AssignedToday => against.push("it is in a block already today".to_owned()),
+            R::Energy(fit) => match crate::energy::fit_words(*fit) {
+                (true, words) => for_it.push(words.to_owned()),
+                (false, words) => against.push(words.to_owned()),
+            },
         }
     }
     if terse {

@@ -43,6 +43,23 @@ pub struct Settings {
     /// completed tasks out.
     #[cfg_attr(feature = "serde", serde(default))]
     pub show_completed_subtasks: bool,
+    /// What a usual day has room for, in minutes of ordinary work ([`crate::energy`]): Plan the
+    /// Day stops before it is spent. None, the default, is no limit.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub energy_capacity: Option<u32>,
+    /// How the person said their energy is today, for the day it names alone.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub energy_today: Option<crate::energy::CheckIn>,
+    /// The time of day the person's energy is best, for a block not marked itself.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub best_hours: Option<crate::energy::TimeRange>,
+    /// The time of day it is worst.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub worst_hours: Option<crate::energy::TimeRange>,
+    /// When to ask, each day, how the person's energy is: a reminder of its own. None, the
+    /// default, never asks.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub energy_check_in: Option<civil::Time>,
 }
 
 impl Default for Settings {
@@ -58,6 +75,11 @@ impl Default for Settings {
             urgency: crate::urgency::Coefficients::default(),
             task_order: crate::filter::Sort::Urgency,
             show_completed_subtasks: false,
+            energy_capacity: None,
+            energy_today: None,
+            best_hours: None,
+            worst_hours: None,
+            energy_check_in: None,
         }
     }
 }

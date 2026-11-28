@@ -124,6 +124,11 @@ pub fn task_form() -> Vec<FormField> {
             "For work better done in pieces, how long one sitting is, such as 45m: planning gives it a sitting at a time. Empty to plan it whole.",
             "45m",
         ),
+        // Beside the estimate: what it takes, as a length is how long.
+        FormField {
+            options: crate::energy::energy_choices(None).into_iter().map(|c| Choice { detail: None, ..c }).collect(),
+            ..field("energy", "Energy", K::Choice, crate::energy::ENERGY_HINT, "")
+        },
         // A list, filled from `Lumenna::project_options`: a task only ever moves to a project
         // that exists, so a list cannot hold a typo, and typing still finds one.
         field("project", "Project", K::Choice, "", ""),
@@ -172,6 +177,7 @@ pub fn block_form() -> Vec<FormField> {
             ..field("task_filter", "Tasks from", K::Line, "Which tasks it is offered, such as #Work. Empty for all.", "#Work")
         },
         FormField { options: crate::colours::colour_choices(None), ..field("colour", "Colour", K::Choice, crate::actions::COLOUR, "") },
+        FormField { options: crate::energy::hours_choices(), ..field("hours", "Energy then", K::Choice, crate::energy::HOURS_HINT, "") },
         field("notes", "Notes", K::Lines, "", ""),
     ]
 }
@@ -670,7 +676,7 @@ pub struct SettingsPage {
     #[serde(default)]
     pub devices: bool,
     /// Its title then its description, as one row of a list of pages that reads a line each:
-    /// "Planning. The day, the week, completing subtasks, announcements".
+    /// "Planning. The day, the week, your energy, completing subtasks, announcements".
     #[serde(default)]
     pub line: String,
     /// Its title then its caption, as one heading over its settings for a device whose screens
@@ -704,7 +710,7 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
         page(
             "planning",
             "Planning",
-            "The day, the week, completing subtasks, announcements",
+            "The day, the week, your energy, completing subtasks, announcements",
             "These sync to all your devices.",
             keys(&[
                 "day-start",
@@ -715,6 +721,10 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
                 "cascade-complete-subtasks",
                 "verbosity",
                 "urgency-weights",
+                "energy-capacity",
+                "best-hours",
+                "worst-hours",
+                "energy-check-in",
             ]),
             Vec::new(),
         ),

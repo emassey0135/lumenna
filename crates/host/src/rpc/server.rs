@@ -129,6 +129,7 @@ pub const METHODS: &[&str] = &[
     "upcoming",
     "review",
     "report",
+    "energy",
     "config.get",
     "config.set",
     "undo",
@@ -176,7 +177,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("task.show", &["id"]),
     ("task.history", &["id"]),
     ("task.reconsider", &["id", "answer"]),
-    ("task.edit", &["id", "title", "due", "repeat", "priority", "estimate", "notes", "project", "labels", "sittings", "start", "deadline"]),
+    ("task.edit", &["id", "title", "due", "repeat", "priority", "estimate", "notes", "project", "labels", "sittings", "start", "deadline", "energy"]),
     ("task.done", &["id"]),
     ("task.undone", &["id"]),
     ("task.rm", &["id"]),
@@ -220,10 +221,10 @@ const TAKES: &[(&str, &[&str])] = &[
     ("filter.colour", &["name", "colour"]),
     ("filter.rm", &["name"]),
     ("plan", &["date"]),
-    ("block.add", &["title", "at", "minutes", "date", "kind", "repeat", "+extras"]),
+    ("block.add", &["title", "at", "minutes", "date", "kind", "repeat", "hours", "+extras"]),
     ("block.list", &[]),
     ("block.show", &["id"]),
-    ("block.edit", &["id", "title", "at", "minutes", "kind", "repeat", "date", "all", "+extras"]),
+    ("block.edit", &["id", "title", "at", "minutes", "kind", "repeat", "date", "all", "hours", "+extras"]),
     ("block.cancel", &["id", "date"]),
     ("block.restore", &["id", "date"]),
     ("block.rm", &["id"]),
@@ -252,6 +253,7 @@ const TAKES: &[(&str, &[&str])] = &[
     ("upcoming", &[]),
     ("review", &[]),
     ("report", &[]),
+    ("energy", &["level", "now"]),
     ("config.get", &["key"]),
     ("config.set", &["key", "value"]),
     ("undo", &[]),
@@ -733,6 +735,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
             sittings: maybe_text(params, "sittings"),
             start: maybe_text(params, "start"),
             deadline: maybe_text(params, "deadline"),
+            energy: maybe_text(params, "energy"),
         })?),
         "task.done" => Response::new(l.complete_task(&id()?)?),
         "task.undone" => Response::new(l.uncomplete_task(&id()?)?),
@@ -838,6 +841,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
                 task_filter: extras.task_filter,
                 until: extras.until,
                 colour: extras.colour,
+                hours: maybe_text(params, "hours"),
             })?)
         }
         "block.list" => Response::new(l.list_blocks()?),
@@ -861,6 +865,7 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
                 task_filter: extras.task_filter,
                 until: extras.until,
                 colour: extras.colour,
+                hours: maybe_text(params, "hours"),
             }, scope)?)
         }
         "block.cancel" => Response::new(l.cancel_occurrence(&id()?, &text_of(params, "date")?)?),
@@ -902,6 +907,11 @@ fn answer(server: &Server, method: &str, params: &Value) -> Answer {
         "upcoming" => Response::new(l.upcoming()?),
         "review" => Response::new(l.review()?),
         "report" => Response::new(l.report()?),
+        // Today's check-in: with a level, says it; without, says what was said.
+        "energy" => match maybe_text(params, "level") {
+            Some(level) => Response::new(l.check_in_energy(&level, maybe_text(params, "now"))?),
+            None => Response::unchanged(l.energy_today()?.announcement),
+        },
 
         "config.get" => Response::new(l.settings(maybe_text(params, "key"))?),
         "config.set" => {

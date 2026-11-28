@@ -119,6 +119,7 @@ impl Lumenna {
                     task_filter: block.task_filter.as_deref(),
                     until: block.until.as_deref(),
                     colour: block.colour.as_deref(),
+                    hours: block.hours.as_deref(),
                 },
                 &now,
             )?;
@@ -214,6 +215,7 @@ impl Lumenna {
                             task_filter: edit.task_filter.as_deref(),
                             until: edit.until.as_deref(),
                             colour: edit.colour.as_deref(),
+                            hours: edit.hours.as_deref(),
                         },
                         &now,
                     )?;
@@ -233,9 +235,10 @@ impl Lumenna {
                         || edit.task_filter.is_some()
                         || edit.until.is_some()
                         || edit.colour.is_some()
+                        || edit.hours.is_some()
                     {
                         return Err(LumennaError::new(
-                            "notes, a task filter, a shortest length, a last day and a colour \
+                            "notes, a task filter, a shortest length, a last day, a colour and its hours \
                              belong to every occurrence; change every occurrence to change them",
                         ));
                     }
@@ -708,6 +711,7 @@ struct Extras<'a> {
     task_filter: Option<&'a str>,
     until: Option<&'a str>,
     colour: Option<&'a str>,
+    hours: Option<&'a str>,
 }
 
 /// Sets what `extras` gives on `series`, after its kind, so a flag given here overrides the
@@ -768,6 +772,9 @@ fn apply_extras(snapshot: &Snapshot, series: &mut BlockSeries, extras: &Extras<'
     }
     if let Some(colour) = extras.colour {
         series.color = lumenna_records::colours::colour_named(colour)?;
+    }
+    if let Some(hours) = extras.hours {
+        series.hours = resolve::hours(hours)?;
     }
     Ok(())
 }

@@ -316,6 +316,7 @@ const OPERATIONS: &[Op] = &[
         Param("sittings", "Sitting Length", K::Text, true, "How long one sitting of it is (\"45m\"), for work better done in pieces: planning gives it a sitting at a time. `none` to plan it whole."),
         Param("start", "Starts", K::Text, true, "When it may be begun, as a person says a day (\"next monday\"): until then it is left out of the lists and the planner. `someday` keeps it until it is given a date; `none` starts it now."),
         Param("deadline", "Deadline", K::Date, true, "The day it must be done by (\"friday\"), or `none`."),
+        Param("energy", "Energy", K::Text, true, "What it takes of the person's energy: `low`, `medium` or `high`, or `none` for not rated. Planning puts demanding work in their best hours and plans less on a day they are low."),
         Param("notes", "Notes", K::Text, true, "Its notes, whole."),
         Param("project", "Project", K::Project, true, "The project to move it to, by name."),
         Param("labels", "Labels", K::Labels, true, "Its labels, all of them, by name."),
@@ -373,6 +374,9 @@ const OPERATIONS: &[Op] = &[
         Param("proposal", "Proposal", K::DayPlan, false, "The proposal as `propose_day_plan` returned it, whole."),
         Param("accepted", "Accepted", K::DayPlanSittings, false, "Those of its `sittings` the person accepted, each as it was proposed."),
     ], "Puts the sittings the person accepted into their blocks, as one change they can undo, and plans again around what they turned down."),
+    write("check_in_energy", "Say How Your Energy Is Today", C::Planning, &["energy", "tired", "low", "check in", "capacity", "spoons", "exhausted"], &[
+        Param("level", "Energy", K::Text, true, "How the person says they are today: `low`, `usual` or `high`. Left out, says what they said today."),
+    ], "Says how the person's energy is today, which planning weighs for today alone: low plans less and leaves what takes the most for another day, high plans more. On a low day, `propose_replan` then proposes a lighter rest of the day.").idempotent(),
     read("review", "Show the Review", C::Planning, &["review", "weekly review", "stale", "put off", "second look"], &[],
         "What is due for a second look: the projects due for review, each with when it was last reviewed and how often it is, then the tasks the planner asks about, each with its question in short. A task's whole question is its `asking` in `show_task`."),
     write("mark_reviewed", "Mark a Project Reviewed", C::Planning, &["reviewed", "review", "looked at"], &[
@@ -485,6 +489,7 @@ pub fn entities() -> Vec<AssistantEntity> {
                 ("sittings", "Sitting Length in Minutes"),
                 ("start", "Starts"),
                 ("deadline", "Deadline"),
+                ("energy", "Energy"),
                 ("repeats", "Repeats"),
                 ("streak", "Streak"),
                 ("states", "States"),
