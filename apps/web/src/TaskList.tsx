@@ -25,6 +25,7 @@ import { say } from "./say";
 import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
+import { EmojiMark } from "./Emoji";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
 import { ScreenActions } from "./ScreenActions";
@@ -198,6 +199,7 @@ export function TaskList(props: { screen: Screen }) {
                         />
                       )}
                       <SwatchMark swatch={node.item.row.swatch} />
+                      <EmojiMark emoji={node.item.row.emoji} />
                       {node.item.text}
                     </div>
                   )}

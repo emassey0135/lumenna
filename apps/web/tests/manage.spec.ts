@@ -65,6 +65,31 @@ test("a project is made, renamed, and deleted keeping its tasks, from the sideba
     .toBe(true);
 });
 
+test("an emoji is drawn beside a project's and a task's name, and never in what its row is called", async ({ page }) => {
+  await open(page);
+  await placeMenu(page, /^Projects/, "New project");
+  await answer(page, "New project", "Garden", "Add");
+  // Typed into a line, as the system's own emoji picker types it.
+  await placeMenu(page, /^Garden/, "Emoji");
+  await answer(page, "Emoji of Garden", "🌱");
+  await expect(page.getByRole("contentinfo")).toContainText("Gave project Garden an emoji");
+  const project = places(page).getByRole("row", { name: /^Garden/ });
+  await expect(project).toHaveAccessibleName(/^Garden(,|$)/);
+  await expect(project).not.toHaveAccessibleName(/🌱/u);
+  await expect(project.locator(".emoji")).toHaveText("🌱");
+  await expect(project.locator(".emoji")).toHaveAttribute("aria-hidden", "true");
+  await add(page, "Plant beans");
+  const task = page.getByRole("main").getByRole("row", { name: /^Plant beans/ });
+  await task.click();
+  const details = page.getByRole("complementary", { name: "Task details" });
+  await details.getByRole("textbox", { name: "Emoji" }).fill("🫘");
+  await details.getByRole("button", { name: "Save" }).click();
+  await expect(task.locator(".emoji")).toHaveText("🫘");
+  await expect(task.locator(".emoji")).toHaveAttribute("aria-hidden", "true");
+  await expect(task).not.toHaveAccessibleName(/🫘/u);
+  await axe(page);
+});
+
 test("a label and a saved filter are made and changed from the sidebar", async ({ page }) => {
   await open(page);
   await placeMenu(page, /^Labels/, "New label");

@@ -182,7 +182,9 @@ it waits for), its notes, and its history last."
          (shown (mapcar (lambda (field)
                           (funcall row (plist-get field :label) (plist-get field :key)
                                    (lumenna--field-value field fields)))
-                        (seq-remove (lambda (f) (equal (plist-get f :key) "notes")) form)))
+                        ;; The emoji is drawn beside a name where pictures are shown and never
+                        ;; said: no line here holds it, and e still changes it.
+                        (seq-remove (lambda (f) (member (plist-get f :key) '("notes" "emoji"))) form)))
          (notes (seq-find (lambda (f) (equal (plist-get f :key) "notes")) form))
          ;; Each line the details list, worded by the app; asked for about one task, on its
          ;; own screen, its history is never in a list.

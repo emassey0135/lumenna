@@ -1559,6 +1559,33 @@ Its id."
   (dolist (map (list lumenna-projects-mode-map lumenna-labels-mode-map lumenna-filters-mode-map))
     (should (eq (keymap-lookup map "C") #'lumenna-act-colour))))
 
+(ert-deftest lumenna-a-project-takes-an-emoji-by-its-key-and-no-line-shows-it ()
+  (should (eq (keymap-lookup lumenna-projects-mode-map "E") #'lumenna-act-emoji))
+  (lumenna-test--with-store
+    (lumenna-test--seed "project.add" :name "Garden")
+    (lumenna-projects)
+    (lumenna-test--goto "Garden")
+    (lumenna-test--answering ("🌱")
+      (lumenna-act-emoji))
+    (should (equal (plist-get (seq-find (lambda (p) (equal (plist-get p :title) "Garden"))
+                                        (append (plist-get (lumenna-call "project.list") :rows) nil))
+                              :emoji)
+                   "🌱"))
+    (goto-char (point-min))
+    (should-not (search-forward "🌱" nil t))))
+
+(ert-deftest lumenna-a-tasks-emoji-is-changed-from-its-buffer-and-no-line-there-shows-it ()
+  (lumenna-test--with-store
+    (let ((id (plist-get (plist-get (lumenna-test--seed "task.add" :text "plant beans") :task) :id)))
+      (lumenna-task-show id)
+      (goto-char (point-min))
+      (lumenna-test--answering ("Emoji" "🫘")
+        (lumenna-task-edit))
+      (should (equal (plist-get (lumenna-call "task.show" :id id) :emoji) "🫘"))
+      (should-not (seq-find (lambda (line) (string-prefix-p "Emoji" line)) (lumenna-test--lines)))
+      (goto-char (point-min))
+      (should-not (search-forward "🫘" nil t)))))
+
 (ert-deftest lumenna-an-export-is-one-the-app-offers-saved-where-the-person-says ()
   (lumenna-test--with-store
     (lumenna-test--seed "task.add" :text "exported")
