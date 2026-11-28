@@ -159,6 +159,8 @@ abstract class LumennaFunctions : AppFunctionService() {
         start: String? = null,
         @AppFunctionInstruction("The day it must be done by (\"friday\"), or `none`.")
         deadline: String? = null,
+        @AppFunctionInstruction("What it takes of the person's energy: `low`, `medium` or `high`, or `none` for not rated. Planning puts demanding work in their best hours and plans less on a day they are low.")
+        energy: String? = null,
         @AppFunctionInstruction("Its notes, whole.")
         notes: String? = null,
         @AppFunctionInstruction("The project to move it to, by name.")
@@ -166,7 +168,7 @@ abstract class LumennaFunctions : AppFunctionService() {
         @AppFunctionInstruction("Its labels, all of them, by name.")
         labels: List<String>? = null,
     ): ChangeMade =
-        Assistant.changeMade(assist("edit_task", Assistant.text("id", id), Assistant.text("title", title), Assistant.text("due", due), Assistant.text("repeat", repeat), Assistant.number("priority", priority), Assistant.text("estimate", estimate), Assistant.text("sittings", sittings), Assistant.text("start", start), Assistant.text("deadline", deadline), Assistant.text("notes", notes), Assistant.text("project", project), Assistant.texts("labels", labels)))
+        Assistant.changeMade(assist("edit_task", Assistant.text("id", id), Assistant.text("title", title), Assistant.text("due", due), Assistant.text("repeat", repeat), Assistant.number("priority", priority), Assistant.text("estimate", estimate), Assistant.text("sittings", sittings), Assistant.text("start", start), Assistant.text("deadline", deadline), Assistant.text("energy", energy), Assistant.text("notes", notes), Assistant.text("project", project), Assistant.texts("labels", labels)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Marks a task done. A repeating one moves on to its next date.")
@@ -337,6 +339,14 @@ abstract class LumennaFunctions : AppFunctionService() {
         project: String,
     ): ChangeMade =
         Assistant.changeMade(assist("mark_reviewed", Assistant.text("project", project)))
+
+    @AppFunctionDeclaration(isDescribedByKDoc = false)
+    @AppFunctionInstruction("Says how the person's energy is today, which planning weighs for today alone: low plans less and leaves what takes the most for another day, high plans more. On a low day, `propose_replan` then proposes a lighter rest of the day.")
+    suspend fun checkInEnergy(
+        @AppFunctionInstruction("How the person says they are today: `low`, `usual` or `high`. Left out, says what they said today.")
+        level: String? = null,
+    ): ChangeMade =
+        Assistant.changeMade(assist("check_in_energy", Assistant.text("level", level)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Sets how often a project comes up for review.")

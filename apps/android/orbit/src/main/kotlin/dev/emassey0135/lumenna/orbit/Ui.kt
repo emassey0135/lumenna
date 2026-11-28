@@ -353,6 +353,8 @@ class Ui(
                 if (stack.screens.none { it is DayScreen }) push(DayScreen())
             }
             is Reminded.Replan -> app.replan(reminded)
+            // The day's energy check-in: the app's launch, which the screens follow.
+            is Reminded.Launch -> send(ShellEvent.Launch(reminded.id))
         }
     }
 

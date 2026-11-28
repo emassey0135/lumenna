@@ -201,6 +201,8 @@ data class ReminderOpened(val kind: String, val target: String, val occurrence: 
             "task" -> Reminded.Task(target)
             "block" -> Reminded.Block(occurrence.takeIf { it.isNotEmpty() }?.let { BlockOn(target, it) })
             Reminders.REPLAN -> Reminded.Replan(key, occurrence)
+            // The day's energy check-in: Today, its question asked, as the core's launch does.
+            "day" -> Reminded.Launch("energy-today")
             else -> null
         }
 }
@@ -267,6 +269,9 @@ sealed interface Reminded {
      * [occurrence] dismissed once something is replanned ([replan]).
      */
     data class Replan(val key: String, val occurrence: String) : Reminded
+
+    /** One of the core's launches ([id]): the day's energy check-in opens Today with its question. */
+    data class Launch(val id: String) : Reminded
 }
 
 object Reminders {
@@ -287,6 +292,7 @@ object Reminders {
     internal const val REARM = "dev.emassey0135.lumenna.reminder.REARM"
     internal const val CARRY = "dev.emassey0135.lumenna.reminder.CARRY"
     internal const val STOP = "dev.emassey0135.lumenna.reminder.STOP"
+    internal const val LOW = "dev.emassey0135.lumenna.reminder.LOW"
     private const val KEY = "key"
     private const val TARGET = "target"
     private const val SITTING = "sitting"
@@ -500,6 +506,32 @@ object Reminders {
         TimerNotification.show(context)
     }
 
+    /**
+     * The day's energy check-in answered from its notification: low today, said as the core says
+     * it in the quiet notification of what a button did, and the check-in dismissed on every device.
+     */
+    fun low(context: Context, core: Core, key: String, occurrence: String) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.cancel("$key@$occurrence", NOTIFICATION)
+        val said = try {
+            val change = core.device.checkInEnergy("low")
+            core.device.dismissReminder(key, occurrence)
+            sentence(change.announcement, change.notices).also(core::say)
+        } catch (error: LumennaError) {
+            core.say(error.sentence)
+            error.sentence
+        }
+        core.changed()
+        if (notificationsAllowed(context)) {
+            try {
+                manager.notify(CARRIED, NOTIFICATION, told(context, said))
+            } catch (_: SecurityException) {
+                // Notifications were refused after the check.
+            }
+        }
+        arm(context, core)
+    }
+
     /** What a notification's button did, said quietly where the reminder was, and gone in a while. */
     fun told(context: Context, text: String): Notification =
         NotificationCompat.Builder(context, CHANNEL)
@@ -530,12 +562,13 @@ object Reminders {
     /**
      * The buttons of a firing's notification that [ReminderReceiver] answers, in order, each its
      * receiver's action and its name in [cased] (Android's sentence case): Stop timer as a
-     * sitting's planned length runs out, Dismiss, Snooze where the core offers it (never for a
+     * sitting's planned length runs out, I'm low today on the day's energy check-in, Dismiss, Snooze where the core offers it (never for a
      * time running out, which is said once), and Carry forward at a block's end with work left
      * short, whose text ends in the question it answers. Replan opens the app, so it is not here.
      */
     fun buttons(due: DueReminder, cased: (String) -> String = ::sentenceCase): List<Pair<String, String>> = buildList {
         if (due.stop.isNotEmpty() && due.sitting.isNotEmpty()) add(STOP to cased(due.stop))
+        if (due.low.isNotEmpty()) add(LOW to cased(due.low))
         add(DISMISS to cased(due.dismiss))
         if (due.snooze.isNotEmpty()) add(SNOOZE to cased(due.snooze))
         if (due.carry.isNotEmpty()) add(CARRY to cased(due.carry))
@@ -670,6 +703,7 @@ object Reminders {
                 val sitting = intent.getStringExtra(SITTING)?.takeIf { it.isNotEmpty() }
                 if (key != null && sitting != null && occurrence != null) stop(context, core, key, sitting, occurrence)
             }
+            LOW -> if (key != null && occurrence != null) low(context, core, key, occurrence)
             // The running timer's own notification (`TimerNotification`): its Pause and Stop.
             TimerNotification.PAUSE, TimerNotification.STOP ->
                 intent.getStringExtra(TimerNotification.SITTING)?.takeIf { it.isNotEmpty() }

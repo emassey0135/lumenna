@@ -92,6 +92,7 @@ enum class Command(
     GO_TO_NOW("go-to-now", Place.DAY),
     GO_TO_DAY("go-to-day", Place.DAY),
     TIME_LEFT("time-left", Place.DAY),
+    ENERGY_TODAY("energy-today", Place.DAY),
     MARK_DONE("mark-done", Place.ROW),
     PUT_IN_BLOCK("put-in-block", Place.ROW),
     MOVE_TO_PROJECT("move-to-project", Place.ROW),

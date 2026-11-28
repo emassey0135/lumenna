@@ -7,6 +7,7 @@ import dev.emassey0135.lumenna.app.durationWords
 import dev.emassey0135.lumenna.leveled
 import dev.emassey0135.lumenna.app.ActingOn
 import dev.emassey0135.lumenna.ShowingBlockForm
+import dev.emassey0135.lumenna.chosen
 import dev.emassey0135.lumenna.text
 import dev.emassey0135.lumenna.flag
 import dev.emassey0135.lumenna.option
@@ -154,6 +155,23 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
             if (text != null) {
                 item { TextFieldButton(field.label, text, field.example) { set(field.key, it) } }
                 // What the field takes, the core's words beneath it, as the phone shows them.
+                if (field.hint.isNotEmpty()) item { Text(field.hint) }
+                return@forEach
+            }
+            // Another choice (the energy): its options, the one it holds now chosen.
+            val chosenNow = form.chosen(field.key)
+            if (chosenNow != null) {
+                item { Heading(field.label) }
+                field.options.forEach { option ->
+                    item {
+                        RadioButton(
+                            selected = chosenNow == option.id,
+                            onSelect = { set(field.key, option.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(option.title) },
+                        )
+                    }
+                }
                 if (field.hint.isNotEmpty()) item { Text(field.hint) }
                 return@forEach
             }

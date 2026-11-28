@@ -333,6 +333,11 @@ fun LumennaApp(
                         go(TODAY)
                         core.app.replan(reminded)
                     }
+                    // The day's energy check-in: Today, its question asked by the app.
+                    is Reminded.Launch -> {
+                        core.app.launch(reminded.id)
+                        go(TODAY)
+                    }
                     null -> {}
                 }
             }
@@ -359,6 +364,11 @@ fun LumennaApp(
             Offer(Command.GO_REPORT) { go(TabKind.Browse, Screen.Tasks(Place.Report)) }
             // How much of the running sitting is left, from any screen: the core's to say.
             Offer(Command.TIME_LEFT) { core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("time-left")) }
+            // The day's energy check-in, asked on today, from anywhere.
+            Offer(Command.ENERGY_TODAY) {
+                go(TODAY)
+                core.app.send(dev.emassey0135.lumenna.app.ShellEvent.Key("energy-today"))
+            }
             Offer(Command.SETTINGS) { go(TabKind.Settings) }
             Offer(Command.SYNC_NOW) { core.app.syncNow() }
 
