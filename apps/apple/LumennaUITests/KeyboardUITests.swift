@@ -126,7 +126,8 @@ final class KeyboardUITests: XCTestCase {
         // appears, and on CI's iPad keys sent before then reached nothing. A day two on is as
         // good as one.
         let moved = app.navigationBars.matching(NSPredicate(format: "identifier != %@", today)).firstMatch
-        for _ in 0..<5 where !moved.exists {
+        for _ in 0..<5 {
+            guard !moved.exists else { break }
             press("]")
             _ = moved.waitForExistence(timeout: 2)
         }

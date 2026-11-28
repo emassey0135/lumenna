@@ -40,7 +40,8 @@ final class VoiceOverUITests: XCTestCase {
     @discardableResult
     private func move(to words: String, within steps: Int = 20) throws -> String {
         var said = try voiceOver.currentSpeech().utterance
-        for _ in 0..<steps where !said.contains(words) {
+        for _ in 0..<steps {
+            guard !said.contains(words) else { break }
             said = try voiceOver.moveForward().utterance
         }
         XCTAssertTrue(said.contains(words), "VoiceOver never reached \"\(words)\"; it last said \"\(said)\"")
@@ -115,7 +116,8 @@ final class VoiceOverUITests: XCTestCase {
         try voiceOver.enable()
         var heard: [String] = []
         var said = try voiceOver.currentSpeech().utterance
-        for _ in 0..<12 where !said.contains("Lasts") {
+        for _ in 0..<12 {
+            guard !said.contains("Lasts") else { break }
             heard.append(said)
             said = try voiceOver.moveForward().utterance
         }

@@ -66,7 +66,8 @@ final class LumennaUITests: XCTestCase {
         if !(place.waitForExistence(timeout: 2) && place.isHittable) { app.buttons["Show Sidebar"].firstMatch.tap() }
         // At a large text size the sidebar runs past the screen: Settings, its last row, is below.
         let sidebar = app.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.7))
-        for _ in 0..<6 where !place.isHittable {
+        for _ in 0..<6 {
+            guard !place.isHittable else { break }
             sidebar.press(forDuration: 0.05, thenDragTo: sidebar.withOffset(CGVector(dx: 0, dy: -300)))
         }
         place.tap()
@@ -100,7 +101,8 @@ final class LumennaUITests: XCTestCase {
         // Down the list first, then back up for a row above. On iPad over the list's column:
         // the middle of the screen is the page open beside it.
         let list = pad ? app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.6)) : nil
-        for step in 0..<14 where !found.exists || !found.isHittable {
+        for step in 0..<14 {
+            guard !found.exists || !found.isHittable else { break }
             if let list {
                 list.press(forDuration: 0.05, thenDragTo: list.withOffset(CGVector(dx: 0, dy: step < 6 ? -300 : 300)))
             } else if step < 6 { app.swipeUp() } else { app.swipeDown() }
@@ -126,7 +128,8 @@ final class LumennaUITests: XCTestCase {
     /// is what says it was pressed.
     private func press(alertButton name: String) {
         let alert = app.alerts.firstMatch
-        for _ in 0..<2 where alert.exists {
+        for _ in 0..<2 {
+            guard alert.exists else { break }
             alert.buttons[name].tap()
             _ = alert.waitForNonExistence(timeout: 1)
         }
@@ -329,7 +332,8 @@ final class LumennaUITests: XCTestCase {
         // second later still. So a contrast finding is looked at again, once, two seconds on:
         // a fade under way is not what anyone reads, and text that fails at rest fails both.
         var lookAgain = true
-        for wait in [1.0, 2.0] where lookAgain {
+        for wait in [1.0, 2.0] {
+            guard lookAgain else { break }
             issues = []
             lookAgain = false
             Thread.sleep(forTimeInterval: wait)
@@ -533,7 +537,8 @@ final class LumennaUITests: XCTestCase {
         // Up to six seconds: on a slow runner the glide outlasted three, and the tap, landing
         // while the form still moved, did not turn the switch on.
         var last = CGRect.null
-        for _ in 0..<40 where takes.frame != last {
+        for _ in 0..<40 {
+            guard takes.frame != last else { break }
             last = takes.frame
             usleep(150_000)
         }
@@ -542,7 +547,8 @@ final class LumennaUITests: XCTestCase {
         // the glide, and the switch is left as it was.
         let on = NSPredicate(format: "value == '1'")
         var turned = false
-        for _ in 0..<3 where !turned {
+        for _ in 0..<3 {
+            guard !turned else { break }
             takes.switches.firstMatch.tap()
             turned = XCTWaiter.wait(for: [expectation(for: on, evaluatedWith: takes)], timeout: 3) == .completed
         }
@@ -663,7 +669,10 @@ final class LumennaUITests: XCTestCase {
         // the task page's too (the swipe actions' list itself is SwipeActionTests').
         task.tap()
         let trash = app.buttons["Move to Trash"]
-        for _ in 0..<6 where !trash.isHittable { app.swipeUp() }
+        for _ in 0..<6 {
+            guard !trash.isHittable else { break }
+            app.swipeUp()
+        }
         // The page closes itself once its task is in the trash.
         trash.tap()
         XCTAssertTrue(task.waitForNonExistence(timeout: 5))
@@ -720,7 +729,10 @@ final class LumennaUITests: XCTestCase {
         XCTAssertTrue(task.waitForExistence(timeout: 5))
         task.tap()
         let trash = app.buttons["Move to Trash"]
-        for _ in 0..<6 where !trash.isHittable { app.swipeUp() }
+        for _ in 0..<6 {
+            guard !trash.isHittable else { break }
+            app.swipeUp()
+        }
         trash.tap()
         XCTAssertTrue(task.waitForNonExistence(timeout: 5))
 
@@ -729,7 +741,10 @@ final class LumennaUITests: XCTestCase {
         reveal("Export and Import").tap()
         XCTAssertTrue(app.navigationBars["Export and Import"].waitForExistence(timeout: 5))
         let erase = app.buttons["Erase Everything Deleted"]
-        for _ in 0..<6 where !erase.isHittable { app.swipeUp() }
+        for _ in 0..<6 {
+            guard !erase.isHittable else { break }
+            app.swipeUp()
+        }
         XCTAssertTrue(erase.isHittable, "Export and Import offers Erase Everything Deleted")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Takes what was deleted'")).firstMatch.exists, "the core's caption beneath it")
         settle()
@@ -776,7 +791,10 @@ final class LumennaUITests: XCTestCase {
         page.tap()
         XCTAssertTrue(app.navigationBars["Reminders"].waitForExistence(timeout: 5))
         let field = app.textFields["Reminders for a task with a due date"]
-        for _ in 0..<6 where !(field.exists && field.isHittable) { app.swipeUp() }
+        for _ in 0..<6 {
+            guard !(field.exists && field.isHittable) else { break }
+            app.swipeUp()
+        }
         XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
         return field
     }
@@ -1098,7 +1116,10 @@ final class LumennaUITests: XCTestCase {
         row("draft").tap()
         // Far down the form, and SwiftUI makes rows only once they are on screen.
         let put = app.buttons["Put in a Block"]
-        for _ in 0..<6 where !put.exists { app.swipeUp() }
+        for _ in 0..<6 {
+            guard !put.exists else { break }
+            app.swipeUp()
+        }
         put.tap()
         let block = app.cells.containing(NSPredicate(format: "label CONTAINS 'Focus'")).firstMatch
         XCTAssertTrue(block.waitForExistence(timeout: 5), "the week's work blocks, listed")

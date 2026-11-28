@@ -65,7 +65,8 @@ final class KeyboardCommandTests: XCTestCase {
         // Sent as a key command sends it: to whatever answers it, from the first responder.
         XCTAssertTrue(UIApplication.shared.sendAction(#selector(CommandActions.filterTasks), to: nil, from: nil, for: nil))
         var field: UIView?
-        for _ in 0..<50 where field == nil {
+        for _ in 0..<50 {
+            guard field == nil else { break }
             settle(0.1)
             // The Tasks tab's one text field, SwiftUI's, whose name is on SwiftUI's own element.
             let tasks = root.selectedViewController?.view

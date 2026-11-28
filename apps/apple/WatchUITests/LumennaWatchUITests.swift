@@ -58,7 +58,8 @@ final class LumennaWatchUITests: XCTestCase {
     /// back towards the top.
     @discardableResult
     private func reveal(_ element: XCUIElement, form: Bool = false, upward: Bool = false) -> XCUIElement {
-        for _ in 0..<30 where !(element.exists && element.isHittable) {
+        for _ in 0..<30 {
+            guard !(element.exists && element.isHittable) else { break }
             switch (form, upward) {
             // A short drag held at its end, which cannot fling: a swipe, even a slow one, could
             // carry the form two screens on and past what was looked for.
@@ -247,7 +248,8 @@ final class LumennaWatchUITests: XCTestCase {
         // Below the field, it can be off the screen once the input screen gives the sheet back.
         let answers = app.buttons.matching(NSPredicate(format: "label == 'Rename'"))
         var answer = answers.allElementsBoundByIndex.last { $0.isHittable }
-        for _ in 0..<5 where answer == nil {
+        for _ in 0..<5 {
+            guard answer == nil else { break }
             drag(by: -90)
             answer = answers.allElementsBoundByIndex.last { $0.isHittable }
         }

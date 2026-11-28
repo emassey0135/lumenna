@@ -49,7 +49,8 @@ final class SidebarUITests: XCTestCase {
     /// itself, and on a slow runner a quick one now and then revealed nothing. Tried again then.
     private func act(_ row: XCUIElement, _ action: String) {
         let button = app.buttons[action].firstMatch
-        for _ in 0..<3 where !button.exists {
+        for _ in 0..<3 {
+            guard !button.exists else { break }
             row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).press(
                 forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)),
                 withVelocity: .slow, thenHoldForDuration: 0.3
