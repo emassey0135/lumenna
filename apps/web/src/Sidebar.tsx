@@ -17,6 +17,7 @@ import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
+import { EmojiMark } from "./Emoji";
 import { SwatchMark } from "./Swatch";
 import { words } from "./words";
 
@@ -129,6 +130,7 @@ export function Sidebar(props: {
                         </Button>
                       )}
                       <SwatchMark swatch={node.item.swatch} />
+                      <EmojiMark emoji={node.item.emoji} />
                       {node.item.text}
                     </div>
                   )}

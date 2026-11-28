@@ -9,7 +9,7 @@ import org.junit.Test
 class TimerTileTest {
     private val running = TimerControl(
         true, "Essay", "Pause timer", "Pause the timer", true,
-        GlanceTimer("sitting-1", "Essay", "Deep work", "2026-11-27T10:00:00Z", 25u, "2026-11-27T10:25:00Z"),
+        GlanceTimer("sitting-1", "Essay", "Deep work", "2026-11-27T10:00:00Z", 25u, "2026-11-27T10:25:00Z", null),
     )
 
     // The core's `timer_described`, its parts shown, without the native library.

@@ -525,6 +525,8 @@ struct ProjectOut {
     parent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    emoji: Option<String>,
     order: String,
     #[serde(default, skip_serializing_if = "is_false")]
     archived: bool,
@@ -545,6 +547,7 @@ impl From<&Project> for ProjectOut {
             name: p.name.clone(),
             parent: p.parent_id.map(|id| id.to_string()),
             color: p.color.clone(),
+            emoji: p.emoji.clone(),
             order: p.order.to_string(),
             archived: p.archived,
             inbox: p.is_inbox,
@@ -564,6 +567,7 @@ impl ProjectOut {
             order: field::<OrderKey>(&record, "order key", &self.order)?,
             name: self.name,
             color: self.color,
+            emoji: self.emoji,
             archived: self.archived,
             is_inbox: self.inbox,
             weight: self.weight,
@@ -729,6 +733,8 @@ struct TaskOut {
     estimate_mins: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sitting_mins: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    emoji: Option<String>,
     /// A day, ISO, or `someday`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     start: Option<String>,
@@ -759,6 +765,7 @@ impl From<&Task> for TaskOut {
             due: t.due.as_ref().map(DueOut::from),
             estimate_mins: t.estimate_mins,
             sitting_mins: t.sitting_mins,
+            emoji: t.emoji.clone(),
             start: t.start.map(|s| s.to_string()),
             deadline: t.deadline.map(|d| d.to_string()),
             kept_at: t.kept_at.map(|t| t.to_string()),
@@ -792,6 +799,7 @@ impl TaskOut {
             due: self.due.map(|due| due.into_model(&record)).transpose()?,
             estimate_mins: self.estimate_mins,
             sitting_mins: self.sitting_mins,
+            emoji: self.emoji,
             start: optional(&record, "start", self.start.as_ref())?,
             deadline: optional(&record, "date", self.deadline.as_ref())?,
             kept_at: optional(&record, "timestamp", self.kept_at.as_ref())?,
@@ -868,6 +876,8 @@ struct BlockOut {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    emoji: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     task_filter: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     external: Option<ExternalOut>,
@@ -889,6 +899,7 @@ impl From<&BlockSeries> for BlockOut {
             repeat: s.rrule.clone(),
             timezone: s.timezone.as_ref().map(ToString::to_string),
             color: s.color.clone(),
+            emoji: s.emoji.clone(),
             task_filter: s.task_filter.clone(),
             external: s.external.as_ref().map(ExternalOut::from),
         }
@@ -910,6 +921,7 @@ impl BlockOut {
             rrule: self.repeat,
             timezone: self.timezone.map(TzName::new),
             color: self.color,
+            emoji: self.emoji,
             task_filter: self.task_filter,
             external: self.external.map(|e| e.into_model(&record)).transpose()?,
             title: self.title,

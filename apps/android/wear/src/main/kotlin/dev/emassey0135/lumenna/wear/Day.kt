@@ -80,6 +80,12 @@ fun DayScreen(core: Core, navigator: Navigator, block: dev.emassey0135.lumenna.B
                     key = item.key,
                     focus = focus,
                     swatch = item.block?.takeIf { item.kind == DayKind.BLOCK }?.swatch,
+                    // A block's emoji, or a sitting's task's, before its title.
+                    emoji = when (item.kind) {
+                        DayKind.BLOCK -> item.block?.emoji
+                        DayKind.SITTING -> item.sitting?.emoji
+                        else -> null
+                    },
                     onClick = { if (actions.isNotEmpty()) navigator.actions(title, actions) },
                 )
             }

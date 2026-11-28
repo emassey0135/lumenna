@@ -39,6 +39,7 @@ jiff = "0.2"
 rrule = "0.14"
 uuid = { version = "1", features = ["v7"] }
 thiserror = "2"
+unicode-segmentation = "1"
 proptest = "1"
 tempfile = "3"
 # 0.40 builds for the browser too, on sqlite-wasm-rs; `bundled` applies only where

@@ -316,6 +316,7 @@ const OPERATIONS: &[Op] = &[
         Param("sittings", "Sitting Length", K::Text, true, "How long one sitting of it is (\"45m\"), for work better done in pieces: planning gives it a sitting at a time. `none` to plan it whole."),
         Param("start", "Starts", K::Text, true, "When it may be begun, as a person says a day (\"next monday\"): until then it is left out of the lists and the planner. `someday` keeps it until it is given a date; `none` starts it now."),
         Param("deadline", "Deadline", K::Date, true, "The day it must be done by (\"friday\"), or `none`."),
+        Param("emoji", "Emoji", K::Text, true, "One emoji to draw beside its title (\"🎯\"), never read aloud, or `none` to take it off."),
         Param("notes", "Notes", K::Text, true, "Its notes, whole."),
         Param("project", "Project", K::Project, true, "The project to move it to, by name."),
         Param("labels", "Labels", K::Labels, true, "Its labels, all of them, by name."),

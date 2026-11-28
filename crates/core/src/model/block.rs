@@ -44,6 +44,9 @@ pub struct BlockSeries {
     pub timezone: Option<TzName>,
     /// Presentation only.
     pub color: Option<String>,
+    /// One emoji drawn beside its title, chosen to be seen and never said or brailled
+    /// ([`crate::emoji`]).
+    pub emoji: Option<String>,
     /// A filter expression scoping which tasks the core will suggest here — "this is my
     /// `#work` block, don't offer me personal errands".
     ///
@@ -89,6 +92,7 @@ impl BlockSeries {
             rrule: None,
             timezone: None,
             color: None,
+            emoji: None,
             task_filter: None,
             external: None,
             deleted_at: None,

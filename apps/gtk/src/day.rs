@@ -123,6 +123,12 @@ impl DayView {
                 expanded: item.expanded,
                 // A block's colour; its sittings are drawn beneath it, without.
                 swatch: item.block.as_ref().filter(|_| item.kind == DayKind::Block).and_then(|block| block.swatch.clone()),
+                // A block's emoji, and a sitting's, its task's.
+                emoji: match item.kind {
+                    DayKind::Block => item.block.as_ref().and_then(|block| block.emoji.clone()),
+                    DayKind::Sitting => item.sitting.as_ref().and_then(|sitting| sitting.emoji.clone()),
+                    _ => None,
+                },
                 ..Default::default()
             })
             .collect();

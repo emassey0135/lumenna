@@ -117,6 +117,7 @@ struct TaskListScreen: View {
                         .foregroundStyle(done ? Color.accentColor : Color.quietLabel)
                 }
                 SwatchMark(swatch: row.row.swatch)
+                EmojiMark(emoji: row.row.emoji)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.row.title).strikethrough(done)
                     if !detail.isEmpty {

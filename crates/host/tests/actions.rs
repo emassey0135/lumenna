@@ -116,7 +116,7 @@ fn the_inbox_is_only_reordered_and_weighed_and_given_sections() {
     let work = rows.iter().find(|r| r.title == "Work").unwrap();
     assert_eq!(
         titles(&work.actions),
-        ["Rename", "New Project Inside", "New Section", "Move Under", "Move Up", "Weight", "Colour", "Mark Reviewed", "Review Every", "Archive", "Delete"]
+        ["Rename", "New Project Inside", "New Section", "Move Under", "Move Up", "Weight", "Colour", "Emoji", "Mark Reviewed", "Review Every", "Archive", "Delete"]
     );
 }
 
@@ -545,6 +545,35 @@ fn a_sitting_left_short_carries_its_remaining_time_to_another_block() {
     assert_eq!(carried.planned_mins, Some(50));
     let again = lumenna.plan(Some(yesterday)).unwrap();
     assert!(!titles(&again.blocks[0].assignments[0].actions).contains(&"Carry Forward"), "moved on, so carried once");
+}
+
+#[test]
+fn an_emoji_is_drawn_beside_a_project_task_and_block_and_said_nowhere() {
+    let (_directory, lumenna) = open();
+    lumenna.add_project("Home", None).unwrap();
+    let project = lumenna.list_projects().unwrap().rows.into_iter().find(|r| r.title == "Home").unwrap();
+    let given = lumenna.act(find(&project.actions, "Emoji"), Answer::Text { text: " 🏡 ".to_owned() }).unwrap();
+    assert_eq!(given.announcement, "Gave project Home an emoji", "the change is said, the emoji is not");
+    let project = lumenna.list_projects().unwrap().rows.into_iter().find(|r| r.title == "Home").unwrap();
+    assert_eq!(project.emoji.as_deref(), Some("🏡"));
+    assert!(!project.title.contains('🏡') && !project.value.unwrap_or_default().contains('🏡'));
+    let entry = lumenna.places().entries.into_iter().find(|e| e.title == "Home").unwrap();
+    assert_eq!(entry.emoji.as_deref(), Some("🏡"));
+    assert!(!entry.text.contains('🏡'), "{}", entry.text);
+
+    let refused = lumenna.act(find(&project.actions, "Emoji"), Answer::Text { text: "home".to_owned() }).unwrap_err();
+    assert_eq!(refused.message(), lumenna_core::emoji::REFUSED);
+    let cleared = lumenna.act(find(&project.actions, "Emoji"), Answer::Text { text: String::new() }).unwrap();
+    assert_eq!(cleared.announcement, "Took the emoji off project Home");
+
+    let task = lumenna.add_task("Water the plants").unwrap().task.unwrap();
+    let edit = TaskEdit { emoji: Some("🪴".to_owned()), ..Default::default() };
+    assert_eq!(lumenna.edit_task(&task.id, edit).unwrap().announcement, "Gave Water the plants an emoji");
+    let row = lumenna.list_tasks("").unwrap().rows.into_iter().find(|r| r.title == "Water the plants").unwrap();
+    assert_eq!(row.emoji.as_deref(), Some("🪴"));
+    assert_eq!(lumenna.show_task(&task.id).unwrap().task.emoji.as_deref(), Some("🪴"));
+    let two = TaskEdit { emoji: Some("🪴🪴".to_owned()), ..Default::default() };
+    assert_eq!(lumenna.edit_task(&task.id, two).unwrap_err().message(), lumenna_core::emoji::REFUSED);
 }
 
 #[test]

@@ -24,6 +24,7 @@ import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
 import { nest } from "./tree";
 import type { Node } from "./tree";
+import { EmojiMark } from "./Emoji";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
 import { ScreenActions } from "./ScreenActions";
@@ -153,6 +154,8 @@ export function Day(props: { screen: Screen }) {
                         </Button>
                       )}
                       <SwatchMark swatch={node.item.block?.swatch} />
+                      {/* A sitting's is its task's, a block's its series'. */}
+                      <EmojiMark emoji={node.item.sitting ? node.item.sitting.emoji : node.item.block?.emoji} />
                       {node.item.text}
                     </div>
                   )}

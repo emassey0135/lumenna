@@ -472,6 +472,7 @@ pub fn block_form(view: &ViewModel) -> Option<DialogShown> {
             "min_minutes" => (values.min_minutes.clone(), false),
             "task_filter" => (values.task_filter.clone(), false),
             "colour" => (values.colour.clone(), false),
+            "emoji" => (values.emoji.clone(), false),
             "notes" => (values.notes.clone(), false),
             "date" => (form.date.clone(), false),
             "accepts_tasks" => (String::new(), values.accepts_tasks),

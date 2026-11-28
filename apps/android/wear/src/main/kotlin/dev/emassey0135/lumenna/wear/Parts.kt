@@ -13,8 +13,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.wear.compose.material3.LocalContentColor
+import dev.emassey0135.lumenna.EmojiMark
 import dev.emassey0135.lumenna.app.Swatch
 import dev.emassey0135.lumenna.colour
 import androidx.compose.runtime.Composable
@@ -44,6 +50,12 @@ fun interface TextEntry {
 
     /** Asks with nothing to say when it is backed out of. */
     fun ask(label: String, answered: (String) -> Unit) = ask(label, {}, answered)
+
+    /**
+     * Asks for an emoji (a task's or block's Emoji field, a project's Emoji): the one line whose
+     * input screen offers the watch's emoji, which every other line leaves out.
+     */
+    fun askEmoji(label: String, cancelled: () -> Unit, answered: (String) -> Unit) = ask(label, cancelled, answered)
 }
 
 val LocalTextEntry = compositionLocalOf<TextEntry?> { null }
@@ -61,15 +73,19 @@ fun rememberSystemTextEntry(): TextEntry {
         if (text != null) answered(text) else cancelled()
     }
     return remember {
-        TextEntry { label, cancelled, answered ->
+        fun launch(label: String, emoji: Boolean, cancelled: () -> Unit, answered: (String) -> Unit) {
             waiting.value = cancelled to answered
             val input = RemoteInput.Builder(KEY).setLabel(label).wearableExtender {
-                setEmojisAllowed(false)
+                setEmojisAllowed(emoji)
                 setInputActionType(EditorInfo.IME_ACTION_DONE)
             }.build()
             val intent: Intent = RemoteInputIntentHelper.createActionRemoteInputIntent()
             RemoteInputIntentHelper.putRemoteInputsExtra(intent, listOf(input))
             launcher.launch(intent)
+        }
+        object : TextEntry {
+            override fun ask(label: String, cancelled: () -> Unit, answered: (String) -> Unit) = launch(label, false, cancelled, answered)
+            override fun askEmoji(label: String, cancelled: () -> Unit, answered: (String) -> Unit) = launch(label, true, cancelled, answered)
         }
     }
 }
@@ -92,6 +108,8 @@ fun RowButton(
     focus: RowFocus? = null,
     /** A project's, label's or block's colour, drawn as the button's icon beside its name. */
     swatch: Swatch? = null,
+    /** Its emoji, the core's, drawn before the title and never said ([EmojiMark]). */
+    emoji: String? = null,
     /** Whether it heads the rows beneath it (a list's group, as the time report's weeks). */
     heading: Boolean = false,
     onClick: () -> Unit,
@@ -108,7 +126,13 @@ fun RowButton(
                 contentDescription = listOfNotNull(title, state ?: detail).filter { it.isNotEmpty() }.joinToString(", ")
                 if (actions.isNotEmpty()) customActions = actions.map { action -> CustomAccessibilityAction(action.name) { action.run(); true } }
             },
-        label = { Text(title) },
+        label = {
+            if (emoji == null) Text(title)
+            else Row(verticalAlignment = Alignment.CenterVertically) {
+                EmojiMark(emoji, Modifier.padding(end = 6.dp), size = 18.sp, color = LocalContentColor.current)
+                Text(title)
+            }
+        },
         secondaryLabel = detail?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
     )
 }

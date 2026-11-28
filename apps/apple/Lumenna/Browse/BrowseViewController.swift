@@ -3,7 +3,7 @@ import UIKit
 
 /// Everything that is not a tab of its own: projects, labels, saved filters, every block
 /// series, the history and the trash — the core's Browse (`Arrangement.browse`), each place with
-/// its detail and swatch, each group with how many places it holds, in the core's words.
+/// its detail, swatch and emoji, each group with how many places it holds, in the core's words.
 final class BrowseViewController: AppListViewController {
     init(core: Core) {
         super.init(core: core, title: Wording.browse)
@@ -16,7 +16,7 @@ final class BrowseViewController: AppListViewController {
         // Somewhere to go, not to change: a group's folding and New are its own screen's, and
         // every row is at the top, so none has a level to say.
         let items = core.app.arrangement.browse.map { entry in
-            AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, swatch: entry.swatch)
+            AppItem(key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, swatch: entry.swatch, emoji: entry.emoji)
         }
         return (items, "")
     }

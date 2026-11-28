@@ -83,6 +83,9 @@ Emacsvox), so the tests run the compiled code, as `package.el` installs it.
 - **A colour is two spaces in it** (`lumenna--swatch`), before a row's name and in a pick's
   annotation: blank to speech and braille, which hear the colour's word in the line, its light
   or dark value by the frame's `background-mode`, and nothing where the display has no colour.
+- **No line shows an emoji**: the core's lines never hold one, and a task's buffer, which words
+  its form's fields itself, leaves the Emoji field out (`lumenna--task-rows`); `e` still changes
+  it, the block form asks it among the rest, and a project's is `E`, its row action.
 - **Booleans come back as `:json-false`**, which is non-nil: test them with `lumenna--true`.
 - **The clock is Emacs's**: `display-time-24hr-format`, told the app as it changes
   (`app.clock`), which words every time in it.

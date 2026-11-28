@@ -52,6 +52,7 @@ const ABOUT: u16 = 309;
 const SITTINGS: u16 = 310;
 const START: u16 = 311;
 const DEADLINE: u16 = 312;
+const EMOJI: u16 = 313;
 
 /// Where a field sits: across the pane, or in one of its two columns.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -85,6 +86,7 @@ pub struct Detail {
     deadline: HWND,
     project: HWND,
     labels: HWND,
+    emoji: HWND,
     notes: HWND,
     waits: HWND,
     /// Wait for Another Task and Stop Waiting for the Selected Task, under the list of what it
@@ -155,7 +157,11 @@ impl Detail {
         let (label, hint) = named("project", 'j');
         let project = field(&label, WC_COMBOBOXW, list, PROJECT, Column::Right, 1, &hint);
         let (label, hint) = named("labels", 'L');
-        let labels = field(&label, WC_EDITW, line, LABELS, Column::Full, 1, &hint);
+        let labels = field(&label, WC_EDITW, line, LABELS, Column::Left, 1, &hint);
+        // One emoji, from Windows' own picker (Win+.). Every letter of "Emoji" is another
+        // field's or a menu's, so it has no access key.
+        let (label, hint) = named("emoji", '\0');
+        let emoji = field(&label, WC_EDITW, line, EMOJI, Column::Right, 1, &hint);
         let multiline = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
         let (label, hint) = named("notes", 'N');
         let notes = field(&label, WC_EDITW, multiline, NOTES, Column::Full, 4, &hint);
@@ -200,6 +206,7 @@ impl Detail {
             deadline,
             project,
             labels,
+            emoji,
             notes,
             waits,
             add_wait,
@@ -333,6 +340,7 @@ impl Detail {
             self.fill_projects(&details.projects, &lines.projects, &fields.project);
         }
         held |= controls::write_typed(self.labels, &fields.labels, still);
+        held |= controls::write_typed(self.emoji, &fields.emoji, still);
         // An edit control's lines end in CR LF.
         held |= controls::write_typed(self.notes, &fields.notes.replace("\r\n", "\n").replace('\n', "\r\n"), still);
         let waits: Vec<&str> = task.depends.iter().map(|other| other.title.as_str()).collect();
@@ -405,6 +413,7 @@ impl Detail {
             (self.estimate, "estimate"),
             (self.sittings, "sittings"),
             (self.labels, "labels"),
+            (self.emoji, "emoji"),
             (self.notes, "notes"),
         ];
         if let Some((_, key)) = edits.iter().find(|(edit, _)| *edit == control) {

@@ -127,6 +127,7 @@ fun PlacesScreen(core: Core, navigator: Navigator) {
                                 key = entry.key,
                                 focus = focus,
                                 swatch = entry.swatch,
+                                emoji = entry.emoji,
                                 onClick = { navigator.open(placeScreen(kind.field0)) },
                             )
                             // A heading folds what is under it when pressed.
@@ -265,6 +266,7 @@ fun TasksScreen(core: Core, navigator: Navigator, place: Place) {
                     key = task.id,
                     focus = focus,
                     swatch = task.swatch,
+                    emoji = task.emoji,
                     heading = task.role == "group",
                     // A row the core offers nothing on (the time report's) is no task: it opens nothing.
                     onClick = {
@@ -330,7 +332,7 @@ fun BlocksScreen(core: Core, navigator: Navigator) {
                 val line = lines?.list?.getOrNull(index)
                 val actions = app.rowActions(row.id, list?.offeredOf(shown).orEmpty())
                 // Said as a task row is: when, in this watch's clock, then how long.
-                RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }, key = row.id, focus = focus, swatch = row.swatch) {
+                RowButton(row.title, detail = line?.detail?.ifEmpty { null }, actions = actions, onLongClick = { navigator.actions(row.title, actions) }, key = row.id, focus = focus, swatch = row.swatch, emoji = row.emoji) {
                     // Its own screen is its form, for every occurrence: its Edit, on the row in hand.
                     app.rowKeys(row.id).key("open")
                 }

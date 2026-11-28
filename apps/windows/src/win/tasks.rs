@@ -94,6 +94,7 @@ impl TaskList {
                     checked: (!self.trash && item.row.checked.is_some()).then_some(item.row.checked == Some(true)),
                     expanded: item.row.expanded,
                     swatch: item.row.swatch.clone(),
+                    emoji: item.row.emoji.clone(),
                 },
                 row: item.row.clone(),
                 offered: actions::of_row(&list.offered, &item.actions),

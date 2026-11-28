@@ -167,6 +167,12 @@ class DayTest(unittest.TestCase):
         self.session.press("Alt+v", wait=1)
         self.assertIn("colour: teal", self.session.lum("block", "show", self.block))
 
+    def test_a_blocks_emoji_is_a_line_of_its_own_after_the_colour(self):
+        self.edit_block()
+        # One line, which GNOME's own picker (Ctrl+.) fills: the app keeps no set of emoji.
+        self.session.press("Alt+o", wait=1)
+        self.assertEqual(self.session.focus(), "[text] 'Emoji'")
+
     def test_delete_on_a_sitting_takes_it_out_of_the_block(self):
         self.session.press("Down", "Delete")
         self.assertIn("nothing assigned", self.session.focus())

@@ -205,6 +205,7 @@ impl TaskList {
                 depth: row.row.depth,
                 expanded: row.row.expanded,
                 swatch: row.row.swatch.clone(),
+                emoji: row.row.emoji.clone(),
                 ..Default::default()
             })
             .collect();

@@ -1037,6 +1037,34 @@ class Menus(unittest.TestCase):
         shown = self.call("task.show", id=made)
         self.assertEqual((shown["start"], shown["deadline"]), ("2030-03-01", "2030-03-08"))
 
+    def test_a_task_form_has_its_emoji_after_its_labels_and_no_line_says_or_brailles_it(self):
+        seedling = "\U0001F331"
+        self.call("task.add", text="plant beans")
+        made = self.task("plant beans")["id"]
+        script = self.run_script(
+            [("context", "plant beans", "Edit"), ("form", {"field:emoji": seedling}), ("back",)],
+            lambda: tasks.task_list(self.session),
+        )
+        keys = [f.key.removeprefix("field:") for f in script.forms[0]]
+        self.assertEqual(keys[keys.index("labels") + 1], "emoji", keys)
+        self.assertEqual(self.call("task.show", id=made)["emoji"], seedling)
+        # Drawn beside the name where pictures are shown: here it is neither said nor brailled.
+        self.store.caught_up()
+        self.session.show(L.PlaceTasks())
+        beans = next(item for item in rows.items(tasks.list_rows(self.session)) if item.row.title == "plant beans")
+        self.assertNotIn(seedling, beans.get_title())
+        self.assertNotIn(seedling, beans.get_braille_title())
+
+    def test_a_new_blocks_form_has_its_emoji_after_its_colour_and_saves_it(self):
+        runner = "\U0001F3C3"
+        script = self.run_script(
+            [("app", "New block"), ("form", {"field:title": "Run", "field:date": "tomorrow", "field:emoji": runner}), ("back",)],
+            lambda: day.day_plan(self.session),
+        )
+        keys = [f.key.removeprefix("field:") for f in script.forms[0]]
+        self.assertEqual(keys[keys.index("colour") + 1], "emoji", keys)
+        self.assertEqual(self.call("plan", date="tomorrow")["blocks"][0]["emoji"], runner)
+
     def sitting_today(self, title: str, minutes: int) -> str:
         """A sitting of a task `title`, planned for `minutes` in a block all of today: its id."""
         self.call("block.add", title="Deep work", at="00:00", minutes=1439, date="today")

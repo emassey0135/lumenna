@@ -219,6 +219,8 @@ struct EditTaskIntent: OperationIntent {
     var start: String?
     @Parameter(title: "Deadline", description: "The day it must be done by (\"friday\"), or `none`.")
     var deadline: String?
+    @Parameter(title: "Emoji", description: "One emoji to draw beside its title (\"🎯\"), never read aloud, or `none` to take it off.")
+    var emoji: String?
     @Parameter(title: "Notes", description: "Its notes, whole.")
     var notes: String?
     @Parameter(title: "Project", description: "The project to move it to, by name.")
@@ -239,6 +241,7 @@ struct EditTaskIntent: OperationIntent {
             "sittings": sittings.map(ArgumentValue.text),
             "start": start.map(ArgumentValue.text),
             "deadline": deadline.map(ArgumentValue.text),
+            "emoji": emoji.map(ArgumentValue.text),
             "notes": notes.map(ArgumentValue.text),
             "project": project.map { .text($0.name) },
             "labels": labels.map { .texts($0.map(\.name)) },

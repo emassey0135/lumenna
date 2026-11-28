@@ -77,6 +77,18 @@ final class BrowseTests: XCTestCase {
         XCTAssertEqual(offered.menu, names, "the menu has every action, in the app's order: \(offered)", file: file, line: line)
     }
 
+    func testAPlacesEmojiIsDrawnBesideItsNameAndNeverInWhatVoiceOverSays() {
+        let item = AppItem(key: "project:Work", title: "Work", detail: "3 tasks", spoken: "3 tasks", emoji: "💼")
+        XCTAssertEqual(EmojiMark.shown(item.emoji), "💼", "drawn before the name")
+        let speech = AppListScreen.speech(of: item)
+        XCTAssertEqual(speech.label, "Work", "the name alone")
+        XCTAssertEqual(speech.value, "3 tasks")
+        XCTAssertNil(EmojiMark.shown(nil), "nothing drawn for none")
+        XCTAssertNil(EmojiMark.shown(" "))
+        XCTAssertEqual(EmojiMark.before("Deep work", "🧠"), "🧠 Deep work", "a complication's one line")
+        XCTAssertEqual(EmojiMark.before("Deep work", nil), "Deep work")
+    }
+
     func testTheSidebarOffersNewProjectAndCollapseOnItsProjectsHeading() throws {
         _ = try core.app.device.addLabel(name: "calls")
         let sidebar = shownList(SidebarViewController(core: core) { _ in })

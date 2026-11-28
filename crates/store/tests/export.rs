@@ -34,6 +34,7 @@ fn populated() -> Populated {
     let mut store = Store::open_in_memory().unwrap();
     let mut work = Project::new("Work", OrderKey::middle());
     work.color = Some("#336699".to_owned());
+    work.emoji = Some("💼".to_owned());
     work.weight = Some(1.5);
     let mut backend = Project::new("Backend", OrderKey::after(&work.order));
     backend.parent_id = Some(work.id);
@@ -74,6 +75,7 @@ fn populated() -> Populated {
     });
     parent.estimate_mins = Some(90);
     parent.sitting_mins = Some(45);
+    parent.emoji = Some("👨‍👩‍👧".to_owned());
     parent.start = Some(lumenna_core::model::Start::On(date(2026, 9, 3)));
     parent.deadline = Some(date(2026, 9, 11));
     parent.kept_at = Some(now());
@@ -117,6 +119,7 @@ fn populated() -> Populated {
     series.end_date = Some(date(2027, 6, 30));
     series.timezone = Some(TzName::new("Europe/London"));
     series.color = Some("#00ff00".to_owned());
+    series.emoji = Some("🎯".to_owned());
     series.task_filter = Some("#Work".to_owned());
     series.flags.anchored = true;
 

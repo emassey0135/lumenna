@@ -41,6 +41,7 @@ fn full_task(project: ProjectId) -> Task {
     });
     task.estimate_mins = Some(90);
     task.sitting_mins = Some(45);
+    task.emoji = Some("🇬🇧".to_owned());
     task.start = Some(lumenna_core::model::Start::Someday);
     task.deadline = Some(date(2026, 9, 11));
     task.external = Some(ExternalRef {
@@ -171,6 +172,7 @@ fn every_block_record_round_trips() {
         rrule: Some("FREQ=DAILY".to_owned()),
         task_filter: Some("#work".to_owned()),
         timezone: Some(TzName::new("Europe/London")),
+        emoji: Some("🧠".to_owned()),
         ..BlockSeries::one_off(
             "Deep work",
             BlockKind::Work,
@@ -409,7 +411,7 @@ fn a_neutral_weight_is_kept_apart_from_no_weight() {
     let mut docs = Documents::new();
     let inherits = Project::new("inherits", OrderKey::middle());
     let neutral = Project { weight: Some(1.0), ..Project::new("neutral", OrderKey::middle()) };
-    let heavy = Project { weight: Some(2.0), ..Project::new("heavy", OrderKey::middle()) };
+    let heavy = Project { weight: Some(2.0), emoji: Some("🏋️".to_owned()), ..Project::new("heavy", OrderKey::middle()) };
     for project in [&inherits, &neutral, &heavy] {
         docs.put_project(project, None).unwrap();
     }

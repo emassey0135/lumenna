@@ -168,6 +168,10 @@ pairing with `lum`.
 - **A colour is a mark beside the name** (`Swatch.tsx`): a dot in the sidebar, the lists, the
   day, a pick's choices and the block form's colour, `aria-hidden`, its value
   `light-dark(light, dark)` by the page's scheme, left out under forced colours.
+- **An emoji is drawn beside the name too** (`Emoji.tsx`): after the swatch, before the name, in
+  the lists, the sidebar and the day (a sitting's is its task's, `sitting.emoji`, not its block's),
+  `aria-hidden`, so a row's name stays the core's line, which never holds it. The forms' Emoji is
+  an ordinary line the system's own picker types into: a page can open no picker, and keeps no set.
 - **What the app says is shown too**, on a status line at the foot of the page (`useSaid`,
   `StatusLine`), kept in view however long the page: not a live region, since React Aria's
   announcer has said it already.

@@ -41,9 +41,27 @@ pub fn colour_named(text: &str) -> Result<Option<String>> {
         .ok_or_else(|| LumennaError::new(format!("there is no colour called {text}: the colours are {}", Colour::names())))
 }
 
+/// An emoji as given in a form, a project's Emoji or an assistant: one emoji, or nothing (an
+/// empty line, "none") to take it off.
+///
+/// # Errors
+///
+/// If it is more than one emoji, or something that is no emoji at all, in the core's words.
+pub fn emoji_given(text: &str) -> Result<Option<String>> {
+    lumenna_core::emoji::read(text).map_err(LumennaError::new)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_emoji_is_one_emoji_or_none_and_anything_else_is_refused_in_the_cores_words() {
+        assert_eq!(emoji_given(" 🎯 ").unwrap(), Some("🎯".to_owned()));
+        assert_eq!(emoji_given("none").unwrap(), None);
+        assert_eq!(emoji_given("").unwrap(), None);
+        assert_eq!(emoji_given("🎯🎯").unwrap_err().message(), lumenna_core::emoji::REFUSED);
+    }
 
     #[test]
     fn a_colour_is_read_by_its_name_and_none_takes_it_away() {

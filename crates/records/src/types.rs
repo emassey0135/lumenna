@@ -304,6 +304,7 @@ impl Rows {
                     hint: row.hint.clone(),
                     priority: row.priority,
                     swatch: None,
+                    emoji: None,
                     actions: Vec::new(),
                 })
                 .collect(),
@@ -414,6 +415,11 @@ pub struct RowView {
     /// A project's, label's or block's colour, to draw beside its name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swatch: Option<Swatch>,
+    /// A task's, project's or block's emoji, to draw beside its title and never to say
+    /// ([`lumenna_core::emoji`]): no line, braille or announcement carries it, so a screen
+    /// reader is never given it, and a client that shows no pictures leaves it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
@@ -526,6 +532,9 @@ pub struct TaskDetail {
     /// How long one sitting of it should be, when it is planned in sittings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sitting_mins: Option<u32>,
+    /// Its emoji, which the details may name and a line never says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
     /// When it may be begun: a day, ISO, or `someday`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start: Option<String>,
@@ -614,6 +623,7 @@ impl TaskDetail {
                 .and_then(|r| repetition_phrase(&r.rrule, r.from_completion)),
             estimate_mins: task.estimate_mins,
             sitting_mins: task.sitting_mins,
+            emoji: task.emoji.clone(),
             start: task.start.map(|start| start.to_string()),
             deadline: task.deadline.map(|date| date.to_string()),
             state: snapshot.states_of(task, now).iter().map(|s| s.keyword().to_owned()).collect(),
@@ -815,6 +825,9 @@ pub struct PlanBlock {
     /// That colour, to draw beside its title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swatch: Option<Swatch>,
+    /// Its emoji, to draw beside its title and never to say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
     /// The time zone it is held to, when it is one place's: its times are that zone's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
@@ -881,6 +894,9 @@ pub struct BlockShown {
     /// Its colour, by name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// Its emoji, as stored, for the form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
 }
 
 /// A rule in the words the date grammar reads, if it can say it.
@@ -924,6 +940,9 @@ pub struct PlanAssignment {
     /// for 45 minutes", or "paused", "20 minutes logged", "5 minutes left".
     #[serde(default)]
     pub details: Vec<String>,
+    /// Its task's emoji, to draw beside its title and never to say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
     /// What can be done to it, in the order offered ([`crate::actions`]).
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
@@ -1421,6 +1440,9 @@ pub struct TaskEdit {
     /// The day it must be done by, a date phrase (`friday`), or `none`.
     #[serde(default)]
     pub deadline: Option<String>,
+    /// One emoji to draw beside its title, or `none` to take it off.
+    #[serde(default)]
+    pub emoji: Option<String>,
 }
 
 /// Where to move a task.
@@ -1496,6 +1518,9 @@ pub struct BlockEdit {
     /// A colour, by name; empty clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// One emoji to draw beside its title; empty clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
 }
 
 /// Which occurrences a change to a block applies to — asked of a repeating block every
@@ -1564,6 +1589,9 @@ pub struct NewBlock {
     /// A colour, by name. Presentation only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
+    /// One emoji to draw beside its title. Presentation only, and never said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
 }
 
 // ---------------------------------------------------------------------------------------
