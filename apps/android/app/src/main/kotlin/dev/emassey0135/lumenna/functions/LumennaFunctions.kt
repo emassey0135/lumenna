@@ -159,6 +159,8 @@ abstract class LumennaFunctions : AppFunctionService() {
         start: String? = null,
         @AppFunctionInstruction("The day it must be done by (\"friday\"), or `none`.")
         deadline: String? = null,
+        @AppFunctionInstruction("One emoji to draw beside its title (\"🎯\"), never read aloud, or `none` to take it off.")
+        emoji: String? = null,
         @AppFunctionInstruction("Its notes, whole.")
         notes: String? = null,
         @AppFunctionInstruction("The project to move it to, by name.")
@@ -166,7 +168,7 @@ abstract class LumennaFunctions : AppFunctionService() {
         @AppFunctionInstruction("Its labels, all of them, by name.")
         labels: List<String>? = null,
     ): ChangeMade =
-        Assistant.changeMade(assist("edit_task", Assistant.text("id", id), Assistant.text("title", title), Assistant.text("due", due), Assistant.text("repeat", repeat), Assistant.number("priority", priority), Assistant.text("estimate", estimate), Assistant.text("sittings", sittings), Assistant.text("start", start), Assistant.text("deadline", deadline), Assistant.text("notes", notes), Assistant.text("project", project), Assistant.texts("labels", labels)))
+        Assistant.changeMade(assist("edit_task", Assistant.text("id", id), Assistant.text("title", title), Assistant.text("due", due), Assistant.text("repeat", repeat), Assistant.number("priority", priority), Assistant.text("estimate", estimate), Assistant.text("sittings", sittings), Assistant.text("start", start), Assistant.text("deadline", deadline), Assistant.text("emoji", emoji), Assistant.text("notes", notes), Assistant.text("project", project), Assistant.texts("labels", labels)))
 
     @AppFunctionDeclaration(isDescribedByKDoc = false)
     @AppFunctionInstruction("Marks a task done. A repeating one moves on to its next date.")

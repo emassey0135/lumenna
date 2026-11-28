@@ -71,6 +71,9 @@ fun WearQuestions(core: Core, navigator: Navigator, entry: TextEntry?) {
                     navigator.choose(question.title, listOf(Option("line", question.label), Option("calendar", appWords.picker.day)), cancelled = cancel) { way ->
                         if (way.key == "calendar") calendar = from else entry?.ask(label(question.title), cancel) { answer(Answer.Text(it)) }
                     }
+                } else if (action?.kind == ActionKind.EMOJI) {
+                    // A project's emoji, from the input screen that offers the watch's emoji.
+                    entry?.askEmoji(label(question.title), cancel) { answer(Answer.Text(it)) }
                 } else {
                     // Backing out of the input screen gives the question up, as Cancel would.
                     entry?.ask(label(question.title), cancel) { answer(Answer.Text(it)) }

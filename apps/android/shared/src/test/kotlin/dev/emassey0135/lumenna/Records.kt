@@ -14,13 +14,13 @@ fun offered(kind: ActionKind) = Offered(kind, Subject.PROJECT, kind.name, kind.n
 
 /** A heading of the places, open unless [folded]. */
 fun group(group: SidebarGroup, folded: Boolean = false) = SidebarEntry(
-    SidebarKind.Group(group), group.name, group.name, group.name, "", 0u, false, null, emptyList(),
+    SidebarKind.Group(group), group.name, group.name, group.name, "", 0u, false, null, null, emptyList(),
     listOf(offered(if (folded) ActionKind.EXPAND else ActionKind.COLLAPSE)), false, !folded, null,
 )
 
 /** A project at [depth]; with something under it, [folded] or open. */
 fun project(name: String, depth: UInt, folded: Boolean? = null) = SidebarEntry(
-    SidebarKind.Place(dev.emassey0135.lumenna.app.Place.Project(name)), "project/$name", name, name, "", depth, false, null, emptyList(),
+    SidebarKind.Place(dev.emassey0135.lumenna.app.Place.Project(name)), "project/$name", name, name, "", depth, false, null, null, emptyList(),
     when (folded) {
         null -> emptyList()
         true -> listOf(offered(ActionKind.EXPAND))

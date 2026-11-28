@@ -37,8 +37,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.emassey0135.lumenna.app.Action
 
-/** One entry of a menu: what identifies it, its name, what it holds, and its colour, drawn beside the name. */
-data class Item(val key: String, val title: String, val detail: String = "", val swatch: Swatch? = null)
+/** One entry of a menu: what identifies it, its name, what it holds, and its colour and emoji, drawn beside the name. */
+data class Item(val key: String, val title: String, val detail: String = "", val swatch: Swatch? = null, val emoji: String? = null)
 
 /**
  * A fixed menu — Browse's places and groups, Settings' pages — one TalkBack stop per entry, each
@@ -60,6 +60,7 @@ fun MenuScreen(title: String, core: Core, navigator: Navigator, items: List<Item
                     key = item.key,
                     say = core::say,
                     swatch = item.swatch,
+                    emoji = item.emoji,
                 )
                 HorizontalDivider()
             }
@@ -78,7 +79,7 @@ fun BrowseScreen(core: Core, navigator: Navigator) {
     val sidebar = view?.sidebar.orEmpty()
     val arranged = remember(sidebar) { arrangement(sidebar) }
     val entries = arranged.browse
-    val items = entries.map { Item(it.key, it.title, it.detail, it.swatch) }
+    val items = entries.map { Item(it.key, it.title, it.detail, it.swatch, it.emoji) }
     MenuScreen(
         arranged.tabs.firstOrNull { it.kind == TabKind.Browse }?.title.orEmpty(), core, navigator, items,
         open = { item ->

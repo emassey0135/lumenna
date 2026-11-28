@@ -42,13 +42,14 @@ import dev.emassey0135.lumenna.name
 
 /**
  * A field the system's input screen fills: its name, then what it holds, one TalkBack stop.
- * Pressing it asks for a new value; on a watch there is no text field to type into.
+ * Pressing it asks for a new value; on a watch there is no text field to type into. An [emoji]
+ * field's input screen offers the watch's emoji.
  */
 @Composable
-fun TextFieldButton(name: String, value: String, example: String = "", ask: (String) -> Unit) {
+fun TextFieldButton(name: String, value: String, example: String = "", emoji: Boolean = false, ask: (String) -> Unit) {
     val entry = LocalTextEntry.current
     Button(
-        onClick = { entry?.ask(name) { ask(it) } },
+        onClick = { if (emoji) entry?.askEmoji(name, {}) { ask(it) } else entry?.ask(name) { ask(it) } },
         modifier = Modifier.fillMaxWidth(),
         label = { Text(name) },
         secondaryLabel = {
@@ -152,7 +153,7 @@ fun TaskScreen(core: Core, navigator: Navigator, screen: Screen.Task) {
             }
             val text = form.text(field.key)
             if (text != null) {
-                item { TextFieldButton(field.label, text, field.example) { set(field.key, it) } }
+                item { TextFieldButton(field.label, text, field.example, emoji = field.key == "emoji") { set(field.key, it) } }
                 // What the field takes, the core's words beneath it, as the phone shows them.
                 if (field.hint.isNotEmpty()) item { Text(field.hint) }
                 return@forEach
@@ -233,7 +234,7 @@ fun BlockFormScreen(core: Core, navigator: Navigator) {
                             "minutes" -> fields.minutes.trim().toUIntOrNull()?.let { "${fields.minutes}, ${durationWords(it)}" } ?: fields.minutes
                             else -> fields.text(field.key)
                         }
-                        TextFieldButton(field.label, value, field.example) { set(field.key, if (field.key == "minutes") it.trim() else it) }
+                        TextFieldButton(field.label, value, field.example, emoji = field.key == "emoji") { set(field.key, if (field.key == "minutes") it.trim() else it) }
                     }
                     // A day or a time has the watch's own picker beside its line, filling it.
                     when (field.kind) {

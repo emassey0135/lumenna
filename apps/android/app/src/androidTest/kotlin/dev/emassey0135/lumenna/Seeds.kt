@@ -8,7 +8,7 @@ import dev.emassey0135.lumenna.app.ReplanPins
 
 /** A block as the tests add one, the rest as a new block's form leaves it: BoltFFI's records have no defaults. */
 fun newBlock(title: String, at: String, minutes: UInt, date: String?, kind: String, repeat: String?) =
-    NewBlock(title, at, minutes, date, kind, repeat, null, null, null, null, null, null, null, null)
+    NewBlock(title, at, minutes, date, kind, repeat, null, null, null, null, null, null, null, null, null)
 
 /** No pins: the day proposed as it stands. */
 val noPins = ReplanPins(emptyList(), emptyList(), emptyList(), emptyList())
