@@ -94,7 +94,8 @@ final class WidgetTests: XCTestCase {
         XCTAssertNil(quiet.timerStart)
         XCTAssertEqual(quiet.relevance?.score, 0)
         entry.moment.timer = LumennaApp.GlanceTimer(
-            sitting: "s", task: "Essay", block: "Deep work", countingFrom: "2026-10-25T09:00:00Z", plannedMins: nil, runsOutAt: nil
+            sitting: "s", task: "Essay", block: "Deep work", countingFrom: "2026-10-25T09:00:00Z", plannedMins: nil, runsOutAt: nil,
+            emoji: nil
         )
         let timing = GlanceTimelineEntry(date: Date(), glance: entry)
         XCTAssertEqual(timing.timerStart, Instant.parse("2026-10-25T09:00:00Z"))
@@ -109,7 +110,7 @@ final class WidgetTests: XCTestCase {
         entry.moment.at = "2026-10-25T09:10:00Z"
         entry.moment.timer = LumennaApp.GlanceTimer(
             sitting: "s", task: "Essay", block: "Deep work", countingFrom: "2026-10-25T09:00:00Z",
-            plannedMins: 25, runsOutAt: "2026-10-25T09:25:00Z"
+            plannedMins: 25, runsOutAt: "2026-10-25T09:25:00Z", emoji: nil
         )
         return entry
     }
@@ -141,7 +142,7 @@ final class WidgetTests: XCTestCase {
         var entry = LumennaApp.glanceEmpty(locale: Writing())
         entry.moment.current = LumennaApp.GlanceBlock(
             id: "b@2026-10-25", title: "Deep work", start: "09:00", end: "11:00",
-            startsAt: "2026-10-25T09:00:00Z", endsAt: "2026-10-25T11:00:00Z", kind: "work", colour: nil, tasks: []
+            startsAt: "2026-10-25T09:00:00Z", endsAt: "2026-10-25T11:00:00Z", kind: "work", colour: nil, emoji: nil, tasks: []
         )
         let block = GlanceTimelineEntry(date: Date(), glance: entry)
         XCTAssertEqual(block.relevance?.score, 1)

@@ -97,6 +97,7 @@ struct TaskListView: View {
         // whether it is folded and its level as its value, as on the phone.
         let line = HStack {
             SwatchMark(swatch: row.swatch)
+            EmojiMark(emoji: row.emoji)
             VStack(alignment: .leading) {
                 Text(row.title)
                 if let detail = shown.line?.detail, !detail.isEmpty {
@@ -199,6 +200,7 @@ struct BlockListView: View {
                     } label: {
                         HStack {
                             SwatchMark(swatch: row.swatch)
+                            EmojiMark(emoji: row.emoji)
                             VStack(alignment: .leading) {
                                 Text(row.title)
                                 if !detail.isEmpty {

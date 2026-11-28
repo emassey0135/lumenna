@@ -86,6 +86,30 @@ final class DayTests: XCTestCase {
         XCTAssertEqual(try core.app.device.plan(date: nil).cancelled.map(\.title), ["Deep work"], "the accessibility action runs the app's")
     }
 
+    func testABlocksAndASittingsEmojiAreDrawnBeforeTheirLinesAndNeverInWhatVoiceOverSays() throws {
+        let hour = Calendar.current.component(.hour, from: Date())
+        _ = try core.app.device.addBlock(block: newBlock(
+            title: "Deep work", at: (8..<11).contains(hour) ? "15:00" : "09:00", minutes: 60, date: nil, emoji: "🧠"
+        ))
+        let task = try XCTUnwrap(core.app.device.addTask(text: "Essay").task?.id)
+        _ = try AssistantStore(device: core.app.device).assist("edit_task", ["id": .text(task), "emoji": .text("📝")])
+        let today = Clock.isoDay(.now)
+        let block = try XCTUnwrap(core.app.device.plan(date: today).blocks.first { $0.title == "Deep work" })
+        _ = try core.app.device.assign(task: task, block: block.id, date: today, minutes: 25)
+        let day = shownDay()
+        settle { day.rows.contains { $0.item.kind == .sitting } }
+        let blockRow = try XCTUnwrap(day.rows.first { $0.item.kind == .block })
+        let sittingRow = try XCTUnwrap(day.rows.first { $0.item.kind == .sitting })
+        XCTAssertEqual(blockRow.item.emoji, "🧠", "the block's own, drawn before its line")
+        XCTAssertEqual(sittingRow.item.emoji, "📝", "the sitting's task's, not the block it is in")
+        for row in [blockRow, sittingRow] {
+            let line = try XCTUnwrap(row.line)
+            // What a row's label and value are made of: the core's line, which never holds it.
+            let said = [line.title, line.text, AppModel.spoken(detail: line.detail, expanded: row.item.expanded, level: row.item.level)]
+            XCTAssertFalse(said.contains { $0.contains("🧠") || $0.contains("📝") }, "\(said)")
+        }
+    }
+
     func testEveryRowOfTheDayOffersEachOfItsActionsOnce() throws {
         try block(repeating: nil)
         let day = shownDay()

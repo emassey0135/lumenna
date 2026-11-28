@@ -89,6 +89,12 @@ the project from `project.yml`; the `.xcodeproj` and `Generated/` are not commit
 - **A colour is a dot beside its name** (`Shared/Swatch.swift`, `SwatchMark`), on every Apple
   app, hidden from VoiceOver, light or dark by the appearance and growing with the text. The
   Mac's AppKit pick sheet draws a `SwatchDot`, a plain view VoiceOver does not see.
+- **An emoji is text before the name** (`Shared/Emoji.swift`, `EmojiMark`), wherever a swatch is
+  drawn and in the widgets, hidden from VoiceOver: a row's label and value are the core's line,
+  which never holds it, so it never goes into either. A day's sitting wears its task's
+  (`DayItem.emoji`), never that of the block it carries beside it. It joins a text
+  (`EmojiMark.before`) only where one text alone is drawn (a complication's line), whose element
+  says the core's `spoken`. The forms' Emoji is a plain line the platform's picker fills.
 - **A SwiftUI `TextField`'s title is only a placeholder**: with text in it, VoiceOver never
   says the name. See `NamedRow` below.
 - **The core's announcement is queued behind a focus change** (`Announcer`, a queued

@@ -80,7 +80,12 @@ struct DayView: View {
                 .accessibilityLabel(title)
                 .accessibilityValue(value)
         case .sitting:
-            Button { offer(item, line: line) } label: { Text(text) }
+            Button { offer(item, line: line) } label: {
+                HStack {
+                    EmojiMark(emoji: item.emoji)
+                    Text(text)
+                }
+            }
                 .accessibilityLabel(title)
                 .accessibilityValue(value)
                 .padding(.leading, 8)
@@ -88,6 +93,7 @@ struct DayView: View {
             Button { offer(item, line: line) } label: {
                 HStack {
                     SwatchMark(swatch: item.block?.swatch)
+                    EmojiMark(emoji: item.emoji)
                     Text(text)
                 }
             }

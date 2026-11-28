@@ -317,16 +317,18 @@ struct AppItem: Hashable {
     var reason: String?
     /// A project's, label's, saved filter's or colour's colour, drawn beside its name.
     var swatch: LumennaApp.Swatch?
+    /// A project's emoji, drawn before its name and never said (`EmojiMark`).
+    var emoji: String?
 }
 
 extension AppItem {
     /// A sidebar entry as a list shows it: its detail, the depth it is drawn at and, said after
     /// the detail, whether it is folded and its level where that changes (`SidebarEntry`'s
-    /// `expanded` and `level`, the core's), its actions and its swatch.
+    /// `expanded` and `level`, the core's), its actions, its swatch and its emoji.
     init(entry: LumennaApp.SidebarEntry) {
         self.init(
             key: entry.key, title: entry.title, detail: entry.detail.isEmpty ? nil : entry.detail, depth: entry.depth,
-            actions: entry.offered, swatch: entry.swatch
+            actions: entry.offered, swatch: entry.swatch, emoji: entry.emoji
         )
         spoken = AppModel.spoken(detail: entry.detail, expanded: entry.expanded, level: entry.level)
         expanded = entry.expanded

@@ -53,7 +53,7 @@ final class ControlTests: XCTestCase {
             running: true, detail: "Essay", action: "Stop Timer", actionSentence: "Stop timer", enabled: true,
             timer: LumennaApp.GlanceTimer(
                 sitting: "s", task: "Essay", block: "Deep work", countingFrom: "2026-10-25T09:00:00Z",
-                plannedMins: planned, runsOutAt: runsOut
+                plannedMins: planned, runsOutAt: runsOut, emoji: nil
             )
         )
     }
