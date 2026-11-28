@@ -109,6 +109,7 @@ mod tests {
             due: 0,
             overdue: 0,
             blocks_left: 0,
+            energy: String::new(),
         }
     }
 

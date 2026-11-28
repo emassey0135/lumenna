@@ -239,7 +239,9 @@ fn a_block_takes_its_settings_and_a_sitting_pauses_over_rpc() {
     assert!(out.contains(r#""takes tasks""#), "the details say what differs from the kind: {out}");
     assert!(out.contains(r#""colour":"blue""#), "{out}");
     let block = out.split(r#""series":""#).nth(1).and_then(|rest| rest.split('"').next()).expect("a series").to_owned();
-    let task = out.split(r#""task":{"#).nth(1).and_then(|rest| rest.split(r#""id":""#).nth(1)).and_then(|rest| rest.split('"').next()).expect("a task").to_owned();
+    // What the line added, as its change says: a task's own record holds its actions' answers'
+    // identifiers before its own.
+    let task = out.split(r#""affected":{"tasks":[""#).nth(1).and_then(|rest| rest.split('"').next()).expect("a task").to_owned();
     let assign = format!(r#"{{"jsonrpc":"2.0","id":4,"method":"assign","params":{{"task":"{task}","block":"{block}"}}}}"#);
     let out = rpc.talk(&[
         &assign,

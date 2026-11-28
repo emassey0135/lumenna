@@ -112,6 +112,8 @@ fn add_buttons(notification: &gio::Notification, shown: &str, due: &lumenna_app:
             "replan" => ("app.reminder-replan".to_owned(), first.to_variant()),
             // A sitting's planned length run out: its timer stopped.
             "stop" => ("app.reminder-stop".to_owned(), (first.0.clone(), first.1.clone(), due.sitting.clone().unwrap_or_default()).to_variant()),
+            // The day's energy check-in: low today.
+            "low" => ("app.reminder-low".to_owned(), first.to_variant()),
             _ => continue,
         };
         notification.add_button_with_target_value(&button.title, &action, Some(&target));
@@ -169,6 +171,18 @@ fn add_actions(app: &App) {
         answered(&app, app.model.device.carry_rest_forward(block), "");
     });
     app.application.add_action(&carry);
+    let low = gio::SimpleAction::new("reminder-low", Some(pair));
+    low.connect_activate(|_, parameter| {
+        // Low today, said as the host says it, and the check-in dismissed on every device.
+        let (Some(app), Some((key, occurrence))) = (crate::window::app(), parameter.and_then(|p| p.get::<(String, String)>())) else {
+            return;
+        };
+        app.application.withdraw_notification(&id(&key, &occurrence));
+        let device = &app.model.device;
+        let said = device.check_in_energy("low".to_owned()).and_then(|said| device.dismiss_reminder(key, occurrence).map(|_| said));
+        answered(&app, said, "");
+    });
+    app.application.add_action(&low);
     let stop = gio::SimpleAction::new("reminder-stop", Some(glib::VariantTy::new("(sss)").expect("a valid type")));
     stop.connect_activate(|_, parameter| {
         // The sitting whose time ran out stops, its stop said, and the firing is dismissed.
@@ -242,6 +256,9 @@ fn open_target(app: &App, kind: &str, target: &str, occurrence: &str) {
     app.show_window();
     if kind == "block" {
         app.show_block(target, occurrence.get(..10).unwrap_or(occurrence));
+    } else if kind == "day" {
+        // The day's energy check-in: Today, its question asked.
+        app.model.send(ShellEvent::Launch("energy-today".to_owned()));
     } else {
         // The task in hand in the list, and focus in its details, where its due time is.
         app.detail.focus_when_shown(target);

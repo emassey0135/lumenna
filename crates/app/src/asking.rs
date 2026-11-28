@@ -483,6 +483,17 @@ impl Lumenna {
                     model.hold(&task.id);
                 }
                 model.settle();
+                // Saying one is low offers a lighter rest of the day: Replan from Now, open over
+                // today, where it has something to take out.
+                let low = writing
+                    .asked
+                    .as_ref()
+                    .filter(|open| open.answered.as_deref() == Some("low"))
+                    .and_then(Open::action)
+                    .is_some_and(|action| action.kind == ActionKind::CheckIn);
+                if low && model.store.as_ref().is_some_and(|store| lumenna_records::energy::lightens(&store.snapshot, &store.now)) {
+                    return render().and(say(spoken(&change))).and(self.propose(proposal::Kind::Replan, model));
+                }
                 render().and(say(spoken(&change)))
             }
             Err(error) => {

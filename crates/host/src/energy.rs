@@ -36,12 +36,7 @@ impl Lumenna {
             let snapshot = repaired(store);
             let capacity = energy::capacity(&snapshot.settings, day, energy::work_mins(&snapshot, day)?);
             // Whether Replan from Now would take anything out: only a low day is lightened.
-            let window = lumenna_core::time::minutes_of_day(snapshot.settings.day_window.1).max(24 * 60);
-            let lighter = level == Energy::Low
-                && lumenna_core::reflow::propose_reflow(&snapshot, day, lumenna_core::time::minutes_of_day(now.time()), window, &[])?
-                    .changes
-                    .iter()
-                    .any(|c| matches!(c, lumenna_core::reflow::Proposed::Lighten { .. }));
+            let lighter = level == Energy::Low && lumenna_records::energy::lightens(&snapshot, &now);
             let said = checked_in(level, capacity.as_ref(), lighter);
             Ok(if change.is_empty() { Change::unchanged(said) } else { Change::announced(said, &change) })
         })

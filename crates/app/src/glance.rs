@@ -28,6 +28,13 @@ pub struct GlanceEntry {
     pub mark_done: String,
     /// The same in sentence case.
     pub mark_done_sentence: String,
+    /// How the person said their energy is today: "Energy, Low today", "Energy, Not said today".
+    pub energy: Line,
+    /// What the button that opens the day's check-in is called, in Title Case: the
+    /// `energy-today` launch shortcut's "Energy Today".
+    pub check_in: String,
+    /// The same in sentence case.
+    pub check_in_sentence: String,
     /// The whole glance as one sentence, for a screen reader's label of the widget.
     pub spoken: String,
 }
@@ -54,6 +61,15 @@ pub fn worded(moment: GlanceMoment, clock: &dyn Clock) -> GlanceEntry {
         said.push(words::next(&next.text));
     }
     said.push(due.text.clone());
+    let level: Option<lumenna_core::energy::Energy> = moment.energy.parse().ok();
+    let mut settings = lumenna_core::model::Settings::default();
+    let day = moment.date.parse::<jiff::civil::Date>().unwrap_or_default();
+    settings.energy_today = level.map(|level| lumenna_core::energy::CheckIn { date: day, level });
+    let energy = Line::of("Energy".to_owned(), vec![lumenna_records::energy::today_line(&settings, day)]);
+    // Said only once the person has said something of the day.
+    if level.is_some() {
+        said.push(energy.text.clone());
+    }
     let tasks = moment
         .tasks
         .iter()
@@ -82,6 +98,9 @@ pub fn worded(moment: GlanceMoment, clock: &dyn Clock) -> GlanceEntry {
         tasks,
         mark_done: mark_done.title,
         mark_done_sentence: mark_done.sentence,
+        energy,
+        check_in: lumenna_records::energy::CHECK_IN.to_owned(),
+        check_in_sentence: lumenna_records::fields::sentence_case(lumenna_records::energy::CHECK_IN.to_owned()),
     }
 }
 
@@ -213,6 +232,7 @@ mod tests {
             due: 0,
             overdue: 0,
             blocks_left: 0,
+            energy: String::new(),
         }
     }
 

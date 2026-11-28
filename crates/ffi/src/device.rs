@@ -20,6 +20,7 @@ use lumenna_app::glance::GlanceEntry;
 use lumenna_records::assistant::{Argument, Assisted};
 use lumenna_records::automation::{Automated, AutomationChoice, AutomationGiven};
 use lumenna_records::controls::TimerControl;
+use lumenna_records::energy::EnergyToday;
 use lumenna_records::search::SearchDocument;
 use lumenna_records::reminders::DueReminders;
 use lumenna_records::{
@@ -303,6 +304,26 @@ impl Device {
     /// If the store cannot be read or written.
     pub fn toggle_timer(&self) -> Result<Change, LumennaError> {
         self.lumenna.toggle_timer(None)
+    }
+
+    /// How the person's energy is today, said from outside the app (a notification's I'm Low
+    /// Today, a widget, a control, a watch): `low`, `usual` or `high`, for today alone. Said
+    /// back with what planning makes of it. Undone as any change is.
+    ///
+    /// # Errors
+    ///
+    /// If `level` is none of those, or the store cannot be written.
+    pub fn check_in_energy(&self, level: String) -> Result<Change, LumennaError> {
+        self.lumenna.check_in_energy(&level, None)
+    }
+
+    /// How the day's energy stands today, as a glance or a control shows it.
+    ///
+    /// # Errors
+    ///
+    /// If the store cannot be read.
+    pub fn energy_today(&self) -> Result<EnergyToday, LumennaError> {
+        self.lumenna.energy_today()
     }
 
     /// Everything a platform's search keeps an index of (Spotlight's indexed entities,

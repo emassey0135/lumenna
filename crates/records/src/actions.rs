@@ -152,6 +152,10 @@ pub enum ActionKind {
     /// Open a project's own list, from where it is listed beside other things (the review): the
     /// app's, which changes nothing stored.
     OpenProject,
+    /// Rate what a task takes of the person's energy: low, medium, high, or not rated.
+    Energy,
+    /// Say how the person's energy is today, which planning weighs for today alone.
+    CheckIn,
 }
 
 /// What an action is done to: with [`ActionKind`], what runs.
@@ -620,6 +624,14 @@ pub fn task(snapshot: &Snapshot, task: &Task, done: bool, shown: bool) -> Vec<Ac
     // A due time can be held to one place's time zone.
     if let Some(due) = task.due.as_ref().filter(|due| due.time.is_some()) {
         actions.push(time_zone(Subject::Task, &task.id.to_string(), &task.title, due.timezone.as_ref().map(lumenna_core::model::TzName::as_str)));
+    }
+    // What it takes of the person's energy, a few rated being worth having.
+    if !done {
+        actions.push(a(K::Energy, "Energy").asking(Question::Choose {
+            title: format!("How much energy does {} take?", task.title),
+            message: crate::energy::ENERGY_HINT.to_owned(),
+            answers: crate::energy::energy_choices(task.energy),
+        }));
     }
     // A task still to do can be reminded of at a moment of its own; one with a due date, also
     // counting from it (a repeating one comes round again, done or not).

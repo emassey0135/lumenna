@@ -165,6 +165,10 @@ fn answer_with(lumenna: &Lumenna, request: HostRequest, after: &dyn Fn() -> Opti
             each(&firings, |(key, occurrence)| lumenna.dismiss_reminder(key.clone(), occurrence.clone()))?;
             Ok(stopped)
         })),
+        HostRequest::CheckIn { level, firings } => wrote(lumenna.check_in_energy(&level, None).and_then(|said| {
+            each(&firings, |(key, occurrence)| lumenna.dismiss_reminder(key.clone(), occurrence.clone()))?;
+            Ok(said)
+        })),
         HostRequest::Undo => wrote(lumenna.undo()),
         HostRequest::Redo => wrote(lumenna.redo()),
         HostRequest::Apply { proposal, accepted, now } => {

@@ -31,7 +31,7 @@ fn a_tasks_actions_come_in_the_order_every_client_offers_them() {
     add(&lumenna, "write report");
     assert_eq!(
         titles(&task_actions(&lumenna, "write report")),
-        ["Mark Done", "Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Reminders", "Move to Trash"]
+        ["Mark Done", "Edit Details", "Put in a Block", "Move to Project", "Make Subtask Of", "Wait For", "Energy", "Reminders", "Move to Trash"]
     );
 }
 

@@ -97,6 +97,7 @@ pub const SHARED: &[Shortcut] = &[
     key(Group::Day, "go-to-now", "Go to Now", &["Ctrl+T"]),
     key(Group::Day, "go-to-day", "Go to Day", &["Ctrl+G"]),
     key(Group::Day, "time-left", "Time Left", &["Ctrl+Shift+T"]),
+    key(Group::Day, "energy-today", "Energy Today", &["Ctrl+Shift+E"]),
     key(Group::Lists, "open", "Open the Task, Place or Block, Show a Day, or Restore from the Trash", &["Enter"]),
     key(Group::Lists, "toggle", "Mark Done, Restore from the Trash, or Start, Pause or Resume a Timer", &["Space"]),
     key(Group::Lists, "delete", "Delete, Move to Trash, Delete from the Trash, or Unassign", &["Delete"]),
@@ -154,6 +155,7 @@ pub fn what_runs(id: &str) -> Runs {
         "plan-day" => Runs::Day(&[K::PlanDay]),
         "replan" => Runs::Day(&[K::Replan]),
         "what-now" => Runs::Day(&[K::WhatNow]),
+        "energy-today" => Runs::Day(&[K::CheckIn]),
         "end-day" => Runs::Day(&[K::EndDay]),
         "clear-day" => Runs::Day(&[K::ClearDay]),
         "new-task" | "new-block" | "new-project" | "new-label" | "new-filter" | "sync-now" | "settings" | "undo" | "redo"
@@ -259,6 +261,7 @@ pub const COMMANDS: &[Command] = &[
     command("replan", "Replan from Now", true),
     command("what-now", "What Should I Work On?", true),
     command("time-left", "Time Left", false),
+    command("energy-today", "Energy Today", true),
     command("end-day", "End the Day", true),
     command("clear-day", "Clear the Rest of the Day", true),
     command("keyboard-help", "Keyboard Shortcuts", false),
@@ -323,7 +326,7 @@ pub const MENUS: &[Menu] = &[
         group: Group::Day,
         items: &[
             "previous-day", "next-day", "go-to-now", "go-to-day", SEPARATOR, "new-block", SEPARATOR, "plan-day", "replan",
-            "what-now", "time-left", "end-day", "clear-day",
+            "what-now", "time-left", "energy-today", "end-day", "clear-day",
         ],
     },
     Menu { group: Group::Help, items: &["keyboard-help", "about"] },

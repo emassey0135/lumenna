@@ -126,7 +126,11 @@ pub fn task_form() -> Vec<FormField> {
         ),
         // Beside the estimate: what it takes, as a length is how long.
         FormField {
-            options: crate::energy::energy_choices(None).into_iter().map(|c| Choice { detail: None, ..c }).collect(),
+            // Not rated is empty, as the form holds it, as No colour is.
+            options: crate::energy::energy_choices(None)
+                .into_iter()
+                .map(|c| Choice { id: if c.id == "none" { String::new() } else { c.id }, detail: None, ..c })
+                .collect(),
             ..field("energy", "Energy", K::Choice, crate::energy::ENERGY_HINT, "")
         },
         // A list, filled from `Lumenna::project_options`: a task only ever moves to a project

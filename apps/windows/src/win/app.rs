@@ -1484,6 +1484,16 @@ impl App {
                     Ok(Change::unchanged(stopped.announcement))
                 })
                 .collect(),
+            // The day's energy check-in: low today, said as the host says it, and the firing
+            // dismissed on every device.
+            "low" => firings
+                .iter()
+                .map(|f| {
+                    let said = self.device.check_in_energy("low".to_owned())?;
+                    self.device.dismiss_reminder(f.key.clone(), f.occurrence.clone())?;
+                    Ok(said)
+                })
+                .collect(),
             // The app's Today with Replan from Now open over it, the window in front: the firing
             // named as the device delivered it, so the app dismisses its warning once something
             // is replanned.
@@ -1519,6 +1529,9 @@ impl App {
                     if let Some(day) = self.day() {
                         controls::focus(day.rows.tree.hwnd);
                     }
+                } else if reminder.kind == "day" {
+                    // The day's energy check-in: Today, its question asked.
+                    self.launch("energy-today".to_owned());
                 } else {
                     // The task's own way in, as a search result opens it: the app goes to Tasks
                     // with the task in hand and its details shown.

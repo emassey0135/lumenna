@@ -571,6 +571,7 @@ mod tests {
             due: 2,
             overdue: 1,
             blocks_left: 0,
+            energy: String::new(),
         };
         let entries = vec![worded(moment, &TwentyFour)];
         assert_eq!(glance_from_file(glance_file(entries.clone())).unwrap(), entries);

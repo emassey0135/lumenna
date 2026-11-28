@@ -36,6 +36,8 @@ pub struct Detail {
     due: gtk::Entry,
     repeat: gtk::Entry,
     priority: gtk::DropDown,
+    /// What it takes of the person's energy, the form's own choices (`task_form`'s `energy`).
+    energy: gtk::DropDown,
     estimate: gtk::Entry,
     sittings: gtk::Entry,
     start: gtk::Entry,
@@ -131,6 +133,8 @@ impl Detail {
         let repeat = gtk::Entry::new();
         let titles: Vec<String> = lumenna_records::priorities().into_iter().map(|p| p.title).collect();
         let priority = gtk::DropDown::from_strings(&titles.iter().map(String::as_str).collect::<Vec<_>>());
+        let energies: Vec<String> = energy_choices().into_iter().map(|c| c.title).collect();
+        let energy = gtk::DropDown::from_strings(&energies.iter().map(String::as_str).collect::<Vec<_>>());
         let estimate = gtk::Entry::new();
         let sittings = gtk::Entry::new();
         let start = gtk::Entry::new();
@@ -190,9 +194,8 @@ impl Detail {
         // The sitting length beside the estimate it divides.
         pair(&grid, 6, (words("estimate", 'm'), estimate.upcast_ref()), (words("sittings", 'g'), sittings.upcast_ref()));
         pair(&grid, 8, (words("priority", 'o'), priority.upcast_ref()), (words("project", 'j'), project.upcast_ref()));
-        let labels_words = words("labels", 'L');
-        grid.attach(&named(labels.upcast_ref(), &labels_words), 0, 10, 2, 1);
-        grid.attach(&labels, 0, 11, 2, 1);
+        // What it takes beside its labels.
+        pair(&grid, 10, (words("energy", 'y'), energy.upcast_ref()), (words("labels", 'L'), labels.upcast_ref()));
         let notes_scroll = gtk::ScrolledWindow::builder()
             .child(&notes)
             .min_content_height(96)
@@ -250,6 +253,7 @@ impl Detail {
             due,
             repeat,
             priority,
+            energy,
             estimate,
             sittings,
             start,
@@ -319,6 +323,7 @@ impl Detail {
                     "sittings" => fields.sittings,
                     "start" => fields.start,
                     "deadline" => fields.deadline,
+                    "energy" => fields.energy,
                     "project" => fields.project,
                     "labels" => fields.labels,
                     _ => fields.notes,
@@ -332,6 +337,8 @@ impl Detail {
         }
         let send = typed(self, "priority");
         self.priority.connect_selected_notify(move |_| send());
+        let send = typed(self, "energy");
+        self.energy.connect_selected_notify(move |_| send());
         let send = typed(self, "project");
         self.project.connect_selected_notify(move |_| send());
         let send = typed(self, "notes");
@@ -429,6 +436,10 @@ impl Detail {
         let position = lumenna_records::priorities().iter().position(|p| p.id == fields.priority.to_string()).unwrap_or(0) as u32;
         if self.priority.selected() != position && !within(&self.priority) {
             self.priority.set_selected(position);
+        }
+        let position = energy_choices().iter().position(|c| c.id == fields.energy).unwrap_or(0) as u32;
+        if self.energy.selected() != position && !within(&self.energy) {
+            self.energy.set_selected(position);
         }
         if self.projects.string(self.project.selected()).is_none_or(|s| s != fields.project.as_str()) && !within(&self.project) {
             self.select_project(&fields.project);
@@ -569,6 +580,7 @@ impl Detail {
             sittings: self.sittings.text().to_string(),
             start: self.start.text().to_string(),
             deadline: self.deadline.text().to_string(),
+            energy: energy_choices().get(self.energy.selected() as usize).map(|c| c.id.clone()).unwrap_or_default(),
             project: self.projects.string(self.project.selected()).map(|s| s.to_string()).unwrap_or_default(),
             labels: self.labels.text().to_string(),
             notes: buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string(),
@@ -593,6 +605,11 @@ fn set_destructive(button: &gtk::Button, destructive: bool) {
 }
 
 /// Whether focus is in `widget`, or in what it holds.
+/// The task form's energy choices, Not Rated first: the core's, as the form names them.
+fn energy_choices() -> Vec<Choice> {
+    lumenna_records::task_form().into_iter().find(|f| f.key == "energy").map(|f| f.options).unwrap_or_default()
+}
+
 fn within(widget: &impl IsA<gtk::Widget>) -> bool {
     widget.root().and_then(|root| root.focus()).is_some_and(|focus| &focus == widget.as_ref() || focus.is_ancestor(widget))
 }

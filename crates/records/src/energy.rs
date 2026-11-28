@@ -48,10 +48,11 @@ pub fn energy_choices(current: Option<Energy>) -> Vec<Choice> {
         .collect()
 }
 
-/// What a block's hours can be, as the block form offers them.
+/// What a block's hours can be, as the block form offers them: ordinary is empty, as the form
+/// holds it.
 #[must_use]
 pub fn hours_choices() -> Vec<Choice> {
-    [("none", "Ordinary"), ("best", "My Best Hours"), ("worst", "My Worst Hours")]
+    [("", "Ordinary"), ("best", "My Best Hours"), ("worst", "My Worst Hours")]
         .into_iter()
         .map(|(id, title)| Choice { id: id.to_owned(), title: title.to_owned(), ..Choice::default() })
         .collect()
@@ -130,6 +131,16 @@ pub fn checked_in(level: Energy, capacity: Option<&Capacity>, lighter: bool) -> 
     format!("{said}. {room}{lighten}.")
 }
 
+/// Whether Replan from Now would lighten the rest of the day `now` falls on: only a day the
+/// person said they are low, planned past its room, is.
+#[must_use]
+pub fn lightens(snapshot: &lumenna_core::snapshot::Snapshot, now: &jiff::Zoned) -> bool {
+    let window = lumenna_core::time::minutes_of_day(snapshot.settings.day_window.1).max(24 * 60);
+    lumenna_core::energy::checked_in(&snapshot.settings, now.date()) == Some(Energy::Low)
+        && lumenna_core::reflow::propose_reflow(snapshot, now.date(), lumenna_core::time::minutes_of_day(now.time()), window, &[])
+            .is_ok_and(|p| p.changes.iter().any(|c| matches!(c, lumenna_core::reflow::Proposed::Lighten { .. })))
+}
+
 /// How the day's energy stands, for a glance, the details of a day and an assistant: "Low
 /// today", or what the person has not said.
 #[must_use]
@@ -201,6 +212,10 @@ pub const CHECK_IN: &str = "Energy Today";
 
 /// The check-in reminder's button that says the person is low, in Title Case.
 pub const LOW_TODAY: &str = "I'm Low Today";
+
+/// What the check-in reminder's I'm Low Today says once pressed outside the app, where the
+/// app is not there to say the host's own sentence.
+pub const LOW_SAID: &str = "Noted: you are low today";
 
 /// The check-in reminder's title and words, and the same said of the past.
 #[must_use]

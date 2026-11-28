@@ -1461,6 +1461,8 @@ fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static 
         K::Reconsider => &[&["task", "reconsider", "{groceries}", "keep"], &["task", "reconsider", "{groceries}", "drop"]],
         // A place is a listing: the project's own.
         K::OpenProject => &[&["task", "list", "#Home"]],
+        K::Energy => &[&["task", "edit", "{essay}", "--energy", "high"], &["task", "edit", "{essay}", "--energy", "none"]],
+        K::CheckIn => &[&["energy", "low"], &["energy"]],
         K::CancelDay => &[&["block", "cancel", "{daily}", "--date", "tomorrow"]],
         K::RestoreDay => &[&["block", "cancel", "{daily}", "--date", "tomorrow"], &["block", "restore", "{daily}", "--date", "tomorrow"]],
         K::StartTimer => &[&["start", "{essay-sitting}"]],

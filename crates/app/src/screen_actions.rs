@@ -87,7 +87,7 @@ pub(crate) fn place_action_ids(place: &Place) -> &'static [&'static str] {
 
 /// What Home offers of its own, after Reminders Due while any are due.
 pub(crate) const HOME_ACTIONS: &[&str] =
-    &["new-task", "undo", "redo", "what-now", "time-left", "sync-now", "settings", "keyboard-help", "about"];
+    &["new-task", "undo", "redo", "what-now", "time-left", "energy-today", "sync-now", "settings", "keyboard-help", "about"];
 
 /// What a shell runs itself, of the screens' own actions.
 const SHELLS: &[&str] = &["filter", "keyboard-help", "about", "reminders-due"];

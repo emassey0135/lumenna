@@ -203,6 +203,8 @@ impl Lumenna {
                 self.review_every(target, &every)
             }
             (S::Task, K::Reconsider) => self.reconsider(target, &answer_pick(&answer)?.0),
+            (S::Task, K::Energy) => self.edit_task(target, crate::types::TaskEdit { energy: Some(answer_pick(&answer)?.0), ..Default::default() }),
+            (S::Day, K::CheckIn) => self.check_in_energy(&answer_pick(&answer)?.0, None),
             (S::Label, K::Rename) => self.rename_label(target, &answer_text(&answer)?),
             (S::Label, K::New) => self.add_label(&answer_text(&answer)?),
             (S::Label, K::MergeInto) => self.merge_labels(target, &answer_pick(&answer)?.0),

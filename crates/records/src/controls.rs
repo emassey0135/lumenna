@@ -37,8 +37,8 @@ pub struct Control {
     pub kind: ControlKind,
 }
 
-/// Every control, in the order a gallery lists them: the timer, then New Task, whose words are
-/// its launch shortcut's.
+/// Every control, in the order a gallery lists them: the timer, then New Task and Energy Today,
+/// whose words are their launch shortcuts'.
 #[must_use]
 pub fn controls() -> Vec<Control> {
     let timer = Control {
@@ -48,14 +48,14 @@ pub fn controls() -> Vec<Control> {
         description: "Starts on what to work on now, or stops the timer running".to_owned(),
         kind: ControlKind::Toggle,
     };
-    let new_task = crate::launch::launch_shortcuts().into_iter().find(|s| s.id == "new-task").map(|s| Control {
+    let buttons = crate::launch::launch_shortcuts().into_iter().filter(|s| s.id == "new-task" || s.id == "energy-today").map(|s| Control {
         id: s.id,
         name: s.title,
         sentence: s.sentence,
         description: s.description,
         kind: ControlKind::Button,
     });
-    std::iter::once(timer).chain(new_task).collect()
+    std::iter::once(timer).chain(buttons).collect()
 }
 
 /// What the timer's control shows now, and what a press does (`Lumenna::toggle_timer`): with a
@@ -182,7 +182,7 @@ mod tests {
     fn the_controls_are_the_timer_then_new_task_in_its_launch_shortcuts_words() {
         let controls = controls();
         let ids: Vec<&str> = controls.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(ids, ["timer", "new-task"]);
+        assert_eq!(ids, ["timer", "new-task", "energy-today"]);
         let new_task = crate::launch::launch_shortcuts().into_iter().find(|s| s.id == "new-task").unwrap();
         assert_eq!((controls[1].name.as_str(), controls[1].kind), (new_task.title.as_str(), ControlKind::Button));
     }

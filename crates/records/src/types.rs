@@ -672,6 +672,10 @@ pub struct Plan {
     /// today while something is left of it.
     #[serde(default, skip_serializing_if = "none")]
     pub actions: Vec<crate::actions::Action>,
+    /// How the person said their energy is that day, `low`, `medium` or `high`; absent if they
+    /// did not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub energy: Option<String>,
 }
 
 /// The work blocks a task could be put in, from a task itself rather than from a day.
@@ -822,6 +826,10 @@ pub struct PlanBlock {
     /// The time zone it is held to, when it is one place's: its times are that zone's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
+    /// Whether it is the person's best or worst hours for energy, `best` or `worst`: its own
+    /// mark, else the settings' time of day.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hours: Option<String>,
     /// Its notes.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,

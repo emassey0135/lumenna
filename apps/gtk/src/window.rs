@@ -709,6 +709,8 @@ impl App {
             "go-report" => self.go(Place::Report, true),
             // The timer as it is, said by the app: its countdown on request.
             "time-left" => self.model.send(ShellEvent::Key(id.to_owned())),
+            // Today, its check-in asked: the app's.
+            "energy-today" => self.model.send(ShellEvent::Key(id.to_owned())),
             "next-pane" => self.move_pane(1),
             "previous-pane" => self.move_pane(-1),
             "save-task" => self.detail.save(self),

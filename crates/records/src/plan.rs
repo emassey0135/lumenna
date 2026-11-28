@@ -98,6 +98,7 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
             colour: series.and_then(|s| s.color.clone()),
             swatch: crate::types::Swatch::of(series.and_then(|s| s.color.as_deref())),
             timezone: series.and_then(|s| s.timezone.as_ref()).map(ToString::to_string),
+            hours: lumenna_core::energy::hours_at(&snapshot.settings, series, occurrence.start_time).map(|h| h.as_str().to_owned()),
             notes: series.map(|s| s.notes.clone()).unwrap_or_default(),
             details: Vec::new(),
             actions: Vec::new(),
@@ -135,6 +136,7 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
         })
         .collect();
     cancelled.sort_by(|a, b| (&a.start, &a.title).cmp(&(&b.start, &b.title)));
+    let energy = lumenna_core::energy::checked_in(&snapshot.settings, day);
     let mut plan = Plan {
         // The day in words: a screen reader reads "2026-10-26" as numbers.
         announcement: format!(
@@ -145,12 +147,13 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
         notices: Vec::new(),
         date: day.to_string(),
         count: to_u32(blocks.len()),
-        summary: summary(&blocks, overdue),
+        summary: summary(&blocks, overdue, energy),
         summary_braille: summary_braille(&blocks, overdue),
         timeline,
         blocks,
         cancelled,
         actions: Vec::new(),
+        energy: energy.map(|e| e.as_str().to_owned()),
     };
     let carries = crate::day::carries(snapshot, &plan, now);
     let what_now = what_now_offered(snapshot, now);
@@ -305,7 +308,7 @@ fn timeline(
 }
 
 /// The day's opening summary row, in words.
-fn summary(blocks: &[PlanBlock], overdue: Option<usize>) -> String {
+fn summary(blocks: &[PlanBlock], overdue: Option<usize>, energy: Option<lumenna_core::energy::Energy>) -> String {
     // The flag, not the kind: a kind only presets it, and any block can be set apart.
     let work: u32 =
         blocks.iter().filter(|b| b.counts_capacity).map(|b| b.duration_mins).sum();
@@ -320,6 +323,12 @@ fn summary(blocks: &[PlanBlock], overdue: Option<usize>) -> String {
     parts.push(format!("{} assigned", count_line(assigned, "task")));
     if let Some(overdue) = overdue.filter(|n| *n > 0) {
         parts.push(format!("{overdue} overdue"));
+    }
+    // What the person said of the day, where it is not the usual.
+    match energy {
+        Some(lumenna_core::energy::Energy::Low) => parts.push("you are low today".to_owned()),
+        Some(lumenna_core::energy::Energy::High) => parts.push("you are high on energy today".to_owned()),
+        _ => {}
     }
     let sentence = parts.join(", ");
     sentence[..1].to_uppercase() + &sentence[1..]

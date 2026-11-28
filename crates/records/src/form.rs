@@ -593,6 +593,7 @@ mod tests {
             colour: Some("teal".to_owned()),
             swatch: None,
             timezone: None,
+            hours: None,
             notes: "Phone off.".to_owned(),
             details: Vec::new(),
             actions: Vec::new(),
