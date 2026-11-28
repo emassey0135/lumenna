@@ -89,6 +89,7 @@ struct DayScreen: View {
                     Image(systemName: symbol.name).foregroundStyle(symbol.colour)
                 }
                 SwatchMark(swatch: item.block?.swatch)
+                EmojiMark(emoji: item.emoji)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.line?.title ?? "")
                         .font(item.kind == .now ? .headline : .body)

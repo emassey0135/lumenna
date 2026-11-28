@@ -2814,6 +2814,29 @@ fn the_block_form_is_its_fields_then_save_and_cancel() {
 }
 
 #[test]
+fn an_emoji_typed_in_the_task_form_is_drawn_on_its_row_and_said_in_no_line() {
+    let mut app = App::new();
+    app.add("Water the plants");
+    let view = app.view();
+    let form = lumenna_app::dialog::task_form(&view, &lumenna_app::lines::lines(&view, &PlainClock)).expect("the task in hand");
+    let emoji = control(&form, "field:emoji");
+    assert_eq!((emoji.kind, emoji.label.as_str()), (ControlType::Line, "Emoji"));
+    work(&mut app, &emoji, "🪴🪴", ControlMove::Typed { cursor: 2 });
+    let shell = work(&mut app, &control(&form, "save"), "", ControlMove::Pressed);
+    assert!(said(&shell).iter().any(|s| s.contains("one emoji alone")), "two are refused: {shell:?}");
+    work(&mut app, &emoji, "🪴", ControlMove::Typed { cursor: 1 });
+    let shell = work(&mut app, &control(&form, "save"), "", ControlMove::Pressed);
+    assert!(!said(&shell).iter().any(|s| s.contains('🪴')), "the change is said without it: {shell:?}");
+    let view = app.view();
+    assert_eq!(view.list.as_ref().unwrap().items[0].row.emoji.as_deref(), Some("🪴"));
+    let lines = lumenna_app::lines::lines(&view, &PlainClock);
+    assert_eq!(lines.list[0].text(), "Water the plants");
+    assert!(!lines.list[0].braille.contains('🪴'));
+    let details = view.details.unwrap();
+    assert!(!details.field_lines.iter().any(|line| line.contains('🪴')), "the details read aloud leave it out: {:?}", details.field_lines);
+}
+
+#[test]
 fn the_task_form_is_its_fields_then_save_and_cancel_and_comes_up_for_enter() {
     let mut app = App::new();
     app.add("Buy milk");

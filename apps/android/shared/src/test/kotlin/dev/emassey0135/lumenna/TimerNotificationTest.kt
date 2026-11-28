@@ -15,7 +15,7 @@ class TimerNotificationTest {
     private val now = Instant.parse("2026-11-27T10:07:00Z")
 
     private fun timer(runsOutAt: String? = "2026-11-27T10:25:00Z", planned: UInt? = 25u) =
-        GlanceTimer("sitting-1", "Essay", "Deep work", "2026-11-27T10:00:00Z", planned, runsOutAt)
+        GlanceTimer("sitting-1", "Essay", "Deep work", "2026-11-27T10:00:00Z", planned, runsOutAt, null)
 
     private fun running(timer: GlanceTimer?) = TimerControl(true, "Essay", "Stop Timer", "Stop timer", true, timer)
 

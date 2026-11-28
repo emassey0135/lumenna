@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -233,6 +234,7 @@ fun AppTaskRows(
                 key = row.id,
                 say = core::say,
                 swatch = row.swatch,
+                emoji = row.emoji,
             )
             HorizontalDivider()
         }
@@ -263,6 +265,8 @@ fun ListRow(
     say: (String) -> Unit = {},
     keys: RowKeys? = null,
     swatch: Swatch? = null,
+    /** Its emoji, the core's, drawn before the title and never said ([EmojiMark]). */
+    emoji: String? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     val pane = LocalPane.current
@@ -342,6 +346,7 @@ fun ListRow(
                 )
             }
             if (swatch != null) SwatchDot(swatch, Modifier.padding(end = 12.dp))
+            if (emoji != null) EmojiMark(emoji, Modifier.padding(end = 12.dp), color = LocalContentColor.current)
             Column(Modifier.weight(1f)) {
                 Text(
                     title,

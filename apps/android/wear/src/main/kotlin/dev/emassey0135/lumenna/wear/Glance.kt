@@ -48,6 +48,7 @@ import dev.emassey0135.lumenna.Clock
 import dev.emassey0135.lumenna.CoreHolder
 import dev.emassey0135.lumenna.Glances
 import dev.emassey0135.lumenna.Launching
+import dev.emassey0135.lumenna.withEmoji
 import dev.emassey0135.lumenna.app.GlanceEntry
 import java.time.Duration
 import java.time.Instant
@@ -112,13 +113,14 @@ class LumennaTile : Material3TileService() {
  */
 internal fun MaterialScope.glanceLayout(entry: GlanceEntry, open: Clickable, newTask: Clickable): LayoutElement =
     primaryLayout(
-        titleSlot = { text(entry.headline.title.layoutString, modifier = LayoutModifier.clearSemantics()) },
+        // An emoji before what it names is drawn only, as every line here is: TalkBack hears `spoken`.
+        titleSlot = { text(withEmoji(entry.headlineEmoji, entry.headline.title).layoutString, modifier = LayoutModifier.clearSemantics()) },
         mainSlot = {
             val lines = buildList {
                 if (entry.headline.detail.isNotEmpty()) add(entry.headline.detail)
-                entry.next?.let { add(it.text) }
+                entry.next?.let { add(withEmoji(entry.moment.next?.emoji, it.text)) }
             }
-            val parts = lines.map { text(it.layoutString, typography = Typography.BODY_MEDIUM, maxLines = 2) }.toMutableList()
+            val parts = lines.map { text(it.layoutString, typography = Typography.BODY_MEDIUM, maxLines = 2, modifier = LayoutModifier.clearSemantics()) }.toMutableList()
             entry.moment.timer?.let { timer -> Glances.instant(timer.countingFrom)?.let { parts.add(timerText(it)) } }
             column(*parts.toTypedArray(), modifier = LayoutModifier.contentDescription(entry.spoken))
         },
@@ -200,9 +202,10 @@ class LumennaComplication : SuspendingTimelineComplicationDataSourceService() {
             } else {
                 RangedValueComplicationData.Builder(gone, 0f, length, said)
             }
-            return builder.setText(PlainComplicationText.Builder(block.title).build()).setTapAction(tap()).build()
+            return builder.setText(PlainComplicationText.Builder(withEmoji(block.emoji, block.title)).build()).setTapAction(tap()).build()
         }
-        return ShortTextComplicationData.Builder(PlainComplicationText.Builder(entry.headline.title).build(), said)
+        // The emoji before the headline is drawn; the description, `spoken`, never holds it.
+        return ShortTextComplicationData.Builder(PlainComplicationText.Builder(withEmoji(entry.headlineEmoji, entry.headline.title)).build(), said)
             .setTapAction(tap())
             .build()
     }

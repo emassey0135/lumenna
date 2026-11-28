@@ -36,6 +36,7 @@ fn mnemonic(key: &str) -> char {
         "min_minutes" => 'e',
         "task_filter" => 'f',
         "colour" => 'C',
+        "emoji" => 'o',
         "notes" => 'N',
         _ => '\0',
     }
@@ -113,6 +114,7 @@ fn value_of(values: &BlockFields, date: &str, key: &str) -> String {
         "min_minutes" => values.min_minutes.clone(),
         "task_filter" => values.task_filter.clone(),
         "colour" => values.colour.clone(),
+        "emoji" => values.emoji.clone(),
         "notes" => values.notes.clone(),
         _ => String::new(),
     }

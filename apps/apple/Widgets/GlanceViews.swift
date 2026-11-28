@@ -16,7 +16,9 @@ struct GlanceView: View {
             switch family {
             #if os(iOS) || os(watchOS)
             case .accessoryInline:
-                Text(glance.headline.text)
+                // One text alone fits the line, so the emoji goes in it; VoiceOver hears the
+                // core's `spoken` instead.
+                Text(EmojiMark.before(glance.headline.text, glance.headlineEmoji))
                     .glanceElement(entry)
             case .accessoryCircular:
                 circular.glanceElement(entry)
@@ -66,7 +68,7 @@ struct GlanceView: View {
                 }
                 .progressViewStyle(.circular)
             } else {
-                Text(glance.headline.title)
+                Text(EmojiMark.before(glance.headline.title, glance.headlineEmoji))
                     .font(.caption2)
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
@@ -89,7 +91,7 @@ struct GlanceView: View {
                 Image(systemName: "calendar.day.timeline.left")
             }
         }
-        .widgetLabel { Text(glance.headline.text) }
+        .widgetLabel { Text(EmojiMark.before(glance.headline.text, glance.headlineEmoji)) }
     }
     #endif
 }
@@ -110,7 +112,12 @@ private struct Parts: View {
                         .glanceElement(entry)
                 case .next:
                     if let next = entry.glance.next {
-                        Text(next.text).font(.subheadline).lineLimit(2).accessibilityHidden(true)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            EmojiMark(emoji: entry.glance.moment.next?.emoji)
+                            Text(next.text).lineLimit(2)
+                        }
+                        .font(.subheadline)
+                        .accessibilityHidden(true)
                     }
                 case .due:
                     Text(entry.glance.due.text)
@@ -138,10 +145,15 @@ private struct Headline: View {
 
     var body: some View {
         let headline = entry.glance.headline
-        Text(headline.title)
-            .font(.headline)
-            .lineLimit(2)
-            .widgetAccentable()
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            // The emoji of what the headline names first; the headline speaks the core's
+            // `spoken`, which never holds it.
+            EmojiMark(emoji: entry.glance.headlineEmoji)
+            Text(headline.title)
+                .lineLimit(2)
+                .widgetAccentable()
+        }
+        .font(.headline)
         if !headline.detail.isEmpty {
             Text(headline.detail)
                 .font(compact ? .caption : .subheadline)
@@ -222,7 +234,11 @@ private struct Tasks: View {
                 let (task, line) = pair
                 HStack(alignment: .center, spacing: 8) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(line.title).font(.subheadline).lineLimit(1)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            EmojiMark(emoji: task.emoji)
+                            Text(line.title).lineLimit(1)
+                        }
+                        .font(.subheadline)
                         if !line.detail.isEmpty {
                             Text(line.detail).font(.caption).foregroundStyle(task.overdue ? Color.warningLabel : Color.quietLabel).lineLimit(1)
                         }

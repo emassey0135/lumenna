@@ -221,6 +221,7 @@ impl Lumenna {
                     _ => self.recolour_label(target, colour),
                 }
             }
+            (S::Project, K::Emoji) => self.set_project_emoji(target, &answer_text(&answer)?),
             (S::Label, K::MoveUp) => self.reorder_label(target, Direction::Up),
             (S::Label, K::MoveDown) => self.reorder_label(target, Direction::Down),
             (S::Label, K::Delete) => self.delete_label(target),

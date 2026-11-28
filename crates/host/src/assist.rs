@@ -136,6 +136,7 @@ impl Lumenna {
                     start: given.text("start")?,
                     deadline: given.text("deadline")?,
                     energy: given.text("energy")?,
+                    emoji: given.text("emoji")?,
                 };
                 Assisted::Change(self.edit_task(&task, edit)?)
             }

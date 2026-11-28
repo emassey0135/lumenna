@@ -453,6 +453,16 @@ h3 {
   vertical-align: baseline;
 }
 
+/* A task's, project's or block's emoji beside its name, as other planners draw an icon: drawn in
+   the system's colour emoji, and kept under forced colours, being a picture and not a colour. */
+.emoji {
+  flex: none;
+  margin-inline-end: 0.35em;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-style: normal;
+  font-weight: normal;
+}
+
 @media (forced-colors: active) {
   /* The system's palette rules: a mark of ours would be painted over or lost. */
   .swatch {

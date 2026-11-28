@@ -12,6 +12,7 @@ import { useCommand } from "./commands";
 import { rowKey } from "./landing";
 import { asksForMenu, RowMenu } from "./RowMenu";
 import { send } from "./session";
+import { EmojiMark } from "./Emoji";
 import { SwatchMark } from "./Swatch";
 import { brailleOnRow } from "./braille";
 import { ScreenActions } from "./ScreenActions";
@@ -93,6 +94,7 @@ export function Blocks(props: { screen: Screen }) {
               <TreeItemContent>
                 <div className="row" ref={brailleOnRow(node.item.text, node.item.braille)}>
                   <SwatchMark swatch={node.item.row.swatch} />
+                  <EmojiMark emoji={node.item.row.emoji} />
                   {node.item.text}
                 </div>
               </TreeItemContent>

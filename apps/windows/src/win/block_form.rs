@@ -45,6 +45,7 @@ const SHORTEST: u16 = 110;
 const FILTER: u16 = 111;
 const COLOUR: u16 = 112;
 const NOTES: u16 = 113;
+const EMOJI: u16 = 114;
 const START_PICKER: u16 = 120;
 const DATE_PICKER: u16 = 121;
 
@@ -57,7 +58,7 @@ const PICKER: i16 = 80;
 
 /// Each field's control, by the key the core's `block_form()` names it by, with the letter
 /// that is its access key here: the words are the core's, the keys this dialog's.
-const FIELDS: [(&str, u16, char); 14] = [
+const FIELDS: [(&str, u16, char); 15] = [
     ("title", TITLE, 'N'),
     ("start", START, 'a'),
     ("minutes", MINUTES, 'L'),
@@ -71,11 +72,12 @@ const FIELDS: [(&str, u16, char); 14] = [
     ("min_minutes", SHORTEST, 'g'),
     ("task_filter", FILTER, 'f'),
     ("colour", COLOUR, 'o'),
+    ("emoji", EMOJI, 'm'),
     ("notes", NOTES, 'e'),
 ];
 
 /// The right-hand column: how it repeats and behaves, which one day alone cannot change.
-const RIGHT_KEYS: [&str; 6] = ["repeat", "until", "min_minutes", "task_filter", "colour", "notes"];
+const RIGHT_KEYS: [&str; 7] = ["repeat", "until", "min_minutes", "task_filter", "colour", "emoji", "notes"];
 
 /// A column's width, and where the second starts, in dialog units.
 const COLUMN: i16 = 216;
@@ -103,6 +105,7 @@ fn value(values: &BlockFields, date: &str, key: &str) -> String {
         "min_minutes" => values.min_minutes.clone(),
         "task_filter" => values.task_filter.clone(),
         "colour" => values.colour.clone(),
+        "emoji" => values.emoji.clone(),
         // A multi-line edit control breaks lines at CR LF.
         "notes" => values.notes.replace('\n', "\r\n"),
         _ => String::new(),
@@ -331,7 +334,10 @@ impl Dialog for Form {
                 .item(Class::Static, &label("colour", true), u16::MAX, 0, RIGHT, y, COLUMN, 9)
                 .item(Class::ComboBox, "", COLOUR, list, RIGHT, y + 10, COLUMN, 120);
             y += 30;
-            let notes = (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
+            // One emoji, from Windows' own picker (Win+.).
+            template = field(template, &label("emoji", true), EMOJI, line, RIGHT, y);
+            y += 28;
+            let notes =(ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL) as u32 | WS_VSCROLL.0;
             template = template
                 .item(Class::Static, &label("notes", true), u16::MAX, 0, RIGHT, y, COLUMN, 9)
                 .item(Class::Edit, "", NOTES, notes | WS_BORDER.0 | WS_TABSTOP.0, RIGHT, y + 10, COLUMN, 40);

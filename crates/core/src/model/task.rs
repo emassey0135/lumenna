@@ -60,6 +60,9 @@ pub struct Task {
     /// What it takes of the person's energy, as they rate it: low, medium or high
     /// ([`crate::energy`]). Unrated counts as medium, so rating nothing changes nothing.
     pub energy: Option<crate::energy::Energy>,
+    /// One emoji drawn beside its title, chosen to be seen and never said or brailled
+    /// ([`crate::emoji`]).
+    pub emoji: Option<String>,
     /// When the person last kept it, answering the planner's question about it
     /// ([`crate::review`]): it is not asked about as stale again for
     /// [`crate::review::STALE_DAYS`].
@@ -98,6 +101,7 @@ impl Task {
             estimate_mins: None,
             sitting_mins: None,
             energy: None,
+            emoji: None,
             kept_at: None,
             kept_put_off: None,
             order,

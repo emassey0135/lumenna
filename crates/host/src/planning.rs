@@ -120,6 +120,7 @@ impl Lumenna {
                     until: block.until.as_deref(),
                     colour: block.colour.as_deref(),
                     hours: block.hours.as_deref(),
+                    emoji: block.emoji.as_deref(),
                 },
                 &now,
             )?;
@@ -216,6 +217,7 @@ impl Lumenna {
                             until: edit.until.as_deref(),
                             colour: edit.colour.as_deref(),
                             hours: edit.hours.as_deref(),
+                            emoji: edit.emoji.as_deref(),
                         },
                         &now,
                     )?;
@@ -236,10 +238,11 @@ impl Lumenna {
                         || edit.until.is_some()
                         || edit.colour.is_some()
                         || edit.hours.is_some()
+                        || edit.emoji.is_some()
                     {
                         return Err(LumennaError::new(
-                            "notes, a task filter, a shortest length, a last day, a colour and its hours \
-                             belong to every occurrence; change every occurrence to change them",
+                            "notes, a task filter, a shortest length, a last day, a colour, an emoji \
+                             and its hours belong to every occurrence; change every occurrence to change them",
                         ));
                     }
                     let day = resolve::date(Some(&date), &now, repaired(store).settings.week_start)?;
@@ -712,6 +715,7 @@ struct Extras<'a> {
     until: Option<&'a str>,
     colour: Option<&'a str>,
     hours: Option<&'a str>,
+    emoji: Option<&'a str>,
 }
 
 /// Sets what `extras` gives on `series`, after its kind, so a flag given here overrides the
@@ -775,6 +779,9 @@ fn apply_extras(snapshot: &Snapshot, series: &mut BlockSeries, extras: &Extras<'
     }
     if let Some(hours) = extras.hours {
         series.hours = resolve::hours(hours)?;
+    }
+    if let Some(emoji) = extras.emoji {
+        series.emoji = lumenna_records::colours::emoji_given(emoji)?;
     }
     Ok(())
 }

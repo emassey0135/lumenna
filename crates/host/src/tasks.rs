@@ -384,6 +384,9 @@ impl Lumenna {
                     }
                 };
             }
+            if let Some(emoji) = &edit.emoji {
+                after.emoji = lumenna_records::colours::emoji_given(emoji)?;
+            }
             if let Some(start) = &edit.start {
                 after.start = resolve::start(start, &now, snapshot.settings.week_start)?;
             }

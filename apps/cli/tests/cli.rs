@@ -1509,6 +1509,7 @@ fn commands_for(kind: lumenna_host::ActionKind) -> &'static [&'static [&'static 
         K::MergeInto => &[&["label", "merge", "errands", "calls"]],
         K::Colour => &[&["project", "colour", "Work", "teal"], &["label", "colour", "calls", "red"], &["filter", "colour", "Calls", "blue"]],
         K::ChangeQuery => &[&["filter", "edit", "Calls", "--query", "@calls & p1"]],
+        K::Emoji => &[&["project", "emoji", "Work", "💼"], &["project", "emoji", "Work", "none"]],
         K::Unpair => &[&["device", "unpair", "{nobody}", "--yes"]],
         K::Reminders => &[&["reminder", "list", "{essay}"], &["reminder", "add", "{essay}", "--at", "due", "--before", "10m"]],
         K::DeliverOn => &[&["reminder", "deliver", "{reminder}", "all"]],

@@ -31,6 +31,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
     @Published var project = "" { didSet { typed("project", project) } }
     @Published var notes = "" { didSet { typed("notes", notes) } }
     @Published var labels = "" { didSet { typed("labels", labels) } }
+    @Published var emoji = "" { didSet { typed("emoji", emoji) } }
     /// What the Project field offers, the app's, in tree order.
     @Published private(set) var projects: [LumennaApp.Choice] = []
     /// The fields as the core words them: each one's name, what it takes and an example.
@@ -112,6 +113,7 @@ final class TaskDetailModel: NSObject, ObservableObject {
         if project != fields.project { project = fields.project }
         if notes != fields.notes { notes = fields.notes }
         if labels != fields.labels { labels = fields.labels }
+        if emoji != fields.emoji { emoji = fields.emoji }
     }
 
     /// A field the person changed, to the app.
@@ -177,6 +179,9 @@ struct TaskDetailView: View {
                 namedField(words["sittings"], text: $model.sittings).modifier(Lowercase())
                 project
                 namedField(words["labels"], text: $model.labels).modifier(Lowercase())
+                // Drawn beside the title and never said: the platform's own picker fills it
+                // (Control-Command-Space on the Mac, the keyboard's on the phone).
+                namedField(words["emoji"], text: $model.emoji)
             }
             // The priorities and their names are the core's.
             ChoiceSection(words["priority"].label, selection: $model.priority, choices: words["priority"].options.compactMap { choice in

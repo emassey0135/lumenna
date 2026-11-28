@@ -195,6 +195,7 @@ impl Form {
             "task_filter" => fields.task_filter = value,
             "colour" => fields.colour = value,
             "hours" => fields.hours = value,
+            "emoji" => fields.emoji = value,
             "notes" => fields.notes = value,
             "date" => {
                 // A phrase half typed may not read yet; the start stays until one does.

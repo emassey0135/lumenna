@@ -27,7 +27,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PWSTR, w};
 
-use super::swatch::Marks;
+use super::swatch::{Marks, Places};
 use super::{a11y, controls};
 use crate::outline;
 
@@ -46,6 +46,8 @@ pub struct Item {
     pub expanded: Option<bool>,
     /// Its colour, drawn as a mark before the text and never part of it (`swatch.rs`).
     pub swatch: Option<Swatch>,
+    /// Its emoji, drawn after the colour, before the text, and never part of it either.
+    pub emoji: Option<String>,
 }
 
 /// A tree view, and the rows it was last given.
@@ -107,7 +109,10 @@ impl Tree {
             old.len() == items.len() && old.iter().zip(&items).all(|(a, b)| a.key == b.key && a.depth == b.depth)
         };
         self.busy.set(true);
-        self.marks.show(items.iter().any(|item| item.swatch.is_some()));
+        self.marks.show(Places {
+            colour: items.iter().any(|item| item.swatch.is_some()),
+            emoji: items.iter().any(|item| item.emoji.is_some()),
+        });
         if same {
             // A checkbox the tree flipped itself, on Space or a click, is put back as the app has
             // it when the app refused the change or it failed: the row is the same, the box not.
@@ -123,7 +128,7 @@ impl Tree {
             let handles = self.handles.borrow().clone();
             for (index, item) in changed {
                 let mut text = wide(&item.text);
-                let image = self.marks.image(item.swatch.as_ref());
+                let image = self.marks.image(item.swatch.as_ref(), item.emoji.as_deref());
                 let mut tv = TVITEMEXW {
                     mask: TVIF_TEXT | TVIF_STATE | TVIF_IMAGE | TVIF_SELECTEDIMAGE,
                     hItem: handles[index],
@@ -149,7 +154,7 @@ impl Tree {
             let mut handles: Vec<HTREEITEM> = Vec::with_capacity(items.len());
             for (index, item) in items.iter().enumerate() {
                 let mut text = wide(&item.text);
-                let image = self.marks.image(item.swatch.as_ref());
+                let image = self.marks.image(item.swatch.as_ref(), item.emoji.as_deref());
                 let insert = TVINSERTSTRUCTW {
                     hParent: parents[index].map_or(TVI_ROOT, |parent| handles[parent]),
                     hInsertAfter: TVI_LAST,

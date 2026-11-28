@@ -78,6 +78,8 @@ dependencies {
     // What both apps' screens share beyond the rules: landing on a row (focus and TalkBack's),
     // showing what the app has open, asking for notifications.
     implementation(libs.compose.ui)
+    // An emoji drawn beside a name (`EmojiMark`), the same on the phone and the watch.
+    implementation(libs.compose.foundation)
     implementation(libs.activity.compose)
     implementation(libs.work.runtime)
     // Reminders' notifications, with the bridge tag the watch app turns bridging off for.

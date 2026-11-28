@@ -22,7 +22,9 @@
 //! letters goes to it (`type_ahead`).
 //!
 //! A row with a colour (a project, a label, a block) has a dot of it before its text, out of
-//! the accessible tree: the colour's name is in the text already (`swatches`).
+//! the accessible tree: the colour's name is in the text already (`swatches`). A row with an
+//! emoji (a task, a project, a block) has it drawn after the colour (`Emoji`), with no text of
+//! its own for a screen reader: an emoji is never said.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -51,6 +53,8 @@ pub struct Item {
     pub expanded: Option<bool>,
     /// Its colour, drawn before it.
     pub swatch: Option<lumenna_records::types::Swatch>,
+    /// Its emoji, drawn after the colour and before the text, never in the text (`Emoji`).
+    pub emoji: Option<String>,
 }
 
 mod imp {
@@ -75,6 +79,9 @@ mod imp {
         /// Its colour's name, drawn before it; empty for none.
         #[property(get, set)]
         pub colour: RefCell<String>,
+        /// Its emoji, drawn before it; empty for none.
+        #[property(get, set)]
+        pub emoji: RefCell<String>,
         /// Its accessible description, if any.
         pub description: RefCell<String>,
         /// Where it is in the flat list the tree was given.
@@ -104,7 +111,12 @@ glib::wrapper! {
 impl Row {
     fn new(item: &Item, index: usize) -> Self {
         let (text, description) = (item.text.as_str(), item.description.as_str());
-        let row: Self = glib::Object::builder().property("text", text).property("shown", text).property("colour", colour_of(item)).build();
+        let row: Self = glib::Object::builder()
+            .property("text", text)
+            .property("shown", text)
+            .property("colour", colour_of(item))
+            .property("emoji", emoji_of(item))
+            .build();
         row.imp().index.set(index);
         *row.imp().description.borrow_mut() = description.to_owned();
         row
@@ -118,6 +130,83 @@ impl Row {
 /// The name of the colour an item is drawn with, or empty.
 fn colour_of(item: &Item) -> String {
     item.swatch.as_ref().map(|swatch| swatch.name.clone()).unwrap_or_default()
+}
+
+/// The emoji an item is drawn with, or empty.
+fn emoji_of(item: &Item) -> String {
+    item.emoji.clone().unwrap_or_default()
+}
+
+mod drawn {
+    use std::cell::RefCell;
+
+    use gtk::glib;
+    use gtk::glib::Properties;
+    use gtk::prelude::*;
+    use gtk::subclass::prelude::*;
+
+    /// An emoji drawn as a picture is: its text is laid out and painted, and given to no one,
+    /// so no accessible name can take it in, whatever GTK's version counts as a row's name.
+    #[derive(Default, Properties)]
+    #[properties(wrapper_type = super::Emoji)]
+    pub struct Emoji {
+        /// What is drawn; empty draws nothing.
+        #[property(get, set = Self::set_text)]
+        pub text: RefCell<String>,
+    }
+
+    impl Emoji {
+        fn set_text(&self, text: String) {
+            if *self.text.borrow() != text {
+                *self.text.borrow_mut() = text;
+                self.obj().queue_resize();
+            }
+        }
+
+        fn layout(&self) -> gtk::pango::Layout {
+            self.obj().create_pango_layout(Some(&self.text.borrow()))
+        }
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for Emoji {
+        const NAME: &'static str = "LumennaEmoji";
+        type Type = super::Emoji;
+        type ParentType = gtk::Widget;
+
+        fn class_init(class: &mut Self::Class) {
+            class.set_accessible_role(gtk::AccessibleRole::Presentation);
+        }
+    }
+
+    #[glib::derived_properties]
+    impl ObjectImpl for Emoji {}
+
+    impl WidgetImpl for Emoji {
+        fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
+            if self.text.borrow().is_empty() {
+                return (0, 0, -1, -1);
+            }
+            let (width, height) = self.layout().pixel_size();
+            let size = if orientation == gtk::Orientation::Horizontal { width } else { height };
+            (size, size, -1, -1)
+        }
+
+        fn snapshot(&self, snapshot: &gtk::Snapshot) {
+            if !self.text.borrow().is_empty() {
+                // In colour where the font has it; the text's colour where it has not.
+                snapshot.append_layout(&self.layout(), &self.obj().color());
+            }
+        }
+    }
+}
+
+glib::wrapper! {
+    /// A row's emoji, beside its text and out of it: a widget with the presentation role and no
+    /// text of its own to read.
+    pub struct Emoji(ObjectSubclass<drawn::Emoji>)
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 /// Draws the palette's colours (`.swatch-<name>`) in the desktop's appearance, light or dark,
@@ -260,8 +349,11 @@ impl Tree {
             let label = gtk::Label::builder().xalign(0.0).hexpand(true).ellipsize(gtk::pango::EllipsizeMode::End).build();
             // The row's colour, a mark beside its text and nothing a screen reader is given.
             let mark = gtk::Box::builder().accessible_role(gtk::AccessibleRole::Presentation).valign(gtk::Align::Center).visible(false).build();
+            // Its emoji, drawn and never read: the row's name stays its line.
+            let emoji: Emoji = glib::Object::builder().property("valign", gtk::Align::Center).property("visible", false).build();
             let content = gtk::Box::builder().spacing(8).build();
             content.append(&mark);
+            content.append(&emoji);
             content.append(&label);
             let expander = gtk::TreeExpander::builder()
                 .accessible_role(gtk::AccessibleRole::TreeItem)
@@ -282,6 +374,11 @@ impl Tree {
             colour
                 .chain_closure::<bool>(glib::closure!(|_: Option<glib::Object>, colour: &str| !colour.is_empty()))
                 .bind(&mark, "visible", gtk::Widget::NONE);
+            let worn = item.property_expression("item").chain_property::<gtk::TreeListRow>("item").chain_property::<Row>("emoji");
+            worn.bind(&emoji, "text", gtk::Widget::NONE);
+            worn
+                .chain_closure::<bool>(glib::closure!(|_: Option<glib::Object>, emoji: &str| !emoji.is_empty()))
+                .bind(&emoji, "visible", gtk::Widget::NONE);
         });
         factory.connect_bind(|_, item| {
             let Some(item) = item.downcast_ref::<gtk::ListItem>() else { return };
@@ -659,6 +756,9 @@ impl Tree {
                 }
                 if row.colour() != colour_of(item) {
                     row.set_colour(colour_of(item));
+                }
+                if row.emoji() != emoji_of(item) {
+                    row.set_emoji(emoji_of(item));
                 }
             }
             *self.items.borrow_mut() = items;

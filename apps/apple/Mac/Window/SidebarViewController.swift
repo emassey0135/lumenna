@@ -146,6 +146,8 @@ struct SidebarScreen: View {
             let name = model.names[entry.key] ?? entry.text
             HStack {
                 SwatchMark(swatch: entry.swatch)
+                // Hidden from VoiceOver, so the row's one text is still its title.
+                EmojiMark(emoji: entry.emoji)
                 Text(entry.title)
                     .font(node.group ? .subheadline.weight(.semibold) : .body)
                     .foregroundStyle(Color.primary)

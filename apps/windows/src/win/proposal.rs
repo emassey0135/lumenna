@@ -139,6 +139,7 @@ impl Screen {
                     checked: Some(change.checked),
                     expanded: None,
                     swatch: None,
+                    emoji: None,
                 })
                 .collect();
             tree.set(items);

@@ -107,6 +107,7 @@ struct MacDayScreen: View {
         let detail = row.line?.detail ?? ""
         return HStack(alignment: .firstTextBaseline, spacing: 6) {
             SwatchMark(swatch: row.item.block?.swatch)
+            EmojiMark(emoji: row.item.emoji)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.line?.title ?? "").font(row.item.kind == .now ? .headline : .body)
                 if !detail.isEmpty {

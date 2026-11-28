@@ -31,6 +31,10 @@ much a whole area does.")
 (lumenna-define-action lumenna-act-colour ("colour")
   "Give the project, label or saved filter at point a colour, or none.
 The name always shows too.")
+(lumenna-define-action lumenna-act-emoji ("emoji")
+  "Give the project at point an emoji, or take it off.
+Drawn beside its name by the apps that show pictures, and never said: no
+line here shows it.")
 (lumenna-define-action lumenna-act-change-query ("change_query")
   "Change the query of the saved filter at point.")
 
@@ -167,6 +171,7 @@ A filter is kept as typed, so \"today\" means today whenever it is opened.
    ("w" (kinds "weight") lumenna-act-weight)
    ("A" (kinds "archive" "unarchive") lumenna-act-archive)
    ("C" (kinds "colour") lumenna-act-colour)
+   ("E" (kinds "emoji") lumenna-act-emoji)
    ("d" (kinds "delete") lumenna-act-delete)))
 
 (lumenna-define-keys lumenna-labels-mode

@@ -71,6 +71,7 @@ impl Sidebar {
                 checked: None,
                 expanded: fold(entry).map(|kind| kind == ActionKind::Collapse),
                 swatch: entry.swatch.clone(),
+                emoji: entry.emoji.clone(),
             })
             .collect();
         *self.entries.borrow_mut() = view.sidebar.clone();

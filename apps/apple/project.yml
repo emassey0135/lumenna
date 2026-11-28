@@ -113,6 +113,9 @@ targetTemplates:
         group: Shared
       - path: Shared/Palette.swift
         group: Shared
+      # The emoji drawn before what the glance names.
+      - path: Shared/Emoji.swift
+        group: Shared
       - path: Shared/LaunchURL.swift
         group: Shared
       # New Task's control opens the app on the core's launch, in the app (Launches.swift).
@@ -354,8 +357,10 @@ targets:
       # What the app says, shown as well as spoken.
       - path: Shared/Said.swift
         group: Shared
-      # A colour drawn beside a name.
+      # A colour drawn beside a name, and an emoji before it.
       - path: Shared/Swatch.swift
+        group: Shared
+      - path: Shared/Emoji.swift
         group: Shared
       # The colours text is drawn in, the forms' and the complications'.
       - path: Shared/Palette.swift

@@ -18,6 +18,7 @@ fun TaskFields.text(key: String): String? = when (key) {
     "sittings" -> sittings
     "project" -> project
     "labels" -> labels
+    "emoji" -> emoji
     "notes" -> notes
     else -> null
 }
@@ -43,11 +44,12 @@ fun TaskFields.with(key: String, value: String): TaskFields = when (key) {
     "energy" -> copy(energy = value)
     "project" -> copy(project = value)
     "labels" -> copy(labels = value)
+    "emoji" -> copy(emoji = value)
     "notes" -> copy(notes = value)
     else -> this
 }
 
-/** Whether the task form's [key] is prose, corrected as it is typed; a date, a duration or a name is not. */
+/** Whether the task form's [key] is prose, corrected as it is typed; a date, a duration, a name or an emoji is not. */
 fun isProse(key: String): Boolean = key == "title" || key == "notes"
 
 /** A text field of the block form. */
@@ -61,6 +63,7 @@ fun BlockFields.text(key: String): String = when (key) {
     "task_filter" -> taskFilter
     "colour" -> colour
     "hours" -> hours
+    "emoji" -> emoji
     "notes" -> notes
     "kind" -> kind
     else -> ""

@@ -139,6 +139,7 @@ mod tests {
             counting_from: "2026-10-25T09:00:00Z".to_owned(),
             planned_mins: None,
             runs_out_at: None,
+            emoji: None,
         };
         let shown = entry(GlanceMoment { timer: Some(timer), ..moment("2026-10-25T09:00:00Z") });
         let data = data(&shown, at("2026-10-25T10:25:30Z"));
@@ -156,6 +157,7 @@ mod tests {
             counting_from: "2026-10-25T09:00:00Z".to_owned(),
             planned_mins: Some(25),
             runs_out_at: Some("2026-10-25T09:25:00Z".to_owned()),
+            emoji: None,
         };
         let shown = entry(GlanceMoment { timer: Some(timer), ..moment("2026-10-25T09:00:00Z") });
         assert_eq!(data(&shown, at("2026-10-25T09:10:00Z"))["timer"]["text"], "15 minutes left");
@@ -179,6 +181,7 @@ mod tests {
             due_time: Some("15:00".to_owned()),
             overdue: true,
             streak: None,
+            emoji: None,
         };
         let shown = entry(GlanceMoment { tasks: vec![task], due: 1, overdue: 1, ..moment("2026-10-25T09:00:00Z") });
         let data = data(&shown, at("2026-10-25T16:00:00Z"));

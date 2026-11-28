@@ -89,6 +89,7 @@ fun PlaceRows(
                 selected = row.key == selected,
                 say = core::say,
                 swatch = row.entry.swatch,
+                emoji = row.entry.emoji,
             )
         }
         itemsIndexed(extra, key = { _, (key, _, _) -> key }) { index, (key, title, choose) ->

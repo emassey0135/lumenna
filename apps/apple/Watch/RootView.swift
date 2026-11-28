@@ -225,6 +225,7 @@ struct RootView: View {
             NavigationLink(value: place) {
                 HStack {
                     SwatchMark(swatch: item.swatch)
+                    EmojiMark(emoji: item.emoji)
                     Text(entry.text)
                 }
             }

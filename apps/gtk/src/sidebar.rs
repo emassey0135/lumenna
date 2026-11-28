@@ -120,6 +120,7 @@ impl Sidebar {
                     _ => None,
                 }),
                 swatch: entry.swatch.clone(),
+                emoji: entry.emoji.clone(),
                 ..Default::default()
             })
             .collect();

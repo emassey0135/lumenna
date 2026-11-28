@@ -310,7 +310,9 @@ pub fn update_task(before: Task, after: Task) -> Edit {
     if before == after {
         return Edit::nothing();
     }
-    let mut builder = Builder::new(format!("Edited {}", after.title));
+    let same = Task { emoji: before.emoji.clone(), ..after.clone() } == before;
+    let said = emoji_changed("", &after.title, before.emoji.as_deref(), after.emoji.as_deref(), same);
+    let mut builder = Builder::new(said.unwrap_or_else(|| format!("Edited {}", after.title)));
     builder.task(Transition::updated(before, after));
     builder.finish()
 }
@@ -750,6 +752,22 @@ fn recoloured(noun: &str, name: &str, before: Option<&str>, after: Option<&str>,
     })
 }
 
+/// What a change of emoji alone is said as, never naming the emoji, which is chosen to be seen:
+/// "Gave project Work an emoji", "Changed the emoji of project Work", "Took the emoji off project
+/// Work". `noun` is empty for a task, whose title is said alone. `None` when anything else changed
+/// too, which its own description says.
+fn emoji_changed(noun: &str, name: &str, before: Option<&str>, after: Option<&str>, rest_same: bool) -> Option<String> {
+    if !rest_same || before == after {
+        return None;
+    }
+    let what = if noun.is_empty() { name.to_owned() } else { format!("{noun} {name}") };
+    Some(match (before, after) {
+        (None, _) => format!("Gave {what} an emoji"),
+        (_, None) => format!("Took the emoji off {what}"),
+        _ => format!("Changed the emoji of {what}"),
+    })
+}
+
 /// Replaces a project with an edited copy.
 #[must_use]
 pub fn update_project(before: Project, after: Project) -> Edit {
@@ -758,8 +776,10 @@ pub fn update_project(before: Project, after: Project) -> Edit {
     }
     let same = Project { color: before.color.clone(), ..after.clone() } == before;
     let colour = recoloured("project", &after.name, before.color.as_deref(), after.color.as_deref(), same);
+    let same = Project { emoji: before.emoji.clone(), ..after.clone() } == before;
+    let emoji = emoji_changed("project", &after.name, before.emoji.as_deref(), after.emoji.as_deref(), same);
     Edit {
-        description: colour.unwrap_or_else(|| format!("Edited project {}", after.name)),
+        description: colour.or(emoji).unwrap_or_else(|| format!("Edited project {}", after.name)),
         changes: vec![Change::Project(Box::new(Transition::updated(before, after)))],
     }
 }
@@ -1129,8 +1149,10 @@ pub fn update_series(before: BlockSeries, after: BlockSeries) -> Edit {
     if before == after {
         return Edit::nothing();
     }
+    let same = BlockSeries { emoji: before.emoji.clone(), ..after.clone() } == before;
+    let emoji = emoji_changed("block", &after.title, before.emoji.as_deref(), after.emoji.as_deref(), same);
     Edit {
-        description: format!("Changed block {}", after.title),
+        description: emoji.unwrap_or_else(|| format!("Changed block {}", after.title)),
         changes: vec![Change::Series(Box::new(Transition::updated(before, after)))],
     }
 }

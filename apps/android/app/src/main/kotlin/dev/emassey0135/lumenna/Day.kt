@@ -180,6 +180,12 @@ fun DayScreen(core: Core, navigator: Navigator, screen: Screen.Day) {
                         item.offered.firstOrNull { it.kind == ActionKind.EDIT }?.name ?: appWords.open
                     },
                     swatch = item.block?.takeIf { item.kind == DayKind.BLOCK }?.swatch,
+                    // A block's emoji, or a sitting's task's, before its title.
+                    emoji = when (item.kind) {
+                        DayKind.BLOCK -> item.block?.emoji
+                        DayKind.SITTING -> item.sitting?.emoji
+                        else -> null
+                    },
                 )
                 HorizontalDivider()
             }

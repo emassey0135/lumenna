@@ -222,6 +222,15 @@ crosses the FFI.
   carries a `Swatch`: a client draws it beside the name in the platform's light or dark
   appearance, never in place of it, since the name is said and shown too. A stored name the
   palette lacks is said, not drawn.
+- **An emoji is drawn, never said** (`lumenna_core::emoji`): a task, a block or a project wears
+  one (`emoji`, a single grapheme the core checks, `colours::emoji_given` refusing anything else
+  in its words), chosen with the platform's own picker through the forms' Emoji line and a
+  project's Emoji action. What is drawn carries it apart from the line, as a swatch
+  (`RowView`, `SidebarEntry`, `PlanBlock`, `PlanAssignment`, the glance's parts and
+  `GlanceEntry::headline_emoji`); no `Line`, `text`, `braille`, announcement, glance sentence or
+  details' `field_lines` holds it, and a change of it alone is said without it ("Gave project
+  Work an emoji"). A shell
+  draws it before the name, hidden from the screen reader; the CLI, Emacs and BTSpeak show none.
 - **Terse announcements** (the synced `verbosity`, `terse` or `full`) leave out what the person
   knows already, never what the change was. Rows are components either way.
 - **Every assistant does what `lum mcp` does, from one table** (`records::assistant`): each
@@ -264,7 +273,7 @@ crosses the FFI.
   timer on request from anywhere.
 - **Energy is the person's, weighed where they gave it** (`core::energy`, `records::energy`): a
   task's Energy (its row's Energy, letter g, and the task form's field), a block's "Energy then"
-  (the block form's `hours`), the Energy settings page (its letter n), and Energy Today (`Key("energy-today")`,
+  (the block form's `hours`), the Energy settings page (the last but About, its letter n), and Energy Today (`Key("energy-today")`,
   letter z, Ctrl+Shift+E, a day action, on Home and every watch, a launch shortcut, a control
   and the Today widget's `GlancePart::Energy`), whose answered low opens Replan from Now where it
   has something to lighten. Its daily reminder is `kind` `day` with `DueReminder::low` (I'm Low

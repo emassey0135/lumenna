@@ -486,6 +486,7 @@ pub(crate) enum McpCommand {
 }
 
 #[derive(Debug, Subcommand)]
+#[allow(clippy::large_enum_variant, reason = "parsed once a run from the command line: boxing Edit would buy nothing")]
 pub(crate) enum TaskCommand {
     /// Add a task, written the way you would say it.
     ///
@@ -560,6 +561,9 @@ pub(crate) enum TaskCommand {
         /// Planning puts demanding work in your best hours and plans less on a low day.
         #[arg(long)]
         energy: Option<String>,
+        /// One emoji the apps draw beside its title, or `none`. `lum` shows none.
+        #[arg(long)]
+        emoji: Option<String>,
     },
 
     /// Mark a task done.
@@ -767,6 +771,14 @@ pub(crate) enum ProjectCommand {
         name: String,
         /// A colour name, such as `red`, or `none`.
         colour: String,
+    },
+    /// Give a project one emoji the apps draw beside its name, or `none`. `lum` shows none.
+    Emoji {
+        /// The project.
+        #[arg(add = clap_complete::ArgValueCompleter::new(complete::projects))]
+        name: String,
+        /// One emoji, or `none`.
+        emoji: String,
     },
 }
 
@@ -1018,6 +1030,9 @@ pub(crate) struct BlockExtras {
     /// Whether it is your best or worst hours for energy: `best`, `worst`, or `none`.
     #[arg(long)]
     hours: Option<String>,
+    /// One emoji the apps draw beside its title; empty or `none` clears it. `lum` shows none.
+    #[arg(long)]
+    emoji: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1398,6 +1413,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                     until: extras.until.clone(),
                     colour: extras.colour.clone(),
                     hours: extras.hours.clone(),
+                    emoji: extras.emoji.clone(),
                 })?)
             }
             BlockCommand::List => Response::new(profile.list_blocks()?),
@@ -1420,6 +1436,7 @@ pub(crate) fn dispatch(profile: &Profile, command: &Command) -> Result<Response>
                     until: extras.until.clone(),
                     colour: extras.colour.clone(),
                     hours: extras.hours.clone(),
+                    emoji: extras.emoji.clone(),
                 };
                 Response::new(profile.edit_block(&id, edit, scope)?)
             }
@@ -1644,7 +1661,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
         }
         TaskCommand::List { query } => Response::new(profile.list_tasks(&query.join(" "))?),
         TaskCommand::Show { id: input } => Response::new(profile.show_task(&id(input)?)?),
-        TaskCommand::Edit { id: input, title, due, repeat, priority, estimate, notes, project, labels, sittings, start, deadline, energy } => {
+        TaskCommand::Edit { id: input, title, due, repeat, priority, estimate, notes, project, labels, sittings, start, deadline, energy, emoji } => {
             Response::new(profile.edit_task(&id(input)?, TaskEdit {
                 title: title.clone(),
                 due: due.clone(),
@@ -1660,6 +1677,7 @@ fn task(profile: &Profile, command: &TaskCommand) -> Result<Response> {
                 start: start.clone(),
                 deadline: deadline.clone(),
                 energy: energy.clone(),
+                emoji: emoji.clone(),
             })?)
         }
         TaskCommand::Done { id: input } => Response::new(profile.complete_task(&id(input)?)?),
@@ -1757,6 +1775,7 @@ fn project(profile: &Profile, command: &ProjectCommand) -> Result<Response> {
             profile.weigh_project(name, lumenna_host::parse_weight(value.clone())?)?
         }
         ProjectCommand::Colour { name, colour } => profile.recolour_project(name, colour_given(colour))?,
+        ProjectCommand::Emoji { name, emoji } => profile.set_project_emoji(name, emoji)?,
     }))
 }
 

@@ -695,6 +695,7 @@ fn the_block_form_has_every_setting_and_its_flags_follow_the_kind() {
     assert!(flag("Takes tasks").contains(" unchecked"), "a break takes no tasks: {form:#?}");
     assert!(flag("Counts toward hours for work").contains(" unchecked"), "{}", flag("Counts toward hours for work"));
     assert!(form.iter().any(|l| l.contains("ComboBox 'Colour")), "the colour is one of the palette's: {form:#?}");
+    assert!(form.iter().any(|l| l.contains("Edit 'Emoji:'")), "the emoji is a line Win+. fills: {form:#?}");
     // Set apart from its kind — someone who works on the train — then the flags, the first
     // day and its calendar, and the right-hand column: repeats, last day, shortest length,
     // filter, and the colour, a drop-down of the palette's names that its letters choose from.

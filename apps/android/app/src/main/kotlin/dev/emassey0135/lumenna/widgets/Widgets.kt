@@ -59,6 +59,7 @@ import dev.emassey0135.lumenna.app.glanceWidgets
 import dev.emassey0135.lumenna.app.GlanceTimer
 import dev.emassey0135.lumenna.app.LumennaError
 import dev.emassey0135.lumenna.sentence
+import dev.emassey0135.lumenna.withEmoji
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
@@ -142,7 +143,8 @@ private fun Frame(context: Context, entry: GlanceEntry?, content: @Composable ()
 
 @Composable
 private fun Headline(entry: GlanceEntry) {
-    Text(entry.headline.title, style = TextStyle(color = Widgets.text, fontSize = 16.sp, fontWeight = FontWeight.Bold), maxLines = 2)
+    // The emoji of what it names before it, drawn only: TalkBack hears the frame's `spoken`.
+    Text(withEmoji(entry.headlineEmoji, entry.headline.title), style = TextStyle(color = Widgets.text, fontSize = 16.sp, fontWeight = FontWeight.Bold), maxLines = 2)
     if (entry.headline.detail.isNotEmpty()) {
         Text(entry.headline.detail, style = TextStyle(color = Widgets.quiet, fontSize = 14.sp), maxLines = 2)
     }
@@ -205,7 +207,7 @@ private fun Parts(context: Context, entry: GlanceEntry, parts: List<GlancePart>)
             }
             GlancePart.NEXT -> entry.next?.let {
                 Spacer(GlanceModifier.height(8.dp))
-                Text(it.text, style = TextStyle(color = Widgets.text, fontSize = 14.sp), maxLines = 1)
+                Text(withEmoji(entry.moment.next?.emoji, it.text), style = TextStyle(color = Widgets.text, fontSize = 14.sp), maxLines = 1)
             }
             GlancePart.DUE -> {
                 Spacer(GlanceModifier.height(8.dp))
@@ -227,7 +229,8 @@ private fun Tasks(entry: GlanceEntry) {
     for ((task, line) in entry.moment.tasks.zip(entry.tasks)) {
         Row(GlanceModifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(GlanceModifier.defaultWeight()) {
-                Text(line.title, style = TextStyle(color = Widgets.text, fontSize = 14.sp), maxLines = 1)
+                // Mark done is named by the title alone, without the emoji drawn here.
+                Text(withEmoji(task.emoji, line.title), style = TextStyle(color = Widgets.text, fontSize = 14.sp), maxLines = 1)
                 if (line.detail.isNotEmpty()) {
                     Text(line.detail, style = TextStyle(color = Widgets.quiet, fontSize = 12.sp), maxLines = 1)
                 }

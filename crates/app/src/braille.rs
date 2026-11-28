@@ -76,6 +76,8 @@ const ACTION_LETTERS: &[(ActionKind, &str)] = &[
     (K::MarkReviewed, "v"),
     (K::ReviewEvery, "i"),
     (K::OpenProject, "o"),
+    // A project's: no row with an Edit offers it.
+    (K::Emoji, "e"),
     (K::Reconsider, "q"),
     // A task's rating, on rows no screen's own command has a G on; the day's check-in, which
     // nothing else on Today or Home has.
@@ -104,7 +106,7 @@ const ACTION_COMMANDS: &[(ActionKind, &str)] = &[
 
 /// The letter of each settings page, by `SettingsPage::id`.
 const PAGE_LETTERS: &[(&str, &str)] =
-    &[("general", "g"), ("planning", "p"), ("energy", "n"), ("reminders", "m"), ("devices", "d"), ("backups", "b"), ("export", "e")];
+    &[("general", "g"), ("planning", "p"), ("reminders", "m"), ("devices", "d"), ("backups", "b"), ("export", "e"), ("energy", "n")];
 
 /// The letter of each settings page's button, by `SettingsButton::id`.
 const BUTTON_LETTERS: &[(&str, &str)] =

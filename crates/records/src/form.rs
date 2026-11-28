@@ -44,6 +44,8 @@ pub struct TaskFields {
     pub deadline: String,
     /// What it takes of the person's energy: `low`, `medium` or `high`. Empty for not rated.
     pub energy: String,
+    /// One emoji to draw beside its title, from the platform's own picker. Empty for none.
+    pub emoji: String,
 }
 
 /// A task's fields as a form starts from them.
@@ -62,6 +64,7 @@ pub fn task_fields(task: TaskDetail) -> TaskFields {
         start: task.start.unwrap_or_default(),
         deadline: task.deadline.unwrap_or_default(),
         energy: task.energy.unwrap_or_default(),
+        emoji: task.emoji.unwrap_or_default(),
     }
 }
 
@@ -89,6 +92,7 @@ pub fn task_edit(task: TaskDetail, fields: TaskFields) -> Option<TaskEdit> {
         deadline: changed(&fields.deadline, &before.deadline).then(|| or_none(&fields.deadline)),
         // "none" and empty both mean not rated, as the form's choice names it.
         energy: (energy_of(&fields.energy) != energy_of(&before.energy)).then(|| or_none(energy_of(&fields.energy))),
+        emoji: changed(&fields.emoji, &before.emoji).then(|| or_none(&fields.emoji)),
         notes: (fields.notes != before.notes).then(|| fields.notes.clone()),
         project: (changed(&fields.project, &before.project) && !fields.project.trim().is_empty())
             .then(|| fields.project.trim().to_owned()),
@@ -189,6 +193,8 @@ pub struct BlockFields {
     pub colour: String,
     /// Whether it is the person's best or worst hours: `best` or `worst`. Empty for ordinary.
     pub hours: String,
+    /// One emoji to draw beside its title, from the platform's own picker. Empty for none.
+    pub emoji: String,
     /// The notes, exactly as typed.
     pub notes: String,
 }
@@ -210,6 +216,7 @@ pub fn block_fields(block: BlockShown) -> BlockFields {
         task_filter: block.task_filter.unwrap_or_default(),
         colour: block.colour.unwrap_or_default(),
         hours: block.hours.unwrap_or_default(),
+        emoji: block.emoji.unwrap_or_default(),
         notes: block.notes,
     }
 }
@@ -274,6 +281,7 @@ pub fn block_edit(before: BlockFields, after: BlockFields) -> Result<Option<Bloc
         until: or_none(&after.until, &before.until),
         colour: text(&after.colour, &before.colour),
         hours: changed(&after.hours, &before.hours).then(|| if after.hours.trim().is_empty() { "none".to_owned() } else { after.hours.trim().to_owned() }),
+        emoji: text(&after.emoji, &before.emoji),
     };
     Ok((edit != BlockEdit::default()).then_some(edit))
 }
@@ -305,6 +313,7 @@ pub fn new_block(fields: BlockFields, date: Option<String>) -> Result<NewBlock> 
         until: given(&fields.until),
         colour: given(&fields.colour),
         hours: given(&fields.hours).filter(|h| !h.eq_ignore_ascii_case("none")),
+        emoji: given(&fields.emoji),
     })
 }
 
@@ -371,6 +380,7 @@ mod tests {
             repetition: None,
             estimate_mins: Some(45),
             sitting_mins: None,
+            emoji: None,
             start: None,
             deadline: None,
             energy: None,
@@ -396,6 +406,7 @@ mod tests {
             running: false,
             left_secs: None,
             details: Vec::new(),
+            emoji: None,
             actions: Vec::new(),
         }
     }
@@ -440,6 +451,18 @@ mod tests {
         assert_eq!(task_fields(sat.clone()).sittings, "45m");
         let cleared = TaskFields { sittings: String::new(), ..task_fields(sat.clone()) };
         assert_eq!(task_edit(sat, cleared).unwrap().sittings.as_deref(), Some("none"));
+    }
+
+    #[test]
+    fn an_emoji_is_its_own_field_sent_alone_and_cleared_as_none() {
+        let fields = TaskFields { emoji: "🎯".to_owned(), ..task_fields(task()) };
+        let edit = task_edit(task(), fields).unwrap();
+        assert_eq!(edit, TaskEdit { emoji: Some("🎯".to_owned()), ..TaskEdit::default() });
+        let mut worn = task();
+        worn.emoji = Some("🎯".to_owned());
+        assert_eq!(task_fields(worn.clone()).emoji, "🎯");
+        let cleared = TaskFields { emoji: String::new(), ..task_fields(worn.clone()) };
+        assert_eq!(task_edit(worn, cleared).unwrap().emoji.as_deref(), Some("none"));
     }
 
     #[test]
@@ -592,6 +615,7 @@ mod tests {
             anchored: false,
             colour: Some("teal".to_owned()),
             swatch: None,
+            emoji: Some("🎯".to_owned()),
             timezone: None,
             hours: None,
             notes: "Phone off.".to_owned(),
@@ -601,6 +625,7 @@ mod tests {
         assert_eq!((day.start.as_str(), day.minutes.as_str()), ("10:00", "60"));
         assert!(!day.counts_capacity);
         assert_eq!(day.colour, "", "a day cannot change it, so the form does not hold it");
+        assert_eq!(day.emoji, "", "nor its emoji");
     }
 
     #[test]

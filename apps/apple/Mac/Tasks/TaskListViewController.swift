@@ -165,6 +165,7 @@ struct MacTaskListScreen: View {
                     .accessibilityHidden(true)
                 }
                 SwatchMark(swatch: row.row.swatch).padding(.top, 4)
+                EmojiMark(emoji: row.row.emoji)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.row.title).strikethrough(done)
                     if !detail.isEmpty {

@@ -137,6 +137,8 @@ pub fn task_form() -> Vec<FormField> {
         // that exists, so a list cannot hold a typo, and typing still finds one.
         field("project", "Project", K::Choice, "", ""),
         field("labels", "Labels", K::Line, "Names separated by commas. A new name becomes a label.", "calls, errands"),
+        // Last but the notes: it is only ever seen.
+        field("emoji", "Emoji", K::Line, crate::actions::EMOJI, ""),
         field("notes", "Notes", K::Lines, "", ""),
     ]
 }
@@ -182,6 +184,8 @@ pub fn block_form() -> Vec<FormField> {
         },
         FormField { options: crate::colours::colour_choices(None), ..field("colour", "Colour", K::Choice, crate::actions::COLOUR, "") },
         FormField { options: crate::energy::hours_choices(), ..field("hours", "Energy then", K::Choice, crate::energy::HOURS_HINT, "") },
+        // Beside the colour, the other thing drawn beside its name.
+        field("emoji", "Emoji", K::Line, crate::actions::EMOJI, ""),
         field("notes", "Notes", K::Lines, "", ""),
     ]
 }
@@ -729,14 +733,6 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
             Vec::new(),
         ),
         page(
-            "energy",
-            "Energy",
-            "What a usual day has room for, your best and worst hours, asking each day",
-            "These sync to all your devices. Planning weighs them only where you rate a task's energy or say how you are.",
-            keys(&["energy-capacity", "best-hours", "worst-hours", "energy-check-in"]),
-            Vec::new(),
-        ),
-        page(
             "reminders",
             "Reminders",
             "When reminders come, and whether this device gives them",
@@ -760,6 +756,16 @@ pub fn settings_pages(own_clock: bool, sentence: bool) -> Vec<SettingsPage> {
             &export_caption(),
             Vec::new(),
             vec![button("import", "Import or Restore", true)],
+        ),
+        // After every page that was there before it, so a device's own settings screen keeps its
+        // pages where they were.
+        page(
+            "energy",
+            "Energy",
+            "What a usual day has room for, your best and worst hours, asking each day",
+            "These sync to all your devices. Planning weighs them only where you rate a task's energy or say how you are.",
+            keys(&["energy-capacity", "best-hours", "worst-hours", "energy-check-in"]),
+            Vec::new(),
         ),
         // About, for a device with no About of its own (no menu bar's, no Home's): what Lumenna
         // is, a line each.

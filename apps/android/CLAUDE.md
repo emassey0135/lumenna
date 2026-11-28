@@ -144,6 +144,13 @@ BoltFFI's Kotlin bindings. Its README gives the toolchain. Three modules: `app` 
   backgrounds are. It is outside the row's semantics, so TalkBack says the name and the
   colour's word the line already holds, nothing more. The block form reads each choice's
   value by its key (`BlockFields.text`), the kind and the colour alike.
+- **An emoji is drawn before its name, never said** (shared's `EmojiMark`, cleared from TalkBack;
+  `withEmoji` where only text is drawn: a widget's line, the tile, a complication, each named by
+  the glance's `spoken`): a row's, a sidebar entry's, a day's block's and sitting's, the glance's
+  `headlineEmoji` and its moment's `next` and `tasks`. No line, description or notification holds
+  it. Its field in the task and block forms is a line like any other (`FormFields.kt`: a key that
+  mapping lacks is drawn as the priority's choice); the watch's input screen offers emoji only for
+  it and a project's Emoji (`TextEntry.askEmoji`), every other line keeping them off.
 - **Nested lists fold, as the app folds them**: a row with something under it has the app's
   Collapse or Expand among its actions and says which it is. The level is the app's, said
   against the row shown before, after folding; a list the app narrows or cuts out itself (a pick

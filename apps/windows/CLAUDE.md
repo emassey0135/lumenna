@@ -242,7 +242,13 @@ store of their own). Everything Win32 is in `src/win/` behind `cfg(windows)`.
   row has a colour (so a tree without any has no gap) and taken away under high contrast. An
   item's image is no part of its name to MSAA or UI Automation. The Colour pick's list box
   draws its own items then (`LBS_OWNERDRAWFIXED | LBS_HASSTRINGS`, the strings kept for what a
-  screen reader reads); the block form's Colour is a drop-down, as Kind is. A UI test reads the
+  screen reader reads); the block form's Colour is a drop-down, as Kind is. **An emoji is the
+  same image's second place** (`swatch::Places`: an image a square per place some row fills,
+  colour then emoji), drawn in colour by Direct2D into the DIB (`draw_emoji`, a DC render target:
+  GDI's text has neither colour nor alpha), so the item's text stays the core's line and the
+  emoji is in no name; under high contrast it goes with the list. The forms' Emoji is a line,
+  filled by Win+.. The widget draws none: an Adaptive Card has no way to hide a text block from
+  a screen reader, so Narrator would read it before the name. A UI test reads the
   screen with its thread DPI aware, since UI Automation's places are physical pixels.
 - **Reminders are toasts** (`toast.rs`), given by the device's own delivery as the Mac's are
   (`Device::deliver_reminders`, asked off the window's thread and shown back on it, `WM_THEN`, as

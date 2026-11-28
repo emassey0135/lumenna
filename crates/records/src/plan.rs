@@ -63,6 +63,9 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
                         .then(|| assignment.left_secs(now.timestamp()))
                         .flatten(),
                     details: Vec::new(),
+                    emoji: lumenna_core::emoji::shown(
+                        snapshot.tasks.get(&assignment.task_id).and_then(|t| t.emoji.as_deref()),
+                    ),
                     actions: Vec::new(),
                 };
                 sitting.details = sitting_details(&sitting);
@@ -97,6 +100,7 @@ pub fn plan(snapshot: &Snapshot, day: jiff::civil::Date, now: &Zoned) -> Result<
             anchored: occurrence.flags.anchored,
             colour: series.and_then(|s| s.color.clone()),
             swatch: crate::types::Swatch::of(series.and_then(|s| s.color.as_deref())),
+            emoji: lumenna_core::emoji::shown(series.and_then(|s| s.emoji.as_deref())),
             timezone: series.and_then(|s| s.timezone.as_ref()).map(ToString::to_string),
             hours: lumenna_core::energy::hours_at(&snapshot.settings, series, occurrence.start_time).map(|h| h.as_str().to_owned()),
             notes: series.map(|s| s.notes.clone()).unwrap_or_default(),
@@ -191,6 +195,7 @@ pub fn block_shown(snapshot: &Snapshot, id: &str) -> Result<BlockShown> {
         until: series.is_recurring().then_some(series.end_date).flatten().map(|d| d.to_string()),
         colour: series.color.clone(),
         hours: series.hours.map(|h| h.as_str().to_owned()),
+        emoji: series.emoji.clone(),
     })
 }
 

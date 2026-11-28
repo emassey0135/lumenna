@@ -116,16 +116,18 @@ pub fn get(fields: &TaskFields, key: &str) -> String {
         "start" => fields.start.clone(),
         "deadline" => fields.deadline.clone(),
         "energy" => fields.energy.clone(),
+        "emoji" => fields.emoji.clone(),
         _ => String::new(),
     }
 }
 
-/// Each field of the task form that holds something, but the title, as a line to read: its label
-/// then its value as the form names it ("Priority: High", "Project: Work").
+/// Each field of the task form that holds something, but the title and the emoji, as a line to
+/// read: its label then its value as the form names it ("Priority: High", "Project: Work"). The
+/// emoji is chosen to be seen, and these lines are read and brailled.
 #[must_use]
 pub fn field_lines(fields: &TaskFields, form: &[FormField], projects: &[Choice]) -> Vec<String> {
     form.iter()
-        .filter(|field| field.key != "title")
+        .filter(|field| field.key != "title" && field.key != "emoji")
         .filter_map(|field| {
             let value = get(fields, &field.key);
             let options = if field.key == "project" { projects } else { &field.options };
@@ -150,6 +152,7 @@ pub fn set(mut fields: TaskFields, key: &str, value: String) -> TaskFields {
         "start" => fields.start = value,
         "deadline" => fields.deadline = value,
         "energy" => fields.energy = value,
+        "emoji" => fields.emoji = value,
         _ => {}
     }
     fields

@@ -16,7 +16,7 @@ pub struct Arrangement {
     pub tabs: Vec<Tab>,
     /// Browse's rows, in the sidebar's order: every place that is not a tab of its own, and each
     /// group (Projects, Labels, Saved Filters), which opens its own screen. A group's row says how
-    /// many places it holds (`detail`); a place's carries the sidebar's detail and swatch.
+    /// many places it holds (`detail`); a place's carries the sidebar's detail, swatch and emoji.
     pub browse: Vec<SidebarEntry>,
     /// Each group's screen, in order: what a group's row in Browse opens.
     pub groups: Vec<GroupScreen>,

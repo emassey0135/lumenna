@@ -230,6 +230,7 @@ struct AppListScreen: View {
         return Button { open(item) } label: {
             HStack(spacing: 8) {
                 SwatchMark(swatch: item.swatch)
+                EmojiMark(emoji: item.emoji)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
                         .font(sidebar && item.heading ? .headline : .body)

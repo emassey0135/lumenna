@@ -331,6 +331,7 @@ impl Record for Task {
             // A level a newer build added reads as unrated, and survives: a write sends only
             // what changed.
             energy: r.parsed("energy"),
+            emoji: r.string("emoji"),
             start: r.parsed("start"),
             deadline: r.parsed("deadline"),
             kept_at: r.timestamp("kept_at"),
@@ -361,6 +362,7 @@ impl Record for Task {
         w.set_opt_u32("estimate_mins", was.map(|b| b.estimate_mins), self.estimate_mins)?;
         w.set_opt_u32("sitting_mins", was.map(|b| b.sitting_mins), self.sitting_mins)?;
         w.set_opt_str("energy", was.map(|b| b.energy.as_ref()), self.energy.as_ref())?;
+        w.set_opt_str("emoji", was.map(|b| b.emoji.as_ref()), self.emoji.as_ref())?;
         w.set_opt_str("start", was.map(|b| b.start.as_ref()), self.start.as_ref())?;
         w.set_opt_str("deadline", was.map(|b| b.deadline.as_ref()), self.deadline.as_ref())?;
         w.set_opt_time("kept_at", was.map(|b| b.kept_at.as_ref()), self.kept_at.as_ref())?;
@@ -450,6 +452,7 @@ impl Record for Project {
             name: r.string("name").unwrap_or_default(),
             parent_id: r.parsed("parent_id"),
             color: r.string("color"),
+            emoji: r.string("emoji"),
             order: r.parsed("order")?,
             archived: r.bool("archived").unwrap_or(false),
             is_inbox: r.bool("is_inbox").unwrap_or(false),
@@ -469,6 +472,7 @@ impl Record for Project {
         w.set_string("name", was.map(|b| b.name.as_str()), &self.name)?;
         w.set_opt_str("parent_id", was.map(|b| b.parent_id.as_ref()), self.parent_id.as_ref())?;
         w.set_opt_str("color", was.map(|b| b.color.as_ref()), self.color.as_ref())?;
+        w.set_opt_str("emoji", was.map(|b| b.emoji.as_ref()), self.emoji.as_ref())?;
         w.set_str("order", was.map(|b| &b.order), &self.order)?;
         w.set_bool("archived", was.map(|b| b.archived), self.archived)?;
         w.set_bool("is_inbox", was.map(|b| b.is_inbox), self.is_inbox)?;
@@ -634,6 +638,7 @@ impl Record for BlockSeries {
             rrule: r.string("rrule"),
             timezone: r.string("timezone").map(TzName::new),
             color: r.string("color"),
+            emoji: r.string("emoji"),
             task_filter: r.string("task_filter"),
             hours: r.parsed("hours"),
             external: r.map("external").and_then(|e| read_external(&e)),
@@ -665,6 +670,7 @@ impl Record for BlockSeries {
         w.set_opt_str("rrule", was.map(|b| b.rrule.as_ref()), self.rrule.as_ref())?;
         w.set_opt_str("timezone", was.map(|b| b.timezone.as_ref()), self.timezone.as_ref())?;
         w.set_opt_str("color", was.map(|b| b.color.as_ref()), self.color.as_ref())?;
+        w.set_opt_str("emoji", was.map(|b| b.emoji.as_ref()), self.emoji.as_ref())?;
         w.set_opt_str(
             "task_filter",
             was.map(|b| b.task_filter.as_ref()),
