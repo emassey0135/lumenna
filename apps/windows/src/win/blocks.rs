@@ -56,6 +56,7 @@ impl BlockList {
                     checked: None,
                     expanded: item.row.expanded,
                     swatch: item.row.swatch.clone(),
+                    emoji: item.row.emoji.clone(),
                 },
                 row: item.row.clone(),
                 offered: actions::of_row(&list.offered, &item.actions),

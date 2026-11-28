@@ -301,7 +301,11 @@ made of. It names neither `lumenna-host` nor a connection of its own to the stor
 - **A colour is a dot before a row's text** (`Item::swatch`, `tree::swatches`): a
   `Presentation` box styled `.swatch-<name>` from the core's palette, the light or dark value
   by libadwaita's `StyleManager::is_dark`, restyled as that changes; the row's name is its
-  text alone. The block form's Colour is a drop-down of the core's options, as Kind is.
+  text alone. The block form's Colour is a drop-down of the core's options, as Kind is. **An
+  emoji is drawn after it** (`Item::emoji`, `tree::Emoji`): a widget of ours that lays its text
+  out and paints it in `snapshot`, with the presentation role and no text to give, never a
+  `GtkLabel`, whose text a tree item's name can take in from its content. The forms' Emoji is a
+  line, filled by GNOME's picker (Ctrl+.).
 - **What the desktop entry and the metainfo say of Lumenna is the workspace's**
   (`[workspace.metadata.lumenna]`): `data/metadata fill` writes their name, description, icon,
   licence, developer, links and a release for the version as they are installed (`install.sh`,

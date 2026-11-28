@@ -46,6 +46,7 @@ pub struct Detail {
     /// open list, and its description.
     choices: Rc<RefCell<Vec<Choice>>>,
     labels: gtk::Entry,
+    emoji: gtk::Entry,
     notes: gtk::TextView,
     waits: Rc<Tree>,
     waits_label: gtk::Label,
@@ -146,6 +147,7 @@ impl Detail {
         let choices = Rc::new(RefCell::new(Vec::new()));
         project.set_list_factory(Some(&project_rows(&choices)));
         let labels = gtk::Entry::new();
+        let emoji = gtk::Entry::new();
         // Tab leaves the notes rather than being typed into them, or a keyboard user could
         // not get out.
         let notes = gtk::TextView::builder().accepts_tab(false).wrap_mode(gtk::WrapMode::WordChar).build();
@@ -190,9 +192,9 @@ impl Detail {
         // The sitting length beside the estimate it divides.
         pair(&grid, 6, (words("estimate", 'm'), estimate.upcast_ref()), (words("sittings", 'g'), sittings.upcast_ref()));
         pair(&grid, 8, (words("priority", 'o'), priority.upcast_ref()), (words("project", 'j'), project.upcast_ref()));
-        let labels_words = words("labels", 'L');
-        grid.attach(&named(labels.upcast_ref(), &labels_words), 0, 10, 2, 1);
-        grid.attach(&labels, 0, 11, 2, 1);
+        // The emoji beside the labels, one emoji from GNOME's own picker (Ctrl+.). Every letter
+        // of "Emoji" is another field's or a menu's, so it has no mnemonic.
+        pair(&grid, 10, (words("labels", 'L'), labels.upcast_ref()), (words("emoji", '\0'), emoji.upcast_ref()));
         let notes_scroll = gtk::ScrolledWindow::builder()
             .child(&notes)
             .min_content_height(96)
@@ -258,6 +260,7 @@ impl Detail {
             projects,
             choices,
             labels,
+            emoji,
             notes,
             waits,
             waits_label,
@@ -278,7 +281,7 @@ impl Detail {
 
     fn connect(self: &Rc<Self>, form: &gtk::Box) {
         // Enter in a one-line field saves, as a form's default button would.
-        for entry in [&self.title, &self.due, &self.start, &self.deadline, &self.repeat, &self.estimate, &self.sittings, &self.labels] {
+        for entry in [&self.title, &self.due, &self.start, &self.deadline, &self.repeat, &self.estimate, &self.sittings, &self.labels, &self.emoji] {
             entry.connect_activate(|entry| {
                 let _ = entry.activate_action("win.save-task", None);
             });
@@ -321,12 +324,13 @@ impl Detail {
                     "deadline" => fields.deadline,
                     "project" => fields.project,
                     "labels" => fields.labels,
+                    "emoji" => fields.emoji,
                     _ => fields.notes,
                 };
                 app.model.send(ShellEvent::Details(DetailsEvent::Field { key: key.to_owned(), value }));
             }
         };
-        for (entry, key) in [(&self.title, "title"), (&self.due, "due"), (&self.start, "start"), (&self.deadline, "deadline"), (&self.repeat, "repeat"), (&self.estimate, "estimate"), (&self.sittings, "sittings"), (&self.labels, "labels")] {
+        for (entry, key) in [(&self.title, "title"), (&self.due, "due"), (&self.start, "start"), (&self.deadline, "deadline"), (&self.repeat, "repeat"), (&self.estimate, "estimate"), (&self.sittings, "sittings"), (&self.labels, "labels"), (&self.emoji, "emoji")] {
             let send = typed(self, key);
             entry.connect_changed(move |_| send());
         }
@@ -426,6 +430,7 @@ impl Detail {
         refill(&self.start, &fields.start);
         refill(&self.deadline, &fields.deadline);
         refill(&self.labels, &fields.labels);
+        refill(&self.emoji, &fields.emoji);
         let position = lumenna_records::priorities().iter().position(|p| p.id == fields.priority.to_string()).unwrap_or(0) as u32;
         if self.priority.selected() != position && !within(&self.priority) {
             self.priority.set_selected(position);
@@ -571,6 +576,7 @@ impl Detail {
             deadline: self.deadline.text().to_string(),
             project: self.projects.string(self.project.selected()).map(|s| s.to_string()).unwrap_or_default(),
             labels: self.labels.text().to_string(),
+            emoji: self.emoji.text().to_string(),
             notes: buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string(),
         }
     }
