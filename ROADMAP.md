@@ -32,19 +32,6 @@ The order, and why:
 
 ## 3. Planning
 
-- **Energy, as the person rates it**: capacity for focus and for starting things, which ADHD
-  and other conditions make uneven, not calories, so it is estimated, as a length is, never
-  measured.
-  - **A task's energy** beside its estimate: low, medium or high. Unrated is medium, so rating
-    nothing changes nothing.
-  - **A day's capacity**: a usual amount, and a check-in to change today's ("I'm low today")
-    from a notification, a widget, the watch, or the app.
-  - **When energy is good**: a block, or a time of day, marked as the person's best or worst.
-  - **The planner uses them**, deterministically and only proposing, as everywhere: Plan the
-    Day stops before the day's capacity is spent and puts demanding tasks in the good hours;
-    saying one is low offers a lighter Replan from Now of the rest of the day. What it weighs
-    is said in the proposal's reasons, in words.
-  - Optional throughout: worth having with a few tasks rated, never a chore of rating them all.
 - **An emoji on a task, a block or a project**, drawn beside its name, as Structured and Tiimo
   draw icons: any emoji, chosen with the platform's own picker (Win+. on Windows,
   Control-Command-Space on a Mac, the keyboard on a phone, Ctrl+. in GNOME), so no app keeps a
